@@ -57,6 +57,10 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 REQUIRED_CHANNEL_ID = os.environ.get("REQUIRED_CHANNEL_ID", "").strip()
 REQUIRED_CHANNEL_URL = os.environ.get("REQUIRED_CHANNEL_URL", "").strip()
 ADMIN_LOG_CHANNEL_ID = os.environ.get("ADMIN_LOG_CHANNEL_ID", "").strip()
+#: Suggestions and complaints go to their own channel, separate from events.
+FEEDBACK_CHANNEL_ID = os.environ.get("FEEDBACK_CHANNEL_ID", "").strip() or ADMIN_LOG_CHANNEL_ID
+#: Aggregate platform statistics — counts only, never user content.
+STATS_CHANNEL_ID = os.environ.get("STATS_CHANNEL_ID", "").strip() or ADMIN_LOG_CHANNEL_ID
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "").strip().rstrip("/")
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "development").lower()
 
@@ -73,6 +77,28 @@ if ENVIRONMENT == "production" and not BOT_TOKEN:
 
 T: dict[str, dict[str, str]] = {
     "uz": {
+        "btn_done_task": "✅ Bajarildi",
+        "btn_edit_task": "✏️ Tahrirlash",
+        "choose_done": "Qaysi vazifa bajarildi?",
+        "choose_edit": "Qaysi birini tahrirlaysiz?",
+        "ask_new_title": "Yangi nomni yozing:",
+        "task_updated": "Yangilandi: {title}",
+        "ask_deadline": "Muddatni tanlang:",
+        "cat_non_negotiable": "🔴 Non-negotiable",
+        "cat_target": "🟡 Target",
+        "cat_bonus": "🟢 Bonus",
+        "ask_habit_cat": "Qaysi kategoriyaga?",
+        "btn_phone_set": "📱 Telefon raqam",
+        "btn_photo": "🖼 Profil rasmi",
+        "ask_photo": "Profil rasmini yuboring (foto sifatida):",
+        "photo_saved": "Rasm saqlandi ✓",
+        "photo_removed": "Rasm o'chirildi",
+        "btn_photo_del": "🗑 Rasmni o'chirish",
+        "btn_phone_del": "🗑 Raqamni o'chirish",
+        "phone_removed": "Raqam o'chirildi",
+        "journal_habit": "Kundalik to'liq to'ldirilganda avtomatik belgilanadi",
+        "streak": "🔥 Ketma-ket",
+        "no_deadline": "muddatsiz",
         "welcome": "Assalomu alaykum, {name}!\n\nErnestOS — Telegram ichidagi shaxsiy tizimingiz.",
         "ask_phone": "Telefon raqamingizni ulashing.\n\nBu hisobingizni tiklash va sizni tanib olish uchun kerak.",
         "btn_phone": "📱 Raqamni ulashish",
@@ -158,6 +184,28 @@ T: dict[str, dict[str, str]] = {
         "days_short": "kun",
     },
     "en": {
+        "btn_done_task": "✅ Mark done",
+        "btn_edit_task": "✏️ Edit",
+        "choose_done": "Which task is done?",
+        "choose_edit": "Which one do you want to edit?",
+        "ask_new_title": "Enter the new title:",
+        "task_updated": "Updated: {title}",
+        "ask_deadline": "Choose the deadline:",
+        "cat_non_negotiable": "🔴 Non-negotiable",
+        "cat_target": "🟡 Target",
+        "cat_bonus": "🟢 Bonus",
+        "ask_habit_cat": "Which category?",
+        "btn_phone_set": "📱 Phone number",
+        "btn_photo": "🖼 Profile photo",
+        "ask_photo": "Send your profile photo (as a photo):",
+        "photo_saved": "Photo saved ✓",
+        "photo_removed": "Photo removed",
+        "btn_photo_del": "🗑 Remove photo",
+        "btn_phone_del": "🗑 Remove phone",
+        "phone_removed": "Phone removed",
+        "journal_habit": "Marked automatically once the journal is fully answered",
+        "streak": "🔥 Streak",
+        "no_deadline": "no deadline",
         "welcome": "Hello, {name}!\n\nErnestOS — your personal system inside Telegram.",
         "ask_phone": "Please share your phone number.\n\nIt is used to recover your account and recognise you.",
         "btn_phone": "📱 Share phone number",
@@ -243,6 +291,28 @@ T: dict[str, dict[str, str]] = {
         "days_short": "days",
     },
     "ru": {
+        "btn_done_task": "✅ Выполнено",
+        "btn_edit_task": "✏️ Изменить",
+        "choose_done": "Какая задача выполнена?",
+        "choose_edit": "Что изменить?",
+        "ask_new_title": "Введите новое название:",
+        "task_updated": "Обновлено: {title}",
+        "ask_deadline": "Выберите срок:",
+        "cat_non_negotiable": "🔴 Non-negotiable",
+        "cat_target": "🟡 Target",
+        "cat_bonus": "🟢 Bonus",
+        "ask_habit_cat": "Какая категория?",
+        "btn_phone_set": "📱 Номер телефона",
+        "btn_photo": "🖼 Фото профиля",
+        "ask_photo": "Отправьте фото профиля:",
+        "photo_saved": "Фото сохранено ✓",
+        "photo_removed": "Фото удалено",
+        "btn_photo_del": "🗑 Удалить фото",
+        "btn_phone_del": "🗑 Удалить номер",
+        "phone_removed": "Номер удалён",
+        "journal_habit": "Отмечается автоматически при полном заполнении дневника",
+        "streak": "🔥 Серия",
+        "no_deadline": "без срока",
         "welcome": "Здравствуйте, {name}!\n\nErnestOS — ваша личная система внутри Telegram.",
         "ask_phone": "Поделитесь номером телефона.\n\nЭто нужно для восстановления аккаунта.",
         "btn_phone": "📱 Отправить номер",
@@ -354,16 +424,17 @@ def t(lang: str, key: str, **kwargs) -> str:
 # Admin log channel
 # ---------------------------------------------------------------------------
 
-async def admin_log(bot, text: str) -> None:
-    """Send a business event to the private admin channel.
+async def admin_log(bot, text: str, chat_id: str | None = None) -> None:
+    """Send a business event to a private admin channel.
 
     Never carries secrets or stack traces — technical failures go to the
     application log instead.
     """
-    if not ADMIN_LOG_CHANNEL_ID:
+    target = chat_id or ADMIN_LOG_CHANNEL_ID
+    if not target:
         return
     try:
-        await bot.send_message(chat_id=ADMIN_LOG_CHANNEL_ID, text=text,
+        await bot.send_message(chat_id=target, text=text,
                                parse_mode=ParseMode.HTML,
                                disable_web_page_preview=True)
     except TelegramError as e:
@@ -515,7 +586,11 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         await show_home(update, ctx)
         return
 
-    await message.reply_text(t(lang, "welcome", name=tg_user.first_name or ""))
+    # A brand-new user has not chosen a language yet, so greet in all three
+    # before asking — otherwise the first message is a guess.
+    name = tg_user.first_name or ""
+    await message.reply_text(
+        "\n\n".join(t(code, "welcome", name=name) for code in ("uz", "en", "ru")))
     await resume_onboarding(update, ctx, step)
 
 
@@ -531,19 +606,19 @@ async def resume_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         user = s.get(User, tg_user.id)
         lang = user.language if user else "uz"
 
-    if step == "phone":
-        keyboard = ReplyKeyboardMarkup(
-            [[KeyboardButton(t(lang, "btn_phone"), request_contact=True)],
-             [KeyboardButton(t(lang, "btn_skip"))]],
-            resize_keyboard=True, one_time_keyboard=True)
-        await message.reply_text(t(lang, "ask_phone"), reply_markup=keyboard)
-
-    elif step == "language":
+    if step == "language":
         await message.reply_text(t(lang, "ask_lang"), reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🇺🇿 O'zbek", callback_data="lang:uz")],
             [InlineKeyboardButton("🇬🇧 English", callback_data="lang:en")],
             [InlineKeyboardButton("🇷🇺 Русский", callback_data="lang:ru")],
         ]))
+
+    elif step == "phone":
+        keyboard = ReplyKeyboardMarkup(
+            [[KeyboardButton(t(lang, "btn_phone"), request_contact=True)],
+             [KeyboardButton(t(lang, "btn_skip"))]],
+            resize_keyboard=True, one_time_keyboard=True)
+        await message.reply_text(t(lang, "ask_phone"), reply_markup=keyboard)
 
     elif step == "gender":
         await message.reply_text(t(lang, "ask_gender"), reply_markup=InlineKeyboardMarkup([
@@ -577,14 +652,47 @@ async def on_contact(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             await message.reply_text(t(lang, "phone_wrong"))
             return
         user.phone_number = contact.phone_number
-        user.onboarding_step = "language"
+        onboarded_already = user.onboarded
+        if not onboarded_already:
+            user.onboarding_step = "gender"
         s.commit()
         snapshot = user
 
     await message.reply_text(t(lang, "phone_saved"), reply_markup=ReplyKeyboardRemove())
     await log_event(ctx.bot, snapshot, "📱 PHONE SUBMITTED",
                     f"Phone: {snapshot.phone_number}")
-    await resume_onboarding(update, ctx, "language")
+    if onboarded_already:
+        # Phone changed from Settings — go straight back to the menu.
+        await message.reply_text(t(lang, "saved"), reply_markup=main_menu(lang))
+    else:
+        await resume_onboarding(update, ctx, "gender")
+
+
+async def on_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Store the Telegram file_id of an uploaded avatar.
+
+    Only the id is kept — Telegram already hosts the bytes, so the database
+    stays free of binary blobs.
+    """
+    message = update.effective_message
+    tg_user = update.effective_user
+    if message is None or not message.photo or tg_user is None:
+        return
+    if (ctx.user_data.get("flow") or {}).get("name") != "photo_wait":
+        return
+
+    file_id = message.photo[-1].file_id  # highest resolution
+    with SessionLocal() as s:
+        user = s.get(User, tg_user.id)
+        if user is None:
+            return
+        user.photo_file_id = file_id
+        s.commit()
+        lang, snapshot = user.language, user
+
+    ctx.user_data.pop("flow", None)
+    await message.reply_text(t(lang, "photo_saved"), reply_markup=main_menu(lang))
+    await log_event(ctx.bot, snapshot, "🖼 PHOTO UPDATED")
 
 
 async def skip_phone(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -597,11 +705,11 @@ async def skip_phone(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if user is None:
             return
         lang = user.language
-        user.onboarding_step = "language"
+        user.onboarding_step = "gender"
         s.commit()
     await message.reply_text(t(lang, "phone_skipped"),
                              reply_markup=ReplyKeyboardRemove())
-    await resume_onboarding(update, ctx, "language")
+    await resume_onboarding(update, ctx, "gender")
 
 
 async def finish_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -672,7 +780,13 @@ def render_home(data: dict, lang: str) -> str:
                  f"{habits['done']} / {habits['total']}")
 
     prayer = data["prayer"]
-    lines.append(f"🕌 {prayer['score']} / {prayer['threshold']}")
+    lines.append(f"🕌 {prayer['score']} / {prayer['max']}")
+
+    streaks = data.get("streaks") or {}
+    if streaks.get("habits") or streaks.get("prayer"):
+        lines.append(f"{t(lang, 'streak')}: "
+                     f"{t(lang, 'home_habits')} {streaks.get('habits', 0)} · "
+                     f"{t(lang, 'prayer')} {streaks.get('prayer', 0)}")
 
     projects = data["projects"]
     if projects:
@@ -715,13 +829,24 @@ async def show_home(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 # Habits
 # ---------------------------------------------------------------------------
 
-def habits_keyboard(habits: list[dict], lang: str) -> InlineKeyboardMarkup:
+CATEGORY_KEYS = {"non_negotiable": "cat_non_negotiable",
+                 "target": "cat_target", "bonus": "cat_bonus"}
+
+
+def habits_keyboard(grouped: dict, lang: str) -> InlineKeyboardMarkup:
+    """One section per tier, so the three categories stay visible at a glance."""
     rows = []
-    for h in habits:
-        mark = "✅" if h["done"] else "⬜"
-        lock = " 🔒" if h["protected"] else ""
-        rows.append([InlineKeyboardButton(
-            f"{mark} {h['name']}{lock}", callback_data=f"habit:toggle:{h['id']}")])
+    for category in svc.HABIT_CATEGORIES:
+        habits = grouped.get(category, [])
+        if not habits:
+            continue
+        rows.append([InlineKeyboardButton(t(lang, CATEGORY_KEYS[category]),
+                                          callback_data="habit:noop")])
+        for h in habits:
+            mark = "✅" if h["done"] else "⬜"
+            lock = " 🔒" if h["protected"] else ""
+            rows.append([InlineKeyboardButton(
+                f"{mark} {h['name']}{lock}", callback_data=f"habit:toggle:{h['id']}")])
     rows.append([
         InlineKeyboardButton(t(lang, "btn_add_habit"), callback_data="habit:add"),
         InlineKeyboardButton(t(lang, "btn_del_habit"), callback_data="habit:dellist"),
@@ -736,10 +861,14 @@ async def show_habits(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         return
     user, ws = got
     with SessionLocal() as s:
-        habits = svc.list_habits(s, ws)
+        grouped = svc.habits_by_category(s, ws)
+        streak = svc.habit_streak(s, ws)
 
-    text = f"<b>{t(user.language, 'habits_title')}</b>"
-    markup = habits_keyboard(habits, user.language)
+    header = f"<b>{t(user.language, 'habits_title')}</b>"
+    if streak:
+        header += f"   {t(user.language, 'streak')}: {streak}"
+    text = header
+    markup = habits_keyboard(grouped, user.language)
     if edit and update.callback_query:
         await update.callback_query.edit_message_text(
             text, parse_mode=ParseMode.HTML, reply_markup=markup)
@@ -769,10 +898,8 @@ def render_tasks(data: dict, lang: str) -> str:
     if upcoming:
         for task in upcoming:
             project = task["project"] or t(lang, "standalone")
-            left = task["days_left"]
-            when = "🔥" if left == 0 else f"⏳ {left} {t(lang, 'days_short')}"
             lines.append(f"{marks.get(task['priority'], '▫️')} {task['title']}\n"
-                         f"   📁 {project} · 📅 {task['deadline']} · {when}")
+                         f"   📁 {project} · 📅 {task['deadline']}")
     else:
         lines.append(t(lang, "none"))
 
@@ -785,9 +912,12 @@ def render_tasks(data: dict, lang: str) -> str:
 
 
 def tasks_keyboard(lang: str) -> InlineKeyboardMarkup:
+    """Completing a task replaces deleting it — finished work goes to the
+    Done archive rather than disappearing from history."""
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(t(lang, "btn_add_task"), callback_data="task:add"),
-         InlineKeyboardButton(t(lang, "btn_del_task"), callback_data="task:dellist")],
+        [InlineKeyboardButton(t(lang, "btn_done_task"), callback_data="task:donelist"),
+         InlineKeyboardButton(t(lang, "btn_edit_task"), callback_data="task:editlist")],
+        [InlineKeyboardButton(t(lang, "btn_add_task"), callback_data="task:add")],
         [InlineKeyboardButton(t(lang, "btn_add_project"), callback_data="project:add"),
          InlineKeyboardButton(t(lang, "btn_del_project"), callback_data="project:dellist")],
     ])
@@ -877,11 +1007,15 @@ async def show_settings(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     user, _ = got
     lang = user.language
     text = (f"<b>{t(lang, 'settings_title')}</b>\n\n"
-            f"🌐 {lang}\n👤 {user.gender or '—'}\n🎨 {user.theme}")
+            f"🌐 {lang}\n👤 {user.gender or '—'}\n🎨 {user.theme}\n"
+            f"📱 {user.phone_number or '—'}\n"
+            f"🖼 {'✓' if user.photo_file_id else '—'}")
     markup = InlineKeyboardMarkup([
         [InlineKeyboardButton(t(lang, "btn_lang"), callback_data="set:lang")],
         [InlineKeyboardButton(t(lang, "btn_gender"), callback_data="set:gender")],
         [InlineKeyboardButton(t(lang, "btn_theme"), callback_data="set:theme")],
+        [InlineKeyboardButton(t(lang, "btn_phone_set"), callback_data="set:phone")],
+        [InlineKeyboardButton(t(lang, "btn_photo"), callback_data="set:photo")],
     ])
     if edit and update.callback_query:
         await update.callback_query.edit_message_text(
@@ -961,13 +1095,26 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     name = flow["name"]
 
     try:
-        if name == "habit_add":
+        if name == "habit_name":
+            ctx.user_data["flow"] = {"name": "habit_cat", "title": text}
+            await message.reply_text(t(lang, "ask_habit_cat"),
+                                     reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(t(lang, "cat_non_negotiable"),
+                                      callback_data="habitcat:non_negotiable")],
+                [InlineKeyboardButton(t(lang, "cat_target"), callback_data="habitcat:target")],
+                [InlineKeyboardButton(t(lang, "cat_bonus"), callback_data="habitcat:bonus")],
+                [InlineKeyboardButton(t(lang, "cancel"), callback_data="flow:cancel")],
+            ]))
+
+        elif name == "task_edit":
             with SessionLocal() as s:
-                habit = svc.add_habit(s, ws, text)
+                task = svc.update_task(s, ws, flow["id"], title=text)
             ctx.user_data.pop("flow", None)
-            await message.reply_text(t(lang, "habit_added", name=habit.name))
-            await log_event(ctx.bot, user, "➕ HABIT ADDED", f"Habit: {habit.name}")
-            await show_habits(update, ctx)
+            await message.reply_text(t(lang, "task_updated", title=task.title))
+            await show_tasks(update, ctx)
+
+        elif name == "feedback_wait":
+            pass
 
         elif name == "task_title":
             ctx.user_data["flow"] = {"name": "task_days", "title": text}
@@ -1018,10 +1165,10 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             ctx.user_data.pop("flow", None)
 
             delivered = False
-            if ADMIN_LOG_CHANNEL_ID:
+            if FEEDBACK_CHANNEL_ID:
                 try:
                     await ctx.bot.send_message(
-                        chat_id=ADMIN_LOG_CHANNEL_ID,
+                        chat_id=FEEDBACK_CHANNEL_ID,
                         text=(f"<b>💬 ERNESTOS FEEDBACK</b>\n{_who(user)}\n"
                               f"Phone: {user.phone_number or '—'}\n"
                               f"Date: {datetime.now(svc.TZ):%Y-%m-%d %H:%M}\n\n"
@@ -1114,14 +1261,14 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             user = s.get(User, tg_user.id)
             user.language = parts[1]
             if not user.onboarded:
-                user.onboarding_step = "gender"
+                user.onboarding_step = "phone"
             s.commit()
             lang, onboarded = user.language, user.onboarded
             snapshot = user
         await query.edit_message_text(t(lang, "saved"))
         await log_event(ctx.bot, snapshot, "🌐 LANGUAGE CHANGED", f"Language: {lang}")
         if not onboarded:
-            await resume_onboarding(update, ctx, "gender")
+            await resume_onboarding(update, ctx, "phone")
         else:
             await update.effective_message.reply_text(t(lang, "saved"),
                                                       reply_markup=main_menu(lang))
@@ -1183,7 +1330,7 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                 svc.toggle_habit(s, ws, int(parts[2]))
             await show_habits(update, ctx, edit=True)
         elif sub == "add":
-            ctx.user_data["flow"] = {"name": "habit_add"}
+            ctx.user_data["flow"] = {"name": "habit_name"}
             await message.reply_text(t(lang, "ask_habit_name"),
                                      reply_markup=cancel_keyboard(lang))
         elif sub == "dellist":
@@ -1205,6 +1352,8 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             await show_habits(update, ctx, edit=True)
         elif sub == "back":
             await show_habits(update, ctx, edit=True)
+        elif sub == "noop":
+            pass
 
     # --- tasks ---
     elif action == "task":
@@ -1213,31 +1362,34 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             ctx.user_data["flow"] = {"name": "task_title"}
             await message.reply_text(t(lang, "ask_task_name"),
                                      reply_markup=cancel_keyboard(lang))
-        elif sub == "dellist":
+        elif sub in ("donelist", "editlist"):
             with SessionLocal() as s:
                 data = svc.list_tasks(s, ws, horizon_days=365)
             tasks = data["overdue"] + data["upcoming"] + data["undated"]
             if not tasks:
                 await query.answer(t(lang, "empty"), show_alert=True)
                 return
+            verb = "done" if sub == "donelist" else "edit"
+            prompt = "choose_done" if sub == "donelist" else "choose_edit"
             rows = [[InlineKeyboardButton(task["title"][:40],
-                                          callback_data=f"task:del:{task['id']}")]
+                                          callback_data=f"task:{verb}:{task['id']}")]
                     for task in tasks[:15]]
             rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="task:back")])
-            await query.edit_message_text(t(lang, "choose_delete"),
+            await query.edit_message_text(t(lang, prompt),
                                           reply_markup=InlineKeyboardMarkup(rows))
-        elif sub == "del":
-            with SessionLocal() as s:
-                title = svc.delete_task(s, ws, int(parts[2]))
-            await log_event(ctx.bot, user, "🗑 TASK DELETED", f"Task: {title}")
-            await show_tasks(update, ctx, edit=True)
         elif sub == "done":
             with SessionLocal() as s:
                 task = svc.complete_task(s, ws, int(parts[2]))
             await log_event(ctx.bot, user, "✅ TASK COMPLETED", f"Task: {task.title}")
-            await show_tasks(update, ctx, edit=True)
+            await query.edit_message_text(t(lang, "task_done", title=task.title))
+            await show_tasks(update, ctx)
+        elif sub == "edit":
+            ctx.user_data["flow"] = {"name": "task_edit", "id": int(parts[2])}
+            await query.edit_message_text(t(lang, "ask_new_title"))
         elif sub == "back":
             await show_tasks(update, ctx, edit=True)
+        elif sub == "noop":
+            pass
 
     elif action == "taskday":
         flow = ctx.user_data.get("flow") or {}
@@ -1330,6 +1482,20 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         elif sub == "back":
             await show_goals(update, ctx, edit=True)
 
+    elif action == "habitcat":
+        flow = ctx.user_data.get("flow") or {}
+        title = flow.get("title")
+        if not title:
+            await query.answer(t(lang, "error"), show_alert=True)
+            return
+        with SessionLocal() as s:
+            habit = svc.add_habit(s, ws, title, parts[1])
+        ctx.user_data.pop("flow", None)
+        await query.edit_message_text(t(lang, "habit_added", name=habit.name))
+        await log_event(ctx.bot, user, "➕ HABIT ADDED",
+                        f"Habit: {habit.name}\nCategory: {parts[1]}")
+        await show_habits(update, ctx)
+
     elif action == "goalcat":
         flow = ctx.user_data.get("flow") or {}
         title = flow.get("title")
@@ -1347,24 +1513,67 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     # --- settings ---
     elif action == "set":
         sub = parts[1]
-        if sub == "lang":
+        back = [InlineKeyboardButton(t(lang, "back"), callback_data="set:back")]
+
+        if sub == "back":
+            await show_settings(update, ctx, edit=True)
+        elif sub == "lang":
             await query.edit_message_text(t(lang, "ask_lang"),
                                           reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🇺🇿 O'zbek", callback_data="lang:uz")],
                 [InlineKeyboardButton("🇬🇧 English", callback_data="lang:en")],
                 [InlineKeyboardButton("🇷🇺 Русский", callback_data="lang:ru")],
+                back,
             ]))
         elif sub == "gender":
             await query.edit_message_text(t(lang, "ask_gender"),
                                           reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton(t(lang, "male"), callback_data="gender:male")],
                 [InlineKeyboardButton(t(lang, "female"), callback_data="gender:female")],
+                back,
             ]))
         elif sub == "theme":
             rows = [[InlineKeyboardButton(name.title(), callback_data=f"theme:{name}")]
                     for name in THEMES]
+            rows.append(back)
             await query.edit_message_text(t(lang, "btn_theme"),
                                           reply_markup=InlineKeyboardMarkup(rows))
+        elif sub == "phone":
+            rows = [[KeyboardButton(t(lang, "btn_phone"), request_contact=True)]]
+            await query.edit_message_text(t(lang, "ask_phone"))
+            await message.reply_text(
+                t(lang, "ask_phone"),
+                reply_markup=ReplyKeyboardMarkup(rows, resize_keyboard=True,
+                                                 one_time_keyboard=True))
+            if user.phone_number:
+                await message.reply_text(
+                    t(lang, "btn_phone_del"),
+                    reply_markup=InlineKeyboardMarkup(
+                        [[InlineKeyboardButton(t(lang, "btn_phone_del"),
+                                               callback_data="set:phonedel")], back]))
+        elif sub == "phonedel":
+            with SessionLocal() as s:
+                row = s.get(User, user.telegram_id)
+                row.phone_number = None
+                s.commit()
+            await query.edit_message_text(t(lang, "phone_removed"))
+            await show_settings(update, ctx)
+        elif sub == "photo":
+            ctx.user_data["flow"] = {"name": "photo_wait"}
+            rows = [[InlineKeyboardButton(t(lang, "cancel"), callback_data="flow:cancel")]]
+            if user.photo_file_id:
+                rows.insert(0, [InlineKeyboardButton(t(lang, "btn_photo_del"),
+                                                     callback_data="set:photodel")])
+            await query.edit_message_text(t(lang, "ask_photo"),
+                                          reply_markup=InlineKeyboardMarkup(rows))
+        elif sub == "photodel":
+            ctx.user_data.pop("flow", None)
+            with SessionLocal() as s:
+                row = s.get(User, user.telegram_id)
+                row.photo_file_id = ""
+                s.commit()
+            await query.edit_message_text(t(lang, "photo_removed"))
+            await show_settings(update, ctx)
 
     elif action == "theme":
         with SessionLocal() as s:
@@ -1475,6 +1684,37 @@ def render_evening(data: dict, lang: str) -> str:
             lines.append(f"• {item}")
 
     return "\n".join(lines)
+
+
+async def send_platform_stats(bot) -> None:
+    """Aggregate usage numbers for the operator. No user content, ever."""
+    if not STATS_CHANNEL_ID:
+        return
+    with SessionLocal() as s:
+        st = svc.platform_stats(s)
+
+    languages = " · ".join(f"{k or '—'} {v}" for k, v in sorted(st["languages"].items()))
+    genders = " · ".join(f"{k or '—'} {v}" for k, v in sorted(st["genders"].items()))
+
+    text = (
+        f"<b>📊 ERNESTOS STATISTIKA</b>\n"
+        f"{datetime.now(svc.TZ):%Y-%m-%d %H:%M}\n\n"
+        f"<b>Foydalanuvchilar</b>\n"
+        f"Jami: {st['total']}\n"
+        f"Onboarding tugagan: {st['onboarded']}\n"
+        f"Obuna: {st['subscribed']} · bloklangan: {st['blocked']}\n"
+        f"Bugun yangi: {st['new_today']} · haftada: {st['new_week']}\n\n"
+        f"<b>Faollik</b>\n"
+        f"DAU {st['dau']} · WAU {st['wau']} · MAU {st['mau']}\n\n"
+        f"<b>Hafta ichida</b>\n"
+        f"Vazifa yaratildi: {st['tasks_created']} · bajarildi: {st['tasks_done']}\n"
+        f"Maqsad bajarildi: {st['goals_done']}\n"
+        f"Bugun kundalik yozganlar: {st['journal_today']}\n"
+        f"Taklif: {st['feedback_week']}\n\n"
+        f"<b>Til</b>: {languages or '—'}\n"
+        f"<b>Jins</b>: {genders or '—'}"
+    )
+    await admin_log(bot, text, chat_id=STATS_CHANNEL_ID)
 
 
 async def send_reports(bot, report_type: str) -> None:
@@ -1590,6 +1830,7 @@ async def lifespan(_: FastAPI):
         telegram_app.add_handler(CommandHandler("start", start))
         telegram_app.add_handler(CommandHandler("home", show_home))
         telegram_app.add_handler(MessageHandler(filters.CONTACT, on_contact))
+        telegram_app.add_handler(MessageHandler(filters.PHOTO, on_photo))
         telegram_app.add_handler(CallbackQueryHandler(on_callback))
         telegram_app.add_handler(ChatMemberHandler(
             on_chat_member, ChatMemberHandler.CHAT_MEMBER))
@@ -1610,6 +1851,9 @@ async def lifespan(_: FastAPI):
                           misfire_grace_time=3600)
         scheduler.add_job(send_reports, "cron", hour=21, minute=0,
                           args=[telegram_app.bot, "evening"], id="evening",
+                          misfire_grace_time=3600)
+        scheduler.add_job(send_platform_stats, "cron", hour=23, minute=0,
+                          args=[telegram_app.bot], id="stats",
                           misfire_grace_time=3600)
         scheduler.start()
         log.info("scheduler started (Asia/Tashkent 04:00 / 21:00)")
@@ -1652,6 +1896,7 @@ class SettingsIn(BaseModel):
 
 class HabitIn(BaseModel):
     name: str
+    category: str = "target"
 
 
 class PrayerIn(BaseModel):
@@ -1667,6 +1912,7 @@ class ExcusedIn(BaseModel):
 
 class TaskIn(BaseModel):
     title: str
+    description: str = ""
     deadline: str | None = None
     project_id: int | None = None
     priority: str = "medium"
@@ -1674,6 +1920,7 @@ class TaskIn(BaseModel):
 
 class TaskPatch(BaseModel):
     title: str | None = None
+    description: str | None = None
     deadline: str | None = None
     project_id: int | None = None
     priority: str | None = None
@@ -1703,8 +1950,13 @@ class FocusIn(BaseModel):
     title: str
 
 
+class SettingsPhoto(BaseModel):
+    quote: str | None = None
+
+
 class JournalIn(BaseModel):
-    text: str
+    answers: dict[str, str] | None = None
+    text: str = ""
     day: str | None = None
     mood: str = ""
 
@@ -1768,14 +2020,18 @@ def api_home(init=Header(default=None, alias="X-Telegram-Init-Data")):
 def api_habits(day: str | None = None, init=Header(default=None, alias="X-Telegram-Init-Data")):
     _, ws = auth(init)
     with SessionLocal() as s:
-        return {"habits": svc.list_habits(s, ws, _date(day))}
+        target = _date(day)
+        return {"habits": svc.list_habits(s, ws, target),
+                "grouped": svc.habits_by_category(s, ws, target),
+                "categories": svc.HABIT_CATEGORIES,
+                "streak": svc.habit_streak(s, ws)}
 
 
 @app.post("/api/habits")
 def api_habit_add(body: HabitIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
     _, ws = auth(init)
     with SessionLocal() as s:
-        habit = svc.add_habit(s, ws, body.name)
+        habit = svc.add_habit(s, ws, body.name, body.category)
     return {"ok": True, "id": habit.id}
 
 
@@ -1842,7 +2098,8 @@ def api_task_add(body: TaskIn, init=Header(default=None, alias="X-Telegram-Init-
     _, ws = auth(init)
     with SessionLocal() as s:
         task = svc.add_task(s, ws, body.title, deadline=_date(body.deadline),
-                            project_id=body.project_id, priority=body.priority)
+                            project_id=body.project_id, priority=body.priority,
+                            description=body.description)
     return {"ok": True, "id": task.id}
 
 
@@ -1969,19 +2226,24 @@ def api_focus_delete(focus_id: int, init=Header(default=None, alias="X-Telegram-
 
 @app.get("/api/journal")
 def api_journal(day: str | None = None, init=Header(default=None, alias="X-Telegram-Init-Data")):
-    _, ws = auth(init)
+    user, ws = auth(init)
     with SessionLocal() as s:
+        questions = [{"id": q["id"], "text": q.get(user.language, q["uz"])}
+                     for q in svc.JOURNAL_QUESTIONS]
         if day:
-            return {"entry": svc.get_journal(s, ws, _date(day))}
-        return {"entries": svc.list_journal(s, ws)}
+            return {"entry": svc.get_journal(s, ws, _date(day)), "questions": questions}
+        return {"entries": svc.list_journal(s, ws), "questions": questions}
 
 
 @app.post("/api/journal")
 def api_journal_save(body: JournalIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
     _, ws = auth(init)
     with SessionLocal() as s:
-        row = svc.save_journal(s, ws, body.text, day=_date(body.day), mood=body.mood)
-    return {"ok": True, "day": row.day.isoformat()}
+        row = svc.save_journal(s, ws, answers=body.answers, text=body.text,
+                               day=_date(body.day), mood=body.mood)
+        entry = svc.get_journal(s, ws, row.day)
+    return {"ok": True, "day": row.day.isoformat(),
+            "complete": bool(entry and entry["complete"])}
 
 
 @app.delete("/api/journal/{day}")
@@ -1989,6 +2251,64 @@ def api_journal_delete(day: str, init=Header(default=None, alias="X-Telegram-Ini
     _, ws = auth(init)
     with SessionLocal() as s:
         svc.delete_journal(s, ws, _date(day))
+    return {"ok": True}
+
+
+@app.get("/api/stats")
+def api_stats(period: str = "week", init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Daily series for the habit and prayer line charts, plus streaks."""
+    _, ws = auth(init)
+    if period not in ("week", "month"):
+        period = "week"
+    with SessionLocal() as s:
+        return svc.stats(s, ws, period)
+
+
+@app.get("/api/calendar")
+def api_calendar(year: int | None = None, month: int | None = None,
+                 init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """One month of deadlines, project dates, goal targets and birthdays."""
+    _, ws = auth(init)
+    today = svc.today_local()
+    year, month = year or today.year, month or today.month
+    if not 1 <= month <= 12 or not 2000 <= year <= 2100:
+        raise HTTPException(status_code=422, detail="bad_month")
+    with SessionLocal() as s:
+        return svc.calendar_month(s, ws, year, month)
+
+
+@app.get("/api/tasks/done")
+def api_tasks_done(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """The Done archive — completed tasks are kept, never deleted."""
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        return {"tasks": svc.completed_tasks(s, ws)}
+
+
+@app.get("/api/goals/done")
+def api_goals_done(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        return {"goals": svc.completed_goals(s, ws)}
+
+
+@app.post("/api/goals/{goal_id}/reopen")
+def api_goal_reopen(goal_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        svc.reopen_goal(s, ws, goal_id)
+    return {"ok": True}
+
+
+@app.patch("/api/focus/{focus_id}")
+def api_focus_edit(focus_id: int, body: FocusIn,
+                   init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        try:
+            svc.edit_focus(s, ws, focus_id, body.title)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
     return {"ok": True}
 
 

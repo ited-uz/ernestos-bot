@@ -82,10 +82,12 @@ class User(Base):
     gender: Mapped[str | None] = mapped_column(String(6), nullable=True)  # male|female
     theme: Mapped[str] = mapped_column(String(20), default="ocean")
     quote: Mapped[str] = mapped_column(Text, default="")
+    #: Telegram file_id of the uploaded avatar, or empty for initials.
+    photo_file_id: Mapped[str] = mapped_column(String(200), default="")
 
     is_subscribed: Mapped[bool] = mapped_column(Boolean, default=False)
     #: Resumable onboarding: survives a bot restart mid-flow.
-    onboarding_step: Mapped[str] = mapped_column(String(20), default="phone")
+    onboarding_step: Mapped[str] = mapped_column(String(20), default="language")
     onboarded: Mapped[bool] = mapped_column(Boolean, default=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -116,9 +118,13 @@ class Habit(Base):
     workspace_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(120))
+    #: non_negotiable | target | bonus — drives grouping everywhere.
+    category: Mapped[str] = mapped_column(String(16), default="target")
     position: Mapped[int] = mapped_column(Integer, default=0)
-    #: `5x namoz` is derived from PrayerLog, so it cannot be toggled or deleted.
+    #: Derived habits cannot be toggled by hand: "prayer" follows the daily
+    #: prayer score, "journal" follows a fully answered journal entry.
     is_protected: Mapped[bool] = mapped_column(Boolean, default=False)
+    system_key: Mapped[str] = mapped_column(String(16), default="")
     #: Soft delete — historical reports must not change retroactively.
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -202,6 +208,7 @@ class Task(Base):
     workspace_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text, default="")
     #: NULL means a standalone task — no fake "Alohida" project row is created.
     project_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -263,6 +270,9 @@ class JournalEntry(Base):
         Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
     day: Mapped[date] = mapped_column(Date, index=True)
     text: Mapped[str] = mapped_column(Text, default="")
+    #: JSON object keyed by question id. The journal habit only counts as done
+    #: once every question has an answer.
+    answers: Mapped[str] = mapped_column(Text, default="{}")
     mood: Mapped[str] = mapped_column(String(20), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
