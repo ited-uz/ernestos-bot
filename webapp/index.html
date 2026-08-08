@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>ErnestOS</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+/* ---- themes ------------------------------------------------------------ */
+:root{
+  --bg:#0d1520; --surface:#141f2e; --raised:#1b2838; --border:#243449;
+  --text:#e8eef7; --muted:#8595ab; --primary:#3b82f6; --primary-soft:#1e3a5f;
+  --ok:#22c55e; --warn:#f59e0b; --danger:#ef4444; --radius:14px;
+}
+[data-theme="emerald"]{ --primary:#10b981; --primary-soft:#064e3b; }
+[data-theme="obsidian"]{ --bg:#0a0a0b; --surface:#141416; --raised:#1c1c1f; --border:#2a2a2e; --primary:#a1a1aa; --primary-soft:#27272a; }
+[data-theme="rose"]{ --primary:#e11d48; --primary-soft:#4c0519; }
+[data-theme="pink"]{ --primary:#ec4899; --primary-soft:#500724; }
+[data-theme="aurora"]{ --primary:#8b5cf6; --primary-soft:#2e1065; }
+
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{
+  background:var(--bg); color:var(--text); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  padding-bottom:calc(72px + env(safe-area-inset-bottom));
+  overflow-x:hidden;
+}
+#app{padding:16px 16px 8px;max-width:640px;margin:0 auto}
+
+h1{font-size:22px;font-weight:700;letter-spacing:-.4px}
+h2{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin:22px 0 10px}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:4px}
+.avatar{width:42px;height:42px;border-radius:50%;background:var(--primary);display:grid;place-items:center;font-weight:700;flex:none}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:10px}
+.row{display:flex;align-items:center;gap:12px}
+.row+.row{margin-top:2px}
+.grow{flex:1;min-width:0}
+.ellipsis{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.item{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+      padding:13px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px;min-height:52px}
+.item .meta{font-size:12px;color:var(--muted);margin-top:3px}
+
+.check{width:24px;height:24px;border-radius:8px;border:2px solid var(--border);flex:none;display:grid;place-items:center;font-size:14px}
+.check.on{background:var(--ok);border-color:var(--ok);color:#04140a}
+.check.lock{opacity:.5}
+
+.btn{background:var(--primary);color:#fff;border:0;border-radius:12px;padding:12px 16px;
+     font-size:15px;font-weight:600;cursor:pointer;min-height:44px;width:100%}
+.btn.ghost{background:var(--raised);color:var(--text);border:1px solid var(--border)}
+.btn.danger{background:transparent;color:var(--danger);border:1px solid var(--border)}
+.btn.sm{width:auto;padding:9px 14px;font-size:13px;min-height:38px}
+.btns{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+
+input,textarea,select{
+  width:100%;background:var(--raised);border:1px solid var(--border);color:var(--text);
+  border-radius:12px;padding:12px 13px;font:inherit;min-height:44px
+}
+textarea{min-height:120px;resize:vertical}
+input:focus,textarea:focus,select:focus{outline:2px solid var(--primary);outline-offset:1px}
+label{display:block;font-size:12px;color:var(--muted);margin:12px 0 5px;text-transform:uppercase;letter-spacing:.5px}
+
+.pill{display:inline-flex;align-items:center;gap:5px;background:var(--raised);border:1px solid var(--border);
+      border-radius:999px;padding:5px 11px;font-size:12px}
+.pill.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.pills{display:flex;gap:7px;flex-wrap:wrap}
+
+.dot{width:9px;height:9px;border-radius:50%;flex:none}
+.p-high{background:var(--danger)} .p-medium{background:var(--warn)} .p-low{background:var(--ok)}
+
+.bar{height:7px;background:var(--raised);border-radius:4px;overflow:hidden;margin-top:7px}
+.bar span{display:block;height:100%;background:var(--primary);border-radius:4px}
+
+nav{position:fixed;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(4,1fr);
+    background:var(--surface);border-top:1px solid var(--border);
+    padding-bottom:env(safe-area-inset-bottom);z-index:40}
+nav button{background:0;border:0;color:var(--muted);padding:9px 4px 10px;font-size:10px;
+           font-weight:600;cursor:pointer;display:grid;gap:3px;justify-items:center;min-height:56px}
+nav button.on{color:var(--primary)}
+nav .ic{font-size:19px}
+
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:flex-end;z-index:50}
+.sheet.show{display:flex}
+.sheet-inner{background:var(--surface);width:100%;max-width:640px;margin:0 auto;
+             border-radius:20px 20px 0 0;padding:20px 16px calc(20px + env(safe-area-inset-bottom));
+             max-height:88vh;overflow-y:auto}
+.sheet h3{font-size:17px;margin-bottom:4px}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:88px;background:var(--raised);
+       border:1px solid var(--border);color:var(--text);padding:11px 18px;border-radius:12px;
+       z-index:60;opacity:0;transition:opacity .2s;pointer-events:none;font-size:14px}
+.toast.show{opacity:1}
+
+.empty{text-align:center;color:var(--muted);padding:26px 12px;font-size:14px}
+.spin{width:26px;height:26px;border:3px solid var(--border);border-top-color:var(--primary);
+      border-radius:50%;animation:r .7s linear infinite;margin:36px auto}
+@keyframes r{to{transform:rotate(360deg)}}
+.stat{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat .card{text-align:center;padding:12px 8px;margin:0}
+.stat .v{font-size:20px;font-weight:700}
+.stat .k{font-size:11px;color:var(--muted);margin-top:2px}
+</style>
+</head>
+<body>
+
+<div id="app"><div class="spin"></div></div>
+
+<nav id="nav"></nav>
+
+<div class="sheet" id="sheet"><div class="sheet-inner" id="sheet-body"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* =======================================================================
+   ErnestOS Mini App
+
+   One rule holds the whole file together: screens are pure functions of
+   `state` that return HTML. Nothing reaches into the DOM to patch a node by
+   id, so deleting a feature can never leave a dangling lookup that blanks
+   the page.
+   ======================================================================= */
+
+const tg = window.Telegram?.WebApp;
+tg?.ready();
+tg?.expand();
+
+/* ---- translations ----------------------------------------------------- */
+const DICT = {
+  uz:{
+    home:"Home", habits:"Odatlar", tasks:"Vazifalar", vision:"Vision",
+    greet:"Assalomu alaykum", today:"Bugun", quote_ph:"O'zingizga kuch beradigan gap yozing",
+    h_focus:"Shu hafta", h_tasks:"Bugungi vazifalar", h_habits:"Odatlar",
+    h_projects:"Loyihalar", h_goals:"Maqsadlar", h_bday:"Tug'ilgan kunlar", h_overdue:"Kechikkan",
+    prayer:"Namoz", journal:"Kundalik", stats:"Statistika",
+    add_habit:"Odat qo'shish", habit_name:"Odat nomi",
+    protected_habit:"5x namoz namozlardan avtomatik hisoblanadi",
+    jamaat:"Jamoat", on_time:"O'z vaqtida", qaza:"Qazo", missed:"O'qilmagan", excused:"Uzrli holat",
+    bomdod:"Bomdod", peshin:"Peshin", asr:"Asr", shom:"Shom", xufton:"Xufton",
+    score:"Ball", journal_ph:"Bugun qanday o'tdi?",
+    add_task:"Vazifa qo'shish", task_name:"Vazifa nomi", deadline:"Muddat",
+    project:"Loyiha", standalone:"Alohida", priority:"Muhimlik",
+    high:"Yuqori", medium:"O'rta", low:"Past",
+    add_project:"Loyiha qo'shish", project_name:"Loyiha nomi",
+    overdue:"Kechikkan", upcoming:"Yaqin kunlar", no_date:"Muddatsiz",
+    add_goal:"Maqsad qo'shish", goal_title:"Maqsad nomi", level:"Daraja",
+    ultimate:"Ultimate", milestone:"Milestone", tactical:"Tactical",
+    add_focus:"Maqsad qo'shish", focus_title:"Haftalik maqsad",
+    settings:"Sozlamalar", language:"Til", gender:"Jins", theme:"Tema",
+    male:"Erkak", female:"Ayol",
+    save:"Saqlash", cancel:"Bekor qilish", delete:"O'chirish", done:"Bajarildi",
+    saved:"Saqlandi", deleted:"O'chirildi", empty:"Hozircha bo'sh",
+    error:"Xatolik yuz berdi", offline:"Internetga ulanib bo'lmadi",
+    sub_required:"Kanalga obuna bo'ling", days:"kun", full:"Haftada 3 tadan ko'p bo'lmaydi",
+  },
+  en:{
+    home:"Home", habits:"Habits", tasks:"Tasks", vision:"Vision",
+    greet:"Hello", today:"Today", quote_ph:"Write something that motivates you",
+    h_focus:"This week", h_tasks:"Today's tasks", h_habits:"Habits",
+    h_projects:"Projects", h_goals:"Goals", h_bday:"Birthdays", h_overdue:"Overdue",
+    prayer:"Prayer", journal:"Journal", stats:"Stats",
+    add_habit:"Add habit", habit_name:"Habit name",
+    protected_habit:"5x namoz is calculated automatically from your prayers",
+    jamaat:"Jamaat", on_time:"On time", qaza:"Qaza", missed:"Missed", excused:"Excused day",
+    bomdod:"Fajr", peshin:"Dhuhr", asr:"Asr", shom:"Maghrib", xufton:"Isha",
+    score:"Score", journal_ph:"How did today go?",
+    add_task:"Add task", task_name:"Task name", deadline:"Deadline",
+    project:"Project", standalone:"Standalone", priority:"Priority",
+    high:"High", medium:"Medium", low:"Low",
+    add_project:"Add project", project_name:"Project name",
+    overdue:"Overdue", upcoming:"Coming up", no_date:"No deadline",
+    add_goal:"Add goal", goal_title:"Goal title", level:"Level",
+    ultimate:"Ultimate", milestone:"Milestone", tactical:"Tactical",
+    add_focus:"Add mission", focus_title:"Weekly mission",
+    settings:"Settings", language:"Language", gender:"Gender", theme:"Theme",
+    male:"Male", female:"Female",
+    save:"Save", cancel:"Cancel", delete:"Delete", done:"Done",
+    saved:"Saved", deleted:"Deleted", empty:"Nothing yet",
+    error:"Something went wrong", offline:"No connection",
+    sub_required:"Please join the channel", days:"days", full:"Maximum 3 per week",
+  },
+  ru:{
+    home:"Главная", habits:"Привычки", tasks:"Задачи", vision:"Цели",
+    greet:"Здравствуйте", today:"Сегодня", quote_ph:"Напишите то, что вас мотивирует",
+    h_focus:"На этой неделе", h_tasks:"Задачи на сегодня", h_habits:"Привычки",
+    h_projects:"Проекты", h_goals:"Цели", h_bday:"Дни рождения", h_overdue:"Просрочено",
+    prayer:"Намаз", journal:"Дневник", stats:"Статистика",
+    add_habit:"Добавить привычку", habit_name:"Название привычки",
+    protected_habit:"5x namoz считается автоматически по намазам",
+    jamaat:"Джамаат", on_time:"Вовремя", qaza:"Каза", missed:"Пропущен", excused:"Уважит. день",
+    bomdod:"Фаджр", peshin:"Зухр", asr:"Аср", shom:"Магриб", xufton:"Иша",
+    score:"Балл", journal_ph:"Как прошёл день?",
+    add_task:"Добавить задачу", task_name:"Название задачи", deadline:"Срок",
+    project:"Проект", standalone:"Отдельно", priority:"Приоритет",
+    high:"Высокий", medium:"Средний", low:"Низкий",
+    add_project:"Добавить проект", project_name:"Название проекта",
+    overdue:"Просрочено", upcoming:"Ближайшие", no_date:"Без срока",
+    add_goal:"Добавить цель", goal_title:"Название цели", level:"Уровень",
+    ultimate:"Ultimate", milestone:"Milestone", tactical:"Tactical",
+    add_focus:"Добавить цель", focus_title:"Цель недели",
+    settings:"Настройки", language:"Язык", gender:"Пол", theme:"Тема",
+    male:"Мужской", female:"Женский",
+    save:"Сохранить", cancel:"Отмена", delete:"Удалить", done:"Выполнено",
+    saved:"Сохранено", deleted:"Удалено", empty:"Пока пусто",
+    error:"Произошла ошибка", offline:"Нет соединения",
+    sub_required:"Подпишитесь на канал", days:"дн.", full:"Не более 3 в неделю",
+  },
+};
+
+/* ---- state ------------------------------------------------------------ */
+const state = {
+  screen:"home", tab:"habits", lang:"uz", loading:true, error:null,
+  me:null, home:null, habits:[], prayer:null, journal:null,
+  tasks:null, projects:[], goals:null,
+};
+
+const t = k => (DICT[state.lang] || DICT.uz)[k] || k;
+const esc = s => String(s ?? "").replace(/[<>&"']/g,
+  c => ({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;","'":"&#39;"}[c]));
+
+function setState(patch){ Object.assign(state, patch); render(); }
+
+/* ---- api -------------------------------------------------------------- */
+async function api(path, options = {}){
+  const res = await fetch(path, {
+    ...options,
+    headers:{
+      "Content-Type":"application/json",
+      "X-Telegram-Init-Data": tg?.initData || "",
+      ...(options.headers || {}),
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+  if(!res.ok){
+    const err = new Error(res.status === 403 ? "sub_required" : "http_" + res.status);
+    err.status = res.status;
+    throw err;
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+/* ---- ui helpers ------------------------------------------------------- */
+let toastTimer;
+function toast(msg){
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 1900);
+}
+const haptic = style => tg?.HapticFeedback?.impactOccurred?.(style || "light");
+
+function openSheet(html){
+  document.getElementById("sheet-body").innerHTML = html;
+  document.getElementById("sheet").classList.add("show");
+}
+function closeSheet(){
+  document.getElementById("sheet").classList.remove("show");
+}
+document.getElementById("sheet").addEventListener("click", e => {
+  if(e.target.id === "sheet") closeSheet();
+});
+
+function progressBar(percent){
+  return `<div class="bar"><span style="width:${Math.max(0, Math.min(100, percent))}%"></span></div>`;
+}
+
+/* =======================================================================
+   Screens — each returns HTML from `state`, nothing else.
+   ======================================================================= */
+
+const SCREENS = {};
+
+/* ---- Home ------------------------------------------------------------- */
+SCREENS.home = () => {
+  const d = state.home;
+  if(!d) return `<div class="spin"></div>`;
+  const initial = (d.name || "E").charAt(0).toUpperCase();
+
+  let html = `
+    <div class="top">
+      <div class="grow">
+        <h1>${t("greet")}, ${esc(d.name)}</h1>
+        <div class="muted small">${esc(d.date)}</div>
+      </div>
+      <div class="avatar" data-act="settings">${esc(initial)}</div>
+    </div>
+
+    <div class="card" data-act="quote" style="margin-top:14px">
+      ${d.quote ? `<div>${esc(d.quote)}</div>`
+                : `<div class="muted">${t("quote_ph")} ✎</div>`}
+    </div>
+
+    <div class="stat">
+      <div class="card"><div class="v">${d.habits.done}/${d.habits.total}</div>
+        <div class="k">${t("h_habits")}</div></div>
+      <div class="card"><div class="v">${d.prayer.score}</div>
+        <div class="k">${t("prayer")}</div></div>
+      <div class="card"><div class="v">${d.tasks.today.length}</div>
+        <div class="k">${t("h_tasks")}</div></div>
+    </div>`;
+
+  html += `<h2>${t("h_focus")}</h2>`;
+  if(d.focus.length){
+    html += d.focus.map(f => `
+      <div class="item" data-act="focus-toggle" data-id="${f.id}">
+        <div class="check ${f.done ? "on" : ""}">${f.done ? "✓" : ""}</div>
+        <div class="grow">${esc(f.title)}</div>
+      </div>`).join("");
+  } else {
+    html += `<div class="empty">${t("empty")}</div>`;
+  }
+  if(d.focus.length < 3){
+    html += `<button class="btn ghost sm" data-act="focus-add">+ ${t("add_focus")}</button>`;
+  }
+
+  if(d.tasks.overdue.length){
+    html += `<h2>${t("h_overdue")}</h2>`;
+    html += d.tasks.overdue.map(taskItem).join("");
+  }
+
+  html += `<h2>${t("h_tasks")}</h2>`;
+  html += d.tasks.today.length
+    ? d.tasks.today.map(taskItem).join("")
+    : `<div class="empty">${t("empty")}</div>`;
+
+  if(d.projects.length){
+    html += `<h2>${t("h_projects")}</h2>`;
+    html += d.projects.map(p => `
+      <div class="card">
+        <div class="row"><div class="grow ellipsis">${esc(p.name)}</div>
+          <div class="muted small">${p.progress}%</div></div>
+        ${progressBar(p.progress)}
+      </div>`).join("");
+  }
+
+  const g = d.goals;
+  if(g.ultimate + g.milestone + g.tactical > 0){
+    html += `<h2>${t("h_goals")}</h2>
+      <div class="stat">
+        <div class="card"><div class="v">${g.ultimate}</div><div class="k">👑</div></div>
+        <div class="card"><div class="v">${g.milestone}</div><div class="k">🏆</div></div>
+        <div class="card"><div class="v">${g.tactical}</div><div class="k">⚡</div></div>
+      </div>`;
+  }
+
+  if(d.birthdays.length){
+    html += `<h2>${t("h_bday")}</h2>`;
+    html += d.birthdays.map(b => `
+      <div class="item"><div class="grow">${esc(b.person_name)}</div>
+        <div class="muted small">${b.days_left === 0 ? "🎉" : b.days_left + " " + t("days")}</div>
+      </div>`).join("");
+  }
+
+  return html;
+};
+
+function taskItem(task){
+  return `
+    <div class="item" data-act="task-toggle" data-id="${task.id}">
+      <div class="check"></div>
+      <div class="grow">
+        <div class="ellipsis">${esc(task.title)}</div>
+        <div class="meta">
+          <span class="dot p-${task.priority}" style="display:inline-block"></span>
+          ${esc(task.project || t("standalone"))}${task.deadline ? " · " + task.deadline : ""}
+        </div>
+      </div>
+    </div>`;
+}
+
+/* ---- Habits (habits + prayer + journal) -------------------------------- */
+SCREENS.habits = () => {
+  const tabs = ["habits", "prayer", "journal"];
+  let html = `<h1>${t("habits")}</h1>
+    <div class="pills" style="margin:14px 0 4px">
+      ${tabs.map(x => `<div class="pill ${state.tab === x ? "on" : ""}"
+         data-act="tab" data-tab="${x}">${t(x === "habits" ? "habits" : x)}</div>`).join("")}
+    </div>`;
+
+  if(state.tab === "habits"){
+    html += state.habits.length
+      ? state.habits.map(h => `
+          <div class="item" ${h.protected ? 'data-act="protected"' : `data-act="habit-toggle" data-id="${h.id}"`}>
+            <div class="check ${h.done ? "on" : ""} ${h.protected ? "lock" : ""}">${h.done ? "✓" : ""}</div>
+            <div class="grow">${esc(h.name)}${h.protected ? " 🔒" : ""}</div>
+            ${h.protected ? "" : `<div class="muted" data-act="habit-delete" data-id="${h.id}"
+                                   style="padding:4px 8px">⋯</div>`}
+          </div>`).join("")
+      : `<div class="empty">${t("empty")}</div>`;
+    html += `<button class="btn ghost" data-act="habit-add" style="margin-top:10px">+ ${t("add_habit")}</button>`;
+  }
+
+  if(state.tab === "prayer"){
+    const p = state.prayer;
+    if(!p) return html + `<div class="spin"></div>`;
+    const female = state.me?.gender === "female";
+
+    if(female){
+      html += `<div class="item" data-act="excused">
+                 <div class="check ${p.excused ? "on" : ""}">${p.excused ? "✓" : ""}</div>
+                 <div class="grow">🌸 ${t("excused")}</div>
+               </div>`;
+    }
+    ["bomdod","peshin","asr","shom","xufton"].forEach(name => {
+      const current = p.prayers[name];
+      html += `<div class="card">
+        <div style="font-weight:600;margin-bottom:9px">${t(name)}</div>
+        <div class="pills">
+          ${p.statuses.map(st => `<div class="pill ${current === st ? "on" : ""}"
+              data-act="prayer" data-prayer="${name}" data-status="${st}">${t(st)}</div>`).join("")}
+        </div></div>`;
+    });
+    html += `<div class="card" style="text-align:center">
+               <div class="v" style="font-size:22px;font-weight:700">${p.score} / ${p.threshold}</div>
+               <div class="muted small">${t("score")}</div></div>`;
+  }
+
+  if(state.tab === "journal"){
+    const entry = state.journal;
+    html += `
+      <label>${state.home?.date || ""}</label>
+      <textarea id="journal-text" placeholder="${t("journal_ph")}">${esc(entry?.text || "")}</textarea>
+      <button class="btn" data-act="journal-save" style="margin-top:10px">${t("save")}</button>`;
+  }
+
+  return html;
+};
+
+/* ---- Tasks ------------------------------------------------------------- */
+SCREENS.tasks = () => {
+  const d = state.tasks;
+  if(!d) return `<div class="spin"></div>`;
+
+  let html = `<h1>${t("tasks")}</h1>`;
+  const section = (label, items) => items.length
+    ? `<h2>${label}</h2>` + items.map(taskRow).join("") : "";
+
+  html += section(t("overdue"), d.overdue);
+  html += section(t("upcoming"), d.upcoming);
+  html += section(t("no_date"), d.undated);
+  if(!d.overdue.length && !d.upcoming.length && !d.undated.length){
+    html += `<div class="empty">${t("empty")}</div>`;
+  }
+
+  html += `<div class="btns">
+    <button class="btn sm" data-act="task-add">+ ${t("add_task")}</button>
+    <button class="btn ghost sm" data-act="project-add">+ ${t("add_project")}</button>
+  </div>`;
+
+  if(state.projects.length){
+    html += `<h2>${t("h_projects")}</h2>`;
+    html += state.projects.map(p => `
+      <div class="card">
+        <div class="row">
+          <div class="grow ellipsis">${esc(p.name)}</div>
+          <div class="muted small">${p.tasks_done}/${p.tasks_total}</div>
+          <div data-act="project-delete" data-id="${p.id}" style="padding:4px 8px">🗑</div>
+        </div>
+        ${progressBar(p.progress)}
+      </div>`).join("");
+  }
+  return html;
+};
+
+function taskRow(task){
+  return `
+    <div class="item">
+      <div class="check" data-act="task-toggle" data-id="${task.id}"></div>
+      <div class="grow" data-act="task-toggle" data-id="${task.id}">
+        <div class="ellipsis">${esc(task.title)}</div>
+        <div class="meta">
+          <span class="dot p-${task.priority}" style="display:inline-block"></span>
+          ${esc(task.project || t("standalone"))}
+          ${task.deadline ? " · " + task.deadline : ""}
+          ${task.days_left != null && task.days_left >= 0 ? ` · ${task.days_left} ${t("days")}` : ""}
+        </div>
+      </div>
+      <div data-act="task-delete" data-id="${task.id}" style="padding:4px 8px">🗑</div>
+    </div>`;
+}
+
+/* ---- Vision ------------------------------------------------------------ */
+SCREENS.vision = () => {
+  const g = state.goals;
+  if(!g) return `<div class="spin"></div>`;
+
+  const icons = {ultimate:"👑", milestone:"🏆", tactical:"⚡"};
+  let html = `<h1>${t("vision")}</h1>`;
+  let any = false;
+
+  ["ultimate","milestone","tactical"].forEach(cat => {
+    const items = g[cat] || [];
+    if(!items.length) return;
+    any = true;
+    html += `<h2>${icons[cat]} ${t(cat)}</h2>`;
+    html += items.map(goal => `
+      <div class="item">
+        <div class="check ${goal.status === "completed" ? "on" : ""}"
+             data-act="goal-complete" data-id="${goal.id}">${goal.status === "completed" ? "✓" : ""}</div>
+        <div class="grow">
+          <div class="ellipsis">${esc(goal.title)}</div>
+          ${goal.progress ? `<div class="meta">${goal.progress}%</div>` : ""}
+        </div>
+        <div data-act="goal-delete" data-id="${goal.id}" style="padding:4px 8px">🗑</div>
+      </div>`).join("");
+  });
+
+  if(!any) html += `<div class="empty">${t("empty")}</div>`;
+  html += `<button class="btn ghost" data-act="goal-add" style="margin-top:12px">+ ${t("add_goal")}</button>`;
+  return html;
+};
+
+/* ---- Settings sheet ---------------------------------------------------- */
+function settingsSheet(){
+  const me = state.me || {};
+  const langs = [["uz","🇺🇿 O'zbek"],["en","🇬🇧 English"],["ru","🇷🇺 Русский"]];
+  const themes = ["ocean","emerald","obsidian","rose","pink","aurora"];
+  return `
+    <h3>${t("settings")}</h3>
+    <label>${t("language")}</label>
+    <div class="pills">${langs.map(([code,label]) =>
+      `<div class="pill ${me.language === code ? "on" : ""}"
+        data-act="set-lang" data-value="${code}">${label}</div>`).join("")}</div>
+    <label>${t("gender")}</label>
+    <div class="pills">
+      <div class="pill ${me.gender === "male" ? "on" : ""}" data-act="set-gender" data-value="male">${t("male")}</div>
+      <div class="pill ${me.gender === "female" ? "on" : ""}" data-act="set-gender" data-value="female">${t("female")}</div>
+    </div>
+    <label>${t("theme")}</label>
+    <div class="pills">${themes.map(name =>
+      `<div class="pill ${me.theme === name ? "on" : ""}"
+        data-act="set-theme" data-value="${name}">${name}</div>`).join("")}</div>
+    <button class="btn ghost" data-act="close" style="margin-top:18px">${t("cancel")}</button>`;
+}
+
+/* ---- render ------------------------------------------------------------ */
+const NAV = [
+  {id:"home",   icon:"🏠", key:"home"},
+  {id:"habits", icon:"✅", key:"habits"},
+  {id:"tasks",  icon:"⚡", key:"tasks"},
+  {id:"vision", icon:"🎯", key:"vision"},
+];
+
+function render(){
+  document.documentElement.dataset.theme = state.me?.theme || "ocean";
+
+  const app = document.getElementById("app");
+  if(state.error){
+    app.innerHTML = `<div class="empty">${esc(state.error)}</div>`;
+  } else if(state.loading){
+    app.innerHTML = `<div class="spin"></div>`;
+  } else {
+    app.innerHTML = (SCREENS[state.screen] || SCREENS.home)();
+  }
+
+  document.getElementById("nav").innerHTML = NAV.map(item => `
+    <button data-act="nav" data-screen="${item.id}" class="${state.screen === item.id ? "on" : ""}">
+      <span class="ic">${item.icon}</span><span>${t(item.key)}</span>
+    </button>`).join("");
+}
+
+/* ---- data loading ------------------------------------------------------ */
+async function loadScreen(screen){
+  try{
+    if(screen === "home"){
+      setState({home: await api("/api/home")});
+    } else if(screen === "habits"){
+      const [habits, prayer, journal] = await Promise.all([
+        api("/api/habits"), api("/api/prayers"), api("/api/journal?day=" + todayISO()),
+      ]);
+      setState({habits: habits.habits, prayer, journal: journal.entry});
+    } else if(screen === "tasks"){
+      const [tasks, projects] = await Promise.all([
+        api("/api/tasks?days=7"), api("/api/projects"),
+      ]);
+      setState({tasks, projects: projects.projects});
+    } else if(screen === "vision"){
+      setState({goals: await api("/api/goals")});
+    }
+  }catch(e){ handleError(e); }
+}
+
+function todayISO(){
+  return state.home?.date || new Date().toISOString().slice(0, 10);
+}
+
+function handleError(e){
+  console.error("ErnestOS:", e);
+  if(e.status === 403){ setState({error: t("sub_required"), loading: false}); return; }
+  toast(e.status ? t("error") : t("offline"));
+}
+
+/* ---- actions ----------------------------------------------------------- */
+const ACTIONS = {
+  nav: el => { haptic(); setState({screen: el.dataset.screen}); loadScreen(el.dataset.screen); },
+  tab: el => { haptic(); setState({tab: el.dataset.tab}); },
+  close: closeSheet,
+  protected: () => toast(t("protected_habit")),
+
+  settings: () => openSheet(settingsSheet()),
+
+  quote: () => openSheet(`
+    <h3>${t("quote_ph")}</h3>
+    <textarea id="quote-text" style="min-height:90px">${esc(state.home?.quote || "")}</textarea>
+    <button class="btn" data-act="quote-save" style="margin-top:10px">${t("save")}</button>
+    <button class="btn ghost" data-act="close" style="margin-top:8px">${t("cancel")}</button>`),
+
+  "quote-save": async () => {
+    const value = document.getElementById("quote-text").value;
+    await save(() => api("/api/settings", {method:"POST", body:{quote: value}}), "home");
+  },
+
+  /* habits */
+  "habit-toggle": async el => {
+    haptic();
+    await save(() => api(`/api/habits/${el.dataset.id}/toggle`, {method:"POST"}), "habits", true);
+  },
+  "habit-add": () => openSheet(`
+    <h3>${t("add_habit")}</h3>
+    <input id="habit-name" placeholder="${t("habit_name")}" />
+    <button class="btn" data-act="habit-save" style="margin-top:10px">${t("save")}</button>
+    <button class="btn ghost" data-act="close" style="margin-top:8px">${t("cancel")}</button>`),
+  "habit-save": async () => {
+    const name = document.getElementById("habit-name").value.trim();
+    if(!name) return;
+    await save(() => api("/api/habits", {method:"POST", body:{name}}), "habits");
+  },
+  "habit-delete": el => openSheet(`
+    <h3>${t("delete")}?</h3>
+    <button class="btn danger" data-act="habit-delete-confirm" data-id="${el.dataset.id}"
+            style="margin-top:12px">${t("delete")}</button>
+    <button class="btn ghost" data-act="close" style="margin-top:8px">${t("cancel")}</button>`),
+  "habit-delete-confirm": async el => {
+    await save(() => api(`/api/habits/${el.dataset.id}`, {method:"DELETE"}), "habits", false, t("deleted"));
+  },
+
+  /* prayer */
+  prayer: async el => {
+    haptic();
+    await save(() => api("/api/prayers", {method:"POST",
+      body:{prayer: el.dataset.prayer, status: el.dataset.status}}), "habits", true);
+  },
+  excused: async () => {
+    haptic();
+    await save(() => api("/api/prayers/excused",
+      {method:"POST", body:{excused: !state.prayer?.excused}}), "habits", true);
+  },
+
+  /* journal */
+  "journal-save": async () => {
+    const text = document.getElementById("journal-text").value;
+    await save(() => api("/api/journal", {method:"POST", body:{text}}), "habits");
+  },
+
+  /* focus */
+  "focus-add": () => openSheet(`
+    <h3>${t("add_focus")}</h3>
+    <input id="focus-title" placeholder="${t("focus_title")}" />
+    <button class="btn" data-act="focus-save" style="margin-top:10px">${t("save")}</button>
+    <button class="btn ghost" data-act="close" style="margin-top:8px">${t("cancel")}</button>`),
+  "focus-save": async () => {
+    const title = document.getElementById("focus-title").value.trim();
+    if(!title) return;
+    try{
+      await api("/api/focus", {method:"POST", body:{title}});
+      closeSheet(); toast(t("saved")); await loadScreen("home");
+    }catch(e){
+      closeSheet();
+      toast(e.status === 422 ? t("full") : t("error"));
+    }
+  },
+  "focus-toggle": async el => {
+    haptic();
+    await save(() => api(`/api/focus/${el.dataset.id}/toggle`, {method:"POST"}), "home", true);
+  },
+
+  /* tasks */
+  "task-toggle": async el => {
+    haptic();
+    await save(() => api(`/api/tasks/${el.dataset.id}`,
+      {method:"PATCH", body:{status:"done"}}), state.screen, true);
+  },
+  "task-delete": el => openSheet(`
+    <h3>${t("delete")}?</h3>
+    <button class="btn danger" data-act="task-delete-confirm" data-id="${el.dataset.id}"
+            style="margin-top:12px">${t("delete")}</button>
+    <button class="btn ghost" data-act="close" style="margin-top:8px">${t("cancel")}</button>`),
+  "task-delete-confirm": async el => {
+    await save(() => api(`/api/tasks/${el.dataset.id}`, {method:"DELETE"}),
+               state.screen, false, t("deleted"));
+  },
+  "task-add": () => {
+    const options = state.projects.map(p =>
+      `<option value="${p.id}">${esc(p.name)}</option>`).join("");
+    openSheet(`
+      <h3>${t("add_task")}</h3>
+      <input id="task-title" placeholder="${t("task_name")}" />
+      <label>${t("deadline")}</label>
+      <input type="date" id="task-deadline" />
+      <label>${t("priority")}</label>
+      <select id="task-priority">
+        <option value="high">${t("high")}</option>
+        <option value="medium" selected>${t("medium")}</option>
+        <option value="low">${t("low")}</option>
+      </select>
+      <label>${t("project")}</label>
+      <select id="task-project"><option value="">${t("standalone")}</option>${options}</select>
+      <button class="btn" data-act="task-save" style="margin-top:14px">${t("save")}</button>
+      <button class="btn ghost" data-act="close" style="margin-top:8px">${t("cancel")}</button>`);
+  },
+  "task-save": async () => {
+    const title = document.getElementById("task-title").value.trim();
+    if(!title) return;
+    const deadline = document.getElementById("task-deadline").value || null;
+    const priority = document.getElementById("task-priority").value;
+    const project = document.getElementById("task-project").value;
+    await save(() => api("/api/tasks", {method:"POST", body:{
+      title, deadline, priority, project_id: project ? Number(project) : null}}), "tasks");
+  },
+
+  /* projects */
+  "project-add": () => openSheet(`
+    <h3>${t("add_project")}</h3>
+    <input id="project-name" placeholder="${t("project_name")}" />
+    <button class="btn" data-act="project-save" style="margin-top:10px">${t("save")}</button>
+    <button class="btn ghost" data-act="close" style="margin-top:8px">${t("cancel")}</button>`),
+  "project-save": async () => {
+    const name = document.getElementById("project-name").value.trim();
+    if(!name) return;
+    await save(() => api("/api/projects", {method:"POST", body:{name}}), "tasks");
+  },
+  "project-delete": el => openSheet(`
+    <h3>${t("delete")}?</h3>
+    <button class="btn danger" data-act="project-delete-confirm" data-id="${el.dataset.id}"
+            style="margin-top:12px">${t("delete")}</button>
+    <button class="btn ghost" data-act="close" style="margin-top:8px">${t("cancel")}</button>`),
+  "project-delete-confirm": async el => {
+    await save(() => api(`/api/projects/${el.dataset.id}`, {method:"DELETE"}),
+               "tasks", false, t("deleted"));
+  },
+
+  /* goals */
+  "goal-add": () => openSheet(`
+    <h3>${t("add_goal")}</h3>
+    <input id="goal-title" placeholder="${t("goal_title")}" />
+    <label>${t("level")}</label>
+    <select id="goal-category">
+      <option value="ultimate">👑 ${t("ultimate")}</option>
+      <option value="milestone">🏆 ${t("milestone")}</option>
+      <option value="tactical" selected>⚡ ${t("tactical")}</option>
+    </select>
+    <button class="btn" data-act="goal-save" style="margin-top:14px">${t("save")}</button>
+    <button class="btn ghost" data-act="close" style="margin-top:8px">${t("cancel")}</button>`),
+  "goal-save": async () => {
+    const title = document.getElementById("goal-title").value.trim();
+    if(!title) return;
+    const category = document.getElementById("goal-category").value;
+    await save(() => api("/api/goals", {method:"POST", body:{title, category}}), "vision");
+  },
+  "goal-complete": async el => {
+    haptic();
+    await save(() => api(`/api/goals/${el.dataset.id}/complete`, {method:"POST"}), "vision", true);
+  },
+  "goal-delete": el => openSheet(`
+    <h3>${t("delete")}?</h3>
+    <button class="btn danger" data-act="goal-delete-confirm" data-id="${el.dataset.id}"
+            style="margin-top:12px">${t("delete")}</button>
+    <button class="btn ghost" data-act="close" style="margin-top:8px">${t("cancel")}</button>`),
+  "goal-delete-confirm": async el => {
+    await save(() => api(`/api/goals/${el.dataset.id}`, {method:"DELETE"}),
+               "vision", false, t("deleted"));
+  },
+
+  /* settings */
+  "set-lang": async el => {
+    state.lang = el.dataset.value;
+    await settingSave({language: el.dataset.value});
+  },
+  "set-gender": el => settingSave({gender: el.dataset.value}),
+  "set-theme": el => settingSave({theme: el.dataset.value}),
+};
+
+async function save(request, reload, quiet, message){
+  try{
+    await request();
+    closeSheet();
+    if(!quiet) toast(message || t("saved"));
+    if(reload) await loadScreen(reload);
+  }catch(e){
+    closeSheet();
+    handleError(e);
+  }
+}
+
+async function settingSave(patch){
+  try{
+    await api("/api/settings", {method:"POST", body: patch});
+    const me = await api("/api/me");
+    state.lang = me.language;
+    setState({me});
+    openSheet(settingsSheet());
+    toast(t("saved"));
+    await loadScreen(state.screen);
+  }catch(e){ handleError(e); }
+}
+
+/* One delegated listener for the whole app: rebuilt HTML never loses its
+   handlers, because the handler lives on document, not on the nodes. */
+document.addEventListener("click", e => {
+  const el = e.target.closest("[data-act]");
+  if(!el) return;
+  const action = ACTIONS[el.dataset.act];
+  if(action){ e.preventDefault(); action(el); }
+});
+
+/* ---- boot -------------------------------------------------------------- */
+(async function boot(){
+  try{
+    const me = await api("/api/me");
+    state.lang = me.language || "uz";
+    setState({me, loading:false});
+    await loadScreen("home");
+  }catch(e){
+    console.error("ErnestOS boot failed:", e);
+    setState({
+      loading:false,
+      error: e.status === 403 ? t("sub_required")
+           : e.status ? t("error") : t("offline"),
+    });
+  }
+})();
+</script>
+</body>
+</html>
