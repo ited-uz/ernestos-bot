@@ -15,7 +15,7 @@ import os
 import sys
 import tempfile
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, time as dtime, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -230,6 +230,13 @@ def test_normal_habit_toggles(alice):
     assert alice.post(f"/api/habits/{normal['id']}/toggle").json()["done"] is True
 
 
+def test_the_three_derived_habits_are_protected(alice):
+    """Get up, 5x namoz and Summary are all computed, never ticked by hand."""
+    habits = alice.get("/api/habits").json()["habits"]
+    derived = {h["name"] for h in habits if h["protected"]}
+    assert derived == {"Get up", "5x namoz", "Summary"}
+
+
 # --------------------------------------------------------------------------
 # Prayer scoring
 # --------------------------------------------------------------------------
@@ -269,7 +276,7 @@ def test_setting_prayers_marks_the_protected_habit_done(alice):
     for prayer in ["bomdod", "peshin", "asr"]:
         alice.post("/api/prayers", json={"prayer": prayer, "status": "on_time"})
     habits = alice.get("/api/habits").json()["habits"]
-    assert next(h for h in habits if h["protected"])["done"] is True
+    assert next(h for h in habits if h["name"] == "5x namoz")["done"] is True
 
 
 def test_prayer_status_outside_the_gender_set_is_rejected(alice):
@@ -554,3 +561,112 @@ def test_platform_stats_are_counts_only(alice):
     for key in ("dau", "wau", "mau", "new_today", "tasks_created"):
         assert isinstance(st[key], int)
     assert "journal" not in str(st).lower() or "journal_today" in st
+
+
+# --------------------------------------------------------------------------
+# Sequential member number
+# --------------------------------------------------------------------------
+
+def test_every_user_gets_a_member_number(alice, bob):
+    a = alice.get("/api/me").json()["member_no"]
+    b = bob.get("/api/me").json()["member_no"]
+    assert a >= 1 and b >= 1 and a != b
+
+
+def test_member_numbers_do_not_repeat(client):
+    from db import User
+    with SessionLocal() as s:
+        numbers = [u.member_no for u in s.query(User).all()]
+    assert len(numbers) == len(set(numbers)), "a member number was reused"
+
+
+def test_platform_stats_report_the_latest_member_number(alice):
+    alice.get("/api/me")
+    with SessionLocal() as s:
+        st = svc.platform_stats(s)
+    assert st["latest_member_no"] >= 1
+
+
+# --------------------------------------------------------------------------
+# Wake-up habit
+# --------------------------------------------------------------------------
+
+def test_wake_habit_starts_with_a_default_time(alice):
+    habits = alice.get("/api/habits").json()["habits"]
+    wake = next(h for h in habits if h["name"] == "Get up")
+    assert wake["target_time"] == "05:00"
+    assert wake["system_key"] == "wakeup"
+
+
+def test_wake_time_can_be_changed(alice):
+    assert alice.post("/api/waketime", json={"time": "06:30"}).status_code == 200
+    habits = alice.get("/api/habits").json()["habits"]
+    assert next(h for h in habits if h["name"] == "Get up")["target_time"] == "06:30"
+
+
+def test_bad_wake_time_is_rejected(alice):
+    assert alice.post("/api/waketime", json={"time": "half past six"}).status_code == 422
+
+
+def test_saying_i_am_up_in_time_marks_the_habit(alice):
+    """Inside the window the habit is done."""
+    alice.post("/api/waketime", json={"time": "05:00"})
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        result = svc.mark_wakeup(s, ws, now=datetime.combine(
+            svc.today_local(), dtime(5, 30)))
+    assert result["done"] is True
+    habits = alice.get("/api/habits").json()["habits"]
+    assert next(h for h in habits if h["name"] == "Get up")["done"] is True
+
+
+def test_saying_it_after_the_grace_hour_does_not_count(alice):
+    """05:00 target means the bot waits until 06:00 — 06:01 is too late."""
+    alice.post("/api/waketime", json={"time": "05:00"})
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        result = svc.mark_wakeup(s, ws, now=datetime.combine(
+            svc.today_local(), dtime(6, 1)))
+    assert result["done"] is False
+    assert result["deadline"] == "06:00"
+
+
+def test_waking_before_the_target_still_counts(alice):
+    alice.post("/api/waketime", json={"time": "06:00"})
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        result = svc.mark_wakeup(s, ws, now=datetime.combine(
+            svc.today_local(), dtime(4, 45)))
+    assert result["done"] is True
+
+
+def test_a_late_message_cannot_undo_an_earlier_success(alice):
+    """Once the day is earned it stays earned."""
+    alice.post("/api/waketime", json={"time": "05:00"})
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        svc.mark_wakeup(s, ws, now=datetime.combine(svc.today_local(), dtime(5, 10)))
+        svc.mark_wakeup(s, ws, now=datetime.combine(svc.today_local(), dtime(9, 0)))
+    habits = alice.get("/api/habits").json()["habits"]
+    assert next(h for h in habits if h["name"] == "Get up")["done"] is True
+
+
+# --------------------------------------------------------------------------
+# Yearly statistics
+# --------------------------------------------------------------------------
+
+def test_year_stats_return_twelve_monthly_points(alice):
+    body = alice.get("/api/stats?period=year").json()
+    assert body["period"] == "year"
+    assert len(body["series"]) == 12
+
+
+def test_year_points_are_labelled_by_month(alice):
+    body = alice.get("/api/stats?period=year").json()
+    assert all(len(p["label"]) == 5 for p in body["series"])   # MM.YY
+
+
+def test_all_three_periods_are_available(alice):
+    sizes = {p: len(alice.get(f"/api/stats?period={p}").json()["series"])
+             for p in ("week", "month", "year")}
+    assert sizes == {"week": 7, "month": 30, "year": 12}

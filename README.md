@@ -19,12 +19,30 @@ Har kuni **04:00** va **21:00** da hisobot, **23:00** da statistika.
 
 | Kategoriya | Standart odatlar |
 |---|---|
-| 🔴 Non-negotiable | Get up · **5x namoz** · **Summary** |
+| 🔴 Non-negotiable | **Get up** · **5x namoz** · **Summary** |
 | 🟡 Target | Deep flow · Sport |
 | 🟢 Bonus | Podcast · Read |
 
-**5x namoz** namoz ballidan, **Summary** esa kundalikdan avtomatik belgilanadi —
-ikkalasini ham qo'lda bosib bo'lmaydi.
+Uchtasi **avtomatik hisoblanadi** — qo'lda bosib bo'lmaydi:
+
+| Odat | Nimadan hisoblanadi |
+|---|---|
+| **Get up** | Botga «Turdim» deb yozilganda |
+| **5x namoz** | Kunlik namoz balli ≥ 2.5 bo'lganda |
+| **Summary** | Kundalikning beshta savoli to'liq to'ldirilganda |
+
+Odatni o'chirish uchun ro'yxat ostidagi **🗑 Odat o'chirish** tugmasi bosiladi va
+o'chiriladigani tanlanadi — har bir qator yonida kichik xoch yo'q.
+
+## Uyg'onish (Get up)
+
+Sozlamalarda **⏰ Uyg'onish vaqti** belgilanadi (default 05:00).
+
+Bot o'sha vaqtdan **bir soat** kutadi. Shu oraliqda botga «Turdim» deb yozilsa —
+odat bajarilgan. 06:00 dan keyin yozilsa yoki umuman yozilmasa — bugun
+bajarilmagan hisoblanadi.
+
+Erta turish ham hisoblanadi: 04:45 da yozilsa ham bajarilgan bo'ladi.
 
 ## Kundalik
 
@@ -50,8 +68,9 @@ avtomatik bajarilgan bo'ladi — qo'lda belgilab bo'lmaydi.
 
 ## Statistika
 
-Odat va namoz uchun **haftalik va oylik line chart**, o'rtacha foiz va
-**streak** (ketma-ket kunlar). Odatlar bo'limining Statistika tabida.
+Odat va namoz uchun line chart — **haftalik** (7 kun), **oylik** (30 kun) va
+**yillik** (12 oy). O'rtacha foiz, namoz taqsimoti va **streak** (ketma-ket
+kunlar). Odatlar bo'limining Statistika tabida.
 
 
 # ErnestOS Setup From Zero
@@ -120,7 +139,7 @@ bilan oling.
 |---|---|---|
 | ErnestOS Logs | `ADMIN_LOG_CHANNEL_ID` | Ro'yxatdan o'tish, odat/vazifa/maqsad o'zgarishlari, obuna |
 | ErnestOS Feedback | `FEEDBACK_CHANNEL_ID` | 💬 Taklif orqali kelgan takliflar va shikoyatlar |
-| ErnestOS Stats | `STATS_CHANNEL_ID` | Har kuni 23:00 da statistika (DAU/WAU/MAU, jami, yangi) |
+| ErnestOS Stats | `STATS_CHANNEL_ID` | Har kuni 23:00 da statistika: jami foydalanuvchi, oxirgi raqam (#42), DAU/WAU/MAU, til va jins taqsimoti |
 
 Oxirgi ikkitasi majburiy emas — bo'sh qoldirsangiz hammasi
 `ADMIN_LOG_CHANNEL_ID` ga boradi.
@@ -320,7 +339,12 @@ Deploy'dan keyin quyidagilarni birma-bir bosib chiqing:
 [ ] ⚡ Vazifalar — o'chirish emas, ✅ Bajarildi va ✏️ Tahrirlash
 [ ] bajarilgan vazifa Done arxiviga tushadi
 [ ] Home pastida 1 oylik kalendar deadline'lar bilan
-[ ] Statistika tabida line chart va streak ko'rinadi
+[ ] Statistika tabida hafta/oy/yil line chart va streak ko'rinadi
+[ ] ⏰ Uyg'onish vaqti sozlanadi
+[ ] «Turdim» vaqtida yozilsa Get up belgilanadi
+[ ] bir soatdan keyin yozilsa hisoblanmaydi
+[ ] profil rasmi Mini App'da avatar sifatida chiqadi
+[ ] statistika o'z kanaliga boradi, log kanaliga emas
 [ ] "Alohida" tanlansa loyihasiz saqlanadi
 [ ] loyiha o'chirilganda vazifalari qolib ketadi
 [ ] 🎯 Maqsadlar — uch daraja, qo'shish/bajarish/o'chirish
@@ -345,7 +369,7 @@ ernestos/
 ├── webapp/
 │   └── index.html      Mini App
 ├── tests/
-│   └── test_smoke.py   65 ta test
+│   └── test_smoke.py   79 ta test
 ├── requirements.txt
 ├── Procfile
 ├── .env.example
@@ -358,7 +382,7 @@ ernestos/
 python -m pytest tests/ -q
 ```
 
-**65 test o'tadi.**
+**79 test o'tadi.**
 
 Qamrov: foydalanuvchi izolyatsiyasi, Telegram initData tekshiruvi, egalik
 nazorati, obuna bloki, namoz balli, hisobot takrorlanmasligi.

@@ -17,13 +17,13 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time as dtime, timedelta
 from urllib.parse import parse_qsl
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel
 from telegram import (
     InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup,
@@ -77,6 +77,13 @@ if ENVIRONMENT == "production" and not BOT_TOKEN:
 
 T: dict[str, dict[str, str]] = {
     "uz": {
+        "menu_wake": "☀️ Turdim",
+        "wake_ok": "Xayrli tong! Uyg'onish belgilandi ✓ ({now})",
+        "wake_late": "Kech bo'ldi — {deadline} gacha yozish kerak edi. Bugun hisoblanmadi.",
+        "wake_time_btn": "⏰ Uyg'onish vaqti",
+        "ask_wake_time": "Soatni yozing (masalan 05:00):",
+        "wake_time_set": "Uyg'onish vaqti: {time}. Bir soat ichida «Turdim» deb yozing.",
+        "bad_time": "Format noto'g'ri. Masalan: 05:30",
         "btn_done_task": "✅ Bajarildi",
         "btn_edit_task": "✏️ Tahrirlash",
         "choose_done": "Qaysi vazifa bajarildi?",
@@ -181,6 +188,13 @@ T: dict[str, dict[str, str]] = {
         "days_short": "kun",
     },
     "en": {
+        "menu_wake": "☀️ I'm up",
+        "wake_ok": "Good morning! Wake-up recorded ✓ ({now})",
+        "wake_late": "Too late — the cut-off was {deadline}. It does not count today.",
+        "wake_time_btn": "⏰ Wake-up time",
+        "ask_wake_time": "Enter the time (e.g. 05:00):",
+        "wake_time_set": "Wake-up time: {time}. Say «I'm up» within an hour of it.",
+        "bad_time": "Wrong format. Example: 05:30",
         "btn_done_task": "✅ Mark done",
         "btn_edit_task": "✏️ Edit",
         "choose_done": "Which task is done?",
@@ -285,6 +299,13 @@ T: dict[str, dict[str, str]] = {
         "days_short": "days",
     },
     "ru": {
+        "menu_wake": "☀️ Я встал",
+        "wake_ok": "Доброе утро! Подъём засчитан ✓ ({now})",
+        "wake_late": "Поздно — крайний срок был {deadline}. Сегодня не засчитано.",
+        "wake_time_btn": "⏰ Время подъёма",
+        "ask_wake_time": "Введите время (например 05:00):",
+        "wake_time_set": "Время подъёма: {time}. Напишите «Я встал» в течение часа.",
+        "bad_time": "Неверный формат. Пример: 05:30",
         "btn_done_task": "✅ Выполнено",
         "btn_edit_task": "✏️ Изменить",
         "choose_done": "Какая задача выполнена?",
@@ -435,7 +456,9 @@ async def admin_log(bot, text: str, chat_id: str | None = None) -> None:
 def _who(user: User) -> str:
     name = " ".join(x for x in (user.first_name, user.last_name) if x) or "—"
     username = f"@{user.username}" if user.username else "—"
-    return f"ID: <code>{user.telegram_id}</code>\nName: {name}\nUsername: {username}"
+    return (f"No: <b>#{user.member_no}</b>\n"
+            f"ID: <code>{user.telegram_id}</code>\n"
+            f"Name: {name}\nUsername: {username}")
 
 
 async def log_event(bot, user: User, event: str, detail: str = "") -> None:
@@ -527,9 +550,10 @@ async def guard(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> tuple[User, i
 
 def main_menu(lang: str) -> ReplyKeyboardMarkup:
     rows = [
-        [t(lang, "menu_home"), t(lang, "menu_habits")],
-        [t(lang, "menu_tasks"), t(lang, "menu_goals")],
-        [t(lang, "menu_settings"), t(lang, "menu_feedback")],
+        [t(lang, "menu_wake"), t(lang, "menu_home")],
+        [t(lang, "menu_habits"), t(lang, "menu_tasks")],
+        [t(lang, "menu_goals"), t(lang, "menu_settings")],
+        [t(lang, "menu_feedback")],
     ]
     if WEBAPP_URL:
         rows.append([t(lang, "menu_app")])
@@ -567,7 +591,7 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         snapshot = user
 
     if created:
-        await log_event(ctx.bot, snapshot, "🆕 NEW ERNESTOS USER",
+        await log_event(ctx.bot, snapshot, f"🆕 NEW ERNESTOS USER #{snapshot.member_no}",
                         f"Language: {lang}\nRegistered: "
                         f"{datetime.now(svc.TZ):%Y-%m-%d %H:%M}")
 
@@ -801,6 +825,26 @@ def render_home(data: dict, lang: str) -> str:
     return "\n".join(lines)
 
 
+async def handle_wakeup(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """The user reports getting up. Only counts before target time + 1 hour."""
+    got = await guard(update, ctx)
+    if got is None:
+        return
+    user, ws = got
+    with SessionLocal() as s:
+        result = svc.mark_wakeup(s, ws)
+
+    message = update.effective_message
+    if message is None:
+        return
+    if result["done"]:
+        await message.reply_text(t(user.language, "wake_ok", now=result["now"]))
+        await log_event(ctx.bot, user, "☀️ WAKE-UP", f"At: {result['now']}")
+    else:
+        await message.reply_text(
+            t(user.language, "wake_late", deadline=result["deadline"]))
+
+
 async def show_home(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     got = await guard(update, ctx)
     if got is None:
@@ -835,8 +879,10 @@ def habits_keyboard(grouped: dict, lang: str) -> InlineKeyboardMarkup:
         for h in habits:
             mark = "✅" if h["done"] else "⬜"
             lock = " 🔒" if h["protected"] else ""
+            clock = f" ⏰{h['target_time']}" if h.get("target_time") else ""
             rows.append([InlineKeyboardButton(
-                f"{mark} {h['name']}{lock}", callback_data=f"habit:toggle:{h['id']}")])
+                f"{mark} {h['name']}{clock}{lock}",
+                callback_data=f"habit:toggle:{h['id']}")])
     rows.append([
         InlineKeyboardButton(t(lang, "btn_add_habit"), callback_data="habit:add"),
         InlineKeyboardButton(t(lang, "btn_del_habit"), callback_data="habit:dellist"),
@@ -1005,6 +1051,7 @@ async def show_settings(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         [InlineKeyboardButton(t(lang, "btn_theme"), callback_data="set:theme")],
         [InlineKeyboardButton(t(lang, "btn_phone_set"), callback_data="set:phone")],
         [InlineKeyboardButton(t(lang, "btn_photo"), callback_data="set:photo")],
+        [InlineKeyboardButton(t(lang, "wake_time_btn"), callback_data="set:waketime")],
     ])
     if edit and update.callback_query:
         await update.callback_query.edit_message_text(
@@ -1050,6 +1097,8 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     # Main menu routing — match against every language so a language change
     # mid-session never strands the user with a dead keyboard.
     for code in ("uz", "en", "ru"):
+        if text == t(code, "menu_wake"):
+            return await handle_wakeup(update, ctx)
         if text == t(code, "menu_home"):
             return await show_home(update, ctx)
         if text == t(code, "menu_habits"):
@@ -1096,6 +1145,20 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                                       callback_data="habitcat:bonus")],
                 [InlineKeyboardButton(t(lang, "cancel"), callback_data="flow:cancel")],
             ]))
+
+        elif name == "wake_time":
+            try:
+                hour, minute = (int(x) for x in text.replace(".", ":").split(":"))
+                value = dtime(hour, minute)
+            except (ValueError, TypeError):
+                await message.reply_text(t(lang, "bad_time"))
+                return
+            with SessionLocal() as s:
+                svc.set_wake_time(s, ws, value)
+            ctx.user_data.pop("flow", None)
+            await message.reply_text(
+                t(lang, "wake_time_set", time=value.strftime("%H:%M")),
+                reply_markup=main_menu(lang))
 
         elif name == "task_edit":
             with SessionLocal() as s:
@@ -1557,6 +1620,10 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             rows.append(back)
             await query.edit_message_text(t(lang, "ask_photo"),
                                           reply_markup=InlineKeyboardMarkup(rows))
+        elif sub == "waketime":
+            ctx.user_data["flow"] = {"name": "wake_time"}
+            await query.edit_message_text(t(lang, "ask_wake_time"),
+                                          reply_markup=InlineKeyboardMarkup([back]))
         elif sub == "photodel":
             ctx.user_data.pop("flow", None)
             with SessionLocal() as s:
@@ -1690,7 +1757,8 @@ async def send_platform_stats(bot) -> None:
     await admin_log(bot, (
         f"<b>📊 ERNESTOS STATISTIKA</b>\n{datetime.now(svc.TZ):%Y-%m-%d %H:%M}\n\n"
         f"<b>Foydalanuvchilar</b>\n"
-        f"Jami: {st['total']} · onboarding: {st['onboarded']}\n"
+        f"Jami: {st['total']} · oxirgi raqam: #{st['latest_member_no']}\n"
+        f"Onboarding tugagan: {st['onboarded']}\n"
         f"Obuna: {st['subscribed']} · bloklangan: {st['blocked']}\n"
         f"Yangi — bugun: {st['new_today']} · hafta: {st['new_week']}\n\n"
         f"<b>Faollik</b>\nDAU {st['dau']} · WAU {st['wau']} · MAU {st['mau']}\n\n"
@@ -1807,6 +1875,15 @@ async def lifespan(_: FastAPI):
 
     db.init_db()
     log.info("database ready: %s", db.engine.url.render_as_string(hide_password=True))
+    # Print where each stream goes, so "stats landed in the log channel" is
+    # diagnosable from the deploy log instead of guesswork.
+    log.info("channels — events:%s feedback:%s stats:%s",
+             ADMIN_LOG_CHANNEL_ID or "off",
+             FEEDBACK_CHANNEL_ID or "off",
+             STATS_CHANNEL_ID or "off")
+    if STATS_CHANNEL_ID and STATS_CHANNEL_ID == ADMIN_LOG_CHANNEL_ID:
+        log.warning("STATS_CHANNEL_ID is unset — statistics fall back to the "
+                    "event log channel. Set it to use a dedicated channel.")
 
     # ENVIRONMENT=test runs the API alone, so the suite never dials Telegram.
     if BOT_TOKEN and ENVIRONMENT != "test":
@@ -1968,9 +2045,11 @@ def health():
 @app.get("/api/me")
 def api_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, _ = auth(init)
-    return {"telegram_id": user.telegram_id, "first_name": user.first_name,
+    return {"telegram_id": user.telegram_id, "member_no": user.member_no,
+            "first_name": user.first_name,
             "language": user.language, "gender": user.gender,
             "theme": user.theme, "quote": user.quote,
+            "has_photo": bool(user.photo_file_id),
             "onboarded": user.onboarded, "is_subscribed": user.is_subscribed}
 
 
@@ -2240,7 +2319,7 @@ def api_journal_delete(day: str, init=Header(default=None, alias="X-Telegram-Ini
 def api_stats(period: str = "week", init=Header(default=None, alias="X-Telegram-Init-Data")):
     """Daily series for the habit and prayer line charts, plus streaks."""
     _, ws = auth(init)
-    if period not in ("week", "month"):
+    if period not in ("week", "month", "year"):
         period = "week"
     with SessionLocal() as s:
         return svc.stats(s, ws, period)
@@ -2318,6 +2397,50 @@ def api_birthday_delete(birthday_id: int, init=Header(default=None, alias="X-Tel
     with SessionLocal() as s:
         svc.delete_birthday(s, ws, birthday_id)
     return {"ok": True}
+
+
+@app.get("/api/avatar")
+async def api_avatar(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Stream the user's profile photo.
+
+    The bytes live on Telegram's CDN; the database only holds the file_id.
+    Fetching server-side keeps the bot token out of the browser.
+    """
+    user, _ = auth(init)
+    if not user.photo_file_id or telegram_app is None:
+        raise HTTPException(status_code=404, detail="no_photo")
+    try:
+        tg_file = await telegram_app.bot.get_file(user.photo_file_id)
+        data = await tg_file.download_as_bytearray()
+    except TelegramError:
+        raise HTTPException(status_code=404, detail="no_photo")
+    return Response(content=bytes(data), media_type="image/jpeg",
+                    headers={"Cache-Control": "private, max-age=300"})
+
+
+@app.post("/api/wakeup")
+def api_wakeup(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Mini App mirror of the bot's "Turdim" button."""
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        return svc.mark_wakeup(s, ws)
+
+
+class WakeTimeIn(BaseModel):
+    time: str
+
+
+@app.post("/api/waketime")
+def api_wake_time(body: WakeTimeIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    try:
+        hour, minute = (int(x) for x in body.time.split(":"))
+        value = dtime(hour, minute)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail="bad_time")
+    with SessionLocal() as s:
+        svc.set_wake_time(s, ws, value)
+    return {"ok": True, "time": value.strftime("%H:%M")}
 
 
 # --- Mini App static file ---

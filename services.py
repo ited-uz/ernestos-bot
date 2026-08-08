@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time as dtime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
@@ -61,7 +61,7 @@ HABIT_CATEGORIES = ["non_negotiable", "target", "bonus"]
 #: cannot tick by hand: "prayer" follows the daily prayer score and "journal"
 #: follows a fully answered journal entry.
 DEFAULT_HABITS = [
-    ("Get up",    "non_negotiable", ""),
+    ("Get up",    "non_negotiable", "wakeup"),
     ("5x namoz",  "non_negotiable", "prayer"),
     ("Summary",   "non_negotiable", "journal"),
     ("Deep flow", "target",         ""),
@@ -72,6 +72,12 @@ DEFAULT_HABITS = [
 
 SYSTEM_PRAYER = "prayer"
 SYSTEM_JOURNAL = "journal"
+SYSTEM_WAKEUP = "wakeup"
+
+#: Default rise time, used until the user picks their own.
+DEFAULT_WAKE_TIME = dtime(5, 0)
+#: How long after the target time a "turdim" message still counts.
+WAKE_GRACE = timedelta(hours=1)
 
 
 def get_or_create_user(s: Session, telegram_id: int, *, first_name: str = "",
@@ -88,8 +94,12 @@ def get_or_create_user(s: Session, telegram_id: int, *, first_name: str = "",
             user.username = username
         return user, False
 
-    user = User(telegram_id=telegram_id, first_name=first_name or "",
-                last_name=last_name or "", username=username or "")
+    # Sequential join number: max()+1 rather than a count, so deleting a user
+    # never hands their number to somebody else.
+    next_no = (s.scalar(select(func.max(User.member_no))) or 0) + 1
+    user = User(telegram_id=telegram_id, member_no=next_no,
+                first_name=first_name or "", last_name=last_name or "",
+                username=username or "")
     s.add(user)
     s.flush()
 
@@ -100,7 +110,8 @@ def get_or_create_user(s: Session, telegram_id: int, *, first_name: str = "",
     for position, (name, category, system_key) in enumerate(DEFAULT_HABITS, start=1):
         s.add(Habit(workspace_id=workspace.id, name=name, category=category,
                     position=position, is_protected=bool(system_key),
-                    system_key=system_key))
+                    system_key=system_key,
+                    target_time=DEFAULT_WAKE_TIME if system_key == SYSTEM_WAKEUP else None))
     s.commit()
     return user, True
 
@@ -153,6 +164,7 @@ def list_habits(s: Session, ws: int, day: date | None = None) -> list[dict]:
 
     return [{"id": h.id, "name": h.name, "category": h.category,
              "protected": h.is_protected, "system_key": h.system_key,
+             "target_time": h.target_time.strftime("%H:%M") if h.target_time else None,
              "done": h.id in done_ids} for h in habits]
 
 
@@ -215,6 +227,52 @@ def delete_habit(s: Session, ws: int, habit_id: int) -> str:
     habit.archived_at = utcnow()
     s.commit()
     return habit.name
+
+
+def wake_habit(s: Session, ws: int) -> Habit | None:
+    return s.scalar(select(Habit).where(
+        Habit.workspace_id == ws, Habit.system_key == SYSTEM_WAKEUP,
+        Habit.archived_at.is_(None)))
+
+
+def set_wake_time(s: Session, ws: int, value: dtime) -> Habit:
+    habit = wake_habit(s, ws)
+    if habit is None:
+        raise NotFound("habit")
+    habit.target_time = value
+    s.commit()
+    return habit
+
+
+def mark_wakeup(s: Session, ws: int, now: datetime | None = None) -> dict:
+    """Record that the user got up, if they said so in time.
+
+    The rule: "turdim" counts until one hour after the target time. Saying it
+    later, or not at all, leaves the habit undone for the day — that is the
+    whole point of the habit.
+    """
+    habit = wake_habit(s, ws)
+    if habit is None:
+        raise NotFound("habit")
+
+    now = now or datetime.now(TZ).replace(tzinfo=None)
+    day = now.date()
+    target = habit.target_time or DEFAULT_WAKE_TIME
+    deadline = datetime.combine(day, target) + WAKE_GRACE
+    in_time = now <= deadline
+
+    row = s.scalar(select(HabitLog).where(
+        HabitLog.workspace_id == ws, HabitLog.habit_id == habit.id,
+        HabitLog.day == day))
+    if row is None:
+        s.add(HabitLog(workspace_id=ws, habit_id=habit.id, day=day, done=in_time))
+    else:
+        row.done = row.done or in_time
+    s.commit()
+
+    return {"done": in_time, "target": target.strftime("%H:%M"),
+            "deadline": deadline.strftime("%H:%M"),
+            "now": now.strftime("%H:%M")}
 
 
 def habit_progress(s: Session, ws: int, day: date) -> tuple[int, int]:
@@ -937,27 +995,62 @@ def prayer_streak(s: Session, ws: int) -> int:
     return streak
 
 
-def stats(s: Session, ws: int, period: str = "week") -> dict:
-    """Daily series for the line charts, plus streaks and averages.
+def _range_percent(s: Session, ws: int, start: date, end: date) -> tuple[int, int]:
+    """Average habit and prayer percentage across an inclusive day range."""
+    days = (end - start).days + 1
+    if days <= 0:
+        return 0, 0
+    habit_total = prayer_total = 0
+    for offset in range(days):
+        day = start + timedelta(days=offset)
+        habit_total += _habit_percent(s, ws, day)
+        prayer_total += _prayer_percent(s, ws, day)
+    return round(habit_total / days), round(prayer_total / days)
 
-    `week` covers the last 7 local days, `month` the last 30.
+
+def stats(s: Session, ws: int, period: str = "week") -> dict:
+    """Series for the line charts, plus streaks and averages.
+
+    `week`  — one point per day for the last 7 days.
+    `month` — one point per day for the last 30 days.
+    `year`  — one point per month for the last 12 months, because 365 daily
+              points are unreadable on a phone.
     """
-    days = 7 if period == "week" else 30
     today = today_local()
 
-    series = []
-    for offset in range(days - 1, -1, -1):
-        day = today - timedelta(days=offset)
-        series.append({
-            "day": day.isoformat(),
-            "label": day.strftime("%d.%m"),
-            "habits": _habit_percent(s, ws, day),
-            "prayer": _prayer_percent(s, ws, day),
-        })
+    if period == "year":
+        series = []
+        year, month = today.year, today.month
+        months = []
+        for _ in range(12):
+            months.append((year, month))
+            month -= 1
+            if month == 0:
+                month, year = 12, year - 1
+        for y, m in reversed(months):
+            start = date(y, m, 1)
+            end = min(today, date(y + (m == 12), (m % 12) + 1, 1) - timedelta(days=1))
+            habits, prayer = _range_percent(s, ws, start, end)
+            series.append({"day": start.isoformat(),
+                           "label": start.strftime("%m.%y"),
+                           "habits": habits, "prayer": prayer})
+        window_start = date(months[-1][0], months[-1][1], 1)
+    else:
+        days = 7 if period == "week" else 30
+        series = []
+        for offset in range(days - 1, -1, -1):
+            day = today - timedelta(days=offset)
+            series.append({
+                "day": day.isoformat(),
+                "label": day.strftime("%d.%m"),
+                "habits": _habit_percent(s, ws, day),
+                "prayer": _prayer_percent(s, ws, day),
+            })
+        window_start = today - timedelta(days=days - 1)
 
     prayer_rows = s.scalars(select(PrayerLog).where(
         PrayerLog.workspace_id == ws,
-        PrayerLog.day >= today - timedelta(days=days - 1))).all()
+        PrayerLog.day >= window_start)).all()
     breakdown: dict[str, int] = {}
     for row in prayer_rows:
         breakdown[row.status] = breakdown.get(row.status, 0) + 1
@@ -1195,8 +1288,10 @@ def platform_stats(s: Session) -> dict:
     genders = dict(s.execute(
         select(User.gender, func.count(User.telegram_id)).group_by(User.gender)).all())
 
+    latest = s.scalar(select(func.max(User.member_no))) or 0
     return {
         "total": total,
+        "latest_member_no": latest,
         "onboarded": onboarded,
         "subscribed": subscribed,
         "blocked": max(onboarded - subscribed, 0),

@@ -18,11 +18,11 @@ domain row carries `workspace_id`, so one user can never reach another's data.
 from __future__ import annotations
 
 import os
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 
 from sqlalchemy import (
     BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, String, Text,
-    UniqueConstraint, create_engine,
+    Time, UniqueConstraint, create_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
@@ -72,6 +72,9 @@ class User(Base):
     __tablename__ = "users"
 
     telegram_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    #: Sequential join number — "you are ErnestOS user #42". Assigned once at
+    #: registration and never reused, so it stays stable if someone is deleted.
+    member_no: Mapped[int] = mapped_column(Integer, default=0, index=True)
     first_name: Mapped[str] = mapped_column(String(200), default="")
     last_name: Mapped[str] = mapped_column(String(200), default="")
     username: Mapped[str] = mapped_column(String(200), default="")
@@ -121,10 +124,14 @@ class Habit(Base):
     #: non_negotiable | target | bonus — drives grouping everywhere.
     category: Mapped[str] = mapped_column(String(16), default="target")
     position: Mapped[int] = mapped_column(Integer, default=0)
-    #: Derived habits cannot be ticked by hand: "prayer" follows the daily
-    #: prayer score, "journal" follows a fully answered journal entry.
+    #: Derived habits cannot be ticked by hand:
+    #:   "prayer"  follows the daily prayer score
+    #:   "journal" follows a fully answered journal entry
+    #:   "wakeup"  follows a "turdim" message sent before target_time + 1h
     is_protected: Mapped[bool] = mapped_column(Boolean, default=False)
     system_key: Mapped[str] = mapped_column(String(16), default="")
+    #: Only meaningful for the wake-up habit: the hour the user intends to rise.
+    target_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     #: Soft delete — historical reports must not change retroactively.
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
