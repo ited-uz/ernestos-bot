@@ -121,7 +121,7 @@ class Habit(Base):
     #: non_negotiable | target | bonus — drives grouping everywhere.
     category: Mapped[str] = mapped_column(String(16), default="target")
     position: Mapped[int] = mapped_column(Integer, default=0)
-    #: Derived habits cannot be toggled by hand: "prayer" follows the daily
+    #: Derived habits cannot be ticked by hand: "prayer" follows the daily
     #: prayer score, "journal" follows a fully answered journal entry.
     is_protected: Mapped[bool] = mapped_column(Boolean, default=False)
     system_key: Mapped[str] = mapped_column(String(16), default="")
@@ -270,7 +270,7 @@ class JournalEntry(Base):
         Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
     day: Mapped[date] = mapped_column(Date, index=True)
     text: Mapped[str] = mapped_column(Text, default="")
-    #: JSON object keyed by question id. The journal habit only counts as done
+    #: JSON object keyed by question id. The Summary habit only counts as done
     #: once every question has an answer.
     answers: Mapped[str] = mapped_column(Text, default="{}")
     mood: Mapped[str] = mapped_column(String(20), default="")

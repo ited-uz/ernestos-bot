@@ -57,7 +57,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 REQUIRED_CHANNEL_ID = os.environ.get("REQUIRED_CHANNEL_ID", "").strip()
 REQUIRED_CHANNEL_URL = os.environ.get("REQUIRED_CHANNEL_URL", "").strip()
 ADMIN_LOG_CHANNEL_ID = os.environ.get("ADMIN_LOG_CHANNEL_ID", "").strip()
-#: Suggestions and complaints go to their own channel, separate from events.
+#: Suggestions and complaints get their own channel, apart from event logs.
 FEEDBACK_CHANNEL_ID = os.environ.get("FEEDBACK_CHANNEL_ID", "").strip() or ADMIN_LOG_CHANNEL_ID
 #: Aggregate platform statistics — counts only, never user content.
 STATS_CHANNEL_ID = os.environ.get("STATS_CHANNEL_ID", "").strip() or ADMIN_LOG_CHANNEL_ID
@@ -83,22 +83,19 @@ T: dict[str, dict[str, str]] = {
         "choose_edit": "Qaysi birini tahrirlaysiz?",
         "ask_new_title": "Yangi nomni yozing:",
         "task_updated": "Yangilandi: {title}",
-        "ask_deadline": "Muddatni tanlang:",
         "cat_non_negotiable": "🔴 Non-negotiable",
         "cat_target": "🟡 Target",
         "cat_bonus": "🟢 Bonus",
         "ask_habit_cat": "Qaysi kategoriyaga?",
         "btn_phone_set": "📱 Telefon raqam",
         "btn_photo": "🖼 Profil rasmi",
-        "ask_photo": "Profil rasmini yuboring (foto sifatida):",
+        "ask_photo": "Profil rasmini foto sifatida yuboring:",
         "photo_saved": "Rasm saqlandi ✓",
         "photo_removed": "Rasm o'chirildi",
         "btn_photo_del": "🗑 Rasmni o'chirish",
         "btn_phone_del": "🗑 Raqamni o'chirish",
         "phone_removed": "Raqam o'chirildi",
-        "journal_habit": "Kundalik to'liq to'ldirilganda avtomatik belgilanadi",
         "streak": "🔥 Ketma-ket",
-        "no_deadline": "muddatsiz",
         "welcome": "Assalomu alaykum, {name}!\n\nErnestOS — Telegram ichidagi shaxsiy tizimingiz.",
         "ask_phone": "Telefon raqamingizni ulashing.\n\nBu hisobingizni tiklash va sizni tanib olish uchun kerak.",
         "btn_phone": "📱 Raqamni ulashish",
@@ -190,22 +187,19 @@ T: dict[str, dict[str, str]] = {
         "choose_edit": "Which one do you want to edit?",
         "ask_new_title": "Enter the new title:",
         "task_updated": "Updated: {title}",
-        "ask_deadline": "Choose the deadline:",
         "cat_non_negotiable": "🔴 Non-negotiable",
         "cat_target": "🟡 Target",
         "cat_bonus": "🟢 Bonus",
         "ask_habit_cat": "Which category?",
         "btn_phone_set": "📱 Phone number",
         "btn_photo": "🖼 Profile photo",
-        "ask_photo": "Send your profile photo (as a photo):",
+        "ask_photo": "Send your profile photo:",
         "photo_saved": "Photo saved ✓",
         "photo_removed": "Photo removed",
         "btn_photo_del": "🗑 Remove photo",
         "btn_phone_del": "🗑 Remove phone",
         "phone_removed": "Phone removed",
-        "journal_habit": "Marked automatically once the journal is fully answered",
         "streak": "🔥 Streak",
-        "no_deadline": "no deadline",
         "welcome": "Hello, {name}!\n\nErnestOS — your personal system inside Telegram.",
         "ask_phone": "Please share your phone number.\n\nIt is used to recover your account and recognise you.",
         "btn_phone": "📱 Share phone number",
@@ -297,7 +291,6 @@ T: dict[str, dict[str, str]] = {
         "choose_edit": "Что изменить?",
         "ask_new_title": "Введите новое название:",
         "task_updated": "Обновлено: {title}",
-        "ask_deadline": "Выберите срок:",
         "cat_non_negotiable": "🔴 Non-negotiable",
         "cat_target": "🟡 Target",
         "cat_bonus": "🟢 Bonus",
@@ -310,9 +303,7 @@ T: dict[str, dict[str, str]] = {
         "btn_photo_del": "🗑 Удалить фото",
         "btn_phone_del": "🗑 Удалить номер",
         "phone_removed": "Номер удалён",
-        "journal_habit": "Отмечается автоматически при полном заполнении дневника",
         "streak": "🔥 Серия",
-        "no_deadline": "без срока",
         "welcome": "Здравствуйте, {name}!\n\nErnestOS — ваша личная система внутри Telegram.",
         "ask_phone": "Поделитесь номером телефона.\n\nЭто нужно для восстановления аккаунта.",
         "btn_phone": "📱 Отправить номер",
@@ -587,7 +578,7 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     # A brand-new user has not chosen a language yet, so greet in all three
-    # before asking — otherwise the first message is a guess.
+    # rather than guessing which one to use.
     name = tg_user.first_name or ""
     await message.reply_text(
         "\n\n".join(t(code, "welcome", name=name) for code in ("uz", "en", "ru")))
@@ -662,7 +653,7 @@ async def on_contact(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await log_event(ctx.bot, snapshot, "📱 PHONE SUBMITTED",
                     f"Phone: {snapshot.phone_number}")
     if onboarded_already:
-        # Phone changed from Settings — go straight back to the menu.
+        # Changed from Settings — go straight back to the menu.
         await message.reply_text(t(lang, "saved"), reply_markup=main_menu(lang))
     else:
         await resume_onboarding(update, ctx, "gender")
@@ -672,7 +663,7 @@ async def on_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     """Store the Telegram file_id of an uploaded avatar.
 
     Only the id is kept — Telegram already hosts the bytes, so the database
-    stays free of binary blobs.
+    never holds binary blobs.
     """
     message = update.effective_message
     tg_user = update.effective_user
@@ -681,7 +672,7 @@ async def on_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if (ctx.user_data.get("flow") or {}).get("name") != "photo_wait":
         return
 
-    file_id = message.photo[-1].file_id  # highest resolution
+    file_id = message.photo[-1].file_id          # highest resolution
     with SessionLocal() as s:
         user = s.get(User, tg_user.id)
         if user is None:
@@ -785,8 +776,7 @@ def render_home(data: dict, lang: str) -> str:
     streaks = data.get("streaks") or {}
     if streaks.get("habits") or streaks.get("prayer"):
         lines.append(f"{t(lang, 'streak')}: "
-                     f"{t(lang, 'home_habits')} {streaks.get('habits', 0)} · "
-                     f"{t(lang, 'prayer')} {streaks.get('prayer', 0)}")
+                     f"{streaks.get('habits', 0)} · 🕌 {streaks.get('prayer', 0)}")
 
     projects = data["projects"]
     if projects:
@@ -864,10 +854,9 @@ async def show_habits(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         grouped = svc.habits_by_category(s, ws)
         streak = svc.habit_streak(s, ws)
 
-    header = f"<b>{t(user.language, 'habits_title')}</b>"
+    text = f"<b>{t(user.language, 'habits_title')}</b>"
     if streak:
-        header += f"   {t(user.language, 'streak')}: {streak}"
-    text = header
+        text += f"   {t(user.language, 'streak')}: {streak}"
     markup = habits_keyboard(grouped, user.language)
     if edit and update.callback_query:
         await update.callback_query.edit_message_text(
@@ -912,8 +901,8 @@ def render_tasks(data: dict, lang: str) -> str:
 
 
 def tasks_keyboard(lang: str) -> InlineKeyboardMarkup:
-    """Completing a task replaces deleting it — finished work goes to the
-    Done archive rather than disappearing from history."""
+    """Completing replaces deleting: finished work moves to the Done archive
+    instead of disappearing from history."""
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(t(lang, "btn_done_task"), callback_data="task:donelist"),
          InlineKeyboardButton(t(lang, "btn_edit_task"), callback_data="task:editlist")],
@@ -1101,8 +1090,10 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                                      reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton(t(lang, "cat_non_negotiable"),
                                       callback_data="habitcat:non_negotiable")],
-                [InlineKeyboardButton(t(lang, "cat_target"), callback_data="habitcat:target")],
-                [InlineKeyboardButton(t(lang, "cat_bonus"), callback_data="habitcat:bonus")],
+                [InlineKeyboardButton(t(lang, "cat_target"),
+                                      callback_data="habitcat:target")],
+                [InlineKeyboardButton(t(lang, "cat_bonus"),
+                                      callback_data="habitcat:bonus")],
                 [InlineKeyboardButton(t(lang, "cancel"), callback_data="flow:cancel")],
             ]))
 
@@ -1112,9 +1103,6 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             ctx.user_data.pop("flow", None)
             await message.reply_text(t(lang, "task_updated", title=task.title))
             await show_tasks(update, ctx)
-
-        elif name == "feedback_wait":
-            pass
 
         elif name == "task_title":
             ctx.user_data["flow"] = {"name": "task_days", "title": text}
@@ -1513,6 +1501,7 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     # --- settings ---
     elif action == "set":
         sub = parts[1]
+        # Every sub-screen offers Back, so changing your mind never strands you.
         back = [InlineKeyboardButton(t(lang, "back"), callback_data="set:back")]
 
         if sub == "back":
@@ -1539,18 +1528,17 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             await query.edit_message_text(t(lang, "btn_theme"),
                                           reply_markup=InlineKeyboardMarkup(rows))
         elif sub == "phone":
-            rows = [[KeyboardButton(t(lang, "btn_phone"), request_contact=True)]]
-            await query.edit_message_text(t(lang, "ask_phone"))
+            rows = [[InlineKeyboardButton(t(lang, "btn_phone_del"),
+                                          callback_data="set:phonedel")]] \
+                if user.phone_number else []
+            rows.append(back)
+            await query.edit_message_text(t(lang, "ask_phone"),
+                                          reply_markup=InlineKeyboardMarkup(rows))
             await message.reply_text(
-                t(lang, "ask_phone"),
-                reply_markup=ReplyKeyboardMarkup(rows, resize_keyboard=True,
-                                                 one_time_keyboard=True))
-            if user.phone_number:
-                await message.reply_text(
-                    t(lang, "btn_phone_del"),
-                    reply_markup=InlineKeyboardMarkup(
-                        [[InlineKeyboardButton(t(lang, "btn_phone_del"),
-                                               callback_data="set:phonedel")], back]))
+                t(lang, "btn_phone_set"),
+                reply_markup=ReplyKeyboardMarkup(
+                    [[KeyboardButton(t(lang, "btn_phone"), request_contact=True)]],
+                    resize_keyboard=True, one_time_keyboard=True))
         elif sub == "phonedel":
             with SessionLocal() as s:
                 row = s.get(User, user.telegram_id)
@@ -1560,10 +1548,13 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             await show_settings(update, ctx)
         elif sub == "photo":
             ctx.user_data["flow"] = {"name": "photo_wait"}
-            rows = [[InlineKeyboardButton(t(lang, "cancel"), callback_data="flow:cancel")]]
+            rows = []
             if user.photo_file_id:
-                rows.insert(0, [InlineKeyboardButton(t(lang, "btn_photo_del"),
-                                                     callback_data="set:photodel")])
+                rows.append([InlineKeyboardButton(t(lang, "btn_photo_del"),
+                                                  callback_data="set:photodel")])
+            rows.append([InlineKeyboardButton(t(lang, "cancel"),
+                                              callback_data="flow:cancel")])
+            rows.append(back)
             await query.edit_message_text(t(lang, "ask_photo"),
                                           reply_markup=InlineKeyboardMarkup(rows))
         elif sub == "photodel":
@@ -1696,25 +1687,20 @@ async def send_platform_stats(bot) -> None:
     languages = " · ".join(f"{k or '—'} {v}" for k, v in sorted(st["languages"].items()))
     genders = " · ".join(f"{k or '—'} {v}" for k, v in sorted(st["genders"].items()))
 
-    text = (
-        f"<b>📊 ERNESTOS STATISTIKA</b>\n"
-        f"{datetime.now(svc.TZ):%Y-%m-%d %H:%M}\n\n"
+    await admin_log(bot, (
+        f"<b>📊 ERNESTOS STATISTIKA</b>\n{datetime.now(svc.TZ):%Y-%m-%d %H:%M}\n\n"
         f"<b>Foydalanuvchilar</b>\n"
-        f"Jami: {st['total']}\n"
-        f"Onboarding tugagan: {st['onboarded']}\n"
+        f"Jami: {st['total']} · onboarding: {st['onboarded']}\n"
         f"Obuna: {st['subscribed']} · bloklangan: {st['blocked']}\n"
-        f"Bugun yangi: {st['new_today']} · haftada: {st['new_week']}\n\n"
-        f"<b>Faollik</b>\n"
-        f"DAU {st['dau']} · WAU {st['wau']} · MAU {st['mau']}\n\n"
+        f"Yangi — bugun: {st['new_today']} · hafta: {st['new_week']}\n\n"
+        f"<b>Faollik</b>\nDAU {st['dau']} · WAU {st['wau']} · MAU {st['mau']}\n\n"
         f"<b>Hafta ichida</b>\n"
-        f"Vazifa yaratildi: {st['tasks_created']} · bajarildi: {st['tasks_done']}\n"
+        f"Vazifa: +{st['tasks_created']} · bajarildi {st['tasks_done']}\n"
         f"Maqsad bajarildi: {st['goals_done']}\n"
-        f"Bugun kundalik yozganlar: {st['journal_today']}\n"
+        f"Bugun kundalik: {st['journal_today']}\n"
         f"Taklif: {st['feedback_week']}\n\n"
-        f"<b>Til</b>: {languages or '—'}\n"
-        f"<b>Jins</b>: {genders or '—'}"
-    )
-    await admin_log(bot, text, chat_id=STATS_CHANNEL_ID)
+        f"<b>Til</b>: {languages or '—'}\n<b>Jins</b>: {genders or '—'}"
+    ), chat_id=STATS_CHANNEL_ID)
 
 
 async def send_reports(bot, report_type: str) -> None:
@@ -1948,10 +1934,6 @@ class GoalPatch(BaseModel):
 
 class FocusIn(BaseModel):
     title: str
-
-
-class SettingsPhoto(BaseModel):
-    quote: str | None = None
 
 
 class JournalIn(BaseModel):

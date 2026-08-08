@@ -7,14 +7,52 @@ ikkalasi ham bir xil biznes qatlamiga (`services.py`) murojaat qiladi.
 
 | Bo'lim | Mazmuni |
 |---|---|
-| 🏠 Home | Bugungi vazifalar, odatlar, haftalik 3 maqsad, loyihalar, tug'ilgan kunlar |
-| ✅ Odatlar | Odatlar + namoz + kundalik |
-| ⚡ Vazifalar | Vazifa va loyihalar, muddat bilan |
-| 🎯 Maqsadlar | Ultimate / Milestone / Tactical |
+| 🏠 Home | Bugungi vazifalar, odatlar, haftalik 3 missiya, loyihalar, tug'ilgan kunlar, **1 oylik kalendar** |
+| ✅ Odatlar | Odatlar (3 kategoriya) + namoz + kundalik + statistika |
+| ⚡ Vazifalar | Vazifa va loyihalar, muddat va batafsil tavsif, **Bajarilgan** arxivi |
+| 🎯 Vision | Ultimate / Milestone / Tactical + **Erishilgan** |
 
-Uch til (o'zbek, ingliz, rus), olti tema. Har kuni **04:00** va **21:00** da hisobot.
+Uch til (o'zbek, ingliz, rus), olti tema × yorug'/qorong'i.
+Har kuni **04:00** va **21:00** da hisobot, **23:00** da statistika.
+
+## Odatlar uch kategoriyada
+
+| Kategoriya | Standart odatlar |
+|---|---|
+| 🔴 Non-negotiable | Get up · **5x namoz** · **Summary** |
+| 🟡 Target | Deep flow · Sport |
+| 🟢 Bonus | Podcast · Read |
+
+**5x namoz** namoz ballidan, **Summary** esa kundalikdan avtomatik belgilanadi —
+ikkalasini ham qo'lda bosib bo'lmaydi.
+
+## Kundalik
+
+Har kuni beshta savol. **Hammasi to'ldirilgandagina** `Summary` odati
+bajarilgan hisoblanadi — aynan `5x namoz` kabi. Tarixni sana bo'yicha ko'rish mumkin.
 
 ---
+
+## Namoz ball tizimi
+
+Beshta namoz: Bomdod, Peshin, Asr, Shom, Xufton.
+
+| | O'g'il bola | Qiz bola |
+|---|---|---|
+| Jamoat | 1 ball | — |
+| O'z vaqtida | 1 ball | 1 ball |
+| Qazo | 0.5 ball | 0.5 ball |
+| O'qilmagan | 0 ball | 0 ball |
+| **Uzrli** | — | kunlik bayroq, ball aniq **2.5** |
+
+Kunlik ball **5 balldan** ko'rsatiladi. **≥ 2.5** bo'lsa `5x namoz` odati
+avtomatik bajarilgan bo'ladi — qo'lda belgilab bo'lmaydi.
+
+## Statistika
+
+Odat va namoz uchun **haftalik va oylik line chart**, o'rtacha foiz va
+**streak** (ketma-ket kunlar). Odatlar bo'limining Statistika tabida.
+
 
 # ErnestOS Setup From Zero
 
@@ -72,12 +110,20 @@ Bot kanaldan chiqishlarni **darhol** bilishi uchun `chat_member` yangilanishi ke
 ErnestOS buni avtomatik so'raydi (`allowed_updates` ro'yxatida) — qo'shimcha
 sozlash shart emas. Faqat bot kanalda **administrator** bo'lishi kerak.
 
-## C. Admin log kanalini yaratish
+## C. Uchta admin kanalini yaratish
 
-1. Yangi **private** kanal yarating (masalan `ErnestOS Logs`).
-2. Botni administrator qiling — **Post messages** huquqi bilan.
-3. `REQUIRED_CHANNEL_ID` bilan bir xil usulda raqamli ID ni oling.
-4. `ADMIN_LOG_CHANNEL_ID` ga yozing.
+Uchta alohida **private** kanal yarating. Har birida botni administrator
+qiling — **Post messages** huquqi bilan. Raqamli ID ni B bo'limidagi usul
+bilan oling.
+
+| Kanal | O'zgaruvchi | Nima keladi |
+|---|---|---|
+| ErnestOS Logs | `ADMIN_LOG_CHANNEL_ID` | Ro'yxatdan o'tish, odat/vazifa/maqsad o'zgarishlari, obuna |
+| ErnestOS Feedback | `FEEDBACK_CHANNEL_ID` | 💬 Taklif orqali kelgan takliflar va shikoyatlar |
+| ErnestOS Stats | `STATS_CHANNEL_ID` | Har kuni 23:00 da statistika (DAU/WAU/MAU, jami, yangi) |
+
+Oxirgi ikkitasi majburiy emas — bo'sh qoldirsangiz hammasi
+`ADMIN_LOG_CHANNEL_ID` ga boradi.
 
 **Sinov:** ilova ishga tushgach botga `/start` yuboring — kanalga
 `🆕 NEW ERNESTOS USER` xabari kelishi kerak.
@@ -169,7 +215,9 @@ cp .env.example .env
 | `DATABASE_URL` | PostgreSQL ulanish satri | ✅ production'da |
 | `REQUIRED_CHANNEL_ID` | Majburiy kanal raqamli ID (`-100...`) | bo'sh = obuna tekshirilmaydi |
 | `REQUIRED_CHANNEL_URL` | Foydalanuvchi bosadigan havola | tavsiya etiladi |
-| `ADMIN_LOG_CHANNEL_ID` | Log kanali raqamli ID | bo'sh = log yuborilmaydi |
+| `ADMIN_LOG_CHANNEL_ID` | Hodisalar kanali raqamli ID | bo'sh = log yuborilmaydi |
+| `FEEDBACK_CHANNEL_ID` | Taklif/shikoyatlar kanali | bo'sh = ADMIN_LOG ga boradi |
+| `STATS_CHANNEL_ID` | Kunlik statistika kanali | bo'sh = ADMIN_LOG ga boradi |
 | `WEBAPP_URL` | Mini App'ning https manzili | Mini App uchun |
 | `ENVIRONMENT` | `production` yoki `development` | ✅ ha |
 | `TZ` | `Asia/Tashkent` | tavsiya etiladi |
@@ -248,7 +296,8 @@ Buyruqlar:
 Deploy'dan keyin quyidagilarni birma-bir bosib chiqing:
 
 ```
-[ ] /start bosilganda PostgreSQL'da foydalanuvchi yaratiladi
+[ ] /start uch tilda salomlashadi, keyin til so'raydi
+[ ] tartib: til -> telefon -> jins -> obuna
 [ ] telefon raqamni ulashish ishlaydi
 [ ] boshqa odamning kontaktini yuborsa qabul qilinmaydi
 [ ] til tanlash ishlaydi (uz / en / ru)
@@ -258,14 +307,20 @@ Deploy'dan keyin quyidagilarni birma-bir bosib chiqing:
 [ ] kanalga qayta qo'shilganda ochiladi, ma'lumot joyida
 [ ] admin log kanaliga "NEW ERNESTOS USER" keladi
 [ ] 🏠 Home to'g'ri chiqadi
-[ ] ✅ Odatlar — 6 ta standart odat bor
+[ ] ✅ Odatlar — 3 kategoriyada ko'rsatiladi
+[ ] Summary odati kundalik to'liq to'ldirilganda belgilanadi
+[ ] Sozlamalarda ⬅️ Orqaga tugmasi bor
+[ ] Sozlamalarda telefon va profil rasmi boshqariladi
 [ ] odat bosilganda belgilanadi/olib tashlanadi
 [ ] 5x namoz bosilmaydi (qulf belgisi)
 [ ] odat qo'shish va o'chirish ishlaydi
 [ ] namoz belgilanganda ball hisoblanadi
-[ ] ball 2.5 dan oshganda 5x namoz avtomatik belgilanadi
-[ ] ayol foydalanuvchida "Uzrli" tugmasi bor, Jamoat/Qazo yo'q
-[ ] ⚡ Vazifalar — qo'shish, muddat, loyiha tanlash ishlaydi
+[ ] ball 5 dan ko'rsatiladi, 2.5 dan oshganda 5x namoz belgilanadi
+[ ] ayolda Uzrli + o'z vaqtida/qazo/o'qilmagan bor, Jamoat yo'q
+[ ] ⚡ Vazifalar — o'chirish emas, ✅ Bajarildi va ✏️ Tahrirlash
+[ ] bajarilgan vazifa Done arxiviga tushadi
+[ ] Home pastida 1 oylik kalendar deadline'lar bilan
+[ ] Statistika tabida line chart va streak ko'rinadi
 [ ] "Alohida" tanlansa loyihasiz saqlanadi
 [ ] loyiha o'chirilganda vazifalari qolib ketadi
 [ ] 🎯 Maqsadlar — uch daraja, qo'shish/bajarish/o'chirish
@@ -290,7 +345,7 @@ ernestos/
 ├── webapp/
 │   └── index.html      Mini App
 ├── tests/
-│   └── test_smoke.py   41 ta test
+│   └── test_smoke.py   65 ta test
 ├── requirements.txt
 ├── Procfile
 ├── .env.example
@@ -302,6 +357,8 @@ ernestos/
 ```bash
 python -m pytest tests/ -q
 ```
+
+**65 test o'tadi.**
 
 Qamrov: foydalanuvchi izolyatsiyasi, Telegram initData tekshiruvi, egalik
 nazorati, obuna bloki, namoz balli, hisobot takrorlanmasligi.

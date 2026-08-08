@@ -180,9 +180,32 @@ def test_task_cannot_join_another_users_project(alice, bob):
 # Defaults and habits
 # --------------------------------------------------------------------------
 
-def test_new_user_gets_exactly_the_six_default_habits(alice):
+def test_new_user_gets_the_default_habits(alice):
     names = [h["name"] for h in alice.get("/api/habits").json()["habits"]]
-    assert names == ["Get up", "5x namoz", "Deep flow", "Sport", "Podcast", "Read"]
+    assert names == ["Get up", "5x namoz", "Summary",
+                     "Deep flow", "Sport", "Podcast", "Read"]
+
+
+def test_habits_are_grouped_into_three_categories(alice):
+    body = alice.get("/api/habits").json()
+    assert body["categories"] == ["non_negotiable", "target", "bonus"]
+    grouped = body["grouped"]
+    assert [h["name"] for h in grouped["non_negotiable"]] == \
+        ["Get up", "5x namoz", "Summary"]
+    assert [h["name"] for h in grouped["target"]] == ["Deep flow", "Sport"]
+    assert [h["name"] for h in grouped["bonus"]] == ["Podcast", "Read"]
+
+
+def test_new_habit_lands_in_the_chosen_category(alice):
+    alice.post("/api/habits", json={"name": "Meditation", "category": "bonus"})
+    grouped = alice.get("/api/habits").json()["grouped"]
+    assert "Meditation" in [h["name"] for h in grouped["bonus"]]
+
+
+def test_unknown_category_falls_back_to_target(alice):
+    alice.post("/api/habits", json={"name": "Stretching", "category": "nonsense"})
+    grouped = alice.get("/api/habits").json()["grouped"]
+    assert "Stretching" in [h["name"] for h in grouped["target"]]
 
 
 def test_default_theme_is_ocean(alice):
@@ -220,9 +243,16 @@ def test_male_qaza_scores_half():
     assert svc.prayer_score({p: "qaza" for p in svc.PRAYERS}, "male") == 2.5
 
 
-def test_female_has_no_jamaat_or_qaza():
+def test_female_has_no_jamaat_but_does_have_qaza():
+    """Women record on-time, qaza and missed — only jamaat is male-only."""
+    assert svc.STATUSES_FEMALE == ["on_time", "qaza", "missed"]
     assert svc.prayer_score({p: "jamaat" for p in svc.PRAYERS}, "female") == 0.0
-    assert svc.prayer_score({p: "qaza" for p in svc.PRAYERS}, "female") == 0.0
+    assert svc.prayer_score({p: "qaza" for p in svc.PRAYERS}, "female") == 2.5
+
+
+def test_prayer_is_scored_out_of_five():
+    assert svc.PRAYER_MAX_SCORE == 5.0
+    assert svc.prayer_score({p: "on_time" for p in svc.PRAYERS}, "male") == 5.0
 
 
 def test_female_excused_day_scores_exactly_the_threshold():
@@ -243,9 +273,16 @@ def test_setting_prayers_marks_the_protected_habit_done(alice):
 
 
 def test_prayer_status_outside_the_gender_set_is_rejected(alice):
+    """Jamaat is not offered to women, so the API must refuse it."""
     alice.post("/api/settings", json={"gender": "female"})
     r = alice.post("/api/prayers", json={"prayer": "bomdod", "status": "jamaat"})
     assert r.status_code == 422
+
+
+def test_female_qaza_is_accepted(alice):
+    alice.post("/api/settings", json={"gender": "female"})
+    assert alice.post("/api/prayers",
+                      json={"prayer": "bomdod", "status": "qaza"}).status_code == 200
 
 
 # --------------------------------------------------------------------------
@@ -359,3 +396,161 @@ def test_frontend_has_no_ai_or_money_ui():
     html = (ROOT / "webapp" / "index.html").read_text().lower()
     for term in ("anthropic", "claude", "currency", "/api/money"):
         assert term not in html, f"index.html still mentions {term!r}"
+
+
+# --------------------------------------------------------------------------
+# Journal — five questions drive the derived Summary habit
+# --------------------------------------------------------------------------
+
+def _summary_done(caller) -> bool:
+    habits = caller.get("/api/habits").json()["habits"]
+    return next(h for h in habits if h["name"] == "Summary")["done"]
+
+
+def test_journal_exposes_five_questions(alice):
+    questions = alice.get("/api/journal").json()["questions"]
+    assert len(questions) == 5
+    assert {q["id"] for q in questions} == set(svc.JOURNAL_KEYS)
+
+
+def test_partial_journal_does_not_tick_the_summary_habit(alice):
+    alice.post("/api/journal", json={"answers": {"wins": "shipped"}})
+    assert _summary_done(alice) is False
+
+
+def test_complete_journal_ticks_the_summary_habit(alice):
+    """Exactly like 5x namoz: the habit is derived, never ticked by hand."""
+    alice.post("/api/journal",
+               json={"answers": {k: "answer" for k in svc.JOURNAL_KEYS}})
+    assert _summary_done(alice) is True
+
+
+def test_summary_habit_cannot_be_toggled_by_hand(alice):
+    habits = alice.get("/api/habits").json()["habits"]
+    summary = next(h for h in habits if h["name"] == "Summary")
+    assert summary["protected"] is True
+    assert alice.post(f"/api/habits/{summary['id']}/toggle").status_code == 400
+
+
+def test_journal_answers_survive_a_reload(alice):
+    alice.post("/api/journal", json={"answers": {"wins": "a", "lesson": "b"}})
+    entry = alice.get("/api/journal?day=" + svc.today_local().isoformat()).json()["entry"]
+    assert entry["answers"]["wins"] == "a"
+    assert entry["complete"] is False
+
+
+# --------------------------------------------------------------------------
+# Statistics and calendar
+# --------------------------------------------------------------------------
+
+def test_week_stats_return_seven_points(alice):
+    body = alice.get("/api/stats?period=week").json()
+    assert len(body["series"]) == 7
+    assert {"habits", "prayer", "label", "day"} <= set(body["series"][0])
+
+
+def test_month_stats_return_thirty_points(alice):
+    assert len(alice.get("/api/stats?period=month").json()["series"]) == 30
+
+
+def test_unknown_period_falls_back_to_week(alice):
+    assert len(alice.get("/api/stats?period=decade").json()["series"]) == 7
+
+
+def test_stats_include_streaks(alice):
+    body = alice.get("/api/stats").json()
+    assert "habit_streak" in body and "prayer_streak" in body
+
+
+def test_calendar_shows_task_deadlines(alice):
+    today = svc.today_local()
+    alice.post("/api/tasks", json={"title": "CALENDAR-TASK",
+                                   "deadline": today.isoformat()})
+    body = alice.get(f"/api/calendar?year={today.year}&month={today.month}").json()
+    titles = [e["title"] for e in body["events"].get(today.isoformat(), [])]
+    assert "CALENDAR-TASK" in titles
+
+
+def test_calendar_rejects_an_impossible_month(alice):
+    assert alice.get("/api/calendar?year=2026&month=13").status_code == 422
+
+
+# --------------------------------------------------------------------------
+# Done archives
+# --------------------------------------------------------------------------
+
+def test_completed_task_moves_to_the_done_archive(alice):
+    task_id = alice.post("/api/tasks", json={"title": "ARCHIVE-ME"}).json()["id"]
+    alice.patch(f"/api/tasks/{task_id}", json={"status": "done"})
+    assert "ARCHIVE-ME" in alice.get("/api/tasks/done").text
+    assert "ARCHIVE-ME" not in alice.get("/api/tasks?days=365").text
+
+
+def test_completed_goal_moves_to_the_achieved_list(alice):
+    goal_id = alice.post("/api/goals",
+                         json={"title": "ACHIEVE-ME", "category": "tactical"}).json()["id"]
+    alice.post(f"/api/goals/{goal_id}/complete")
+    assert "ACHIEVE-ME" in alice.get("/api/goals/done").text
+
+
+def test_a_completed_goal_can_be_reopened(alice):
+    goal_id = alice.post("/api/goals",
+                         json={"title": "REOPEN-ME", "category": "tactical"}).json()["id"]
+    alice.post(f"/api/goals/{goal_id}/complete")
+    alice.post(f"/api/goals/{goal_id}/reopen")
+    goals = alice.get("/api/goals").json()["tactical"]
+    assert next(g for g in goals if g["id"] == goal_id)["status"] == "active"
+
+
+def test_task_description_round_trips(alice):
+    task_id = alice.post("/api/tasks", json={"title": "with details",
+                                             "description": "the long version"}).json()["id"]
+    tasks = alice.get("/api/tasks?days=365").json()["undated"]
+    assert next(t for t in tasks if t["id"] == task_id)["description"] == "the long version"
+
+
+# --------------------------------------------------------------------------
+# Weekly focus editing
+# --------------------------------------------------------------------------
+
+def _a_focus_id(caller) -> int:
+    """An existing mission, or a fresh one when the week still has a slot.
+
+    The suite shares one database, so an earlier test may already have filled
+    all three slots for this week.
+    """
+    existing = caller.get("/api/focus").json()["focus"]
+    if existing:
+        return existing[0]["id"]
+    return caller.post("/api/focus", json={"title": "mission"}).json()["id"]
+
+
+def test_weekly_focus_can_be_renamed(alice):
+    focus_id = _a_focus_id(alice)
+    assert alice.patch(f"/api/focus/{focus_id}", json={"title": "after"}).status_code == 200
+    titles = [f["title"] for f in alice.get("/api/focus").json()["focus"]]
+    assert "after" in titles
+
+
+def test_renaming_a_focus_to_blank_is_rejected(alice):
+    focus_id = _a_focus_id(alice)
+    assert alice.patch(f"/api/focus/{focus_id}", json={"title": "   "}).status_code == 422
+
+
+def test_another_users_focus_cannot_be_renamed(alice, bob):
+    focus_id = _a_focus_id(alice)
+    assert bob.patch(f"/api/focus/{focus_id}", json={"title": "stolen"}).status_code == 404
+
+
+# --------------------------------------------------------------------------
+# Platform statistics stay aggregate
+# --------------------------------------------------------------------------
+
+def test_platform_stats_are_counts_only(alice):
+    alice.get("/api/me")
+    with SessionLocal() as s:
+        st = svc.platform_stats(s)
+    assert st["total"] >= 1
+    for key in ("dau", "wau", "mau", "new_today", "tasks_created"):
+        assert isinstance(st[key], int)
+    assert "journal" not in str(st).lower() or "journal_today" in st
