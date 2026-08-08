@@ -1066,6 +1066,32 @@ def stats(s: Session, ws: int, period: str = "week") -> dict:
     }
 
 
+def stats_csv(s: Session, ws: int, period: str = "month") -> str:
+    """The statistics view as CSV, for the download button.
+
+    CSV rather than PDF: it opens in Excel, Numbers and Google Sheets without
+    a viewer, and the file stays a few kilobytes.
+    """
+    data = stats(s, ws, period)
+    lines = ["ErnestOS statistics"]
+    lines.append(f"period,{period}")
+    lines.append(f"generated,{datetime.now(TZ):%Y-%m-%d %H:%M}")
+    lines.append("")
+    lines.append(f"habit average %,{data['habit_avg']}")
+    lines.append(f"prayer average %,{data['prayer_avg']}")
+    lines.append(f"habit streak,{data['habit_streak']}")
+    lines.append(f"prayer streak,{data['prayer_streak']}")
+    lines.append("")
+    lines.append("prayer status,count")
+    for status, count in sorted(data["prayer_breakdown"].items()):
+        lines.append(f"{status},{count}")
+    lines.append("")
+    lines.append("date,habits %,prayer %")
+    for point in data["series"]:
+        lines.append(f"{point['day']},{point['habits']},{point['prayer']}")
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Calendar — one month of deadlines
 # ---------------------------------------------------------------------------

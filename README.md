@@ -181,19 +181,30 @@ createdb ernestos
 DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/ernestos
 ```
 
-### Sxema qanday yaratiladi
+### Sxema qanday yaratiladi va yangilanadi
 
-Ilova ishga tushganda **yetishmayotgan jadvallarni avtomatik yaratadi**
-(`db.init_db()`). Alembic yo'q — bu loyiha uchun ortiqcha.
+Ilova ishga tushganda:
 
-Qo'lda yaratmoqchi bo'lsangiz:
+1. yetishmayotgan **jadvallarni** yaratadi;
+2. mavjud jadvallarga yetishmayotgan **ustunlarni** qo'shadi.
+
+Ikkalasi ham faqat **qo'shadi** — hech qachon jadval yoki ustun o'chirmaydi,
+tur o'zgartirmaydi. Shuning uchun uni real foydalanuvchilar ustida ishlatish
+xavfsiz.
+
+**Ya'ni yangi versiyaga o'tishda bazani o'chirish shart emas.** Deploy qilasiz,
+yangi ustunlar o'zi qo'shiladi, ma'lumot joyida qoladi.
+
+Qo'lda ishga tushirish:
 ```bash
 python -c "import db; db.init_db()"
 ```
 
-Bu buyruq mavjud jadval yoki ustunga **tegmaydi** — faqat yo'qlarini qo'shadi.
-
 ## E. Eski bazani tozalash
+
+> **Odatda kerak emas.** Ilova yetishmayotgan ustunlarni o'zi qo'shadi, ya'ni
+> yangi versiyaga o'tishda ma'lumotni yo'qotmaysiz. Quyidagi amal faqat
+> butunlay noldan boshlamoqchi bo'lsangiz kerak.
 
 > ⚠️ **DIQQAT: bu barcha ma'lumotni o'chiradi.** Qaytarib bo'lmaydi.
 
@@ -345,6 +356,11 @@ Deploy'dan keyin quyidagilarni birma-bir bosib chiqing:
 [ ] bir soatdan keyin yozilsa hisoblanmaydi
 [ ] profil rasmi Mini App'da avatar sifatida chiqadi
 [ ] statistika o'z kanaliga boradi, log kanaliga emas
+[ ] Sozlamalarda «Saqlash» tugmasi bor
+[ ] Namoz holatlari rangli va emojili
+[ ] Vision'da ✏️ tahrirlash, o'chirish esa pastda
+[ ] Statistikani CSV qilib yuklab olish ishlaydi
+[ ] «Ma'lumotlaringiz himoyalangan» eslatmasi ko'rinadi
 [ ] "Alohida" tanlansa loyihasiz saqlanadi
 [ ] loyiha o'chirilganda vazifalari qolib ketadi
 [ ] 🎯 Maqsadlar — uch daraja, qo'shish/bajarish/o'chirish
@@ -369,7 +385,7 @@ ernestos/
 ├── webapp/
 │   └── index.html      Mini App
 ├── tests/
-│   └── test_smoke.py   79 ta test
+│   └── test_smoke.py   84 ta test
 ├── requirements.txt
 ├── Procfile
 ├── .env.example
@@ -382,7 +398,7 @@ ernestos/
 python -m pytest tests/ -q
 ```
 
-**79 test o'tadi.**
+**84 test o'tadi.**
 
 Qamrov: foydalanuvchi izolyatsiyasi, Telegram initData tekshiruvi, egalik
 nazorati, obuna bloki, namoz balli, hisobot takrorlanmasligi.

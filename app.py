@@ -2325,6 +2325,22 @@ def api_stats(period: str = "week", init=Header(default=None, alias="X-Telegram-
         return svc.stats(s, ws, period)
 
 
+@app.get("/api/stats/export")
+def api_stats_export(period: str = "month",
+                     init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Download the statistics as CSV."""
+    _, ws = auth(init)
+    if period not in ("week", "month", "year"):
+        period = "month"
+    with SessionLocal() as s:
+        body = svc.stats_csv(s, ws, period)
+    stamp = datetime.now(svc.TZ).strftime("%Y-%m-%d")
+    return Response(
+        content=body, media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition":
+                 f'attachment; filename="ernestos-{period}-{stamp}.csv"'})
+
+
 @app.get("/api/calendar")
 def api_calendar(year: int | None = None, month: int | None = None,
                  init=Header(default=None, alias="X-Telegram-Init-Data")):

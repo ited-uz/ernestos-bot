@@ -17,6 +17,9 @@
    ================================================================== */
 :root{
   --bg:#080d17; --bg-glow:#12203a; --surface:#0f1727; --surface-2:#141e33;
+  /* Anything tappable sits on --tap, a step lighter than --surface, so a
+     button is distinguishable from a plain panel at a glance. */
+  --tap:#18233d; --tap-line:#2a3a5c;
   --line:#1e2b45; --line-soft:#18233a;
   --text:#eaf0fa; --muted:#7e8fab; --faint:#4d5c76;
   --accent:#4f8cff; --accent-2:#7cb0ff; --accent-dim:#1a2f57; --on-accent:#04101f;
@@ -30,12 +33,14 @@
 }
 [data-theme="emerald"]{
   --bg:#04120e; --bg-glow:#0a2b21; --surface:#08201a; --surface-2:#0c2b22;
+  --tap:#103428; --tap-line:#1a5a44;
   --line:#124635; --line-soft:#0f3a2c;
   --accent:#12d18a; --accent-2:#5ce7b4; --accent-dim:#0a3a2c; --on-accent:#03170f;
   --t1:#fb7185; --t2:#fbbf24; --t3:#12d18a;
 }
 [data-theme="obsidian"]{
   --bg:#000; --bg-glow:#151519; --surface:#0d0d10; --surface-2:#141418;
+  --tap:#1b1b21; --tap-line:#33333d;
   --line:#26262e; --line-soft:#1d1d24;
   --text:#f4f4f5; --muted:#8b8b95; --faint:#55555f;
   --accent:#e4e4e7; --accent-2:#fafafa; --accent-dim:#232329; --on-accent:#09090b;
@@ -43,18 +48,21 @@
 }
 [data-theme="rose"]{
   --bg:#14060c; --bg-glow:#2e0d1c; --surface:#1e0912; --surface-2:#290d19;
+  --tap:#331120; --tap-line:#5a2038;
   --line:#45182b; --line-soft:#391423;
   --accent:#ff4d6d; --accent-2:#ff8098; --accent-dim:#450f21; --on-accent:#1a0308;
   --t1:#ff8098; --t2:#fbbf24; --t3:#2fd27a;
 }
 [data-theme="pink"]{
   --bg:#14061a; --bg-glow:#2d0d38; --surface:#1d0824; --surface-2:#280c31;
+  --tap:#320f3c; --tap-line:#582066;
   --line:#44184f; --line-soft:#391442;
   --accent:#f65bb5; --accent-2:#fb92cf; --accent-dim:#420f3b; --on-accent:#1b0413;
   --t1:#fb7185; --t2:#fbbf24; --t3:#2fd27a;
 }
 [data-theme="aurora"]{
   --bg:#07061a; --bg-glow:#1a1147; --surface:#100d2e; --surface-2:#17123c;
+  --tap:#1d1748; --tap-line:#3a2f80;
   --line:#2a2166; --line-soft:#221a54;
   --accent:#8b7bff; --accent-2:#c4a8ff; --accent-dim:#241a58; --on-accent:#0a0620;
   --t1:#f472b6; --t2:#facc15; --t3:#22d3ee;
@@ -64,6 +72,7 @@
 :root[data-appearance="light"],
 :root[data-appearance="auto"]:not([data-dark="1"]){
   --bg:#f4f7fc; --bg-glow:#e3ecfa; --surface:#fff; --surface-2:#f6f9fd;
+  --tap:#eef4fd; --tap-line:#cfdcee;
   --line:#e2e9f4; --line-soft:#edf2f9;
   --text:#0d1626; --muted:#5f6f88; --faint:#9aa8bd;
   --accent-dim:#e6efff; --on-accent:#fff;
@@ -106,7 +115,7 @@ h2{font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:1.2px;
         box-shadow:var(--shadow)}
 .avatar img{width:100%;height:100%;object-fit:cover;display:block}
 .gear{width:40px;height:40px;border-radius:13px;flex:none;display:grid;place-items:center;
-      background:var(--surface);border:1px solid var(--line);font-size:16px;
+      background:var(--tap);border:1px solid var(--tap-line);font-size:16px;
       box-shadow:var(--ring);min-width:40px}
 /* Compact variant still keeps a 40px tap area via the padded ::after. */
 .gear.mini{width:32px;height:32px;min-width:32px;border-radius:10px;font-size:13px;
@@ -142,13 +151,13 @@ h2{font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:1.2px;
      border:0;border-radius:13px;padding:13px 16px;font-size:15px;font-weight:680;
      cursor:pointer;min-height:48px;width:100%;box-shadow:var(--shadow)}
 .btn:active{filter:brightness(.94)}
-.btn.ghost{background:var(--surface);color:var(--text);border:1px solid var(--line);box-shadow:var(--ring)}
+.btn.ghost{background:var(--tap);color:var(--text);border:1px solid var(--tap-line);box-shadow:var(--ring)}
 .btn.danger{background:transparent;color:var(--danger);border:1px solid var(--danger);box-shadow:none}
 .btn.sm{width:auto;padding:10px 14px;font-size:13px;min-height:42px}
 .btns{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 .btns .btn{flex:1;min-width:140px}
 
-input,textarea,select{width:100%;background:var(--surface-2);border:1px solid var(--line);
+input,textarea,select{width:100%;background:var(--tap);border:1px solid var(--tap-line);
   color:var(--text);border-radius:12px;padding:13px;font:inherit;min-height:48px;
   -webkit-appearance:none;appearance:none}
 select{background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),
@@ -160,10 +169,23 @@ input:focus,textarea:focus,select:focus{outline:2px solid var(--accent);outline-
 label{display:block;font-size:11px;color:var(--faint);margin:15px 0 6px;
       text-transform:uppercase;letter-spacing:.8px;font-weight:700}
 
-.pill{display:inline-flex;align-items:center;gap:5px;background:var(--surface);
-      border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-size:13px;
+.pill{display:inline-flex;align-items:center;gap:5px;background:var(--tap);
+      border:1px solid var(--tap-line);border-radius:999px;padding:8px 14px;font-size:13px;
       font-weight:600;white-space:nowrap}
 .pill.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+/* Prayer statuses read faster with their own colour than as identical chips. */
+.pill.st-jamaat.on{background:#16a34a;border-color:#16a34a;color:#fff}
+.pill.st-on_time.on{background:#22c55e;border-color:#22c55e;color:#04140a}
+.pill.st-qaza.on{background:#f59e0b;border-color:#f59e0b;color:#1a1204}
+.pill.st-missed.on{background:#ef4444;border-color:#ef4444;color:#fff}
+.prayer-card{border-left:3px solid var(--line)}
+.prayer-card.set-jamaat,.prayer-card.set-on_time{border-left-color:var(--ok)}
+.prayer-card.set-qaza{border-left-color:var(--warn)}
+.prayer-card.set-missed{border-left-color:var(--danger)}
+.privacy{display:flex;gap:9px;align-items:flex-start;font-size:12px;color:var(--muted);
+         background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+         padding:11px 13px;margin:12px 0}
+.privacy b{color:var(--text);font-weight:650}
 .pills{display:flex;gap:7px;flex-wrap:wrap}
 .pills.scroll{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
               margin:0 calc(var(--pad) * -1);padding:0 var(--pad) 2px}
@@ -171,7 +193,7 @@ label{display:block;font-size:11px;color:var(--faint);margin:15px 0 6px;
 
 .swatch{width:28px;height:28px;border-radius:9px;flex:none;box-shadow:var(--ring)}
 .theme-row{display:flex;align-items:center;gap:12px;padding:12px 13px;border-radius:12px;
-           background:var(--surface-2);border:1px solid var(--line);margin-bottom:7px}
+           background:var(--tap);border:1px solid var(--tap-line);margin-bottom:7px}
 .theme-row.on{border-color:var(--accent);background:var(--accent-dim)}
 
 .dot{width:8px;height:8px;border-radius:50%;flex:none;display:inline-block}
@@ -190,7 +212,7 @@ label{display:block;font-size:11px;color:var(--faint);margin:15px 0 6px;
 /* calendar */
 .cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
 .cal-nav{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;
-         background:var(--surface-2);border:1px solid var(--line);font-size:17px}
+         background:var(--tap);border:1px solid var(--tap-line);font-size:17px}
 .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;
           width:100%}
 .cal-dow{text-align:center;font-size:9px;color:var(--faint);padding:2px 0;font-weight:750;
@@ -292,6 +314,12 @@ window.addEventListener("orientationchange", () => setTimeout(syncViewport, 250)
 /* ---------- translations ---------- */
 const DICT = {
  uz:{
+  progress:"Progress",
+  privacy_title:"Ma'lumotlaringiz to'liq himoyalangan",
+  privacy_body:"Yozganlaringizni faqat siz ko'rasiz. Hech kim, hatto boshqa foydalanuvchilar ham kira olmaydi.",
+  settings_saved:"Sozlamalar saqlandi",
+  download:"Hisobotni yuklab olish",
+  report:"Hisobot",
   home:"Home", habits:"Odatlar", tasks:"Vazifalar", vision:"Vision",
   greet:"Assalomu alaykum", quote_ph:"O'zingizga kuch beradigan gap yozing",
   h_focus:"Shu hafta", h_tasks:"Bugungi vazifalar", h_habits:"Odatlar",
@@ -330,6 +358,12 @@ const DICT = {
   months:["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"],
  },
  en:{
+  progress:"Progress",
+  privacy_title:"Your data is fully protected",
+  privacy_body:"Only you can see what you write. No one else — including other users — can reach it.",
+  settings_saved:"Settings saved",
+  download:"Download report",
+  report:"Report",
   home:"Home", habits:"Habits", tasks:"Tasks", vision:"Vision",
   greet:"Hello", quote_ph:"Write something that motivates you",
   h_focus:"This week", h_tasks:"Today's tasks", h_habits:"Habits",
@@ -368,6 +402,12 @@ const DICT = {
   months:["January","February","March","April","May","June","July","August","September","October","November","December"],
  },
  ru:{
+  progress:"Прогресс",
+  privacy_title:"Ваши данные полностью защищены",
+  privacy_body:"Записи видите только вы. Никто другой, включая других пользователей, не имеет доступа.",
+  settings_saved:"Настройки сохранены",
+  download:"Скачать отчёт",
+  report:"Отчёт",
   home:"Главная", habits:"Привычки", tasks:"Задачи", vision:"Цели",
   greet:"Здравствуйте", quote_ph:"Напишите то, что вас мотивирует",
   h_focus:"На этой неделе", h_tasks:"Задачи на сегодня", h_habits:"Привычки",
@@ -419,7 +459,8 @@ const THEMES = [
 /* ---------- state ---------- */
 const state = {
   screen:"home", tab:"habits", taskTab:"open", visionTab:"active",
-  statsPeriod:"week", lang:"uz", appearance:"auto", deleteMode:false,
+  statsPeriod:"week", lang:"uz", appearance:"auto",
+  deleteMode:false, goalDeleteMode:false,
   loading:true, error:null,
   me:null, home:null, calendar:null,
   habits:null, prayer:null, journal:null, journalQuestions:[], journalHistory:null,
@@ -465,6 +506,8 @@ document.getElementById("sheet").addEventListener("click", e => {
   if(e.target.id === "sheet") closeSheet();
 });
 const bar = p => `<div class="bar"><span style="width:${Math.max(0,Math.min(100,p))}%"></span></div>`;
+const privacyNote = () =>
+  `<div class="privacy">🔒 <span><b>${t("privacy_title")}</b><br>${t("privacy_body")}</span></div>`;
 
 /* ---------- line chart (inline SVG, no libraries) ---------- */
 function lineChart(series, keys){
@@ -549,9 +592,8 @@ SCREENS.home = () => {
         <div class="check ${f.done?"on":""}" data-act="focus-toggle" data-id="${f.id}">${f.done?"✓":""}</div>
         <div class="grow ellipsis">${esc(f.title)}</div>
         <div class="gear mini" data-act="focus-edit" data-id="${f.id}"
-             data-title="${esc(f.title)}" class="mini">✏️</div>
-        <div class="gear mini" data-act="focus-delete" data-id="${f.id}"
-             class="mini">🗑</div>
+             data-title="${esc(f.title)}">✏️</div>
+        <div class="gear mini" data-act="focus-delete" data-id="${f.id}">🗑</div>
       </div>`).join("") : `<div class="empty">${t("empty")}</div>`;
   if(d.focus.length < 3)
     h += `<button class="btn ghost sm" data-act="focus-add">+ ${t("add_focus")}</button>`;
@@ -582,6 +624,7 @@ SCREENS.home = () => {
   }
 
   h += `<h2>${t("h_calendar")}</h2>` + calendarBlock();
+  h += privacyNote();
   return h;
 };
 
@@ -670,8 +713,7 @@ function habitsTab(){
             ${clock ? `<div class="meta">${clock} · ${t("wake_hint")}</div>` : ""}
           </div>
           ${x.system_key === "wakeup"
-            ? `<div class="gear mini" data-act="wake-time" data-time="${x.target_time||"05:00"}"
-                 class="mini">⏰</div>` : ""}
+            ? `<div class="gear mini" data-act="wake-time" data-time="${x.target_time||"05:00"}">⏰</div>` : ""}
         </div>`;
     }).join("");
   });
@@ -695,17 +737,24 @@ function prayerTab(){
         <div class="check ${p.excused?"on":""}">${p.excused?"✓":""}</div>
         <div class="grow">🌸 ${t("excused")}</div></div>`;
   }
+  const ICON = {bomdod:"🌅", peshin:"☀️", asr:"🌤", shom:"🌆", xufton:"🌙"};
+  const STATUS_ICON = {jamaat:"🕌", on_time:"✅", qaza:"⏳", missed:"❌"};
+
   ["bomdod","peshin","asr","shom","xufton"].forEach(name => {
     const cur = p.prayers[name];
-    h += `<div class="card">
-      <div style="font-weight:680;margin-bottom:10px">${t(name)}</div>
+    h += `<div class="card prayer-card ${cur ? "set-" + cur : ""}">
+      <div style="font-weight:680;margin-bottom:10px">${ICON[name]} ${t(name)}</div>
       <div class="pills">${p.statuses.map(st =>
-        `<div class="pill ${cur===st?"on":""}" data-act="prayer"
-          data-prayer="${name}" data-status="${st}">${t(st)}</div>`).join("")}</div></div>`;
+        `<div class="pill st-${st} ${cur===st?"on":""}" data-act="prayer"
+          data-prayer="${name}" data-status="${st}">${STATUS_ICON[st]} ${t(st)}</div>`).join("")}</div></div>`;
   });
+
+  const pct = Math.round(p.score / p.max * 100);
   h += `<div class="card glow" style="text-align:center">
-      <div class="num" style="font-size:26px;font-weight:760">${p.score} / ${p.max}</div>
-      <div class="muted small">${t("score")}</div></div>`;
+      <div class="num" style="font-size:28px;font-weight:760">${p.score} / ${p.max}</div>
+      <div class="muted small">${t("score")}</div>
+      ${bar(pct)}</div>`;
+  h += privacyNote();
   return h;
 }
 
@@ -721,6 +770,7 @@ function journalTab(){
   h += `<div class="btns">
       <button class="btn" data-act="journal-save">${t("save")}</button>
       <button class="btn ghost" data-act="journal-history">${t("journal_history")}</button></div>`;
+  h += privacyNote();
   if(state.journalHistory){
     h += `<h2>${t("journal_history")}</h2>`;
     h += state.journalHistory.length ? state.journalHistory.map(e => `
@@ -754,7 +804,10 @@ function statsTab(){
     <h2>${t("prayer")}</h2>
     ${Object.entries(st.prayer_breakdown).map(([k,v]) =>
       `<div class="item"><div class="grow">${t(k)}</div><b class="num">${v}</b></div>`).join("")
-      || `<div class="empty">${t("empty")}</div>`}`;
+      || `<div class="empty">${t("empty")}</div>`}
+    <button class="btn ghost" data-act="stats-download" style="margin-top:12px">
+      ⬇️ ${t("download")}</button>
+    ${privacyNote()}`;
 }
 
 /* ---------- Tasks ---------- */
@@ -795,8 +848,7 @@ SCREENS.tasks = () => {
       <div class="card"><div class="row">
         <div class="grow ellipsis">${esc(p.name)}</div>
         <div class="muted small num">${p.tasks_done}/${p.tasks_total}</div>
-        <div class="gear mini" data-act="project-delete" data-id="${p.id}"
-             class="mini">🗑</div>
+        <div class="gear mini" data-act="project-delete" data-id="${p.id}">🗑</div>
       </div>${bar(p.progress)}</div>`).join("");
   }
   return h;
@@ -811,8 +863,7 @@ function taskRow(task){
           <span>${esc(task.project || t("standalone"))}</span>
           ${task.deadline ? `<span class="num">· ${task.deadline}</span>` : ""}</div>
       </div>
-      <div class="gear mini" data-act="task-open" data-id="${task.id}"
-           class="mini">✏️</div>
+      <div class="gear mini" data-act="task-open" data-id="${task.id}">✏️</div>
     </div>`;
 }
 
@@ -836,23 +887,36 @@ SCREENS.vision = () => {
 
   const g = state.goals;
   if(!g) return h + `<div class="spin"></div>`;
+  if(state.goalDeleteMode) h += `<div class="card glow">${t("pick_delete")}</div>`;
   const icons = {ultimate:"👑", milestone:"🏆", tactical:"⚡"};
   let any = false;
   ["ultimate","milestone","tactical"].forEach(cat => {
     const items = (g[cat] || []).filter(x => x.status !== "completed");
     if(!items.length) return;
     any = true;
-    h += `<h2>${icons[cat]} ${t(cat)}</h2>` + items.map(goal => `
-      <div class="item">
+    h += `<h2>${icons[cat]} ${t(cat)}</h2>` + items.map(goal => {
+      if(state.goalDeleteMode){
+        return `<div class="item pick" data-act="goal-delete" data-id="${goal.id}">
+          <div class="grow ellipsis">${esc(goal.title)}</div><div>🗑</div></div>`;
+      }
+      return `<div class="item">
         <div class="check" data-act="goal-complete" data-id="${goal.id}"></div>
         <div class="grow"><div class="ellipsis">${esc(goal.title)}</div>
           ${goal.progress ? `<div class="meta num">${goal.progress}%</div>` : ""}</div>
-        <div class="gear mini" data-act="goal-delete" data-id="${goal.id}"
-             class="mini">🗑</div>
-      </div>`).join("");
+        <div class="gear mini" data-act="goal-edit" data-id="${goal.id}">✏️</div>
+      </div>`;
+    }).join("");
   });
   if(!any) h += `<div class="empty">${t("empty")}</div>`;
-  h += `<button class="btn ghost" data-act="goal-add" style="margin-top:12px">+ ${t("add_goal")}</button>`;
+
+  // Deleting lives under Add, behind a pick-mode, instead of a bin on every row.
+  h += state.goalDeleteMode
+    ? `<button class="btn" data-act="goal-delete-off" style="margin-top:14px">${t("finish")}</button>`
+    : `<div class="btns">
+         <button class="btn" data-act="goal-add">+ ${t("add_goal")}</button>
+         <button class="btn ghost" data-act="goal-delete-on">🗑 ${t("delete")}</button>
+       </div>`;
+  h += privacyNote();
   return h;
 };
 
@@ -883,7 +947,9 @@ function settingsSheet(){
       `<div class="pill ${state.appearance===v?"on":""}" data-act="set-appearance" data-value="${v}">${l}</div>`).join("")}</div>
     <label>${t("photo")}</label>
     <div class="muted small">${t("photo_hint")}</div>
-    <button class="btn ghost" data-act="close" style="margin-top:18px">${t("cancel")}</button>`;
+    ${privacyNote()}
+    <button class="btn" data-act="settings-save" style="margin-top:6px">${t("save")}</button>
+    <button class="btn ghost" data-act="close" style="margin-top:8px">${t("cancel")}</button>`;
 }
 
 /* ---------- render ---------- */
@@ -948,15 +1014,26 @@ function handleError(e){
 
 /* ---------- actions ---------- */
 const A = {
-  nav: el => { haptic(); setState({screen:el.dataset.screen, deleteMode:false});
+  nav: el => { haptic(); setState({screen:el.dataset.screen, deleteMode:false, goalDeleteMode:false});
                loadScreen(el.dataset.screen); },
   tab: el => { haptic(); setState({tab:el.dataset.tab, deleteMode:false});
                if(el.dataset.tab === "stats") loadStats(state.statsPeriod); },
   "task-tab": el => { haptic(); setState({taskTab:el.dataset.tab}); loadScreen("tasks"); },
   "vision-tab": el => { haptic(); setState({visionTab:el.dataset.tab}); loadScreen("vision"); },
   "stats-period": el => { haptic(); loadStats(el.dataset.period); },
+  "stats-download": () => {
+    // Telegram's in-app browser blocks a plain <a download>, so hand the URL
+    // to Telegram itself, which opens it in the system browser.
+    const url = location.origin + "/api/stats/export?period=" + state.statsPeriod;
+    haptic("medium");
+    if(tg?.openLink) tg.openLink(url);
+    else window.open(url, "_blank");
+  },
   close: closeSheet,
   settings: () => openSheet(settingsSheet()),
+  // Every choice is saved the moment it is tapped; this button exists so the
+  // sheet has an obvious way out that confirms the change landed.
+  "settings-save": () => { closeSheet(); toast(t("settings_saved")); },
   "auto-habit": () => toast(t("auto_habit")),
   "delete-mode-on": () => { haptic(); setState({deleteMode:true}); },
   "delete-mode-off": () => { haptic(); setState({deleteMode:false}); },
@@ -1186,9 +1263,39 @@ const A = {
     save(() => api(`/api/goals/${el.dataset.id}/complete`, {method:"POST"}), "vision", true); },
   "goal-reopen": el => { haptic();
     save(() => api(`/api/goals/${el.dataset.id}/reopen`, {method:"POST"}), "vision", true); },
-  "goal-delete": el => confirmSheet("goal-delete-go", el.dataset.id),
-  "goal-delete-go": el => save(() => api(`/api/goals/${el.dataset.id}`, {method:"DELETE"}),
-                               "vision", false, t("deleted")),
+  "goal-delete-on": () => { haptic(); setState({goalDeleteMode:true}); },
+  "goal-delete-off": () => { haptic(); setState({goalDeleteMode:false}); },
+  // Inside the picker the mode itself is the confirmation, so one tap deletes.
+  "goal-delete": el => { haptic("medium");
+    save(() => api(`/api/goals/${el.dataset.id}`, {method:"DELETE"}),
+         "vision", false, t("deleted")); },
+  "goal-edit": el => {
+    const goal = ["ultimate","milestone","tactical"]
+      .flatMap(c => state.goals?.[c] || [])
+      .find(x => String(x.id) === el.dataset.id);
+    if(!goal) return;
+    openSheet(`
+      <h3>${t("edit")}</h3>
+      <input id="goal-title" value="${esc(goal.title)}" />
+      <label>${t("level")}</label>
+      <select id="goal-category">${["ultimate","milestone","tactical"].map(c =>
+        `<option value="${c}" ${goal.category===c?"selected":""}>${t(c)}</option>`).join("")}</select>
+      <label>${t("progress")} — ${goal.progress || 0}%</label>
+      <input type="range" id="goal-progress" min="0" max="100" step="5"
+             value="${goal.progress || 0}" />
+      <button class="btn" data-act="goal-update" data-id="${goal.id}"
+              style="margin-top:16px">${t("save")}</button>
+      <button class="btn ghost" data-act="close" style="margin-top:8px">${t("cancel")}</button>`);
+  },
+  "goal-update": el => {
+    const title = document.getElementById("goal-title").value.trim();
+    if(!title) return;
+    save(() => api(`/api/goals/${el.dataset.id}`, {method:"PATCH", body:{
+      title,
+      category: document.getElementById("goal-category").value,
+      progress: Number(document.getElementById("goal-progress").value),
+    }}), "vision");
+  },
 
   /* settings */
   "set-lang": el => { state.lang = el.dataset.value; settingSave({language:el.dataset.value}); },

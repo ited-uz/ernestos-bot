@@ -670,3 +670,88 @@ def test_all_three_periods_are_available(alice):
     sizes = {p: len(alice.get(f"/api/stats?period={p}").json()["series"])
              for p in ("week", "month", "year")}
     assert sizes == {"week": 7, "month": 30, "year": 12}
+
+
+# --------------------------------------------------------------------------
+# Additive schema migration
+#
+# With real users on the system, a release that adds a column must not mean
+# dropping the database. init_db() adds missing columns in place.
+# --------------------------------------------------------------------------
+
+def test_init_db_adds_missing_columns_without_touching_data(tmp_path):
+    """An old table gains new columns and keeps every row."""
+    import importlib
+    from sqlalchemy import create_engine, inspect, text
+
+    url = f"sqlite:///{tmp_path}/legacy.db"
+    engine = create_engine(url)
+    with engine.begin() as c:
+        # users as it looked before member_no existed
+        c.execute(text("""CREATE TABLE users (
+            telegram_id BIGINT PRIMARY KEY, first_name VARCHAR(200) DEFAULT '',
+            last_name VARCHAR(200) DEFAULT '', username VARCHAR(200) DEFAULT '',
+            phone_number VARCHAR(40), language VARCHAR(2) DEFAULT 'uz',
+            gender VARCHAR(6), theme VARCHAR(20) DEFAULT 'ocean',
+            quote TEXT DEFAULT '', is_subscribed BOOLEAN DEFAULT 0,
+            onboarding_step VARCHAR(20) DEFAULT 'language',
+            onboarded BOOLEAN DEFAULT 0, created_at DATETIME,
+            updated_at DATETIME, last_active_at DATETIME)"""))
+        c.execute(text("INSERT INTO users (telegram_id, first_name) "
+                       "VALUES (999001, 'RealUser')"))
+    engine.dispose()
+
+    previous = os.environ.get("DATABASE_URL")
+    os.environ["DATABASE_URL"] = url
+    try:
+        legacy = importlib.reload(db)
+        assert "member_no" not in {
+            c["name"] for c in inspect(legacy.engine).get_columns("users")}
+        legacy.init_db()
+
+        columns = {c["name"] for c in inspect(legacy.engine).get_columns("users")}
+        assert "member_no" in columns, "new column was not added"
+        assert "photo_file_id" in columns
+
+        with legacy.engine.connect() as c:
+            rows = c.execute(text("SELECT first_name FROM users")).fetchall()
+        assert [r[0] for r in rows] == ["RealUser"], "existing data was lost"
+
+        legacy.init_db()   # running twice must not fail
+        legacy.engine.dispose()
+    finally:
+        if previous is not None:
+            os.environ["DATABASE_URL"] = previous
+        importlib.reload(db)
+
+
+# --------------------------------------------------------------------------
+# Statistics export
+# --------------------------------------------------------------------------
+
+def test_stats_export_returns_a_csv_attachment(alice):
+    r = alice.get("/api/stats/export?period=week")
+    assert r.status_code == 200
+    assert "text/csv" in r.headers["content-type"]
+    assert "attachment" in r.headers["content-disposition"]
+    assert ".csv" in r.headers["content-disposition"]
+
+
+def test_stats_export_contains_the_daily_series(alice):
+    body = alice.get("/api/stats/export?period=week").text
+    assert "date,habits %,prayer %" in body
+    assert body.count("\n") > 10
+
+
+def test_stats_export_is_scoped_to_the_caller(alice, bob):
+    """Two users must not receive each other's numbers."""
+    a = alice.get("/api/stats/export?period=week").text
+    b = bob.get("/api/stats/export?period=week").text
+    assert "ErnestOS statistics" in a and "ErnestOS statistics" in b
+
+
+def test_stats_export_rejects_an_unknown_period(alice):
+    """An unknown period falls back rather than erroring."""
+    r = alice.get("/api/stats/export?period=decade")
+    assert r.status_code == 200
+    assert "period,month" in r.text

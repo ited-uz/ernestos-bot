@@ -17,6 +17,7 @@ domain row carries `workspace_id`, so one user can never reach another's data.
 
 from __future__ import annotations
 
+import logging
 import os
 from datetime import date, datetime, time, timezone
 
@@ -54,6 +55,9 @@ _kwargs: dict = {"pool_pre_ping": True} if DATABASE_URL.startswith("postgresql")
 }
 engine = create_engine(DATABASE_URL, **_kwargs)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
+
+
+log = logging.getLogger("ernestos")
 
 
 class Base(DeclarativeBase):
@@ -334,14 +338,63 @@ class DailyReportLog(Base):
 # Schema creation
 # ---------------------------------------------------------------------------
 
-def init_db() -> None:
-    """Create any missing tables.
+#: SQLAlchemy type -> the DDL used when a column has to be added in place.
+#: Only additive DDL appears here; nothing in this file ever drops or narrows.
+def _column_ddl(column) -> str | None:
+    try:
+        type_sql = column.type.compile(engine.dialect)
+    except Exception:
+        return None
+    parts = [f'"{column.name}" {type_sql}']
+    default = column.server_default
+    if default is not None and getattr(default, "arg", None) is not None:
+        parts.append(f"DEFAULT {default.arg}")
+    return " ".join(parts)
 
-    Explicit and additive: it never drops or alters an existing column, so it is
-    safe to call on startup. Schema changes are made by editing the models and
-    running `python -c "import db; db.init_db()"` against the target database.
+
+def _add_missing_columns() -> list[str]:
+    """Bring existing tables up to the model, without touching their data.
+
+    A release that adds a column used to mean dropping the whole database,
+    because create_all() only creates missing *tables*. With real users on the
+    system that is not an acceptable upgrade path, so missing columns are added
+    in place instead. Adding is always safe: existing rows get NULL (or the
+    server default) and nothing is rewritten.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    added: list[str] = []
+
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if not inspector.has_table(table.name):
+                continue
+            existing = {c["name"] for c in inspector.get_columns(table.name)}
+            for column in table.columns:
+                if column.name in existing or column.primary_key:
+                    continue
+                ddl = _column_ddl(column)
+                if ddl is None:
+                    log.warning("cannot auto-add %s.%s — add it by hand",
+                                table.name, column.name)
+                    continue
+                conn.execute(text(f"ALTER TABLE {table.name} ADD COLUMN {ddl}"))
+                added.append(f"{table.name}.{column.name}")
+
+    return added
+
+
+def init_db() -> None:
+    """Create missing tables, then add any missing columns to existing ones.
+
+    Purely additive, so it is safe to run on every boot against a live
+    database: no table is dropped, no column is removed or retyped.
     """
     Base.metadata.create_all(engine)
+    added = _add_missing_columns()
+    if added:
+        log.info("schema updated — added columns: %s", ", ".join(added))
 
 
 def drop_all() -> None:
