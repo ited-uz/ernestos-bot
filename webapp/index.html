@@ -203,6 +203,26 @@ label{display:block;font-size:11px;color:var(--faint);margin:15px 0 6px;
 .bar span{display:block;height:100%;border-radius:3px;
           background:linear-gradient(90deg,var(--accent),var(--accent-2))}
 
+/* The "now" card is deliberately the heaviest element on the page: it is the
+   one decision Home is asking the user to make. Everything else is quieter. */
+.now-card{display:flex;align-items:flex-start;gap:14px;padding:18px;
+          border-radius:var(--r-lg);margin-bottom:10px;
+          background:linear-gradient(150deg,var(--accent-dim),var(--surface) 78%);
+          border:1px solid var(--accent-dim);box-shadow:var(--shadow)}
+.now-check{width:30px;height:30px;border-radius:10px;border:2px solid var(--accent);
+           flex:none;position:relative}
+.now-check::after{content:"";position:absolute;inset:-8px}
+.now-title{font-size:18px;font-weight:700;line-height:1.35}
+.now-meta{font-size:12px;color:var(--muted);margin-top:6px;
+          display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+
+.back-card{background:linear-gradient(150deg,var(--surface-2),var(--surface));
+           border-color:var(--tap-line);margin-top:14px}
+
+.more-toggle{margin:22px 0 4px;padding:12px;text-align:center;border-radius:12px;
+             background:var(--tap);border:1px solid var(--tap-line);
+             font-size:13px;font-weight:650;color:var(--muted)}
+
 .stat{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .stat .card{text-align:center;padding:14px 6px;margin:0}
 .stat .v{font-size:20px;font-weight:760;letter-spacing:-.5px}
@@ -314,6 +334,24 @@ window.addEventListener("orientationchange", () => setTimeout(syncViewport, 250)
 /* ---------- translations ---------- */
 const DICT = {
  uz:{
+  now:"Hozir",
+  now_empty:"Bugunga reja yo'q — bitta ish qo'shing",
+  later:"Keyin",
+  details:"Batafsil",
+  quick_add:"Tez qo'shish",
+  quick_ph:"Nima esingizga tushdi?",
+  inbox_saved:"Saqlandi — Vazifalarda",
+  back_title:"Bir necha kun ko'rinmadingiz",
+  back_body:"{n} ta ish kutib turibdi. Qanday davom etamiz?",
+  back_today:"Bugunga ko'chirish",
+  back_archive:"Arxivga olish",
+  back_done:"Tayyor — toza boshladik",
+  review:"Haftalik xulosa",
+  r_well:"Nima yaxshi ketdi?",
+  r_blocked:"Nima to'sqinlik qildi?",
+  r_next:"Keyingi haftaning 3 ta ishi?",
+  retry:"Qayta urinish",
+  draft_kept:"Yozganingiz saqlanib turibdi",
   report_sent:"Hisobot botga yuborildi",
   progress:"Progress",
   privacy_title:"Ma'lumotlaringiz to'liq himoyalangan",
@@ -321,13 +359,13 @@ const DICT = {
   settings_saved:"Sozlamalar saqlandi",
   download:"Hisobotni yuklab olish",
   report:"Hisobot",
-  home:"Home", habits:"Odatlar", tasks:"Vazifalar", vision:"Vision",
+  home:"Home", habits:"Odatlar", tasks:"Vazifalar", vision:"Maqsadlar",
   greet:"Assalomu alaykum", quote_ph:"O'zingizga kuch beradigan gap yozing",
   h_focus:"Shu hafta", h_tasks:"Bugungi vazifalar", h_habits:"Odatlar",
   h_projects:"Loyihalar", h_goals:"Maqsadlar", h_bday:"Tug'ilgan kunlar",
   h_overdue:"Kechikkan", h_calendar:"Kalendar",
   prayer:"Namoz", journal:"Kundalik", stats:"Statistika",
-  non_negotiable:"Non-negotiable", target:"Target", bonus:"Bonus",
+  non_negotiable:"Asosiy", target:"Rivojlanish", bonus:"Qo'shimcha",
   add_habit:"Odat qo'shish", del_habit:"Odat o'chirish", habit_name:"Odat nomi",
   category:"Kategoriya", pick_delete:"O'chiriladiganini tanlang", finish:"Tayyor",
   auto_habit:"Bu odat avtomatik belgilanadi",
@@ -344,7 +382,7 @@ const DICT = {
   add_project:"Loyiha", project_name:"Loyiha nomi",
   overdue:"Kechikkan", upcoming:"Yaqin kunlar", no_date:"Muddatsiz", done_tab:"Bajarilgan",
   add_goal:"Maqsad qo'shish", goal_title:"Maqsad nomi", level:"Daraja",
-  ultimate:"Ultimate", milestone:"Milestone", tactical:"Tactical", achieved:"Erishilgan",
+  ultimate:"Katta maqsad", milestone:"Bosqich", tactical:"Qadam", achieved:"Erishilgan",
   add_focus:"Missiya qo'shish", focus_title:"Haftalik missiya",
   settings:"Sozlamalar", language:"Til", gender:"Jins", theme:"Tema",
   appearance:"Ko'rinish", auto:"Avto", light:"Yorug'", dark:"Qorong'i",
@@ -359,6 +397,24 @@ const DICT = {
   months:["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"],
  },
  en:{
+  now:"Now",
+  now_empty:"Nothing scheduled — add one thing",
+  later:"Later",
+  details:"More",
+  quick_add:"Quick add",
+  quick_ph:"What came to mind?",
+  inbox_saved:"Saved — see Tasks",
+  back_title:"You have been away",
+  back_body:"{n} items are waiting. How shall we continue?",
+  back_today:"Move to today",
+  back_archive:"Archive them",
+  back_done:"Done — fresh start",
+  review:"Weekly review",
+  r_well:"What went well?",
+  r_blocked:"What got in the way?",
+  r_next:"Next week's three?",
+  retry:"Try again",
+  draft_kept:"Your text is kept",
   report_sent:"Report sent to the bot chat",
   progress:"Progress",
   privacy_title:"Your data is fully protected",
@@ -372,7 +428,7 @@ const DICT = {
   h_projects:"Projects", h_goals:"Goals", h_bday:"Birthdays",
   h_overdue:"Overdue", h_calendar:"Calendar",
   prayer:"Prayer", journal:"Journal", stats:"Stats",
-  non_negotiable:"Non-negotiable", target:"Target", bonus:"Bonus",
+  non_negotiable:"Asosiy", target:"Rivojlanish", bonus:"Qo'shimcha",
   add_habit:"Add habit", del_habit:"Delete habit", habit_name:"Habit name",
   category:"Category", pick_delete:"Pick what to delete", finish:"Done",
   auto_habit:"This habit is marked automatically",
@@ -404,6 +460,24 @@ const DICT = {
   months:["January","February","March","April","May","June","July","August","September","October","November","December"],
  },
  ru:{
+  now:"Сейчас",
+  now_empty:"На сегодня пусто — добавьте одно дело",
+  later:"Позже",
+  details:"Подробнее",
+  quick_add:"Быстро добавить",
+  quick_ph:"Что пришло в голову?",
+  inbox_saved:"Сохранено — в Задачах",
+  back_title:"Вас давно не было",
+  back_body:"{n} дел ждут. Как продолжим?",
+  back_today:"Перенести на сегодня",
+  back_archive:"В архив",
+  back_done:"Готово — начинаем заново",
+  review:"Итоги недели",
+  r_well:"Что получилось?",
+  r_blocked:"Что помешало?",
+  r_next:"Три дела на неделю?",
+  retry:"Повторить",
+  draft_kept:"Текст сохранён",
   report_sent:"Отчёт отправлен в чат бота",
   progress:"Прогресс",
   privacy_title:"Ваши данные полностью защищены",
@@ -417,7 +491,7 @@ const DICT = {
   h_projects:"Проекты", h_goals:"Цели", h_bday:"Дни рождения",
   h_overdue:"Просрочено", h_calendar:"Календарь",
   prayer:"Намаз", journal:"Дневник", stats:"Статистика",
-  non_negotiable:"Non-negotiable", target:"Target", bonus:"Bonus",
+  non_negotiable:"Asosiy", target:"Rivojlanish", bonus:"Qo'shimcha",
   add_habit:"Добавить", del_habit:"Удалить привычку", habit_name:"Название",
   category:"Категория", pick_delete:"Выберите, что удалить", finish:"Готово",
   auto_habit:"Эта привычка отмечается автоматически",
@@ -462,7 +536,7 @@ const THEMES = [
 /* ---------- state ---------- */
 const state = {
   screen:"home", tab:"habits", taskTab:"open", visionTab:"active",
-  statsPeriod:"week", lang:"uz", appearance:"auto",
+  statsPeriod:"week", lang:"uz", appearance:"auto", showMore:false,
   deleteMode:false, goalDeleteMode:false,
   loading:true, error:null,
   me:null, home:null, calendar:null,
@@ -573,14 +647,43 @@ SCREENS.home = () => {
       </div>
       <div class="gear" data-act="settings">⚙️</div>
       <div class="avatar">${avatar}</div>
-    </div>
+    </div>`;
 
-    <div class="card glow" data-act="quote" style="margin-top:14px">
-      ${d.quote ? `<div>${esc(d.quote)}</div>`
-                : `<div class="muted">${t("quote_ph")} ✎</div>`}
-    </div>
+  // Coming back after a break: one decision, before anything else loads.
+  if(d.break?.suggest_reset){
+    h += `<div class="card back-card">
+      <div style="font-weight:700;margin-bottom:4px">${t("back_title")}</div>
+      <div class="muted small">${t("back_body").replace("{n}", d.break.overdue)}</div>
+      <div class="btns">
+        <button class="btn" data-act="fresh-today">${t("back_today")}</button>
+        <button class="btn ghost" data-act="fresh-archive">${t("back_archive")}</button>
+      </div></div>`;
+  }
 
-    <div class="stat">
+  // ---- NOW: the single thing to do, given the largest weight on the page.
+  const now = d.now;
+  h += `<h2>${t("now")}</h2>`;
+  h += now
+    ? `<div class="now-card" data-act="task-done" data-id="${now.id}">
+         <div class="now-check"></div>
+         <div class="grow">
+           <div class="now-title">${esc(now.title)}</div>
+           <div class="now-meta"><span class="dot p-${now.priority}"></span>
+             ${esc(now.project || t("standalone"))}
+             ${now.deadline ? `<span class="num">· ${now.deadline}</span>` : ""}</div>
+         </div></div>`
+    : `<div class="card"><div class="muted">${t("now_empty")}</div></div>`;
+
+  h += `<button class="btn ghost" data-act="quick-add" style="margin-top:2px">
+          ＋ ${t("quick_add")}</button>`;
+
+  // ---- TODAY: at most three, then the daily counters.
+  const top3 = (d.top3 || []).filter(x => !now || x.id !== now.id).slice(0, 3);
+  if(top3.length){
+    h += `<h2>${t("h_tasks")}</h2>` + top3.map(taskItem).join("");
+  }
+
+  h += `<div class="stat" style="margin-top:12px">
       <div class="card"><div class="v num">${d.habits.done}/${d.habits.total}</div>
         <div class="k">${t("h_habits")}</div></div>
       <div class="card"><div class="v num">${d.prayer.score}/${d.prayer.max}</div>
@@ -588,6 +691,19 @@ SCREENS.home = () => {
       <div class="card"><div class="v num">🔥 ${d.streaks?.habits ?? 0}</div>
         <div class="k">${t("streak")}</div></div>
     </div>`;
+
+  h += `<div class="card glow" data-act="quote">
+      ${d.quote ? `<div>${esc(d.quote)}</div>`
+                : `<div class="muted">${t("quote_ph")} ✎</div>`}
+    </div>`;
+
+  // ---- LATER: everything else, collapsed by default.
+  h += `<div class="more-toggle" data-act="toggle-more">
+          ${state.showMore ? "▾" : "▸"} ${t("details")}</div>`;
+  if(!state.showMore){
+    h += privacyNote();
+    return h;
+  }
 
   h += `<h2>${t("h_focus")}</h2>`;
   h += d.focus.length ? d.focus.map(f => `
@@ -627,6 +743,8 @@ SCREENS.home = () => {
   }
 
   h += `<h2>${t("h_calendar")}</h2>` + calendarBlock();
+  h += `<button class="btn ghost" data-act="review-open" style="margin-top:10px">
+          📋 ${t("review")}</button>`;
   h += privacyNote();
   return h;
 };
@@ -1009,9 +1127,25 @@ async function loadStats(period){
 }
 const todayISO = () => state.home?.date || new Date().toISOString().slice(0,10);
 
-function handleError(e){
+//: Whatever the user typed before a failed save, so a retry does not start
+//: from a blank field.
+let lastDraft = null;
+
+function handleError(e, draft){
   console.error("ErnestOS:", e);
   if(e.status === 403){ setState({error:t("sub_required"), loading:false}); return; }
+  if(draft){
+    lastDraft = draft;
+    openSheet(`
+      <h3>${e.status ? t("error") : t("offline")}</h3>
+      <div class="muted small">${t("draft_kept")}</div>
+      <div class="card" style="margin-top:10px">${esc(
+        Object.values(draft.body || {}).filter(v => typeof v === "string").join(" · ")
+      )}</div>
+      <button class="btn" data-act="retry-draft" style="margin-top:14px">${t("retry")}</button>
+      <button class="btn ghost" data-act="close" style="margin-top:8px">${t("cancel")}</button>`);
+    return;
+  }
   toast(e.status ? t("error") : t("offline"));
 }
 
@@ -1035,6 +1169,63 @@ const A = {
   },
   close: closeSheet,
   settings: () => openSheet(settingsSheet()),
+  "toggle-more": () => { haptic(); setState({showMore: !state.showMore}); },
+
+  /* quick capture — title only, sorted later */
+  "quick-add": () => openSheet(`
+    <h3>＋ ${t("quick_add")}</h3>
+    <input id="quick-title" placeholder="${t("quick_ph")}" autofocus />
+    <button class="btn" data-act="quick-save" style="margin-top:12px">${t("save")}</button>
+    <button class="btn ghost" data-act="close" style="margin-top:8px">${t("cancel")}</button>`),
+  "quick-save": () => {
+    const title = document.getElementById("quick-title").value.trim();
+    if(!title) return;
+    save(() => api("/api/quick", {method:"POST", body:{title}}),
+         "home", false, t("inbox_saved"), {body:{title}});
+  },
+
+  /* coming back after a break */
+  "fresh-today": () => save(() => api("/api/fresh-start",
+    {method:"POST", body:{mode:"today"}}), "home", false, t("back_done")),
+  "fresh-archive": () => save(() => api("/api/fresh-start",
+    {method:"POST", body:{mode:"archive"}}), "home", false, t("back_done")),
+
+  /* weekly review — three questions, not a wall of numbers */
+  "review-open": async () => {
+    try{
+      const r = await api("/api/review");
+      const a = r.answers || {};
+      openSheet(`
+        <h3>📋 ${t("review")}</h3>
+        <div class="stat" style="margin:10px 0 4px">
+          <div class="card"><div class="v num">${r.tasks_done}</div><div class="k">${t("done_tab")}</div></div>
+          <div class="card"><div class="v num">${r.habit_pct}%</div><div class="k">${t("habits")}</div></div>
+          <div class="card"><div class="v num">${r.focus_done}/${r.focus.length}</div><div class="k">${t("h_focus")}</div></div>
+        </div>
+        <label>${t("r_well")}</label>
+        <textarea id="rv-well">${esc(a.went_well || "")}</textarea>
+        <label>${t("r_blocked")}</label>
+        <textarea id="rv-blocked">${esc(a.blocked || "")}</textarea>
+        <label>${t("r_next")}</label>
+        <textarea id="rv-next">${esc(a.next_focus || "")}</textarea>
+        <button class="btn" data-act="review-save" style="margin-top:14px">${t("save")}</button>
+        <button class="btn ghost" data-act="close" style="margin-top:8px">${t("cancel")}</button>`);
+    }catch(e){ handleError(e); }
+  },
+  "review-save": () => {
+    const body = {
+      went_well: document.getElementById("rv-well").value,
+      blocked: document.getElementById("rv-blocked").value,
+      next_focus: document.getElementById("rv-next").value,
+    };
+    save(() => api("/api/review", {method:"POST", body}), "home", false, null, {body});
+  },
+
+  "retry-draft": () => {
+    const draft = lastDraft;
+    if(!draft?.request) return closeSheet();
+    save(draft.request, draft.reload);
+  },
   // Every choice is saved the moment it is tapped; this button exists so the
   // sheet has an obvious way out that confirms the change landed.
   "settings-save": () => { closeSheet(); toast(t("settings_saved")); },
@@ -1327,13 +1518,17 @@ async function shiftMonth(delta){
   catch(e){ handleError(e); }
 }
 
-async function save(request, reload, quiet, message){
+async function save(request, reload, quiet, message, draft){
   try{
     await request();
+    lastDraft = null;
     closeSheet();
     if(!quiet) toast(message || t("saved"));
     if(reload) await loadScreen(reload);
-  }catch(e){ closeSheet(); handleError(e); }
+  }catch(e){
+    closeSheet();
+    handleError(e, draft && {...draft, request, reload});
+  }
 }
 
 async function settingSave(patch){

@@ -615,11 +615,13 @@ async def guard(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> tuple[User, i
 # ---------------------------------------------------------------------------
 
 def main_menu(lang: str) -> ReplyKeyboardMarkup:
+    # Same seven entries, in the same order, as the Mini App — so a feature
+    # seen in one surface is findable in the other.
     rows = [
-        [t(lang, "menu_wake"), t(lang, "menu_home")],
-        [t(lang, "menu_habits"), t(lang, "menu_tasks")],
-        [t(lang, "menu_goals"), t(lang, "menu_settings")],
-        [t(lang, "menu_feedback")],
+        [t(lang, "menu_home"), t(lang, "menu_habits")],
+        [t(lang, "menu_tasks"), t(lang, "menu_goals")],
+        [t(lang, "menu_settings"), t(lang, "menu_feedback")],
+        [t(lang, "menu_wake")],
     ]
     if WEBAPP_URL:
         rows.append([t(lang, "menu_app")])
@@ -687,6 +689,9 @@ async def resume_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         user = s.get(User, tg_user.id)
         lang = user.language if user else "uz"
 
+    # Onboarding asks two things: language, then the channel. Phone lives in
+    # Settings and gender is asked the first time prayer needs it — neither
+    # earns its place before the user has seen what the product does.
     if step == "language":
         await message.reply_text(t(lang, "ask_lang"), reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🇺🇿 O'zbek", callback_data="lang:uz")],
@@ -694,20 +699,7 @@ async def resume_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             [InlineKeyboardButton("🇷🇺 Русский", callback_data="lang:ru")],
         ]))
 
-    elif step == "phone":
-        keyboard = ReplyKeyboardMarkup(
-            [[KeyboardButton(t(lang, "btn_phone"), request_contact=True)],
-             [KeyboardButton(t(lang, "btn_skip"))]],
-            resize_keyboard=True, one_time_keyboard=True)
-        await message.reply_text(t(lang, "ask_phone"), reply_markup=keyboard)
-
-    elif step == "gender":
-        await message.reply_text(t(lang, "ask_gender"), reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton(t(lang, "male"), callback_data="gender:male")],
-            [InlineKeyboardButton(t(lang, "female"), callback_data="gender:female")],
-        ]))
-
-    elif step == "subscribe":
+    elif step in ("phone", "gender", "subscribe"):
         await message.reply_text(t(lang, "sub_required"),
                                  reply_markup=subscribe_keyboard(lang))
 
@@ -734,8 +726,6 @@ async def on_contact(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             return
         user.phone_number = contact.phone_number
         onboarded_already = user.onboarded
-        if not onboarded_already:
-            user.onboarding_step = "gender"
         s.commit()
         snapshot = user
 
@@ -775,21 +765,6 @@ async def on_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await log_event(ctx.bot, snapshot, "🖼 PHOTO UPDATED")
 
 
-async def skip_phone(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    tg_user = update.effective_user
-    message = update.effective_message
-    if tg_user is None or message is None:
-        return
-    with SessionLocal() as s:
-        user = s.get(User, tg_user.id)
-        if user is None:
-            return
-        lang = user.language
-        user.onboarding_step = "gender"
-        s.commit()
-    await message.reply_text(t(lang, "phone_skipped"),
-                             reply_markup=ReplyKeyboardRemove())
-    await resume_onboarding(update, ctx, "gender")
 
 
 async def finish_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1153,8 +1128,6 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
     # Skip button during onboarding
     if not onboarded:
-        if text == t(lang, "btn_skip"):
-            await skip_phone(update, ctx)
         return
 
     flow = current_flow(ctx)
@@ -1408,14 +1381,14 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             user = s.get(User, tg_user.id)
             user.language = parts[1]
             if not user.onboarded:
-                user.onboarding_step = "phone"
+                user.onboarding_step = "subscribe"
             s.commit()
             lang, onboarded = user.language, user.onboarded
             snapshot = user
         await query.edit_message_text(t(lang, "saved"))
         await log_event(ctx.bot, snapshot, "🌐 LANGUAGE CHANGED", f"Language: {lang}")
         if not onboarded:
-            await resume_onboarding(update, ctx, "phone")
+            await resume_onboarding(update, ctx, "subscribe")
         else:
             await update.effective_message.reply_text(t(lang, "saved"),
                                                       reply_markup=main_menu(lang))
@@ -1426,15 +1399,13 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         with SessionLocal() as s:
             user = s.get(User, tg_user.id)
             user.gender = parts[1]
-            if not user.onboarded:
-                user.onboarding_step = "subscribe"
             s.commit()
-            lang, onboarded = user.language, user.onboarded
+            lang = user.language
             snapshot = user
         await query.edit_message_text(t(lang, "saved"))
         await log_event(ctx.bot, snapshot, "👤 GENDER CHANGED", f"Gender: {parts[1]}")
-        if not onboarded:
-            await finish_onboarding(update, ctx)
+        # Gender is asked when prayer needs it, so land back on that screen.
+        await show_habits(update, ctx)
         return
 
     if action == "flow" and parts[1] == "cancel":
@@ -2608,6 +2579,8 @@ def api_quick_add(body: QuickAddIn,
     stop getting saved. Sorting happens later, in Tasks.
     """
     _, ws = auth(init)
+    if not body.title.strip():
+        raise HTTPException(status_code=422, detail="empty_title")
     with SessionLocal() as s:
         task = svc.add_task(s, ws, body.title)
     return {"ok": True, "id": task.id}

@@ -1112,3 +1112,162 @@ def test_avatar_still_rejects_an_unsigned_request(client):
 def test_avatar_rejects_a_tampered_query_blob(client):
     r = client.get(f"/api/avatar?tgdata={quote(init_data(ALICE, tamper=True), safe='')}")
     assert r.status_code == 401
+
+
+# ==========================================================================
+# Product round: one decision at a time
+# ==========================================================================
+
+# --- "Now": Home leads with a single task -------------------------------
+
+def test_now_prefers_an_overdue_task(alice):
+    today = svc.today_local()
+    alice.post("/api/tasks", json={"title": "LATER", "deadline": today.isoformat()})
+    alice.post("/api/tasks", json={"title": "OVERDUE",
+                                   "deadline": (today - timedelta(days=2)).isoformat()})
+    assert alice.get("/api/home").json()["now"]["title"] == "OVERDUE"
+
+
+def test_now_breaks_ties_by_priority(alice):
+    today = svc.today_local().isoformat()
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        for row in s.query(db.Task).filter_by(workspace_id=ws).all():
+            s.delete(row)
+        s.commit()
+    alice.post("/api/tasks", json={"title": "LOW", "deadline": today, "priority": "low"})
+    alice.post("/api/tasks", json={"title": "HIGH", "deadline": today, "priority": "high"})
+    assert alice.get("/api/home").json()["now"]["title"] == "HIGH"
+
+
+def test_now_falls_back_to_an_undated_task(alice):
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        for row in s.query(db.Task).filter_by(workspace_id=ws).all():
+            s.delete(row)
+        s.commit()
+    alice.post("/api/tasks", json={"title": "SOMEDAY"})
+    assert alice.get("/api/home").json()["now"]["title"] == "SOMEDAY"
+
+
+def test_now_is_empty_when_there_is_nothing_to_do(bob):
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, BOB["id"])
+        for row in s.query(db.Task).filter_by(workspace_id=ws).all():
+            s.delete(row)
+        s.commit()
+    assert bob.get("/api/home").json()["now"] is None
+
+
+def test_home_offers_at_most_three_for_today(alice):
+    today = svc.today_local().isoformat()
+    for i in range(6):
+        alice.post("/api/tasks", json={"title": f"T{i}", "deadline": today})
+    assert len(alice.get("/api/home").json()["top3"]) <= 3
+
+
+# --- Quick capture -------------------------------------------------------
+
+def test_quick_add_needs_only_a_title(alice):
+    r = alice.post("/api/quick", json={"title": "idea while walking"})
+    assert r.status_code == 200
+    assert "idea while walking" in alice.get("/api/tasks?days=365").text
+
+
+def test_quick_add_rejects_a_blank_title(alice):
+    """Whitespace used to reach the service layer and surface as a 500."""
+    assert alice.post("/api/quick", json={"title": "   "}).status_code == 422
+    assert alice.post("/api/quick", json={"title": ""}).status_code == 422
+
+
+def test_quick_add_is_scoped_to_the_caller(alice, bob):
+    alice.post("/api/quick", json={"title": "ALICE-QUICK-ONLY"})
+    assert "ALICE-QUICK-ONLY" not in bob.get("/api/tasks?days=365").text
+
+
+# --- Returning after a break --------------------------------------------
+
+def test_a_recent_user_is_not_offered_a_reset(alice):
+    alice.get("/api/me")
+    assert alice.get("/api/home").json()["break"]["suggest_reset"] is False
+
+
+def test_a_returning_user_with_a_backlog_is_offered_a_reset(alice):
+    today = svc.today_local()
+    alice.post("/api/tasks", json={"title": "OLD",
+                                   "deadline": (today - timedelta(days=5)).isoformat()})
+    with SessionLocal() as s:
+        user = s.get(User, ALICE["id"])
+        user.last_active_at = db.utcnow() - timedelta(days=6)
+        s.commit()
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        state = svc.break_state(s, ws, s.get(User, ALICE["id"]))
+    assert state["suggest_reset"] is True
+    assert state["days_away"] >= 3
+
+
+def test_fresh_start_pulls_the_backlog_to_today(alice):
+    today = svc.today_local()
+    alice.post("/api/tasks", json={"title": "PULLME",
+                                   "deadline": (today - timedelta(days=4)).isoformat()})
+    assert alice.post("/api/fresh-start", json={"mode": "today"}).status_code == 200
+    overdue = alice.get("/api/tasks?days=7").json()["overdue"]
+    assert "PULLME" not in [x["title"] for x in overdue]
+
+
+def test_fresh_start_can_archive_instead(alice):
+    today = svc.today_local()
+    alice.post("/api/tasks", json={"title": "ARCHIVEME",
+                                   "deadline": (today - timedelta(days=4)).isoformat()})
+    alice.post("/api/fresh-start", json={"mode": "archive"})
+    assert "ARCHIVEME" not in alice.get("/api/tasks?days=365").text
+
+
+def test_fresh_start_ignores_an_unknown_mode(alice):
+    r = alice.post("/api/fresh-start", json={"mode": "nonsense"})
+    assert r.status_code == 200 and r.json()["mode"] == "today"
+
+
+# --- Weekly review -------------------------------------------------------
+
+def test_review_returns_the_weeks_numbers_and_questions(alice):
+    body = alice.get("/api/review").json()
+    assert "week_start" in body
+    assert set(body["answers"]) == {"went_well", "blocked", "next_focus"}
+    assert body["saved"] is False
+
+
+def test_review_answers_round_trip(alice):
+    alice.post("/api/review", json={"went_well": "shipped the audit fixes",
+                                    "blocked": "no staging",
+                                    "next_focus": "pilot with 20 users"})
+    body = alice.get("/api/review").json()
+    assert body["answers"]["went_well"] == "shipped the audit fixes"
+    assert body["saved"] is True
+
+
+def test_review_is_one_row_per_week(alice):
+    alice.post("/api/review", json={"went_well": "first"})
+    alice.post("/api/review", json={"went_well": "second"})
+    assert alice.get("/api/review").json()["answers"]["went_well"] == "second"
+
+
+def test_review_is_private_to_the_workspace(alice, bob):
+    alice.post("/api/review", json={"went_well": "ALICE-REVIEW-SECRET"})
+    assert "ALICE-REVIEW-SECRET" not in bob.get("/api/review").text
+
+
+# --- Onboarding is two questions, not four -------------------------------
+
+def test_onboarding_starts_at_language():
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, 808001)
+        s.commit()
+        assert s.get(User, 808001).onboarding_step == "language"
+
+
+def test_phone_and_gender_are_not_onboarding_steps():
+    """They live in Settings and in the prayer screen respectively."""
+    source = (ROOT / "app.py").read_text()
+    assert 'user.onboarding_step = "phone"' not in source
+    assert 'user.onboarding_step = "gender"' not in source
