@@ -68,6 +68,28 @@
   --t1:#f472b6; --t2:#facc15; --t3:#22d3ee;
 }
 
+/* The three themes below keep the surfaces neutral and put the saturation on
+   the accent alone, so anything tappable reads as tappable before the text is
+   read. `graphite` is the default a new account starts on. */
+[data-theme="graphite"]{
+  --bg:#0a0a0c; --bg-glow:#16161c; --surface:#141418; --surface-2:#1a1a20;
+  --tap:#20202a; --tap-line:#33333f;
+  --line:#26262e; --line-soft:#1e1e25;
+  --text:#f4f4f6; --muted:#9494a0; --faint:#63636f;
+  --accent:#5b5bf5; --accent-2:#8b8bff; --accent-dim:#1c1c48; --on-accent:#fff;
+  --ok:#3dc98a; --warn:#e8a33d; --danger:#f2545b;
+  --t1:#f2545b; --t2:#e8a33d; --t3:#3dc98a;
+}
+[data-theme="midnight"]{
+  --bg:#0b1116; --bg-glow:#12202a; --surface:#111a22; --surface-2:#16222c;
+  --tap:#1b2a36; --tap-line:#2c4252;
+  --line:#20303c; --line-soft:#1a2833;
+  --text:#eaf1f6; --muted:#8598a6; --faint:#5b6e7c;
+  --accent:#ff8a3d; --accent-2:#ffb07a; --accent-dim:#3a1e0a; --on-accent:#1a0a00;
+  --ok:#3fbf8f; --warn:#f0b429; --danger:#f26b6b;
+  --t1:#f26b6b; --t2:#f0b429; --t3:#4fc3e8;
+}
+
 /* Light appearance overlays every theme */
 :root[data-appearance="light"],
 :root[data-appearance="auto"]:not([data-dark="1"]){
@@ -77,6 +99,23 @@
   --text:#0d1626; --muted:#5f6f88; --faint:#9aa8bd;
   --accent-dim:#e6efff; --on-accent:#fff;
   --shadow:0 8px 24px rgba(16,26,43,.07);
+  --ring:0 0 0 1px rgba(0,0,0,.02) inset;
+}
+
+/* `paper` is light by design, not by appearance — a warm paper surface with an
+   ink accent. It is declared after the light overlay, and the second selector
+   carries enough specificity to out-rank it, so choosing paper gives the same
+   palette whether the phone is in light or dark mode. */
+[data-theme="paper"],
+:root[data-theme="paper"][data-appearance][data-dark]{
+  --bg:#f7f5f1; --bg-glow:#efede7; --surface:#fff; --surface-2:#f2f0eb;
+  --tap:#edeae3; --tap-line:#dad6cc;
+  --line:#e3e0d9; --line-soft:#edeae3;
+  --text:#16150f; --muted:#6e6b60; --faint:#9a968a;
+  --accent:#15140e; --accent-2:#37331f; --accent-dim:#eae7de; --on-accent:#fff;
+  --ok:#3e7a55; --warn:#b4802b; --danger:#c4452f;
+  --t1:#c4452f; --t2:#b4802b; --t3:#3e7a55;
+  --shadow:0 8px 24px rgba(30,26,15,.08);
   --ring:0 0 0 1px rgba(0,0,0,.02) inset;
 }
 
@@ -545,6 +584,9 @@ const DICT = {
 };
 
 const THEMES = [
+  {id:"graphite", a:"#5b5bf5", b:"#0a0a0c"},
+  {id:"paper",    a:"#15140e", b:"#f7f5f1"},
+  {id:"midnight", a:"#ff8a3d", b:"#0b1116"},
   {id:"ocean",    a:"#4f8cff", b:"#080d17"},
   {id:"emerald",  a:"#12d18a", b:"#04120e"},
   {id:"obsidian", a:"#e4e4e7", b:"#000000"},
@@ -1090,7 +1132,7 @@ const NAV_OF = {project:"tasks"};
 
 function render(){
   const root = document.documentElement;
-  root.dataset.theme = state.me?.theme || "ocean";
+  root.dataset.theme = state.me?.theme || "graphite";
   root.dataset.appearance = state.appearance;
   root.dataset.dark = (state.appearance === "dark" ||
     (state.appearance === "auto" &&

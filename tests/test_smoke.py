@@ -214,8 +214,8 @@ def test_unknown_category_falls_back_to_target(alice):
     assert "Stretching" in [h["name"] for h in grouped["target"]]
 
 
-def test_default_theme_is_ocean(alice):
-    assert alice.get("/api/me").json()["theme"] == "ocean"
+def test_default_theme_is_graphite(alice):
+    assert alice.get("/api/me").json()["theme"] == "graphite"
 
 
 def test_protected_habit_cannot_be_toggled(alice):

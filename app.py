@@ -1140,7 +1140,8 @@ async def show_project(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 # Settings
 # ---------------------------------------------------------------------------
 
-THEMES = ["ocean", "emerald", "obsidian", "rose", "pink", "aurora"]
+THEMES = ["graphite", "paper", "midnight",
+          "ocean", "emerald", "obsidian", "rose", "pink", "aurora"]
 
 
 async def show_settings(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
@@ -1744,7 +1745,7 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     elif action == "theme":
         with SessionLocal() as s:
             row = s.get(User, user.telegram_id)
-            row.theme = parts[1] if parts[1] in THEMES else "ocean"
+            row.theme = parts[1] if parts[1] in THEMES else "graphite"
             s.commit()
             snapshot = row
         await query.edit_message_text(t(lang, "saved"))
