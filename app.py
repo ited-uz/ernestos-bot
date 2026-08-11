@@ -1140,8 +1140,16 @@ async def show_project(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 # Settings
 # ---------------------------------------------------------------------------
 
-THEMES = ["graphite", "paper", "midnight",
-          "ocean", "emerald", "obsidian", "rose", "pink", "aurora"]
+#: Four themes, kept in the same order as the Mini App's picker. The six that
+#: shipped before them were retired in migration 0003; a row still holding a
+#: retired name is read as the default rather than rejected.
+THEMES = ["graphite", "midnight", "jade", "paper"]
+DEFAULT_THEME = "graphite"
+
+
+def theme_of(name: str | None) -> str:
+    """Read a stored theme, falling back for names that no longer exist."""
+    return name if name in THEMES else DEFAULT_THEME
 
 
 async def show_settings(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
@@ -1152,7 +1160,7 @@ async def show_settings(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     user, _ = got
     lang = user.language
     text = (f"<b>{t(lang, 'settings_title')}</b>\n\n"
-            f"🌐 {lang}\n👤 {user.gender or '—'}\n🎨 {user.theme}\n"
+            f"🌐 {lang}\n👤 {user.gender or '—'}\n🎨 {theme_of(user.theme)}\n"
             f"📱 {user.phone_number or '—'}\n"
             f"🖼 {'✓' if user.photo_file_id else '—'}")
     markup = InlineKeyboardMarkup([
@@ -1745,7 +1753,7 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     elif action == "theme":
         with SessionLocal() as s:
             row = s.get(User, user.telegram_id)
-            row.theme = parts[1] if parts[1] in THEMES else "graphite"
+            row.theme = parts[1] if parts[1] in THEMES else DEFAULT_THEME
             s.commit()
             snapshot = row
         await query.edit_message_text(t(lang, "saved"))
@@ -2342,7 +2350,7 @@ def api_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
     return {"telegram_id": user.telegram_id, "member_no": user.member_no,
             "first_name": user.first_name,
             "language": user.language, "gender": user.gender,
-            "theme": user.theme, "quote": user.quote,
+            "theme": theme_of(user.theme), "quote": user.quote,
             "has_photo": bool(user.photo_file_id),
             "onboarded": user.onboarded, "is_subscribed": user.is_subscribed}
 

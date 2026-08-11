@@ -298,6 +298,7 @@ o'zgartirmaydi va foydalanuvchi tarixini o'chirmaydi:
 |---|---|---|
 | `0001` | Kundalikni odat sifatida hisoblashni to'xtatadi (`Summary` arxivlanadi) | `archived_at` ni `NULL` qilish |
 | `0002` | `goals` jadvalini `goals_archived_v1` ga ko'chiradi | `ALTER TABLE goals_archived_v1 RENAME TO goals` |
+| `0003` | Olib tashlangan 6 ta mavzuni qolgan 4 tasiga ko'chiradi | `UPDATE users SET theme='ocean' WHERE ...` (eski nom kerak bo'lsa) |
 
 `0002` jadvalni **o'chirmaydi** — nomini o'zgartiradi. Public launch'da Goals
 UI, API va modeli olib tashlandi, lekin foydalanuvchi yozgan qatorlar joyida

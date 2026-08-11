@@ -685,6 +685,57 @@ def test_no_orphaned_foreign_key_points_at_goals():
             assert fk["referred_table"] != "goals", f"{table} still references goals"
 
 
+# --- 0003: nine themes down to four ---------------------------------------
+
+def _set_theme(telegram_id: int, value: str) -> None:
+    """Write a theme straight to the row, bypassing the API's own validation."""
+    with SessionLocal() as s:
+        s.get(User, telegram_id).theme = value
+        s.commit()
+
+
+def test_every_offered_theme_is_one_the_mini_app_styles():
+    """The picker and the stylesheet must not be able to disagree."""
+    styled = (ROOT / "webapp" / "index.html").read_text()
+    assert application.THEMES == ["graphite", "midnight", "jade", "paper"]
+    for name in application.THEMES:
+        assert f'"{name}"' in styled, f"{name} is offered but never styled"
+
+
+def test_a_retired_theme_reads_as_the_default(alice):
+    _set_theme(ALICE["id"], "pink")
+    assert alice.get("/api/me").json()["theme"] == "graphite"
+
+
+def test_the_migration_moves_a_retired_theme_to_its_closest_survivor(alice):
+    _set_theme(ALICE["id"], "emerald")
+    result = migrations.m0003_retire_themes()
+    assert result["total"] >= 1
+    with SessionLocal() as s:
+        assert s.get(User, ALICE["id"]).theme == "jade"
+
+
+def test_the_theme_migration_leaves_a_current_choice_alone(alice):
+    _set_theme(ALICE["id"], "paper")
+    migrations.m0003_retire_themes()
+    with SessionLocal() as s:
+        assert s.get(User, ALICE["id"]).theme == "paper"
+
+
+def test_the_theme_migration_is_safe_to_run_twice(alice):
+    _set_theme(ALICE["id"], "rose")
+    migrations.m0003_retire_themes()
+    again = migrations.m0003_retire_themes()
+    assert again["total"] == 0
+    with SessionLocal() as s:
+        assert s.get(User, ALICE["id"]).theme == "midnight"
+
+
+def test_a_retired_theme_cannot_be_set_again(alice):
+    alice.patch("/api/me", json={"theme": "aurora"})
+    assert alice.get("/api/me").json()["theme"] != "aurora"
+
+
 # --------------------------------------------------------------------------
 # Bot rendering
 # --------------------------------------------------------------------------

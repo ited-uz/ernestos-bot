@@ -9,77 +9,39 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
 /* ==================================================================
-   Design tokens.
+   Design tokens — four themes, no more.
 
-   Each theme redefines the whole palette — surfaces, accent, glow and
-   the three habit-tier colours — so switching theme restyles the app
-   rather than just recolouring buttons.
+   Every theme follows the same rule: the surfaces stay near-neutral and
+   all of the saturation goes into --accent, which is used only on things
+   that respond to a tap. That is what keeps a screen readable at 6am and
+   what makes the four feel like one product rather than four skins.
+
+   Nine themes shipped before this; six were removed because taste in a
+   saturated purple or pink is personal, and a default has to be liked by
+   everyone rather than loved by a few. Accounts still holding a retired
+   name fall through to :root, which is `graphite` — migration 0003
+   rewrites the stored value so the bot's Settings screen agrees.
    ================================================================== */
 :root{
-  --bg:#080d17; --bg-glow:#12203a; --surface:#0f1727; --surface-2:#141e33;
+  /* graphite — near-black neutral, indigo accent. The default. */
+  --bg:#0a0a0c; --bg-glow:#16161c; --surface:#141418; --surface-2:#1a1a20;
   /* Anything tappable sits on --tap, a step lighter than --surface, so a
      button is distinguishable from a plain panel at a glance. */
-  --tap:#18233d; --tap-line:#2a3a5c;
-  --line:#1e2b45; --line-soft:#18233a;
-  --text:#eaf0fa; --muted:#7e8fab; --faint:#4d5c76;
-  --accent:#4f8cff; --accent-2:#7cb0ff; --accent-dim:#1a2f57; --on-accent:#04101f;
-  --ok:#2fd27a; --warn:#f5a524; --danger:#f4515f;
-  --t1:#f4515f; --t2:#f5a524; --t3:#2fd27a;
-
-  --r-sm:10px; --r:14px; --r-lg:20px;
-  --pad:16px;
-  --shadow:0 10px 30px rgba(0,0,0,.35);
-  --ring:0 0 0 1px rgba(255,255,255,.04) inset;
-}
-[data-theme="emerald"]{
-  --bg:#04120e; --bg-glow:#0a2b21; --surface:#08201a; --surface-2:#0c2b22;
-  --tap:#103428; --tap-line:#1a5a44;
-  --line:#124635; --line-soft:#0f3a2c;
-  --accent:#12d18a; --accent-2:#5ce7b4; --accent-dim:#0a3a2c; --on-accent:#03170f;
-  --t1:#fb7185; --t2:#fbbf24; --t3:#12d18a;
-}
-[data-theme="obsidian"]{
-  --bg:#000; --bg-glow:#151519; --surface:#0d0d10; --surface-2:#141418;
-  --tap:#1b1b21; --tap-line:#33333d;
-  --line:#26262e; --line-soft:#1d1d24;
-  --text:#f4f4f5; --muted:#8b8b95; --faint:#55555f;
-  --accent:#e4e4e7; --accent-2:#fafafa; --accent-dim:#232329; --on-accent:#09090b;
-  --t1:#f87171; --t2:#fbbf24; --t3:#4ade80;
-}
-[data-theme="rose"]{
-  --bg:#14060c; --bg-glow:#2e0d1c; --surface:#1e0912; --surface-2:#290d19;
-  --tap:#331120; --tap-line:#5a2038;
-  --line:#45182b; --line-soft:#391423;
-  --accent:#ff4d6d; --accent-2:#ff8098; --accent-dim:#450f21; --on-accent:#1a0308;
-  --t1:#ff8098; --t2:#fbbf24; --t3:#2fd27a;
-}
-[data-theme="pink"]{
-  --bg:#14061a; --bg-glow:#2d0d38; --surface:#1d0824; --surface-2:#280c31;
-  --tap:#320f3c; --tap-line:#582066;
-  --line:#44184f; --line-soft:#391442;
-  --accent:#f65bb5; --accent-2:#fb92cf; --accent-dim:#420f3b; --on-accent:#1b0413;
-  --t1:#fb7185; --t2:#fbbf24; --t3:#2fd27a;
-}
-[data-theme="aurora"]{
-  --bg:#07061a; --bg-glow:#1a1147; --surface:#100d2e; --surface-2:#17123c;
-  --tap:#1d1748; --tap-line:#3a2f80;
-  --line:#2a2166; --line-soft:#221a54;
-  --accent:#8b7bff; --accent-2:#c4a8ff; --accent-dim:#241a58; --on-accent:#0a0620;
-  --t1:#f472b6; --t2:#facc15; --t3:#22d3ee;
-}
-
-/* The three themes below keep the surfaces neutral and put the saturation on
-   the accent alone, so anything tappable reads as tappable before the text is
-   read. `graphite` is the default a new account starts on. */
-[data-theme="graphite"]{
-  --bg:#0a0a0c; --bg-glow:#16161c; --surface:#141418; --surface-2:#1a1a20;
   --tap:#20202a; --tap-line:#33333f;
   --line:#26262e; --line-soft:#1e1e25;
   --text:#f4f4f6; --muted:#9494a0; --faint:#63636f;
   --accent:#5b5bf5; --accent-2:#8b8bff; --accent-dim:#1c1c48; --on-accent:#fff;
   --ok:#3dc98a; --warn:#e8a33d; --danger:#f2545b;
   --t1:#f2545b; --t2:#e8a33d; --t3:#3dc98a;
+
+  --r-sm:10px; --r:14px; --r-lg:20px;
+  --pad:16px;
+  --shadow:0 10px 30px rgba(0,0,0,.35);
+  --ring:0 0 0 1px rgba(255,255,255,.04) inset;
 }
+
+/* midnight — cool navy surfaces under a warm accent. The widest temperature
+   gap of the four, so a button never reads as part of the background. */
 [data-theme="midnight"]{
   --bg:#0b1116; --bg-glow:#12202a; --surface:#111a22; --surface-2:#16222c;
   --tap:#1b2a36; --tap-line:#2c4252;
@@ -90,22 +52,35 @@
   --t1:#f26b6b; --t2:#f0b429; --t3:#4fc3e8;
 }
 
-/* Light appearance overlays every theme */
+/* jade — the calmest of the four. Green carries "done" in this app, so the
+   accent and the completed state are the same colour on purpose. */
+[data-theme="jade"]{
+  --bg:#08110e; --bg-glow:#0e2119; --surface:#0e1a16; --surface-2:#12231d;
+  --tap:#162c24; --tap-line:#26463a;
+  --line:#1c3229; --line-soft:#162a22;
+  --text:#e9f3ee; --muted:#87a397; --faint:#5a7568;
+  --accent:#10b981; --accent-2:#4ade9f; --accent-dim:#0a3a2b; --on-accent:#03150e;
+  --ok:#10b981; --warn:#f0b429; --danger:#f26b6b;
+  --t1:#f26b6b; --t2:#f0b429; --t3:#10b981;
+}
+
+/* Light appearance overlays the three dark themes, keeping each one's accent
+   and neutralising only the surfaces. */
 :root[data-appearance="light"],
 :root[data-appearance="auto"]:not([data-dark="1"]){
-  --bg:#f4f7fc; --bg-glow:#e3ecfa; --surface:#fff; --surface-2:#f6f9fd;
-  --tap:#eef4fd; --tap-line:#cfdcee;
-  --line:#e2e9f4; --line-soft:#edf2f9;
-  --text:#0d1626; --muted:#5f6f88; --faint:#9aa8bd;
-  --accent-dim:#e6efff; --on-accent:#fff;
-  --shadow:0 8px 24px rgba(16,26,43,.07);
+  --bg:#f6f6f8; --bg-glow:#ececf1; --surface:#fff; --surface-2:#f2f2f6;
+  --tap:#eeeef3; --tap-line:#d8d8e0;
+  --line:#e6e6ec; --line-soft:#f0f0f4;
+  --text:#111114; --muted:#61616e; --faint:#9a9aa6;
+  --accent-dim:#ececfb; --on-accent:#fff;
+  --shadow:0 8px 24px rgba(16,16,26,.07);
   --ring:0 0 0 1px rgba(0,0,0,.02) inset;
 }
 
-/* `paper` is light by design, not by appearance — a warm paper surface with an
-   ink accent. It is declared after the light overlay, and the second selector
-   carries enough specificity to out-rank it, so choosing paper gives the same
-   palette whether the phone is in light or dark mode. */
+/* paper — light by design, not by appearance: a warm paper surface with an ink
+   accent. Declared after the light overlay, and the second selector carries
+   enough specificity to out-rank it, so paper looks the same whether the phone
+   is in light or dark mode. */
 [data-theme="paper"],
 :root[data-theme="paper"][data-appearance][data-dark]{
   --bg:#f7f5f1; --bg-glow:#efede7; --surface:#fff; --surface-2:#f2f0eb;
@@ -583,17 +558,19 @@ const DICT = {
  },
 };
 
+//: `a` is the accent, `b` the background — the two swatches the picker shows,
+//: which is also the one promise every theme makes: they are never the same.
 const THEMES = [
   {id:"graphite", a:"#5b5bf5", b:"#0a0a0c"},
-  {id:"paper",    a:"#15140e", b:"#f7f5f1"},
   {id:"midnight", a:"#ff8a3d", b:"#0b1116"},
-  {id:"ocean",    a:"#4f8cff", b:"#080d17"},
-  {id:"emerald",  a:"#12d18a", b:"#04120e"},
-  {id:"obsidian", a:"#e4e4e7", b:"#000000"},
-  {id:"rose",     a:"#ff4d6d", b:"#14060c"},
-  {id:"pink",     a:"#f65bb5", b:"#14061a"},
-  {id:"aurora",   a:"#8b7bff", b:"#07061a"},
+  {id:"jade",     a:"#10b981", b:"#08110e"},
+  {id:"paper",    a:"#15140e", b:"#f7f5f1"},
 ];
+
+//: An account that still holds a retired theme name renders as graphite and
+//: shows graphite ticked, rather than showing a picker with nothing selected.
+const themeOf = name =>
+  THEMES.some(th => th.id === name) ? name : "graphite";
 
 /* ---------- state ---------- */
 const state = {
@@ -1106,10 +1083,10 @@ function settingsSheet(){
     </div>
     <label>${t("theme")}</label>
     ${THEMES.map(th => `
-      <div class="theme-row ${me.theme===th.id?"on":""}" data-act="set-theme" data-value="${th.id}">
+      <div class="theme-row ${themeOf(me.theme)===th.id?"on":""}" data-act="set-theme" data-value="${th.id}">
         <span class="swatch" style="background:linear-gradient(140deg,${th.a},${th.b})"></span>
         <span class="grow" style="text-transform:capitalize">${th.id}</span>
-        ${me.theme===th.id?"✓":""}</div>`).join("")}
+        ${themeOf(me.theme)===th.id?"✓":""}</div>`).join("")}
     <label>${t("appearance")}</label>
     <div class="pills">${modes.map(([v,l]) =>
       `<div class="pill ${state.appearance===v?"on":""}" data-act="set-appearance" data-value="${v}">${l}</div>`).join("")}</div>
@@ -1132,7 +1109,7 @@ const NAV_OF = {project:"tasks"};
 
 function render(){
   const root = document.documentElement;
-  root.dataset.theme = state.me?.theme || "graphite";
+  root.dataset.theme = themeOf(state.me?.theme);
   root.dataset.appearance = state.appearance;
   root.dataset.dark = (state.appearance === "dark" ||
     (state.appearance === "auto" &&

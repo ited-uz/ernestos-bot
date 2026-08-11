@@ -110,9 +110,51 @@ def m0002_retire_goals() -> dict:
             "rows": rows, "archive": GOALS_ARCHIVE_TABLE}
 
 
+#: What each retired theme is replaced by. The mapping is by intent, not by
+#: hue: someone who chose `obsidian` wanted a neutral dark, someone who chose
+#: `emerald` wanted green, so they land on the closest survivor rather than all
+#: being flattened into the default.
+RETIRED_THEMES = {
+    "ocean": "graphite",
+    "obsidian": "graphite",
+    "aurora": "graphite",
+    "emerald": "jade",
+    "rose": "midnight",
+    "pink": "midnight",
+}
+
+
+def m0003_retire_themes() -> dict:
+    """Move accounts off the six themes the Mini App no longer styles.
+
+    The palette shrank from nine themes to four. A row still holding a retired
+    name is not broken — the app reads any unknown value as the default — but
+    the stored value and the Settings screen would disagree until the user
+    picked something, so the value is rewritten once here.
+
+    Only the six known retired names are touched. A row already on one of the
+    four is left alone, which is what makes a second run a no-op.
+    """
+    from sqlalchemy import update
+
+    from db import User
+
+    moved: dict[str, int] = {}
+    with SessionLocal() as s:
+        for old, new in RETIRED_THEMES.items():
+            count = s.execute(
+                update(User).where(User.theme == old).values(theme=new)).rowcount
+            if count:
+                moved[f"{old}→{new}"] = count
+        s.commit()
+    return {"migration": "0003_retire_themes", "moved": moved,
+            "total": sum(moved.values())}
+
+
 MIGRATIONS = {
     "0001": m0001_retire_summary_habit,
     "0002": m0002_retire_goals,
+    "0003": m0003_retire_themes,
 }
 
 
