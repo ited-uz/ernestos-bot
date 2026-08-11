@@ -93,6 +93,11 @@ class User(Base):
     photo_file_id: Mapped[str] = mapped_column(String(200), default="")
 
     is_subscribed: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: When membership was last confirmed with Telegram, and how. The Mini App
+    #: re-checks once this goes stale instead of trusting the flag forever
+    #: (audit 002).
+    sub_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    sub_source: Mapped[str] = mapped_column(String(12), default="")  # api|event
     #: Resumable onboarding: survives a bot restart mid-flow.
     onboarding_step: Mapped[str] = mapped_column(String(20), default="language")
     onboarded: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -291,6 +296,30 @@ class JournalEntry(Base):
     __table_args__ = (UniqueConstraint("workspace_id", "day", name="uq_journal_day"),)
 
 
+class WeeklyReview(Base):
+    """One review per ISO week: what worked, what blocked, next week's focus.
+
+    Statistics alone do not close the loop — the point of the week is to make
+    three decisions, and those need somewhere to live.
+    """
+
+    __tablename__ = "weekly_reviews"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    week_start: Mapped[date] = mapped_column(Date, index=True)   # Monday
+    went_well: Mapped[str] = mapped_column(Text, default="")
+    blocked: Mapped[str] = mapped_column(Text, default="")
+    next_focus: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "week_start", name="uq_weekly_review"),
+    )
+
+
 class Birthday(Base):
     __tablename__ = "birthdays"
 
@@ -317,7 +346,13 @@ class Feedback(Base):
 
 
 class DailyReportLog(Base):
-    """Idempotency for the scheduler: a restart must not re-send a report."""
+    """Outbox row for one report.
+
+    The unique constraint is the lock: a worker INSERTs `claimed` and only the
+    winner sends. Check-then-send-then-mark could send twice when two workers
+    interleave, or lose a report when the process dies between send and mark
+    (audit 036).
+    """
 
     __tablename__ = "daily_report_logs"
 
@@ -326,7 +361,12 @@ class DailyReportLog(Base):
         Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
     report_type: Mapped[str] = mapped_column(String(10))  # morning|evening
     report_date: Mapped[date] = mapped_column(Date, index=True)
-    sent_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    #: claimed -> sent | failed
+    status: Mapped[str] = mapped_column(String(10), default="claimed")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str] = mapped_column(String(200), default="")
+    claimed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     __table_args__ = (
         UniqueConstraint("workspace_id", "report_type", "report_date",

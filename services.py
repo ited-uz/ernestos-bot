@@ -20,12 +20,14 @@ import logging
 from datetime import date, datetime, time as dtime, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text as sql_text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from db import (
     Birthday, DailyReportLog, Feedback, Goal, Habit, HabitLog, JournalEntry,
-    PrayerDay, PrayerLog, Project, Task, User, WeeklyFocus, Workspace, utcnow,
+    PrayerDay, PrayerLog, Project, Task, User, WeeklyFocus, WeeklyReview,
+    Workspace, utcnow,
 )
 
 log = logging.getLogger("ernestos")
@@ -871,11 +873,18 @@ def list_journal(s: Session, ws: int, limit: int = 60) -> list[dict]:
 
 
 def delete_journal(s: Session, ws: int, day: date) -> None:
+    """Remove a day's entry and un-tick the habit it was driving.
+
+    Leaving the Summary log behind would credit the user for a journal that
+    no longer exists (audit 046), so both change in the same transaction.
+    """
     row = s.scalar(select(JournalEntry).where(
         JournalEntry.workspace_id == ws, JournalEntry.day == day))
     if row is None:
         raise NotFound("journal")
     s.delete(row)
+    s.flush()
+    sync_journal_habit(s, ws, day, False)
     s.commit()
 
 
@@ -1140,6 +1149,156 @@ def calendar_month(s: Session, ws: int, year: int, month: int) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# "What should I do now?"
+# ---------------------------------------------------------------------------
+
+#: Ranking for the single task shown at the top of Home. Overdue beats due
+#: today, and inside each group high priority beats the rest — the same order
+#: a person would use when asked to pick one thing.
+_PRIORITY_RANK = {"high": 0, "medium": 1, "low": 2}
+
+
+def next_action(s: Session, ws: int) -> dict | None:
+    """The one task to do now, or None when nothing is scheduled.
+
+    Home used to show every list at once, which turns "what now?" into a
+    decision the user has to make before they can start.
+    """
+    today = today_local()
+    candidates = s.scalars(select(Task).where(
+        Task.workspace_id == ws, Task.archived_at.is_(None),
+        Task.status == "waiting",
+        Task.deadline.isnot(None), Task.deadline <= today)).all()
+
+    if not candidates:
+        # Nothing dated — fall back to the newest undated task so the card is
+        # only empty when there is genuinely nothing to do.
+        candidates = s.scalars(select(Task).where(
+            Task.workspace_id == ws, Task.archived_at.is_(None),
+            Task.status == "waiting", Task.deadline.is_(None))
+            .order_by(Task.created_at.desc()).limit(1)).all()
+        if not candidates:
+            return None
+
+    best = min(candidates, key=lambda t: (
+        t.deadline or today, _PRIORITY_RANK.get(t.priority, 1), t.id))
+    return _task_dict(s, ws, best, today)
+
+
+def top_three(s: Session, ws: int) -> list[dict]:
+    """Today's three most important tasks, after the "now" card."""
+    today = today_local()
+    rows = s.scalars(select(Task).where(
+        Task.workspace_id == ws, Task.archived_at.is_(None),
+        Task.status == "waiting",
+        Task.deadline.isnot(None), Task.deadline <= today)).all()
+    rows.sort(key=lambda t: (t.deadline or today,
+                             _PRIORITY_RANK.get(t.priority, 1), t.id))
+    return [_task_dict(s, ws, t, today) for t in rows[:3]]
+
+
+# ---------------------------------------------------------------------------
+# Coming back after a break
+# ---------------------------------------------------------------------------
+
+#: A gap this long turns the app into a wall of failures on return.
+BREAK_DAYS = 3
+
+
+def break_state(s: Session, ws: int, user: User) -> dict:
+    """Whether this user is returning from a gap, and what is waiting.
+
+    Someone who has been away for a week should be met with one decision, not
+    a backlog and a broken streak.
+    """
+    today = today_local()
+    last_seen = (user.last_active_at.date() if user.last_active_at else today)
+    away = (today - last_seen).days
+
+    overdue = s.scalar(select(func.count(Task.id)).where(
+        Task.workspace_id == ws, Task.archived_at.is_(None),
+        Task.status == "waiting", Task.deadline < today)) or 0
+
+    return {"days_away": away, "overdue": overdue,
+            "suggest_reset": away >= BREAK_DAYS and overdue > 0}
+
+
+def fresh_start(s: Session, ws: int, *, mode: str = "today") -> int:
+    """Clear the backlog in one move. Returns how many tasks were handled.
+
+    `today`   — pull every overdue task to today, keep them all.
+    `archive` — move them out of the way; they stay in the Done archive.
+    """
+    today = today_local()
+    overdue = s.scalars(select(Task).where(
+        Task.workspace_id == ws, Task.archived_at.is_(None),
+        Task.status == "waiting", Task.deadline < today)).all()
+
+    for task in overdue:
+        if mode == "archive":
+            task.archived_at = utcnow()
+        else:
+            task.deadline = today
+    s.commit()
+    return len(overdue)
+
+
+# ---------------------------------------------------------------------------
+# Weekly review
+# ---------------------------------------------------------------------------
+
+def weekly_review(s: Session, ws: int, user: User,
+                  when: date | None = None) -> dict:
+    """The week's numbers plus the three answers, ready to edit."""
+    start = week_start(when or today_local())
+    end = start + timedelta(days=6)
+
+    done = s.scalar(select(func.count(Task.id)).where(
+        Task.workspace_id == ws, Task.status == "done",
+        func.date(Task.completed_at) >= start,
+        func.date(Task.completed_at) <= end)) or 0
+    missed = s.scalar(select(func.count(Task.id)).where(
+        Task.workspace_id == ws, Task.archived_at.is_(None),
+        Task.status == "waiting", Task.deadline < today_local())) or 0
+
+    habit_pct, prayer_pct = _range_percent(s, ws, start, min(end, today_local()))
+    focus = list_focus(s, ws, start)
+
+    row = s.scalar(select(WeeklyReview).where(
+        WeeklyReview.workspace_id == ws, WeeklyReview.week_start == start))
+
+    return {
+        "week_start": start.isoformat(),
+        "tasks_done": done, "tasks_overdue": missed,
+        "habit_pct": habit_pct, "prayer_pct": prayer_pct,
+        "focus": focus,
+        "focus_done": sum(1 for f in focus if f["done"]),
+        "answers": {
+            "went_well": row.went_well if row else "",
+            "blocked": row.blocked if row else "",
+            "next_focus": row.next_focus if row else "",
+        },
+        "saved": row is not None,
+    }
+
+
+def save_weekly_review(s: Session, ws: int, *, went_well: str = "",
+                       blocked: str = "", next_focus: str = "",
+                       when: date | None = None) -> WeeklyReview:
+    start = week_start(when or today_local())
+    row = s.scalar(select(WeeklyReview).where(
+        WeeklyReview.workspace_id == ws, WeeklyReview.week_start == start))
+    if row is None:
+        row = WeeklyReview(workspace_id=ws, week_start=start)
+        s.add(row)
+    row.went_well = went_well.strip()[:2000]
+    row.blocked = blocked.strip()[:2000]
+    row.next_focus = next_focus.strip()[:2000]
+    s.commit()
+    return row
+
+
+# ---------------------------------------------------------------------------
 # Home
 # ---------------------------------------------------------------------------
 
@@ -1154,6 +1313,10 @@ def home(s: Session, ws: int, user: User) -> dict:
         "date": today.isoformat(),
         "name": user.first_name or "",
         "quote": user.quote,
+        # The single decision Home leads with, plus the short list under it.
+        "now": next_action(s, ws),
+        "top3": top_three(s, ws),
+        "break": break_state(s, ws, user),
         "language": user.language,
         "theme": user.theme,
         "gender": user.gender,
@@ -1198,17 +1361,63 @@ def mark_feedback_delivered(s: Session, feedback_id: int) -> None:
 # ---------------------------------------------------------------------------
 
 def already_sent(s: Session, ws: int, report_type: str, report_date: date) -> bool:
+    """True when this report was already claimed by someone."""
     return s.scalar(select(DailyReportLog.id).where(
         DailyReportLog.workspace_id == ws,
         DailyReportLog.report_type == report_type,
         DailyReportLog.report_date == report_date)) is not None
 
 
+def claim_report(s: Session, ws: int, report_type: str,
+                 report_date: date) -> int | None:
+    """Try to own this report. Returns the outbox id, or None if someone else won.
+
+    The INSERT is the lock: the unique constraint means exactly one worker can
+    succeed, so two schedulers cannot both send (audit 036).
+    """
+    row = DailyReportLog(workspace_id=ws, report_type=report_type,
+                         report_date=report_date, status="claimed")
+    s.add(row)
+    try:
+        s.commit()
+    except IntegrityError:
+        s.rollback()
+        return None
+    return row.id
+
+
+def mark_report_sent(s: Session, report_id: int) -> None:
+    row = s.get(DailyReportLog, report_id)
+    if row is not None:
+        row.status = "sent"
+        row.sent_at = utcnow()
+        row.attempts += 1
+        s.commit()
+
+
+def mark_report_failed(s: Session, report_id: int, error: str) -> None:
+    """Record the failure and release the claim so a retry can pick it up."""
+    row = s.get(DailyReportLog, report_id)
+    if row is not None:
+        row.status = "failed"
+        row.attempts += 1
+        row.last_error = str(error)[:200]
+        s.commit()
+
+
+def release_report(s: Session, report_id: int) -> None:
+    """Drop a claim entirely, so the next run may try again from scratch."""
+    row = s.get(DailyReportLog, report_id)
+    if row is not None:
+        s.delete(row)
+        s.commit()
+
+
 def mark_sent(s: Session, ws: int, report_type: str, report_date: date) -> None:
-    """Record delivery. The unique constraint makes a double send impossible."""
-    s.add(DailyReportLog(workspace_id=ws, report_type=report_type,
-                         report_date=report_date))
-    s.commit()
+    """Compatibility shim: claim and immediately mark as sent."""
+    report_id = claim_report(s, ws, report_type, report_date)
+    if report_id is not None:
+        mark_report_sent(s, report_id)
 
 
 def morning_data(s: Session, ws: int, user: User) -> dict:
@@ -1336,3 +1545,52 @@ def platform_stats(s: Session) -> dict:
         "languages": languages,
         "genders": genders,
     }
+
+
+# ---------------------------------------------------------------------------
+# Scheduler coordination
+# ---------------------------------------------------------------------------
+
+#: Stable per-job key for pg_try_advisory_lock. Any two instances computing it
+#: from the same job name land on the same number.
+def _lock_key(name: str) -> int:
+    import zlib
+    return zlib.crc32(name.encode()) - 2**31
+
+
+class JobLock:
+    """Hold a PostgreSQL advisory lock for the duration of one job run.
+
+    Two instances of the app would otherwise both fire the 04:00 job. The
+    loser exits quietly instead of sending a second copy (audit 032).
+    On SQLite there is nothing to coordinate, so the lock is always granted.
+    """
+
+    def __init__(self, session_factory, name: str):
+        self._factory = session_factory
+        self._name = name
+        self._session = None
+        self.acquired = False
+
+    def __enter__(self) -> "JobLock":
+        self._session = self._factory()
+        if self._session.bind.dialect.name != "postgresql":
+            self.acquired = True
+            return self
+        self.acquired = bool(self._session.scalar(
+            sql_text("SELECT pg_try_advisory_lock(:k)"), {"k": _lock_key(self._name)}))
+        if not self.acquired:
+            log.info("job %s already running elsewhere — skipping", self._name)
+        return self
+
+    def __exit__(self, *exc) -> None:
+        if self._session is None:
+            return
+        try:
+            if self.acquired and self._session.bind.dialect.name == "postgresql":
+                self._session.execute(
+                    sql_text("SELECT pg_advisory_unlock(:k)"),
+                    {"k": _lock_key(self._name)})
+                self._session.commit()
+        finally:
+            self._session.close()

@@ -17,7 +17,7 @@ import tempfile
 import time
 from datetime import date, datetime, time as dtime, timedelta
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import pytest
 
@@ -66,10 +66,26 @@ def client():
         yield c
 
 
+def _onboard(telegram_id: int) -> None:
+    """Bring a fixture user to the state a real user reaches after /start.
+
+    The API refuses to create rows for a half-registered account (audit 003),
+    so fixtures must finish onboarding just like a person would.
+    """
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, telegram_id)
+        user = s.get(User, telegram_id)
+        user.onboarded = True
+        user.is_subscribed = True
+        user.sub_checked_at = db.utcnow()
+        s.commit()
+
+
 class Caller:
     def __init__(self, client, user):
         self.c, self.user = client, user
         self.h = {"X-Telegram-Init-Data": init_data(user)}
+        _onboard(user["id"])
 
     def get(self, url):
         return self.c.get(url, headers=self.h)
@@ -729,29 +745,370 @@ def test_init_db_adds_missing_columns_without_touching_data(tmp_path):
 # Statistics export
 # --------------------------------------------------------------------------
 
-def test_stats_export_returns_a_csv_attachment(alice):
-    r = alice.get("/api/stats/export?period=week")
-    assert r.status_code == 200
-    assert "text/csv" in r.headers["content-type"]
-    assert "attachment" in r.headers["content-disposition"]
-    assert ".csv" in r.headers["content-disposition"]
-
-
-def test_stats_export_contains_the_daily_series(alice):
-    body = alice.get("/api/stats/export?period=week").text
+def test_stats_csv_contains_the_daily_series(alice):
+    alice.get("/api/me")
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        body = svc.stats_csv(s, ws, "week")
     assert "date,habits %,prayer %" in body
+    assert "habit streak" in body
     assert body.count("\n") > 10
 
 
-def test_stats_export_is_scoped_to_the_caller(alice, bob):
-    """Two users must not receive each other's numbers."""
-    a = alice.get("/api/stats/export?period=week").text
-    b = bob.get("/api/stats/export?period=week").text
-    assert "ErnestOS statistics" in a and "ErnestOS statistics" in b
+def test_stats_csv_reports_the_requested_period(alice):
+    alice.get("/api/me")
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        assert "period,year" in svc.stats_csv(s, ws, "year")
 
 
-def test_stats_export_rejects_an_unknown_period(alice):
-    """An unknown period falls back rather than erroring."""
-    r = alice.get("/api/stats/export?period=decade")
+def test_stats_csv_is_scoped_to_one_workspace(alice, bob):
+    """Each workspace produces its own numbers."""
+    alice.post("/api/habits", json={"name": "ExportOnly", "category": "bonus"})
+    with SessionLocal() as s:
+        a = svc.stats_csv(s, svc.workspace_id_for(s, ALICE["id"]), "week")
+        b = svc.stats_csv(s, svc.workspace_id_for(s, BOB["id"]), "week")
+    assert a.startswith("ErnestOS statistics") and b.startswith("ErnestOS statistics")
+
+
+def test_export_endpoint_needs_the_bot_to_deliver(alice):
+    """Without a running bot the endpoint says so rather than pretending."""
+    r = alice.post("/api/stats/export?period=week")
+    assert r.status_code == 503
+    assert r.json()["detail"] == "bot_unavailable"
+
+
+def test_export_endpoint_requires_authentication(client):
+    assert client.post("/api/stats/export").status_code == 401
+
+
+# ==========================================================================
+# Release audit — P0 fixes
+# ==========================================================================
+
+# --- 001: a Telegram outage must not grant access ------------------------
+
+@pytest.mark.asyncio
+async def test_membership_check_returns_none_when_telegram_fails():
+    """None means "unknown" — it must never be read as "subscribed"."""
+    from telegram.error import TelegramError
+
+    class Failing:
+        async def get_chat_member(self, **_):
+            raise TelegramError("boom")
+
+    previous = application.REQUIRED_CHANNEL_ID
+    application.REQUIRED_CHANNEL_ID = "-1001234567890"
+    try:
+        assert await application.is_subscribed(Failing(), 42, retries=0) is None
+    finally:
+        application.REQUIRED_CHANNEL_ID = previous
+
+
+def test_unknown_membership_never_marks_a_user_subscribed():
+    """record_membership is the only writer, and it needs a definite answer."""
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, 555777)
+        s.commit()
+        application.record_membership(s, 555777, False, "api")
+        s.commit()
+        assert s.get(User, 555777).is_subscribed is False
+
+
+def test_a_confirmed_check_records_when_and_how(alice):
+    with SessionLocal() as s:
+        application.record_membership(s, ALICE["id"], True, "event")
+        s.commit()
+        user = s.get(User, ALICE["id"])
+    assert user.sub_source == "event"
+    assert user.sub_checked_at is not None
+
+
+# --- 002: cached membership expires --------------------------------------
+
+def test_a_fresh_membership_answer_is_reused():
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, 555778)
+        application.record_membership(s, 555778, True, "api")
+        s.commit()
+        assert application.membership_is_fresh(s.get(User, 555778)) is True
+
+
+def test_an_old_membership_answer_is_stale():
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, 555779)
+        user = s.get(User, 555779)
+        user.sub_checked_at = db.utcnow() - timedelta(hours=2)
+        s.commit()
+        assert application.membership_is_fresh(s.get(User, 555779)) is False
+
+
+def test_a_never_checked_user_is_stale():
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, 555780)
+        s.commit()
+        assert application.membership_is_fresh(s.get(User, 555780)) is False
+
+
+# --- 003: a half-registered account cannot create rows -------------------
+
+def test_unonboarded_user_cannot_create_data(client):
+    headers = {"X-Telegram-Init-Data": init_data({"id": 606001, "first_name": "New"})}
+    r = client.post("/api/tasks", headers=headers, json={"title": "too early"})
+    assert r.status_code == 409
+    assert r.json()["detail"] == "onboarding_required"
+
+
+def test_unonboarded_user_can_still_read_their_status(client):
+    headers = {"X-Telegram-Init-Data": init_data({"id": 606002, "first_name": "New"})}
+    r = client.get("/api/me", headers=headers)
     assert r.status_code == 200
-    assert "period,month" in r.text
+    assert r.json()["onboarded"] is False
+
+
+def test_the_same_user_succeeds_once_onboarded(client):
+    user = {"id": 606003, "first_name": "New"}
+    headers = {"X-Telegram-Init-Data": init_data(user)}
+    assert client.post("/api/tasks", headers=headers,
+                       json={"title": "x"}).status_code == 409
+    _onboard(user["id"])
+    assert client.post("/api/tasks", headers=headers,
+                       json={"title": "x"}).status_code == 200
+
+
+# --- 012: rate limiting ---------------------------------------------------
+
+def test_rate_limit_allows_normal_use():
+    application._buckets.clear()
+    for _ in range(10):
+        assert application.rate_limit_check(999001, "write") is None
+
+
+def test_rate_limit_blocks_a_flood():
+    application._buckets.clear()
+    limit, _ = application.RATE_LIMITS["write"]
+    for _ in range(limit):
+        application.rate_limit_check(999002, "write")
+    retry = application.rate_limit_check(999002, "write")
+    assert retry is not None and retry >= 1
+
+
+def test_heavy_endpoints_have_a_tighter_budget():
+    application._buckets.clear()
+    for _ in range(application.RATE_LIMITS["heavy"][0]):
+        application.rate_limit_check(999003, "heavy")
+    assert application.rate_limit_check(999003, "heavy") is not None
+    # A different bucket for the same user is unaffected.
+    assert application.rate_limit_check(999003, "read") is None
+
+
+def test_users_have_separate_budgets():
+    application._buckets.clear()
+    for _ in range(application.RATE_LIMITS["write"][0]):
+        application.rate_limit_check(999004, "write")
+    assert application.rate_limit_check(999005, "write") is None
+
+
+# --- 013: bounded payloads -----------------------------------------------
+
+def test_oversized_body_is_refused(alice):
+    r = alice.post("/api/tasks", json={"title": "x" * 400})
+    assert r.status_code == 422
+
+
+def test_journal_rejects_a_stuffed_answer_dictionary(alice):
+    r = alice.post("/api/journal",
+                   json={"answers": {f"k{i}": "v" for i in range(500)}})
+    assert r.status_code == 422
+
+
+def test_journal_rejects_an_enormous_single_answer(alice):
+    r = alice.post("/api/journal", json={"answers": {"wins": "x" * 9000}})
+    assert r.status_code == 422
+
+
+def test_normal_uzbek_text_is_accepted(alice):
+    r = alice.post("/api/tasks", json={"title": "O'zbekcha matn — chiroyli ✓"})
+    assert r.status_code == 200
+
+
+def test_goal_progress_outside_the_range_is_rejected(alice):
+    goal_id = alice.post("/api/goals",
+                         json={"title": "range", "category": "tactical"}).json()["id"]
+    assert alice.patch(f"/api/goals/{goal_id}", json={"progress": 500}).status_code == 422
+
+
+# --- 014 / 076: user text never becomes markup ---------------------------
+
+@pytest.mark.parametrize("raw,expected", [
+    ("<a href='x'>hi</a>", "&lt;a href='x'&gt;hi&lt;/a&gt;"),
+    ("A & B < C", "A &amp; B &lt; C"),
+    ("plain", "plain"),
+    (None, ""),
+])
+def test_escape_neutralises_user_markup(raw, expected):
+    assert application.esc(raw) == expected
+
+
+def test_admin_identity_line_escapes_the_name():
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, 707001, first_name="<b>Bold</b>", username="a&b")
+        s.commit()
+        line = application._who(s.get(User, 707001))
+    assert "<b>Bold</b>" not in line
+    assert "&lt;b&gt;" in line
+
+
+# --- 016: no phone number in any log -------------------------------------
+
+def test_admin_identity_line_carries_no_phone():
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, 707002, first_name="Phoney")
+        user = s.get(User, 707002)
+        user.phone_number = "+998901234567"
+        s.commit()
+        line = application._who(user)
+    assert "998" not in line and "901234567" not in line
+
+
+def test_source_never_logs_a_phone_number():
+    """No log line may interpolate phone_number."""
+    source = (ROOT / "app.py").read_text()
+    for offender in ("Phone: {snapshot.phone_number}",
+                     "Phone: {user.phone_number"):
+        assert offender not in source
+
+
+# --- 032 / 036: reports are claimed once, not sent twice -----------------
+
+def test_a_report_can_only_be_claimed_once(alice):
+    alice.get("/api/me")
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        day = date(2030, 1, 1)
+        first = svc.claim_report(s, ws, "morning", day)
+        second = svc.claim_report(s, ws, "morning", day)
+    assert first is not None, "the first worker must win the claim"
+    assert second is None, "a second worker must not also send"
+
+
+def test_a_failed_report_records_the_reason(alice):
+    alice.get("/api/me")
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        report_id = svc.claim_report(s, ws, "evening", date(2030, 1, 2))
+        svc.mark_report_failed(s, report_id, "blocked by user")
+        row = s.get(db.DailyReportLog, report_id)
+        assert row.status == "failed"
+        assert "blocked" in row.last_error
+        assert row.attempts == 1
+
+
+def test_a_released_claim_can_be_retried(alice):
+    alice.get("/api/me")
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        day = date(2030, 1, 3)
+        first = svc.claim_report(s, ws, "morning", day)
+        svc.release_report(s, first)
+        assert svc.claim_report(s, ws, "morning", day) is not None
+
+
+def test_morning_and_evening_claims_are_independent(alice):
+    alice.get("/api/me")
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        day = date(2030, 1, 4)
+        assert svc.claim_report(s, ws, "morning", day) is not None
+        assert svc.claim_report(s, ws, "evening", day) is not None
+
+
+def test_job_lock_is_granted_on_sqlite():
+    """Nothing to coordinate on SQLite, so the job always runs."""
+    with svc.JobLock(SessionLocal, "test-job") as lock:
+        assert lock.acquired is True
+
+
+# --- 033: pending updates are replayed, not dropped ----------------------
+
+def test_pending_updates_are_not_dropped():
+    source = (ROOT / "app.py").read_text()
+    assert "drop_pending_updates=False" in source
+
+
+# --- 034: a stale callback cannot drive a superseded flow ----------------
+
+class _Ctx:
+    """Minimal stand-in for a python-telegram-bot context."""
+
+    def __init__(self):
+        self.user_data: dict = {}
+
+
+def test_a_new_flow_replaces_the_previous_one():
+    ctx = _Ctx()
+    first = application.start_flow(ctx, "task_title")
+    second = application.start_flow(ctx, "goal_title")
+    assert first["id"] != second["id"]
+    assert application.current_flow(ctx, "task_title") is None
+    assert application.current_flow(ctx, "goal_title") is not None
+
+
+def test_an_expired_flow_is_forgotten():
+    ctx = _Ctx()
+    application.start_flow(ctx, "task_title")
+    ctx.user_data["flow"]["expires"] = time.time() - 1
+    assert application.current_flow(ctx) is None
+    assert "flow" not in ctx.user_data
+
+
+def test_current_flow_filters_by_name():
+    ctx = _Ctx()
+    application.start_flow(ctx, "habit_cat", title="Reading")
+    assert application.current_flow(ctx, "goal_cat") is None
+    assert application.current_flow(ctx, "habit_cat")["title"] == "Reading"
+
+
+# --- 087: readiness reports its dependencies -----------------------------
+
+def test_liveness_is_a_plain_ok(client):
+    assert client.get("/health/live").json() == {"ok": True}
+
+
+def test_readiness_reports_each_dependency(client):
+    body = client.get("/health/ready").json()
+    assert body["ok"] is True
+    assert body["checks"]["database"] == "ok"
+    assert body["checks"]["schema"] == "ok"
+
+
+# --- 046: deleting the journal clears the habit it was driving -----------
+
+def test_deleting_the_journal_unticks_the_summary_habit(alice):
+    today = svc.today_local().isoformat()
+    alice.post("/api/journal", json={"answers": {k: "a" for k in svc.JOURNAL_KEYS}})
+    assert _summary_done(alice) is True
+    alice.delete(f"/api/journal/{today}")
+    assert _summary_done(alice) is False, "Summary stayed ticked after the entry went"
+
+
+# --- 061: the avatar is reachable the way an <img> tag asks for it -------
+
+def test_avatar_accepts_the_signed_blob_as_a_query_parameter(client):
+    """An <img> cannot send headers, so ?tgdata= must authenticate too."""
+    _onboard(ALICE["id"])
+    # The blob contains & and =, so it has to be encoded as one value —
+    # exactly what encodeURIComponent does in the Mini App.
+    signed = quote(init_data(ALICE), safe="")
+    r = client.get(f"/api/avatar?tgdata={signed}")
+    # 404 = authenticated, simply no photo stored. 401 would be the bug.
+    assert r.status_code == 404
+
+
+def test_avatar_still_rejects_an_unsigned_request(client):
+    assert client.get("/api/avatar").status_code == 401
+
+
+def test_avatar_rejects_a_tampered_query_blob(client):
+    r = client.get(f"/api/avatar?tgdata={quote(init_data(ALICE, tamper=True), safe='')}")
+    assert r.status_code == 401

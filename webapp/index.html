@@ -314,6 +314,7 @@ window.addEventListener("orientationchange", () => setTimeout(syncViewport, 250)
 /* ---------- translations ---------- */
 const DICT = {
  uz:{
+  report_sent:"Hisobot botga yuborildi",
   progress:"Progress",
   privacy_title:"Ma'lumotlaringiz to'liq himoyalangan",
   privacy_body:"Yozganlaringizni faqat siz ko'rasiz. Hech kim, hatto boshqa foydalanuvchilar ham kira olmaydi.",
@@ -358,6 +359,7 @@ const DICT = {
   months:["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"],
  },
  en:{
+  report_sent:"Report sent to the bot chat",
   progress:"Progress",
   privacy_title:"Your data is fully protected",
   privacy_body:"Only you can see what you write. No one else — including other users — can reach it.",
@@ -402,6 +404,7 @@ const DICT = {
   months:["January","February","March","April","May","June","July","August","September","October","November","December"],
  },
  ru:{
+  report_sent:"Отчёт отправлен в чат бота",
   progress:"Прогресс",
   privacy_title:"Ваши данные полностью защищены",
   privacy_body:"Записи видите только вы. Никто другой, включая других пользователей, не имеет доступа.",
@@ -560,7 +563,7 @@ SCREENS.home = () => {
   if(!d) return `<div class="spin"></div>`;
   const initial = (d.name || "E").charAt(0).toUpperCase();
   const avatar = state.me?.has_photo
-    ? `<img src="/api/avatar?v=${state.me.telegram_id}" alt="" />` : esc(initial);
+    ? `<img src="/api/avatar?tgdata=${encodeURIComponent(tg?.initData || "")}" alt="" />` : esc(initial);
 
   let h = `
     <div class="hero">
@@ -1021,13 +1024,14 @@ const A = {
   "task-tab": el => { haptic(); setState({taskTab:el.dataset.tab}); loadScreen("tasks"); },
   "vision-tab": el => { haptic(); setState({visionTab:el.dataset.tab}); loadScreen("vision"); },
   "stats-period": el => { haptic(); loadStats(el.dataset.period); },
-  "stats-download": () => {
-    // Telegram's in-app browser blocks a plain <a download>, so hand the URL
-    // to Telegram itself, which opens it in the system browser.
-    const url = location.origin + "/api/stats/export?period=" + state.statsPeriod;
+  "stats-download": async () => {
+    // The bot sends the file into the chat: Telegram's browser blocks plain
+    // downloads, and putting the credential in a URL would leak it.
     haptic("medium");
-    if(tg?.openLink) tg.openLink(url);
-    else window.open(url, "_blank");
+    try{
+      await api("/api/stats/export?period=" + state.statsPeriod, {method:"POST"});
+      toast(t("report_sent"));
+    }catch(e){ handleError(e); }
   },
   close: closeSheet,
   settings: () => openSheet(settingsSheet()),

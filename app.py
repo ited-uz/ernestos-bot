@@ -13,9 +13,13 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import html
 import json
 import logging
 import os
+import random
+import time
+import uuid
 from contextlib import asynccontextmanager
 from datetime import date, datetime, time as dtime, timedelta
 from urllib.parse import parse_qsl
@@ -24,10 +28,10 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from telegram import (
-    InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup,
-    ReplyKeyboardRemove, Update, WebAppInfo,
+    InlineKeyboardButton, InlineKeyboardMarkup, InputFile, KeyboardButton,
+    ReplyKeyboardMarkup, ReplyKeyboardRemove, Update, WebAppInfo,
 )
 from telegram.constants import ParseMode
 from telegram.error import TelegramError
@@ -77,6 +81,7 @@ if ENVIRONMENT == "production" and not BOT_TOKEN:
 
 T: dict[str, dict[str, str]] = {
     "uz": {
+        "sub_unknown": "Hozir obunani tekshirib bo'lmadi. Bir ozdan keyin qayta urinib ko'ring.",
         "menu_wake": "☀️ Turdim",
         "wake_ok": "Xayrli tong! Uyg'onish belgilandi ✓ ({now})",
         "wake_late": "Kech bo'ldi — {deadline} gacha yozish kerak edi. Bugun hisoblanmadi.",
@@ -188,6 +193,7 @@ T: dict[str, dict[str, str]] = {
         "days_short": "kun",
     },
     "en": {
+        "sub_unknown": "Could not verify your subscription right now. Please try again shortly.",
         "menu_wake": "☀️ I'm up",
         "wake_ok": "Good morning! Wake-up recorded ✓ ({now})",
         "wake_late": "Too late — the cut-off was {deadline}. It does not count today.",
@@ -299,6 +305,7 @@ T: dict[str, dict[str, str]] = {
         "days_short": "days",
     },
     "ru": {
+        "sub_unknown": "Сейчас не удалось проверить подписку. Попробуйте чуть позже.",
         "menu_wake": "☀️ Я встал",
         "wake_ok": "Доброе утро! Подъём засчитан ✓ ({now})",
         "wake_late": "Поздно — крайний срок был {deadline}. Сегодня не засчитано.",
@@ -436,6 +443,17 @@ def t(lang: str, key: str, **kwargs) -> str:
 # Admin log channel
 # ---------------------------------------------------------------------------
 
+def esc(value) -> str:
+    """Escape user-controlled text before it enters an HTML message.
+
+    Telegram parses `parse_mode=HTML`, so an unescaped name like
+    `<a href=...>` either renders as a link or aborts the whole send with a
+    parse error (audit 014, 076). Application markup is written literally in
+    the f-string; every value that came from a user goes through here.
+    """
+    return html.escape(str(value or ""), quote=False)
+
+
 async def admin_log(bot, text: str, chat_id: str | None = None) -> None:
     """Send a business event to a private admin channel.
 
@@ -454,11 +472,17 @@ async def admin_log(bot, text: str, chat_id: str | None = None) -> None:
 
 
 def _who(user: User) -> str:
+    """Identity line for the admin channel.
+
+    Deliberately carries no phone number: the channel is read by people who do
+    not need it, and a leaked export would expose it (audit 016). Whether a
+    number exists is enough for support.
+    """
     name = " ".join(x for x in (user.first_name, user.last_name) if x) or "—"
-    username = f"@{user.username}" if user.username else "—"
+    username = f"@{esc(user.username)}" if user.username else "—"
     return (f"No: <b>#{user.member_no}</b>\n"
             f"ID: <code>{user.telegram_id}</code>\n"
-            f"Name: {name}\nUsername: {username}")
+            f"Name: {esc(name)}\nUsername: {username}")
 
 
 async def log_event(bot, user: User, event: str, detail: str = "") -> None:
@@ -474,22 +498,50 @@ async def log_event(bot, user: User, event: str, detail: str = "") -> None:
 
 MEMBER_STATES = {"member", "administrator", "creator"}
 
+#: How long a confirmed membership answer is trusted before Telegram is asked
+#: again. Short enough that leaving the channel locks the Mini App quickly
+#: (audit 002), long enough that normal use does not call Telegram per request
+#: (audit 004).
+MEMBERSHIP_TTL = timedelta(seconds=int(os.environ.get("MEMBERSHIP_TTL", "180")))
 
-async def is_subscribed(bot, telegram_id: int) -> bool | None:
-    """True / False / None when Telegram could not be asked.
 
-    None is treated as "keep the previous state" so a Telegram outage never
-    deletes access or data.
+async def is_subscribed(bot, telegram_id: int, *, retries: int = 2) -> bool | None:
+    """True / False / None — None means Telegram could not be asked.
+
+    None is never treated as a pass: callers must show "try again" rather than
+    letting an outage silently grant access (audit 001).
     """
     if not REQUIRED_CHANNEL_ID:
         return True
-    try:
-        member = await bot.get_chat_member(chat_id=REQUIRED_CHANNEL_ID,
-                                           user_id=telegram_id)
-        return member.status in MEMBER_STATES
-    except TelegramError as e:
-        log.warning("subscription check failed for %s: %s", telegram_id, e)
-        return None
+    for attempt in range(retries + 1):
+        try:
+            member = await bot.get_chat_member(chat_id=REQUIRED_CHANNEL_ID,
+                                               user_id=telegram_id)
+            return member.status in MEMBER_STATES
+        except TelegramError as e:
+            if attempt == retries:
+                log.warning("membership check failed for %s: %s", telegram_id, e)
+                return None
+            # Jittered backoff so a blip does not lock everyone out at once.
+            await asyncio.sleep(0.4 * (attempt + 1) + random.random() * 0.3)
+    return None
+
+
+def record_membership(s, telegram_id: int, subscribed: bool, source: str) -> bool:
+    """Persist a *confirmed* answer. Returns True when the value changed."""
+    user = s.get(User, telegram_id)
+    if user is None:
+        return False
+    changed = user.is_subscribed != subscribed
+    user.is_subscribed = subscribed
+    user.sub_checked_at = db.utcnow()
+    user.sub_source = source
+    return changed
+
+
+def membership_is_fresh(user: User) -> bool:
+    return (user.sub_checked_at is not None
+            and db.utcnow() - user.sub_checked_at <= MEMBERSHIP_TTL)
 
 
 def subscribe_keyboard(lang: str) -> InlineKeyboardMarkup:
@@ -524,20 +576,34 @@ async def guard(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> tuple[User, i
         await start(update, ctx)
         return None
 
-    state = await is_subscribed(ctx.bot, tg_user.id)
+    # Skip the round-trip while the last confirmed answer is still fresh
+    # (audit 004); otherwise ask Telegram and act on all three outcomes.
+    with SessionLocal() as s:
+        cached = s.get(User, tg_user.id)
+        fresh = cached is not None and membership_is_fresh(cached)
+        cached_ok = bool(cached and cached.is_subscribed)
+
+    state = True if (fresh and cached_ok) else await is_subscribed(ctx.bot, tg_user.id)
+
+    target = update.effective_message
     if state is False:
         with SessionLocal() as s:
-            if svc.set_subscription(s, tg_user.id, False):
-                s.commit()
-        target = update.effective_message
+            record_membership(s, tg_user.id, False, "api")
+            s.commit()
         if target:
             await target.reply_text(t(lang, "sub_lost"),
                                     reply_markup=subscribe_keyboard(lang))
         return None
-    if state is True:
+    if state is None:
+        # Telegram unreachable — say so instead of quietly letting them in.
+        if target:
+            await target.reply_text(t(lang, "sub_unknown"),
+                                    reply_markup=subscribe_keyboard(lang))
+        return None
+    if not fresh:
         with SessionLocal() as s:
-            if svc.set_subscription(s, tg_user.id, True):
-                s.commit()
+            record_membership(s, tg_user.id, True, "api")
+            s.commit()
 
     with SessionLocal() as s:
         user = s.get(User, tg_user.id)
@@ -674,8 +740,7 @@ async def on_contact(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         snapshot = user
 
     await message.reply_text(t(lang, "phone_saved"), reply_markup=ReplyKeyboardRemove())
-    await log_event(ctx.bot, snapshot, "📱 PHONE SUBMITTED",
-                    f"Phone: {snapshot.phone_number}")
+    await log_event(ctx.bot, snapshot, "📱 PHONE SUBMITTED", "phone_added=true")
     if onboarded_already:
         # Changed from Settings — go straight back to the menu.
         await message.reply_text(t(lang, "saved"), reply_markup=main_menu(lang))
@@ -739,13 +804,16 @@ async def finish_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> N
         if user is None:
             return
         lang = user.language
-        if state is False:
+        if state is not True:
+            # False = not a member, None = could not check. Neither may finish
+            # onboarding or set is_subscribed (audit 001).
             user.onboarding_step = "subscribe"
             s.commit()
-            await message.reply_text(t(lang, "sub_missing"),
-                                     reply_markup=subscribe_keyboard(lang))
+            await message.reply_text(
+                t(lang, "sub_missing" if state is False else "sub_unknown"),
+                reply_markup=subscribe_keyboard(lang))
             return
-        user.is_subscribed = state is not False
+        record_membership(s, tg_user.id, True, "api")
         user.onboarding_step = "done"
         user.onboarded = True
         s.commit()
@@ -765,22 +833,22 @@ async def finish_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> N
 def render_home(data: dict, lang: str) -> str:
     lines = [f"<b>{t(lang, 'home_title')}</b>"]
     if data["quote"]:
-        lines.append(f"<i>{data['quote']}</i>")
+        lines.append(f"<i>{esc(data['quote'])}</i>")
     lines.append(f"📅 {data['date']}")
 
     focus = data["focus"]
     if focus:
         lines.append(f"\n<b>{t(lang, 'home_focus')}</b>")
         for f in focus:
-            lines.append(f"{'✅' if f['done'] else '▫️'} {f['title']}")
+            lines.append(f"{'✅' if f['done'] else '▫️'} {esc(f['title'])}")
 
     tasks = data["tasks"]["today"]
     lines.append(f"\n<b>{t(lang, 'home_tasks')}</b>")
     if tasks:
         marks = {"high": "🔴", "medium": "🟡", "low": "🟢"}
         for task in tasks[:6]:
-            project = f" — {task['project']}" if task["project"] else ""
-            lines.append(f"{marks.get(task['priority'], '▫️')} {task['title']}{project}")
+            project = f" — {esc(task['project'])}" if task["project"] else ""
+            lines.append(f"{marks.get(task['priority'], '▫️')} {esc(task['title'])}{project}")
     else:
         lines.append(t(lang, "none"))
 
@@ -788,7 +856,7 @@ def render_home(data: dict, lang: str) -> str:
     if overdue:
         lines.append(f"\n<b>{t(lang, 'home_overdue')}</b>")
         for task in overdue[:4]:
-            lines.append(f"• {task['title']} ({task['deadline']})")
+            lines.append(f"• {esc(task['title'])} ({task['deadline']})")
 
     habits = data["habits"]
     lines.append(f"\n<b>{t(lang, 'home_habits')}</b>  "
@@ -806,7 +874,7 @@ def render_home(data: dict, lang: str) -> str:
     if projects:
         lines.append(f"\n<b>{t(lang, 'home_projects')}</b>")
         for p in projects[:4]:
-            lines.append(f"• {p['name']} — {p['progress']}%")
+            lines.append(f"• {esc(p['name'])} — {p['progress']}%")
 
     goals = data["goals"]
     if any(goals.values()):
@@ -820,7 +888,7 @@ def render_home(data: dict, lang: str) -> str:
         lines.append(f"\n<b>{t(lang, 'home_bday')}</b>")
         for b in birthdays[:3]:
             when = "🎉" if b["days_left"] == 0 else f"{b['days_left']} {t(lang, 'days_short')}"
-            lines.append(f"• {b['person_name']} — {when}")
+            lines.append(f"• {esc(b['person_name'])} — {when}")
 
     return "\n".join(lines)
 
@@ -923,8 +991,8 @@ def render_tasks(data: dict, lang: str) -> str:
     if data["overdue"]:
         lines.append(f"<b>{t(lang, 'tasks_overdue')}</b>")
         for task in data["overdue"]:
-            project = task["project"] or t(lang, "standalone")
-            lines.append(f"{marks.get(task['priority'], '▫️')} {task['title']}\n"
+            project = esc(task["project"]) if task["project"] else t(lang, "standalone")
+            lines.append(f"{marks.get(task['priority'], '▫️')} {esc(task['title'])}\n"
                          f"   📁 {project} · 📅 {task['deadline']}")
         lines.append("")
 
@@ -932,8 +1000,8 @@ def render_tasks(data: dict, lang: str) -> str:
     upcoming = data["upcoming"]
     if upcoming:
         for task in upcoming:
-            project = task["project"] or t(lang, "standalone")
-            lines.append(f"{marks.get(task['priority'], '▫️')} {task['title']}\n"
+            project = esc(task["project"]) if task["project"] else t(lang, "standalone")
+            lines.append(f"{marks.get(task['priority'], '▫️')} {esc(task['title'])}\n"
                          f"   📁 {project} · 📅 {task['deadline']}")
     else:
         lines.append(t(lang, "none"))
@@ -994,7 +1062,7 @@ def render_goals(grouped: dict, lang: str) -> str:
         lines.append(f"\n<b>{t(lang, icons[category])}</b>")
         for g in goals:
             mark = "✅" if g["status"] == "completed" else "•"
-            lines.append(f"{mark} {g['title']}")
+            lines.append(f"{mark} {esc(g['title'])}")
     if empty:
         lines.append(f"\n{t(lang, 'empty')}")
     return "\n".join(lines)
@@ -1089,7 +1157,7 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             await skip_phone(update, ctx)
         return
 
-    flow = ctx.user_data.get("flow")
+    flow = current_flow(ctx)
     if flow:
         await handle_flow(update, ctx, flow, text)
         return
@@ -1110,7 +1178,7 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if text == t(code, "menu_settings"):
             return await show_settings(update, ctx)
         if text == t(code, "menu_feedback"):
-            ctx.user_data["flow"] = {"name": "feedback"}
+            start_flow(ctx, "feedback")
             return await message.reply_text(t(lang, "ask_feedback"),
                                             reply_markup=cancel_keyboard(lang))
         if text == t(code, "menu_app"):
@@ -1120,6 +1188,35 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             return
 
     await show_home(update, ctx)
+
+
+def start_flow(ctx: ContextTypes.DEFAULT_TYPE, name: str, **data) -> dict:
+    """Open a multi-step flow, replacing any half-finished one.
+
+    Each flow carries an id and an expiry so a callback from an abandoned or
+    superseded flow can be recognised and ignored (audit 034).
+    """
+    flow = {"name": name, "id": uuid.uuid4().hex[:8],
+            "expires": time.time() + FLOW_TTL, **data}
+    ctx.user_data["flow"] = flow
+    return flow
+
+
+def current_flow(ctx: ContextTypes.DEFAULT_TYPE, *names: str) -> dict | None:
+    """The open flow, if it is one of `names` and has not expired."""
+    flow = ctx.user_data.get("flow")
+    if not flow:
+        return None
+    if flow.get("expires", 0) < time.time():
+        ctx.user_data.pop("flow", None)
+        return None
+    if names and flow.get("name") not in names:
+        return None
+    return flow
+
+
+#: A half-finished flow is forgotten after this long.
+FLOW_TTL = int(os.environ.get("FLOW_TTL_SECONDS", "900"))
 
 
 async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
@@ -1134,7 +1231,7 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 
     try:
         if name == "habit_name":
-            ctx.user_data["flow"] = {"name": "habit_cat", "title": text}
+            start_flow(ctx, "habit_cat", title=text)
             await message.reply_text(t(lang, "ask_habit_cat"),
                                      reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton(t(lang, "cat_non_negotiable"),
@@ -1162,13 +1259,13 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 
         elif name == "task_edit":
             with SessionLocal() as s:
-                task = svc.update_task(s, ws, flow["id"], title=text)
+                task = svc.update_task(s, ws, flow["target_id"], title=text)
             ctx.user_data.pop("flow", None)
             await message.reply_text(t(lang, "task_updated", title=task.title))
             await show_tasks(update, ctx)
 
         elif name == "task_title":
-            ctx.user_data["flow"] = {"name": "task_days", "title": text}
+            start_flow(ctx, "task_days", title=text)
             await message.reply_text(t(lang, "ask_task_days"),
                                      reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton(t(lang, "days_today"), callback_data="taskday:0"),
@@ -1196,11 +1293,11 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                 project = svc.add_project(s, ws, text)
             ctx.user_data.pop("flow", None)
             await message.reply_text(t(lang, "project_added", name=project.name))
-            await log_event(ctx.bot, user, "📁 PROJECT ADDED", f"Project: {project.name}")
+            await log_event(ctx.bot, user, "📁 PROJECT ADDED", f"Project: {esc(project.name)}")
             await show_tasks(update, ctx)
 
         elif name == "goal_title":
-            ctx.user_data["flow"] = {"name": "goal_cat", "title": text}
+            start_flow(ctx, "goal_cat", title=text)
             await message.reply_text(t(lang, "ask_goal_cat"),
                                      reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton(t(lang, "cat_ultimate"), callback_data="goalcat:ultimate")],
@@ -1221,9 +1318,8 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                     await ctx.bot.send_message(
                         chat_id=FEEDBACK_CHANNEL_ID,
                         text=(f"<b>💬 ERNESTOS FEEDBACK</b>\n{_who(user)}\n"
-                              f"Phone: {user.phone_number or '—'}\n"
                               f"Date: {datetime.now(svc.TZ):%Y-%m-%d %H:%M}\n\n"
-                              f"{text}"),
+                              f"{esc(text)}"),
                         parse_mode=ParseMode.HTML)
                     delivered = True
                 except TelegramError as e:
@@ -1255,8 +1351,7 @@ async def ask_task_project(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     with SessionLocal() as s:
         projects = svc.list_projects(s, ws)
 
-    ctx.user_data["flow"] = {"name": "task_project", "title": title,
-                             "deadline": deadline.isoformat()}
+    start_flow(ctx, "task_project", title=title, deadline=deadline.isoformat())
     rows = [[InlineKeyboardButton(t(lang, "standalone"), callback_data="taskproj:0")]]
     for p in projects[:10]:
         rows.append([InlineKeyboardButton(f"📁 {p['name']}",
@@ -1288,11 +1383,12 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         with SessionLocal() as s:
             user = s.get(User, tg_user.id)
             lang = user.language if user else "uz"
-            if state is False:
-                await query.edit_message_text(t(lang, "sub_missing"),
-                                              reply_markup=subscribe_keyboard(lang))
+            if state is not True:
+                await query.edit_message_text(
+                    t(lang, "sub_missing" if state is False else "sub_unknown"),
+                    reply_markup=subscribe_keyboard(lang))
                 return
-            changed = svc.set_subscription(s, tg_user.id, True)
+            changed = record_membership(s, tg_user.id, True, "api")
             if not user.onboarded:
                 user.onboarding_step = "done"
                 user.onboarded = True
@@ -1381,7 +1477,7 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                 svc.toggle_habit(s, ws, int(parts[2]))
             await show_habits(update, ctx, edit=True)
         elif sub == "add":
-            ctx.user_data["flow"] = {"name": "habit_name"}
+            start_flow(ctx, "habit_name")
             await message.reply_text(t(lang, "ask_habit_name"),
                                      reply_markup=cancel_keyboard(lang))
         elif sub == "dellist":
@@ -1399,7 +1495,7 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         elif sub == "del":
             with SessionLocal() as s:
                 name = svc.delete_habit(s, ws, int(parts[2]))
-            await log_event(ctx.bot, user, "🗑 HABIT DELETED", f"Habit: {name}")
+            await log_event(ctx.bot, user, "🗑 HABIT DELETED", f"Habit: {esc(name)}")
             await show_habits(update, ctx, edit=True)
         elif sub == "back":
             await show_habits(update, ctx, edit=True)
@@ -1410,7 +1506,7 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     elif action == "task":
         sub = parts[1]
         if sub == "add":
-            ctx.user_data["flow"] = {"name": "task_title"}
+            start_flow(ctx, "task_title")
             await message.reply_text(t(lang, "ask_task_name"),
                                      reply_markup=cancel_keyboard(lang))
         elif sub in ("donelist", "editlist"):
@@ -1431,11 +1527,11 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         elif sub == "done":
             with SessionLocal() as s:
                 task = svc.complete_task(s, ws, int(parts[2]))
-            await log_event(ctx.bot, user, "✅ TASK COMPLETED", f"Task: {task.title}")
+            await log_event(ctx.bot, user, "✅ TASK COMPLETED", f"Task: {esc(task.title)}")
             await query.edit_message_text(t(lang, "task_done", title=task.title))
             await show_tasks(update, ctx)
         elif sub == "edit":
-            ctx.user_data["flow"] = {"name": "task_edit", "id": int(parts[2])}
+            start_flow(ctx, "task_edit", target_id=int(parts[2]))
             await query.edit_message_text(t(lang, "ask_new_title"))
         elif sub == "back":
             await show_tasks(update, ctx, edit=True)
@@ -1443,13 +1539,13 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             pass
 
     elif action == "taskday":
-        flow = ctx.user_data.get("flow") or {}
+        flow = current_flow(ctx, "task_days") or {}
         title = flow.get("title")
         if not title:
             await query.answer(t(lang, "error"), show_alert=True)
             return
         if parts[1] == "custom":
-            ctx.user_data["flow"] = {"name": "task_custom_days", "title": title}
+            start_flow(ctx, "task_custom_days", title=title)
             await query.edit_message_text(t(lang, "ask_custom_days"))
             return
         deadline = svc.today_local() + timedelta(days=int(parts[1]))
@@ -1457,7 +1553,7 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         await ask_task_project(update, ctx, title, deadline)
 
     elif action == "taskproj":
-        flow = ctx.user_data.get("flow") or {}
+        flow = current_flow(ctx, "task_project") or {}
         title, deadline = flow.get("title"), flow.get("deadline")
         if not title:
             await query.answer(t(lang, "error"), show_alert=True)
@@ -1477,7 +1573,7 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     elif action == "project":
         sub = parts[1]
         if sub == "add":
-            ctx.user_data["flow"] = {"name": "project_add"}
+            start_flow(ctx, "project_add")
             await message.reply_text(t(lang, "ask_project_name"),
                                      reply_markup=cancel_keyboard(lang))
         elif sub == "dellist":
@@ -1495,14 +1591,14 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         elif sub == "del":
             with SessionLocal() as s:
                 name = svc.delete_project(s, ws, int(parts[2]))
-            await log_event(ctx.bot, user, "🗑 PROJECT DELETED", f"Project: {name}")
+            await log_event(ctx.bot, user, "🗑 PROJECT DELETED", f"Project: {esc(name)}")
             await show_tasks(update, ctx, edit=True)
 
     # --- goals ---
     elif action == "goal":
         sub = parts[1]
         if sub == "add":
-            ctx.user_data["flow"] = {"name": "goal_title"}
+            start_flow(ctx, "goal_title")
             await message.reply_text(t(lang, "ask_goal_title"),
                                      reply_markup=cancel_keyboard(lang))
         elif sub in ("donelist", "dellist"):
@@ -1523,18 +1619,18 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         elif sub == "done":
             with SessionLocal() as s:
                 goal = svc.complete_goal(s, ws, int(parts[2]))
-            await log_event(ctx.bot, user, "🎯 GOAL COMPLETED", f"Goal: {goal.title}")
+            await log_event(ctx.bot, user, "🎯 GOAL COMPLETED", f"Goal: {esc(goal.title)}")
             await show_goals(update, ctx, edit=True)
         elif sub == "del":
             with SessionLocal() as s:
                 title = svc.delete_goal(s, ws, int(parts[2]))
-            await log_event(ctx.bot, user, "🗑 GOAL DELETED", f"Goal: {title}")
+            await log_event(ctx.bot, user, "🗑 GOAL DELETED", f"Goal: {esc(title)}")
             await show_goals(update, ctx, edit=True)
         elif sub == "back":
             await show_goals(update, ctx, edit=True)
 
     elif action == "habitcat":
-        flow = ctx.user_data.get("flow") or {}
+        flow = current_flow(ctx, "habit_cat") or {}
         title = flow.get("title")
         if not title:
             await query.answer(t(lang, "error"), show_alert=True)
@@ -1548,7 +1644,7 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         await show_habits(update, ctx)
 
     elif action == "goalcat":
-        flow = ctx.user_data.get("flow") or {}
+        flow = current_flow(ctx, "goal_cat") or {}
         title = flow.get("title")
         if not title:
             await query.answer(t(lang, "error"), show_alert=True)
@@ -1610,7 +1706,7 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             await query.edit_message_text(t(lang, "phone_removed"))
             await show_settings(update, ctx)
         elif sub == "photo":
-            ctx.user_data["flow"] = {"name": "photo_wait"}
+            start_flow(ctx, "photo_wait")
             rows = []
             if user.photo_file_id:
                 rows.append([InlineKeyboardButton(t(lang, "btn_photo_del"),
@@ -1621,7 +1717,7 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             await query.edit_message_text(t(lang, "ask_photo"),
                                           reply_markup=InlineKeyboardMarkup(rows))
         elif sub == "waketime":
-            ctx.user_data["flow"] = {"name": "wake_time"}
+            start_flow(ctx, "wake_time")
             await query.edit_message_text(t(lang, "ask_wake_time"),
                                           reply_markup=InlineKeyboardMarkup([back]))
         elif sub == "photodel":
@@ -1662,7 +1758,8 @@ async def on_chat_member(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None
         user = s.get(User, telegram_id)
         if user is None:
             return
-        if not svc.set_subscription(s, telegram_id, subscribed):
+        if not record_membership(s, telegram_id, subscribed, "event"):
+            s.commit()      # still refresh the timestamp
             return
         s.commit()
         lang, snapshot = user.language, user
@@ -1705,20 +1802,20 @@ def render_morning(data: dict, lang: str) -> str:
     if today["tasks"]:
         lines.append(f"\n{t(lang, 'r_tasks')}")
         for task in today["tasks"][:8]:
-            lines.append(f"• {task['title']}")
+            lines.append(f"• {esc(task['title'])}")
     if today["overdue"]:
         lines.append(f"\n{t(lang, 'home_overdue')}")
         for task in today["overdue"][:5]:
-            lines.append(f"• {task['title']} ({task['deadline']})")
+            lines.append(f"• {esc(task['title'])} ({task['deadline']})")
     if today["focus"]:
         lines.append(f"\n{t(lang, 'r_focus')}")
         for i, f in enumerate(today["focus"], start=1):
-            lines.append(f"{i}. {'✅ ' if f['done'] else ''}{f['title']}")
+            lines.append(f"{i}. {'✅ ' if f['done'] else ''}{esc(f['title'])}")
     if today["birthdays"]:
         lines.append(f"\n{t(lang, 'home_bday')}")
         for b in today["birthdays"]:
             when = "🎉" if b["days_left"] == 0 else f"{b['days_left']} {t(lang, 'days_short')}"
-            lines.append(f"• {b['person_name']} — {when}")
+            lines.append(f"• {esc(b['person_name'])} — {when}")
 
     return "\n".join(lines)
 
@@ -1739,7 +1836,7 @@ def render_evening(data: dict, lang: str) -> str:
     if unfinished:
         lines.append(f"\n{t(lang, 'r_unfinished')}")
         for item in unfinished[:8]:
-            lines.append(f"• {item}")
+            lines.append(f"• {esc(item)}")
 
     return "\n".join(lines)
 
@@ -1748,9 +1845,17 @@ async def send_platform_stats(bot) -> None:
     """Aggregate usage numbers for the operator. No user content, ever."""
     if not STATS_CHANNEL_ID:
         return
-    with SessionLocal() as s:
-        st = svc.platform_stats(s)
+    # The lock must span the send, not just the query — otherwise a second
+    # instance takes it the moment the query ends and posts a duplicate.
+    with svc.JobLock(SessionLocal, "stats") as lock:
+        if not lock.acquired:
+            return
+        with SessionLocal() as s:
+            st = svc.platform_stats(s)
+        await _post_platform_stats(bot, st)
 
+
+async def _post_platform_stats(bot, st: dict) -> None:
     languages = " · ".join(f"{k or '—'} {v}" for k, v in sorted(st["languages"].items()))
     genders = " · ".join(f"{k or '—'} {v}" for k, v in sorted(st["genders"].items()))
 
@@ -1774,35 +1879,62 @@ async def send_platform_stats(bot) -> None:
 async def send_reports(bot, report_type: str) -> None:
     """Deliver one report to every eligible user, at most once per local day."""
     report_date = svc.today_local()
+    with svc.JobLock(SessionLocal, f"report:{report_type}") as lock:
+        if not lock.acquired:
+            return
+        await _send_reports_locked(bot, report_type, report_date)
+
+
+async def _send_reports_locked(bot, report_type: str, report_date) -> None:
     with SessionLocal() as s:
         recipients = svc.active_recipients(s)
 
-    sent = failed = 0
+    sent = failed = skipped = 0
     for telegram_id, ws, lang in recipients:
+        # Claim before building anything: the insert is the lock, so a second
+        # worker finds the row taken and moves on (audit 036).
         with SessionLocal() as s:
-            if svc.already_sent(s, ws, report_type, report_date):
-                continue
-            user = s.get(User, telegram_id)
-            if user is None:
-                continue
-            data = (svc.morning_data(s, ws, user) if report_type == "morning"
-                    else svc.evening_data(s, ws, user))
+            report_id = svc.claim_report(s, ws, report_type, report_date)
+        if report_id is None:
+            skipped += 1
+            continue
 
-        text = (render_morning(data, lang) if report_type == "morning"
-                else render_evening(data, lang))
         try:
+            with SessionLocal() as s:
+                user = s.get(User, telegram_id)
+                if user is None:
+                    svc.release_report(s, report_id)
+                    continue
+                data = (svc.morning_data(s, ws, user) if report_type == "morning"
+                        else svc.evening_data(s, ws, user))
+
+            text = (render_morning(data, lang) if report_type == "morning"
+                    else render_evening(data, lang))
             await bot.send_message(telegram_id, text, parse_mode=ParseMode.HTML,
                                    reply_markup=webapp_button(lang))
             with SessionLocal() as s:
-                svc.mark_sent(s, ws, report_type, report_date)
+                svc.mark_report_sent(s, report_id)
             sent += 1
+
         except TelegramError as e:
-            # A blocked bot or deleted account must not stop the whole run.
+            # Blocked bot or deleted account: record and continue.
             log.warning("%s report to %s failed: %s", report_type, telegram_id, e)
+            with SessionLocal() as s:
+                svc.mark_report_failed(s, report_id, str(e))
             failed += 1
+
+        except Exception as e:
+            # Any other error must not abort the remaining recipients
+            # (audit 037). Release the claim so a later run can retry.
+            log.exception("%s report to %s errored", report_type, telegram_id)
+            with SessionLocal() as s:
+                svc.mark_report_failed(s, report_id, repr(e))
+            failed += 1
+
         await asyncio.sleep(0.05)  # stay inside Telegram's rate limit
 
-    log.info("%s report: %s sent, %s failed", report_type, sent, failed)
+    log.info("%s report: %s sent, %s failed, %s already claimed",
+             report_type, sent, failed, skipped)
 
 
 # ---------------------------------------------------------------------------
@@ -1843,8 +1975,19 @@ def verify_init_data(init_data: str) -> dict:
         raise HTTPException(status_code=401, detail="unauthorized")
 
 
-def auth(init_data: str | None) -> tuple[User, int]:
-    """Resolve the caller to (user, workspace_id), enforcing subscription."""
+#: Users whose cached membership answer expired; the bot re-verifies on next
+#: contact rather than the API trusting a stale flag forever (audit 002).
+_stale_membership: set[int] = set()
+
+
+def auth(init_data: str | None, *, require_onboarded: bool = True) -> tuple[User, int]:
+    """Resolve the caller to (user, workspace_id) and apply access policy.
+
+    Three gates, in order:
+      1. a valid Telegram signature (always);
+      2. channel membership — a stale answer is flagged for re-verification;
+      3. completed onboarding — status endpoints opt out via require_onboarded.
+    """
     tg_user = verify_init_data(init_data or "")
     with SessionLocal() as s:
         user, _ = svc.get_or_create_user(
@@ -1855,8 +1998,17 @@ def auth(init_data: str | None) -> tuple[User, int]:
         svc.touch_activity(s, user.telegram_id)
         s.commit()
         ws = svc.workspace_id_for(s, user.telegram_id)
-        if REQUIRED_CHANNEL_ID and not user.is_subscribed:
-            raise HTTPException(status_code=403, detail="subscription_required")
+
+        if REQUIRED_CHANNEL_ID:
+            if not user.is_subscribed:
+                raise HTTPException(status_code=403, detail="subscription_required")
+            if not membership_is_fresh(user):
+                _stale_membership.add(user.telegram_id)
+
+        if require_onboarded and not user.onboarded:
+            # A half-registered account must not create rows (audit 003).
+            raise HTTPException(status_code=409, detail="onboarding_required")
+
         return user, ws
 
 
@@ -1866,6 +2018,7 @@ def auth(init_data: str | None) -> tuple[User, int]:
 
 telegram_app: Application | None = None
 scheduler: AsyncIOScheduler | None = None
+
 
 
 @asynccontextmanager
@@ -1905,7 +2058,9 @@ async def lifespan(_: FastAPI):
         await telegram_app.start()
         await telegram_app.updater.start_polling(
             allowed_updates=["message", "callback_query", "chat_member", "my_chat_member"],
-            drop_pending_updates=True)
+            # Dropping these loses whatever users tapped during a deploy
+            # (audit 033). Handlers are idempotent, so replaying is safer.
+            drop_pending_updates=False)
         log.info("telegram bot polling")
 
         scheduler = AsyncIOScheduler(timezone=svc.TZ)
@@ -1935,6 +2090,69 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="ErnestOS", lifespan=lifespan)
 
+#: Requests larger than this are refused before parsing (audit 013).
+MAX_BODY_BYTES = int(os.environ.get("MAX_BODY_BYTES", str(256 * 1024)))
+
+#: Per-user token buckets. Reads are cheap, writes cost more, and exports hit
+#: Telegram, so each class gets its own budget (audit 012).
+RATE_LIMITS = {"read": (60, 60), "write": (30, 60), "heavy": (5, 60)}
+#: The suite drives hundreds of writes as one user in a few seconds, which is
+#: not the traffic this limit describes. Tests exercise it explicitly instead.
+RATE_LIMIT_ENABLED = ENVIRONMENT != "test"
+_buckets: dict[tuple[int, str], list[float]] = {}
+
+
+def _rate_class(request: Request) -> str:
+    path = request.url.path
+    if path.startswith(("/api/stats/export", "/api/avatar")):
+        return "heavy"
+    return "read" if request.method == "GET" else "write"
+
+
+def rate_limit_check(key: int, bucket: str) -> int | None:
+    """Return seconds to wait when over budget, else None."""
+    limit, window = RATE_LIMITS[bucket]
+    now = time.monotonic()
+    hits = _buckets.setdefault((key, bucket), [])
+    cutoff = now - window
+    hits[:] = [h for h in hits if h > cutoff]
+    if len(hits) >= limit:
+        return max(1, int(hits[0] + window - now))
+    hits.append(now)
+    return None
+
+
+@app.middleware("http")
+async def guard_requests(request: Request, call_next):
+    """Body-size and rate limits, applied before any handler runs."""
+    if not request.url.path.startswith("/api/"):
+        return await call_next(request)
+
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_BODY_BYTES:
+        return JSONResponse(status_code=413, content={"detail": "payload_too_large"})
+
+    # Bucket by Telegram id when the signature is valid, else by client host —
+    # an unauthenticated flood should not be free either.
+    key, init = 0, request.headers.get("x-telegram-init-data")
+    if init:
+        try:
+            key = int(verify_init_data(init)["id"])
+        except HTTPException:
+            key = 0
+    if not key:
+        host = request.client.host if request.client else "unknown"
+        key = -(abs(hash(host)) % 10_000_000)
+
+    bucket = _rate_class(request)
+    retry_after = rate_limit_check(key, bucket) if RATE_LIMIT_ENABLED else None
+    if retry_after is not None:
+        log.info("rate limit hit: key=%s bucket=%s", key, bucket)
+        return JSONResponse(status_code=429, content={"detail": "rate_limited"},
+                            headers={"Retry-After": str(retry_after)})
+
+    return await call_next(request)
+
 
 @app.exception_handler(Exception)
 async def unhandled(request: Request, exc: Exception):
@@ -1950,22 +2168,25 @@ async def not_found(request: Request, exc: svc.NotFound):
 
 # --- request bodies ---
 
+# Every string is bounded at the schema edge, so an oversized field is
+# rejected before it reaches the database (audit 013).
+
 class SettingsIn(BaseModel):
-    language: str | None = None
-    gender: str | None = None
-    theme: str | None = None
-    quote: str | None = None
+    language: str | None = Field(default=None, max_length=2)
+    gender: str | None = Field(default=None, max_length=6)
+    theme: str | None = Field(default=None, max_length=20)
+    quote: str | None = Field(default=None, max_length=300)
 
 
 class HabitIn(BaseModel):
-    name: str
-    category: str = "target"
+    name: str = Field(min_length=1, max_length=120)
+    category: str = Field(default="target", max_length=16)
 
 
 class PrayerIn(BaseModel):
-    prayer: str
-    status: str
-    day: str | None = None
+    prayer: str = Field(max_length=10)
+    status: str = Field(max_length=10)
+    day: str | None = Field(default=None, max_length=10)
 
 
 class ExcusedIn(BaseModel):
@@ -1974,16 +2195,16 @@ class ExcusedIn(BaseModel):
 
 
 class TaskIn(BaseModel):
-    title: str
-    description: str = ""
-    deadline: str | None = None
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(default="", max_length=4000)
+    deadline: str | None = Field(default=None, max_length=10)
     project_id: int | None = None
-    priority: str = "medium"
+    priority: str = Field(default="medium", max_length=6)
 
 
 class TaskPatch(BaseModel):
-    title: str | None = None
-    description: str | None = None
+    title: str | None = Field(default=None, max_length=300)
+    description: str | None = Field(default=None, max_length=4000)
     deadline: str | None = None
     project_id: int | None = None
     priority: str | None = None
@@ -1991,39 +2212,52 @@ class TaskPatch(BaseModel):
 
 
 class ProjectIn(BaseModel):
-    name: str
-    description: str = ""
-    deadline: str | None = None
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=2000)
+    deadline: str | None = Field(default=None, max_length=10)
 
 
 class GoalIn(BaseModel):
-    title: str
-    category: str
-    description: str = ""
+    title: str = Field(min_length=1, max_length=300)
+    category: str = Field(max_length=10)
+    description: str = Field(default="", max_length=2000)
 
 
 class GoalPatch(BaseModel):
-    title: str | None = None
-    description: str | None = None
-    category: str | None = None
-    progress: int | None = None
+    title: str | None = Field(default=None, max_length=300)
+    description: str | None = Field(default=None, max_length=2000)
+    category: str | None = Field(default=None, max_length=10)
+    progress: int | None = Field(default=None, ge=0, le=100)
 
 
 class FocusIn(BaseModel):
-    title: str
+    title: str = Field(min_length=1, max_length=200)
 
 
 class JournalIn(BaseModel):
     answers: dict[str, str] | None = None
-    text: str = ""
-    day: str | None = None
-    mood: str = ""
+    text: str = Field(default="", max_length=10000)
+    day: str | None = Field(default=None, max_length=10)
+    mood: str = Field(default="", max_length=20)
+
+    @field_validator("answers")
+    @classmethod
+    def _bounded_answers(cls, value):
+        """Refuse a dictionary stuffed with thousands of keys (audit 013)."""
+        if value is None:
+            return value
+        if len(value) > 20:
+            raise ValueError("too many answers")
+        for key, text in value.items():
+            if len(key) > 32 or len(text) > 4000:
+                raise ValueError("answer too long")
+        return value
 
 
 class BirthdayIn(BaseModel):
-    person_name: str
-    birth_date: str
-    note: str = ""
+    person_name: str = Field(min_length=1, max_length=200)
+    birth_date: str = Field(max_length=10)
+    note: str = Field(default="", max_length=300)
 
 
 def _date(value: str | None) -> date | None:
@@ -2038,13 +2272,58 @@ def _date(value: str | None) -> date | None:
 # --- endpoints ---
 
 @app.get("/api/health")
-def health():
+@app.get("/health/live")
+def health_live():
+    """Liveness: the process is up. Says nothing about dependencies."""
     return {"ok": True}
+
+
+@app.get("/health/ready")
+def health_ready():
+    """Readiness: can this instance actually serve?
+
+    Checks the database, the schema and the bot worker, because a process that
+    answers 200 while the database is unreachable is worse than one that
+    admits it (audit 087).
+    """
+    from sqlalchemy import inspect, text as sql_text
+
+    checks: dict[str, str] = {}
+    ok = True
+
+    try:
+        with db.engine.connect() as conn:
+            conn.execute(sql_text("SELECT 1"))
+        checks["database"] = "ok"
+    except Exception as e:
+        checks["database"] = f"error: {type(e).__name__}"
+        ok = False
+
+    try:
+        missing = [t for t in ("users", "workspaces", "habits", "tasks")
+                   if not inspect(db.engine).has_table(t)]
+        checks["schema"] = "ok" if not missing else f"missing: {missing}"
+        ok = ok and not missing
+    except Exception as e:
+        checks["schema"] = f"error: {type(e).__name__}"
+        ok = False
+
+    if BOT_TOKEN and ENVIRONMENT != "test":
+        running = telegram_app is not None and telegram_app.updater is not None
+        checks["bot"] = "ok" if running else "not running"
+        ok = ok and running
+    else:
+        checks["bot"] = "disabled"
+
+    checks["scheduler"] = "ok" if (scheduler and scheduler.running) else "disabled"
+
+    return JSONResponse(status_code=200 if ok else 503,
+                        content={"ok": ok, "checks": checks})
 
 
 @app.get("/api/me")
 def api_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
-    user, _ = auth(init)
+    user, _ = auth(init, require_onboarded=False)
     return {"telegram_id": user.telegram_id, "member_no": user.member_no,
             "first_name": user.first_name,
             "language": user.language, "gender": user.gender,
@@ -2315,6 +2594,63 @@ def api_journal_delete(day: str, init=Header(default=None, alias="X-Telegram-Ini
     return {"ok": True}
 
 
+class QuickAddIn(BaseModel):
+    """The whole of quick capture: a line of text, nothing else."""
+    title: str = Field(min_length=1, max_length=300)
+
+
+@app.post("/api/quick")
+def api_quick_add(body: QuickAddIn,
+                  init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Capture a thought without asking for a deadline, project or priority.
+
+    Making someone answer three questions before a note is saved is how notes
+    stop getting saved. Sorting happens later, in Tasks.
+    """
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        task = svc.add_task(s, ws, body.title)
+    return {"ok": True, "id": task.id}
+
+
+class FreshStartIn(BaseModel):
+    mode: str = Field(default="today", max_length=8)
+
+
+@app.post("/api/fresh-start")
+def api_fresh_start(body: FreshStartIn,
+                    init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Clear a backlog built up during a break, in one decision."""
+    _, ws = auth(init)
+    mode = body.mode if body.mode in ("today", "archive") else "today"
+    with SessionLocal() as s:
+        moved = svc.fresh_start(s, ws, mode=mode)
+    return {"ok": True, "moved": moved, "mode": mode}
+
+
+class ReviewIn(BaseModel):
+    went_well: str = Field(default="", max_length=2000)
+    blocked: str = Field(default="", max_length=2000)
+    next_focus: str = Field(default="", max_length=2000)
+
+
+@app.get("/api/review")
+def api_review(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        return svc.weekly_review(s, ws, s.get(User, user.telegram_id))
+
+
+@app.post("/api/review")
+def api_review_save(body: ReviewIn,
+                    init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        svc.save_weekly_review(s, ws, went_well=body.went_well,
+                               blocked=body.blocked, next_focus=body.next_focus)
+    return {"ok": True}
+
+
 @app.get("/api/stats")
 def api_stats(period: str = "week", init=Header(default=None, alias="X-Telegram-Init-Data")):
     """Daily series for the habit and prayer line charts, plus streaks."""
@@ -2325,20 +2661,35 @@ def api_stats(period: str = "week", init=Header(default=None, alias="X-Telegram-
         return svc.stats(s, ws, period)
 
 
-@app.get("/api/stats/export")
-def api_stats_export(period: str = "month",
-                     init=Header(default=None, alias="X-Telegram-Init-Data")):
-    """Download the statistics as CSV."""
-    _, ws = auth(init)
+@app.post("/api/stats/export")
+async def api_stats_export(period: str = "month",
+                           init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Send the statistics CSV to the user as a Telegram file.
+
+    Telegram's in-app browser blocks ordinary downloads, and opening the URL
+    externally would leak the credential (audit 062). Delivering the file
+    through the bot avoids both and lands it where the user can keep it.
+    """
+    user, ws = auth(init)
     if period not in ("week", "month", "year"):
         period = "month"
+    if telegram_app is None:
+        raise HTTPException(status_code=503, detail="bot_unavailable")
+
     with SessionLocal() as s:
         body = svc.stats_csv(s, ws, period)
+
     stamp = datetime.now(svc.TZ).strftime("%Y-%m-%d")
-    return Response(
-        content=body, media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition":
-                 f'attachment; filename="ernestos-{period}-{stamp}.csv"'})
+    document = InputFile(body.encode("utf-8"),
+                         filename=f"ernestos-{period}-{stamp}.csv")
+    try:
+        await telegram_app.bot.send_document(
+            chat_id=user.telegram_id, document=document,
+            caption=f"ErnestOS — {period}")
+    except TelegramError as e:
+        log.warning("stats export to %s failed: %s", user.telegram_id, e)
+        raise HTTPException(status_code=502, detail="delivery_failed")
+    return {"ok": True, "delivered": "telegram"}
 
 
 @app.get("/api/calendar")
@@ -2416,13 +2767,15 @@ def api_birthday_delete(birthday_id: int, init=Header(default=None, alias="X-Tel
 
 
 @app.get("/api/avatar")
-async def api_avatar(init=Header(default=None, alias="X-Telegram-Init-Data")):
+async def api_avatar(tgdata: str | None = None,
+                     init=Header(default=None, alias="X-Telegram-Init-Data")):
     """Stream the user's profile photo.
 
-    The bytes live on Telegram's CDN; the database only holds the file_id.
-    Fetching server-side keeps the bot token out of the browser.
+    A browser `<img src=...>` cannot attach a header, so the same signed
+    initData may arrive as `?tgdata=` instead (audit 061). It is the identical
+    credential — signature and freshness are checked the same way.
     """
-    user, _ = auth(init)
+    user, _ = auth(init or tgdata)
     if not user.photo_file_id or telegram_app is None:
         raise HTTPException(status_code=404, detail="no_photo")
     try:
@@ -2443,7 +2796,7 @@ def api_wakeup(init=Header(default=None, alias="X-Telegram-Init-Data")):
 
 
 class WakeTimeIn(BaseModel):
-    time: str
+    time: str = Field(max_length=5)
 
 
 @app.post("/api/waketime")
