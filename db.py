@@ -7,12 +7,15 @@ domain row carries `workspace_id`, so one user can never reach another's data.
     User ── Workspace ─┬─ Habit ── HabitLog
                        ├─ PrayerLog / PrayerDay
                        ├─ Task ── Project
-                       ├─ Goal
                        ├─ WeeklyFocus
                        ├─ JournalEntry
                        ├─ Birthday
                        ├─ Feedback
                        └─ DailyReportLog
+
+Goals were removed before the public launch. The model is gone from this
+file; the live table is renamed out of the way by migration 0002 rather than
+dropped, so the rows survive and the change can be undone.
 """
 
 from __future__ import annotations
@@ -237,26 +240,14 @@ class Task(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
 
-class Goal(Base):
-    __tablename__ = "goals"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    workspace_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
-    title: Mapped[str] = mapped_column(String(300))
-    description: Mapped[str] = mapped_column(Text, default="")
-    #: Flat category, not a parent/child tree — three levels is all this needs.
-    category: Mapped[str] = mapped_column(String(10), default="tactical")
-    status: Mapped[str] = mapped_column(String(10), default="active")  # active|completed
-    progress: Mapped[int] = mapped_column(Integer, default=0)          # 0..100
-    target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-
-
 class WeeklyFocus(Base):
-    """At most three missions per ISO week, enforced by the unique slot."""
+    """The week's primary mission.
+
+    One row per slot, and the product now uses exactly one slot: a week with
+    three equally important missions has no primary. Older workspaces may
+    still hold slots 2 and 3 — those rows are kept, but only the primary is
+    shown, so no history is lost.
+    """
 
     __tablename__ = "weekly_focus"
 
@@ -264,8 +255,11 @@ class WeeklyFocus(Base):
     workspace_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
     week_start: Mapped[date] = mapped_column(Date, index=True)  # Monday
-    slot: Mapped[int] = mapped_column(Integer)                  # 1..3
+    slot: Mapped[int] = mapped_column(Integer)                  # 1 for new rows
     title: Mapped[str] = mapped_column(String(200))
+    #: high | medium | low. Nullable because the column is added in place to
+    #: live tables, where existing rows have no value; readers default it.
+    priority: Mapped[str | None] = mapped_column(String(6), nullable=True)
     done: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
@@ -286,7 +280,7 @@ class JournalEntry(Base):
         Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
     day: Mapped[date] = mapped_column(Date, index=True)
     text: Mapped[str] = mapped_column(Text, default="")
-    #: JSON object keyed by question id. The Summary habit only counts as done
+    #: JSON object keyed by question id. The day counts as journalled only
     #: once every question has an answer.
     answers: Mapped[str] = mapped_column(Text, default="{}")
     mood: Mapped[str] = mapped_column(String(20), default="")

@@ -126,13 +126,19 @@ T: dict[str, dict[str, str]] = {
         "sub_restored": "Xush kelibsiz! ErnestOS yana ochiq.",
         "onboard_done": "Tayyor! ErnestOS ishga tushdi.",
         "menu_home": "🏠 Home", "menu_habits": "✅ Odatlar",
-        "menu_tasks": "⚡ Vazifalar", "menu_goals": "🎯 Maqsadlar",
+        "menu_tasks": "⚡ Vazifalar", "menu_stats": "📊 Statistika",
         "menu_settings": "⚙️ Sozlamalar", "menu_feedback": "💬 Taklif",
         "menu_app": "🚀 ErnestOS",
-        "home_title": "🏠 ErnestOS",
+        "home_title": "🏠 {name}ning shaxsiy tizimi",
+        "home_title_plain": "🏠 ErnestOS",
+        "home_mission": "🎯 Missiya", "home_today": "⚡ Bugun",
+        "privacy_line": "🔒 Ma'lumotlaringiz va maxfiyligingiz to'liq himoyalangan",
+        "stats_title": "📊 Statistika",
+        "st_overall": "Umumiy", "st_tasks": "Vazifalar", "st_habits": "Odatlar",
+        "st_prayer": "Namoz", "st_streak": "Ketma-ket",
         "home_habits": "✅ Odatlar", "home_tasks": "⚡ Bugungi vazifalar",
         "home_focus": "🎯 Shu hafta", "home_projects": "📁 Loyihalar",
-        "home_goals": "🎯 Maqsadlar", "home_bday": "🎂 Tug'ilgan kunlar",
+        "home_bday": "🎂 Tug'ilgan kunlar",
         "home_overdue": "❗ Kechikkan",
         "none": "— yo'q",
         "habits_title": "✅ Odatlar",
@@ -159,16 +165,10 @@ T: dict[str, dict[str, str]] = {
         "ask_project_name": "Loyiha nomini yozing:",
         "project_added": "Loyiha qo'shildi: {name}",
         "project_deleted": "Loyiha arxivlandi: {name}",
-        "goals_title": "🎯 Maqsadlar",
-        "cat_ultimate": "👑 ULTIMATE", "cat_milestone": "🏆 MILESTONE",
-        "cat_tactical": "⚡ TACTICAL",
-        "btn_add_goal": "➕ Maqsad", "btn_done_goal": "✅ Done qilish",
-        "btn_del_goal": "🗑 Maqsad o'chirish",
-        "ask_goal_title": "Maqsad nomini yozing:",
-        "ask_goal_cat": "Qaysi darajaga tegishli?",
-        "goal_added": "Maqsad qo'shildi: {title}",
-        "goal_done": "Bajarildi 🎉 {title}",
-        "goal_deleted": "O'chirildi: {title}",
+        "btn_rename_project": "✏️ Nomini o'zgartirish",
+        "ask_project_rename": "Loyihaning yangi nomini yozing:",
+        "project_updated": "Loyiha yangilandi: {name}",
+        "project_tasks": "Vazifalar",
         "settings_title": "⚙️ Sozlamalar",
         "btn_lang": "🌐 Til", "btn_gender": "👤 Jins", "btn_theme": "🎨 Tema",
         "saved": "Saqlandi ✓",
@@ -238,13 +238,19 @@ T: dict[str, dict[str, str]] = {
         "sub_restored": "Welcome back! ErnestOS is open again.",
         "onboard_done": "All set! ErnestOS is ready.",
         "menu_home": "🏠 Home", "menu_habits": "✅ Habits",
-        "menu_tasks": "⚡ Tasks", "menu_goals": "🎯 Goals",
+        "menu_tasks": "⚡ Tasks", "menu_stats": "📊 Statistics",
         "menu_settings": "⚙️ Settings", "menu_feedback": "💬 Feedback",
         "menu_app": "🚀 ErnestOS",
-        "home_title": "🏠 ErnestOS",
+        "home_title": "🏠 {name}'s personal system",
+        "home_title_plain": "🏠 ErnestOS",
+        "home_mission": "🎯 Mission", "home_today": "⚡ Today",
+        "privacy_line": "🔒 Your data and privacy are fully protected",
+        "stats_title": "📊 Statistics",
+        "st_overall": "Overall", "st_tasks": "Tasks", "st_habits": "Habits",
+        "st_prayer": "Prayer", "st_streak": "Streak",
         "home_habits": "✅ Habits", "home_tasks": "⚡ Today's tasks",
         "home_focus": "🎯 This week", "home_projects": "📁 Projects",
-        "home_goals": "🎯 Goals", "home_bday": "🎂 Birthdays",
+        "home_bday": "🎂 Birthdays",
         "home_overdue": "❗ Overdue",
         "none": "— none",
         "habits_title": "✅ Habits",
@@ -271,16 +277,10 @@ T: dict[str, dict[str, str]] = {
         "ask_project_name": "Enter project name:",
         "project_added": "Project added: {name}",
         "project_deleted": "Project archived: {name}",
-        "goals_title": "🎯 Goals",
-        "cat_ultimate": "👑 ULTIMATE", "cat_milestone": "🏆 MILESTONE",
-        "cat_tactical": "⚡ TACTICAL",
-        "btn_add_goal": "➕ Goal", "btn_done_goal": "✅ Complete",
-        "btn_del_goal": "🗑 Delete goal",
-        "ask_goal_title": "Enter goal title:",
-        "ask_goal_cat": "Which level?",
-        "goal_added": "Goal added: {title}",
-        "goal_done": "Completed 🎉 {title}",
-        "goal_deleted": "Deleted: {title}",
+        "btn_rename_project": "✏️ Rename",
+        "ask_project_rename": "Enter the new project name:",
+        "project_updated": "Project updated: {name}",
+        "project_tasks": "Tasks",
         "settings_title": "⚙️ Settings",
         "btn_lang": "🌐 Language", "btn_gender": "👤 Gender", "btn_theme": "🎨 Theme",
         "saved": "Saved ✓",
@@ -350,13 +350,19 @@ T: dict[str, dict[str, str]] = {
         "sub_restored": "С возвращением! ErnestOS снова доступен.",
         "onboard_done": "Готово! ErnestOS запущен.",
         "menu_home": "🏠 Главная", "menu_habits": "✅ Привычки",
-        "menu_tasks": "⚡ Задачи", "menu_goals": "🎯 Цели",
+        "menu_tasks": "⚡ Задачи", "menu_stats": "📊 Статистика",
         "menu_settings": "⚙️ Настройки", "menu_feedback": "💬 Отзыв",
         "menu_app": "🚀 ErnestOS",
-        "home_title": "🏠 ErnestOS",
+        "home_title": "🏠 Личная система — {name}",
+        "home_title_plain": "🏠 ErnestOS",
+        "home_mission": "🎯 Миссия", "home_today": "⚡ Сегодня",
+        "privacy_line": "🔒 Ваши данные и конфиденциальность полностью защищены",
+        "stats_title": "📊 Статистика",
+        "st_overall": "Общий результат", "st_tasks": "Задачи",
+        "st_habits": "Привычки", "st_prayer": "Намаз", "st_streak": "Серия",
         "home_habits": "✅ Привычки", "home_tasks": "⚡ Задачи на сегодня",
         "home_focus": "🎯 На этой неделе", "home_projects": "📁 Проекты",
-        "home_goals": "🎯 Цели", "home_bday": "🎂 Дни рождения",
+        "home_bday": "🎂 Дни рождения",
         "home_overdue": "❗ Просрочено",
         "none": "— нет",
         "habits_title": "✅ Привычки",
@@ -383,16 +389,10 @@ T: dict[str, dict[str, str]] = {
         "ask_project_name": "Введите название проекта:",
         "project_added": "Проект добавлен: {name}",
         "project_deleted": "Проект архивирован: {name}",
-        "goals_title": "🎯 Цели",
-        "cat_ultimate": "👑 ULTIMATE", "cat_milestone": "🏆 MILESTONE",
-        "cat_tactical": "⚡ TACTICAL",
-        "btn_add_goal": "➕ Цель", "btn_done_goal": "✅ Выполнено",
-        "btn_del_goal": "🗑 Удалить цель",
-        "ask_goal_title": "Введите название цели:",
-        "ask_goal_cat": "Какой уровень?",
-        "goal_added": "Цель добавлена: {title}",
-        "goal_done": "Выполнено 🎉 {title}",
-        "goal_deleted": "Удалено: {title}",
+        "btn_rename_project": "✏️ Переименовать",
+        "ask_project_rename": "Введите новое название проекта:",
+        "project_updated": "Проект обновлён: {name}",
+        "project_tasks": "Задачи",
         "settings_title": "⚙️ Настройки",
         "btn_lang": "🌐 Язык", "btn_gender": "👤 Пол", "btn_theme": "🎨 Тема",
         "saved": "Сохранено ✓",
@@ -615,13 +615,17 @@ async def guard(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> tuple[User, i
 # ---------------------------------------------------------------------------
 
 def main_menu(lang: str) -> ReplyKeyboardMarkup:
-    # Same seven entries, in the same order, as the Mini App — so a feature
-    # seen in one surface is findable in the other.
+    """The seven entries of the persistent menu, in a fixed order.
+
+    Home, Habits, Tasks and Statistics are the four screens the Mini App also
+    has, so a feature found in one surface is findable in the other. "Turdim"
+    is not among them: it is a once-a-day action, not a destination, and it
+    still works as a typed message and from the Habits screen.
+    """
     rows = [
         [t(lang, "menu_home"), t(lang, "menu_habits")],
-        [t(lang, "menu_tasks"), t(lang, "menu_goals")],
+        [t(lang, "menu_tasks"), t(lang, "menu_stats")],
         [t(lang, "menu_settings"), t(lang, "menu_feedback")],
-        [t(lang, "menu_wake")],
     ]
     if WEBAPP_URL:
         rows.append([t(lang, "menu_app")])
@@ -805,67 +809,83 @@ async def finish_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> N
 # Home
 # ---------------------------------------------------------------------------
 
+#: The trend arrow. Direction is carried by the shape as well as the colour,
+#: so it still reads on a monochrome screen or to a colour-blind user.
+TREND_MARK = {"up": "🔺", "down": "🔻", "flat": "▪️"}
+
+
 def render_home(data: dict, lang: str) -> str:
-    lines = [f"<b>{t(lang, 'home_title')}</b>"]
-    if data["quote"]:
-        lines.append(f"<i>{esc(data['quote'])}</i>")
-    lines.append(f"📅 {data['date']}")
+    """Home in one screenful: today's mission, today's tasks, today's numbers.
 
-    focus = data["focus"]
-    if focus:
-        lines.append(f"\n<b>{t(lang, 'home_focus')}</b>")
-        for f in focus:
-            lines.append(f"{'✅' if f['done'] else '▫️'} {esc(f['title'])}")
+    Everything that used to sit here — goals, projects, birthdays, the overdue
+    wall — answered a question the user was not asking at 7am. Those live on
+    their own screens; this one says how today is going.
+    """
+    name = (data.get("name") or "").strip()
+    title = t(lang, "home_title", name=esc(name)) if name \
+        else t(lang, "home_title_plain")
+    lines = [f"<b>{title}</b>", f"📅 {data['date_label']}"]
 
-    tasks = data["tasks"]["today"]
-    lines.append(f"\n<b>{t(lang, 'home_tasks')}</b>")
-    if tasks:
-        marks = {"high": "🔴", "medium": "🟡", "low": "🟢"}
-        for task in tasks[:6]:
-            project = f" — {esc(task['project'])}" if task["project"] else ""
-            lines.append(f"{marks.get(task['priority'], '▫️')} {esc(task['title'])}{project}")
+    mission = data.get("mission")
+    lines.append(f"\n<b>{t(lang, 'home_mission')}</b>")
+    lines.append(esc(mission["title"]) if mission else t(lang, "none"))
+
+    lines.append(f"\n<b>{t(lang, 'home_today')}</b>")
+    rows = [task for group in data["tasks_today"] for task in group["tasks"]]
+    if rows:
+        for task in rows[:6]:
+            lines.append(f"— {esc(task['title'])}")
     else:
         lines.append(t(lang, "none"))
 
-    overdue = data["tasks"]["overdue"]
-    if overdue:
-        lines.append(f"\n<b>{t(lang, 'home_overdue')}</b>")
-        for task in overdue[:4]:
-            lines.append(f"• {esc(task['title'])} ({task['deadline']})")
+    habits, prayer, overall = data["habits"], data["prayer"], data["overall"]
+    lines.append(f"\n✅ 🕌 🔥 {habits['done']}/{habits['total']} · "
+                 f"{prayer['score']}/{prayer['max']} · {data['streak']}")
+    lines.append(f"📊 {TREND_MARK.get(overall['trend'], '▪️')} {overall['value']}%")
 
-    habits = data["habits"]
-    lines.append(f"\n<b>{t(lang, 'home_habits')}</b>  "
-                 f"{habits['done']} / {habits['total']}")
-
-    prayer = data["prayer"]
-    lines.append(f"🕌 {prayer['score']} / {prayer['max']}")
-
-    streaks = data.get("streaks") or {}
-    if streaks.get("habits") or streaks.get("prayer"):
-        lines.append(f"{t(lang, 'streak')}: "
-                     f"{streaks.get('habits', 0)} · 🕌 {streaks.get('prayer', 0)}")
-
-    projects = data["projects"]
-    if projects:
-        lines.append(f"\n<b>{t(lang, 'home_projects')}</b>")
-        for p in projects[:4]:
-            lines.append(f"• {esc(p['name'])} — {p['progress']}%")
-
-    goals = data["goals"]
-    if any(goals.values()):
-        lines.append(f"\n<b>{t(lang, 'home_goals')}</b>")
-        lines.append(f"👑 {goals.get('ultimate', 0)}  "
-                     f"🏆 {goals.get('milestone', 0)}  "
-                     f"⚡ {goals.get('tactical', 0)}")
-
-    birthdays = data["birthdays"]
-    if birthdays:
-        lines.append(f"\n<b>{t(lang, 'home_bday')}</b>")
-        for b in birthdays[:3]:
-            when = "🎉" if b["days_left"] == 0 else f"{b['days_left']} {t(lang, 'days_short')}"
-            lines.append(f"• {esc(b['person_name'])} — {when}")
-
+    lines.append(f"\n{t(lang, 'privacy_line')}")
     return "\n".join(lines)
+
+
+def render_stats(data: dict, lang: str) -> str:
+    """The four percentages, from the same backend numbers Home shows."""
+    today = data["today"]
+    dash = "—"
+
+    def pct(value) -> str:
+        # A component with nothing due today has no percentage. Printing 0%
+        # would claim the user failed at something they were never asked to do.
+        return f"{value}%" if value is not None else dash
+
+    lines = [
+        f"<b>{t(lang, 'stats_title')}</b>",
+        "",
+        f"<b>{t(lang, 'st_overall')}: {today['overall']}% "
+        f"{TREND_MARK.get(today['trend'], '▪️')}</b>",
+        f"{t(lang, 'st_tasks')}: {pct(today['tasks'])}",
+        f"{t(lang, 'st_habits')}: {pct(today['habits'])}",
+        f"{t(lang, 'st_prayer')}: {pct(today['prayer'])} "
+        f"({today['prayer_score']}/{today['prayer_max']})",
+        "",
+        f"🔥 {t(lang, 'st_streak')}: {today['streak']}",
+        "",
+        t(lang, "privacy_line"),
+    ]
+    return "\n".join(lines)
+
+
+async def show_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    got = await guard(update, ctx)
+    if got is None:
+        return
+    user, ws = got
+    with SessionLocal() as s:
+        data = svc.stats(s, ws, "week")
+    message = update.effective_message
+    if message:
+        await message.reply_text(render_stats(data, user.language),
+                                 parse_mode=ParseMode.HTML,
+                                 reply_markup=webapp_button(user.language))
 
 
 async def handle_wakeup(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -926,6 +946,14 @@ def habits_keyboard(grouped: dict, lang: str) -> InlineKeyboardMarkup:
             rows.append([InlineKeyboardButton(
                 f"{mark} {h['name']}{clock}{lock}",
                 callback_data=f"habit:toggle:{h['id']}")])
+    # "Turdim" left the persistent menu, so it lives here, where the habit it
+    # belongs to is — and only while it can still be recorded today.
+    wake = next((h for group in grouped.values() for h in group
+                 if h.get("system_key") == svc.SYSTEM_WAKEUP), None)
+    if wake and not wake["done"]:
+        rows.append([InlineKeyboardButton(t(lang, "menu_wake"),
+                                          callback_data="habit:wake")])
+
     rows.append([
         InlineKeyboardButton(t(lang, "btn_add_habit"), callback_data="habit:add"),
         InlineKeyboardButton(t(lang, "btn_del_habit"), callback_data="habit:dellist"),
@@ -989,16 +1017,52 @@ def render_tasks(data: dict, lang: str) -> str:
     return "\n".join(lines)
 
 
-def tasks_keyboard(lang: str) -> InlineKeyboardMarkup:
-    """Completing replaces deleting: finished work moves to the Done archive
-    instead of disappearing from history."""
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton(t(lang, "btn_done_task"), callback_data="task:donelist"),
-         InlineKeyboardButton(t(lang, "btn_edit_task"), callback_data="task:editlist")],
-        [InlineKeyboardButton(t(lang, "btn_add_task"), callback_data="task:add")],
-        [InlineKeyboardButton(t(lang, "btn_add_project"), callback_data="project:add"),
-         InlineKeyboardButton(t(lang, "btn_del_project"), callback_data="project:dellist")],
+def tasks_keyboard(lang: str, *, projects: list[dict],
+                   open_tasks: int, editable: int) -> InlineKeyboardMarkup:
+    """Only buttons that lead somewhere.
+
+    A "Bajarildi" button on an empty task list opens a chooser with nothing in
+    it — the user taps, gets an alert, and learns the app is lying about what
+    it can do. So each control appears only when it has something to act on:
+    with no data at all, the screen is two Add buttons and nothing else.
+    Completing still replaces deleting, so finished work keeps its history.
+    """
+    rows = []
+    for project in projects[:6]:
+        rows.append([InlineKeyboardButton(
+            f"📁 {project['name'][:32]}", callback_data=f"project:open:{project['id']}")])
+
+    rows.append([
+        InlineKeyboardButton(t(lang, "btn_add_task"), callback_data="task:add"),
+        InlineKeyboardButton(t(lang, "btn_add_project"), callback_data="project:add"),
     ])
+
+    action_row = []
+    if open_tasks:
+        action_row.append(InlineKeyboardButton(t(lang, "btn_done_task"),
+                                               callback_data="task:donelist"))
+    if editable:
+        action_row.append(InlineKeyboardButton(t(lang, "btn_edit_task"),
+                                               callback_data="task:editlist"))
+    if action_row:
+        rows.append(action_row)
+
+    delete_row = []
+    if editable:
+        delete_row.append(InlineKeyboardButton(t(lang, "btn_del_task"),
+                                               callback_data="task:dellist"))
+    if projects:
+        delete_row.append(InlineKeyboardButton(t(lang, "btn_del_project"),
+                                               callback_data="project:dellist"))
+    if delete_row:
+        rows.append(delete_row)
+
+    return InlineKeyboardMarkup(rows)
+
+
+def _all_open_tasks(s, ws: int) -> list[dict]:
+    data = svc.list_tasks(s, ws, horizon_days=365)
+    return data["overdue"] + data["upcoming"] + data["undated"]
 
 
 async def show_tasks(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
@@ -1009,9 +1073,12 @@ async def show_tasks(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     user, ws = got
     with SessionLocal() as s:
         data = svc.list_tasks(s, ws, horizon_days=7)
+        projects = svc.list_projects(s, ws)
+        open_tasks = len(_all_open_tasks(s, ws))
 
     text = render_tasks(data, user.language)
-    markup = tasks_keyboard(user.language)
+    markup = tasks_keyboard(user.language, projects=projects,
+                            open_tasks=open_tasks, editable=open_tasks)
     if edit and update.callback_query:
         await update.callback_query.edit_message_text(
             text, parse_mode=ParseMode.HTML, reply_markup=markup)
@@ -1020,54 +1087,53 @@ async def show_tasks(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             text, parse_mode=ParseMode.HTML, reply_markup=markup)
 
 
-# ---------------------------------------------------------------------------
-# Goals
-# ---------------------------------------------------------------------------
+def render_project(project: dict, tasks: list[dict], lang: str) -> str:
+    """One project and the work inside it."""
+    marks = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+    lines = [f"<b>📁 {esc(project['name'])}</b>"]
+    if project.get("description"):
+        lines.append(esc(project["description"]))
+    if project.get("deadline"):
+        lines.append(f"📅 {project['deadline']}")
+    lines.append(f"{project['tasks_done']} / {project['tasks_total']} · "
+                 f"{project['progress']}%")
 
-def render_goals(grouped: dict, lang: str) -> str:
-    lines = [f"<b>{t(lang, 'goals_title')}</b>"]
-    icons = {"ultimate": "cat_ultimate", "milestone": "cat_milestone",
-             "tactical": "cat_tactical"}
-    empty = True
-    for category in svc.CATEGORIES:
-        goals = grouped.get(category, [])
-        if not goals:
-            continue
-        empty = False
-        lines.append(f"\n<b>{t(lang, icons[category])}</b>")
-        for g in goals:
-            mark = "✅" if g["status"] == "completed" else "•"
-            lines.append(f"{mark} {esc(g['title'])}")
-    if empty:
-        lines.append(f"\n{t(lang, 'empty')}")
+    lines.append(f"\n<b>{t(lang, 'project_tasks')}</b>")
+    if tasks:
+        for task in tasks:
+            mark = "✅" if task["status"] == "done" else marks.get(task["priority"], "▫️")
+            when = f" · 📅 {task['deadline']}" if task["deadline"] else ""
+            lines.append(f"{mark} {esc(task['title'])}{when}")
+    else:
+        lines.append(t(lang, "none"))
     return "\n".join(lines)
 
 
-def goals_keyboard(lang: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton(t(lang, "btn_add_goal"), callback_data="goal:add")],
-        [InlineKeyboardButton(t(lang, "btn_done_goal"), callback_data="goal:donelist"),
-         InlineKeyboardButton(t(lang, "btn_del_goal"), callback_data="goal:dellist")],
-    ])
-
-
-async def show_goals(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
-                     edit: bool = False) -> None:
+async def show_project(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                       project_id: int) -> None:
     got = await guard(update, ctx)
     if got is None:
         return
     user, ws = got
+    lang = user.language
     with SessionLocal() as s:
-        grouped = svc.list_goals(s, ws)
+        project = next((p for p in svc.list_projects(s, ws)
+                        if p["id"] == project_id), None)
+        if project is None:
+            raise svc.NotFound("project")
+        tasks = svc.project_tasks(s, ws, project_id)
 
-    text = render_goals(grouped, user.language)
-    markup = goals_keyboard(user.language)
-    if edit and update.callback_query:
+    markup = InlineKeyboardMarkup([
+        [InlineKeyboardButton(t(lang, "btn_rename_project"),
+                              callback_data=f"project:rename:{project_id}")],
+        [InlineKeyboardButton(t(lang, "btn_del_project"),
+                              callback_data=f"project:del:{project_id}")],
+        [InlineKeyboardButton(t(lang, "back"), callback_data="task:back")],
+    ])
+    if update.callback_query:
         await update.callback_query.edit_message_text(
-            text, parse_mode=ParseMode.HTML, reply_markup=markup)
-    elif update.effective_message:
-        await update.effective_message.reply_text(
-            text, parse_mode=ParseMode.HTML, reply_markup=markup)
+            render_project(project, tasks, lang),
+            parse_mode=ParseMode.HTML, reply_markup=markup)
 
 
 # ---------------------------------------------------------------------------
@@ -1146,8 +1212,8 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             return await show_habits(update, ctx)
         if text == t(code, "menu_tasks"):
             return await show_tasks(update, ctx)
-        if text == t(code, "menu_goals"):
-            return await show_goals(update, ctx)
+        if text == t(code, "menu_stats"):
+            return await show_stats(update, ctx)
         if text == t(code, "menu_settings"):
             return await show_settings(update, ctx)
         if text == t(code, "menu_feedback"):
@@ -1269,15 +1335,15 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             await log_event(ctx.bot, user, "📁 PROJECT ADDED", f"Project: {esc(project.name)}")
             await show_tasks(update, ctx)
 
-        elif name == "goal_title":
-            start_flow(ctx, "goal_cat", title=text)
-            await message.reply_text(t(lang, "ask_goal_cat"),
-                                     reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t(lang, "cat_ultimate"), callback_data="goalcat:ultimate")],
-                [InlineKeyboardButton(t(lang, "cat_milestone"), callback_data="goalcat:milestone")],
-                [InlineKeyboardButton(t(lang, "cat_tactical"), callback_data="goalcat:tactical")],
-                [InlineKeyboardButton(t(lang, "cancel"), callback_data="flow:cancel")],
-            ]))
+        elif name == "project_rename":
+            with SessionLocal() as s:
+                project = svc.update_project(s, ws, flow["target_id"], name=text)
+                name_after = project.name
+            ctx.user_data.pop("flow", None)
+            await message.reply_text(t(lang, "project_updated", name=name_after))
+            await log_event(ctx.bot, user, "✏️ PROJECT RENAMED",
+                            f"Project: {esc(name_after)}")
+            await show_tasks(update, ctx)
 
         elif name == "feedback":
             with SessionLocal() as s:
@@ -1468,6 +1534,16 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                 name = svc.delete_habit(s, ws, int(parts[2]))
             await log_event(ctx.bot, user, "🗑 HABIT DELETED", f"Habit: {esc(name)}")
             await show_habits(update, ctx, edit=True)
+        elif sub == "wake":
+            with SessionLocal() as s:
+                result = svc.mark_wakeup(s, ws)
+            await query.answer(
+                t(lang, "wake_ok", now=result["now"]) if result["done"]
+                else t(lang, "wake_late", deadline=result["deadline"]),
+                show_alert=True)
+            if result["done"]:
+                await log_event(ctx.bot, user, "☀️ WAKE-UP", f"At: {result['now']}")
+            await show_habits(update, ctx, edit=True)
         elif sub == "back":
             await show_habits(update, ctx, edit=True)
         elif sub == "noop":
@@ -1480,21 +1556,29 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             start_flow(ctx, "task_title")
             await message.reply_text(t(lang, "ask_task_name"),
                                      reply_markup=cancel_keyboard(lang))
-        elif sub in ("donelist", "editlist"):
+        elif sub in ("donelist", "editlist", "dellist"):
             with SessionLocal() as s:
-                data = svc.list_tasks(s, ws, horizon_days=365)
-            tasks = data["overdue"] + data["upcoming"] + data["undated"]
+                tasks = _all_open_tasks(s, ws)
             if not tasks:
+                # The button is not drawn in this state, so reaching here means
+                # a stale keyboard. Say so instead of opening an empty chooser.
                 await query.answer(t(lang, "empty"), show_alert=True)
                 return
-            verb = "done" if sub == "donelist" else "edit"
-            prompt = "choose_done" if sub == "donelist" else "choose_edit"
+            verb = {"donelist": "done", "editlist": "edit", "dellist": "del"}[sub]
+            prompt = {"donelist": "choose_done", "editlist": "choose_edit",
+                      "dellist": "choose_delete"}[sub]
             rows = [[InlineKeyboardButton(task["title"][:40],
                                           callback_data=f"task:{verb}:{task['id']}")]
                     for task in tasks[:15]]
             rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="task:back")])
             await query.edit_message_text(t(lang, prompt),
                                           reply_markup=InlineKeyboardMarkup(rows))
+        elif sub == "del":
+            with SessionLocal() as s:
+                title = svc.delete_task(s, ws, int(parts[2]))
+            await log_event(ctx.bot, user, "🗑 TASK DELETED", f"Task: {esc(title)}")
+            await query.edit_message_text(t(lang, "task_deleted", title=title))
+            await show_tasks(update, ctx)
         elif sub == "done":
             with SessionLocal() as s:
                 task = svc.complete_task(s, ws, int(parts[2]))
@@ -1559,46 +1643,17 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="task:back")])
             await query.edit_message_text(t(lang, "choose_delete"),
                                           reply_markup=InlineKeyboardMarkup(rows))
+        elif sub == "open":
+            await show_project(update, ctx, int(parts[2]))
+        elif sub == "rename":
+            start_flow(ctx, "project_rename", target_id=int(parts[2]))
+            await query.edit_message_text(t(lang, "ask_project_rename"),
+                                          reply_markup=cancel_keyboard(lang))
         elif sub == "del":
             with SessionLocal() as s:
                 name = svc.delete_project(s, ws, int(parts[2]))
             await log_event(ctx.bot, user, "🗑 PROJECT DELETED", f"Project: {esc(name)}")
             await show_tasks(update, ctx, edit=True)
-
-    # --- goals ---
-    elif action == "goal":
-        sub = parts[1]
-        if sub == "add":
-            start_flow(ctx, "goal_title")
-            await message.reply_text(t(lang, "ask_goal_title"),
-                                     reply_markup=cancel_keyboard(lang))
-        elif sub in ("donelist", "dellist"):
-            with SessionLocal() as s:
-                grouped = svc.list_goals(s, ws, include_completed=(sub == "dellist"))
-            goals = [g for items in grouped.values() for g in items
-                     if sub == "dellist" or g["status"] == "active"]
-            if not goals:
-                await query.answer(t(lang, "empty"), show_alert=True)
-                return
-            verb = "done" if sub == "donelist" else "del"
-            rows = [[InlineKeyboardButton(g["title"][:40],
-                                          callback_data=f"goal:{verb}:{g['id']}")]
-                    for g in goals[:15]]
-            rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="goal:back")])
-            await query.edit_message_text(t(lang, "choose_delete"),
-                                          reply_markup=InlineKeyboardMarkup(rows))
-        elif sub == "done":
-            with SessionLocal() as s:
-                goal = svc.complete_goal(s, ws, int(parts[2]))
-            await log_event(ctx.bot, user, "🎯 GOAL COMPLETED", f"Goal: {esc(goal.title)}")
-            await show_goals(update, ctx, edit=True)
-        elif sub == "del":
-            with SessionLocal() as s:
-                title = svc.delete_goal(s, ws, int(parts[2]))
-            await log_event(ctx.bot, user, "🗑 GOAL DELETED", f"Goal: {esc(title)}")
-            await show_goals(update, ctx, edit=True)
-        elif sub == "back":
-            await show_goals(update, ctx, edit=True)
 
     elif action == "habitcat":
         flow = current_flow(ctx, "habit_cat") or {}
@@ -1613,20 +1668,6 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         await log_event(ctx.bot, user, "➕ HABIT ADDED",
                         f"Habit: {habit.name}\nCategory: {parts[1]}")
         await show_habits(update, ctx)
-
-    elif action == "goalcat":
-        flow = current_flow(ctx, "goal_cat") or {}
-        title = flow.get("title")
-        if not title:
-            await query.answer(t(lang, "error"), show_alert=True)
-            return
-        with SessionLocal() as s:
-            goal = svc.add_goal(s, ws, title, parts[1])
-        ctx.user_data.pop("flow", None)
-        await query.edit_message_text(t(lang, "goal_added", title=goal.title))
-        await log_event(ctx.bot, user, "🎯 GOAL ADDED",
-                        f"Goal: {goal.title}\nCategory: {parts[1]}")
-        await show_goals(update, ctx)
 
     # --- settings ---
     elif action == "set":
@@ -1792,7 +1833,10 @@ def render_morning(data: dict, lang: str) -> str:
 
 
 def render_evening(data: dict, lang: str) -> str:
+    overall = data["overall"]
     lines = [f"<b>{t(lang, 'evening_title')}</b>",
+             f"📊 {t(lang, 'st_overall')}: {overall['value']}% "
+             f"{TREND_MARK.get(overall['trend'], '▪️')}",
              f"{t(lang, 'r_habits')}: {data['habits_done']}/{data['habits_total']}",
              f"{t(lang, 'r_prayer')}: {data['prayer_score']}/5",
              f"{t(lang, 'r_tasks')}: {data['tasks_completed']} {t(lang, 'r_completed')}, "
@@ -1840,7 +1884,6 @@ async def _post_platform_stats(bot, st: dict) -> None:
         f"<b>Faollik</b>\nDAU {st['dau']} · WAU {st['wau']} · MAU {st['mau']}\n\n"
         f"<b>Hafta ichida</b>\n"
         f"Vazifa: +{st['tasks_created']} · bajarildi {st['tasks_done']}\n"
-        f"Maqsad bajarildi: {st['goals_done']}\n"
         f"Bugun kundalik: {st['journal_today']}\n"
         f"Taklif: {st['feedback_week']}\n\n"
         f"<b>Til</b>: {languages or '—'}\n<b>Jins</b>: {genders or '—'}"
@@ -2188,21 +2231,21 @@ class ProjectIn(BaseModel):
     deadline: str | None = Field(default=None, max_length=10)
 
 
-class GoalIn(BaseModel):
-    title: str = Field(min_length=1, max_length=300)
-    category: str = Field(max_length=10)
-    description: str = Field(default="", max_length=2000)
-
-
-class GoalPatch(BaseModel):
-    title: str | None = Field(default=None, max_length=300)
-    description: str | None = Field(default=None, max_length=2000)
-    category: str | None = Field(default=None, max_length=10)
-    progress: int | None = Field(default=None, ge=0, le=100)
-
-
 class FocusIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
+    priority: str | None = Field(default=None, max_length=6)
+
+
+class HabitOrderIn(BaseModel):
+    #: Bounded so a caller cannot post a list long enough to be a denial of
+    #: service in itself; nobody tracks two hundred habits.
+    habit_ids: list[int] = Field(min_length=1, max_length=200)
+
+
+class ProjectPatch(BaseModel):
+    name: str | None = Field(default=None, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+    deadline: str | None = Field(default=None, max_length=10)
 
 
 class JournalIn(BaseModel):
@@ -2346,6 +2389,24 @@ def api_habit_add(body: HabitIn, init=Header(default=None, alias="X-Telegram-Ini
     return {"ok": True, "id": habit.id}
 
 
+@app.patch("/api/habits/reorder")
+def api_habit_reorder(body: HabitOrderIn,
+                      init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Persist the order the user dragged the habits into.
+
+    Declared before `/api/habits/{habit_id}` so "reorder" is never parsed as a
+    habit id. Ownership is checked inside the service: an id from another
+    workspace is a 404, the same answer as an id that never existed.
+    """
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        try:
+            habits = svc.reorder_habits(s, ws, body.habit_ids)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    return {"ok": True, "habits": habits}
+
+
 @app.post("/api/habits/{habit_id}/toggle")
 def api_habit_toggle(habit_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
     _, ws = auth(init)
@@ -2450,55 +2511,39 @@ def api_project_add(body: ProjectIn, init=Header(default=None, alias="X-Telegram
     return {"ok": True, "id": project.id}
 
 
+@app.patch("/api/projects/{project_id}")
+def api_project_patch(project_id: int, body: ProjectPatch,
+                      init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    fields = body.model_dump(exclude_unset=True)
+    if "deadline" in fields:
+        fields["deadline"] = _date(fields["deadline"])
+    with SessionLocal() as s:
+        try:
+            svc.update_project(s, ws, project_id, **fields)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    return {"ok": True}
+
+
+@app.get("/api/projects/{project_id}/tasks")
+def api_project_tasks(project_id: int,
+                      init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """A project and the work inside it — what the project detail view shows."""
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        project = next((p for p in svc.list_projects(s, ws)
+                        if p["id"] == project_id), None)
+        if project is None:
+            raise svc.NotFound("project")
+        return {"project": project, "tasks": svc.project_tasks(s, ws, project_id)}
+
+
 @app.delete("/api/projects/{project_id}")
 def api_project_delete(project_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
     _, ws = auth(init)
     with SessionLocal() as s:
         svc.delete_project(s, ws, project_id)
-    return {"ok": True}
-
-
-@app.get("/api/goals")
-def api_goals(init=Header(default=None, alias="X-Telegram-Init-Data")):
-    _, ws = auth(init)
-    with SessionLocal() as s:
-        return svc.list_goals(s, ws)
-
-
-@app.post("/api/goals")
-def api_goal_add(body: GoalIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
-    _, ws = auth(init)
-    with SessionLocal() as s:
-        try:
-            goal = svc.add_goal(s, ws, body.title, body.category,
-                                description=body.description)
-        except ValueError as e:
-            raise HTTPException(status_code=422, detail=str(e))
-    return {"ok": True, "id": goal.id}
-
-
-@app.patch("/api/goals/{goal_id}")
-def api_goal_patch(goal_id: int, body: GoalPatch,
-                   init=Header(default=None, alias="X-Telegram-Init-Data")):
-    _, ws = auth(init)
-    with SessionLocal() as s:
-        svc.update_goal(s, ws, goal_id, **body.model_dump(exclude_unset=True))
-    return {"ok": True}
-
-
-@app.post("/api/goals/{goal_id}/complete")
-def api_goal_complete(goal_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
-    _, ws = auth(init)
-    with SessionLocal() as s:
-        svc.complete_goal(s, ws, goal_id)
-    return {"ok": True}
-
-
-@app.delete("/api/goals/{goal_id}")
-def api_goal_delete(goal_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
-    _, ws = auth(init)
-    with SessionLocal() as s:
-        svc.delete_goal(s, ws, goal_id)
     return {"ok": True}
 
 
@@ -2514,7 +2559,8 @@ def api_focus_add(body: FocusIn, init=Header(default=None, alias="X-Telegram-Ini
     _, ws = auth(init)
     with SessionLocal() as s:
         try:
-            row = svc.add_focus(s, ws, body.title)
+            row = svc.add_focus(s, ws, body.title,
+                                priority=body.priority or svc.DEFAULT_MISSION_PRIORITY)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
     return {"ok": True, "id": row.id}
@@ -2668,7 +2714,7 @@ async def api_stats_export(period: str = "month",
 @app.get("/api/calendar")
 def api_calendar(year: int | None = None, month: int | None = None,
                  init=Header(default=None, alias="X-Telegram-Init-Data")):
-    """One month of deadlines, project dates, goal targets and birthdays."""
+    """One month of task deadlines, project dates and birthdays."""
     _, ws = auth(init)
     today = svc.today_local()
     year, month = year or today.year, month or today.month
@@ -2686,28 +2732,13 @@ def api_tasks_done(init=Header(default=None, alias="X-Telegram-Init-Data")):
         return {"tasks": svc.completed_tasks(s, ws)}
 
 
-@app.get("/api/goals/done")
-def api_goals_done(init=Header(default=None, alias="X-Telegram-Init-Data")):
-    _, ws = auth(init)
-    with SessionLocal() as s:
-        return {"goals": svc.completed_goals(s, ws)}
-
-
-@app.post("/api/goals/{goal_id}/reopen")
-def api_goal_reopen(goal_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
-    _, ws = auth(init)
-    with SessionLocal() as s:
-        svc.reopen_goal(s, ws, goal_id)
-    return {"ok": True}
-
-
 @app.patch("/api/focus/{focus_id}")
 def api_focus_edit(focus_id: int, body: FocusIn,
                    init=Header(default=None, alias="X-Telegram-Init-Data")):
     _, ws = auth(init)
     with SessionLocal() as s:
         try:
-            svc.edit_focus(s, ws, focus_id, body.title)
+            svc.edit_focus(s, ws, focus_id, body.title, priority=body.priority)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
     return {"ok": True}

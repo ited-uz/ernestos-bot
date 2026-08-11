@@ -7,10 +7,12 @@ ikkalasi ham bir xil biznes qatlamiga (`services.py`) murojaat qiladi.
 
 | Bo'lim | Mazmuni |
 |---|---|
-| 🏠 Home | Bugungi vazifalar, odatlar, haftalik 3 missiya, loyihalar, tug'ilgan kunlar, **1 oylik kalendar** |
-| ✅ Odatlar | Odatlar (3 kategoriya) + namoz + kundalik + statistika |
-| ⚡ Vazifalar | Vazifa va loyihalar, muddat va batafsil tavsif, **Bajarilgan** arxivi |
-| 🎯 Vision | Ultimate / Milestone / Tactical + **Erishilgan** |
+| 🏠 Home | Sana, quote, 4 ta ko'rsatkich, **bitta** haftalik missiya, **faqat bugungi** vazifalar (loyiha bo'yicha), **1 oylik kalendar** |
+| ✅ Odatlar | Odatlar (3 kategoriya, tartibi o'zgartiriladi) + namoz + kundalik |
+| ⚡ Vazifalar | Vazifa va loyihalar, loyiha sahifasi, **Bajarilgan** arxivi |
+| 📊 Statistika | Umumiy % (asosiy) + Vazifalar / Odatlar / Namoz + streak |
+
+Home — ko'rish va tushunish uchun; tahrirlash va o'chirish o'z sahifasida.
 
 Uch til (o'zbek, ingliz, rus), olti tema × yorug'/qorong'i.
 Har kuni **04:00** va **21:00** da hisobot, **23:00** da statistika.
@@ -19,17 +21,23 @@ Har kuni **04:00** va **21:00** da hisobot, **23:00** da statistika.
 
 | Kategoriya | Standart odatlar |
 |---|---|
-| 🔴 Non-negotiable | **Get up** · **5x namoz** · **Summary** |
+| 🔴 Non-negotiable | **Get up** · **5x namoz** |
 | 🟡 Target | Deep flow · Sport |
 | 🟢 Bonus | Podcast · Read |
 
-Uchtasi **avtomatik hisoblanadi** — qo'lda bosib bo'lmaydi:
+Ikkitasi **avtomatik hisoblanadi** — qo'lda bosib bo'lmaydi:
 
 | Odat | Nimadan hisoblanadi |
 |---|---|
 | **Get up** | Botga «Turdim» deb yozilganda |
 | **5x namoz** | Kunlik namoz balli ≥ 2.5 bo'lganda |
-| **Summary** | Kundalikning beshta savoli to'liq to'ldirilganda |
+
+Kundalik odat emas: u alohida holat sifatida ko'rsatiladi, aks holda
+foydalanuvchi tanlamagan narsa maxraj va streakni o'zgartirib yuborardi.
+
+Odatlar tartibi Mini App'dagi **↕ Tartibni o'zgartirish** rejimida
+o'zgartiriladi — surib yoki ↑ ↓ tugmalari bilan. Tartib serverda saqlanadi va
+bot ham aynan shu tartibda ko'rsatadi.
 
 Odatni o'chirish uchun ro'yxat ostidagi **🗑 Odat o'chirish** tugmasi bosiladi va
 o'chiriladigani tanlanadi — har bir qator yonida kichik xoch yo'q.
@@ -46,8 +54,8 @@ Erta turish ham hisoblanadi: 04:45 da yozilsa ham bajarilgan bo'ladi.
 
 ## Kundalik
 
-Har kuni beshta savol. **Hammasi to'ldirilgandagina** `Summary` odati
-bajarilgan hisoblanadi — aynan `5x namoz` kabi. Tarixni sana bo'yicha ko'rish mumkin.
+Har kuni beshta savol. **Hammasi to'ldirilgandagina** kun to'liq
+hisoblanadi. Tarixni sana bo'yicha ko'rish mumkin.
 
 ---
 
@@ -137,7 +145,7 @@ bilan oling.
 
 | Kanal | O'zgaruvchi | Nima keladi |
 |---|---|---|
-| ErnestOS Logs | `ADMIN_LOG_CHANNEL_ID` | Ro'yxatdan o'tish, odat/vazifa/maqsad o'zgarishlari, obuna |
+| ErnestOS Logs | `ADMIN_LOG_CHANNEL_ID` | Ro'yxatdan o'tish, odat/vazifa/loyiha o'zgarishlari, obuna |
 | ErnestOS Feedback | `FEEDBACK_CHANNEL_ID` | 💬 Taklif orqali kelgan takliflar va shikoyatlar |
 | ErnestOS Stats | `STATS_CHANNEL_ID` | Har kuni 23:00 da statistika: jami foydalanuvchi, oxirgi raqam (#42), DAU/WAU/MAU, til va jins taqsimoti |
 
@@ -270,6 +278,31 @@ pip install -r requirements.txt
 python -c "import db; db.init_db()"
 ```
 
+`init_db()` faqat **qo'shadi** — yo'q jadval va yo'q ustunni yaratadi, hech
+narsani o'chirmaydi. Shuning uchun uni har safar ishga tushirishda chaqirish
+xavfsiz.
+
+### Ma'lumot migratsiyalari
+
+Ma'lumotni o'zgartiradigan qadamlar alohida va **qo'lda** ishga tushiriladi —
+hech qachon import paytida yoki boot'da emas:
+
+```bash
+python migrations.py
+```
+
+Har biri raqamlangan, ikki marta ishga tushirilsa ham hech narsa
+o'zgartirmaydi va foydalanuvchi tarixini o'chirmaydi:
+
+| № | Nima qiladi | Orqaga qaytarish |
+|---|---|---|
+| `0001` | Kundalikni odat sifatida hisoblashni to'xtatadi (`Summary` arxivlanadi) | `archived_at` ni `NULL` qilish |
+| `0002` | `goals` jadvalini `goals_archived_v1` ga ko'chiradi | `ALTER TABLE goals_archived_v1 RENAME TO goals` |
+
+`0002` jadvalni **o'chirmaydi** — nomini o'zgartiradi. Public launch'da Goals
+UI, API va modeli olib tashlandi, lekin foydalanuvchi yozgan qatorlar joyida
+qoladi.
+
 ## I. Ilovani ishga tushirish
 
 ```bash
@@ -338,7 +371,8 @@ Deploy'dan keyin quyidagilarni birma-bir bosib chiqing:
 [ ] admin log kanaliga "NEW ERNESTOS USER" keladi
 [ ] 🏠 Home to'g'ri chiqadi
 [ ] ✅ Odatlar — 3 kategoriyada ko'rsatiladi
-[ ] Summary odati kundalik to'liq to'ldirilganda belgilanadi
+[ ] kundalik to'liq to'ldirilganda kun to'liq hisoblanadi
+[ ] odatlar tartibi o'zgartiriladi va qayta ochilganda saqlanib qoladi
 [ ] Sozlamalarda ⬅️ Orqaga tugmasi bor
 [ ] Sozlamalarda telefon va profil rasmi boshqariladi
 [ ] odat bosilganda belgilanadi/olib tashlanadi
@@ -350,7 +384,7 @@ Deploy'dan keyin quyidagilarni birma-bir bosib chiqing:
 [ ] ⚡ Vazifalar — o'chirish emas, ✅ Bajarildi va ✏️ Tahrirlash
 [ ] bajarilgan vazifa Done arxiviga tushadi
 [ ] Home pastida 1 oylik kalendar deadline'lar bilan
-[ ] Statistika tabida hafta/oy/yil line chart va streak ko'rinadi
+[ ] Statistika alohida sahifa: Umumiy + Vazifalar + Odatlar + Namoz
 [ ] ⏰ Uyg'onish vaqti sozlanadi
 [ ] «Turdim» vaqtida yozilsa Get up belgilanadi
 [ ] bir soatdan keyin yozilsa hisoblanmaydi
@@ -358,12 +392,11 @@ Deploy'dan keyin quyidagilarni birma-bir bosib chiqing:
 [ ] statistika o'z kanaliga boradi, log kanaliga emas
 [ ] Sozlamalarda «Saqlash» tugmasi bor
 [ ] Namoz holatlari rangli va emojili
-[ ] Vision'da ✏️ tahrirlash, o'chirish esa pastda
 [ ] Statistikani CSV qilib yuklab olish ishlaydi
-[ ] «Ma'lumotlaringiz himoyalangan» eslatmasi ko'rinadi
+[ ] maxfiylik qatori nav ustida qotib turadi va kontentni yopmaydi
+[ ] bot menyusi aynan 7 ta: Home/Odatlar/Vazifalar/Statistika/Sozlamalar/Taklif/Mini App
 [ ] "Alohida" tanlansa loyihasiz saqlanadi
 [ ] loyiha o'chirilganda vazifalari qolib ketadi
-[ ] 🎯 Maqsadlar — uch daraja, qo'shish/bajarish/o'chirish
 [ ] ⚙️ Sozlamalar — til, jins, tema o'zgaradi
 [ ] 💬 Taklif admin kanalga yetib boradi
 [ ] Mini App ochiladi va bot bilan bir xil ma'lumotni ko'rsatadi

@@ -17,7 +17,7 @@
 | 033 | `drop_pending_updates=True` | `False` — deploy paytidagi bosishlar yo'qolmaydi |
 | 034 | Flow race | Har oqimda `id` va `expires`; eski callback e'tiborsiz qoladi |
 | 036 | Report idempotency atomik emas | INSERT bilan claim; unique constraint g'olibni belgilaydi |
-| 046 | Kundalik o'chirilsa Summary qoladi | Bitta tranzaksiyada ikkalasi ham tozalanadi |
+| 046 | Kundalik o'chirilsa Summary qoladi | Kundalik endi odat emas — holat sifatida hisoblanadi, sinxronlanadigan qator qolmadi |
 | 076 | Bot HTML parse xatosi | 014 bilan bir xil `esc()` |
 | 087 | Health faqat process | `/health/live` va `/health/ready` ajratildi |
 

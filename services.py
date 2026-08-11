@@ -25,7 +25,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from db import (
-    Birthday, DailyReportLog, Feedback, Goal, Habit, HabitLog, JournalEntry,
+    Birthday, DailyReportLog, Feedback, Habit, HabitLog, JournalEntry,
     PrayerDay, PrayerLog, Project, Task, User, WeeklyFocus, WeeklyReview,
     Workspace, utcnow,
 )
@@ -52,6 +52,39 @@ def week_start(d: date) -> date:
     return d - timedelta(days=d.weekday())
 
 
+#: Month and weekday names for the one date line Home shows. Formatting with
+#: the C locale would print "August" to an Uzbek user, and pulling in a locale
+#: package for twelve words each is not worth the dependency.
+MONTHS = {
+    "uz": ["yanvar", "fevral", "mart", "aprel", "may", "iyun",
+           "iyul", "avgust", "sentabr", "oktabr", "noyabr", "dekabr"],
+    "en": ["January", "February", "March", "April", "May", "June",
+           "July", "August", "September", "October", "November", "December"],
+    "ru": ["января", "февраля", "марта", "апреля", "мая", "июня",
+           "июля", "августа", "сентября", "октября", "ноября", "декабря"],
+}
+WEEKDAYS = {
+    "uz": ["Dushanba", "Seshanba", "Chorshanba", "Payshanba",
+           "Juma", "Shanba", "Yakshanba"],
+    "en": ["Monday", "Tuesday", "Wednesday", "Thursday",
+           "Friday", "Saturday", "Sunday"],
+    "ru": ["Понедельник", "Вторник", "Среда", "Четверг",
+           "Пятница", "Суббота", "Воскресенье"],
+}
+
+
+def date_label(day: date, lang: str = "uz") -> str:
+    """The local date, written the way that language writes it."""
+    lang = lang if lang in MONTHS else "uz"
+    month = MONTHS[lang][day.month - 1]
+    weekday = WEEKDAYS[lang][day.weekday()]
+    if lang == "uz":
+        return f"{day.day}-{month}, {weekday}"
+    if lang == "ru":
+        return f"{day.day} {month}, {weekday}"
+    return f"{month} {day.day}, {weekday}"
+
+
 # ---------------------------------------------------------------------------
 # Users and workspaces
 # ---------------------------------------------------------------------------
@@ -62,10 +95,11 @@ HABIT_CATEGORIES = ["non_negotiable", "target", "bonus"]
 #: (name, category, system_key). A system_key marks a derived habit the user
 #: cannot tick by hand: "prayer" follows the daily prayer score and "journal"
 #: follows a fully answered journal entry.
+#: Exactly six. Journal completion is reported as its own status rather than
+#: a seventh habit, so it never moves the habit denominator or the streak.
 DEFAULT_HABITS = [
     ("Get up",    "non_negotiable", "wakeup"),
     ("5x namoz",  "non_negotiable", "prayer"),
-    ("Summary",   "non_negotiable", "journal"),
     ("Deep flow", "target",         ""),
     ("Sport",     "target",         ""),
     ("Podcast",   "bonus",          ""),
@@ -73,7 +107,7 @@ DEFAULT_HABITS = [
 ]
 
 SYSTEM_PRAYER = "prayer"
-SYSTEM_JOURNAL = "journal"
+SYSTEM_JOURNAL = "journal"      # legacy: archived by migration 0001
 SYSTEM_WAKEUP = "wakeup"
 
 #: Default rise time, used until the user picks their own.
@@ -189,6 +223,43 @@ def add_habit(s: Session, ws: int, name: str, category: str = "target") -> Habit
     s.add(habit)
     s.commit()
     return habit
+
+
+def reorder_habits(s: Session, ws: int, habit_ids: list[int]) -> list[dict]:
+    """Persist a new display order and return the canonical list.
+
+    Every id must be an active habit of this workspace and each may appear
+    once: a partial or padded list would silently reshuffle habits the caller
+    never saw. Ids the caller did not send keep their relative order after the
+    ones it did, so a stale client cannot lose a habit that was added
+    meanwhile. The whole move is one transaction — a half-applied order is
+    worse than none.
+    """
+    if not habit_ids:
+        raise ValueError("empty order")
+    if len(set(habit_ids)) != len(habit_ids):
+        raise ValueError("duplicate habit")
+
+    current = s.scalars(
+        select(Habit)
+        .where(Habit.workspace_id == ws, Habit.archived_at.is_(None))
+        .order_by(Habit.position, Habit.id)
+    ).all()
+    by_id = {h.id: h for h in current}
+
+    for habit_id in habit_ids:
+        if habit_id not in by_id:
+            # Includes another workspace's habit: indistinguishable from a
+            # habit that never existed.
+            raise NotFound("habit")
+
+    ordered = [by_id[habit_id] for habit_id in habit_ids]
+    ordered += [h for h in current if h.id not in set(habit_ids)]
+
+    for position, habit in enumerate(ordered, start=1):
+        habit.position = position
+    s.commit()
+    return list_habits(s, ws)
 
 
 def _owned_habit(s: Session, ws: int, habit_id: int) -> Habit:
@@ -454,6 +525,50 @@ def add_project(s: Session, ws: int, name: str, *, description: str = "",
     return project
 
 
+def _owned_project(s: Session, ws: int, project_id: int) -> Project:
+    project = s.get(Project, project_id)
+    if project is None or project.workspace_id != ws or project.archived_at:
+        raise NotFound("project")
+    return project
+
+
+def update_project(s: Session, ws: int, project_id: int, **fields) -> Project:
+    """Rename a project, or adjust its description and deadline.
+
+    A project the user cannot rename is a typo they have to live with, or a
+    reason to delete and recreate — which detaches every task inside it.
+    """
+    project = _owned_project(s, ws, project_id)
+    if fields.get("name"):
+        name = str(fields["name"]).strip()[:200]
+        if not name:
+            raise ValueError("empty project name")
+        project.name = name
+    if "description" in fields:
+        project.description = str(fields["description"] or "").strip()[:2000]
+    if "deadline" in fields:
+        project.deadline = fields["deadline"]
+    s.commit()
+    return project
+
+
+def project_tasks(s: Session, ws: int, project_id: int, *,
+                  include_done: bool = True) -> list[dict]:
+    """Everything inside one project, open work first."""
+    _owned_project(s, ws, project_id)
+    today = today_local()
+    stmt = select(Task).where(
+        Task.workspace_id == ws, Task.project_id == project_id,
+        Task.archived_at.is_(None))
+    if not include_done:
+        stmt = stmt.where(Task.status == "waiting")
+    rows = s.scalars(stmt).all()
+    rows.sort(key=lambda x: (x.status == "done",
+                             _PRIORITY_RANK.get(x.priority, 1),
+                             x.deadline or date.max, x.id))
+    return [_task_dict(s, ws, task, today) for task in rows]
+
+
 def delete_project(s: Session, ws: int, project_id: int) -> str:
     """Archive a project and detach its tasks. Tasks are never deleted with it."""
     project = s.get(Project, project_id)
@@ -472,6 +587,10 @@ def delete_project(s: Session, ws: int, project_id: int) -> str:
 # ---------------------------------------------------------------------------
 
 PRIORITIES = ["high", "medium", "low"]
+
+#: Sort order wherever tasks are listed: the order a person would use when
+#: asked which to start with.
+_PRIORITY_RANK = {"high": 0, "medium": 1, "low": 2}
 
 
 def add_task(s: Session, ws: int, title: str, *, deadline: date | None = None,
@@ -611,131 +730,92 @@ def tasks_due_today(s: Session, ws: int) -> list[dict]:
     return [_task_dict(s, ws, t, today) for t in tasks]
 
 
-# ---------------------------------------------------------------------------
-# Goals
-# ---------------------------------------------------------------------------
+def today_tasks_by_project(s: Session, ws: int) -> list[dict]:
+    """Today's open tasks, grouped under the project they belong to.
 
-CATEGORIES = ["ultimate", "milestone", "tactical"]
+    Home shows today and only today. A week's worth of rows is a backlog, and
+    a backlog is what the user opens the app to escape.
+    """
+    groups: dict[int | None, dict] = {}
+    for task in tasks_due_today(s, ws):
+        key = task["project_id"]
+        group = groups.setdefault(key, {
+            "project_id": key, "project": task["project"], "tasks": []})
+        group["tasks"].append(task)
 
+    for group in groups.values():
+        group["tasks"].sort(key=lambda t: (_PRIORITY_RANK.get(t["priority"], 1),
+                                           t["id"]))
 
-def list_goals(s: Session, ws: int, *, include_completed: bool = True) -> dict:
-    stmt = select(Goal).where(Goal.workspace_id == ws, Goal.archived_at.is_(None))
-    if not include_completed:
-        stmt = stmt.where(Goal.status == "active")
-    goals = s.scalars(stmt.order_by(Goal.created_at.desc())).all()
-
-    grouped: dict[str, list[dict]] = {c: [] for c in CATEGORIES}
-    for g in goals:
-        grouped.setdefault(g.category, []).append({
-            "id": g.id, "title": g.title, "description": g.description,
-            "category": g.category, "status": g.status, "progress": g.progress,
-            "target_date": g.target_date.isoformat() if g.target_date else None,
-        })
-    return grouped
-
-
-def add_goal(s: Session, ws: int, title: str, category: str, *,
-             description: str = "") -> Goal:
-    title = title.strip()[:300]
-    if not title:
-        raise ValueError("empty goal title")
-    if category not in CATEGORIES:
-        raise ValueError("unknown category")
-    goal = Goal(workspace_id=ws, title=title, category=category,
-                description=description.strip()[:2000])
-    s.add(goal)
-    s.commit()
-    return goal
-
-
-def _owned_goal(s: Session, ws: int, goal_id: int) -> Goal:
-    goal = s.get(Goal, goal_id)
-    if goal is None or goal.workspace_id != ws:
-        raise NotFound("goal")
-    return goal
-
-
-def complete_goal(s: Session, ws: int, goal_id: int) -> Goal:
-    goal = _owned_goal(s, ws, goal_id)
-    goal.status = "completed"
-    goal.progress = 100
-    goal.completed_at = utcnow()
-    s.commit()
-    return goal
-
-
-def completed_goals(s: Session, ws: int) -> list[dict]:
-    """Achieved goals — kept forever, never deleted on completion."""
-    rows = s.scalars(select(Goal).where(
-        Goal.workspace_id == ws, Goal.archived_at.is_(None),
-        Goal.status == "completed").order_by(Goal.completed_at.desc())).all()
-    return [{"id": g.id, "title": g.title, "category": g.category,
-             "progress": g.progress, "status": g.status,
-             "completed_at": g.completed_at.isoformat() if g.completed_at else None}
-            for g in rows]
-
-
-def reopen_goal(s: Session, ws: int, goal_id: int) -> Goal:
-    goal = _owned_goal(s, ws, goal_id)
-    goal.status = "active"
-    goal.completed_at = None
-    s.commit()
-    return goal
-
-
-def delete_goal(s: Session, ws: int, goal_id: int) -> str:
-    goal = _owned_goal(s, ws, goal_id)
-    goal.archived_at = utcnow()
-    s.commit()
-    return goal.title
-
-
-def update_goal(s: Session, ws: int, goal_id: int, **fields) -> Goal:
-    goal = _owned_goal(s, ws, goal_id)
-    if fields.get("title"):
-        goal.title = str(fields["title"]).strip()[:300]
-    if "description" in fields:
-        goal.description = str(fields["description"] or "").strip()[:2000]
-    if fields.get("category") in CATEGORIES:
-        goal.category = fields["category"]
-    if "progress" in fields and fields["progress"] is not None:
-        goal.progress = max(0, min(100, int(fields["progress"])))
-    s.commit()
-    return goal
+    # Named projects first, in a stable order; standalone tasks last, because
+    # "Alohida" is a leftover bucket rather than a project.
+    named = sorted((g for g in groups.values() if g["project_id"] is not None),
+                   key=lambda g: (g["project"] or "").lower())
+    standalone = [g for g in groups.values() if g["project_id"] is None]
+    return named + standalone
 
 
 # ---------------------------------------------------------------------------
-# Weekly focus — at most three missions per week
+# Weekly mission — exactly one per week
 # ---------------------------------------------------------------------------
 
-MAX_FOCUS = 3
+#: One mission a week. Three "primary" missions is no primary at all, which is
+#: the decision this screen exists to make.
+MAX_FOCUS = 1
+
+MISSION_PRIORITIES = ["high", "medium", "low"]
+DEFAULT_MISSION_PRIORITY = "medium"
+
+
+def _focus_dict(row: WeeklyFocus) -> dict:
+    return {"id": row.id, "slot": row.slot, "title": row.title,
+            "priority": row.priority if row.priority in MISSION_PRIORITIES
+                        else DEFAULT_MISSION_PRIORITY,
+            "done": row.done}
 
 
 def list_focus(s: Session, ws: int, when: date | None = None) -> list[dict]:
     start = week_start(when or today_local())
     rows = s.scalars(select(WeeklyFocus).where(
         WeeklyFocus.workspace_id == ws, WeeklyFocus.week_start == start)
-        .order_by(WeeklyFocus.slot)).all()
-    return [{"id": r.id, "slot": r.slot, "title": r.title, "done": r.done} for r in rows]
+        .order_by(WeeklyFocus.slot, WeeklyFocus.id)).all()
+    return [_focus_dict(r) for r in rows]
 
 
-def add_focus(s: Session, ws: int, title: str, when: date | None = None) -> WeeklyFocus:
+def primary_focus(s: Session, ws: int, when: date | None = None) -> dict | None:
+    """The one mission Home shows.
+
+    Weeks written before the one-mission rule can still hold three rows. The
+    lowest slot wins — deterministically, so every surface names the same
+    mission — and the others stay in the database rather than being deleted
+    behind the user's back.
+    """
+    rows = list_focus(s, ws, when)
+    return rows[0] if rows else None
+
+
+def add_focus(s: Session, ws: int, title: str, when: date | None = None, *,
+              priority: str = DEFAULT_MISSION_PRIORITY) -> WeeklyFocus:
     title = title.strip()[:200]
     if not title:
         raise ValueError("empty focus title")
+    if priority not in MISSION_PRIORITIES:
+        priority = DEFAULT_MISSION_PRIORITY
     start = week_start(when or today_local())
     used = {r.slot for r in s.scalars(select(WeeklyFocus).where(
         WeeklyFocus.workspace_id == ws, WeeklyFocus.week_start == start)).all()}
     free = next((n for n in range(1, MAX_FOCUS + 1) if n not in used), None)
     if free is None:
         raise ValueError("week is full")
-    row = WeeklyFocus(workspace_id=ws, week_start=start, slot=free, title=title)
+    row = WeeklyFocus(workspace_id=ws, week_start=start, slot=free, title=title,
+                      priority=priority)
     s.add(row)
     s.commit()
     return row
 
 
-def edit_focus(s: Session, ws: int, focus_id: int, title: str) -> WeeklyFocus:
+def edit_focus(s: Session, ws: int, focus_id: int, title: str, *,
+               priority: str | None = None) -> WeeklyFocus:
     row = s.get(WeeklyFocus, focus_id)
     if row is None or row.workspace_id != ws:
         raise NotFound("focus")
@@ -743,6 +823,8 @@ def edit_focus(s: Session, ws: int, focus_id: int, title: str) -> WeeklyFocus:
     if not title:
         raise ValueError("empty focus title")
     row.title = title
+    if priority in MISSION_PRIORITIES:
+        row.priority = priority
     s.commit()
     return row
 
@@ -770,9 +852,8 @@ def delete_focus(s: Session, ws: int, focus_id: int) -> str:
 # Journal
 # ---------------------------------------------------------------------------
 
-#: The daily journal is five fixed questions. The derived "Summary" habit only
-#: counts as done once every one of them has an answer — the same rule that
-#: makes "5x namoz" follow the prayer score.
+#: The daily journal is five fixed questions. All five answered marks the day
+#: complete, which Home and the reports show as a status of its own.
 JOURNAL_QUESTIONS = [
     {"id": "wins",      "uz": "Bugun nimalarga erishdim?",
      "en": "What did I accomplish today?", "ru": "Чего я достиг сегодня?"},
@@ -793,20 +874,15 @@ def journal_is_complete(answers: dict) -> bool:
     return all(str(answers.get(key, "")).strip() for key in JOURNAL_KEYS)
 
 
-def sync_journal_habit(s: Session, ws: int, day: date, complete: bool) -> None:
-    """Mirror journal completion onto the derived "Summary" habit."""
-    habit = s.scalar(select(Habit).where(
-        Habit.workspace_id == ws, Habit.system_key == SYSTEM_JOURNAL,
-        Habit.archived_at.is_(None)))
-    if habit is None:
-        return
-    row = s.scalar(select(HabitLog).where(
-        HabitLog.workspace_id == ws, HabitLog.habit_id == habit.id,
-        HabitLog.day == day))
-    if row is None:
-        s.add(HabitLog(workspace_id=ws, habit_id=habit.id, day=day, done=complete))
-    else:
-        row.done = complete
+def journal_done(s: Session, ws: int, day: date | None = None) -> bool:
+    """Whether the day's journal is fully answered.
+
+    This is a status the UI shows next to the habits, not a habit itself:
+    counting it would change the denominator and the streak for something the
+    user did not choose to track.
+    """
+    entry = get_journal(s, ws, day or today_local())
+    return bool(entry and entry["complete"])
 
 
 def get_journal(s: Session, ws: int, day: date | None = None) -> dict | None:
@@ -826,7 +902,11 @@ def get_journal(s: Session, ws: int, day: date | None = None) -> dict | None:
 def save_journal(s: Session, ws: int, *, answers: dict | None = None,
                  text: str = "", day: date | None = None,
                  mood: str = "") -> JournalEntry:
-    """Save a day's answers and sync the derived Summary habit."""
+    """Save a day's answers.
+
+    Completion is derived from the answers on read, so there is nothing to
+    keep in sync here.
+    """
     day = day or today_local()
     row = s.scalar(select(JournalEntry).where(
         JournalEntry.workspace_id == ws, JournalEntry.day == day))
@@ -842,16 +922,12 @@ def save_journal(s: Session, ws: int, *, answers: dict | None = None,
         row.text = "\n\n".join(
             f"{q['uz']}\n{cleaned.get(q['id'], '')}".strip()
             for q in JOURNAL_QUESTIONS if cleaned.get(q["id"]))
-        complete = journal_is_complete(cleaned)
     else:
         row.text = text.strip()
-        complete = bool(row.text)
 
     if mood:
         row.mood = mood[:20]
 
-    s.flush()
-    sync_journal_habit(s, ws, day, complete)
     s.commit()
     return row
 
@@ -873,18 +949,13 @@ def list_journal(s: Session, ws: int, limit: int = 60) -> list[dict]:
 
 
 def delete_journal(s: Session, ws: int, day: date) -> None:
-    """Remove a day's entry and un-tick the habit it was driving.
-
-    Leaving the Summary log behind would credit the user for a journal that
-    no longer exists (audit 046), so both change in the same transaction.
-    """
+    """Remove a day's entry. Journal completion is derived, so nothing else
+    needs updating."""
     row = s.scalar(select(JournalEntry).where(
         JournalEntry.workspace_id == ws, JournalEntry.day == day))
     if row is None:
         raise NotFound("journal")
     s.delete(row)
-    s.flush()
-    sync_journal_habit(s, ws, day, False)
     s.commit()
 
 
@@ -1004,6 +1075,99 @@ def prayer_streak(s: Session, ws: int) -> int:
     return streak
 
 
+# ---------------------------------------------------------------------------
+# The one overall number
+# ---------------------------------------------------------------------------
+#
+# Every surface — the bot's Home, the Mini App's Home, the Statistics page and
+# the evening report — reads this function. There is no second copy of the
+# formula in JavaScript: two implementations drift, and a user who sees 80% in
+# the bot and 74% in the app stops believing either.
+
+#: Shown when the day has nothing measurable in it yet.
+EMPTY_OVERALL = 0
+
+
+def today_task_progress(s: Session, ws: int, day: date | None = None) -> tuple[int, int]:
+    """(completed, total) tasks that belong to this day.
+
+    Only tasks actually scheduled for the day count. Folding in the whole
+    backlog would mean a user with 200 open tasks can never move the number,
+    and finishing today's work would not show up at all.
+    """
+    day = day or today_local()
+    total = s.scalar(select(func.count(Task.id)).where(
+        Task.workspace_id == ws, Task.archived_at.is_(None),
+        Task.deadline == day)) or 0
+    done = s.scalar(select(func.count(Task.id)).where(
+        Task.workspace_id == ws, Task.archived_at.is_(None),
+        Task.deadline == day, Task.status == "done")) or 0
+    return done, total
+
+
+def overall_components(s: Session, ws: int, day: date | None = None) -> dict:
+    """Each component's percentage, or None when it has no denominator today.
+
+    A category with nothing due is *absent*, not zero. Counting an empty
+    category as 0% would punish a user for a day with no tasks, which is the
+    opposite of what the number is for.
+    """
+    day = day or today_local()
+
+    habits_done, habits_total = habit_progress(s, ws, day)
+    tasks_done, tasks_total = today_task_progress(s, ws, day)
+    prayer_row = s.scalar(select(PrayerDay).where(
+        PrayerDay.workspace_id == ws, PrayerDay.day == day))
+    prayer_habit = s.scalar(select(Habit.id).where(
+        Habit.workspace_id == ws, Habit.system_key == SYSTEM_PRAYER,
+        Habit.archived_at.is_(None)))
+
+    return {
+        "habits": round(habits_done / habits_total * 100) if habits_total else None,
+        "tasks": round(tasks_done / tasks_total * 100) if tasks_total else None,
+        # Prayer's denominator is the five daily prayers, which exist for as
+        # long as the user keeps the habit — not only on days they logged one.
+        "prayer": (round(float(prayer_row.score if prayer_row else 0.0)
+                         / PRAYER_MAX_SCORE * 100)
+                   if prayer_habit is not None else None),
+    }
+
+
+def overall_percent(s: Session, ws: int, day: date | None = None) -> int:
+    """The arithmetic mean of whichever components exist today."""
+    available = [v for v in overall_components(s, ws, day).values() if v is not None]
+    if not available:
+        return EMPTY_OVERALL
+    return round(sum(available) / len(available))
+
+
+def overall_state(s: Session, ws: int, day: date | None = None) -> dict:
+    """Today's overall number plus how it compares with yesterday.
+
+    The two days are only comparable when both had something to measure;
+    otherwise the trend is `flat` rather than an invented drop.
+    """
+    day = day or today_local()
+    yesterday = day - timedelta(days=1)
+
+    today_components = overall_components(s, ws, day)
+    today_available = [v for v in today_components.values() if v is not None]
+    y_available = [v for v in overall_components(s, ws, yesterday).values()
+                   if v is not None]
+
+    value = round(sum(today_available) / len(today_available)) if today_available \
+        else EMPTY_OVERALL
+    previous = round(sum(y_available) / len(y_available)) if y_available else None
+
+    if previous is None or not today_available or value == previous:
+        trend = "flat"
+    else:
+        trend = "up" if value > previous else "down"
+
+    return {"value": value, "trend": trend, "yesterday": previous,
+            "components": today_components}
+
+
 def _range_percent(s: Session, ws: int, start: date, end: date) -> tuple[int, int]:
     """Average habit and prayer percentage across an inclusive day range."""
     days = (end - start).days + 1
@@ -1064,6 +1228,12 @@ def stats(s: Session, ws: int, period: str = "week") -> dict:
     for row in prayer_rows:
         breakdown[row.status] = breakdown.get(row.status, 0) + 1
 
+    # The headline numbers are today's, from the same function Home uses, so
+    # the two screens can never disagree. The series stays a period average.
+    overall = overall_state(s, ws, today)
+    components = overall["components"]
+    prayer_today = prayer_state(s, ws, today, None)
+
     return {
         "period": period,
         "series": series,
@@ -1072,6 +1242,16 @@ def stats(s: Session, ws: int, period: str = "week") -> dict:
         "habit_streak": habit_streak(s, ws),
         "prayer_streak": prayer_streak(s, ws),
         "prayer_breakdown": breakdown,
+        "today": {
+            "overall": overall["value"],
+            "trend": overall["trend"],
+            "tasks": components["tasks"],
+            "habits": components["habits"],
+            "prayer": components["prayer"],
+            "prayer_score": prayer_today["score"],
+            "prayer_max": PRAYER_MAX_SCORE,
+            "streak": habit_streak(s, ws),
+        },
     }
 
 
@@ -1129,12 +1309,6 @@ def calendar_month(s: Session, ws: int, year: int, month: int) -> dict:
             Project.deadline.between(first, last))).all():
         add(project.deadline, "project", project.name, {"id": project.id})
 
-    for goal in s.scalars(select(Goal).where(
-            Goal.workspace_id == ws, Goal.archived_at.is_(None),
-            Goal.target_date.isnot(None),
-            Goal.target_date.between(first, last))).all():
-        add(goal.target_date, "goal", goal.title, {"id": goal.id})
-
     for row in s.scalars(select(Birthday).where(Birthday.workspace_id == ws)).all():
         try:
             occurrence = row.birth_date.replace(year=year)
@@ -1146,55 +1320,6 @@ def calendar_month(s: Session, ws: int, year: int, month: int) -> dict:
     return {"year": year, "month": month,
             "first_weekday": first.weekday(), "days_in_month": last.day,
             "today": today_local().isoformat(), "events": events}
-
-
-# ---------------------------------------------------------------------------
-# "What should I do now?"
-# ---------------------------------------------------------------------------
-
-#: Ranking for the single task shown at the top of Home. Overdue beats due
-#: today, and inside each group high priority beats the rest — the same order
-#: a person would use when asked to pick one thing.
-_PRIORITY_RANK = {"high": 0, "medium": 1, "low": 2}
-
-
-def next_action(s: Session, ws: int) -> dict | None:
-    """The one task to do now, or None when nothing is scheduled.
-
-    Home used to show every list at once, which turns "what now?" into a
-    decision the user has to make before they can start.
-    """
-    today = today_local()
-    candidates = s.scalars(select(Task).where(
-        Task.workspace_id == ws, Task.archived_at.is_(None),
-        Task.status == "waiting",
-        Task.deadline.isnot(None), Task.deadline <= today)).all()
-
-    if not candidates:
-        # Nothing dated — fall back to the newest undated task so the card is
-        # only empty when there is genuinely nothing to do.
-        candidates = s.scalars(select(Task).where(
-            Task.workspace_id == ws, Task.archived_at.is_(None),
-            Task.status == "waiting", Task.deadline.is_(None))
-            .order_by(Task.created_at.desc()).limit(1)).all()
-        if not candidates:
-            return None
-
-    best = min(candidates, key=lambda t: (
-        t.deadline or today, _PRIORITY_RANK.get(t.priority, 1), t.id))
-    return _task_dict(s, ws, best, today)
-
-
-def top_three(s: Session, ws: int) -> list[dict]:
-    """Today's three most important tasks, after the "now" card."""
-    today = today_local()
-    rows = s.scalars(select(Task).where(
-        Task.workspace_id == ws, Task.archived_at.is_(None),
-        Task.status == "waiting",
-        Task.deadline.isnot(None), Task.deadline <= today)).all()
-    rows.sort(key=lambda t: (t.deadline or today,
-                             _PRIORITY_RANK.get(t.priority, 1), t.id))
-    return [_task_dict(s, ws, t, today) for t in rows[:3]]
 
 
 # ---------------------------------------------------------------------------
@@ -1303,35 +1428,36 @@ def save_weekly_review(s: Session, ws: int, *, went_well: str = "",
 # ---------------------------------------------------------------------------
 
 def home(s: Session, ws: int, user: User) -> dict:
+    """Everything Home shows, and nothing else.
+
+    Home answers one question — how is today going, and what is on it — so the
+    payload carries exactly the fields on that screen. Project rollups, goal
+    counts, birthdays and the full analytics history were all things the user
+    had to read past before reaching the answer, and each one cost a query.
+    """
     today = today_local()
     done, total = habit_progress(s, ws, today)
     prayer = prayer_state(s, ws, today, user.gender)
-    tasks = list_tasks(s, ws, horizon_days=0)
-    goals = list_goals(s, ws, include_completed=False)
 
     return {
         "date": today.isoformat(),
+        "date_label": date_label(today, user.language),
         "name": user.first_name or "",
         "quote": user.quote,
-        # The single decision Home leads with, plus the short list under it.
-        "now": next_action(s, ws),
-        "top3": top_three(s, ws),
-        "break": break_state(s, ws, user),
         "language": user.language,
         "theme": user.theme,
         "gender": user.gender,
+        "photo_file_id": user.photo_file_id,
         "habits": {"done": done, "total": total},
         "prayer": {"score": prayer["score"], "max": PRAYER_MAX_SCORE,
                    "threshold": PRAYER_DONE_THRESHOLD,
                    "excused": prayer["excused"]},
-        "streaks": {"habits": habit_streak(s, ws), "prayer": prayer_streak(s, ws)},
-        "photo_file_id": user.photo_file_id,
-        "tasks": {"today": tasks_due_today(s, ws), "overdue": tasks["overdue"]},
-        "focus": list_focus(s, ws),
-        "projects": list_projects(s, ws)[:5],
-        "goals": {c: len(v) for c, v in goals.items()},
-        "birthdays": [b for b in list_birthdays(s, ws, within_days=7)],
-        "journal_today": bool(get_journal(s, ws, today)),
+        "streak": habit_streak(s, ws),
+        "overall": overall_state(s, ws, today),
+        # One mission, one day's tasks. Both are deliberately singular.
+        "mission": primary_focus(s, ws),
+        "tasks_today": today_tasks_by_project(s, ws),
+        "journal_today": journal_done(s, ws, today),
     }
 
 
@@ -1479,6 +1605,8 @@ def evening_data(s: Session, ws: int, user: User) -> dict:
 
     return {
         "date": today.isoformat(),
+        # The same number Home and Statistics show, from the same function.
+        "overall": overall_state(s, ws, today),
         "habits_done": done, "habits_total": total,
         "habits_remaining": [h["name"] for h in habits if not h["done"]],
         "prayer_score": prayer["score"],
@@ -1538,8 +1666,6 @@ def platform_stats(s: Session) -> dict:
         "tasks_created": count(Task, Task.created_at >= week_ago),
         "tasks_done": count(Task, Task.status == "done",
                             Task.completed_at >= week_ago),
-        "goals_done": count(Goal, Goal.status == "completed",
-                            Goal.completed_at >= week_ago),
         "journal_today": count(JournalEntry, JournalEntry.day == today),
         "feedback_week": count(Feedback, Feedback.created_at >= week_ago),
         "languages": languages,

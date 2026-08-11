@@ -35,6 +35,7 @@ os.environ.update({
 
 import app as application  # noqa: E402
 import db  # noqa: E402
+import migrations  # noqa: E402
 import services as svc  # noqa: E402
 from db import SessionLocal, User  # noqa: E402
 
@@ -154,11 +155,6 @@ def test_tasks_are_not_visible_across_users(alice, bob):
     assert "ALICE-SECRET-TASK" not in bob.get("/api/tasks").text
 
 
-def test_goals_are_not_visible_across_users(alice, bob):
-    alice.post("/api/goals", json={"title": "ALICE-SECRET-GOAL", "category": "tactical"})
-    assert "ALICE-SECRET-GOAL" not in bob.get("/api/goals").text
-
-
 def test_journal_is_not_visible_across_users(alice, bob):
     alice.post("/api/journal", json={"text": "ALICE-SECRET-JOURNAL"})
     assert "ALICE-SECRET-JOURNAL" not in bob.get("/api/journal").text
@@ -173,12 +169,6 @@ def test_another_users_task_cannot_be_edited(alice, bob):
 def test_another_users_task_cannot_be_deleted(alice, bob):
     task_id = alice.post("/api/tasks", json={"title": "keep me"}).json()["id"]
     assert bob.delete(f"/api/tasks/{task_id}").status_code == 404
-
-
-def test_another_users_goal_cannot_be_deleted(alice, bob):
-    goal_id = alice.post("/api/goals",
-                         json={"title": "keep", "category": "tactical"}).json()["id"]
-    assert bob.delete(f"/api/goals/{goal_id}").status_code == 404
 
 
 def test_another_users_habit_cannot_be_toggled(alice, bob):
@@ -198,7 +188,7 @@ def test_task_cannot_join_another_users_project(alice, bob):
 
 def test_new_user_gets_the_default_habits(alice):
     names = [h["name"] for h in alice.get("/api/habits").json()["habits"]]
-    assert names == ["Get up", "5x namoz", "Summary",
+    assert names == ["Get up", "5x namoz",
                      "Deep flow", "Sport", "Podcast", "Read"]
 
 
@@ -207,7 +197,7 @@ def test_habits_are_grouped_into_three_categories(alice):
     assert body["categories"] == ["non_negotiable", "target", "bonus"]
     grouped = body["grouped"]
     assert [h["name"] for h in grouped["non_negotiable"]] == \
-        ["Get up", "5x namoz", "Summary"]
+        ["Get up", "5x namoz"]
     assert [h["name"] for h in grouped["target"]] == ["Deep flow", "Sport"]
     assert [h["name"] for h in grouped["bonus"]] == ["Podcast", "Read"]
 
@@ -246,11 +236,71 @@ def test_normal_habit_toggles(alice):
     assert alice.post(f"/api/habits/{normal['id']}/toggle").json()["done"] is True
 
 
-def test_the_three_derived_habits_are_protected(alice):
-    """Get up, 5x namoz and Summary are all computed, never ticked by hand."""
+def test_the_derived_habits_are_protected(alice):
+    """Get up and 5x namoz are computed, never ticked by hand."""
     habits = alice.get("/api/habits").json()["habits"]
     derived = {h["name"] for h in habits if h["protected"]}
-    assert derived == {"Get up", "5x namoz", "Summary"}
+    assert derived == {"Get up", "5x namoz"}
+
+
+# --------------------------------------------------------------------------
+# Habit order
+# --------------------------------------------------------------------------
+
+def _habit_names(caller) -> list[str]:
+    return [h["name"] for h in caller.get("/api/habits").json()["habits"]]
+
+
+def test_habits_can_be_reordered(alice):
+    ids = [h["id"] for h in alice.get("/api/habits").json()["habits"]]
+    reversed_ids = list(reversed(ids))
+    r = alice.patch("/api/habits/reorder", json={"habit_ids": reversed_ids})
+    assert r.status_code == 200
+    assert [h["id"] for h in r.json()["habits"]] == reversed_ids
+
+
+def test_a_new_order_survives_a_reload(alice):
+    before = _habit_names(alice)
+    ids = [h["id"] for h in alice.get("/api/habits").json()["habits"]]
+    alice.patch("/api/habits/reorder", json={"habit_ids": list(reversed(ids))})
+    assert _habit_names(alice) == list(reversed(before))
+
+
+def test_the_bot_sees_the_same_order_as_the_mini_app(alice):
+    """The bot groups by tier, but inside a tier it is the same list."""
+    ids = [h["id"] for h in alice.get("/api/habits").json()["habits"]]
+    wanted = list(reversed(ids))
+    alice.patch("/api/habits/reorder", json={"habit_ids": wanted})
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        grouped = svc.habits_by_category(s, ws)
+    for category in svc.HABIT_CATEGORIES:
+        inside = [h["id"] for h in grouped[category]]
+        assert inside == [i for i in wanted if i in inside]
+
+
+def test_reorder_rejects_a_duplicate_id(alice):
+    habit_id = alice.get("/api/habits").json()["habits"][0]["id"]
+    r = alice.patch("/api/habits/reorder", json={"habit_ids": [habit_id, habit_id]})
+    assert r.status_code == 422
+
+
+def test_reorder_cannot_reach_another_workspace(alice, bob):
+    """A foreign id is a 404, and Alice's own order must not move either."""
+    stolen = bob.get("/api/habits").json()["habits"][0]["id"]
+    before = _habit_names(alice)
+    assert alice.patch("/api/habits/reorder",
+                       json={"habit_ids": [stolen]}).status_code == 404
+    assert _habit_names(alice) == before
+
+
+def test_a_partial_order_keeps_the_habits_it_did_not_mention(alice):
+    habits = alice.get("/api/habits").json()["habits"]
+    last_id = habits[-1]["id"]
+    alice.patch("/api/habits/reorder", json={"habit_ids": [last_id]})
+    after = alice.get("/api/habits").json()["habits"]
+    assert after[0]["id"] == last_id
+    assert len(after) == len(habits)
 
 
 # --------------------------------------------------------------------------
@@ -309,7 +359,7 @@ def test_female_qaza_is_accepted(alice):
 
 
 # --------------------------------------------------------------------------
-# Tasks, projects, goals, focus
+# Tasks, projects and the weekly mission
 # --------------------------------------------------------------------------
 
 def test_task_without_a_project_is_standalone(alice):
@@ -326,24 +376,61 @@ def test_deleting_a_project_keeps_its_tasks(alice):
     assert "SURVIVOR" in alice.get("/api/tasks?days=365").text
 
 
-def test_weekly_focus_is_capped_at_three(alice):
-    for i in range(3):
-        assert alice.post("/api/focus", json={"title": f"mission {i}"}).status_code == 200
-    assert alice.post("/api/focus", json={"title": "fourth"}).status_code == 422
+def _clear_missions(telegram_id: int) -> None:
+    """The suite shares one database, so a week can already hold its mission."""
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, telegram_id)
+        for row in s.query(db.WeeklyFocus).filter_by(workspace_id=ws).all():
+            s.delete(row)
+        s.commit()
 
 
-def test_goal_category_must_be_known(alice):
-    assert alice.post("/api/goals",
-                      json={"title": "bad", "category": "galactic"}).status_code == 422
+def test_the_week_holds_exactly_one_mission(alice):
+    _clear_missions(ALICE["id"])
+    assert alice.post("/api/focus", json={"title": "the one"}).status_code == 200
+    assert alice.post("/api/focus", json={"title": "second"}).status_code == 422
 
 
-def test_completing_a_goal_sets_progress_to_100(alice):
-    goal_id = alice.post("/api/goals",
-                         json={"title": "finish", "category": "tactical"}).json()["id"]
-    alice.post(f"/api/goals/{goal_id}/complete")
-    goals = alice.get("/api/goals").json()
-    row = next(g for g in goals["tactical"] if g["id"] == goal_id)
-    assert row["status"] == "completed" and row["progress"] == 100
+def test_a_mission_defaults_to_medium_importance(alice):
+    _clear_missions(ALICE["id"])
+    alice.post("/api/focus", json={"title": "unranked"})
+    assert alice.get("/api/focus").json()["focus"][0]["priority"] == "medium"
+
+
+def test_a_mission_keeps_the_importance_it_was_given(alice):
+    _clear_missions(ALICE["id"])
+    alice.post("/api/focus", json={"title": "urgent", "priority": "high"})
+    assert alice.get("/api/focus").json()["focus"][0]["priority"] == "high"
+
+
+def test_an_unknown_importance_falls_back_to_medium(alice):
+    _clear_missions(ALICE["id"])
+    alice.post("/api/focus", json={"title": "odd", "priority": "cosmic"})
+    assert alice.get("/api/focus").json()["focus"][0]["priority"] == "medium"
+
+
+def test_a_mission_written_before_the_column_existed_reads_as_medium(alice):
+    """Rows predating the priority column carry NULL, not a bad value."""
+    _clear_missions(ALICE["id"])
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        s.add(db.WeeklyFocus(workspace_id=ws, week_start=svc.week_start(svc.today_local()),
+                             slot=1, title="legacy row", priority=None))
+        s.commit()
+    assert alice.get("/api/home").json()["mission"]["priority"] == "medium"
+
+
+def test_home_shows_one_mission_even_for_a_legacy_week(alice):
+    """Weeks written under the old three-slot rule still resolve to one."""
+    _clear_missions(ALICE["id"])
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        start = svc.week_start(svc.today_local())
+        for slot in (2, 3, 1):
+            s.add(db.WeeklyFocus(workspace_id=ws, week_start=start, slot=slot,
+                                 title=f"legacy {slot}"))
+        s.commit()
+    assert alice.get("/api/home").json()["mission"]["title"] == "legacy 1"
 
 
 def test_bad_date_is_rejected_without_leaking_internals(alice):
@@ -422,37 +509,320 @@ def test_frontend_has_no_ai_or_money_ui():
 
 
 # --------------------------------------------------------------------------
-# Journal — five questions drive the derived Summary habit
+# The launch surfaces: seven menu entries, four screens, one privacy line
 # --------------------------------------------------------------------------
 
-def _summary_done(caller) -> bool:
-    habits = caller.get("/api/habits").json()["habits"]
-    return next(h for h in habits if h["name"] == "Summary")["done"]
+def _menu_labels(lang: str) -> list[str]:
+    application.WEBAPP_URL = "https://example.test"
+    return [button.text for row in application.main_menu(lang).keyboard
+            for button in row]
+
+
+@pytest.mark.parametrize("lang", ["uz", "en", "ru"])
+def test_the_menu_is_exactly_seven_entries(lang):
+    labels = _menu_labels(lang)
+    assert len(labels) == 7
+    assert labels == [application.t(lang, key) for key in (
+        "menu_home", "menu_habits", "menu_tasks", "menu_stats",
+        "menu_settings", "menu_feedback", "menu_app")]
+
+
+@pytest.mark.parametrize("lang", ["uz", "en", "ru"])
+def test_the_menu_has_no_goals_and_no_standing_wake_button(lang):
+    labels = _menu_labels(lang)
+    assert application.t(lang, "menu_wake") not in labels
+    for word in ("maqsad", "goal", "цел"):
+        assert not any(word in label.lower() for label in labels)
+
+
+def test_typing_i_am_up_still_works_in_every_language():
+    """Removing the button must not remove the action."""
+    source = (ROOT / "app.py").read_text()
+    assert 'if text == t(code, "menu_wake")' in source
+    for lang in ("uz", "en", "ru"):
+        assert application.t(lang, "menu_wake")
+
+
+def _habit_buttons(done: bool) -> list[str]:
+    grouped = {"non_negotiable": [{"id": 1, "name": "Get up", "protected": True,
+                                   "system_key": "wakeup", "target_time": "05:00",
+                                   "done": done}],
+               "target": [], "bonus": []}
+    markup = application.habits_keyboard(grouped, "uz")
+    return [b.text for row in markup.inline_keyboard for b in row]
+
+
+def test_wake_up_is_offered_on_the_habits_screen_while_it_can_be_recorded():
+    assert application.t("uz", "menu_wake") in _habit_buttons(done=False)
+
+
+def test_wake_up_disappears_once_it_is_recorded():
+    """A button that can only tell you 'already done' is not worth a tap."""
+    assert application.t("uz", "menu_wake") not in _habit_buttons(done=True)
+
+
+def test_goals_are_unreachable_from_either_surface():
+    app_source = (ROOT / "app.py").read_text()
+    html = (ROOT / "webapp" / "index.html").read_text()
+    for term in ('"/api/goals', "show_goals", "menu_goals", "list_goals"):
+        assert term not in app_source, f"app.py still exposes {term!r}"
+    for term in ("/api/goals", "SCREENS.vision", "goal-add", "Maqsadlar", "Цели"):
+        assert term not in html, f"index.html still exposes {term!r}"
+
+
+def test_the_mini_app_navigation_is_the_four_launch_screens():
+    html = (ROOT / "webapp" / "index.html").read_text()
+    nav = html[html.index("const NAV = ["):html.index("const NAV_OF")]
+    assert [line.split('id:"')[1].split('"')[0]
+            for line in nav.splitlines() if 'id:"' in line] == \
+        ["home", "habits", "tasks", "stats"]
+
+
+def test_the_privacy_line_is_one_fixed_strip():
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert html.count('class="privacy-strip"') == 1
+    assert "privacyNote" not in html, "per-page privacy cards are back"
+    for lang, phrase in (("uz", "maxfiyligingiz to'liq himoyalangan"),
+                         ("en", "Your data and privacy are fully protected"),
+                         ("ru", "конфиденциальность полностью защищены")):
+        assert phrase in html, f"{lang} privacy line missing"
+        assert phrase in application.t(lang, "privacy_line") or \
+            phrase.replace("'", "'") in application.t(lang, "privacy_line")
+
+
+def test_the_privacy_claim_stays_within_what_is_implemented():
+    """No end-to-end-encryption or not-even-admins promise anywhere."""
+    text = ((ROOT / "webapp" / "index.html").read_text()
+            + (ROOT / "app.py").read_text()).lower()
+    for claim in ("end-to-end", "e2e encrypt", "hatto admin", "даже админ"):
+        assert claim not in text, f"unimplemented privacy claim: {claim!r}"
+
+
+# --------------------------------------------------------------------------
+# Retiring Goals from a live database
+# --------------------------------------------------------------------------
+
+def _drop(*names: str) -> None:
+    from sqlalchemy import text
+    with db.engine.begin() as conn:
+        for name in names:
+            conn.execute(text(f"DROP TABLE IF EXISTS {name}"))
+
+
+def _make_legacy_goals_table(rows: int = 2) -> None:
+    from sqlalchemy import text
+    _drop("goals", migrations.GOALS_ARCHIVE_TABLE)
+    with db.engine.begin() as conn:
+        conn.execute(text(
+            "CREATE TABLE goals (id INTEGER PRIMARY KEY, workspace_id INTEGER, "
+            "title TEXT, category TEXT)"))
+        for i in range(rows):
+            conn.execute(text("INSERT INTO goals (workspace_id, title, category) "
+                              f"VALUES (1, 'kept {i}', 'tactical')"))
+
+
+def _tables() -> set[str]:
+    from sqlalchemy import inspect
+    return set(inspect(db.engine).get_table_names())
+
+
+def test_the_migration_takes_goals_out_of_the_live_schema():
+    _make_legacy_goals_table()
+    result = migrations.m0002_retire_goals()
+    assert result["rows"] == 2
+    assert "goals" not in _tables()
+    _drop(migrations.GOALS_ARCHIVE_TABLE)
+
+
+def test_the_migration_keeps_every_row(alice):
+    """A removed screen must never mean deleted data."""
+    from sqlalchemy import text
+    _make_legacy_goals_table(rows=3)
+    migrations.m0002_retire_goals()
+    with db.engine.begin() as conn:
+        kept = conn.execute(text(
+            f"SELECT count(*) FROM {migrations.GOALS_ARCHIVE_TABLE}")).scalar()
+    assert kept == 3
+    _drop(migrations.GOALS_ARCHIVE_TABLE)
+
+
+def test_the_migration_is_safe_to_run_twice():
+    _make_legacy_goals_table()
+    migrations.m0002_retire_goals()
+    again = migrations.m0002_retire_goals()
+    assert again["status"] == "already archived"
+    _drop(migrations.GOALS_ARCHIVE_TABLE)
+
+
+def test_the_migration_does_nothing_on_a_fresh_database():
+    _drop("goals", migrations.GOALS_ARCHIVE_TABLE)
+    assert migrations.m0002_retire_goals()["status"] == "nothing to do"
+
+
+def test_the_archive_can_be_renamed_back():
+    """The documented rollback has to actually work."""
+    from sqlalchemy import text
+    _make_legacy_goals_table()
+    migrations.m0002_retire_goals()
+    with db.engine.begin() as conn:
+        conn.execute(text(
+            f"ALTER TABLE {migrations.GOALS_ARCHIVE_TABLE} RENAME TO goals"))
+        assert conn.execute(text("SELECT count(*) FROM goals")).scalar() == 2
+    _drop("goals")
+
+
+def test_creating_the_schema_never_brings_goals_back():
+    _drop("goals", migrations.GOALS_ARCHIVE_TABLE)
+    db.init_db()
+    assert "goals" not in _tables()
+
+
+def test_no_orphaned_foreign_key_points_at_goals():
+    from sqlalchemy import inspect
+    inspector = inspect(db.engine)
+    for table in _tables():
+        for fk in inspector.get_foreign_keys(table):
+            assert fk["referred_table"] != "goals", f"{table} still references goals"
+
+
+# --------------------------------------------------------------------------
+# Bot rendering
+# --------------------------------------------------------------------------
+
+def _home_text(telegram_id: int, lang: str = "uz") -> str:
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, telegram_id)
+        user = s.get(User, telegram_id)
+        user.language = lang
+        s.commit()
+        return application.render_home(svc.home(s, ws, user), lang)
+
+
+def test_bot_home_stays_compact(alice):
+    """Mission, today, the numbers, the privacy line — and nothing else."""
+    _clear_tasks(ALICE["id"])
+    text = _home_text(ALICE["id"])
+    assert application.t("uz", "home_mission") in text
+    assert application.t("uz", "home_today") in text
+    assert application.t("uz", "privacy_line") in text
+    for gone in ("Loyihalar", "Tug'ilgan kunlar", "Kechikkan", "Maqsadlar"):
+        assert gone not in text
+
+
+def test_bot_home_shows_only_todays_tasks(alice):
+    _clear_tasks(ALICE["id"])
+    today = svc.today_local()
+    alice.post("/api/tasks", json={"title": "TODAY ONE", "deadline": today.isoformat()})
+    alice.post("/api/tasks", json={"title": "NEXT MONTH",
+                                   "deadline": (today + timedelta(days=25)).isoformat()})
+    text = _home_text(ALICE["id"])
+    assert "TODAY ONE" in text and "NEXT MONTH" not in text
+
+
+def test_bot_home_says_none_rather_than_nothing(alice):
+    _clear_tasks(ALICE["id"])
+    _clear_missions(ALICE["id"])
+    assert _home_text(ALICE["id"]).count(application.t("uz", "none")) == 2
+
+
+def test_bot_home_escapes_a_hostile_task_title(alice):
+    _clear_tasks(ALICE["id"])
+    alice.post("/api/tasks", json={"title": "<b>bold</b>",
+                                   "deadline": svc.today_local().isoformat()})
+    text = _home_text(ALICE["id"])
+    assert "&lt;b&gt;bold&lt;/b&gt;" in text
+
+
+def test_bot_home_uses_the_language_of_the_reader(alice):
+    for lang in ("uz", "en", "ru"):
+        text = _home_text(ALICE["id"], lang)
+        assert application.t(lang, "privacy_line") in text
+        assert svc.MONTHS[lang][svc.today_local().month - 1] in text
+
+
+def test_bot_statistics_reports_the_same_overall_as_home(alice):
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        data = svc.stats(s, ws, "week")
+    text = application.render_stats(data, "uz")
+    assert f"{data['today']['overall']}%" in text
+    assert alice.get("/api/home").json()["overall"]["value"] == data["today"]["overall"]
+
+
+def test_statistics_shows_a_dash_for_a_component_with_nothing_due(alice):
+    _clear_tasks(ALICE["id"])
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        data = svc.stats(s, ws, "week")
+    assert "—" in application.render_stats(data, "uz")
+
+
+# --- the bot never offers a button that leads nowhere --------------------
+
+def _task_buttons(**kwargs) -> list[str]:
+    markup = application.tasks_keyboard("uz", **kwargs)
+    return [button.text for row in markup.inline_keyboard for button in row]
+
+
+def test_an_empty_workspace_offers_only_the_two_add_buttons():
+    labels = _task_buttons(projects=[], open_tasks=0, editable=0)
+    assert labels == [application.t("uz", "btn_add_task"),
+                      application.t("uz", "btn_add_project")]
+
+
+def test_the_done_and_edit_buttons_appear_once_there_are_tasks():
+    labels = _task_buttons(projects=[], open_tasks=2, editable=2)
+    assert application.t("uz", "btn_done_task") in labels
+    assert application.t("uz", "btn_edit_task") in labels
+    assert application.t("uz", "btn_del_project") not in labels
+
+
+def test_the_project_delete_button_needs_a_project():
+    without = _task_buttons(projects=[], open_tasks=1, editable=1)
+    with_one = _task_buttons(projects=[{"id": 1, "name": "P"}],
+                             open_tasks=1, editable=1)
+    assert application.t("uz", "btn_del_project") not in without
+    assert application.t("uz", "btn_del_project") in with_one
+    assert "📁 P" in with_one
+
+
+# --------------------------------------------------------------------------
+# Journal — five questions, reported as their own status
+# --------------------------------------------------------------------------
+
+def _journal_done(caller) -> bool:
+    return caller.get("/api/home").json()["journal_today"]
+
+
+def test_a_partial_journal_is_not_complete(alice):
+    alice.post("/api/journal", json={"answers": {"wins": "shipped"}})
+    assert _journal_done(alice) is False
+
+
+def test_all_five_answers_complete_the_day(alice):
+    alice.post("/api/journal",
+               json={"answers": {k: "answer" for k in svc.JOURNAL_KEYS}})
+    assert _journal_done(alice) is True
+
+
+def test_deleting_the_journal_clears_the_day(alice):
+    today = svc.today_local().isoformat()
+    alice.post("/api/journal",
+               json={"answers": {k: "a" for k in svc.JOURNAL_KEYS}})
+    alice.delete(f"/api/journal/{today}")
+    assert _journal_done(alice) is False
+
+
+def test_the_journal_is_not_a_habit(alice):
+    """It is a status. Counting it would move the denominator and the streak."""
+    names = [h["name"] for h in alice.get("/api/habits").json()["habits"]]
+    assert "Summary" not in names
 
 
 def test_journal_exposes_five_questions(alice):
     questions = alice.get("/api/journal").json()["questions"]
     assert len(questions) == 5
     assert {q["id"] for q in questions} == set(svc.JOURNAL_KEYS)
-
-
-def test_partial_journal_does_not_tick_the_summary_habit(alice):
-    alice.post("/api/journal", json={"answers": {"wins": "shipped"}})
-    assert _summary_done(alice) is False
-
-
-def test_complete_journal_ticks_the_summary_habit(alice):
-    """Exactly like 5x namoz: the habit is derived, never ticked by hand."""
-    alice.post("/api/journal",
-               json={"answers": {k: "answer" for k in svc.JOURNAL_KEYS}})
-    assert _summary_done(alice) is True
-
-
-def test_summary_habit_cannot_be_toggled_by_hand(alice):
-    habits = alice.get("/api/habits").json()["habits"]
-    summary = next(h for h in habits if h["name"] == "Summary")
-    assert summary["protected"] is True
-    assert alice.post(f"/api/habits/{summary['id']}/toggle").status_code == 400
 
 
 def test_journal_answers_survive_a_reload(alice):
@@ -507,22 +877,6 @@ def test_completed_task_moves_to_the_done_archive(alice):
     alice.patch(f"/api/tasks/{task_id}", json={"status": "done"})
     assert "ARCHIVE-ME" in alice.get("/api/tasks/done").text
     assert "ARCHIVE-ME" not in alice.get("/api/tasks?days=365").text
-
-
-def test_completed_goal_moves_to_the_achieved_list(alice):
-    goal_id = alice.post("/api/goals",
-                         json={"title": "ACHIEVE-ME", "category": "tactical"}).json()["id"]
-    alice.post(f"/api/goals/{goal_id}/complete")
-    assert "ACHIEVE-ME" in alice.get("/api/goals/done").text
-
-
-def test_a_completed_goal_can_be_reopened(alice):
-    goal_id = alice.post("/api/goals",
-                         json={"title": "REOPEN-ME", "category": "tactical"}).json()["id"]
-    alice.post(f"/api/goals/{goal_id}/complete")
-    alice.post(f"/api/goals/{goal_id}/reopen")
-    goals = alice.get("/api/goals").json()["tactical"]
-    assert next(g for g in goals if g["id"] == goal_id)["status"] == "active"
 
 
 def test_task_description_round_trips(alice):
@@ -932,12 +1286,6 @@ def test_normal_uzbek_text_is_accepted(alice):
     assert r.status_code == 200
 
 
-def test_goal_progress_outside_the_range_is_rejected(alice):
-    goal_id = alice.post("/api/goals",
-                         json={"title": "range", "category": "tactical"}).json()["id"]
-    assert alice.patch(f"/api/goals/{goal_id}", json={"progress": 500}).status_code == 422
-
-
 # --- 014 / 076: user text never becomes markup ---------------------------
 
 @pytest.mark.parametrize("raw,expected", [
@@ -1048,10 +1396,10 @@ class _Ctx:
 def test_a_new_flow_replaces_the_previous_one():
     ctx = _Ctx()
     first = application.start_flow(ctx, "task_title")
-    second = application.start_flow(ctx, "goal_title")
+    second = application.start_flow(ctx, "project_rename")
     assert first["id"] != second["id"]
     assert application.current_flow(ctx, "task_title") is None
-    assert application.current_flow(ctx, "goal_title") is not None
+    assert application.current_flow(ctx, "project_rename") is not None
 
 
 def test_an_expired_flow_is_forgotten():
@@ -1065,7 +1413,7 @@ def test_an_expired_flow_is_forgotten():
 def test_current_flow_filters_by_name():
     ctx = _Ctx()
     application.start_flow(ctx, "habit_cat", title="Reading")
-    assert application.current_flow(ctx, "goal_cat") is None
+    assert application.current_flow(ctx, "task_days") is None
     assert application.current_flow(ctx, "habit_cat")["title"] == "Reading"
 
 
@@ -1080,16 +1428,6 @@ def test_readiness_reports_each_dependency(client):
     assert body["ok"] is True
     assert body["checks"]["database"] == "ok"
     assert body["checks"]["schema"] == "ok"
-
-
-# --- 046: deleting the journal clears the habit it was driving -----------
-
-def test_deleting_the_journal_unticks_the_summary_habit(alice):
-    today = svc.today_local().isoformat()
-    alice.post("/api/journal", json={"answers": {k: "a" for k in svc.JOURNAL_KEYS}})
-    assert _summary_done(alice) is True
-    alice.delete(f"/api/journal/{today}")
-    assert _summary_done(alice) is False, "Summary stayed ticked after the entry went"
 
 
 # --- 061: the avatar is reachable the way an <img> tag asks for it -------
@@ -1118,52 +1456,119 @@ def test_avatar_rejects_a_tampered_query_blob(client):
 # Product round: one decision at a time
 # ==========================================================================
 
-# --- "Now": Home leads with a single task -------------------------------
+# --- Home is today, and only today ---------------------------------------
 
-def test_now_prefers_an_overdue_task(alice):
+def _clear_tasks(telegram_id: int) -> None:
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, telegram_id)
+        for row in s.query(db.Task).filter_by(workspace_id=ws).all():
+            s.delete(row)
+        s.commit()
+
+
+def test_home_carries_only_todays_tasks(alice):
+    _clear_tasks(ALICE["id"])
     today = svc.today_local()
-    alice.post("/api/tasks", json={"title": "LATER", "deadline": today.isoformat()})
-    alice.post("/api/tasks", json={"title": "OVERDUE",
-                                   "deadline": (today - timedelta(days=2)).isoformat()})
-    assert alice.get("/api/home").json()["now"]["title"] == "OVERDUE"
+    alice.post("/api/tasks", json={"title": "TODAY", "deadline": today.isoformat()})
+    alice.post("/api/tasks", json={"title": "NEXT WEEK",
+                                   "deadline": (today + timedelta(days=6)).isoformat()})
+    alice.post("/api/tasks", json={"title": "LAST WEEK",
+                                   "deadline": (today - timedelta(days=6)).isoformat()})
+    titles = [task["title"]
+              for group in alice.get("/api/home").json()["tasks_today"]
+              for task in group["tasks"]]
+    assert titles == ["TODAY"]
 
 
-def test_now_breaks_ties_by_priority(alice):
+def test_home_groups_todays_tasks_by_project(alice):
+    _clear_tasks(ALICE["id"])
     today = svc.today_local().isoformat()
+    project_id = alice.post("/api/projects", json={"name": "Launch"}).json()["id"]
+    alice.post("/api/tasks", json={"title": "IN PROJECT", "deadline": today,
+                                   "project_id": project_id})
+    alice.post("/api/tasks", json={"title": "ON ITS OWN", "deadline": today})
+    groups = alice.get("/api/home").json()["tasks_today"]
+    assert [g["project"] for g in groups] == ["Launch", None]
+    assert groups[0]["tasks"][0]["title"] == "IN PROJECT"
+
+
+def test_home_no_longer_carries_the_removed_sections(alice):
+    body = alice.get("/api/home").json()
+    for key in ("goals", "projects", "birthdays", "now", "top3", "focus"):
+        assert key not in body, f"Home still ships {key}"
+
+
+def test_home_writes_the_date_in_the_users_language(alice):
+    alice.post("/api/settings", json={"language": "en"})
+    assert svc.MONTHS["en"][svc.today_local().month - 1] in \
+        alice.get("/api/home").json()["date_label"]
+    alice.post("/api/settings", json={"language": "uz"})
+    assert svc.MONTHS["uz"][svc.today_local().month - 1] in \
+        alice.get("/api/home").json()["date_label"]
+
+
+# --- One overall number, computed once -----------------------------------
+
+def test_a_category_with_nothing_due_is_left_out_of_the_average(alice):
+    """An empty category must not be averaged in as 0%."""
+    _clear_tasks(ALICE["id"])
     with SessionLocal() as s:
         ws = svc.workspace_id_for(s, ALICE["id"])
-        for row in s.query(db.Task).filter_by(workspace_id=ws).all():
-            s.delete(row)
-        s.commit()
-    alice.post("/api/tasks", json={"title": "LOW", "deadline": today, "priority": "low"})
-    alice.post("/api/tasks", json={"title": "HIGH", "deadline": today, "priority": "high"})
-    assert alice.get("/api/home").json()["now"]["title"] == "HIGH"
+        components = svc.overall_components(s, ws)
+        assert components["tasks"] is None
+        available = [v for v in components.values() if v is not None]
+        assert svc.overall_percent(s, ws) == round(sum(available) / len(available))
 
 
-def test_now_falls_back_to_an_undated_task(alice):
+def test_finishing_todays_tasks_scores_them_at_a_hundred(alice):
+    _clear_tasks(ALICE["id"])
+    today = svc.today_local().isoformat()
+    task_id = alice.post("/api/tasks",
+                         json={"title": "DO IT", "deadline": today}).json()["id"]
     with SessionLocal() as s:
         ws = svc.workspace_id_for(s, ALICE["id"])
-        for row in s.query(db.Task).filter_by(workspace_id=ws).all():
-            s.delete(row)
-        s.commit()
-    alice.post("/api/tasks", json={"title": "SOMEDAY"})
-    assert alice.get("/api/home").json()["now"]["title"] == "SOMEDAY"
+        assert svc.overall_components(s, ws)["tasks"] == 0
+    alice.patch(f"/api/tasks/{task_id}", json={"status": "done"})
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        assert svc.overall_components(s, ws)["tasks"] == 100
 
 
-def test_now_is_empty_when_there_is_nothing_to_do(bob):
+def test_the_backlog_does_not_drag_todays_number(alice):
+    _clear_tasks(ALICE["id"])
+    today = svc.today_local()
+    alice.post("/api/tasks", json={"title": "ANCIENT",
+                                   "deadline": (today - timedelta(days=30)).isoformat()})
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        assert svc.overall_components(s, ws)["tasks"] is None
+
+
+def test_every_surface_reports_the_same_overall(alice):
+    """Home, Statistics and the evening report read one function."""
+    today = svc.today_local().isoformat()
+    alice.post("/api/tasks", json={"title": "PARITY", "deadline": today})
+    home = alice.get("/api/home").json()["overall"]["value"]
+    stats = alice.get("/api/stats").json()["today"]["overall"]
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        evening = svc.evening_data(s, ws, s.get(User, ALICE["id"]))["overall"]["value"]
+    assert home == stats == evening
+
+
+def test_the_trend_is_flat_when_yesterday_had_nothing_to_measure(bob):
     with SessionLocal() as s:
         ws = svc.workspace_id_for(s, BOB["id"])
-        for row in s.query(db.Task).filter_by(workspace_id=ws).all():
-            s.delete(row)
+        for row in s.query(db.Habit).filter_by(workspace_id=ws).all():
+            row.archived_at = db.utcnow()
         s.commit()
-    assert bob.get("/api/home").json()["now"] is None
+        assert svc.overall_state(s, ws)["trend"] == "flat"
 
 
-def test_home_offers_at_most_three_for_today(alice):
-    today = svc.today_local().isoformat()
-    for i in range(6):
-        alice.post("/api/tasks", json={"title": f"T{i}", "deadline": today})
-    assert len(alice.get("/api/home").json()["top3"]) <= 3
+def test_statistics_report_a_percentage_per_component(alice):
+    body = alice.get("/api/stats").json()["today"]
+    assert set(body) >= {"overall", "trend", "tasks", "habits", "prayer",
+                         "prayer_score", "prayer_max", "streak"}
 
 
 # --- Quick capture -------------------------------------------------------
@@ -1189,7 +1594,10 @@ def test_quick_add_is_scoped_to_the_caller(alice, bob):
 
 def test_a_recent_user_is_not_offered_a_reset(alice):
     alice.get("/api/me")
-    assert alice.get("/api/home").json()["break"]["suggest_reset"] is False
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        state = svc.break_state(s, ws, s.get(User, ALICE["id"]))
+    assert state["suggest_reset"] is False
 
 
 def test_a_returning_user_with_a_backlog_is_offered_a_reset(alice):

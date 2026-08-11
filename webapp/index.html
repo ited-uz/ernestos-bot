@@ -92,7 +92,11 @@ body{
   /* Telegram reports its own usable height; --vh is kept in sync from JS
      because 100vh is wrong inside the in-app browser. */
   min-height:var(--vh, 100dvh);
-  padding-bottom:calc(74px + var(--safe-b, 0px));
+  /* Room for the two fixed strips at the bottom: the privacy line and the
+     navigation. --shell-b is measured from the real nodes after every render,
+     so a two-line privacy message on a narrow screen still cannot cover the
+     last card on the page. */
+  padding-bottom:calc(var(--shell-b, 130px) + 12px);
 }
 #app{padding:calc(14px + var(--safe-t, 0px)) var(--pad) 12px;
      max-width:620px;margin:0 auto;width:100%}
@@ -182,10 +186,19 @@ label{display:block;font-size:11px;color:var(--faint);margin:15px 0 6px;
 .prayer-card.set-jamaat,.prayer-card.set-on_time{border-left-color:var(--ok)}
 .prayer-card.set-qaza{border-left-color:var(--warn)}
 .prayer-card.set-missed{border-left-color:var(--danger)}
-.privacy{display:flex;gap:9px;align-items:flex-start;font-size:12px;color:var(--muted);
-         background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
-         padding:11px 13px;margin:12px 0}
-.privacy b{color:var(--text);font-weight:650}
+/* One privacy line for the whole app, fixed just above the navigation.
+   It used to be repeated as a card on four screens, which reads as nagging
+   and pushed the real content down every time. */
+.privacy-strip{position:fixed;left:0;right:0;bottom:var(--nav-h, 62px);z-index:39;
+  background:color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter:saturate(160%) blur(14px);
+  -webkit-backdrop-filter:saturate(160%) blur(14px);
+  border-top:1px solid var(--line);
+  padding:7px calc(var(--pad) + 4px);text-align:center;
+  font-size:11.5px;line-height:1.35;color:var(--muted);
+  /* Two lines at most, even at 320px. */
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  overflow:hidden}
 .pills{display:flex;gap:7px;flex-wrap:wrap}
 .pills.scroll{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
               margin:0 calc(var(--pad) * -1);padding:0 var(--pad) 2px}
@@ -203,31 +216,63 @@ label{display:block;font-size:11px;color:var(--faint);margin:15px 0 6px;
 .bar span{display:block;height:100%;border-radius:3px;
           background:linear-gradient(90deg,var(--accent),var(--accent-2))}
 
-/* The "now" card is deliberately the heaviest element on the page: it is the
-   one decision Home is asking the user to make. Everything else is quieter. */
-.now-card{display:flex;align-items:flex-start;gap:14px;padding:18px;
-          border-radius:var(--r-lg);margin-bottom:10px;
-          background:linear-gradient(150deg,var(--accent-dim),var(--surface) 78%);
-          border:1px solid var(--accent-dim);box-shadow:var(--shadow)}
-.now-check{width:30px;height:30px;border-radius:10px;border:2px solid var(--accent);
-           flex:none;position:relative}
-.now-check::after{content:"";position:absolute;inset:-8px}
-.now-title{font-size:18px;font-weight:700;line-height:1.35}
-.now-meta{font-size:12px;color:var(--muted);margin-top:6px;
-          display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-
-.back-card{background:linear-gradient(150deg,var(--surface-2),var(--surface));
-           border-color:var(--tap-line);margin-top:14px}
-
-.more-toggle{margin:22px 0 4px;padding:12px;text-align:center;border-radius:12px;
-             background:var(--tap);border:1px solid var(--tap-line);
-             font-size:13px;font-weight:650;color:var(--muted)}
-
 .stat{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .stat .card{text-align:center;padding:14px 6px;margin:0}
 .stat .v{font-size:20px;font-weight:760;letter-spacing:-.5px}
 .stat .k{font-size:10px;color:var(--faint);margin-top:3px;text-transform:uppercase;
          letter-spacing:.6px;font-weight:700}
+
+/* Home's four numbers: two columns, so nothing shrinks below readable at
+   320px and nothing scrolls sideways. */
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0 4px}
+.metric{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+        padding:13px 14px;box-shadow:var(--ring);min-width:0}
+.metric .k{font-size:10.5px;color:var(--faint);text-transform:uppercase;
+           letter-spacing:.6px;font-weight:750}
+.metric .v{font-size:21px;font-weight:760;letter-spacing:-.5px;margin-top:4px;
+           display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+.trend{font-size:13px;font-weight:700}
+.trend.up{color:var(--ok)} .trend.down{color:var(--danger)}
+.trend.flat{color:var(--muted)}
+
+/* Priority is carried by a coloured edge *and* a written label — colour
+   alone would say nothing to a colour-blind user or in a screenshot. */
+.mission{display:flex;align-items:flex-start;gap:12px;padding:16px;
+         border-radius:var(--r);margin-bottom:8px;background:var(--surface);
+         border:1px solid var(--line);border-left:4px solid var(--t2);
+         box-shadow:var(--ring)}
+.mission.pri-high{border-left-color:var(--t1)}
+.mission.pri-medium{border-left-color:var(--t2)}
+.mission.pri-low{border-left-color:var(--t3)}
+.mission-title{font-size:16px;font-weight:700;line-height:1.35;overflow-wrap:anywhere}
+.tag{display:inline-block;font-size:10.5px;font-weight:750;letter-spacing:.5px;
+     text-transform:uppercase;margin-top:6px;color:var(--muted)}
+.tag.pri-high{color:var(--t1)} .tag.pri-medium{color:var(--t2)}
+.tag.pri-low{color:var(--t3)}
+
+.group{font-size:12px;font-weight:750;color:var(--muted);margin:16px 0 7px;
+       overflow-wrap:anywhere}
+.trow{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+      border-left:4px solid var(--t2);padding:12px 14px;margin-bottom:7px;
+      box-shadow:var(--ring)}
+.trow.pri-high{border-left-color:var(--t1)}
+.trow.pri-medium{border-left-color:var(--t2)}
+.trow.pri-low{border-left-color:var(--t3)}
+.trow .tt{font-weight:640;line-height:1.35;overflow-wrap:anywhere}
+.trow .td{font-size:12.5px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}
+
+/* Reordering habits: a drag handle for touch, plus explicit up/down buttons,
+   because a drag is invisible to a screen reader and impossible one-handed. */
+.reorder-hint{font-size:12.5px;color:var(--muted);margin-bottom:10px}
+.item.dragging{opacity:.55}
+.item.dragover{border-color:var(--accent)}
+.handle{font-size:17px;color:var(--faint);cursor:grab;touch-action:none;
+        padding:0 2px;flex:none}
+.move{width:34px;height:34px;min-width:34px;border-radius:10px;flex:none;
+      display:grid;place-items:center;background:var(--tap);
+      border:1px solid var(--tap-line);font-size:13px;position:relative}
+.move::after{content:"";position:absolute;inset:-5px}
+.move[disabled]{opacity:.35}
 
 /* calendar */
 .cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
@@ -246,7 +291,7 @@ label{display:block;font-size:11px;color:var(--faint);margin:15px 0 6px;
 .cal-dots{display:flex;gap:2px;height:4px}
 .cal-dots i{width:4px;height:4px;border-radius:50%}
 .k-task{background:var(--accent)} .k-project{background:var(--warn)}
-.k-goal{background:var(--t3)} .k-birthday{background:var(--t1)}
+.k-birthday{background:var(--t1)}
 
 nav{position:fixed;left:0;right:0;bottom:0;z-index:40;
     display:grid;grid-template-columns:repeat(4,1fr);
@@ -294,6 +339,7 @@ nav .ic{font-size:19px;line-height:1}
 <body>
 
 <div id="app"><div class="spin"></div></div>
+<div class="privacy-strip" id="privacy"></div>
 <nav id="nav"></nav>
 <div class="sheet" id="sheet"><div class="sheet-inner" id="sheet-body"></div></div>
 <div class="toast" id="toast"></div>
@@ -334,36 +380,27 @@ window.addEventListener("orientationchange", () => setTimeout(syncViewport, 250)
 /* ---------- translations ---------- */
 const DICT = {
  uz:{
-  now:"Hozir",
-  now_empty:"Bugunga reja yo'q — bitta ish qo'shing",
-  later:"Keyin",
-  details:"Batafsil",
   quick_add:"Tez qo'shish",
   quick_ph:"Nima esingizga tushdi?",
   inbox_saved:"Saqlandi — Vazifalarda",
-  back_title:"Bir necha kun ko'rinmadingiz",
-  back_body:"{n} ta ish kutib turibdi. Qanday davom etamiz?",
-  back_today:"Bugunga ko'chirish",
-  back_archive:"Arxivga olish",
-  back_done:"Tayyor — toza boshladik",
-  review:"Haftalik xulosa",
-  r_well:"Nima yaxshi ketdi?",
-  r_blocked:"Nima to'sqinlik qildi?",
-  r_next:"Keyingi haftaning 3 ta ishi?",
   retry:"Qayta urinish",
   draft_kept:"Yozganingiz saqlanib turibdi",
   report_sent:"Hisobot botga yuborildi",
   progress:"Progress",
-  privacy_title:"Ma'lumotlaringiz to'liq himoyalangan",
-  privacy_body:"Yozganlaringizni faqat siz ko'rasiz. Hech kim, hatto boshqa foydalanuvchilar ham kira olmaydi.",
+  privacy_line:"Ma'lumotlaringiz va maxfiyligingiz to'liq himoyalangan 🔒",
   settings_saved:"Sozlamalar saqlandi",
   download:"Hisobotni yuklab olish",
   report:"Hisobot",
-  home:"Home", habits:"Odatlar", tasks:"Vazifalar", vision:"Maqsadlar",
+  home:"Home", habits:"Odatlar", tasks:"Vazifalar",
   greet:"Assalomu alaykum", quote_ph:"O'zingizga kuch beradigan gap yozing",
-  h_focus:"Shu hafta", h_tasks:"Bugungi vazifalar", h_habits:"Odatlar",
-  h_projects:"Loyihalar", h_goals:"Maqsadlar", h_bday:"Tug'ilgan kunlar",
-  h_overdue:"Kechikkan", h_calendar:"Kalendar",
+  quote_add:"Quote qo'shish",
+  h_mission:"Asosiy missiya", h_tasks:"Bugungi vazifalar", h_habits:"Odatlar",
+  h_projects:"Loyihalar", h_calendar:"Kalendar",
+  overall:"Umumiy", streak_short:"Ketma-ket",
+  st_overall:"Umumiy", st_tasks:"Vazifalar", st_habits:"Odatlar", st_prayer:"Namoz",
+  no_data:"Ma'lumot yo'q",
+  reorder:"Tartibni o'zgartirish", reorder_hint:"Ushlab suring yoki ↑ ↓ tugmalaridan foydalaning",
+  move_up:"Yuqoriga", move_down:"Pastga",
   prayer:"Namoz", journal:"Kundalik", stats:"Statistika",
   non_negotiable:"Asosiy", target:"Rivojlanish", bonus:"Qo'shimcha",
   add_habit:"Odat qo'shish", del_habit:"Odat o'chirish", habit_name:"Odat nomi",
@@ -374,16 +411,15 @@ const DICT = {
   jamaat:"Jamoat", on_time:"O'z vaqtida", qaza:"Qazo", missed:"O'qilmagan",
   excused:"Uzrli holat",
   bomdod:"Bomdod", peshin:"Peshin", asr:"Asr", shom:"Shom", xufton:"Xufton",
-  score:"Ball", journal_hint:"Beshta savolga javob bering — hammasi to'ldirilsa Summary belgilanadi",
+  score:"Ball", journal_hint:"Beshta savolga javob bering — kun to'liq hisoblanadi",
   journal_history:"Tarix", journal_done:"To'liq", journal_partial:"To'liq emas",
   add_task:"Vazifa", task_name:"Vazifa nomi", task_desc:"Batafsil",
   deadline:"Muddat", project:"Loyiha", standalone:"Alohida", priority:"Muhimlik",
   high:"Yuqori", medium:"O'rta", low:"Past",
   add_project:"Loyiha", project_name:"Loyiha nomi",
+  edit_project:"Loyihani tahrirlash", project_tasks:"Loyiha vazifalari",
   overdue:"Kechikkan", upcoming:"Yaqin kunlar", no_date:"Muddatsiz", done_tab:"Bajarilgan",
-  add_goal:"Maqsad qo'shish", goal_title:"Maqsad nomi", level:"Daraja",
-  ultimate:"Katta maqsad", milestone:"Bosqich", tactical:"Qadam", achieved:"Erishilgan",
-  add_focus:"Missiya qo'shish", focus_title:"Haftalik missiya",
+  add_focus:"Missiya qo'shish", focus_title:"Haftalik missiya", importance:"Muhimlik",
   settings:"Sozlamalar", language:"Til", gender:"Jins", theme:"Tema",
   appearance:"Ko'rinish", auto:"Avto", light:"Yorug'", dark:"Qorong'i",
   male:"Erkak", female:"Ayol", photo:"Profil rasmi", photo_hint:"Rasmni botdan yuklaysiz",
@@ -391,43 +427,35 @@ const DICT = {
   save:"Saqlash", cancel:"Bekor qilish", delete:"O'chirish", edit:"Tahrirlash",
   saved:"Saqlandi", deleted:"O'chirildi", empty:"Hozircha bo'sh",
   error:"Xatolik yuz berdi", offline:"Internetga ulanib bo'lmadi",
-  sub_required:"Kanalga obuna bo'ling", days:"kun", full:"Haftada 3 tadan ko'p bo'lmaydi",
+  sub_required:"Kanalga obuna bo'ling", days:"kun",
+  full:"Bir haftaga bitta missiya",
   week:"Hafta", month:"Oy", year:"Yil", streak:"Ketma-ket", average:"O'rtacha",
   dow:["Du","Se","Ch","Pa","Ju","Sh","Ya"],
   months:["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"],
  },
  en:{
-  now:"Now",
-  now_empty:"Nothing scheduled — add one thing",
-  later:"Later",
-  details:"More",
   quick_add:"Quick add",
   quick_ph:"What came to mind?",
   inbox_saved:"Saved — see Tasks",
-  back_title:"You have been away",
-  back_body:"{n} items are waiting. How shall we continue?",
-  back_today:"Move to today",
-  back_archive:"Archive them",
-  back_done:"Done — fresh start",
-  review:"Weekly review",
-  r_well:"What went well?",
-  r_blocked:"What got in the way?",
-  r_next:"Next week's three?",
   retry:"Try again",
   draft_kept:"Your text is kept",
   report_sent:"Report sent to the bot chat",
   progress:"Progress",
-  privacy_title:"Your data is fully protected",
-  privacy_body:"Only you can see what you write. No one else — including other users — can reach it.",
+  privacy_line:"Your data and privacy are fully protected 🔒",
   settings_saved:"Settings saved",
   download:"Download report",
   report:"Report",
-  home:"Home", habits:"Habits", tasks:"Tasks", vision:"Vision",
+  home:"Home", habits:"Habits", tasks:"Tasks",
   greet:"Hello", quote_ph:"Write something that motivates you",
-  h_focus:"This week", h_tasks:"Today's tasks", h_habits:"Habits",
-  h_projects:"Projects", h_goals:"Goals", h_bday:"Birthdays",
-  h_overdue:"Overdue", h_calendar:"Calendar",
-  prayer:"Prayer", journal:"Journal", stats:"Stats",
+  quote_add:"Add a quote",
+  h_mission:"Primary mission", h_tasks:"Today's tasks", h_habits:"Habits",
+  h_projects:"Projects", h_calendar:"Calendar",
+  overall:"Overall", streak_short:"Streak",
+  st_overall:"Overall", st_tasks:"Tasks", st_habits:"Habits", st_prayer:"Prayer",
+  no_data:"No data",
+  reorder:"Reorder", reorder_hint:"Drag to reorder, or use ↑ ↓",
+  move_up:"Move up", move_down:"Move down",
+  prayer:"Prayer", journal:"Journal", stats:"Statistics",
   non_negotiable:"Asosiy", target:"Rivojlanish", bonus:"Qo'shimcha",
   add_habit:"Add habit", del_habit:"Delete habit", habit_name:"Habit name",
   category:"Category", pick_delete:"Pick what to delete", finish:"Done",
@@ -437,16 +465,15 @@ const DICT = {
   jamaat:"Jamaat", on_time:"On time", qaza:"Qaza", missed:"Missed",
   excused:"Excused day",
   bomdod:"Fajr", peshin:"Dhuhr", asr:"Asr", shom:"Maghrib", xufton:"Isha",
-  score:"Score", journal_hint:"Answer all five — Summary ticks once every question is filled",
+  score:"Score", journal_hint:"Answer all five to complete the day",
   journal_history:"History", journal_done:"Complete", journal_partial:"Incomplete",
   add_task:"Task", task_name:"Task name", task_desc:"Details",
   deadline:"Deadline", project:"Project", standalone:"Standalone", priority:"Priority",
   high:"High", medium:"Medium", low:"Low",
   add_project:"Project", project_name:"Project name",
+  edit_project:"Edit project", project_tasks:"Project tasks",
   overdue:"Overdue", upcoming:"Coming up", no_date:"No deadline", done_tab:"Done",
-  add_goal:"Add goal", goal_title:"Goal title", level:"Level",
-  ultimate:"Ultimate", milestone:"Milestone", tactical:"Tactical", achieved:"Achieved",
-  add_focus:"Add mission", focus_title:"Weekly mission",
+  add_focus:"Add mission", focus_title:"Weekly mission", importance:"Importance",
   settings:"Settings", language:"Language", gender:"Gender", theme:"Theme",
   appearance:"Appearance", auto:"Auto", light:"Light", dark:"Dark",
   male:"Male", female:"Female", photo:"Profile photo", photo_hint:"Upload it from the bot",
@@ -454,42 +481,35 @@ const DICT = {
   save:"Save", cancel:"Cancel", delete:"Delete", edit:"Edit",
   saved:"Saved", deleted:"Deleted", empty:"Nothing yet",
   error:"Something went wrong", offline:"No connection",
-  sub_required:"Please join the channel", days:"days", full:"Maximum 3 per week",
+  sub_required:"Please join the channel", days:"days",
+  full:"One mission per week",
   week:"Week", month:"Month", year:"Year", streak:"Streak", average:"Average",
   dow:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
   months:["January","February","March","April","May","June","July","August","September","October","November","December"],
  },
  ru:{
-  now:"Сейчас",
-  now_empty:"На сегодня пусто — добавьте одно дело",
-  later:"Позже",
-  details:"Подробнее",
   quick_add:"Быстро добавить",
   quick_ph:"Что пришло в голову?",
   inbox_saved:"Сохранено — в Задачах",
-  back_title:"Вас давно не было",
-  back_body:"{n} дел ждут. Как продолжим?",
-  back_today:"Перенести на сегодня",
-  back_archive:"В архив",
-  back_done:"Готово — начинаем заново",
-  review:"Итоги недели",
-  r_well:"Что получилось?",
-  r_blocked:"Что помешало?",
-  r_next:"Три дела на неделю?",
   retry:"Повторить",
   draft_kept:"Текст сохранён",
   report_sent:"Отчёт отправлен в чат бота",
   progress:"Прогресс",
-  privacy_title:"Ваши данные полностью защищены",
-  privacy_body:"Записи видите только вы. Никто другой, включая других пользователей, не имеет доступа.",
+  privacy_line:"Ваши данные и конфиденциальность полностью защищены 🔒",
   settings_saved:"Настройки сохранены",
   download:"Скачать отчёт",
   report:"Отчёт",
-  home:"Главная", habits:"Привычки", tasks:"Задачи", vision:"Цели",
+  home:"Главная", habits:"Привычки", tasks:"Задачи",
   greet:"Здравствуйте", quote_ph:"Напишите то, что вас мотивирует",
-  h_focus:"На этой неделе", h_tasks:"Задачи на сегодня", h_habits:"Привычки",
-  h_projects:"Проекты", h_goals:"Цели", h_bday:"Дни рождения",
-  h_overdue:"Просрочено", h_calendar:"Календарь",
+  quote_add:"Добавить цитату",
+  h_mission:"Главная миссия", h_tasks:"Задачи на сегодня", h_habits:"Привычки",
+  h_projects:"Проекты", h_calendar:"Календарь",
+  overall:"Общий результат", streak_short:"Серия",
+  st_overall:"Общий результат", st_tasks:"Задачи", st_habits:"Привычки",
+  st_prayer:"Намаз",
+  no_data:"Нет данных",
+  reorder:"Изменить порядок", reorder_hint:"Перетащите или используйте ↑ ↓",
+  move_up:"Вверх", move_down:"Вниз",
   prayer:"Намаз", journal:"Дневник", stats:"Статистика",
   non_negotiable:"Asosiy", target:"Rivojlanish", bonus:"Qo'shimcha",
   add_habit:"Добавить", del_habit:"Удалить привычку", habit_name:"Название",
@@ -500,16 +520,15 @@ const DICT = {
   jamaat:"Джамаат", on_time:"Вовремя", qaza:"Каза", missed:"Пропущен",
   excused:"Уважительный день",
   bomdod:"Фаджр", peshin:"Зухр", asr:"Аср", shom:"Магриб", xufton:"Иша",
-  score:"Балл", journal_hint:"Ответьте на все пять — Summary отметится автоматически",
+  score:"Балл", journal_hint:"Ответьте на все пять — день будет засчитан",
   journal_history:"История", journal_done:"Заполнен", journal_partial:"Не заполнен",
   add_task:"Задача", task_name:"Название", task_desc:"Подробнее",
   deadline:"Срок", project:"Проект", standalone:"Отдельно", priority:"Приоритет",
   high:"Высокий", medium:"Средний", low:"Низкий",
   add_project:"Проект", project_name:"Название проекта",
+  edit_project:"Изменить проект", project_tasks:"Задачи проекта",
   overdue:"Просрочено", upcoming:"Ближайшие", no_date:"Без срока", done_tab:"Выполнено",
-  add_goal:"Добавить цель", goal_title:"Название цели", level:"Уровень",
-  ultimate:"Ultimate", milestone:"Milestone", tactical:"Tactical", achieved:"Достигнуто",
-  add_focus:"Добавить цель", focus_title:"Цель недели",
+  add_focus:"Добавить миссию", focus_title:"Миссия недели", importance:"Важность",
   settings:"Настройки", language:"Язык", gender:"Пол", theme:"Тема",
   appearance:"Оформление", auto:"Авто", light:"Светлое", dark:"Тёмное",
   male:"Мужской", female:"Женский", photo:"Фото профиля", photo_hint:"Загрузите через бота",
@@ -517,7 +536,8 @@ const DICT = {
   save:"Сохранить", cancel:"Отмена", delete:"Удалить", edit:"Изменить",
   saved:"Сохранено", deleted:"Удалено", empty:"Пока пусто",
   error:"Произошла ошибка", offline:"Нет соединения",
-  sub_required:"Подпишитесь на канал", days:"дн.", full:"Не более 3 в неделю",
+  sub_required:"Подпишитесь на канал", days:"дн.",
+  full:"Одна миссия на неделю",
   week:"Неделя", month:"Месяц", year:"Год", streak:"Серия", average:"Среднее",
   dow:["Пн","Вт","Ср","Чт","Пт","Сб","Вс"],
   months:["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"],
@@ -535,13 +555,13 @@ const THEMES = [
 
 /* ---------- state ---------- */
 const state = {
-  screen:"home", tab:"habits", taskTab:"open", visionTab:"active",
-  statsPeriod:"week", lang:"uz", appearance:"auto", showMore:false,
-  deleteMode:false, goalDeleteMode:false,
+  screen:"home", tab:"habits", taskTab:"open",
+  statsPeriod:"week", lang:"uz", appearance:"auto",
+  deleteMode:false, reorderMode:false,
   loading:true, error:null,
   me:null, home:null, calendar:null,
   habits:null, prayer:null, journal:null, journalQuestions:[], journalHistory:null,
-  stats:null, tasks:null, tasksDone:null, projects:[], goals:null, goalsDone:null,
+  stats:null, tasks:null, tasksDone:null, projects:[], project:null,
 };
 
 const t = k => (DICT[state.lang] || DICT.uz)[k] ?? k;
@@ -583,8 +603,6 @@ document.getElementById("sheet").addEventListener("click", e => {
   if(e.target.id === "sheet") closeSheet();
 });
 const bar = p => `<div class="bar"><span style="width:${Math.max(0,Math.min(100,p))}%"></span></div>`;
-const privacyNote = () =>
-  `<div class="privacy">🔒 <span><b>${t("privacy_title")}</b><br>${t("privacy_body")}</span></div>`;
 
 /* ---------- line chart (inline SVG, no libraries) ---------- */
 function lineChart(series, keys){
@@ -632,6 +650,11 @@ function lineChart(series, keys){
    ================================================================== */
 const SCREENS = {};
 
+/* Home, top to bottom: who and when, one line of encouragement, four
+   numbers, one mission, today's work, the month. Nothing else — every extra
+   section here is one more thing to read before the screen answers "how is
+   today going?". Editing and deleting live on the screens that own the data,
+   so a mis-tap on Home cannot destroy anything. */
 SCREENS.home = () => {
   const d = state.home;
   if(!d) return `<div class="spin"></div>`;
@@ -643,121 +666,70 @@ SCREENS.home = () => {
     <div class="hero">
       <div class="grow">
         <h1>${t("greet")}, ${esc(d.name)}</h1>
-        <div class="muted small num">${esc(d.date)}</div>
       </div>
-      <div class="gear" data-act="settings">⚙️</div>
-      <div class="avatar">${avatar}</div>
-    </div>`;
+      <button class="gear" data-act="settings" aria-label="${t("settings")}">⚙️</button>
+      <div class="avatar" aria-hidden="true">${avatar}</div>
+    </div>
+    <div class="muted small">${esc(d.date_label)}</div>`;
 
-  // Coming back after a break: one decision, before anything else loads.
-  if(d.break?.suggest_reset){
-    h += `<div class="card back-card">
-      <div style="font-weight:700;margin-bottom:4px">${t("back_title")}</div>
-      <div class="muted small">${t("back_body").replace("{n}", d.break.overdue)}</div>
-      <div class="btns">
-        <button class="btn" data-act="fresh-today">${t("back_today")}</button>
-        <button class="btn ghost" data-act="fresh-archive">${t("back_archive")}</button>
-      </div></div>`;
-  }
+  // The quote is optional and stays small when empty: an empty motivational
+  // card is a demand for input, not encouragement.
+  h += d.quote
+    ? `<div class="card glow" data-act="quote" style="margin-top:12px">${esc(d.quote)}</div>`
+    : `<div class="muted small" data-act="quote"
+            style="margin-top:8px;text-decoration:underline">✎ ${t("quote_add")}</div>`;
 
-  // ---- NOW: the single thing to do, given the largest weight on the page.
-  const now = d.now;
-  h += `<h2>${t("now")}</h2>`;
-  h += now
-    ? `<div class="now-card" data-act="task-done" data-id="${now.id}">
-         <div class="now-check"></div>
-         <div class="grow">
-           <div class="now-title">${esc(now.title)}</div>
-           <div class="now-meta"><span class="dot p-${now.priority}"></span>
-             ${esc(now.project || t("standalone"))}
-             ${now.deadline ? `<span class="num">· ${now.deadline}</span>` : ""}</div>
-         </div></div>`
-    : `<div class="card"><div class="muted">${t("now_empty")}</div></div>`;
-
-  h += `<button class="btn ghost" data-act="quick-add" style="margin-top:2px">
-          ＋ ${t("quick_add")}</button>`;
-
-  // ---- TODAY: at most three, then the daily counters.
-  const top3 = (d.top3 || []).filter(x => !now || x.id !== now.id).slice(0, 3);
-  if(top3.length){
-    h += `<h2>${t("h_tasks")}</h2>` + top3.map(taskItem).join("");
-  }
-
-  h += `<div class="stat" style="margin-top:12px">
-      <div class="card"><div class="v num">${d.habits.done}/${d.habits.total}</div>
-        <div class="k">${t("h_habits")}</div></div>
-      <div class="card"><div class="v num">${d.prayer.score}/${d.prayer.max}</div>
-        <div class="k">${t("prayer")}</div></div>
-      <div class="card"><div class="v num">🔥 ${d.streaks?.habits ?? 0}</div>
-        <div class="k">${t("streak")}</div></div>
-    </div>`;
-
-  h += `<div class="card glow" data-act="quote">
-      ${d.quote ? `<div>${esc(d.quote)}</div>`
-                : `<div class="muted">${t("quote_ph")} ✎</div>`}
-    </div>`;
-
-  // ---- LATER: everything else, collapsed by default.
-  h += `<div class="more-toggle" data-act="toggle-more">
-          ${state.showMore ? "▾" : "▸"} ${t("details")}</div>`;
-  if(!state.showMore){
-    h += privacyNote();
-    return h;
-  }
-
-  h += `<h2>${t("h_focus")}</h2>`;
-  h += d.focus.length ? d.focus.map(f => `
-      <div class="item">
-        <div class="check ${f.done?"on":""}" data-act="focus-toggle" data-id="${f.id}">${f.done?"✓":""}</div>
-        <div class="grow ellipsis">${esc(f.title)}</div>
-        <div class="gear mini" data-act="focus-edit" data-id="${f.id}"
-             data-title="${esc(f.title)}">✏️</div>
-        <div class="gear mini" data-act="focus-delete" data-id="${f.id}">🗑</div>
-      </div>`).join("") : `<div class="empty">${t("empty")}</div>`;
-  if(d.focus.length < 3)
-    h += `<button class="btn ghost sm" data-act="focus-add">+ ${t("add_focus")}</button>`;
-
-  if(d.tasks.overdue.length) h += `<h2>${t("h_overdue")}</h2>` + d.tasks.overdue.map(taskItem).join("");
-  h += `<h2>${t("h_tasks")}</h2>`;
-  h += d.tasks.today.length ? d.tasks.today.map(taskItem).join("")
-                            : `<div class="empty">${t("empty")}</div>`;
-
-  if(d.projects.length){
-    h += `<h2>${t("h_projects")}</h2>` + d.projects.map(p => `
-      <div class="card"><div class="row"><div class="grow ellipsis">${esc(p.name)}</div>
-        <div class="muted small num">${p.progress}%</div></div>${bar(p.progress)}</div>`).join("");
-  }
-
-  const g = d.goals;
-  if(g.ultimate + g.milestone + g.tactical > 0){
-    h += `<h2>${t("h_goals")}</h2><div class="stat">
-      <div class="card"><div class="v num">${g.ultimate}</div><div class="k">👑</div></div>
-      <div class="card"><div class="v num">${g.milestone}</div><div class="k">🏆</div></div>
-      <div class="card"><div class="v num">${g.tactical}</div><div class="k">⚡</div></div></div>`;
-  }
-
-  if(d.birthdays.length){
-    h += `<h2>${t("h_bday")}</h2>` + d.birthdays.map(b => `
-      <div class="item"><div class="grow ellipsis">${esc(b.person_name)}</div>
-        <div class="muted small">${b.days_left===0?"🎉":b.days_left+" "+t("days")}</div></div>`).join("");
-  }
-
+  h += metricsBlock(d);
+  h += `<h2>${t("h_mission")}</h2>` + missionBlock(d.mission);
+  h += `<h2>${t("h_tasks")}</h2>` + todayTasksBlock(d.tasks_today);
   h += `<h2>${t("h_calendar")}</h2>` + calendarBlock();
-  h += `<button class="btn ghost" data-act="review-open" style="margin-top:10px">
-          📋 ${t("review")}</button>`;
-  h += privacyNote();
   return h;
 };
 
-function taskItem(task){
-  return `<div class="item">
-      <div class="check" data-act="task-done" data-id="${task.id}"></div>
-      <div class="grow" data-act="task-open" data-id="${task.id}">
-        <div class="ellipsis">${esc(task.title)}</div>
-        <div class="meta"><span class="dot p-${task.priority}"></span>
-          <span>${esc(task.project || t("standalone"))}</span>
-          ${task.deadline ? `<span class="num">· ${task.deadline}</span>` : ""}</div>
+const TREND_ICON = {up:"↑", down:"↓", flat:""};
+
+function metricsBlock(d){
+  const o = d.overall || {value:0, trend:"flat"};
+  const arrow = TREND_ICON[o.trend] || "";
+  // The arrow carries the direction and the label spells it out, so the
+  // colour is confirmation rather than the only signal.
+  const trend = arrow
+    ? `<span class="trend ${o.trend}" aria-label="${t(o.trend === "up" ? "move_up" : "move_down")}"
+        >${arrow}</span>` : "";
+  const cell = (key, value, extra = "") =>
+    `<div class="metric"><div class="k">${key}</div>
+       <div class="v num">${value}${extra}</div></div>`;
+  return `<div class="metrics">
+      ${cell(t("h_habits"), `${d.habits.done} / ${d.habits.total}`)}
+      ${cell(t("prayer"), `${d.prayer.score} / ${d.prayer.max}`)}
+      ${cell(t("streak_short"), d.streak)}
+      ${cell(t("overall"), `${o.value}%`, trend)}
+    </div>`;
+}
+
+function missionBlock(mission){
+  if(!mission)
+    return `<button class="btn ghost" data-act="focus-add">＋ ${t("add_focus")}</button>`;
+  return `<div class="mission pri-${mission.priority}" data-act="mission-open"
+               data-id="${mission.id}" data-title="${esc(mission.title)}"
+               data-priority="${mission.priority}">
+      <div class="grow">
+        <div class="mission-title">${esc(mission.title)}</div>
+        <div class="tag pri-${mission.priority}">${t(mission.priority)}</div>
       </div></div>`;
+}
+
+function todayTasksBlock(groups){
+  if(!groups || !groups.length) return `<div class="empty">${t("empty")}</div>`;
+  return groups.map(group => `
+    <div class="group">${esc(group.project || t("standalone"))}</div>
+    ${group.tasks.map(task => `
+      <div class="trow pri-${task.priority}" data-act="task-open" data-id="${task.id}">
+        <div class="tt">${esc(task.title)}</div>
+        <div class="td">${t(task.priority)}${task.deadline ? ` · ${task.deadline}` : ""}</div>
+        ${task.description
+          ? `<div class="td">${esc(task.description)}</div>` : ""}
+      </div>`).join("")}`).join("");
 }
 
 function calendarBlock(){
@@ -786,17 +758,17 @@ function calendarBlock(){
 
 /* ---------- Habits ---------- */
 SCREENS.habits = () => {
-  const tabs = [["habits","habits"],["prayer","prayer"],["journal","journal"],["stats","stats"]];
+  // Statistics used to be a tab in here, which hid the app's headline number
+  // two taps deep. It is its own screen now.
+  const tabs = [["habits","habits"],["prayer","prayer"],["journal","journal"]];
   let h = `<h1>${t("habits")}</h1>
     <div class="pills scroll" style="margin:14px 0 6px">
       ${tabs.map(([id,key]) => `<div class="pill ${state.tab===id?"on":""}"
         data-act="tab" data-tab="${id}">${t(key)}</div>`).join("")}
     </div>`;
-  if(state.tab === "habits") h += habitsTab();
-  if(state.tab === "prayer") h += prayerTab();
-  if(state.tab === "journal") h += journalTab();
-  if(state.tab === "stats")  h += statsTab();
-  return h;
+  if(state.tab === "prayer") return h + prayerTab();
+  if(state.tab === "journal") return h + journalTab();
+  return h + habitsTab();
 };
 
 function habitsTab(){
@@ -807,9 +779,14 @@ function habitsTab(){
 
   if(state.deleteMode)
     h += `<div class="card glow">${t("pick_delete")}</div>`;
+  else if(state.reorderMode)
+    h += `<div class="reorder-hint">${t("reorder_hint")}</div>`;
   else if(data.streak)
     h += `<div class="card" style="text-align:center">🔥 <b class="num">${data.streak}</b>
             <span class="muted small">${t("streak")}</span></div>`;
+
+  if(state.reorderMode) return h + reorderList() + `
+    <button class="btn" data-act="reorder-off" style="margin-top:14px">${t("finish")}</button>`;
 
   data.categories.forEach(cat => {
     const items = data.grouped[cat] || [];
@@ -843,9 +820,28 @@ function habitsTab(){
     ? `<button class="btn" data-act="delete-mode-off" style="margin-top:14px">${t("finish")}</button>`
     : `<div class="btns">
          <button class="btn" data-act="habit-add">+ ${t("add_habit")}</button>
+         <button class="btn ghost" data-act="reorder-on">↕ ${t("reorder")}</button>
          <button class="btn ghost" data-act="delete-mode-on">🗑 ${t("del_habit")}</button>
        </div>`;
   return h;
+}
+
+/* Reordering shows one flat list, not the three tiers: dragging between
+   tiers would silently change a habit's category. The Up/Down buttons are
+   not a fallback for the drag — they are the accessible way to do it, and
+   they work with one thumb. */
+function reorderList(){
+  const items = state.habits?.habits || [];
+  return items.map((x, i) => `
+    <div class="item" draggable="true" data-drag-id="${x.id}" data-index="${i}">
+      <div class="handle" aria-hidden="true">⋮⋮</div>
+      <div class="grow ellipsis">${esc(x.name)}</div>
+      <button class="move" data-act="habit-up" data-index="${i}"
+              aria-label="${t("move_up")}" ${i === 0 ? "disabled" : ""}>↑</button>
+      <button class="move" data-act="habit-down" data-index="${i}"
+              aria-label="${t("move_down")}"
+              ${i === items.length - 1 ? "disabled" : ""}>↓</button>
+    </div>`).join("");
 }
 
 function prayerTab(){
@@ -875,7 +871,6 @@ function prayerTab(){
       <div class="num" style="font-size:28px;font-weight:760">${p.score} / ${p.max}</div>
       <div class="muted small">${t("score")}</div>
       ${bar(pct)}</div>`;
-  h += privacyNote();
   return h;
 }
 
@@ -891,7 +886,6 @@ function journalTab(){
   h += `<div class="btns">
       <button class="btn" data-act="journal-save">${t("save")}</button>
       <button class="btn ghost" data-act="journal-history">${t("journal_history")}</button></div>`;
-  h += privacyNote();
   if(state.journalHistory){
     h += `<h2>${t("journal_history")}</h2>`;
     h += state.journalHistory.length ? state.journalHistory.map(e => `
@@ -904,11 +898,38 @@ function journalTab(){
   return h;
 }
 
-function statsTab(){
+/* ---------- Statistics ---------- */
+/* Its own screen, loaded only when opened: Home never pays for the chart
+   history it does not show. The four percentages come from the backend, from
+   the same call Home reads, so the two screens cannot disagree. */
+SCREENS.stats = () => {
   const st = state.stats;
-  if(!st) return `<div class="spin"></div>`;
-  return `
-    <div class="pills" style="margin-bottom:12px">
+  if(!st) return `<h1>${t("stats")}</h1><div class="spin"></div>`;
+  const today = st.today;
+  const pct = v => v === null || v === undefined ? "—" : `${v}%`;
+  const arrow = TREND_ICON[today.trend] || "";
+
+  return `<h1>${t("stats")}</h1>
+    <div class="card glow" style="margin-top:14px;text-align:center">
+      <div class="k muted small">${t("st_overall")}</div>
+      <div class="num" style="font-size:34px;font-weight:770;letter-spacing:-1px">
+        ${today.overall}%
+        ${arrow ? `<span class="trend ${today.trend}">${arrow}</span>` : ""}</div>
+      ${bar(today.overall)}
+    </div>
+    <div class="metrics">
+      <div class="metric"><div class="k">${t("st_tasks")}</div>
+        <div class="v num">${pct(today.tasks)}</div></div>
+      <div class="metric"><div class="k">${t("st_habits")}</div>
+        <div class="v num">${pct(today.habits)}</div></div>
+      <div class="metric"><div class="k">${t("st_prayer")}</div>
+        <div class="v num">${pct(today.prayer)}</div>
+        <div class="k num">${today.prayer_score} / ${today.prayer_max}</div></div>
+      <div class="metric"><div class="k">${t("streak_short")}</div>
+        <div class="v num">🔥 ${today.streak}</div></div>
+    </div>
+
+    <div class="pills" style="margin:18px 0 12px">
       ${["week","month","year"].map(p =>
         `<div class="pill ${st.period===p?"on":""}" data-act="stats-period"
           data-period="${p}">${t(p)}</div>`).join("")}
@@ -920,15 +941,14 @@ function statsTab(){
     <div class="stat">
       <div class="card"><div class="v num">${st.habit_avg}%</div><div class="k">${t("habits")}</div></div>
       <div class="card"><div class="v num">${st.prayer_avg}%</div><div class="k">${t("prayer")}</div></div>
-      <div class="card"><div class="v num">🔥 ${st.habit_streak}</div><div class="k">${t("streak")}</div></div>
+      <div class="card"><div class="v num">🔥 ${st.prayer_streak}</div><div class="k">${t("prayer")}</div></div>
     </div>
     <h2>${t("prayer")}</h2>
     ${Object.entries(st.prayer_breakdown).map(([k,v]) =>
       `<div class="item"><div class="grow">${t(k)}</div><b class="num">${v}</b></div>`).join("")
-      || `<div class="empty">${t("empty")}</div>`}
+      || `<div class="empty">${t("no_data")}</div>`}
     <button class="btn ghost" data-act="stats-download" style="margin-top:12px">
-      ⬇️ ${t("download")}</button>
-    ${privacyNote()}`;
+      ⬇️ ${t("download")}</button>`;
 }
 
 /* ---------- Tasks ---------- */
@@ -964,14 +984,52 @@ SCREENS.tasks = () => {
     <button class="btn" data-act="task-add">+ ${t("add_task")}</button>
     <button class="btn ghost" data-act="project-add">+ ${t("add_project")}</button></div>`;
 
+  // Projects are a section of Tasks, not a fifth tab. Tapping one opens it.
   if(state.projects.length){
     h += `<h2>${t("h_projects")}</h2>` + state.projects.map(p => `
-      <div class="card"><div class="row">
+      <div class="card" data-act="project-open" data-id="${p.id}"><div class="row">
         <div class="grow ellipsis">${esc(p.name)}</div>
         <div class="muted small num">${p.tasks_done}/${p.tasks_total}</div>
-        <div class="gear mini" data-act="project-delete" data-id="${p.id}">🗑</div>
+        <div class="muted">›</div>
       </div>${bar(p.progress)}</div>`).join("");
   }
+  return h;
+};
+
+/* ---------- one project and the work inside it ---------- */
+SCREENS.project = () => {
+  const d = state.project;
+  if(!d) return `<div class="spin"></div>`;
+  const p = d.project;
+  let h = `<div class="row" style="margin-bottom:6px">
+      <button class="btn ghost sm" data-act="nav" data-screen="tasks">‹ ${t("tasks")}</button>
+    </div>
+    <h1>${esc(p.name)}</h1>`;
+  if(p.description) h += `<div class="muted small" style="margin-top:6px">${esc(p.description)}</div>`;
+  h += `<div class="card" style="margin-top:12px">
+      <div class="row"><div class="grow muted small">
+        ${p.deadline ? `📅 ${p.deadline}` : ""}</div>
+      <div class="muted small num">${p.tasks_done}/${p.tasks_total}</div></div>
+      ${bar(p.progress)}</div>`;
+
+  h += `<h2>${t("project_tasks")}</h2>`;
+  h += d.tasks.length ? d.tasks.map(task => `
+      <div class="item">
+        <div class="check ${task.status === "done" ? "on" : ""}"
+             data-act="${task.status === "done" ? "task-reopen" : "task-done"}"
+             data-id="${task.id}">${task.status === "done" ? "✓" : ""}</div>
+        <div class="grow" data-act="task-open" data-id="${task.id}">
+          <div class="ellipsis">${esc(task.title)}</div>
+          <div class="meta"><span class="dot p-${task.priority}"></span>
+            <span>${t(task.priority)}</span>
+            ${task.deadline ? `<span class="num">· ${task.deadline}</span>` : ""}</div>
+        </div></div>`).join("") : `<div class="empty">${t("empty")}</div>`;
+
+  h += `<div class="btns">
+      <button class="btn ghost" data-act="project-edit" data-id="${p.id}"
+              data-name="${esc(p.name)}">✏️ ${t("edit_project")}</button>
+      <button class="btn danger" data-act="project-delete" data-id="${p.id}">
+        🗑 ${t("delete")}</button></div>`;
   return h;
 };
 
@@ -987,59 +1045,6 @@ function taskRow(task){
       <div class="gear mini" data-act="task-open" data-id="${task.id}">✏️</div>
     </div>`;
 }
-
-/* ---------- Vision ---------- */
-SCREENS.vision = () => {
-  let h = `<h1>${t("vision")}</h1>
-    <div class="pills" style="margin:14px 0 6px">
-      <div class="pill ${state.visionTab==="active"?"on":""}" data-act="vision-tab" data-tab="active">${t("h_goals")}</div>
-      <div class="pill ${state.visionTab==="done"?"on":""}" data-act="vision-tab" data-tab="done">${t("achieved")}</div>
-    </div>`;
-
-  if(state.visionTab === "done"){
-    const list = state.goalsDone;
-    if(!list) return h + `<div class="spin"></div>`;
-    return h + (list.length ? list.map(g => `
-      <div class="item"><div class="check on" data-act="goal-reopen" data-id="${g.id}">✓</div>
-        <div class="grow ellipsis">${esc(g.title)}</div>
-        <div class="muted small num">${(g.completed_at||"").slice(0,10)}</div></div>`).join("")
-      : `<div class="empty">${t("empty")}</div>`);
-  }
-
-  const g = state.goals;
-  if(!g) return h + `<div class="spin"></div>`;
-  if(state.goalDeleteMode) h += `<div class="card glow">${t("pick_delete")}</div>`;
-  const icons = {ultimate:"👑", milestone:"🏆", tactical:"⚡"};
-  let any = false;
-  ["ultimate","milestone","tactical"].forEach(cat => {
-    const items = (g[cat] || []).filter(x => x.status !== "completed");
-    if(!items.length) return;
-    any = true;
-    h += `<h2>${icons[cat]} ${t(cat)}</h2>` + items.map(goal => {
-      if(state.goalDeleteMode){
-        return `<div class="item pick" data-act="goal-delete" data-id="${goal.id}">
-          <div class="grow ellipsis">${esc(goal.title)}</div><div>🗑</div></div>`;
-      }
-      return `<div class="item">
-        <div class="check" data-act="goal-complete" data-id="${goal.id}"></div>
-        <div class="grow"><div class="ellipsis">${esc(goal.title)}</div>
-          ${goal.progress ? `<div class="meta num">${goal.progress}%</div>` : ""}</div>
-        <div class="gear mini" data-act="goal-edit" data-id="${goal.id}">✏️</div>
-      </div>`;
-    }).join("");
-  });
-  if(!any) h += `<div class="empty">${t("empty")}</div>`;
-
-  // Deleting lives under Add, behind a pick-mode, instead of a bin on every row.
-  h += state.goalDeleteMode
-    ? `<button class="btn" data-act="goal-delete-off" style="margin-top:14px">${t("finish")}</button>`
-    : `<div class="btns">
-         <button class="btn" data-act="goal-add">+ ${t("add_goal")}</button>
-         <button class="btn ghost" data-act="goal-delete-on">🗑 ${t("delete")}</button>
-       </div>`;
-  h += privacyNote();
-  return h;
-};
 
 /* ---------- settings sheet ---------- */
 function settingsSheet(){
@@ -1068,7 +1073,6 @@ function settingsSheet(){
       `<div class="pill ${state.appearance===v?"on":""}" data-act="set-appearance" data-value="${v}">${l}</div>`).join("")}</div>
     <label>${t("photo")}</label>
     <div class="muted small">${t("photo_hint")}</div>
-    ${privacyNote()}
     <button class="btn" data-act="settings-save" style="margin-top:6px">${t("save")}</button>
     <button class="btn ghost" data-act="close" style="margin-top:8px">${t("cancel")}</button>`;
 }
@@ -1078,8 +1082,11 @@ const NAV = [
   {id:"home",   icon:"🏠", key:"home"},
   {id:"habits", icon:"✅", key:"habits"},
   {id:"tasks",  icon:"⚡", key:"tasks"},
-  {id:"vision", icon:"🎯", key:"vision"},
+  {id:"stats",  icon:"📊", key:"stats"},
 ];
+
+//: A project opens from Tasks, so the Tasks tab stays lit while inside one.
+const NAV_OF = {project:"tasks"};
 
 function render(){
   const root = document.documentElement;
@@ -1094,9 +1101,27 @@ function render(){
   else if(state.loading) app.innerHTML = `<div class="spin"></div>`;
   else                   app.innerHTML = (SCREENS[state.screen] || SCREENS.home)();
 
+  document.getElementById("privacy").textContent = t("privacy_line");
+
+  const active = NAV_OF[state.screen] || state.screen;
   document.getElementById("nav").innerHTML = NAV.map(n => `
-    <button data-act="nav" data-screen="${n.id}" class="${state.screen===n.id?"on":""}">
-      <span class="ic">${n.icon}</span><span>${t(n.key)}</span></button>`).join("");
+    <button data-act="nav" data-screen="${n.id}" class="${active===n.id?"on":""}"
+            aria-current="${active===n.id?"page":"false"}">
+      <span class="ic" aria-hidden="true">${n.icon}</span><span>${t(n.key)}</span></button>`).join("");
+
+  syncShell();
+}
+
+/* The privacy strip and the navigation are both fixed, and their combined
+   height changes with the language, the font size and the safe area. Measure
+   the real nodes rather than guessing a padding that is wrong on one phone. */
+function syncShell(){
+  const nav = document.getElementById("nav");
+  const privacy = document.getElementById("privacy");
+  const root = document.documentElement;
+  const navH = nav.offsetHeight || 62;
+  root.style.setProperty("--nav-h", navH + "px");
+  root.style.setProperty("--shell-b", (navH + (privacy.offsetHeight || 30)) + "px");
 }
 
 /* ---------- loading ---------- */
@@ -1110,14 +1135,16 @@ async function loadScreen(screen){
         api("/api/habits"), api("/api/prayers"), api("/api/journal?day=" + todayISO()),
       ]);
       setState({habits, prayer, journal: journal.entry, journalQuestions: journal.questions});
-      if(state.tab === "stats") await loadStats(state.statsPeriod);
     } else if(screen === "tasks"){
       const [tasks, projects] = await Promise.all([api("/api/tasks?days=7"), api("/api/projects")]);
       setState({tasks, projects: projects.projects});
       if(state.taskTab === "done") setState({tasksDone:(await api("/api/tasks/done")).tasks});
-    } else if(screen === "vision"){
-      setState({goals: await api("/api/goals")});
-      if(state.visionTab === "done") setState({goalsDone:(await api("/api/goals/done")).goals});
+    } else if(screen === "stats"){
+      // Only here. Home must never pull the full chart history.
+      await loadStats(state.statsPeriod);
+    } else if(screen === "project"){
+      const id = state.project?.project?.id;
+      if(id) setState({project: await api(`/api/projects/${id}/tasks`)});
     }
   }catch(e){ handleError(e); }
 }
@@ -1151,12 +1178,12 @@ function handleError(e, draft){
 
 /* ---------- actions ---------- */
 const A = {
-  nav: el => { haptic(); setState({screen:el.dataset.screen, deleteMode:false, goalDeleteMode:false});
+  nav: el => { haptic(); setState({screen:el.dataset.screen, deleteMode:false,
+                                   reorderMode:false});
                loadScreen(el.dataset.screen); },
-  tab: el => { haptic(); setState({tab:el.dataset.tab, deleteMode:false});
-               if(el.dataset.tab === "stats") loadStats(state.statsPeriod); },
+  tab: el => { haptic(); setState({tab:el.dataset.tab, deleteMode:false,
+                                   reorderMode:false}); },
   "task-tab": el => { haptic(); setState({taskTab:el.dataset.tab}); loadScreen("tasks"); },
-  "vision-tab": el => { haptic(); setState({visionTab:el.dataset.tab}); loadScreen("vision"); },
   "stats-period": el => { haptic(); loadStats(el.dataset.period); },
   "stats-download": async () => {
     // The bot sends the file into the chat: Telegram's browser blocks plain
@@ -1169,7 +1196,6 @@ const A = {
   },
   close: closeSheet,
   settings: () => openSheet(settingsSheet()),
-  "toggle-more": () => { haptic(); setState({showMore: !state.showMore}); },
 
   /* quick capture — title only, sorted later */
   "quick-add": () => openSheet(`
@@ -1184,43 +1210,6 @@ const A = {
          "home", false, t("inbox_saved"), {body:{title}});
   },
 
-  /* coming back after a break */
-  "fresh-today": () => save(() => api("/api/fresh-start",
-    {method:"POST", body:{mode:"today"}}), "home", false, t("back_done")),
-  "fresh-archive": () => save(() => api("/api/fresh-start",
-    {method:"POST", body:{mode:"archive"}}), "home", false, t("back_done")),
-
-  /* weekly review — three questions, not a wall of numbers */
-  "review-open": async () => {
-    try{
-      const r = await api("/api/review");
-      const a = r.answers || {};
-      openSheet(`
-        <h3>📋 ${t("review")}</h3>
-        <div class="stat" style="margin:10px 0 4px">
-          <div class="card"><div class="v num">${r.tasks_done}</div><div class="k">${t("done_tab")}</div></div>
-          <div class="card"><div class="v num">${r.habit_pct}%</div><div class="k">${t("habits")}</div></div>
-          <div class="card"><div class="v num">${r.focus_done}/${r.focus.length}</div><div class="k">${t("h_focus")}</div></div>
-        </div>
-        <label>${t("r_well")}</label>
-        <textarea id="rv-well">${esc(a.went_well || "")}</textarea>
-        <label>${t("r_blocked")}</label>
-        <textarea id="rv-blocked">${esc(a.blocked || "")}</textarea>
-        <label>${t("r_next")}</label>
-        <textarea id="rv-next">${esc(a.next_focus || "")}</textarea>
-        <button class="btn" data-act="review-save" style="margin-top:14px">${t("save")}</button>
-        <button class="btn ghost" data-act="close" style="margin-top:8px">${t("cancel")}</button>`);
-    }catch(e){ handleError(e); }
-  },
-  "review-save": () => {
-    const body = {
-      went_well: document.getElementById("rv-well").value,
-      blocked: document.getElementById("rv-blocked").value,
-      next_focus: document.getElementById("rv-next").value,
-    };
-    save(() => api("/api/review", {method:"POST", body}), "home", false, null, {body});
-  },
-
   "retry-draft": () => {
     const draft = lastDraft;
     if(!draft?.request) return closeSheet();
@@ -1230,15 +1219,19 @@ const A = {
   // sheet has an obvious way out that confirms the change landed.
   "settings-save": () => { closeSheet(); toast(t("settings_saved")); },
   "auto-habit": () => toast(t("auto_habit")),
-  "delete-mode-on": () => { haptic(); setState({deleteMode:true}); },
+  "delete-mode-on": () => { haptic(); setState({deleteMode:true, reorderMode:false}); },
   "delete-mode-off": () => { haptic(); setState({deleteMode:false}); },
+  "reorder-on": () => { haptic(); setState({reorderMode:true, deleteMode:false}); },
+  "reorder-off": () => { haptic(); setState({reorderMode:false}); },
+  "habit-up": el => moveHabit(Number(el.dataset.index), -1),
+  "habit-down": el => moveHabit(Number(el.dataset.index), 1),
 
   /* calendar */
   "cal-prev": () => shiftMonth(-1),
   "cal-next": () => shiftMonth(1),
   "cal-day": el => {
     const events = state.calendar.events[el.dataset.date] || [];
-    const icons = {task:"⚡", project:"📁", goal:"🎯", birthday:"🎂"};
+    const icons = {task:"⚡", project:"📁", birthday:"🎂"};
     openSheet(`<h3 class="num">${el.dataset.date}</h3>` + events.map(e =>
       `<div class="item"><div class="grow">${icons[e.kind]||"▫️"} ${esc(e.title)}</div></div>`).join("")
       + `<button class="btn ghost" data-act="close" style="margin-top:12px">${t("cancel")}</button>`);
@@ -1317,32 +1310,26 @@ const A = {
     }catch(e){ handleError(e); }
   },
 
-  /* weekly focus */
-  "focus-add": () => openSheet(`
-    <h3>${t("add_focus")}</h3>
-    <input id="focus-title" placeholder="${t("focus_title")}" />
-    <button class="btn" data-act="focus-save" style="margin-top:12px">${t("save")}</button>
-    <button class="btn ghost" data-act="close" style="margin-top:8px">${t("cancel")}</button>`),
+  /* the week's one mission — a title and how much it matters, nothing else */
+  "focus-add": () => openSheet(missionSheet()),
   "focus-save": async () => {
     const title = document.getElementById("focus-title").value.trim();
     if(!title) return;
-    try{ await api("/api/focus", {method:"POST", body:{title}});
+    const priority = document.getElementById("focus-priority").value;
+    try{ await api("/api/focus", {method:"POST", body:{title, priority}});
          closeSheet(); toast(t("saved")); await loadScreen("home"); }
     catch(e){ closeSheet(); toast(e.status === 422 ? t("full") : t("error")); }
   },
-  "focus-edit": el => openSheet(`
-    <h3>${t("edit")}</h3>
-    <input id="focus-title" value="${esc(el.dataset.title)}" />
-    <button class="btn" data-act="focus-update" data-id="${el.dataset.id}"
-            style="margin-top:12px">${t("save")}</button>
-    <button class="btn ghost" data-act="close" style="margin-top:8px">${t("cancel")}</button>`),
+  // Home shows the mission without edit or delete icons; managing it happens
+  // here, one tap in, where a mis-tap cannot delete the week's focus.
+  "mission-open": el => openSheet(missionSheet(el.dataset)),
   "focus-update": el => {
     const title = document.getElementById("focus-title").value.trim();
     if(!title) return;
-    save(() => api(`/api/focus/${el.dataset.id}`, {method:"PATCH", body:{title}}), "home");
+    save(() => api(`/api/focus/${el.dataset.id}`, {method:"PATCH", body:{
+      title, priority: document.getElementById("focus-priority").value,
+    }}), "home");
   },
-  "focus-toggle": el => { haptic();
-    save(() => api(`/api/focus/${el.dataset.id}/toggle`, {method:"POST"}), "home", true); },
   "focus-delete": el => confirmSheet("focus-delete-go", el.dataset.id),
   "focus-delete-go": el => save(() => api(`/api/focus/${el.dataset.id}`, {method:"DELETE"}),
                                 "home", false, t("deleted")),
@@ -1433,63 +1420,36 @@ const A = {
     if(!name) return;
     save(() => api("/api/projects", {method:"POST", body:{name}}), "tasks");
   },
-  "project-delete": el => confirmSheet("project-delete-go", el.dataset.id),
-  "project-delete-go": el => save(() => api(`/api/projects/${el.dataset.id}`, {method:"DELETE"}),
-                                  "tasks", false, t("deleted")),
-
-  /* goals */
-  "goal-add": () => openSheet(`
-    <h3>${t("add_goal")}</h3>
-    <input id="goal-title" placeholder="${t("goal_title")}" />
-    <label>${t("level")}</label>
-    <select id="goal-category">
-      <option value="ultimate">👑 ${t("ultimate")}</option>
-      <option value="milestone">🏆 ${t("milestone")}</option>
-      <option value="tactical" selected>⚡ ${t("tactical")}</option></select>
-    <button class="btn" data-act="goal-save" style="margin-top:16px">${t("save")}</button>
+  "project-open": async el => {
+    haptic();
+    try{
+      const project = await api(`/api/projects/${el.dataset.id}/tasks`);
+      setState({screen:"project", project});
+    }catch(e){ handleError(e); }
+  },
+  "project-edit": el => openSheet(`
+    <h3>${t("edit_project")}</h3>
+    <input id="project-name" value="${esc(el.dataset.name)}" />
+    <button class="btn" data-act="project-update" data-id="${el.dataset.id}"
+            style="margin-top:12px">${t("save")}</button>
     <button class="btn ghost" data-act="close" style="margin-top:8px">${t("cancel")}</button>`),
-  "goal-save": () => {
-    const title = document.getElementById("goal-title").value.trim();
-    if(!title) return;
-    save(() => api("/api/goals", {method:"POST",
-      body:{title, category: document.getElementById("goal-category").value}}), "vision");
+  "project-update": el => {
+    const name = document.getElementById("project-name").value.trim();
+    if(!name) return;
+    save(() => api(`/api/projects/${el.dataset.id}`, {method:"PATCH", body:{name}}),
+         "project");
   },
-  "goal-complete": el => { haptic("medium");
-    save(() => api(`/api/goals/${el.dataset.id}/complete`, {method:"POST"}), "vision", true); },
-  "goal-reopen": el => { haptic();
-    save(() => api(`/api/goals/${el.dataset.id}/reopen`, {method:"POST"}), "vision", true); },
-  "goal-delete-on": () => { haptic(); setState({goalDeleteMode:true}); },
-  "goal-delete-off": () => { haptic(); setState({goalDeleteMode:false}); },
-  // Inside the picker the mode itself is the confirmation, so one tap deletes.
-  "goal-delete": el => { haptic("medium");
-    save(() => api(`/api/goals/${el.dataset.id}`, {method:"DELETE"}),
-         "vision", false, t("deleted")); },
-  "goal-edit": el => {
-    const goal = ["ultimate","milestone","tactical"]
-      .flatMap(c => state.goals?.[c] || [])
-      .find(x => String(x.id) === el.dataset.id);
-    if(!goal) return;
-    openSheet(`
-      <h3>${t("edit")}</h3>
-      <input id="goal-title" value="${esc(goal.title)}" />
-      <label>${t("level")}</label>
-      <select id="goal-category">${["ultimate","milestone","tactical"].map(c =>
-        `<option value="${c}" ${goal.category===c?"selected":""}>${t(c)}</option>`).join("")}</select>
-      <label>${t("progress")} — ${goal.progress || 0}%</label>
-      <input type="range" id="goal-progress" min="0" max="100" step="5"
-             value="${goal.progress || 0}" />
-      <button class="btn" data-act="goal-update" data-id="${goal.id}"
-              style="margin-top:16px">${t("save")}</button>
-      <button class="btn ghost" data-act="close" style="margin-top:8px">${t("cancel")}</button>`);
-  },
-  "goal-update": el => {
-    const title = document.getElementById("goal-title").value.trim();
-    if(!title) return;
-    save(() => api(`/api/goals/${el.dataset.id}`, {method:"PATCH", body:{
-      title,
-      category: document.getElementById("goal-category").value,
-      progress: Number(document.getElementById("goal-progress").value),
-    }}), "vision");
+  "project-delete": el => confirmSheet("project-delete-go", el.dataset.id),
+  // Deleting the project the user is standing in has to move them out of it,
+  // or the next render reloads a project that is no longer there.
+  "project-delete-go": async el => {
+    try{
+      await api(`/api/projects/${el.dataset.id}`, {method:"DELETE"});
+      closeSheet();
+      toast(t("deleted"));
+      setState({screen:"tasks", project:null});
+      await loadScreen("tasks");
+    }catch(e){ closeSheet(); handleError(e); }
   },
 
   /* settings */
@@ -1502,6 +1462,98 @@ const A = {
     render(); openSheet(settingsSheet());
   },
 };
+
+/* A mission is a title and an importance. Adding fields here — a deadline, a
+   description, sub-goals — is how a weekly focus turns back into a project. */
+function missionSheet(mission){
+  const priority = mission?.priority || "medium";
+  const editing = Boolean(mission?.id);
+  return `
+    <h3>${editing ? t("edit") : t("add_focus")}</h3>
+    <input id="focus-title" placeholder="${t("focus_title")}"
+           value="${esc(mission?.title || "")}" />
+    <label>${t("importance")}</label>
+    <select id="focus-priority">${["high","medium","low"].map(p =>
+      `<option value="${p}" ${priority===p?"selected":""}>${t(p)}</option>`).join("")}</select>
+    <button class="btn" style="margin-top:16px"
+      ${editing ? `data-act="focus-update" data-id="${mission.id}"`
+                : `data-act="focus-save"`}>${t("save")}</button>
+    ${editing ? `<button class="btn danger" data-act="focus-delete"
+      data-id="${mission.id}" style="margin-top:8px">${t("delete")}</button>` : ""}
+    <button class="btn ghost" data-act="close" style="margin-top:8px">${t("cancel")}</button>`;
+}
+
+/* ---------- habit reordering ---------- */
+
+/* The list is written back whole, so the server stores an order the user can
+   see rather than a diff it has to reconstruct. The local list moves first so
+   the row does not visibly snap back while the request is in flight; a failed
+   save reloads the truth. */
+async function saveOrder(ids){
+  const previous = state.habits;
+  try{
+    const body = await api("/api/habits/reorder", {method:"PATCH", body:{habit_ids:ids}});
+    const grouped = {};
+    (state.habits?.categories || []).forEach(c => grouped[c] = []);
+    body.habits.forEach(x => (grouped[x.category] = grouped[x.category] || []).push(x));
+    setState({habits:{...state.habits, habits: body.habits, grouped}});
+  }catch(e){
+    setState({habits: previous});
+    handleError(e);
+  }
+}
+
+function moveHabit(index, delta){
+  const items = state.habits?.habits || [];
+  const target = index + delta;
+  if(index < 0 || target < 0 || target >= items.length) return;
+  haptic();
+  const ids = items.map(x => x.id);
+  [ids[index], ids[target]] = [ids[target], ids[index]];
+  saveOrder(ids);
+}
+
+/* Touch drag. Telegram's in-app browser does not fire HTML5 drag events on
+   iOS, so the reorder is driven by pointer events, which work on both. */
+let dragFrom = null;
+
+function reorderRowAt(y){
+  return document.elementFromPoint(window.innerWidth / 2, y)?.closest("[data-drag-id]");
+}
+
+document.addEventListener("pointerdown", e => {
+  const handle = e.target.closest(".handle");
+  if(!handle) return;
+  const row = handle.closest("[data-drag-id]");
+  if(!row) return;
+  dragFrom = Number(row.dataset.index);
+  row.classList.add("dragging");
+  row.setPointerCapture?.(e.pointerId);
+  e.preventDefault();
+});
+
+document.addEventListener("pointermove", e => {
+  if(dragFrom === null) return;
+  e.preventDefault();
+  document.querySelectorAll(".dragover").forEach(x => x.classList.remove("dragover"));
+  reorderRowAt(e.clientY)?.classList.add("dragover");
+}, {passive:false});
+
+document.addEventListener("pointerup", e => {
+  if(dragFrom === null) return;
+  const over = reorderRowAt(e.clientY);
+  const from = dragFrom;
+  dragFrom = null;
+  document.querySelectorAll(".dragging,.dragover")
+    .forEach(x => x.classList.remove("dragging", "dragover"));
+  if(!over) return render();
+  const to = Number(over.dataset.index);
+  if(to === from) return render();
+  const ids = (state.habits?.habits || []).map(x => x.id);
+  ids.splice(to, 0, ids.splice(from, 1)[0]);
+  haptic("medium");
+  saveOrder(ids);
+});
 
 function confirmSheet(action, id){
   openSheet(`<h3>${t("delete")}?</h3>
@@ -1552,6 +1604,10 @@ document.addEventListener("click", e => {
   if(action){ e.preventDefault(); action(el); }
 });
 window.matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", render);
+// The strips are fixed, so their height has to be re-measured whenever the
+// viewport changes underneath them.
+window.addEventListener("resize", syncShell);
+tg?.onEvent?.("viewportChanged", syncShell);
 
 /* ---------- boot ---------- */
 (async function boot(){
