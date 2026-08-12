@@ -72,6 +72,12 @@ ENVIRONMENT = os.environ.get("ENVIRONMENT", "development").lower()
 #: replayed days later.
 INIT_DATA_MAX_AGE = int(os.environ.get("INIT_DATA_MAX_AGE", "86400"))
 
+#: How often the report jobs wake up. Report times are per user, so the job
+#: cannot be a single cron entry at 04:00 any more; it ticks and asks each user
+#: whether their chosen time has arrived. Ten minutes is fine granularity for a
+#: daily summary and keeps the query volume trivial.
+REPORT_TICK_MINUTES = int(os.environ.get("REPORT_TICK_MINUTES", "10"))
+
 if ENVIRONMENT == "production" and not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN is required in production")
 
@@ -81,9 +87,24 @@ if ENVIRONMENT == "production" and not BOT_TOKEN:
 
 T: dict[str, dict[str, str]] = {
     "uz": {
+        "pick_lang_multi": ("ErnestOS\n\n🇺🇿 Tilni tanlang\n"
+                            "🇬🇧 Choose your language\n🇷🇺 Выберите язык"),
+        "hello_named": "Assalomu alaykum, {name}!",
+        "phone_why": ("Telefon raqamingizni ulashing.\n\n"
+                      "Telegram akkauntingizni yo'qotsangiz yoki qurilmani "
+                      "almashtirsangiz, raqam orqali ma'lumotlaringizni "
+                      "tiklab beramiz. Raqam faqat shu uchun ishlatiladi va "
+                      "hech kimga ko'rsatilmaydi."),
+        "welcome_in": "Xush kelibsiz, {name}! ErnestOS ishga tushdi.",
+        "remind_task": "⏰ {title}",
+        "remind_task_at": "⏰ {title} — {time}",
+        "remind_habit": "⏰ {name}",
+        "report_off": "Hisobotlar o'chirilgan. Sozlamalardan yoqishingiz mumkin.",
         "sub_unknown": "Hozir obunani tekshirib bo'lmadi. Bir ozdan keyin qayta urinib ko'ring.",
         "menu_wake": "☀️ Turdim",
-        "wake_ok": "Xayrli tong! Uyg'onish belgilandi ✓ ({now})",
+        "wake_ok": "Xayrli tong! Turdingiz ✓ ({now})",
+        "wake_ok_at": "✓ {now} da turdingiz",
+        "wake_late_soft": "{now} — bugungi targetdan kechroq ({target})",
         "wake_late": "Kech bo'ldi — {deadline} gacha yozish kerak edi. Bugun hisoblanmadi.",
         "wake_time_btn": "⏰ Uyg'onish vaqti",
         "ask_wake_time": "Soatni yozing (masalan 05:00):",
@@ -132,7 +153,13 @@ T: dict[str, dict[str, str]] = {
         "home_title": "🏠 {name}ning shaxsiy tizimi",
         "home_title_plain": "🏠 ErnestOS",
         "home_mission": "🎯 Missiya", "home_today": "⚡ Bugun",
-        "privacy_line": "🔒 Ma'lumotlaringiz va maxfiyligingiz to'liq himoyalangan",
+        "home_now": "⚡ HOZIR",
+        "home_top3": "🎯 Bugungi TOP 3",
+        "now_wake": "Turdim — belgilang",
+        "now_prayer": "Namozni kiriting",
+        "now_journal": "Kun yakuni",
+        "now_clear": "Bugungi muhim ishlar tugadi",
+        "privacy_line": "🔒 Ma'lumotlaringiz boshqa foydalanuvchilardan alohida saqlanadi",
         "stats_title": "📊 Statistika",
         "st_overall": "Umumiy", "st_tasks": "Vazifalar", "st_habits": "Odatlar",
         "st_prayer": "Namoz", "st_streak": "Ketma-ket",
@@ -193,9 +220,23 @@ T: dict[str, dict[str, str]] = {
         "days_short": "kun",
     },
     "en": {
+        "pick_lang_multi": ("ErnestOS\n\n🇺🇿 Tilni tanlang\n"
+                            "🇬🇧 Choose your language\n🇷🇺 Выберите язык"),
+        "hello_named": "Hello, {name}!",
+        "phone_why": ("Please share your phone number.\n\n"
+                      "If you ever lose your Telegram account or change phones, "
+                      "we use the number to restore your data. It is used for "
+                      "nothing else and is never shown to anyone."),
+        "welcome_in": "Welcome, {name}! ErnestOS is running.",
+        "remind_task": "⏰ {title}",
+        "remind_task_at": "⏰ {title} — {time}",
+        "remind_habit": "⏰ {name}",
+        "report_off": "Reports are off. You can turn them on in Settings.",
         "sub_unknown": "Could not verify your subscription right now. Please try again shortly.",
         "menu_wake": "☀️ I'm up",
-        "wake_ok": "Good morning! Wake-up recorded ✓ ({now})",
+        "wake_ok": "Good morning! You are up ✓ ({now})",
+        "wake_ok_at": "✓ up at {now}",
+        "wake_late_soft": "{now} — later than today's target ({target})",
         "wake_late": "Too late — the cut-off was {deadline}. It does not count today.",
         "wake_time_btn": "⏰ Wake-up time",
         "ask_wake_time": "Enter the time (e.g. 05:00):",
@@ -244,7 +285,13 @@ T: dict[str, dict[str, str]] = {
         "home_title": "🏠 {name}'s personal system",
         "home_title_plain": "🏠 ErnestOS",
         "home_mission": "🎯 Mission", "home_today": "⚡ Today",
-        "privacy_line": "🔒 Your data and privacy are fully protected",
+        "home_now": "⚡ NOW",
+        "home_top3": "🎯 Today's top 3",
+        "now_wake": "Mark that you are up",
+        "now_prayer": "Log your prayers",
+        "now_journal": "Close the day",
+        "now_clear": "Today's important work is done",
+        "privacy_line": "🔒 Your data is stored separately from every other user",
         "stats_title": "📊 Statistics",
         "st_overall": "Overall", "st_tasks": "Tasks", "st_habits": "Habits",
         "st_prayer": "Prayer", "st_streak": "Streak",
@@ -305,9 +352,23 @@ T: dict[str, dict[str, str]] = {
         "days_short": "days",
     },
     "ru": {
+        "pick_lang_multi": ("ErnestOS\n\n🇺🇿 Tilni tanlang\n"
+                            "🇬🇧 Choose your language\n🇷🇺 Выберите язык"),
+        "hello_named": "Здравствуйте, {name}!",
+        "phone_why": ("Поделитесь номером телефона.\n\n"
+                      "Если вы потеряете аккаунт Telegram или смените телефон, "
+                      "мы восстановим ваши данные по номеру. Он используется "
+                      "только для этого и никому не показывается."),
+        "welcome_in": "Добро пожаловать, {name}! ErnestOS запущен.",
+        "remind_task": "⏰ {title}",
+        "remind_task_at": "⏰ {title} — {time}",
+        "remind_habit": "⏰ {name}",
+        "report_off": "Отчёты отключены. Их можно включить в настройках.",
         "sub_unknown": "Сейчас не удалось проверить подписку. Попробуйте чуть позже.",
         "menu_wake": "☀️ Я встал",
-        "wake_ok": "Доброе утро! Подъём засчитан ✓ ({now})",
+        "wake_ok": "Доброе утро! Вы встали ✓ ({now})",
+        "wake_ok_at": "✓ встали в {now}",
+        "wake_late_soft": "{now} — позже сегодняшней цели ({target})",
         "wake_late": "Поздно — крайний срок был {deadline}. Сегодня не засчитано.",
         "wake_time_btn": "⏰ Время подъёма",
         "ask_wake_time": "Введите время (например 05:00):",
@@ -356,7 +417,13 @@ T: dict[str, dict[str, str]] = {
         "home_title": "🏠 Личная система — {name}",
         "home_title_plain": "🏠 ErnestOS",
         "home_mission": "🎯 Миссия", "home_today": "⚡ Сегодня",
-        "privacy_line": "🔒 Ваши данные и конфиденциальность полностью защищены",
+        "home_now": "⚡ СЕЙЧАС",
+        "home_top3": "🎯 Топ-3 на сегодня",
+        "now_wake": "Отметьте подъём",
+        "now_prayer": "Отметьте намазы",
+        "now_journal": "Итоги дня",
+        "now_clear": "Важные дела на сегодня закрыты",
+        "privacy_line": "🔒 Ваши данные хранятся отдельно от других пользователей",
         "stats_title": "📊 Статистика",
         "st_overall": "Общий результат", "st_tasks": "Задачи",
         "st_habits": "Привычки", "st_prayer": "Намаз", "st_streak": "Серия",
@@ -668,17 +735,31 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
                         f"{datetime.now(svc.TZ):%Y-%m-%d %H:%M}")
 
     if onboarded:
-        await message.reply_text(t(lang, "welcome", name=tg_user.first_name or ""),
+        await message.reply_text(t(lang, "hello_named", name=tg_user.first_name or ""),
                                  reply_markup=main_menu(lang))
         await show_home(update, ctx)
         return
 
-    # A brand-new user has not chosen a language yet, so greet in all three
-    # rather than guessing which one to use.
-    name = tg_user.first_name or ""
-    await message.reply_text(
-        "\n\n".join(t(code, "welcome", name=name) for code in ("uz", "en", "ru")))
     await resume_onboarding(update, ctx, step)
+
+
+#: The order onboarding walks, and the only place it is written down.
+#: language -> phone (skippable) -> required channel -> in.
+#: Gender is not here: nothing outside the prayer module needs it, so it is
+#: asked the first time prayer is opened and explained when it is asked.
+ONBOARDING_STEPS = ["language", "phone", "subscribe", "done"]
+
+
+def phone_keyboard(lang: str) -> ReplyKeyboardMarkup:
+    """Share-contact and Skip, side by side.
+
+    Telegram will only hand over a number through its own contact button, so
+    this has to be a reply keyboard rather than an inline one.
+    """
+    return ReplyKeyboardMarkup(
+        [[KeyboardButton(t(lang, "btn_phone"), request_contact=True)],
+         [KeyboardButton(t(lang, "btn_skip"))]],
+        resize_keyboard=True, one_time_keyboard=True)
 
 
 async def resume_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
@@ -693,17 +774,23 @@ async def resume_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         user = s.get(User, tg_user.id)
         lang = user.language if user else "uz"
 
-    # Onboarding asks two things: language, then the channel. Phone lives in
-    # Settings and gender is asked the first time prayer needs it — neither
-    # earns its place before the user has seen what the product does.
     if step == "language":
-        await message.reply_text(t(lang, "ask_lang"), reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🇺🇿 O'zbek", callback_data="lang:uz")],
-            [InlineKeyboardButton("🇬🇧 English", callback_data="lang:en")],
-            [InlineKeyboardButton("🇷🇺 Русский", callback_data="lang:ru")],
-        ]))
+        # No language is chosen yet, so the prompt is the one screen written in
+        # all three. Everything after this point is in the chosen language only.
+        await message.reply_text(
+            t(lang, "pick_lang_multi"), reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🇺🇿 O'zbek", callback_data="lang:uz")],
+                [InlineKeyboardButton("🇬🇧 English", callback_data="lang:en")],
+                [InlineKeyboardButton("🇷🇺 Русский", callback_data="lang:ru")],
+            ]))
 
-    elif step in ("phone", "gender", "subscribe"):
+    elif step == "phone":
+        await message.reply_text(t(lang, "phone_why"),
+                                 reply_markup=phone_keyboard(lang))
+
+    elif step in ("gender", "subscribe"):
+        # "gender" is a step from an older build; anyone still parked on it is
+        # moved forward rather than asked a question that no longer exists.
         await message.reply_text(t(lang, "sub_required"),
                                  reply_markup=subscribe_keyboard(lang))
 
@@ -730,6 +817,8 @@ async def on_contact(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             return
         user.phone_number = contact.phone_number
         onboarded_already = user.onboarded
+        if not onboarded_already:
+            user.onboarding_step = "subscribe"
         s.commit()
         snapshot = user
 
@@ -739,7 +828,7 @@ async def on_contact(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         # Changed from Settings — go straight back to the menu.
         await message.reply_text(t(lang, "saved"), reply_markup=main_menu(lang))
     else:
-        await resume_onboarding(update, ctx, "gender")
+        await resume_onboarding(update, ctx, "subscribe")
 
 
 async def on_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -797,11 +886,14 @@ async def finish_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> N
         user.onboarded = True
         s.commit()
         snapshot = user
+        name = user.first_name or ""
 
-    await message.reply_text(t(lang, "onboard_done"), reply_markup=main_menu(lang))
+    await message.reply_text(t(lang, "welcome_in", name=esc(name)),
+                             parse_mode=ParseMode.HTML,
+                             reply_markup=main_menu(lang))
     await log_event(ctx.bot, snapshot, "✅ ONBOARDING COMPLETE",
-                    f"Language: {snapshot.language}\nGender: {snapshot.gender or '—'}\n"
-                    f"Phone: {snapshot.phone_number or '—'}")
+                    f"Language: {snapshot.language}\n"
+                    f"Phone: {'yes' if snapshot.phone_number else 'skipped'}")
     await show_home(update, ctx)
 
 
@@ -814,33 +906,64 @@ async def finish_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> N
 TREND_MARK = {"up": "🔺", "down": "🔻", "flat": "▪️"}
 
 
-def render_home(data: dict, lang: str) -> str:
-    """Home in one screenful: today's mission, today's tasks, today's numbers.
+#: How each kind of "what now?" answer is written in the bot. The Mini App
+#: renders the same `now` payload its own way; both read the same field, so the
+#: two surfaces can never suggest different next actions.
+NOW_ICON = {"wake": "☀️", "task": "⚡", "habit": "✅", "prayer": "🕌",
+            "journal": "🌙", "clear": "✓"}
 
-    Everything that used to sit here — goals, projects, birthdays, the overdue
-    wall — answered a question the user was not asking at 7am. Those live on
-    their own screens; this one says how today is going.
+
+def render_now(now: dict, lang: str) -> str:
+    """The one line that answers "what should I do right now?"."""
+    kind = now.get("kind") or "clear"
+    icon = NOW_ICON.get(kind, "▫️")
+    if kind == "task" or kind == "habit":
+        meta = f" — {now['meta']}" if now.get("meta") else ""
+        return f"{icon} {esc(now.get('title') or '')}{meta}"
+    return f"{icon} {t(lang, 'now_' + kind)}"
+
+
+def render_home(data: dict, lang: str) -> str:
+    """Home in one screenful: what now, today's mission, today's work.
+
+    The first thing under the date is a single action, because that is the
+    question someone opens the app with at 6am. Everything that used to sit here
+    — goals, projects, birthdays, the overdue wall — answered a question they
+    were not asking; those live on their own screens.
     """
     name = (data.get("name") or "").strip()
     title = t(lang, "home_title", name=esc(name)) if name \
         else t(lang, "home_title_plain")
     lines = [f"<b>{title}</b>", f"📅 {data['date_label']}"]
 
+    now = data.get("now")
+    if now:
+        lines.append(f"\n<b>{t(lang, 'home_now')}</b>")
+        lines.append(render_now(now, lang))
+
     mission = data.get("mission")
     lines.append(f"\n<b>{t(lang, 'home_mission')}</b>")
     lines.append(esc(mission["title"]) if mission else t(lang, "none"))
+
+    top3 = data.get("top3") or []
+    if top3:
+        lines.append(f"\n<b>{t(lang, 'home_top3')}</b>")
+        for task in top3:
+            mark = "✅" if task["status"] == "done" else "▫️"
+            lines.append(f"{mark} {esc(task['title'])}")
 
     lines.append(f"\n<b>{t(lang, 'home_today')}</b>")
     rows = [task for group in data["tasks_today"] for task in group["tasks"]]
     if rows:
         for task in rows[:6]:
-            lines.append(f"— {esc(task['title'])}")
-    else:
+            when = f" · {task['due_time']}" if task.get("due_time") else ""
+            lines.append(f"— {esc(task['title'])}{when}")
+    elif not top3:
         lines.append(t(lang, "none"))
 
     habits, prayer, overall = data["habits"], data["prayer"], data["overall"]
     lines.append(f"\n✅ 🕌 🔥 {habits['done']}/{habits['total']} · "
-                 f"{prayer['score']}/{prayer['max']} · {data['streak']}")
+                 f"{prayer['performed']}/{prayer['required']} · {data['streak']}")
     lines.append(f"📊 {TREND_MARK.get(overall['trend'], '▪️')} {overall['value']}%")
 
     lines.append(f"\n{t(lang, 'privacy_line')}")
@@ -888,6 +1011,19 @@ async def show_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
                                  reply_markup=webapp_button(user.language))
 
 
+def wake_reply(result: dict, lang: str) -> str:
+    """What to say back after a "turdim".
+
+    A late morning is reported as a fact and not as a failure: the time is shown
+    either way, and the late version says how it compares with the target rather
+    than announcing that the day does not count. The habit still only completes
+    on time — the wording changes, the rule does not.
+    """
+    if result["done"]:
+        return t(lang, "wake_ok_at", now=result["now"])
+    return t(lang, "wake_late_soft", now=result["now"], target=result["target"])
+
+
 async def handle_wakeup(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     """The user reports getting up. Only counts before target time + 1 hour."""
     got = await guard(update, ctx)
@@ -895,17 +1031,14 @@ async def handle_wakeup(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         return
     user, ws = got
     with SessionLocal() as s:
-        result = svc.mark_wakeup(s, ws)
+        result = svc.mark_wakeup(s, ws, tz=svc.user_tz(user))
 
     message = update.effective_message
     if message is None:
         return
+    await message.reply_text(wake_reply(result, user.language))
     if result["done"]:
-        await message.reply_text(t(user.language, "wake_ok", now=result["now"]))
         await log_event(ctx.bot, user, "☀️ WAKE-UP", f"At: {result['now']}")
-    else:
-        await message.reply_text(
-            t(user.language, "wake_late", deadline=result["deadline"]))
 
 
 async def show_home(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -940,6 +1073,19 @@ def habits_keyboard(grouped: dict, lang: str) -> InlineKeyboardMarkup:
         rows.append([InlineKeyboardButton(t(lang, CATEGORY_KEYS[category]),
                                           callback_data="habit:noop")])
         for h in habits:
+            if h.get("paused"):
+                # A paused habit is shown, greyed by its label, with resume as
+                # the only thing it can do. Hiding it would mean it can never
+                # come back.
+                rows.append([InlineKeyboardButton(
+                    f"⏸ {h['name']}", callback_data=f"habit:resume:{h['id']}")])
+                continue
+            if not h.get("due", True):
+                # Not scheduled today: listed without a checkbox, so an off-day
+                # never looks like something the user skipped.
+                rows.append([InlineKeyboardButton(
+                    f"·  {h['name']}", callback_data="habit:noop")])
+                continue
             mark = "✅" if h["done"] else "⬜"
             lock = " 🔒" if h["protected"] else ""
             clock = f" ⏰{h['target_time']}" if h.get("target_time") else ""
@@ -967,9 +1113,10 @@ async def show_habits(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     if got is None:
         return
     user, ws = got
+    tz = svc.user_tz(user)
     with SessionLocal() as s:
-        grouped = svc.habits_by_category(s, ws)
-        streak = svc.habit_streak(s, ws)
+        grouped = svc.habits_by_category(s, ws, tz=tz)
+        streak = svc.habit_streak(s, ws, tz=tz)
 
     text = f"<b>{t(user.language, 'habits_title')}</b>"
     if streak:
@@ -1140,12 +1287,21 @@ async def show_project(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 # Settings
 # ---------------------------------------------------------------------------
 
-#: Five themes, kept in the same order as the Mini App's picker: the default,
-#: a modest one, a pink one, a formal one and a casual one. Everything that
-#: shipped before them was retired in migration 0003; a row still holding a
-#: retired name is read as the default rather than rejected.
-THEMES = ["cobalt", "slate", "blossom", "oxford", "aurora"]
-DEFAULT_THEME = "cobalt"
+#: Five themes, in the Mini App picker's order. Each is a distinct visual
+#: system — its own radius, shadow, gradient use, density and typography scale,
+#: not the same screen in a different hue:
+#:
+#:   ocean     royal blue on neutral, restrained. The default.
+#:   pure      paper white, charcoal text, hairlines, no gradients.
+#:   midnight  graphite and near-black with one electric accent.
+#:   sage      warm white and muted green, soft edges, low contrast.
+#:   aurora    dark neutral with a controlled violet-to-rose gradient.
+#:
+#: Names that shipped before them are mapped forward by migration 0005; a row
+#: still holding an unknown value reads as the default rather than being
+#: rejected, so no account can end up with no theme at all.
+THEMES = ["ocean", "pure", "midnight", "sage", "aurora"]
+DEFAULT_THEME = "ocean"
 
 
 def theme_of(name: str | None) -> str:
@@ -1201,9 +1357,23 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             return
         lang = user.language
         onboarded = user.onboarded
+        step = user.onboarding_step
 
-    # Skip button during onboarding
     if not onboarded:
+        # The only typed answer onboarding accepts is Skip, on the phone step.
+        # Anything else is re-prompted rather than silently swallowed, so a user
+        # who types "hello" is not left staring at nothing.
+        if step == "phone":
+            if text in {t(code, "btn_skip") for code in ("uz", "en", "ru")}:
+                with SessionLocal() as s:
+                    row = s.get(User, tg_user.id)
+                    row.onboarding_step = "subscribe"
+                    s.commit()
+                await message.reply_text(t(lang, "phone_skipped"),
+                                         reply_markup=ReplyKeyboardRemove())
+                await resume_onboarding(update, ctx, "subscribe")
+                return
+        await resume_onboarding(update, ctx, step)
         return
 
     flow = current_flow(ctx)
@@ -1438,16 +1608,19 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
                     reply_markup=subscribe_keyboard(lang))
                 return
             changed = record_membership(s, tg_user.id, True, "api")
-            if not user.onboarded:
+            first_time = not user.onboarded
+            if first_time:
                 user.onboarding_step = "done"
                 user.onboarded = True
             s.commit()
-            snapshot = user
+            snapshot, name = user, user.first_name or ""
         if changed:
             await log_event(ctx.bot, snapshot, "🔓 SUBSCRIPTION RESTORED")
+        # Joining and checking lands the user inside — never back at /start.
         await query.edit_message_text(t(lang, "sub_restored"))
-        await update.effective_message.reply_text(t(lang, "onboard_done"),
-                                                  reply_markup=main_menu(lang))
+        await update.effective_message.reply_text(
+            t(lang, "welcome_in", name=esc(name)) if first_time else t(lang, "saved"),
+            parse_mode=ParseMode.HTML, reply_markup=main_menu(lang))
         await show_home(update, ctx)
         return
 
@@ -1457,15 +1630,21 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             user = s.get(User, tg_user.id)
             user.language = parts[1]
             if not user.onboarded:
-                user.onboarding_step = "subscribe"
+                user.onboarding_step = "phone"
             s.commit()
             lang, onboarded = user.language, user.onboarded
             snapshot = user
-        await query.edit_message_text(t(lang, "saved"))
         await log_event(ctx.bot, snapshot, "🌐 LANGUAGE CHANGED", f"Language: {lang}")
+
         if not onboarded:
-            await resume_onboarding(update, ctx, "subscribe")
+            # First words in the language they just picked, by name, then the
+            # one thing still worth asking before they are inside.
+            await query.edit_message_text(
+                t(lang, "hello_named", name=esc(tg_user.first_name or "")),
+                parse_mode=ParseMode.HTML)
+            await resume_onboarding(update, ctx, "phone")
         else:
+            await query.edit_message_text(t(lang, "saved"))
             await update.effective_message.reply_text(t(lang, "saved"),
                                                       reply_markup=main_menu(lang))
         return
@@ -1546,13 +1725,14 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             await show_habits(update, ctx, edit=True)
         elif sub == "wake":
             with SessionLocal() as s:
-                result = svc.mark_wakeup(s, ws)
-            await query.answer(
-                t(lang, "wake_ok", now=result["now"]) if result["done"]
-                else t(lang, "wake_late", deadline=result["deadline"]),
-                show_alert=True)
+                result = svc.mark_wakeup(s, ws, tz=svc.user_tz(user))
+            await query.answer(wake_reply(result, lang), show_alert=True)
             if result["done"]:
                 await log_event(ctx.bot, user, "☀️ WAKE-UP", f"At: {result['now']}")
+            await show_habits(update, ctx, edit=True)
+        elif sub == "resume":
+            with SessionLocal() as s:
+                svc.set_habit_paused(s, ws, int(parts[2]), False)
             await show_habits(update, ctx, edit=True)
         elif sub == "back":
             await show_habits(update, ctx, edit=True)
@@ -1901,12 +2081,16 @@ async def _post_platform_stats(bot, st: dict) -> None:
 
 
 async def send_reports(bot, report_type: str) -> None:
-    """Deliver one report to every eligible user, at most once per local day."""
-    report_date = svc.today_local()
+    """Deliver one report to every user whose chosen time has just arrived.
+
+    The job runs often and decides per user, because report times are now a
+    setting rather than one hour for everybody. Sending exactly once per local
+    day is still guaranteed by the outbox claim, not by the schedule.
+    """
     with svc.JobLock(SessionLocal, f"report:{report_type}") as lock:
         if not lock.acquired:
             return
-        await _send_reports_locked(bot, report_type, report_date)
+        await _send_reports_locked(bot, report_type, None)
 
 
 async def _send_reports_locked(bot, report_type: str, report_date) -> None:
@@ -1915,10 +2099,23 @@ async def _send_reports_locked(bot, report_type: str, report_date) -> None:
 
     sent = failed = skipped = 0
     for telegram_id, ws, lang in recipients:
+        # Each user's day and each user's chosen time, in their own zone.
+        with SessionLocal() as s:
+            user = s.get(User, telegram_id)
+            if user is None:
+                continue
+            tz = svc.user_tz(user)
+            when = report_date or svc.today_local(tz)
+            due = (report_date is not None
+                   or svc.report_is_due(user, report_type, svc.now_local(tz)))
+        if not due:
+            skipped += 1
+            continue
+
         # Claim before building anything: the insert is the lock, so a second
         # worker finds the row taken and moves on (audit 036).
         with SessionLocal() as s:
-            report_id = svc.claim_report(s, ws, report_type, report_date)
+            report_id = svc.claim_report(s, ws, report_type, when)
         if report_id is None:
             skipped += 1
             continue
@@ -1957,8 +2154,62 @@ async def _send_reports_locked(bot, report_type: str, report_date) -> None:
 
         await asyncio.sleep(0.05)  # stay inside Telegram's rate limit
 
-    log.info("%s report: %s sent, %s failed, %s already claimed",
+    log.info("%s report: %s sent, %s failed, %s not due or already claimed",
              report_type, sent, failed, skipped)
+
+
+async def send_reminders(bot) -> None:
+    """Task and habit reminders whose moment has just arrived.
+
+    Each reminder is marked sent the instant it goes out, so a job that runs
+    every few minutes cannot repeat one. Reminders are opt-out for tasks and
+    opt-in for habits: a notification a day is how an app gets muted.
+    """
+    with svc.JobLock(SessionLocal, "reminders") as lock:
+        if not lock.acquired:
+            return
+
+        with SessionLocal() as s:
+            recipients = svc.active_recipients(s)
+
+        sent = 0
+        for telegram_id, ws, lang in recipients:
+            with SessionLocal() as s:
+                user = s.get(User, telegram_id)
+                if user is None:
+                    continue
+                tasks = svc.due_task_reminders(s, ws, user)
+                habits = svc.due_habit_reminders(s, ws, user)
+
+            for task in tasks:
+                text = (t(lang, "remind_task_at", title=esc(task["title"]),
+                          time=task["due_time"]) if task["due_time"]
+                        else t(lang, "remind_task", title=esc(task["title"])))
+                try:
+                    await bot.send_message(telegram_id, text,
+                                           parse_mode=ParseMode.HTML,
+                                           reply_markup=webapp_button(lang))
+                    # Marked only after Telegram accepted it, so a failure is
+                    # retried on the next pass instead of being lost.
+                    with SessionLocal() as s:
+                        svc.mark_reminder_sent(s, ws, task["id"])
+                    sent += 1
+                except TelegramError as e:
+                    log.warning("task reminder to %s failed: %s", telegram_id, e)
+
+            for habit in habits:
+                try:
+                    await bot.send_message(
+                        telegram_id, t(lang, "remind_habit", name=esc(habit["name"])),
+                        parse_mode=ParseMode.HTML)
+                    sent += 1
+                except TelegramError as e:
+                    log.warning("habit reminder to %s failed: %s", telegram_id, e)
+
+            await asyncio.sleep(0.05)   # stay inside Telegram's rate limit
+
+        if sent:
+            log.info("reminders: %s sent", sent)
 
 
 # ---------------------------------------------------------------------------
@@ -2088,17 +2339,26 @@ async def lifespan(_: FastAPI):
         log.info("telegram bot polling")
 
         scheduler = AsyncIOScheduler(timezone=svc.TZ)
-        scheduler.add_job(send_reports, "cron", hour=4, minute=0,
+        # Report times are a per-user setting now, so the jobs run on a short
+        # cycle and each one decides, per user, whether their moment has come.
+        # Delivering exactly once a day is still the outbox claim's job, which
+        # means a frequent tick cannot produce a duplicate.
+        scheduler.add_job(send_reports, "cron", minute=f"*/{REPORT_TICK_MINUTES}",
                           args=[telegram_app.bot, "morning"], id="morning",
-                          misfire_grace_time=3600)
-        scheduler.add_job(send_reports, "cron", hour=21, minute=0,
+                          max_instances=1, misfire_grace_time=600)
+        scheduler.add_job(send_reports, "cron", minute=f"*/{REPORT_TICK_MINUTES}",
                           args=[telegram_app.bot, "evening"], id="evening",
-                          misfire_grace_time=3600)
+                          max_instances=1, misfire_grace_time=600)
+        scheduler.add_job(send_reminders, "cron",
+                          minute=f"*/{svc.REMINDER_JOB_MINUTES}",
+                          args=[telegram_app.bot], id="reminders",
+                          max_instances=1, misfire_grace_time=120)
         scheduler.add_job(send_platform_stats, "cron", hour=23, minute=0,
                           args=[telegram_app.bot], id="stats",
                           misfire_grace_time=3600)
         scheduler.start()
-        log.info("scheduler started (Asia/Tashkent 04:00 / 21:00)")
+        log.info("scheduler started — reports every %s min, reminders every %s min",
+                 REPORT_TICK_MINUTES, svc.REMINDER_JOB_MINUTES)
     else:
         log.warning("BOT_TOKEN missing — API only, no bot and no scheduler")
 
@@ -2205,6 +2465,9 @@ class SettingsIn(BaseModel):
 class HabitIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     category: str = Field(default="target", max_length=16)
+    #: daily | weekdays | days:0,2,4 — anything else is read as daily.
+    schedule: str | None = Field(default=None, max_length=24)
+    remind_at: str | None = Field(default=None, max_length=5)
 
 
 class PrayerIn(BaseModel):
@@ -2222,6 +2485,11 @@ class TaskIn(BaseModel):
     title: str = Field(min_length=1, max_length=300)
     description: str = Field(default="", max_length=4000)
     deadline: str | None = Field(default=None, max_length=10)
+    #: Optional clock time on the deadline day; omitted means an all-day task.
+    due_time: str | None = Field(default=None, max_length=5)
+    #: Minutes before the due moment, 0 for exactly then.
+    remind_before: int | None = Field(default=None, ge=0, le=60 * 24 * 7)
+    recurrence: str | None = Field(default=None, max_length=24)
     project_id: int | None = None
     priority: str = Field(default="medium", max_length=6)
 
@@ -2230,6 +2498,9 @@ class TaskPatch(BaseModel):
     title: str | None = Field(default=None, max_length=300)
     description: str | None = Field(default=None, max_length=4000)
     deadline: str | None = None
+    due_time: str | None = Field(default=None, max_length=5)
+    remind_before: int | None = Field(default=None, ge=0, le=60 * 24 * 7)
+    recurrence: str | None = Field(default=None, max_length=24)
     project_id: int | None = None
     priority: str | None = None
     status: str | None = None
@@ -2256,12 +2527,17 @@ class ProjectPatch(BaseModel):
     name: str | None = Field(default=None, max_length=200)
     description: str | None = Field(default=None, max_length=2000)
     deadline: str | None = Field(default=None, max_length=10)
+    #: active | done. Finishing a project must not mean deleting it.
+    status: str | None = Field(default=None, max_length=10)
+    #: Archived is stored as a timestamp, but the API takes a plain switch.
+    archived: bool | None = None
 
 
 class JournalIn(BaseModel):
     answers: dict[str, str] | None = None
     text: str = Field(default="", max_length=10000)
     day: str | None = Field(default=None, max_length=10)
+    #: One of services.MOODS, or empty. Optional by design.
     mood: str = Field(default="", max_length=20)
 
     @field_validator("answers")
@@ -2349,10 +2625,14 @@ def health_ready():
 def api_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, _ = auth(init, require_onboarded=False)
     return {"telegram_id": user.telegram_id, "member_no": user.member_no,
-            "first_name": user.first_name,
+            "first_name": user.first_name, "last_name": user.last_name,
+            "username": user.username,
             "language": user.language, "gender": user.gender,
             "theme": theme_of(user.theme), "quote": user.quote,
             "has_photo": bool(user.photo_file_id),
+            "has_phone": bool(user.phone_number),
+            "prefs": svc.prefs_for(user),
+            "timezones": svc.TIMEZONES,
             "onboarded": user.onboarded, "is_subscribed": user.is_subscribed}
 
 
@@ -2373,6 +2653,91 @@ def api_settings(body: SettingsIn, init=Header(default=None, alias="X-Telegram-I
     return {"ok": True}
 
 
+class PrefsIn(BaseModel):
+    """Notification and timezone settings. Every field is optional, so the UI
+    can save one switch without resending the rest."""
+    timezone: str | None = Field(default=None, max_length=40)
+    morning_report: bool | None = None
+    morning_time: str | None = Field(default=None, max_length=5)
+    evening_report: bool | None = None
+    evening_time: str | None = Field(default=None, max_length=5)
+    task_reminders: bool | None = None
+    habit_reminders: bool | None = None
+
+
+def _time(value: str | None) -> dtime | None:
+    if not value:
+        return None
+    try:
+        hour, minute = (int(x) for x in value.replace(".", ":").split(":"))
+        return dtime(hour, minute)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail="bad_time")
+
+
+@app.get("/api/prefs")
+def api_prefs(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init)
+    return {"prefs": svc.prefs_for(user), "timezones": svc.TIMEZONES}
+
+
+@app.post("/api/prefs")
+def api_prefs_save(body: PrefsIn,
+                   init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Save reports, reminders and the timezone.
+
+    Each switch is written the moment it is flipped, which is why there is no
+    Save button on that screen.
+    """
+    user, _ = auth(init)
+    fields = body.model_dump(exclude_unset=True)
+    for key in ("morning_time", "evening_time"):
+        if key in fields:
+            fields[key] = _time(fields[key])
+    with SessionLocal() as s:
+        row = s.get(User, user.telegram_id)
+        try:
+            prefs = svc.save_prefs(s, row, **fields)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    return {"ok": True, "prefs": prefs}
+
+
+@app.get("/api/subscription")
+async def api_subscription(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Re-check channel membership from inside the Mini App.
+
+    The blocked screen calls this behind its "check again" button, so joining the
+    channel and coming back continues the session instead of restarting the app.
+    Deliberately outside the membership gate — a blocked user is exactly who
+    needs to call it — but still behind a valid signature.
+    """
+    tg_user = verify_init_data(init or "")
+    telegram_id = int(tg_user["id"])
+
+    if not REQUIRED_CHANNEL_ID:
+        return {"subscribed": True, "state": "subscribed"}
+    if telegram_app is None:
+        # Nothing to ask Telegram with. Report the stored answer and say it is
+        # unverified rather than inventing a pass or a block.
+        with SessionLocal() as s:
+            row = s.get(User, telegram_id)
+            return {"subscribed": bool(row and row.is_subscribed),
+                    "state": "unknown"}
+
+    state = await is_subscribed(telegram_app.bot, telegram_id)
+    if state is None:
+        # Telegram could not be reached: neither grant nor revoke.
+        return {"subscribed": False, "state": "unknown",
+                "channel": REQUIRED_CHANNEL_URL}
+    with SessionLocal() as s:
+        record_membership(s, telegram_id, state, "api")
+        s.commit()
+    return {"subscribed": state,
+            "state": "subscribed" if state else "not_subscribed",
+            "channel": REQUIRED_CHANNEL_URL}
+
+
 @app.get("/api/home")
 def api_home(init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, ws = auth(init)
@@ -2382,21 +2747,58 @@ def api_home(init=Header(default=None, alias="X-Telegram-Init-Data")):
 
 @app.get("/api/habits")
 def api_habits(day: str | None = None, init=Header(default=None, alias="X-Telegram-Init-Data")):
-    _, ws = auth(init)
+    user, ws = auth(init)
+    tz = svc.user_tz(user)
     with SessionLocal() as s:
         target = _date(day)
-        return {"habits": svc.list_habits(s, ws, target),
-                "grouped": svc.habits_by_category(s, ws, target),
+        return {"habits": svc.list_habits(s, ws, target, tz=tz),
+                "grouped": svc.habits_by_category(s, ws, target, tz=tz),
                 "categories": svc.HABIT_CATEGORIES,
-                "streak": svc.habit_streak(s, ws)}
+                "wake": svc.wake_state(s, ws, tz=tz),
+                "streak": svc.habit_streak(s, ws, tz=tz)}
 
 
 @app.post("/api/habits")
 def api_habit_add(body: HabitIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
     _, ws = auth(init)
     with SessionLocal() as s:
-        habit = svc.add_habit(s, ws, body.name, body.category)
+        habit = svc.add_habit(s, ws, body.name, body.category,
+                              schedule=body.schedule,
+                              remind_at=_time(body.remind_at))
     return {"ok": True, "id": habit.id}
+
+
+class HabitPatch(BaseModel):
+    name: str | None = Field(default=None, max_length=120)
+    category: str | None = Field(default=None, max_length=16)
+    schedule: str | None = Field(default=None, max_length=24)
+    remind_at: str | None = Field(default=None, max_length=5)
+    target_time: str | None = Field(default=None, max_length=5)
+
+
+class HabitPauseIn(BaseModel):
+    paused: bool
+
+
+@app.post("/api/habits/{habit_id}/pause")
+def api_habit_pause(habit_id: int, body: HabitPauseIn,
+                    init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Pause or resume a habit. Every past log survives either way."""
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        habit = svc.set_habit_paused(s, ws, habit_id, body.paused)
+    return {"ok": True, "paused": habit.paused_at is not None}
+
+
+@app.get("/api/habits/{habit_id}/history")
+def api_habit_history(habit_id: int, days: int = 30,
+                      init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """One habit's streak, grid and completion rate."""
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        return svc.habit_history(s, ws, habit_id,
+                                 days=max(7, min(days, 365)),
+                                 tz=svc.user_tz(user))
 
 
 @app.patch("/api/habits/reorder")
@@ -2417,14 +2819,43 @@ def api_habit_reorder(body: HabitOrderIn,
     return {"ok": True, "habits": habits}
 
 
-@app.post("/api/habits/{habit_id}/toggle")
-def api_habit_toggle(habit_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+#: Declared after `/api/habits/reorder` for the same reason that route carries
+#: its own note: FastAPI matches in declaration order, so a `{habit_id}` PATCH
+#: placed above it would swallow "reorder" and answer 422.
+@app.patch("/api/habits/{habit_id}")
+def api_habit_patch(habit_id: int, body: HabitPatch,
+                    init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Rename a habit, or change its category, schedule, reminder or target."""
     _, ws = auth(init)
+    fields = body.model_dump(exclude_unset=True)
+    for key in ("remind_at", "target_time"):
+        if key in fields:
+            fields[key] = _time(fields[key])
     with SessionLocal() as s:
         try:
-            return {"ok": True, "done": svc.toggle_habit(s, ws, habit_id)}
+            svc.update_habit(s, ws, habit_id, **fields)
+        except ValueError as e:
+            if str(e) == "protected":
+                raise HTTPException(status_code=400, detail="protected_habit")
+            raise HTTPException(status_code=422, detail=str(e))
+    return {"ok": True}
+
+
+@app.post("/api/habits/{habit_id}/toggle")
+def api_habit_toggle(habit_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        try:
+            done = svc.toggle_habit(s, ws, habit_id, tz=svc.user_tz(user))
         except ValueError:
             raise HTTPException(status_code=400, detail="protected_habit")
+        # The new counts come back with the toggle, so the row and the header
+        # both settle in one round trip instead of two.
+        habits_done, habits_total = svc.habit_progress(
+            s, ws, svc.today_local(svc.user_tz(user)))
+        return {"ok": True, "done": done,
+                "habits": {"done": habits_done, "total": habits_total},
+                "streak": svc.habit_streak(s, ws, tz=svc.user_tz(user))}
 
 
 @app.delete("/api/habits/{habit_id}")
@@ -2448,31 +2879,65 @@ def api_prayers(day: str | None = None, init=Header(default=None, alias="X-Teleg
 @app.post("/api/prayers")
 def api_prayer_set(body: PrayerIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, ws = auth(init)
+    tz = svc.user_tz(user)
     with SessionLocal() as s:
         try:
-            score = svc.set_prayer(s, ws, body.prayer, body.status,
-                                   user.gender, _date(body.day))
+            svc.set_prayer(s, ws, body.prayer, body.status, user.gender,
+                           _date(body.day), tz=tz)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
-    return {"ok": True, "score": score}
+        # Return the whole day, so one tap updates the score, the 5/5 count and
+        # the habit tick together rather than in three separate requests.
+        return {"ok": True,
+                **svc.prayer_state(s, ws, _date(body.day) or svc.today_local(tz),
+                                   user.gender)}
+
+
+class PrayerClearIn(BaseModel):
+    prayer: str = Field(max_length=10)
+    day: str | None = Field(default=None, max_length=10)
+
+
+@app.post("/api/prayers/clear")
+def api_prayer_clear(body: PrayerClearIn,
+                     init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Undo one prayer entry. A mis-tap has to be reversible."""
+    user, ws = auth(init)
+    tz = svc.user_tz(user)
+    with SessionLocal() as s:
+        try:
+            svc.clear_prayer(s, ws, body.prayer, user.gender, _date(body.day), tz=tz)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        return {"ok": True,
+                **svc.prayer_state(s, ws, _date(body.day) or svc.today_local(tz),
+                                   user.gender)}
 
 
 @app.post("/api/prayers/excused")
 def api_prayer_excused(body: ExcusedIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, ws = auth(init)
+    tz = svc.user_tz(user)
     with SessionLocal() as s:
         try:
-            score = svc.set_excused(s, ws, body.excused, user.gender, _date(body.day))
+            svc.set_excused(s, ws, body.excused, user.gender, _date(body.day), tz=tz)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
-    return {"ok": True, "score": score}
+        return {"ok": True,
+                **svc.prayer_state(s, ws, _date(body.day) or svc.today_local(tz),
+                                   user.gender)}
 
 
 @app.get("/api/tasks")
-def api_tasks(days: int = 7, init=Header(default=None, alias="X-Telegram-Init-Data")):
-    _, ws = auth(init)
+def api_tasks(days: int = 7, q: str = "", project_id: int | None = None,
+              priority: str = "",
+              init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Open tasks, optionally narrowed by text, project or priority."""
+    user, ws = auth(init)
     with SessionLocal() as s:
-        return svc.list_tasks(s, ws, horizon_days=max(0, min(days, 365)))
+        return svc.list_tasks(s, ws, horizon_days=max(0, min(days, 365)),
+                              search=q[:100], project_id=project_id,
+                              priority=priority, tz=svc.user_tz(user))
 
 
 @app.post("/api/tasks")
@@ -2481,7 +2946,10 @@ def api_task_add(body: TaskIn, init=Header(default=None, alias="X-Telegram-Init-
     with SessionLocal() as s:
         task = svc.add_task(s, ws, body.title, deadline=_date(body.deadline),
                             project_id=body.project_id, priority=body.priority,
-                            description=body.description)
+                            description=body.description,
+                            due_time=_time(body.due_time),
+                            remind_before=body.remind_before,
+                            recurrence=body.recurrence)
     return {"ok": True, "id": task.id}
 
 
@@ -2492,9 +2960,52 @@ def api_task_patch(task_id: int, body: TaskPatch,
     fields = body.model_dump(exclude_unset=True)
     if "deadline" in fields:
         fields["deadline"] = _date(fields["deadline"])
+    if "due_time" in fields:
+        fields["due_time"] = _time(fields["due_time"])
     with SessionLocal() as s:
         svc.update_task(s, ws, task_id, **fields)
     return {"ok": True}
+
+
+class RescheduleIn(BaseModel):
+    #: today | tomorrow | week | none
+    when: str = Field(max_length=10)
+
+
+@app.post("/api/tasks/{task_id}/reschedule")
+def api_task_reschedule(task_id: int, body: RescheduleIn,
+                        init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Move one task's deadline with a single tap.
+
+    This is what the overdue rows offer instead of a red wall: today, tomorrow,
+    next week, or no date at all.
+    """
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        try:
+            task = svc.reschedule_task(s, ws, task_id, body.when,
+                                       tz=svc.user_tz(user))
+        except ValueError:
+            raise HTTPException(status_code=422, detail="bad_target")
+    return {"ok": True, "deadline": task.deadline.isoformat() if task.deadline else None}
+
+
+class Top3In(BaseModel):
+    picked: bool
+
+
+@app.post("/api/tasks/{task_id}/top3")
+def api_task_top3(task_id: int, body: Top3In,
+                  init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Pick or unpick one of today's three most important tasks."""
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        try:
+            result = svc.set_top3(s, ws, task_id, body.picked,
+                                  tz=svc.user_tz(user))
+        except ValueError:
+            raise HTTPException(status_code=409, detail="top3_full")
+    return {"ok": True, **result}
 
 
 @app.delete("/api/tasks/{task_id}")
@@ -2506,10 +3017,13 @@ def api_task_delete(task_id: int, init=Header(default=None, alias="X-Telegram-In
 
 
 @app.get("/api/projects")
-def api_projects(init=Header(default=None, alias="X-Telegram-Init-Data")):
+def api_projects(status: str = "", archived: bool = False,
+                 init=Header(default=None, alias="X-Telegram-Init-Data")):
     _, ws = auth(init)
     with SessionLocal() as s:
-        return {"projects": svc.list_projects(s, ws)}
+        return {"projects": svc.list_projects(s, ws, status=status,
+                                              include_archived=archived),
+                "statuses": svc.PROJECT_STATUSES}
 
 
 @app.post("/api/projects")
@@ -2559,9 +3073,25 @@ def api_project_delete(project_id: int, init=Header(default=None, alias="X-Teleg
 
 @app.get("/api/focus")
 def api_focus(init=Header(default=None, alias="X-Telegram-Init-Data")):
-    _, ws = auth(init)
+    user, ws = auth(init)
+    tz = svc.user_tz(user)
     with SessionLocal() as s:
-        return {"focus": svc.list_focus(s, ws)}
+        return {"focus": svc.list_focus(s, ws, tz=tz),
+                "week": svc.week_focus(s, ws, tz=tz),
+                "max": svc.MAX_FOCUS}
+
+
+@app.post("/api/focus/{focus_id}/carry")
+def api_focus_carry(focus_id: int,
+                    init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Move an unfinished mission into next week instead of retyping it."""
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        try:
+            row = svc.carry_focus_forward(s, ws, focus_id, tz=svc.user_tz(user))
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    return {"ok": True, "id": row.id, "week_start": row.week_start.isoformat()}
 
 
 @app.post("/api/focus")
@@ -2594,22 +3124,34 @@ def api_focus_delete(focus_id: int, init=Header(default=None, alias="X-Telegram-
 @app.get("/api/journal")
 def api_journal(day: str | None = None, init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, ws = auth(init)
+    tz = svc.user_tz(user)
     with SessionLocal() as s:
         questions = [{"id": q["id"], "text": q.get(user.language, q["uz"])}
                      for q in svc.JOURNAL_QUESTIONS]
+        payload = {"questions": questions, "moods": svc.MOODS,
+                   "total": len(svc.JOURNAL_KEYS)}
         if day:
-            return {"entry": svc.get_journal(s, ws, _date(day)), "questions": questions}
-        return {"entries": svc.list_journal(s, ws), "questions": questions}
+            return {**payload, "entry": svc.get_journal(s, ws, _date(day), tz=tz)}
+        return {**payload, "entries": svc.list_journal(s, ws)}
 
 
 @app.post("/api/journal")
 def api_journal_save(body: JournalIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
-    _, ws = auth(init)
+    """Save whatever has been written so far.
+
+    Answers are merged, not replaced, so an autosave carrying one field cannot
+    wipe the others. A partial entry is saved as a partial entry — three of five
+    is not a failed day, and the response says so plainly.
+    """
+    user, ws = auth(init)
+    tz = svc.user_tz(user)
     with SessionLocal() as s:
         row = svc.save_journal(s, ws, answers=body.answers, text=body.text,
-                               day=_date(body.day), mood=body.mood)
-        entry = svc.get_journal(s, ws, row.day)
+                               day=_date(body.day), mood=body.mood, tz=tz)
+        entry = svc.get_journal(s, ws, row.day, tz=tz)
     return {"ok": True, "day": row.day.isoformat(),
+            "answered": entry["answered"] if entry else 0,
+            "total": len(svc.JOURNAL_KEYS),
             "complete": bool(entry and entry["complete"])}
 
 
@@ -2646,14 +3188,34 @@ class FreshStartIn(BaseModel):
     mode: str = Field(default="today", max_length=8)
 
 
+@app.get("/api/fresh-start")
+def api_fresh_start_preview(init=Header(default=None,
+                                        alias="X-Telegram-Init-Data")):
+    """What a reset would touch, before anything is touched.
+
+    The confirmation names a real number of real tasks, and each mode says what
+    happens to them. Nothing here writes.
+    """
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        row = s.get(User, user.telegram_id)
+        state = svc.break_state(s, ws, row)
+    return {"overdue": state["overdue"], "days_away": state["days_away"],
+            "modes": list(svc.FRESH_START_MODES)}
+
+
 @app.post("/api/fresh-start")
 def api_fresh_start(body: FreshStartIn,
                     init=Header(default=None, alias="X-Telegram-Init-Data")):
-    """Clear a backlog built up during a break, in one decision."""
-    _, ws = auth(init)
-    mode = body.mode if body.mode in ("today", "archive") else "today"
+    """Clear a backlog built up during a break, in one decision.
+
+    No mode deletes anything: tasks are moved, un-dated or archived. That is
+    what lets the confirmation promise the history is intact.
+    """
+    user, ws = auth(init)
+    mode = body.mode if body.mode in svc.FRESH_START_MODES else "today"
     with SessionLocal() as s:
-        moved = svc.fresh_start(s, ws, mode=mode)
+        moved = svc.fresh_start(s, ws, mode=mode, tz=svc.user_tz(user))
     return {"ok": True, "moved": moved, "mode": mode}
 
 
@@ -2682,12 +3244,28 @@ def api_review_save(body: ReviewIn,
 
 @app.get("/api/stats")
 def api_stats(period: str = "week", init=Header(default=None, alias="X-Telegram-Init-Data")):
-    """Daily series for the habit and prayer line charts, plus streaks."""
-    _, ws = auth(init)
+    """Series for the task, habit, prayer and overall charts, plus streaks."""
+    user, ws = auth(init)
     if period not in ("week", "month", "year"):
         period = "week"
     with SessionLocal() as s:
-        return svc.stats(s, ws, period)
+        return svc.stats(s, ws, period, gender=user.gender,
+                         tz=svc.user_tz(user))
+
+
+@app.get("/api/overall")
+def api_overall(day: str | None = None,
+                init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """How today's percentage was arrived at, component by component.
+
+    This is what the info button on the number opens. It comes from the same
+    functions that produce the number, so the explanation cannot drift from the
+    thing it explains.
+    """
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        return svc.overall_explain(s, ws, s.get(User, user.telegram_id),
+                                   _date(day))
 
 
 @app.post("/api/stats/export")
@@ -2706,9 +3284,10 @@ async def api_stats_export(period: str = "month",
         raise HTTPException(status_code=503, detail="bot_unavailable")
 
     with SessionLocal() as s:
-        body = svc.stats_csv(s, ws, period)
+        body = svc.stats_csv(s, ws, period, gender=user.gender,
+                             tz=svc.user_tz(user))
 
-    stamp = datetime.now(svc.TZ).strftime("%Y-%m-%d")
+    stamp = datetime.now(svc.user_tz(user)).strftime("%Y-%m-%d")
     document = InputFile(body.encode("utf-8"),
                          filename=f"ernestos-{period}-{stamp}.csv")
     try:
@@ -2725,21 +3304,30 @@ async def api_stats_export(period: str = "month",
 def api_calendar(year: int | None = None, month: int | None = None,
                  init=Header(default=None, alias="X-Telegram-Init-Data")):
     """One month of task deadlines, project dates and birthdays."""
-    _, ws = auth(init)
-    today = svc.today_local()
+    user, ws = auth(init)
+    tz = svc.user_tz(user)
+    today = svc.today_local(tz)
     year, month = year or today.year, month or today.month
     if not 1 <= month <= 12 or not 2000 <= year <= 2100:
         raise HTTPException(status_code=422, detail="bad_month")
     with SessionLocal() as s:
-        return svc.calendar_month(s, ws, year, month)
+        return svc.calendar_month(s, ws, year, month, tz=tz)
 
 
 @app.get("/api/tasks/done")
-def api_tasks_done(init=Header(default=None, alias="X-Telegram-Init-Data")):
-    """The Done archive — completed tasks are kept, never deleted."""
-    _, ws = auth(init)
+def api_tasks_done(q: str = "", init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """The Done archive — completed tasks are kept, never deleted.
+
+    Grouped into today / this week / earlier, and searchable, because a flat
+    list of four hundred finished things is a place nothing can be found.
+    """
+    user, ws = auth(init)
     with SessionLocal() as s:
-        return {"tasks": svc.completed_tasks(s, ws)}
+        groups = svc.completed_tasks(s, ws, search=q[:100],
+                                     tz=svc.user_tz(user))
+    # `tasks` stays for anything still reading the old flat shape.
+    return {"groups": groups, "total": groups["total"],
+            "tasks": groups["today"] + groups["week"] + groups["earlier"]}
 
 
 @app.patch("/api/focus/{focus_id}")
@@ -2756,9 +3344,31 @@ def api_focus_edit(focus_id: int, body: FocusIn,
 
 @app.get("/api/birthdays")
 def api_birthdays(init=Header(default=None, alias="X-Telegram-Init-Data")):
-    _, ws = auth(init)
+    user, ws = auth(init)
     with SessionLocal() as s:
-        return {"birthdays": svc.list_birthdays(s, ws, within_days=366)}
+        return {"birthdays": svc.list_birthdays(s, ws, within_days=366,
+                                                tz=svc.user_tz(user))}
+
+
+class BirthdayPatch(BaseModel):
+    person_name: str | None = Field(default=None, max_length=200)
+    birth_date: str | None = Field(default=None, max_length=10)
+    note: str | None = Field(default=None, max_length=300)
+
+
+@app.patch("/api/birthdays/{birthday_id}")
+def api_birthday_patch(birthday_id: int, body: BirthdayPatch,
+                       init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    fields = body.model_dump(exclude_unset=True)
+    if "birth_date" in fields:
+        fields["birth_date"] = _date(fields["birth_date"])
+    with SessionLocal() as s:
+        try:
+            svc.update_birthday(s, ws, birthday_id, **fields)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    return {"ok": True}
 
 
 @app.post("/api/birthdays")
@@ -2803,10 +3413,114 @@ async def api_avatar(tgdata: str | None = None,
 
 @app.post("/api/wakeup")
 def api_wakeup(init=Header(default=None, alias="X-Telegram-Init-Data")):
-    """Mini App mirror of the bot's "Turdim" button."""
-    _, ws = auth(init)
+    """The Mini App's own "Turdim" button.
+
+    Identical to the bot's, through the same service function, so the button on
+    Home is the real thing rather than an instruction to go and use the chat.
+    """
+    user, ws = auth(init)
+    tz = svc.user_tz(user)
     with SessionLocal() as s:
-        return svc.mark_wakeup(s, ws)
+        result = svc.mark_wakeup(s, ws, tz=tz)
+        # The habit counters move with it, so Home can settle in one request.
+        habits_done, habits_total = svc.habit_progress(s, ws, svc.today_local(tz))
+        return {**result,
+                "habits": {"done": habits_done, "total": habits_total},
+                "streak": svc.habit_streak(s, ws, tz=tz)}
+
+
+class FeedbackIn(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+
+
+@app.post("/api/feedback")
+async def api_feedback(body: FeedbackIn,
+                       init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Send feedback from inside the Mini App.
+
+    Stored first, delivered second, and the response says which of those
+    actually happened — claiming "sent" for a message that never left would be
+    the one thing worse than no feedback button at all.
+    """
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        row = svc.save_feedback(s, ws, user.telegram_id, body.message)
+        feedback_id = row.id
+
+    delivered = False
+    if FEEDBACK_CHANNEL_ID and telegram_app is not None:
+        try:
+            await telegram_app.bot.send_message(
+                chat_id=FEEDBACK_CHANNEL_ID,
+                text=(f"<b>💬 ERNESTOS FEEDBACK</b>\n{_who(user)}\n"
+                      f"Date: {datetime.now(svc.user_tz(user)):%Y-%m-%d %H:%M}\n\n"
+                      f"{esc(body.message)}"),
+                parse_mode=ParseMode.HTML)
+            delivered = True
+        except TelegramError as e:
+            log.warning("mini app feedback delivery failed: %s", e)
+
+    if delivered:
+        with SessionLocal() as s:
+            svc.mark_feedback_delivered(s, feedback_id)
+    return {"ok": True, "delivered": delivered}
+
+
+@app.get("/api/export")
+def api_export(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Everything the user has written, as JSON.
+
+    Their data, on request, in full. Nothing is summarised away.
+    """
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        return svc.export_workspace(s, ws, s.get(User, user.telegram_id))
+
+
+@app.post("/api/export/send")
+async def api_export_send(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Deliver the export as a file in the bot chat.
+
+    The same route the CSV takes, and for the same reason: Telegram's in-app
+    browser blocks ordinary downloads, and a download URL carrying the
+    credential would leak it.
+    """
+    user, ws = auth(init)
+    if telegram_app is None:
+        raise HTTPException(status_code=503, detail="bot_unavailable")
+    with SessionLocal() as s:
+        payload = svc.export_workspace(s, ws, s.get(User, user.telegram_id))
+
+    stamp = datetime.now(svc.user_tz(user)).strftime("%Y-%m-%d")
+    document = InputFile(
+        json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8"),
+        filename=f"ernestos-data-{stamp}.json")
+    try:
+        await telegram_app.bot.send_document(
+            chat_id=user.telegram_id, document=document, caption="ErnestOS")
+    except TelegramError as e:
+        log.warning("export to %s failed: %s", user.telegram_id, e)
+        raise HTTPException(status_code=502, detail="delivery_failed")
+    return {"ok": True, "delivered": "telegram"}
+
+
+class DeleteAccountIn(BaseModel):
+    """The typed confirmation. A destructive action needs an explicit word, not
+    a second tap in the same place the first one was."""
+    confirm: str = Field(max_length=20)
+
+
+@app.post("/api/account/delete")
+def api_account_delete(body: DeleteAccountIn,
+                       init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Erase this account and everything in it. Irreversible, and it says so."""
+    user, _ = auth(init)
+    if body.confirm.strip().upper() != "DELETE":
+        raise HTTPException(status_code=422, detail="confirmation_required")
+    with SessionLocal() as s:
+        svc.delete_account(s, user.telegram_id)
+    log.info("account deleted on request: %s", user.telegram_id)
+    return {"ok": True, "deleted": True}
 
 
 class WakeTimeIn(BaseModel):

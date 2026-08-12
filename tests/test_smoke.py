@@ -10,6 +10,7 @@ prayer scoring and report idempotency.
 
 import hashlib
 import hmac
+import itertools
 import json
 import os
 import sys
@@ -109,6 +110,18 @@ def alice(client):
 @pytest.fixture()
 def bob(client):
     return Caller(client, BOB)
+
+
+#: Ids for throwaway users. Tests that archive habits, clear a day or delete an
+#: account must not do it inside a workspace another test relies on, so they get
+#: their own instead of sharing alice's.
+_next_id = itertools.count(700_001)
+
+
+@pytest.fixture()
+def fresh(client):
+    """A caller with a workspace of its own, in the default six-habit state."""
+    return Caller(client, {"id": next(_next_id), "first_name": "Fresh"})
 
 
 # --------------------------------------------------------------------------
@@ -214,8 +227,8 @@ def test_unknown_category_falls_back_to_target(alice):
     assert "Stretching" in [h["name"] for h in grouped["target"]]
 
 
-def test_default_theme_is_cobalt(alice):
-    assert alice.get("/api/me").json()["theme"] == "cobalt"
+def test_default_theme_is_ocean(alice):
+    assert alice.get("/api/me").json()["theme"] == "ocean"
 
 
 def test_protected_habit_cannot_be_toggled(alice):
@@ -328,8 +341,18 @@ def test_prayer_is_scored_out_of_five():
     assert svc.prayer_score({p: "on_time" for p in svc.PRAYERS}, "male") == 5.0
 
 
-def test_female_excused_day_scores_exactly_the_threshold():
-    assert svc.prayer_score({}, "female", excused=True) == svc.PRAYER_DONE_THRESHOLD
+def test_female_excused_day_counts_as_a_full_day():
+    """An excused day is fulfilled, not half-fulfilled.
+
+    It used to score 2.5 because 2.5 was the completion threshold, which made
+    an excused day read as 50% everywhere a percentage was shown. Completion is
+    now a separate question from quality, so the day is complete *and* scores as
+    a full one.
+    """
+    assert svc.prayer_score({}, "female", excused=True) == svc.PRAYER_MAX_SCORE
+    assert svc.prayer_is_complete({}, "female", excused=True) is True
+    # A male user has no excused day, so the flag cannot fulfil one.
+    assert svc.prayer_is_complete({}, "male", excused=True) is False
 
 
 def test_excused_is_rejected_for_male_users(alice):
@@ -337,12 +360,70 @@ def test_excused_is_rejected_for_male_users(alice):
     assert alice.post("/api/prayers/excused", json={"excused": True}).status_code == 422
 
 
-def test_setting_prayers_marks_the_protected_habit_done(alice):
+def _prayer_habit(alice) -> dict:
+    habits = alice.get("/api/habits").json()["habits"]
+    return next(h for h in habits if h["name"] == "5x namoz")
+
+
+def test_three_prayers_do_not_complete_a_five_prayer_habit(alice):
+    """The bug this replaces: score >= 2.5 marked "5x namoz" done.
+
+    Three on-time prayers scored 3.0, cleared the old 2.5 threshold, and the
+    app told the user they had prayed five times. Completion is now the count,
+    not the score.
+    """
     alice.post("/api/settings", json={"gender": "male"})
     for prayer in ["bomdod", "peshin", "asr"]:
         alice.post("/api/prayers", json={"prayer": prayer, "status": "on_time"})
-    habits = alice.get("/api/habits").json()["habits"]
-    assert next(h for h in habits if h["name"] == "5x namoz")["done"] is True
+    state = alice.get("/api/prayers").json()
+    assert state["performed"] == 3
+    assert state["score"] == 3.0          # the quality number still moves
+    assert state["complete"] is False
+    assert _prayer_habit(alice)["done"] is False
+
+
+def test_all_five_prayers_complete_the_habit(alice):
+    alice.post("/api/settings", json={"gender": "male"})
+    for prayer in svc.PRAYERS:
+        alice.post("/api/prayers", json={"prayer": prayer, "status": "on_time"})
+    assert alice.get("/api/prayers").json()["complete"] is True
+    assert _prayer_habit(alice)["done"] is True
+
+
+def test_a_late_prayer_still_counts_towards_the_five(alice):
+    """Qaza is prayed late, not skipped, so it fills the slot at half quality."""
+    alice.post("/api/settings", json={"gender": "male"})
+    for prayer in svc.PRAYERS:
+        alice.post("/api/prayers", json={"prayer": prayer, "status": "qaza"})
+    state = alice.get("/api/prayers").json()
+    assert state["performed"] == 5 and state["complete"] is True
+    assert state["score"] == 2.5
+    assert _prayer_habit(alice)["done"] is True
+
+
+def test_a_missed_prayer_does_not_count_towards_the_five(alice):
+    alice.post("/api/settings", json={"gender": "male"})
+    for prayer in svc.PRAYERS[:4]:
+        alice.post("/api/prayers", json={"prayer": prayer, "status": "on_time"})
+    alice.post("/api/prayers", json={"prayer": svc.PRAYERS[4], "status": "missed"})
+    state = alice.get("/api/prayers").json()
+    assert state["performed"] == 4 and state["complete"] is False
+    assert _prayer_habit(alice)["done"] is False
+
+
+def test_a_prayer_entry_can_be_undone(alice):
+    """A mis-tap has to be reversible, and clearing must move the count back."""
+    alice.post("/api/settings", json={"gender": "male"})
+    # Start from a known day: the fixtures share one workspace across tests.
+    for prayer in svc.PRAYERS:
+        alice.post("/api/prayers/clear", json={"prayer": prayer})
+    alice.post("/api/prayers", json={"prayer": "bomdod", "status": "on_time"})
+    assert alice.get("/api/prayers").json()["performed"] == 1
+
+    body = alice.post("/api/prayers/clear", json={"prayer": "bomdod"}).json()
+    assert body["prayers"]["bomdod"] is None
+    assert body["performed"] == 0
+    assert _prayer_habit(alice)["done"] is False
 
 
 def test_prayer_status_outside_the_gender_set_is_rejected(alice):
@@ -385,10 +466,24 @@ def _clear_missions(telegram_id: int) -> None:
         s.commit()
 
 
-def test_the_week_holds_exactly_one_mission(alice):
+def test_the_week_holds_one_primary_and_two_supporting(alice):
+    """One dominant mission, two priorities beside it, and no fourth."""
     _clear_missions(ALICE["id"])
     assert alice.post("/api/focus", json={"title": "the one"}).status_code == 200
-    assert alice.post("/api/focus", json={"title": "second"}).status_code == 422
+    assert alice.post("/api/focus", json={"title": "second"}).status_code == 200
+    assert alice.post("/api/focus", json={"title": "third"}).status_code == 200
+    assert alice.post("/api/focus", json={"title": "fourth"}).status_code == 422
+
+
+def test_the_primary_mission_is_the_first_slot(alice):
+    """The hierarchy lives in the slot number, so every surface agrees."""
+    _clear_missions(ALICE["id"])
+    alice.post("/api/focus", json={"title": "primary"})
+    alice.post("/api/focus", json={"title": "supporting"})
+    week = alice.get("/api/focus").json()["week"]
+    assert week["primary"]["title"] == "primary"
+    assert [x["title"] for x in week["supporting"]] == ["supporting"]
+    assert alice.get("/api/home").json()["mission"]["title"] == "primary"
 
 
 def test_a_mission_defaults_to_medium_importance(alice):
@@ -582,12 +677,25 @@ def test_the_privacy_line_is_one_fixed_strip():
     html = (ROOT / "webapp" / "index.html").read_text()
     assert html.count('class="privacy-strip"') == 1
     assert "privacyNote" not in html, "per-page privacy cards are back"
-    for lang, phrase in (("uz", "maxfiyligingiz to'liq himoyalangan"),
-                         ("en", "Your data and privacy are fully protected"),
-                         ("ru", "конфиденциальность полностью защищены")):
+    for lang, phrase in (("uz", "boshqa foydalanuvchilardan alohida saqlanadi"),
+                         ("en", "stored separately from every other user"),
+                         ("ru", "хранятся отдельно от других пользователей")):
         assert phrase in html, f"{lang} privacy line missing"
-        assert phrase in application.t(lang, "privacy_line") or \
-            phrase.replace("'", "'") in application.t(lang, "privacy_line")
+        assert phrase in application.t(lang, "privacy_line")
+
+
+def test_the_privacy_line_promises_only_isolation(alice):
+    """No absolute promise anywhere, in either surface.
+
+    "Your data and privacy are fully protected" is a claim nobody can keep: an
+    administrator can read the database. What is actually true and worth saying
+    is that one user cannot reach another's rows — which the isolation tests
+    above prove.
+    """
+    text = ((ROOT / "webapp" / "index.html").read_text()
+            + (ROOT / "app.py").read_text()).lower()
+    for claim in ("fully protected", "to'liq himoyalangan", "полностью защищены"):
+        assert claim not in text, f"absolute privacy promise: {claim!r}"
 
 
 def test_the_privacy_claim_stays_within_what_is_implemented():
@@ -697,30 +805,80 @@ def _set_theme(telegram_id: int, value: str) -> None:
 def test_every_offered_theme_is_one_the_mini_app_styles():
     """The picker and the stylesheet must not be able to disagree."""
     styled = (ROOT / "webapp" / "index.html").read_text()
-    assert application.THEMES == ["cobalt", "slate", "blossom", "oxford", "aurora"]
+    assert application.THEMES == ["ocean", "pure", "midnight", "sage", "aurora"]
     for name in application.THEMES:
         assert f'"{name}"' in styled, f"{name} is offered but never styled"
+    # And each one appears in the picker's own list, not only in the CSS.
+    picker = styled[styled.index("const THEMES = ["):styled.index("const THEME_NAMES")]
+    assert [line.split('id:"')[1].split('"')[0]
+            for line in picker.splitlines() if 'id:"' in line] == application.THEMES
 
 
-def test_every_theme_declares_exactly_five_colours():
-    """A theme is five colours; anything else belongs in the derived block.
+def test_every_theme_declares_the_same_five_colours():
+    """A theme's colour decision is exactly five names, every time.
 
-    `cobalt` lives in `:root` alongside the derivations, so it is checked by
-    the presence of its five names rather than by counting.
+    `ocean` lives in `:root` alongside the derived tokens, so it is checked by
+    the presence of its five names rather than by counting a block.
     """
     import re
 
     styled = (ROOT / "webapp" / "index.html").read_text()
-    for name in ("slate", "blossom", "aurora"):
+    expected = ["--c-accent", "--c-bg", "--c-flow", "--c-signal", "--c-surface"]
+
+    def declared(block: str) -> list[str]:
+        """Only the five being *set*.
+
+        A theme block now also mentions them inside its structural tokens —
+        `--btn-bg:var(--c-accent)` — so a bare name search would count a
+        reference as a sixth colour.
+        """
+        return sorted(set(re.findall(r"(--c-[a-z]+)\s*:", block)))
+
+    for name in ("pure", "midnight", "sage", "aurora"):
+        block = re.search(r'\[data-theme="%s"\]\s*\{(.*?)\n\}' % name,
+                          styled, re.S).group(1)
+        assert declared(block) == expected, name
+    root = re.search(r":root\{(.*?)\n\}", styled, re.S).group(1)
+    assert declared(root) == expected, "ocean"
+
+
+def test_a_theme_is_more_than_a_palette():
+    """Each theme also sets structure, or it is only a hue swap.
+
+    The point of the five is that they feel different, not that they are
+    different colours: radius, shadow, gradient policy and type weight are what
+    carry that, so every theme block has to make those decisions too.
+    """
+    import re
+
+    styled = (ROOT / "webapp" / "index.html").read_text()
+    for name in ("pure", "midnight", "sage", "aurora"):
         block = re.search(r'\[data-theme="%s"\]\s*\{(.*?)\}' % name,
                           styled, re.S).group(1)
-        assert sorted(re.findall(r"--c-[a-z]+", block)) == [
-            "--c-accent", "--c-bg", "--c-flow", "--c-signal", "--c-surface"]
+        structural = [token for token in ("--r:", "--shadow:", "--glow:",
+                                         "--h1-weight:", "--lift:")
+                      if token in block]
+        assert len(structural) >= 4, f"{name} only changes colour: {structural}"
+
+
+def test_a_theme_that_commits_to_light_or_dark_says_so():
+    """pure and sage are light by design; midnight and aurora are dark.
+
+    A "warm, calm, low-contrast" theme rendered near-black is not that theme, so
+    those four ignore the phone's setting — and the picker has to declare which,
+    or the appearance control silently does nothing.
+    """
+    styled = (ROOT / "webapp" / "index.html").read_text()
+    picker = styled[styled.index("const THEMES = ["):styled.index("const THEME_NAMES")]
+    modes = dict(re.findall(r'id:"(\w+)".*?mode:"(\w+)"', picker)) \
+        if (re := __import__("re")) else {}
+    assert modes == {"ocean": "both", "pure": "light", "midnight": "dark",
+                     "sage": "light", "aurora": "dark"}
 
 
 def test_a_retired_theme_reads_as_the_default(alice):
     _set_theme(ALICE["id"], "pink")
-    assert alice.get("/api/me").json()["theme"] == "cobalt"
+    assert alice.get("/api/me").json()["theme"] == "ocean"
 
 
 def test_the_migration_moves_a_retired_theme_to_its_closest_survivor(alice):
@@ -1180,8 +1338,9 @@ def test_stats_csv_contains_the_daily_series(alice):
     with SessionLocal() as s:
         ws = svc.workspace_id_for(s, ALICE["id"])
         body = svc.stats_csv(s, ws, "week")
-    assert "date,habits %,prayer %" in body
+    assert "date,overall %,tasks %,habits %,prayer %" in body
     assert "habit streak" in body
+    assert "task average %" in body
     assert body.count("\n") > 10
 
 
@@ -1568,10 +1727,21 @@ def test_home_groups_todays_tasks_by_project(alice):
     assert groups[0]["tasks"][0]["title"] == "IN PROJECT"
 
 
-def test_home_no_longer_carries_the_removed_sections(alice):
+def test_home_does_not_carry_the_removed_modules(alice):
     body = alice.get("/api/home").json()
-    for key in ("goals", "projects", "birthdays", "now", "top3", "focus"):
+    for key in ("goals", "projects", "money", "notes", "contacts"):
         assert key not in body, f"Home still ships {key}"
+
+
+def test_home_answers_what_now_before_anything_else(alice):
+    """Home's first job is one action, so the payload has to carry one."""
+    body = alice.get("/api/home").json()
+    assert "now" in body
+    assert body["now"]["kind"] in {"wake", "task", "habit", "prayer",
+                                   "journal", "clear"}
+    # And the pieces the screen is built from, each deliberately singular.
+    for key in ("top3", "focus", "week", "wake", "break"):
+        assert key in body, f"Home is missing {key}"
 
 
 def test_home_writes_the_date_in_the_users_language(alice):
@@ -1750,8 +1920,1319 @@ def test_onboarding_starts_at_language():
         assert s.get(User, 808001).onboarding_step == "language"
 
 
-def test_phone_and_gender_are_not_onboarding_steps():
-    """They live in Settings and in the prayer screen respectively."""
+def test_onboarding_is_language_then_phone_then_channel():
+    """Three steps, in that order, and nothing else.
+
+    Phone is asked because it is what account recovery is keyed on, and the
+    prompt explains that. It is skippable, so it cannot become a wall.
+    """
+    assert application.ONBOARDING_STEPS == ["language", "phone", "subscribe", "done"]
     source = (ROOT / "app.py").read_text()
-    assert 'user.onboarding_step = "phone"' not in source
+    assert 'user.onboarding_step = "phone"' in source
+    assert 'user.onboarding_step = "subscribe"' in source
+
+
+def test_gender_is_not_an_onboarding_step():
+    """It is asked the first time prayer needs it, with the reason attached."""
+    source = (ROOT / "app.py").read_text()
     assert 'user.onboarding_step = "gender"' not in source
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert "ask_gender_why" in html, "the prayer screen must explain why it asks"
+
+
+def test_the_phone_step_can_be_skipped():
+    """Skip is offered in every language, so the step cannot strand anyone."""
+    source = (ROOT / "app.py").read_text()
+    assert 'if step == "phone":' in source
+    assert 't(code, "btn_skip") for code in ("uz", "en", "ru")' in source
+    for lang in ("uz", "en", "ru"):
+        assert application.t(lang, "btn_skip")
+        assert application.t(lang, "phone_why")
+
+
+# ==========================================================================
+# Habit schedules — a habit that was not due today was not failed today
+# ==========================================================================
+
+def _ws(telegram_id: int) -> int:
+    with SessionLocal() as s:
+        return svc.workspace_id_for(s, telegram_id)
+
+
+def _set_schedule(telegram_id: int, name: str, schedule: str) -> int:
+    from sqlalchemy import select
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, telegram_id)
+        habit = s.scalar(select(db.Habit).where(
+            db.Habit.workspace_id == ws, db.Habit.name == name))
+        habit.schedule = schedule
+        s.commit()
+        return habit.id
+
+
+def _only_habit(telegram_id: int, name: str, schedule: str) -> int:
+    """Leave exactly one active habit, on the given schedule.
+
+    Progress is a fraction, so a clean denominator is the only way to assert
+    on it without the six defaults muddying the arithmetic.
+    """
+    from sqlalchemy import select
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, telegram_id)
+        for habit in s.scalars(select(db.Habit).where(
+                db.Habit.workspace_id == ws)).all():
+            habit.archived_at = db.utcnow()
+        kept = db.Habit(workspace_id=ws, name=name, category="target",
+                        position=1, schedule=schedule)
+        s.add(kept)
+        s.commit()
+        return kept.id
+
+
+@pytest.mark.parametrize("schedule,expected", [
+    ("daily", [0, 1, 2, 3, 4, 5, 6]),
+    ("weekdays", [0, 1, 2, 3, 4]),
+    ("days:0,2,4", [0, 2, 4]),
+    ("days:4,0,2", [0, 2, 4]),        # order is normalised
+    ("days:", [0, 1, 2, 3, 4, 5, 6]),  # empty means every day
+    ("nonsense", [0, 1, 2, 3, 4, 5, 6]),
+])
+def test_a_schedule_resolves_to_the_days_it_names(schedule, expected):
+    assert svc.schedule_days(schedule) == expected
+
+
+def test_a_habit_written_before_schedules_existed_is_daily():
+    """NULL must read as "every day", or the upgrade silently pauses habits."""
+    assert svc.clean_schedule(None) == "daily"
+    assert svc.schedule_days(None) == [0, 1, 2, 3, 4, 5, 6]
+
+
+def test_an_off_day_is_not_counted_against_the_user(fresh):
+    """Gym on Mon/Wed/Fri must not cost anything on a Tuesday.
+
+    This is the scenario the schedule exists for: before it, every habit was
+    due every day, so a three-day-a-week habit failed four times a week.
+    """
+    habit_id = _only_habit(fresh.user["id"], "Gym", "days:0,2,4")
+    ws = _ws(fresh.user["id"])
+    with SessionLocal() as s:
+        monday = svc.week_start(svc.today_local())
+        tuesday = monday + timedelta(days=1)
+        assert svc.habit_progress(s, ws, monday) == (0, 1)   # due, not done
+        assert svc.habit_progress(s, ws, tuesday) == (0, 0)  # not due at all
+
+
+def test_a_day_with_nothing_scheduled_does_not_break_the_streak(fresh):
+    """A weekday-only habit must survive the weekend."""
+    _only_habit(fresh.user["id"], "Deep work", "weekdays")
+    ws = _ws(fresh.user["id"])
+    with SessionLocal() as s:
+        from sqlalchemy import select
+        habit = s.scalar(select(db.Habit).where(
+            db.Habit.workspace_id == ws, db.Habit.archived_at.is_(None)))
+        # Tick every weekday of the last three weeks, and nothing else.
+        today = svc.today_local()
+        for offset in range(21):
+            day = today - timedelta(days=offset)
+            if day.weekday() < 5:
+                s.add(db.HabitLog(workspace_id=ws, habit_id=habit.id,
+                                  day=day, done=True))
+        s.commit()
+        # The streak has to cross at least two weekends to prove the point.
+        assert svc.habit_streak(s, ws) >= 14
+
+
+def test_a_paused_habit_leaves_the_denominator_but_keeps_its_logs(fresh):
+    habit_id = _only_habit(fresh.user["id"], "Swim", "daily")
+    ws = _ws(fresh.user["id"])
+    today = svc.today_local()
+    with SessionLocal() as s:
+        s.add(db.HabitLog(workspace_id=ws, habit_id=habit_id,
+                          day=today - timedelta(days=1), done=True))
+        s.commit()
+        assert svc.habit_progress(s, ws, today) == (0, 1)
+
+    assert fresh.post(f"/api/habits/{habit_id}/pause",
+                      json={"paused": True}).json()["paused"] is True
+    with SessionLocal() as s:
+        assert svc.habit_progress(s, ws, today) == (0, 0)
+        # The history is untouched — that is the difference from deleting.
+        assert svc.habit_progress(s, ws, today - timedelta(days=1)) == (0, 0)
+        from sqlalchemy import func, select
+        assert s.scalar(select(func.count(db.HabitLog.id)).where(
+            db.HabitLog.habit_id == habit_id)) == 1
+
+    assert fresh.post(f"/api/habits/{habit_id}/pause",
+                      json={"paused": False}).json()["paused"] is False
+    with SessionLocal() as s:
+        assert svc.habit_progress(s, ws, today) == (0, 1)
+
+
+def test_a_habit_can_be_renamed_and_rescheduled(fresh):
+    habit_id = _only_habit(fresh.user["id"], "Old name", "daily")
+    assert fresh.patch(f"/api/habits/{habit_id}",
+                       json={"name": "New name", "schedule": "weekdays",
+                             "remind_at": "07:30"}).status_code == 200
+    row = next(h for h in fresh.get("/api/habits").json()["habits"]
+               if h["id"] == habit_id)
+    assert row["name"] == "New name"
+    assert row["schedule"] == "weekdays"
+    assert row["remind_at"] == "07:30"
+
+
+def test_a_derived_habit_cannot_be_renamed(fresh):
+    """Its name is the contract with the module that drives it."""
+    habits = fresh.get("/api/habits").json()["habits"]
+    prayer = next(h for h in habits if h["system_key"] == "prayer")
+    assert fresh.patch(f"/api/habits/{prayer['id']}",
+                       json={"name": "anything"}).status_code == 400
+
+
+def test_habit_history_counts_only_the_days_it_was_due(fresh):
+    """"How often I did it when I meant to", not a number diluted by off days."""
+    habit_id = _only_habit(fresh.user["id"], "Read", "days:0")   # Mondays only
+    ws = _ws(fresh.user["id"])
+    with SessionLocal() as s:
+        today = svc.today_local()
+        for offset in range(30):
+            day = today - timedelta(days=offset)
+            if day.weekday() == 0:
+                s.add(db.HabitLog(workspace_id=ws, habit_id=habit_id,
+                                  day=day, done=True))
+        s.commit()
+    body = fresh.get(f"/api/habits/{habit_id}/history").json()
+    assert body["last30_due"] in (4, 5)          # Mondays in a 30-day window
+    assert body["last30_done"] == body["last30_due"]
+    assert body["percent"] == 100
+    assert sum(1 for g in body["grid"] if g["due"]) == body["last30_due"]
+
+
+def test_habit_history_is_private_to_the_workspace(alice, bob):
+    habit_id = alice.get("/api/habits").json()["habits"][0]["id"]
+    assert bob.get(f"/api/habits/{habit_id}/history").status_code == 404
+
+
+def test_a_habit_cannot_be_paused_from_another_workspace(alice, bob):
+    habit_id = alice.get("/api/habits").json()["habits"][0]["id"]
+    assert bob.post(f"/api/habits/{habit_id}/pause",
+                    json={"paused": True}).status_code == 404
+
+
+# ==========================================================================
+# Recurrence — ticking one off must not end the series
+# ==========================================================================
+
+@pytest.mark.parametrize("rule,start,expected", [
+    ("daily",    date(2026, 8, 12), date(2026, 8, 13)),
+    ("weekly",   date(2026, 8, 12), date(2026, 8, 19)),
+    ("monthly",  date(2026, 8, 12), date(2026, 9, 12)),
+    ("monthly",  date(2026, 1, 31), date(2026, 2, 28)),   # clamped, not an error
+    ("monthly",  date(2026, 12, 15), date(2027, 1, 15)),  # year rolls over
+    ("weekdays", date(2026, 8, 14), date(2026, 8, 17)),   # Friday -> Monday
+    ("days:0,2,4", date(2026, 8, 12), date(2026, 8, 14)),  # Wed -> Fri
+])
+def test_the_next_occurrence_is_the_next_matching_date(rule, start, expected):
+    assert svc.next_occurrence(rule, start) == expected
+
+
+def test_a_one_off_task_has_no_next_occurrence():
+    for value in (None, "", "nonsense"):
+        assert svc.next_occurrence(value, date(2026, 8, 12)) is None
+
+
+def test_completing_a_recurring_task_creates_the_next_one(alice):
+    today = svc.today_local().isoformat()
+    task_id = alice.post("/api/tasks", json={
+        "title": "Standup", "deadline": today, "recurrence": "daily",
+        "due_time": "09:30", "remind_before": 10}).json()["id"]
+
+    alice.patch(f"/api/tasks/{task_id}", json={"status": "done"})
+
+    open_tasks = alice.get("/api/tasks?days=365").json()
+    upcoming = [x for x in open_tasks["upcoming"] + open_tasks["later"]
+                if x["title"] == "Standup"]
+    assert len(upcoming) == 1, "the recurrence was consumed by one tick"
+    nxt = upcoming[0]
+    assert nxt["deadline"] == (svc.today_local() + timedelta(days=1)).isoformat()
+    # The whole shape carries forward, not just the title.
+    assert nxt["recurrence"] == "daily"
+    assert nxt["due_time"] == "09:30"
+    assert nxt["remind_before"] == 10
+    # And the finished occurrence keeps its own completion date.
+    assert any(x["title"] == "Standup"
+               for x in alice.get("/api/tasks/done").json()["tasks"])
+
+
+def test_completing_the_same_task_twice_does_not_double_the_series(alice):
+    today = svc.today_local().isoformat()
+    task_id = alice.post("/api/tasks", json={
+        "title": "Once only", "deadline": today,
+        "recurrence": "daily"}).json()["id"]
+    alice.patch(f"/api/tasks/{task_id}", json={"status": "done"})
+    alice.patch(f"/api/tasks/{task_id}", json={"status": "done"})
+    data = alice.get("/api/tasks?days=365").json()
+    assert len([x for x in data["upcoming"] + data["later"]
+                if x["title"] == "Once only"]) == 1
+
+
+def test_a_recurring_task_completed_after_a_long_gap_lands_in_the_future(alice):
+    """No run of overdue clones after a month away."""
+    old = (svc.today_local() - timedelta(days=40)).isoformat()
+    task_id = alice.post("/api/tasks", json={
+        "title": "Weekly review", "deadline": old,
+        "recurrence": "weekly"}).json()["id"]
+    alice.patch(f"/api/tasks/{task_id}", json={"status": "done"})
+    data = alice.get("/api/tasks?days=365").json()
+    nxt = next(x for x in data["upcoming"] + data["later"]
+               if x["title"] == "Weekly review")
+    assert nxt["deadline"] >= svc.today_local().isoformat()
+    assert not [x for x in data["overdue"] if x["title"] == "Weekly review"]
+
+
+# ==========================================================================
+# Task time, reminders and rescheduling
+# ==========================================================================
+
+def test_a_task_can_carry_a_time_and_stay_all_day_without_one(alice):
+    today = svc.today_local().isoformat()
+    timed = alice.post("/api/tasks", json={
+        "title": "Call", "deadline": today, "due_time": "14:30"}).json()["id"]
+    plain = alice.post("/api/tasks", json={
+        "title": "Errand", "deadline": today}).json()["id"]
+    rows = {x["id"]: x for x in alice.get("/api/tasks").json()["upcoming"]}
+    assert rows[timed]["due_time"] == "14:30"
+    assert rows[plain]["due_time"] is None
+
+
+def test_a_bad_time_is_refused_without_leaking_internals(alice):
+    r = alice.post("/api/tasks", json={"title": "x", "due_time": "99:99"})
+    assert r.status_code == 422 and r.json()["detail"] == "bad_time"
+
+
+def test_a_reminder_fires_once_inside_its_window(alice):
+    ws = _ws(ALICE["id"])
+    today = svc.today_local()
+    task_id = alice.post("/api/tasks", json={
+        "title": "Meeting", "deadline": today.isoformat(),
+        "due_time": "15:00", "remind_before": 10}).json()["id"]
+
+    with SessionLocal() as s:
+        user = s.get(User, ALICE["id"])
+        early = datetime.combine(today, dtime(14, 30))
+        assert svc.due_task_reminders(s, ws, user, early) == []
+
+        at = datetime.combine(today, dtime(14, 50))
+        due = svc.due_task_reminders(s, ws, user, at)
+        assert [x["id"] for x in due] == [task_id]
+
+        svc.mark_reminder_sent(s, ws, task_id)
+        assert svc.due_task_reminders(s, ws, user, at) == []
+
+
+def test_no_reminder_is_sent_for_a_task_already_done(alice):
+    """The point of the reminder has passed; sending it teaches people to mute."""
+    today = svc.today_local()
+    task_id = alice.post("/api/tasks", json={
+        "title": "Done early", "deadline": today.isoformat(),
+        "due_time": "16:00", "remind_before": 0}).json()["id"]
+    alice.patch(f"/api/tasks/{task_id}", json={"status": "done"})
+    with SessionLocal() as s:
+        at = datetime.combine(today, dtime(16, 0))
+        due = svc.due_task_reminders(s, _ws(ALICE["id"]), s.get(User, ALICE["id"]), at)
+    assert task_id not in [x["id"] for x in due]
+
+
+def test_reminders_respect_the_user_switch(alice):
+    today = svc.today_local()
+    alice.post("/api/tasks", json={"title": "Muted", "deadline": today.isoformat(),
+                                   "due_time": "11:00", "remind_before": 0})
+    alice.post("/api/prefs", json={"task_reminders": False})
+    with SessionLocal() as s:
+        at = datetime.combine(today, dtime(11, 0))
+        assert svc.due_task_reminders(s, _ws(ALICE["id"]),
+                                      s.get(User, ALICE["id"]), at) == []
+    alice.post("/api/prefs", json={"task_reminders": True})
+
+
+def test_habit_reminders_are_off_by_default_and_fire_in_one_window(fresh):
+    habit_id = _only_habit(fresh.user["id"], "Stretch", "daily")
+    fresh.patch(f"/api/habits/{habit_id}", json={"remind_at": "08:00"})
+    today = svc.today_local()
+    at = datetime.combine(today, dtime(8, 0))
+
+    with SessionLocal() as s:
+        user = s.get(User, fresh.user["id"])
+        # Opt-in: a daily nudge nobody asked for is how an app gets muted.
+        assert svc.prefs_for(user)["habit_reminders"] is False
+        assert svc.due_habit_reminders(s, _ws(fresh.user["id"]), user, at) == []
+
+    fresh.post("/api/prefs", json={"habit_reminders": True})
+    with SessionLocal() as s:
+        user = s.get(User, fresh.user["id"])
+        ws = _ws(fresh.user["id"])
+        assert len(svc.due_habit_reminders(s, ws, user, at)) == 1
+        # Exactly one job interval wide: there is nothing to mark as sent, so a
+        # wider window would repeat the nudge on every pass.
+        outside = at + svc.HABIT_REMINDER_WINDOW
+        assert svc.due_habit_reminders(s, ws, user, outside) == []
+    fresh.post("/api/prefs", json={"habit_reminders": False})
+
+
+@pytest.mark.parametrize("when,offset", [
+    ("today", 0), ("tomorrow", 1), ("week", 7),
+])
+def test_an_overdue_task_moves_with_one_tap(alice, when, offset):
+    old = (svc.today_local() - timedelta(days=5)).isoformat()
+    task_id = alice.post("/api/tasks", json={"title": "Late",
+                                            "deadline": old}).json()["id"]
+    body = alice.post(f"/api/tasks/{task_id}/reschedule",
+                      json={"when": when}).json()
+    assert body["deadline"] == (svc.today_local() + timedelta(days=offset)).isoformat()
+
+
+def test_an_overdue_task_can_lose_its_date_entirely(alice):
+    old = (svc.today_local() - timedelta(days=5)).isoformat()
+    task_id = alice.post("/api/tasks", json={"title": "Someday",
+                                            "deadline": old}).json()["id"]
+    assert alice.post(f"/api/tasks/{task_id}/reschedule",
+                      json={"when": "none"}).json()["deadline"] is None
+
+
+def test_rescheduling_is_scoped_to_the_owner(alice, bob):
+    task_id = alice.post("/api/tasks", json={"title": "Mine"}).json()["id"]
+    assert bob.post(f"/api/tasks/{task_id}/reschedule",
+                    json={"when": "today"}).status_code == 404
+
+
+def test_an_unknown_reschedule_target_is_refused(alice):
+    task_id = alice.post("/api/tasks", json={"title": "x"}).json()["id"]
+    assert alice.post(f"/api/tasks/{task_id}/reschedule",
+                      json={"when": "someday"}).status_code == 422
+
+
+# ==========================================================================
+# Today's top three
+# ==========================================================================
+
+def _clear_top3(telegram_id: int) -> None:
+    from sqlalchemy import select
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, telegram_id)
+        for task in s.scalars(select(db.Task).where(
+                db.Task.workspace_id == ws)).all():
+            task.focus_day = None
+        s.commit()
+
+
+def test_three_can_be_picked_and_a_fourth_cannot(alice):
+    _clear_top3(ALICE["id"])
+    ids = [alice.post("/api/tasks", json={"title": f"T{n}"}).json()["id"]
+           for n in range(4)]
+    for task_id in ids[:3]:
+        assert alice.post(f"/api/tasks/{task_id}/top3",
+                          json={"picked": True}).status_code == 200
+    r = alice.post(f"/api/tasks/{ids[3]}/top3", json={"picked": True})
+    assert r.status_code == 409 and r.json()["detail"] == "top3_full"
+
+
+def test_unpicking_frees_a_slot(alice):
+    _clear_top3(ALICE["id"])
+    ids = [alice.post("/api/tasks", json={"title": f"S{n}"}).json()["id"]
+           for n in range(4)]
+    for task_id in ids[:3]:
+        alice.post(f"/api/tasks/{task_id}/top3", json={"picked": True})
+    alice.post(f"/api/tasks/{ids[0]}/top3", json={"picked": False})
+    assert alice.post(f"/api/tasks/{ids[3]}/top3",
+                      json={"picked": True}).status_code == 200
+
+
+def test_picking_a_task_for_today_also_dates_it_today(alice):
+    """Calling something one of today's three says it is due today."""
+    _clear_top3(ALICE["id"])
+    task_id = alice.post("/api/tasks", json={"title": "Undated"}).json()["id"]
+    alice.post(f"/api/tasks/{task_id}/top3", json={"picked": True})
+    picked = next(x for x in alice.get("/api/home").json()["top3"]
+                  if x["id"] == task_id)
+    assert picked["deadline"] == svc.today_local().isoformat()
+
+
+def test_a_picked_task_is_not_listed_twice_on_home(alice):
+    _clear_top3(ALICE["id"])
+    today = svc.today_local().isoformat()
+    task_id = alice.post("/api/tasks", json={"title": "Only once",
+                                            "deadline": today}).json()["id"]
+    alice.post(f"/api/tasks/{task_id}/top3", json={"picked": True})
+    home = alice.get("/api/home").json()
+    assert task_id in [x["id"] for x in home["top3"]]
+    rest = [x["id"] for group in home["tasks_today"] for x in group["tasks"]]
+    assert task_id not in rest
+
+
+def test_yesterdays_picks_do_not_linger(alice):
+    """The pick is dated, so it expires on its own rather than being cleared."""
+    _clear_top3(ALICE["id"])
+    task_id = alice.post("/api/tasks", json={"title": "Old pick"}).json()["id"]
+    with SessionLocal() as s:
+        task = s.get(db.Task, task_id)
+        task.focus_day = svc.today_local() - timedelta(days=1)
+        s.commit()
+    assert task_id not in [x["id"] for x in alice.get("/api/home").json()["top3"]]
+
+
+def test_top3_cannot_reach_another_workspace(alice, bob):
+    task_id = alice.post("/api/tasks", json={"title": "Mine"}).json()["id"]
+    assert bob.post(f"/api/tasks/{task_id}/top3",
+                    json={"picked": True}).status_code == 404
+
+
+# ==========================================================================
+# Timezone
+# ==========================================================================
+
+def test_an_unknown_timezone_falls_back_instead_of_raising():
+    """A zone the platform dropped must not make the app unusable."""
+    assert svc.tz_for("Mars/Olympus") is svc.TZ
+    assert svc.tz_for(None) is svc.TZ
+    assert svc.tz_for("") is svc.TZ
+    assert str(svc.tz_for("Europe/Berlin")) == "Europe/Berlin"
+
+
+def test_a_user_with_no_timezone_gets_the_default(alice):
+    assert alice.get("/api/me").json()["prefs"]["timezone"] == "Asia/Tashkent"
+
+
+def test_the_timezone_can_be_changed_and_is_used_for_today(alice):
+    assert alice.post("/api/prefs",
+                      json={"timezone": "Pacific/Kiritimati"}).status_code == 200
+    assert alice.get("/api/me").json()["prefs"]["timezone"] == "Pacific/Kiritimati"
+
+    # Kiritimati is UTC+14 and Tashkent UTC+5, so the two are not always on the
+    # same date — which is the whole reason the setting exists.
+    with SessionLocal() as s:
+        user = s.get(User, ALICE["id"])
+        assert svc.today_local(svc.user_tz(user)) == \
+            svc.today_local(svc.tz_for("Pacific/Kiritimati"))
+    assert alice.get("/api/home").json()["date"] == \
+        svc.today_local(svc.tz_for("Pacific/Kiritimati")).isoformat()
+
+    alice.post("/api/prefs", json={"timezone": "Asia/Tashkent"})
+
+
+def test_an_invalid_timezone_is_refused_rather_than_stored(alice):
+    r = alice.post("/api/prefs", json={"timezone": "Nowhere/Nothing"})
+    assert r.status_code == 422
+    assert alice.get("/api/me").json()["prefs"]["timezone"] == "Asia/Tashkent"
+
+
+def test_the_wake_up_boundary_follows_the_users_timezone(fresh):
+    """The grace hour is local, so 05:30 means 05:30 where the user is."""
+    ws = _ws(fresh.user["id"])
+    with SessionLocal() as s:
+        svc.set_wake_time(s, ws, dtime(5, 0))
+        tz = svc.tz_for("Europe/London")
+        # 05:40 local is inside the hour; the same instant in Tashkent is not.
+        result = svc.mark_wakeup(s, ws, datetime.combine(
+            svc.today_local(tz), dtime(5, 40)), tz=tz)
+        assert result["done"] is True and result["at"] == "05:40"
+
+
+# ==========================================================================
+# Notification preferences and per-user report times
+# ==========================================================================
+
+def test_report_defaults_are_on_at_four_and_nine(alice):
+    with SessionLocal() as s:
+        prefs = svc.prefs_for(s.get(User, ALICE["id"]))
+    assert prefs["morning_report"] is True and prefs["morning_time"] == "04:00"
+    assert prefs["evening_report"] is True and prefs["evening_time"] == "21:00"
+
+
+def test_a_report_is_due_only_inside_its_window(alice):
+    with SessionLocal() as s:
+        user = s.get(User, ALICE["id"])
+        today = svc.today_local()
+        assert svc.report_is_due(user, "morning",
+                                 datetime.combine(today, dtime(4, 5))) is True
+        # Far past its time: a "good morning" at noon is noise, and a user who
+        # joins at 15:00 must not be sent one immediately.
+        assert svc.report_is_due(user, "morning",
+                                 datetime.combine(today, dtime(12, 0))) is False
+        assert svc.report_is_due(user, "morning",
+                                 datetime.combine(today, dtime(3, 30))) is False
+
+
+def test_a_report_time_the_user_chose_is_the_one_used(alice):
+    alice.post("/api/prefs", json={"morning_time": "07:15"})
+    with SessionLocal() as s:
+        user = s.get(User, ALICE["id"])
+        today = svc.today_local()
+        assert svc.report_is_due(user, "morning",
+                                 datetime.combine(today, dtime(7, 20))) is True
+        assert svc.report_is_due(user, "morning",
+                                 datetime.combine(today, dtime(4, 5))) is False
+    alice.post("/api/prefs", json={"morning_time": "04:00"})
+
+
+def test_a_switched_off_report_is_never_due(alice):
+    alice.post("/api/prefs", json={"evening_report": False})
+    with SessionLocal() as s:
+        user = s.get(User, ALICE["id"])
+        assert svc.report_is_due(user, "evening", datetime.combine(
+            svc.today_local(), dtime(21, 5))) is False
+    alice.post("/api/prefs", json={"evening_report": True})
+
+
+def test_the_report_job_interval_is_shared_with_the_scheduler():
+    """The windows and the cron entry must not be able to drift apart."""
+    source = (ROOT / "app.py").read_text()
+    assert 'minute=f"*/{svc.REMINDER_JOB_MINUTES}"' in source
+    assert 'minute=f"*/{REPORT_TICK_MINUTES}"' in source
+    assert svc.HABIT_REMINDER_WINDOW == timedelta(
+        minutes=svc.REMINDER_JOB_MINUTES)
+
+
+# ==========================================================================
+# Projects — finishing is not deleting
+# ==========================================================================
+
+def test_a_project_can_be_created_with_a_description_and_a_deadline(alice):
+    deadline = (svc.today_local() + timedelta(days=30)).isoformat()
+    project_id = alice.post("/api/projects", json={
+        "name": "Launch", "description": "the beta",
+        "deadline": deadline}).json()["id"]
+    row = next(p for p in alice.get("/api/projects").json()["projects"]
+               if p["id"] == project_id)
+    assert row["description"] == "the beta" and row["deadline"] == deadline
+
+
+def test_a_finished_project_keeps_its_tasks(alice):
+    project_id = alice.post("/api/projects", json={"name": "Done soon"}).json()["id"]
+    alice.post("/api/tasks", json={"title": "inside", "project_id": project_id})
+    assert alice.patch(f"/api/projects/{project_id}",
+                       json={"status": "done"}).status_code == 200
+    body = alice.get(f"/api/projects/{project_id}/tasks").json()
+    assert body["project"]["status"] == "done"
+    assert [x["title"] for x in body["tasks"]] == ["inside"]
+
+
+def test_a_project_can_be_archived_and_brought_back(alice):
+    project_id = alice.post("/api/projects", json={"name": "Later"}).json()["id"]
+    alice.patch(f"/api/projects/{project_id}", json={"archived": True})
+    visible = [p["id"] for p in alice.get("/api/projects").json()["projects"]]
+    assert project_id not in visible
+    assert project_id in [p["id"] for p in
+                          alice.get("/api/projects?archived=true").json()["projects"]]
+    alice.patch(f"/api/projects/{project_id}", json={"archived": False})
+    assert project_id in [p["id"] for p in
+                          alice.get("/api/projects").json()["projects"]]
+
+
+def test_projects_can_be_filtered_by_status(alice):
+    active = alice.post("/api/projects", json={"name": "Running"}).json()["id"]
+    finished = alice.post("/api/projects", json={"name": "Shipped"}).json()["id"]
+    alice.patch(f"/api/projects/{finished}", json={"status": "done"})
+    only_active = [p["id"] for p in
+                   alice.get("/api/projects?status=active").json()["projects"]]
+    assert active in only_active and finished not in only_active
+
+
+def test_project_progress_carries_the_numbers_behind_the_percentage(alice):
+    """"57%" needs "4 of 7" beside it or the reader has to do the arithmetic."""
+    project_id = alice.post("/api/projects", json={"name": "Counted"}).json()["id"]
+    ids = [alice.post("/api/tasks", json={"title": f"P{n}",
+                                          "project_id": project_id}).json()["id"]
+           for n in range(4)]
+    alice.patch(f"/api/tasks/{ids[0]}", json={"status": "done"})
+    row = next(p for p in alice.get("/api/projects").json()["projects"]
+               if p["id"] == project_id)
+    assert (row["tasks_total"], row["tasks_done"], row["tasks_open"]) == (4, 1, 3)
+    assert row["progress"] == 25
+
+
+def test_a_project_cannot_be_touched_from_another_workspace(alice, bob):
+    project_id = alice.post("/api/projects", json={"name": "Private"}).json()["id"]
+    assert bob.patch(f"/api/projects/{project_id}",
+                     json={"status": "done"}).status_code == 404
+    assert bob.get(f"/api/projects/{project_id}/tasks").status_code == 404
+
+
+# ==========================================================================
+# Weekly focus — completing and carrying forward
+# ==========================================================================
+
+def test_a_mission_can_be_completed_without_being_deleted(alice):
+    _clear_missions(ALICE["id"])
+    focus_id = alice.post("/api/focus", json={"title": "Ship it"}).json()["id"]
+    assert alice.post(f"/api/focus/{focus_id}/toggle").json()["done"] is True
+    week = alice.get("/api/focus").json()["week"]
+    assert week["primary"]["done"] is True and week["total"] == 1
+
+
+def test_an_unfinished_mission_can_be_carried_into_next_week(alice):
+    _clear_missions(ALICE["id"])
+    focus_id = alice.post("/api/focus", json={"title": "Still matters"}).json()["id"]
+    body = alice.post(f"/api/focus/{focus_id}/carry").json()
+
+    this_week = svc.week_start(svc.today_local())
+    assert body["week_start"] == (this_week + timedelta(days=7)).isoformat()
+    # Gone from this week, present in the next — not duplicated across both.
+    assert alice.get("/api/focus").json()["week"]["primary"] is None
+    with SessionLocal() as s:
+        rows = svc.list_focus(s, _ws(ALICE["id"]), this_week + timedelta(days=7))
+    assert [r["title"] for r in rows] == ["Still matters"]
+
+
+def test_carrying_forward_cannot_reach_another_workspace(alice, bob):
+    _clear_missions(ALICE["id"])
+    focus_id = alice.post("/api/focus", json={"title": "Mine"}).json()["id"]
+    assert bob.post(f"/api/focus/{focus_id}/carry").status_code == 404
+
+
+# ==========================================================================
+# Journal — partial is normal
+# ==========================================================================
+
+def test_a_partial_journal_is_saved_and_reported_as_partial(fresh):
+    body = fresh.post("/api/journal", json={"answers": {"wins": "shipped"}}).json()
+    assert body["answered"] == 1 and body["total"] == 5
+    assert body["complete"] is False
+
+
+def test_an_autosave_of_one_answer_does_not_wipe_the_others(alice):
+    """The bug this guards: a debounced per-field save replaced the whole set."""
+    day = svc.today_local().isoformat()
+    alice.post("/api/journal", json={"day": day, "answers": {
+        "wins": "one", "gratitude": "two", "problem": "three"}})
+    alice.post("/api/journal", json={"day": day, "answers": {"lesson": "four"}})
+    entry = alice.get(f"/api/journal?day={day}").json()["entry"]
+    assert entry["answers"] == {"wins": "one", "gratitude": "two",
+                                "problem": "three", "lesson": "four"}
+    assert entry["answered"] == 4 and entry["complete"] is False
+
+
+def test_an_incomplete_journal_does_not_move_the_overall_number(alice):
+    """A journal is a status, never a component of the score."""
+    day = svc.today_local()
+    with SessionLocal() as s:
+        ws = _ws(ALICE["id"])
+        before = svc.overall_percent(s, ws, day)
+        svc.save_journal(s, ws, answers={"wins": "partial"}, day=day)
+        assert svc.overall_percent(s, ws, day) == before
+        assert "journal" not in svc.overall_components(s, ws, day)
+
+
+def test_mood_is_optional_and_bounded(alice):
+    alice.post("/api/journal", json={"mood": "good"})
+    day = svc.today_local().isoformat()
+    assert alice.get(f"/api/journal?day={day}").json()["entry"]["mood"] == "good"
+    # Anything outside the five is dropped rather than stored as free text.
+    alice.post("/api/journal", json={"mood": "ecstatic"})
+    assert alice.get(f"/api/journal?day={day}").json()["entry"]["mood"] == ""
+
+
+# ==========================================================================
+# Statistics — tasks included, and the number is explainable
+# ==========================================================================
+
+def test_statistics_carry_all_four_series(alice):
+    body = alice.get("/api/stats?period=week").json()
+    for key in ("overall", "tasks", "habits", "prayer"):
+        assert key in body["series"][0], f"the {key} series is missing"
+        assert key in body["averages"]
+        assert key in body["deltas"]
+
+
+def test_statistics_compare_with_the_previous_period(alice):
+    body = alice.get("/api/stats?period=month").json()
+    assert set(body["previous"]) == {"overall", "tasks", "habits", "prayer"}
+    for key, delta in body["deltas"].items():
+        assert delta == body["averages"][key] - body["previous"][key]
+
+
+def test_the_prayer_breakdown_separates_the_five_facts(alice):
+    alice.post("/api/settings", json={"gender": "male"})
+    for prayer in svc.PRAYERS:
+        alice.post("/api/prayers", json={"prayer": prayer, "status": "jamaat"})
+    detail = alice.get("/api/stats?period=week").json()["prayer_detail"]
+    assert detail["jamaat"] == 5
+    assert detail["full_days"] >= 1
+    assert detail["on_time_percent"] == 100
+    for key in ("qaza", "missed", "consistency", "days"):
+        assert key in detail
+
+
+def test_the_overall_number_explains_itself(alice):
+    body = alice.get("/api/overall").json()
+    assert body["rule"] == "mean_of_available"
+    assert [p["key"] for p in body["parts"]] == ["tasks", "habits", "prayer"]
+    counted = [p["percent"] for p in body["parts"] if p["percent"] is not None]
+    assert body["value"] == (round(sum(counted) / len(counted)) if counted else 0)
+    assert set(body["counted"]) <= {"tasks", "habits", "prayer"}
+
+
+def test_the_explanation_matches_the_number_home_shows(alice):
+    assert alice.get("/api/overall").json()["value"] == \
+        alice.get("/api/home").json()["overall"]["value"]
+
+
+def test_a_component_with_nothing_due_is_named_as_absent(alice):
+    """Not zero — absent. Zero would claim a failure at nothing."""
+    _clear_top3(ALICE["id"])
+    with SessionLocal() as s:
+        from sqlalchemy import select
+        ws = _ws(ALICE["id"])
+        for task in s.scalars(select(db.Task).where(
+                db.Task.workspace_id == ws)).all():
+            task.deadline = None
+        s.commit()
+    tasks = next(p for p in alice.get("/api/overall").json()["parts"]
+                 if p["key"] == "tasks")
+    assert tasks["total"] == 0 and tasks["percent"] is None
+    assert "tasks" not in alice.get("/api/overall").json()["counted"]
+
+
+# ==========================================================================
+# Completed tasks and search
+# ==========================================================================
+
+def test_the_done_archive_is_grouped_by_when(alice):
+    task_id = alice.post("/api/tasks", json={"title": "Finished now"}).json()["id"]
+    alice.patch(f"/api/tasks/{task_id}", json={"status": "done"})
+    groups = alice.get("/api/tasks/done").json()["groups"]
+    assert set(groups) >= {"today", "week", "earlier", "total"}
+    assert task_id in [x["id"] for x in groups["today"]]
+
+
+def test_an_older_completion_lands_in_the_earlier_bucket(alice):
+    task_id = alice.post("/api/tasks", json={"title": "Long ago"}).json()["id"]
+    alice.patch(f"/api/tasks/{task_id}", json={"status": "done"})
+    with SessionLocal() as s:
+        s.get(db.Task, task_id).completed_at = db.utcnow() - timedelta(days=45)
+        s.commit()
+    groups = alice.get("/api/tasks/done").json()["groups"]
+    assert task_id in [x["id"] for x in groups["earlier"]]
+    assert task_id not in [x["id"] for x in groups["today"]]
+
+
+def test_a_completed_task_can_be_reopened(alice):
+    task_id = alice.post("/api/tasks", json={"title": "Not done after all",
+                                            "deadline": svc.today_local().isoformat()
+                                            }).json()["id"]
+    alice.patch(f"/api/tasks/{task_id}", json={"status": "done"})
+    alice.patch(f"/api/tasks/{task_id}", json={"status": "waiting"})
+    assert task_id in [x["id"] for x in alice.get("/api/tasks").json()["upcoming"]]
+
+
+def test_open_tasks_can_be_searched(alice):
+    alice.post("/api/tasks", json={"title": "Buy a hammer"})
+    alice.post("/api/tasks", json={"title": "Write the report"})
+    found = alice.get("/api/tasks?days=365&q=hammer").json()
+    titles = [x["title"] for group in ("overdue", "upcoming", "undated", "later")
+              for x in found[group]]
+    assert "Buy a hammer" in titles and "Write the report" not in titles
+
+
+def test_search_is_scoped_to_the_caller(alice, bob):
+    alice.post("/api/tasks", json={"title": "alice-secret-string"})
+    found = bob.get("/api/tasks?days=365&q=alice-secret-string").json()
+    assert found["total"] == 0
+
+
+def test_tasks_can_be_filtered_by_project_and_priority(alice):
+    project_id = alice.post("/api/projects", json={"name": "Filtered"}).json()["id"]
+    alice.post("/api/tasks", json={"title": "in project", "project_id": project_id,
+                                   "priority": "high"})
+    alice.post("/api/tasks", json={"title": "outside", "priority": "low"})
+    body = alice.get(f"/api/tasks?days=365&project_id={project_id}").json()
+    titles = [x["title"] for g in ("overdue", "upcoming", "undated", "later")
+              for x in body[g]]
+    assert titles == ["in project"]
+    high = alice.get("/api/tasks?days=365&priority=high").json()
+    assert "outside" not in [x["title"] for g in
+                             ("overdue", "upcoming", "undated", "later")
+                             for x in high[g]]
+
+
+# ==========================================================================
+# Fresh start — moves and archives, never deletes
+# ==========================================================================
+
+def _make_overdue(alice, count: int) -> list[int]:
+    old = (svc.today_local() - timedelta(days=6)).isoformat()
+    return [alice.post("/api/tasks", json={"title": f"Overdue {n}",
+                                          "deadline": old}).json()["id"]
+            for n in range(count)]
+
+
+def test_the_reset_preview_writes_nothing(alice):
+    _make_overdue(alice, 3)
+    before = alice.get("/api/tasks?days=365").json()["overdue"]
+    body = alice.get("/api/fresh-start").json()
+    assert body["overdue"] >= 3
+    assert set(body["modes"]) == {"today", "week", "undate", "archive"}
+    assert len(alice.get("/api/tasks?days=365").json()["overdue"]) == len(before)
+
+
+@pytest.mark.parametrize("mode", ["today", "week", "undate", "archive"])
+def test_no_reset_mode_destroys_a_task(alice, mode):
+    """Every mode is reversible in the database. That is what lets the
+    confirmation promise the history is intact."""
+    from sqlalchemy import func, select
+    ids = _make_overdue(alice, 4)
+    with SessionLocal() as s:
+        ws = _ws(ALICE["id"])
+        before = s.scalar(select(func.count(db.Task.id)).where(
+            db.Task.workspace_id == ws))
+    alice.post("/api/fresh-start", json={"mode": mode})
+    with SessionLocal() as s:
+        after = s.scalar(select(func.count(db.Task.id)).where(
+            db.Task.workspace_id == ws))
+        assert after == before, f"{mode} deleted rows"
+        for task_id in ids:
+            assert s.get(db.Task, task_id) is not None
+
+
+def test_the_reset_clears_the_overdue_wall(alice):
+    _make_overdue(alice, 5)
+    moved = alice.post("/api/fresh-start", json={"mode": "today"}).json()["moved"]
+    assert moved >= 5
+    assert alice.get("/api/tasks?days=365").json()["overdue"] == []
+
+
+def test_spreading_over_a_week_does_not_pile_everything_on_one_day(alice):
+    _make_overdue(alice, 7)
+    alice.post("/api/fresh-start", json={"mode": "week"})
+    data = alice.get("/api/tasks?days=365").json()
+    days = {x["deadline"] for x in data["upcoming"] if x["title"].startswith("Overdue")}
+    assert len(days) >= 2
+
+
+def test_a_returning_user_is_not_buried(alice):
+    """Scenario: a month away, a pile of overdue tasks, one decision.
+
+    `break_state` is read directly rather than through /api/home: every
+    authenticated request records activity first, so the HTTP call would reset
+    the very gap being tested.
+    """
+    _make_overdue(alice, 12)
+    with SessionLocal() as s:
+        user = s.get(User, ALICE["id"])
+        user.last_active_at = db.utcnow() - timedelta(days=30)
+        s.commit()
+        state = svc.break_state(s, _ws(ALICE["id"]), user)
+
+    assert state["suggest_reset"] is True
+    assert state["days_away"] >= 30
+    assert state["overdue"] >= 12
+    # The recovery path is the one offer, and it works.
+    assert alice.post("/api/fresh-start", json={"mode": "week"}).json()["moved"] >= 12
+
+
+# ==========================================================================
+# Data and privacy
+# ==========================================================================
+
+def test_the_export_carries_what_the_user_wrote(alice):
+    alice.post("/api/tasks", json={"title": "exported task"})
+    alice.post("/api/journal", json={"answers": {"wins": "exported answer"}})
+    body = alice.get("/api/export").json()
+    for key in ("profile", "habits", "habit_logs", "prayers", "projects",
+                "tasks", "weekly_focus", "weekly_reviews", "journal", "birthdays"):
+        assert key in body, f"the export is missing {key}"
+    assert "exported task" in [x["title"] for x in body["tasks"]]
+    assert any("exported answer" in str(e["answers"].values())
+               for e in body["journal"])
+
+
+def test_the_export_is_scoped_to_one_workspace(alice, bob):
+    alice.post("/api/tasks", json={"title": "alice-only-export"})
+    assert "alice-only-export" not in [x["title"] for x in
+                                       bob.get("/api/export").json()["tasks"]]
+
+
+def test_deleting_an_account_needs_the_typed_word(alice):
+    assert alice.post("/api/account/delete", json={"confirm": "yes"}).status_code == 422
+    assert alice.post("/api/account/delete", json={"confirm": ""}).status_code == 422
+    # And the account is still there.
+    assert alice.get("/api/me").status_code == 200
+
+
+def test_deleting_an_account_leaves_nothing_behind(client):
+    """No orphan workspace holding somebody's journal.
+
+    Deliberately not trusting ON DELETE CASCADE: SQLite enforces foreign keys
+    only when the connection asks it to, so the deletion walks the tables.
+    """
+    from sqlalchemy import func, select
+
+    victim = {"id": 909090, "first_name": "Temp"}
+    caller = Caller(client, victim)
+    caller.post("/api/tasks", json={"title": "will be erased"})
+    caller.post("/api/journal", json={"answers": {"wins": "private"}})
+    ws = _ws(victim["id"])
+
+    assert caller.post("/api/account/delete",
+                       json={"confirm": "DELETE"}).json()["deleted"] is True
+
+    with SessionLocal() as s:
+        assert s.get(User, victim["id"]) is None
+        assert s.scalar(select(func.count(db.Workspace.id)).where(
+            db.Workspace.id == ws)) == 0
+        for model in svc.WORKSPACE_TABLES:
+            left = s.scalar(select(func.count()).select_from(model).where(
+                model.workspace_id == ws))
+            assert left == 0, f"{model.__tablename__} still holds rows"
+
+
+def test_every_workspace_scoped_table_is_on_the_deletion_list():
+    """A model added without being added here would survive a deletion."""
+    scoped = {m.__tablename__ for m in db.Base.__subclasses__()
+              if hasattr(m, "workspace_id")}
+    listed = {m.__tablename__ for m in svc.WORKSPACE_TABLES}
+    assert scoped - listed == set(), f"not deleted on request: {scoped - listed}"
+
+
+# ==========================================================================
+# Migration 0004 — the prayer habit recomputed on a populated database
+# ==========================================================================
+
+def test_the_prayer_migration_corrects_a_day_that_was_never_five(alice):
+    """Reproduces the old bug, then fixes it the way a live database would be.
+
+    Three prayers used to mark "5x namoz" done. The migration recomputes from
+    the PrayerLog rows, which it never modifies.
+    """
+    from sqlalchemy import func, select
+
+    ws = _ws(ALICE["id"])
+    day = svc.today_local() - timedelta(days=3)
+    with SessionLocal() as s:
+        s.get(User, ALICE["id"]).gender = "male"
+        for prayer in ["bomdod", "peshin", "asr"]:
+            s.add(db.PrayerLog(workspace_id=ws, day=day, prayer=prayer,
+                               status="on_time"))
+        habit = s.scalar(select(db.Habit).where(
+            db.Habit.workspace_id == ws, db.Habit.system_key == "prayer"))
+        # Exactly what the old rule wrote: score 3.0 >= 2.5, so done.
+        s.add(db.HabitLog(workspace_id=ws, habit_id=habit.id, day=day, done=True))
+        s.add(db.PrayerDay(workspace_id=ws, day=day, excused=False, score=3.0))
+        s.commit()
+        habit_id = habit.id
+
+    result = migrations.m0004_recompute_prayer_completion()
+    assert result["no_longer_complete"] >= 1
+
+    with SessionLocal() as s:
+        row = s.scalar(select(db.HabitLog).where(
+            db.HabitLog.habit_id == habit_id, db.HabitLog.day == day))
+        assert row.done is False
+        # The source of truth is untouched.
+        assert s.scalar(select(func.count(db.PrayerLog.id)).where(
+            db.PrayerLog.workspace_id == ws, db.PrayerLog.day == day)) == 3
+
+
+def test_the_prayer_migration_leaves_a_real_five_alone(alice):
+    from sqlalchemy import select
+
+    ws = _ws(ALICE["id"])
+    day = svc.today_local() - timedelta(days=4)
+    with SessionLocal() as s:
+        s.get(User, ALICE["id"]).gender = "male"
+        for prayer in svc.PRAYERS:
+            s.add(db.PrayerLog(workspace_id=ws, day=day, prayer=prayer,
+                               status="on_time"))
+        habit = s.scalar(select(db.Habit).where(
+            db.Habit.workspace_id == ws, db.Habit.system_key == "prayer"))
+        s.add(db.HabitLog(workspace_id=ws, habit_id=habit.id, day=day, done=True))
+        s.commit()
+        habit_id = habit.id
+
+    migrations.m0004_recompute_prayer_completion()
+    with SessionLocal() as s:
+        assert s.scalar(select(db.HabitLog).where(
+            db.HabitLog.habit_id == habit_id, db.HabitLog.day == day)).done is True
+
+
+def test_the_prayer_migration_is_safe_to_run_twice(alice):
+    migrations.m0004_recompute_prayer_completion()
+    again = migrations.m0004_recompute_prayer_completion()
+    assert again["habit_logs_changed"] == 0
+
+
+# ==========================================================================
+# Migration 0005 — theme names
+# ==========================================================================
+
+@pytest.mark.parametrize("old,new", [
+    ("cobalt", "ocean"), ("slate", "midnight"), ("oxford", "pure"),
+    ("blossom", "aurora"), ("obsidian", "midnight"), ("emerald", "sage"),
+])
+def test_the_theme_rename_lands_on_the_closest_survivor(alice, old, new):
+    _set_theme(ALICE["id"], old)
+    migrations.m0005_rename_themes()
+    with SessionLocal() as s:
+        assert s.get(User, ALICE["id"]).theme == new
+
+
+def test_the_theme_rename_keeps_a_name_that_survived(alice):
+    """`aurora` names a current theme, so those rows must not be moved."""
+    _set_theme(ALICE["id"], "aurora")
+    migrations.m0005_rename_themes()
+    with SessionLocal() as s:
+        assert s.get(User, ALICE["id"]).theme == "aurora"
+
+
+def test_the_theme_rename_is_safe_to_run_twice(alice):
+    _set_theme(ALICE["id"], "cobalt")
+    migrations.m0005_rename_themes()
+    assert migrations.m0005_rename_themes()["total"] == 0
+    with SessionLocal() as s:
+        assert s.get(User, ALICE["id"]).theme == "ocean"
+
+
+def test_the_older_theme_migration_cannot_undo_the_newer_one(alice):
+    """0003 used to map `ocean` onto a name that no longer exists.
+
+    Running the migrations out of order, or re-running 0003 after 0005, would
+    then have moved every default account onto a dead value.
+    """
+    assert "ocean" not in migrations.RETIRED_THEMES
+    _set_theme(ALICE["id"], "ocean")
+    migrations.m0003_retire_themes()
+    with SessionLocal() as s:
+        assert s.get(User, ALICE["id"]).theme == "ocean"
+    for target in migrations.RETIRED_THEMES.values():
+        assert target in migrations.THEME_RENAMES, \
+            f"0003 lands on {target}, which 0005 does not rename"
+
+
+def test_every_theme_rename_target_is_a_theme_that_exists():
+    for target in migrations.THEME_RENAMES.values():
+        assert target in application.THEMES, target
+
+
+# ==========================================================================
+# The API surface — no route shadows another, nothing is unreachable
+# ==========================================================================
+
+def test_a_literal_route_is_never_shadowed_by_a_parameter():
+    """The bug this guards: declaring PATCH /api/habits/{habit_id} above
+    /api/habits/reorder made "reorder" parse as an id and answer 422.
+
+    FastAPI matches in declaration order, so a literal segment has to be
+    declared before the `{param}` route that could swallow it.
+    """
+    from collections import defaultdict
+
+    seen: dict[tuple[str, int], list] = defaultdict(list)
+    for index, route in enumerate(application.app.routes):
+        for method in getattr(route, "methods", ()) or ():
+            parts = route.path.strip("/").split("/")
+            seen[(method, len(parts))].append((index, parts))
+
+    for (method, _), routes in seen.items():
+        for index, parts in routes:
+            for other_index, other in routes:
+                if other_index >= index:
+                    continue
+                # `other` is declared first; would it swallow this path?
+                if all(o.startswith("{") or o == p
+                       for o, p in zip(other, parts)) and other != parts:
+                    assert not any(o.startswith("{") and not p.startswith("{")
+                                   for o, p in zip(other, parts)), (
+                        f"{method} /{'/'.join(parts)} is shadowed by "
+                        f"/{'/'.join(other)} declared above it")
+
+
+def test_every_backend_capability_is_reachable_from_the_mini_app():
+    """No feature that exists on the server but cannot be used.
+
+    Each of these was, at some point, a working endpoint with no way to reach
+    it — the user had to be told to go and type in the chat instead.
+    """
+    html = (ROOT / "webapp" / "index.html").read_text()
+    for path in ("/api/wakeup", "/api/quick", "/api/review", "/api/birthdays",
+                 "/api/fresh-start", "/api/overall", "/api/prefs",
+                 "/api/export", "/api/subscription", "/api/feedback",
+                 "/api/tasks/done", "/api/calendar",
+                 "/api/habits/reorder"):
+        assert path in html, f"{path} exists on the server but not in the UI"
+    # And the ones built from a template string.
+    for fragment in ("/top3", "/reschedule", "/pause", "/history", "/carry",
+                     "/api/prayers/clear", "/api/account/delete"):
+        assert fragment in html, f"{fragment} is unreachable from the UI"
+
+
+def test_no_placeholder_is_left_in_the_shipped_ui():
+    html = (ROOT / "webapp" / "index.html").read_text()
+    # `placeholder=` is a real HTML attribute, so the markers are stub *text*
+    # and comment tags rather than the word itself.
+    for marker in ("TODO", "FIXME", "XXX:", "coming soon", "not implemented",
+                   "lorem ipsum", "hozircha ishlamaydi", "тут будет"):
+        assert marker.lower() not in html.lower(), f"stub left in the UI: {marker!r}"
+
+
+def test_every_action_the_ui_offers_is_wired_to_something():
+    """A button with no handler is a button that lies about what it does."""
+    import re
+
+    html = (ROOT / "webapp" / "index.html").read_text()
+    offered = set(re.findall(r'data-act="([a-z0-9\-]+)"', html))
+    # The handler table, plus the two names built dynamically for search boxes.
+    block = html[html.index("const A = {"):html.index("/* Opens the edit sheet")]
+    handled = set(re.findall(r'^\s{2}"?([a-z0-9\-]+)"?\s*:', block, re.M))
+    handled |= set(re.findall(r'data-search="([a-z0-9\-]+)"', html))
+    handled |= {name + "-clear" for name in
+                re.findall(r'data-act="([a-z0-9\-]+)-clear"', html)}
+    missing = {name for name in offered - handled}
+    assert not missing, f"actions with no handler: {sorted(missing)}"
+
+
+def test_the_mini_app_never_claims_a_save_it_did_not_make():
+    """Every "Saqlandi" is behind an awaited request, not a local mutation."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    # The one helper that shows the confirmation also performs the request.
+    assert "async function save(request, reload, quiet, message, draft){" in html
+    assert "await request();" in html
+    # And the optimistic path reverts on failure rather than keeping the lie.
+    assert "setState(back);" in html
+
+
+# ==========================================================================
+# Translations — three languages, no gaps and no leftovers
+# ==========================================================================
+
+def _dict_blocks() -> dict[str, set[str]]:
+    import re
+
+    html = (ROOT / "webapp" / "index.html").read_text()
+    blocks = {}
+    for lang in ("uz", "en", "ru"):
+        body = re.search(r"\n %s:\{(.*?)\n \},\n" % lang, html, re.S).group(1)
+        blocks[lang] = set(re.findall(r"(?:^|[\s{,])([a-z_0-9]+)\s*:", body, re.M))
+    return blocks
+
+
+def test_the_mini_app_dictionaries_have_identical_keys():
+    """A key present in one language and missing in another ships as a bug."""
+    blocks = _dict_blocks()
+    assert blocks["uz"] == blocks["en"] == blocks["ru"], {
+        "missing in en": sorted(blocks["uz"] - blocks["en"]),
+        "missing in ru": sorted(blocks["uz"] - blocks["ru"]),
+        "extra in en": sorted(blocks["en"] - blocks["uz"]),
+        "extra in ru": sorted(blocks["ru"] - blocks["uz"]),
+    }
+
+
+def test_the_bot_dictionaries_have_identical_keys():
+    keys = {lang: set(application.T[lang]) for lang in ("uz", "en", "ru")}
+    assert keys["uz"] == keys["en"] == keys["ru"], {
+        "missing in en": sorted(keys["uz"] - keys["en"]),
+        "missing in ru": sorted(keys["uz"] - keys["ru"]),
+    }
+
+
+@pytest.mark.parametrize("lang", ["en", "ru"])
+def test_no_uzbek_is_left_inside_another_language(lang):
+    """The habit tiers used to read "Asosiy / Rivojlanish / Qo'shimcha" in all
+    three languages, which is the exact leak this catches."""
+    import re
+
+    html = (ROOT / "webapp" / "index.html").read_text()
+    body = re.search(r"\n %s:\{(.*?)\n \},\n" % lang, html, re.S).group(1)
+    for uzbek in ("Rivojlanish", "Qo'shimcha", "Bekor qilish", "Saqlash",
+                  "Vazifalar", "Odatlar", "Kundalik", "Tayyor",
+                  "Hozircha bo'sh", "Muddat"):
+        assert uzbek not in body, f"{lang} still contains {uzbek!r}"
+
+
+@pytest.mark.parametrize("lang", ["uz", "en", "ru"])
+def test_month_and_weekday_names_are_translated(lang):
+    import re
+
+    html = (ROOT / "webapp" / "index.html").read_text()
+    body = re.search(r"\n %s:\{(.*?)\n \},\n" % lang, html, re.S).group(1)
+    months = re.search(r"months:\[(.*?)\]", body, re.S).group(1).split(",")
+    assert len(months) == 12
+    dow = re.search(r"dow:\[(.*?)\]", body, re.S).group(1).split(",")
+    assert len(dow) == 7
+    # The bot writes its own dates, and they have to agree with the app.
+    assert len(svc.MONTHS[lang]) == 12 and len(svc.WEEKDAYS[lang]) == 7
+
+
+@pytest.mark.parametrize("lang", ["uz", "en", "ru"])
+def test_every_bot_string_the_code_asks_for_exists(lang):
+    """Catches a t() call whose key was never added to the dictionaries."""
+    import re
+
+    source = (ROOT / "app.py").read_text()
+    used = set(re.findall(r't\((?:lang|user\.language|code|"\w\w"), "(\w+)"', source))
+    missing = sorted(key for key in used if key not in application.T[lang])
+    assert not missing, f"{lang} is missing: {missing}"
+
+
+def test_the_privacy_body_is_written_in_every_language():
+    blocks = _dict_blocks()
+    for lang in ("uz", "en", "ru"):
+        assert "privacy_body" in blocks[lang]
+
+
+def test_the_light_overlay_does_not_leak_into_the_other_themes():
+    """Reproduces a cascade bug: `:root[data-scheme="light"]` is an element plus
+    an attribute, so it outranked the single-attribute `[data-theme=...]`
+    blocks. Unscoped, it handed Pure and Sage ocean's cool white and the two
+    light themes rendered identically — a palette swap, which is the one thing
+    the five themes are not supposed to be.
+    """
+    styled = (ROOT / "webapp" / "index.html").read_text()
+    assert ':root[data-theme="ocean"][data-scheme="light"]{' in styled
+    assert ':root[data-scheme="light"]{' not in styled, \
+        "the light overlay is unscoped again and outranks every theme block"
+
+
+def test_each_theme_declares_its_own_background():
+    """Two themes sharing a background are one theme with two names."""
+    import re
+
+    styled = (ROOT / "webapp" / "index.html").read_text()
+    backgrounds = {}
+    root = re.search(r":root\{(.*?)\n\}", styled, re.S).group(1)
+    backgrounds["ocean"] = re.search(r"--c-bg:\s*(#[0-9a-f]+)", root).group(1)
+    for name in ("pure", "midnight", "sage", "aurora"):
+        block = re.search(r'\[data-theme="%s"\]\s*\{(.*?)\n\}' % name,
+                          styled, re.S).group(1)
+        backgrounds[name] = re.search(r"--c-bg:\s*(#[0-9a-f]+)", block).group(1)
+    assert len(set(backgrounds.values())) == 5, backgrounds
+
+
+def test_the_lead_card_control_is_visible_on_the_accent():
+    """The one-tap complete on Home is the app's most-used control.
+
+    It was invisible for a while: the inline `border-color:currentColor`
+    resolved to the tick's own colour, which is transparent until ticked, so the
+    circle on the accent-painted card had no border at all.
+    """
+    styled = (ROOT / "webapp" / "index.html").read_text()
+    assert "border-color:currentColor" not in styled
+    assert ".lead .check{border-color:color-mix(in srgb, var(--hero-fg)" in styled
+
+
+def test_page_content_clears_the_floating_button():
+    """The ＋ button is fixed, so the last row of every screen has to be able
+    to scroll out from under it — it covered the reorder button once."""
+    styled = (ROOT / "webapp" / "index.html").read_text()
+    assert "--fab-clear:" in styled
+    assert "var(--fab-clear)" in styled.split("padding-bottom:calc(var(--shell-b")[1][:80]
+
+
+def test_a_prayer_write_refreshes_the_derived_habit():
+    """`5x namoz` is derived server-side, so the client has to re-read it.
+
+    Without this the Prayer tab showed 5/5 while the Habits tab still showed the
+    habit unticked, and the two disagreed about the same day until a reload.
+    """
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert "async function refreshHabits()" in html
+    block = html[html.index("/* ---- prayer ----"):html.index("/* ---- journal ---- */")]
+    assert block.count("refreshHabits()") >= 3, \
+        "every prayer write must refresh the habit list"

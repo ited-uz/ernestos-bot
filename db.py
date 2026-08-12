@@ -90,10 +90,25 @@ class User(Base):
 
     language: Mapped[str] = mapped_column(String(2), default="uz")     # uz|en|ru
     gender: Mapped[str | None] = mapped_column(String(6), nullable=True)  # male|female
-    theme: Mapped[str] = mapped_column(String(20), default="cobalt")
+    theme: Mapped[str] = mapped_column(String(20), default="ocean")
     quote: Mapped[str] = mapped_column(Text, default="")
     #: Telegram file_id of the uploaded avatar, or empty for initials.
     photo_file_id: Mapped[str] = mapped_column(String(200), default="")
+
+    #: IANA name, e.g. "Asia/Tashkent". Nullable because the column is added in
+    #: place on live tables, where existing rows have no value; every reader
+    #: goes through `services.tz_for`, which defaults it.
+    timezone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+    #: Report and reminder preferences. Nullable for the same reason: NULL means
+    #: "never chosen" and reads as the default (both reports on, 04:00 / 21:00,
+    #: task reminders on, habit reminders off).
+    morning_report: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    morning_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    evening_report: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    evening_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    task_reminders: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    habit_reminders: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     is_subscribed: Mapped[bool] = mapped_column(Boolean, default=False)
     #: When membership was last confirmed with Telegram, and how. The Mini App
@@ -144,6 +159,18 @@ class Habit(Base):
     system_key: Mapped[str] = mapped_column(String(16), default="")
     #: Only meaningful for the wake-up habit: the hour the user intends to rise.
     target_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    #: Which days this habit is expected on:
+    #:   "daily"      every day
+    #:   "weekdays"   Monday to Friday
+    #:   "days:0,2,4" the listed weekdays, 0 = Monday
+    #: Nullable — NULL reads as "daily", so habits written before the column
+    #: existed keep behaving exactly as they did.
+    schedule: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    #: Paused habits leave today's denominator but keep every past log, so a
+    #: holiday or an injury does not have to mean deleting the habit.
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    #: Optional daily nudge for this habit.
+    remind_at: Mapped[time | None] = mapped_column(Time, nullable=True)
     #: Soft delete — historical reports must not change retroactively.
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -159,6 +186,10 @@ class HabitLog(Base):
         Integer, ForeignKey("habits.id", ondelete="CASCADE"), index=True)
     day: Mapped[date] = mapped_column(Date, index=True)
     done: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: Local wall-clock time the habit was ticked. The wake-up habit shows it
+    #: back as "✓ 04:53" — "recorded" tells the user nothing they did not
+    #: already know. Nullable: rows written before the column have no time.
+    logged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     __table_args__ = (UniqueConstraint("habit_id", "day", name="uq_habit_day"),)
 
@@ -214,7 +245,10 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default="")
     deadline: Mapped[date | None] = mapped_column(Date, nullable=True)
-    status: Mapped[str] = mapped_column(String(10), default="active")  # active|done
+    #: active | done. A finished project does not have to be deleted, and an
+    #: archived one is `archived_at IS NOT NULL` rather than a third status, so
+    #: "hidden" and "finished" stay independent.
+    status: Mapped[str] = mapped_column(String(10), default="active")
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
@@ -232,6 +266,21 @@ class Task(Base):
     project_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True)
     deadline: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    #: Optional clock time on the deadline day. NULL is an all-day task.
+    due_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    #: Minutes before the due moment to send a reminder; 0 means exactly then.
+    #: NULL means no reminder was asked for.
+    remind_before: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Set once the reminder went out, so it is never sent twice.
+    reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    #: NULL or "" is a one-off task. Otherwise:
+    #:   daily | weekdays | weekly | monthly | days:0,2,4  (0 = Monday)
+    #: Completing a recurring task creates the next occurrence; the recurrence
+    #: itself is never consumed by ticking it once.
+    recurrence: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    #: The day on which the user picked this task as one of their top three.
+    #: A date rather than a flag, so yesterday's choice does not linger.
+    focus_day: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     priority: Mapped[str] = mapped_column(String(6), default="medium")  # high|medium|low
     status: Mapped[str] = mapped_column(String(10), default="waiting")  # waiting|done
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -241,12 +290,13 @@ class Task(Base):
 
 
 class WeeklyFocus(Base):
-    """The week's primary mission.
+    """The week's mission and its supporting priorities.
 
-    One row per slot, and the product now uses exactly one slot: a week with
-    three equally important missions has no primary. Older workspaces may
-    still hold slots 2 and 3 — those rows are kept, but only the primary is
-    shown, so no history is lost.
+    One row per slot. Slot 1 is *the* mission — the week's single answer to
+    "what matters most" — and slots 2 and 3 are supporting priorities shown
+    at a visibly lower weight. Three equally sized missions is no mission at
+    all, so the hierarchy is in the slot number rather than in the user's
+    memory.
     """
 
     __tablename__ = "weekly_focus"

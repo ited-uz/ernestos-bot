@@ -3,21 +3,52 @@
 Telegram ichida ishlaydigan shaxsiy tizim: **bot + Mini App + bitta PostgreSQL bazasi**.
 
 Botda qilgan har qanday o'zgarish Mini App'da darrov ko'rinadi va aksincha —
-ikkalasi ham bir xil biznes qatlamiga (`services.py`) murojaat qiladi.
+ikkalasi ham bir xil biznes qatlamiga (`services.py`) murojaat qiladi. Formula
+JavaScript'da takrorlanmaydi: botda 80%, ilovada 74% ko'rgan foydalanuvchi
+ikkalasiga ham ishonmay qo'yadi.
+
+Mahsulotning asosiy sikli:
+**Rejalashtir → Bajar → Kuzat → Tahlil qil → Takrorla.**
 
 | Bo'lim | Mazmuni |
 |---|---|
-| 🏠 Home | Sana, quote, 4 ta ko'rsatkich, **bitta** haftalik missiya, **faqat bugungi** vazifalar (loyiha bo'yicha), **1 oylik kalendar** |
-| ✅ Odatlar | Odatlar (3 kategoriya, tartibi o'zgartiriladi) + namoz + kundalik |
-| ⚡ Vazifalar | Vazifa va loyihalar, loyiha sahifasi, **Bajarilgan** arxivi |
-| 📊 Statistika | Umumiy % (asosiy) + Vazifalar / Odatlar / Namoz + streak |
+| 🏠 Bosh sahifa | **HOZIR** bloki (bitta keyingi harakat), 4 ta ko'rsatkich, **Bugungi TOP 3**, haftaning fokusi, qolgan vazifalar, hafta stripi |
+| ✅ Odatlar | Odatlar (3 kategoriya, jadval, pauza, tarix) + namoz + kundalik |
+| ⚡ Vazifalar | Qidiruv va filtr, kechikkanlar uchun tez ko'chirish, loyihalar, **Bajarilgan** arxivi |
+| 📊 Statistika | Umumiy % + Vazifalar / Odatlar / Namoz, o'zgarish (↑↓), eng yaxshi kun, namoz tafsiloti |
 
-Home — ko'rish va tushunish uchun; tahrirlash va o'chirish o'z sahifasida.
+Pastdagi navigatsiya aynan shu to'rtta. Qolgan hamma narsa — kalendar,
+tug'ilgan kunlar, haftalik yakun, sozlamalar, export — kerakli joydan
+ochiladi, alohida tab sifatida emas.
 
-Uch til (o'zbek, ingliz, rus), olti tema × yorug'/qorong'i.
-Har kuni **04:00** va **21:00** da hisobot, **23:00** da statistika.
+Uch til (o'zbek, ingliz, rus) **to'liq** tarjima qilingan, beshta dizayn uslubi.
 
-## Odatlar uch kategoriyada
+## HOZIR bloki
+
+Bosh sahifaning birinchi va eng katta bloki bitta savolga javob beradi:
+*hozir nima qilishim kerak?*
+
+Javob **deterministik** — AI yo'q, ball yo'q, bir xil kun uchun har doim bir
+xil natija. Tartib qat'iy:
+
+1. ☀️ **Turdim** — hali vaqt o'tmagan bo'lsa;
+2. ⚡ **Bugungi TOP 3** dan birinchi bajarilmagani;
+3. ⚡ bugunga belgilangan boshqa vazifa;
+4. ✅ bugun rejada bo'lgan, hali bajarilmagan odat;
+5. 🕌 namoz (tushdan keyin, 5/5 to'lmagan bo'lsa);
+6. 🌙 **Kun yakuni** — 20:00 dan keyin, kundalik yozilmagan bo'lsa;
+7. ✓ *Bugungi muhim ishlar tugadi* — hech narsa o'ylab topilmaydi.
+
+## Bugungi TOP 3
+
+Hamma vazifa bir xil muhim emas. Foydalanuvchi bugun uchun **maksimal uchta**
+vazifani tanlaydi; ular bosh sahifada alohida turadi. Vazifa ro'yxatidagi ☆
+tugmasi bilan tanlanadi. Tanlash o'sha vazifani bugunga belgilaydi ham.
+
+Tanlov **sanaga bog'langan**, shuning uchun kechagi tanlov ertaga o'zi
+yo'qoladi — tozalash kerak emas.
+
+## Odatlar
 
 | Kategoriya | Standart odatlar |
 |---|---|
@@ -29,57 +60,188 @@ Ikkitasi **avtomatik hisoblanadi** — qo'lda bosib bo'lmaydi:
 
 | Odat | Nimadan hisoblanadi |
 |---|---|
-| **Get up** | Botga «Turdim» deb yozilganda |
-| **5x namoz** | Kunlik namoz balli ≥ 2.5 bo'lganda |
+| **Get up** | Mini App'dagi «Turdim» tugmasi yoki botga «Turdim» deb yozilganda |
+| **5x namoz** | Beshta namozning **hammasi** o'qilganda (yoki uzrli kun) |
 
-Kundalik odat emas: u alohida holat sifatida ko'rsatiladi, aks holda
-foydalanuvchi tanlamagan narsa maxraj va streakni o'zgartirib yuborardi.
+Har bir odatni bosib ochish mumkin: nomi, kategoriyasi, **qaysi kunlar**,
+eslatma vaqti, streak, oxirgi 7/30 kun va tarix gridi.
 
-Odatlar tartibi Mini App'dagi **↕ Tartibni o'zgartirish** rejimida
-o'zgartiriladi — surib yoki ↑ ↓ tugmalari bilan. Tartib serverda saqlanadi va
-bot ham aynan shu tartibda ko'rsatadi.
+### Jadval — bajarilmagan kun bilan rejada yo'q kun bir narsa emas
 
-Odatni o'chirish uchun ro'yxat ostidagi **🗑 Odat o'chirish** tugmasi bosiladi va
-o'chiriladigani tanlanadi — har bir qator yonida kichik xoch yo'q.
+Har bir odat uchun: **har kuni**, **ish kunlari** yoki **tanlangan kunlar**.
 
-## Uyg'onish (Get up)
+Gym faqat Du/Chor/Jum bo'lsa, seshanba statistikasi Gym uchun minus bermaydi:
+o'sha kun maxrajga umuman kirmaydi. Hech narsa rejada bo'lmagan kun streakni
+ham buzmaydi.
 
-Sozlamalarda **⏰ Uyg'onish vaqti** belgilanadi (default 05:00).
+### Pauza — o'chirish emas
 
-Bot o'sha vaqtdan **bir soat** kutadi. Shu oraliqda botga «Turdim» deb yozilsa —
-odat bajarilgan. 06:00 dan keyin yozilsa yoki umuman yozilmasa — bugun
-bajarilmagan hisoblanadi.
+Ta'til, jarohat yoki imtihon davri uchun odat **to'xtatib turiladi**. Bugungi
+maxrajdan chiqadi, lekin **hamma eski log joyida qoladi**. O'chirish esa butun
+tarixni yo'q qiladi — shuning uchun pauza birinchi taklif qilinadi.
 
-Erta turish ham hisoblanadi: 04:45 da yozilsa ham bajarilgan bo'ladi.
+Odatni o'chirish odatning o'z sahifasida, tasdiqlash bilan.
+
+### Uyg'onish (Get up)
+
+Odat sahifasida **uyg'onish vaqti** belgilanadi (default 05:00).
+
+O'sha vaqtdan **bir soat** kutiladi. Shu oraliqda «Turdim» bosilsa — odat
+bajarilgan, `✓ 04:53` deb aniq vaqti ko'rsatiladi. Kechiksa — vaqt yana
+ko'rsatiladi, lekin `06:18 — bugungi targetdan kechroq` degan yumshoq status
+bilan; odat bugun bajarilmagan hisoblanadi.
+
+Erta turish ham hisoblanadi: 04:45 da bosilsa ham bajarilgan bo'ladi.
 
 ## Kundalik
 
-Har kuni beshta savol. **Hammasi to'ldirilgandagina** kun to'liq
-hisoblanadi. Tarixni sana bo'yicha ko'rish mumkin.
+Har kuni beshta savol. **Qancha yozilsa — shuncha saqlanadi**: uchta javob
+uchta javob sifatida qoladi va `3 / 5 javob berildi` deb ko'rsatiladi. To'liq
+emasligi umumiy foizni tushirmaydi — kundalik odat emas, holat.
 
----
+Yozilayotgan matn har bosishda **brauzerda** saqlanadi va backend'ga
+debounce bilan yuboriladi. Telegram yopilib qolsa, qayta kirganda matn
+tiklanadi.
 
-## Namoz ball tizimi
+Ixtiyoriy **kayfiyat** check-in'i (😞 😕 😐 🙂 😄) — majburiy emas.
+
+## Namoz — sifat va 5/5 alohida
 
 Beshta namoz: Bomdod, Peshin, Asr, Shom, Xufton.
 
-| | O'g'il bola | Qiz bola |
-|---|---|---|
-| Jamoat | 1 ball | — |
-| O'z vaqtida | 1 ball | 1 ball |
-| Qazo | 0.5 ball | 0.5 ball |
-| O'qilmagan | 0 ball | 0 ball |
-| **Uzrli** | — | kunlik bayroq, ball aniq **2.5** |
+| | O'g'il bola | Qiz bola | 5/5 ga kiradimi |
+|---|---|---|---|
+| Jamoat | 1 ball | — | ✅ ha |
+| O'z vaqtida | 1 ball | 1 ball | ✅ ha |
+| Qazo | 0.5 ball | 0.5 ball | ✅ ha — kechikkan, o'tkazib yuborilmagan |
+| O'qilmadi | 0 ball | 0 ball | ❌ yo'q |
+| **Uzrli kun** | — | kunlik bayroq | ✅ to'liq kun |
 
-Kunlik ball **5 balldan** ko'rsatiladi. **≥ 2.5** bo'lsa `5x namoz` odati
-avtomatik bajarilgan bo'ladi — qo'lda belgilab bo'lmaydi.
+Ikkita **alohida** savol:
+
+* **Sifat balli** — 5 balldan (jamoat/vaqtida 1, qazo 0.5);
+* **5 mahal bajarilishi** — beshtasining hammasi o'qilganmi.
+
+`5x namoz` odati **faqat 5/5** bo'lganda bajarilgan bo'ladi. Ilgari ball ≥ 2.5
+bo'lsa yetardi, ya'ni **uchta** namoz "5x namoz bajarildi" deb ko'rsatilardi —
+bu tuzatildi (`migrations.py 0004` eski kunlarni qayta hisoblaydi).
+
+## Vazifalar
+
+* ixtiyoriy **vaqt**: `15 Avgust · 14:30`, vaqt yo'q bo'lsa — kun bo'yi;
+* **eslatma**: aynan vaqtida / 10 minut / 1 soat / 1 kun oldin. Bajarilgan
+  vazifa uchun eslatma yuborilmaydi;
+* **takrorlanish**: har kuni / ish kunlari / har hafta / har oy. Bir marta
+  bajarish takrorlanishni yo'q qilmaydi — keyingi nusxa o'zi paydo bo'ladi,
+  bajarilgani esa arxivda o'z sanasi bilan qoladi;
+* **qidiruv va filtr** (Bugun / Kechikkan / Muddatsiz / Yuqori);
+* **Bajarilgan** arxivi Bugun / Shu hafta / Oldin bo'yicha guruhlangan.
+
+Yangi vazifa yaratish: bitta maydon va to'rtta chip —
+**Bugun · Ertaga · Shu hafta · Sanasiz**. Qolgani (vaqt, eslatma,
+takrorlanish, muhimlik, loyiha, izoh) `Qo'shimcha sozlamalar` ichida.
+
+### Kechikkan vazifalar
+
+Qizil devor yo'q. Har bir kechikkan qator ostida to'rtta tugma:
+**Bugun · Ertaga · Shu hafta · Sanasiz**. Bir bosish bilan hal bo'ladi.
+
+Uzoq tanaffusdan keyin qaytilganda bosh sahifada bitta taklif chiqadi —
+**Yengil reset**: hammasini bugunga, bir haftaga taqsimlash, muddatlarni olib
+tashlash yoki arxivga o'tkazish. **Hech qanday rejim vazifani o'chirmaydi.**
+
+## Loyihalar
+
+Nom majburiy; izoh va muddat ixtiyoriy. Holati **Faol / Tugallangan** va
+alohida **arxiv** — tugagan loyihani o'chirish shart emas.
+
+Loyiha sahifasida foiz **va** uning ortidagi son: `57% · 7 ta vazifadan 4 tasi
+bajarilgan`. Loyiha ichidan vazifa qo'shilganda o'sha loyiha avtomatik
+tanlanadi.
+
+## Haftaning fokusi
+
+Bitta **asosiy** maqsad va maksimal ikkita **qo'shimcha** prioritet. Asosiysi
+kattaroq va birinchi turadi — uchta teng maqsad "asosiy" degan tushunchani
+yo'q qiladi.
+
+Maqsad `✓ Bajarildi` deb belgilanadi yoki bir bosish bilan **keyingi haftaga
+ko'chiriladi**.
 
 ## Statistika
 
-Odat va namoz uchun line chart — **haftalik** (7 kun), **oylik** (30 kun) va
-**yillik** (12 oy). O'rtacha foiz, namoz taqsimoti va **streak** (ketma-ket
-kunlar). Odatlar bo'limining Statistika tabida.
+Vazifalar, Odatlar, Namoz va Umumiy — hammasi **haftalik** (7 kun),
+**oylik** (30 kun) va **yillik** (12 oy) kesimda. Har bir raqam yonida
+oldingi davrga nisbatan o'zgarish (↑ ↓), eng yaxshi kun va streak.
 
+Namoz tafsiloti bitta noma'lum ballga aylantirilmaydi: **5/5 bo'lgan kunlar**,
+**vaqtida %**, **jamoat**, **qazo**, **o'qilmadi** va **barqarorlik** alohida.
+
+### Umumiy foiz qanday hisoblanadi
+
+Umumiy — **bugun o'lchanadigan** bo'limlarning oddiy o'rtachasi:
+Vazifalar, Odatlar, Namoz.
+
+Bugun bo'sh bo'lgan bo'lim **nol emas, yo'q** — hisobga olinmaydi. Bugun
+vazifa belgilanmagan bo'lsa, u 0% deb yozilmaydi, aks holda ilova
+foydalanuvchini so'ralmagan ish uchun jazolagan bo'lardi.
+
+Raqam yonidagi ⓘ tugmasi shu hisobni **bo'lim bo'yicha** ochib beradi —
+raqamni yaratgan aynan o'sha funksiyalardan.
+
+## Vaqt mintaqasi, hisobot va eslatmalar
+
+Default `Asia/Tashkent`, lekin Sozlamalardan o'zgartiriladi. Foydalanuvchi
+mintaqasi bo'yicha ishlaydi: uyg'onish, kun chegarasi, hisobotlar,
+eslatmalar va statistika kunlari.
+
+Sozlamalarda boshqariladi:
+
+| Sozlama | Default |
+|---|---|
+| Ertalabki hisobot | ✅ 04:00 |
+| Kechqurungi hisobot | ✅ 21:00 |
+| Vazifa eslatmalari | ✅ yoqilgan |
+| Odat eslatmalari | ❌ o'chirilgan |
+
+Hisobot vaqti har foydalanuvchida o'zining bo'lgani uchun job bitta cron
+yozuvi emas: `REPORT_TICK_MINUTES` (default 10) da bir marta uyg'onadi va har
+foydalanuvchidan "vaqti keldimi?" deb so'raydi. Kuniga **bir marta**
+yuborilishini cron emas, outbox claim kafolatlaydi.
+
+Platforma statistikasi operator kanaliga **23:00** da boradi.
+
+## Beshta dizayn uslubi
+
+Har biri bir xil UI'ning boshqa rangi emas — o'z radiusi, soyasi, gradient
+siyosati, zichligi va tipografiyasi bor. Tanlov PostgreSQL'da saqlanadi.
+
+| Tema | Nima |
+|---|---|
+| **Ocean** *(default)* | Royal ko'k, neytral fon, juda kam glow. Yorug'/qorong'i — ikkalasi |
+| **Pure** | Oq qog'oz, charcoal matn, gradient yo'q, ingichka chiziqlar, ko'p whitespace |
+| **Midnight** | Grafit va deyarli qora, bitta electric ko'k accent, jilovlangan glow |
+| **Sage** | Iliq oq, stone, muted yashil, yumshoq burchaklar, past kontrast |
+| **Aurora** | Qorong'i neytral fon + nazorat ostidagi binafsha→pushti gradient |
+
+Faqat **Ocean** telefonning yorug'/qorong'i sozlamasiga qaraydi. Pure va Sage
+— yorug', Midnight va Aurora — qorong'i: "iliq, tinch, past kontrast" temani
+deyarli qora qilib ko'rsatish uni boshqa temaga aylantiradi. Tanlov ekranida
+buni har bir tema o'zi aytadi.
+
+## Ma'lumotlar va maxfiylik
+
+Sozlamalar → **Ma'lumotlar va maxfiylik**:
+
+* **Ma'lumotlarimni export qilish** — hamma yozgan narsa JSON fayl sifatida
+  bot chatiga yuboriladi;
+* **Maxfiylik haqida** — nima himoyalangan va nima yo'qligi ochiq yozilgan;
+* **Akkaunt va ma'lumotlarni o'chirish** — `DELETE` deb yozib tasdiqlash
+  talab qiladi, keyin hammasi butunlay o'chadi.
+
+Vada faqat bajarilgani aytiladi: *"Ma'lumotlaringiz boshqa foydalanuvchilardan
+alohida saqlanadi"*. "To'liq himoyalangan" degan absolut vada yo'q — bazaga
+texnik xizmat uchun administrator kira oladi va buni yashirmaslik kerak.
 
 # ErnestOS Setup From Zero
 
@@ -260,6 +422,8 @@ cp .env.example .env
 | `ENVIRONMENT` | `production` yoki `development` | ✅ ha |
 | `TZ` | `Asia/Tashkent` | tavsiya etiladi |
 | `INIT_DATA_MAX_AGE` | Mini App sessiyasi umri (sekund, default 86400) | yo'q |
+| `REPORT_TICK_MINUTES` | Hisobot job'i necha minutda bir uyg'onadi (default 10) | yo'q |
+| `MEMBERSHIP_TTL` | Obuna javobi necha sekund keshlanadi (default 180) | yo'q |
 
 `ENVIRONMENT=production` bo'lsa `DATABASE_URL` majburiy — SQLite'ga
 qaytish yo'q.
@@ -298,7 +462,15 @@ o'zgartirmaydi va foydalanuvchi tarixini o'chirmaydi:
 |---|---|---|
 | `0001` | Kundalikni odat sifatida hisoblashni to'xtatadi (`Summary` arxivlanadi) | `archived_at` ni `NULL` qilish |
 | `0002` | `goals` jadvalini `goals_archived_v1` ga ko'chiradi | `ALTER TABLE goals_archived_v1 RENAME TO goals` |
-| `0003` | Olib tashlangan 6 ta mavzuni qolgan 4 tasiga ko'chiradi | `UPDATE users SET theme='ocean' WHERE ...` (eski nom kerak bo'lsa) |
+| `0003` | Eski mavzu nomlarini o'sha davrdagi to'plamga ko'chiradi | `UPDATE users SET theme=<eski nom>` |
+| `0004` | `5x namoz` odatini **haqiqiy 5/5** bo'yicha qayta hisoblaydi | qayta hisoblash — `PrayerLog` tegilmagan, manba joyida |
+| `0005` | Mavzu nomlarini yangi beshtaga ko'chiradi (`cobalt→ocean` va h.k.) | `UPDATE users SET theme=<eski nom>` |
+
+`0004` **tarixiy raqamlarni o'zgartiradi**: uchta namoz o'qilgan kun endi
+bajarilgan odat sifatida hisoblanmaydi. Bu ataylab — eski raqam noto'g'ri
+edi, va uni joyida qoldirish streak va statistikaning foydalanuvchi
+qilmagan narsani ko'rsatishda davom etishini bildirardi. `prayer_logs`
+jadvaliga tegilmaydi, shuning uchun hisob har doim qaytadan chiqariladi.
 
 `0002` jadvalni **o'chirmaydi** — nomini o'zgartiradi. Public launch'da Goals
 UI, API va modeli olib tashlandi, lekin foydalanuvchi yozgan qatorlar joyida
@@ -313,7 +485,7 @@ uvicorn app:app --host 0.0.0.0 --port 8000
 Bitta jarayonda uchtasi birga ishga tushadi:
 - FastAPI (Mini App va API)
 - Telegram bot (polling)
-- Scheduler (04:00 va 21:00)
+- Scheduler (hisobotlar, eslatmalar, kunlik platforma statistikasi)
 
 Tekshirish:
 ```bash
@@ -365,45 +537,113 @@ Deploy'dan keyin quyidagilarni birma-bir bosib chiqing:
 [ ] telefon raqamni ulashish ishlaydi
 [ ] boshqa odamning kontaktini yuborsa qabul qilinmaydi
 [ ] til tanlash ishlaydi (uz / en / ru)
-[ ] jins tanlash ishlaydi
+[ ] /start → faqat til tanlash chiqadi (uzun uch tilli matn yo'q)
+[ ] til tanlanganda o'sha tilda "Assalomu alaykum, <ism>" chiqadi
+[ ] keyin telefon so'raladi va nima uchun kerakligi tushuntiriladi
+[ ] "O'tkazib yuborish" bosilsa onboarding to'xtamaydi
 [ ] kanalga obuna bo'lmaganda kirish bloklanadi
-[ ] kanaldan chiqilganda darhol bloklanadi va xabar keladi
-[ ] kanalga qayta qo'shilganda ochiladi, ma'lumot joyida
+[ ] Mini App'da blok ekrani chiqadi: Kanalga kirish + Obunani tekshirish
+[ ] obuna bo'lgach "Tekshirish" bosilsa ilova qayta ishga tushmasdan davom etadi
+[ ] kanaldan chiqilganda bloklanadi, lekin ma'lumot o'chmaydi
 [ ] admin log kanaliga "NEW ERNESTOS USER" keladi
-[ ] 🏠 Home to'g'ri chiqadi
-[ ] ✅ Odatlar — 3 kategoriyada ko'rsatiladi
-[ ] kundalik to'liq to'ldirilganda kun to'liq hisoblanadi
-[ ] odatlar tartibi o'zgartiriladi va qayta ochilganda saqlanib qoladi
-[ ] Sozlamalarda ⬅️ Orqaga tugmasi bor
-[ ] Sozlamalarda telefon va profil rasmi boshqariladi
-[ ] odat bosilganda belgilanadi/olib tashlanadi
-[ ] 5x namoz bosilmaydi (qulf belgisi)
-[ ] odat qo'shish va o'chirish ishlaydi
-[ ] namoz belgilanganda ball hisoblanadi
-[ ] ball 5 dan ko'rsatiladi, 2.5 dan oshganda 5x namoz belgilanadi
-[ ] ayolda Uzrli + o'z vaqtida/qazo/o'qilmagan bor, Jamoat yo'q
-[ ] ⚡ Vazifalar — o'chirish emas, ✅ Bajarildi va ✏️ Tahrirlash
-[ ] bajarilgan vazifa Done arxiviga tushadi
-[ ] Home pastida 1 oylik kalendar deadline'lar bilan
-[ ] Statistika alohida sahifa: Umumiy + Vazifalar + Odatlar + Namoz
-[ ] ⏰ Uyg'onish vaqti sozlanadi
-[ ] «Turdim» vaqtida yozilsa Get up belgilanadi
-[ ] bir soatdan keyin yozilsa hisoblanmaydi
-[ ] profil rasmi Mini App'da avatar sifatida chiqadi
-[ ] statistika o'z kanaliga boradi, log kanaliga emas
-[ ] Sozlamalarda «Saqlash» tugmasi bor
-[ ] Namoz holatlari rangli va emojili
-[ ] Statistikani CSV qilib yuklab olish ishlaydi
-[ ] maxfiylik qatori nav ustida qotib turadi va kontentni yopmaydi
-[ ] bot menyusi aynan 7 ta: Home/Odatlar/Vazifalar/Statistika/Sozlamalar/Taklif/Mini App
-[ ] "Alohida" tanlansa loyihasiz saqlanadi
+
+--- Bosh sahifa ---
+[ ] birinchi ko'rinishda HOZIR bloki bor va bitta harakatni ko'rsatadi
+[ ] ertalab HOZIR = ☀️ Turdim; bosilganda "✓ 05:07 da turdingiz" chiqadi
+[ ] kech bosilsa "06:18 — bugungi targetdan kechroq" deydi, jazolamaydi
+[ ] ＋ tugmasi har doim ko'rinadi va 5 sekundda vazifa saqlaydi
+[ ] bugungi vazifani Home'dan bitta bosishda bajarilgan qilish mumkin
+[ ] bajarilgandan keyin "Qaytarish" taklif qiladi va u ishlaydi
+[ ] TOP 3 ga uchta vazifa tanlanadi, to'rtinchisi qabul qilinmaydi
+[ ] TOP 3 dagi vazifa pastda ikkinchi marta ko'rinmaydi
+[ ] haftaning fokusi: asosiy kattaroq, qo'shimchalar kichikroq
+[ ] maqsad ✓ bajarildi va keyingi haftaga ko'chirildi
+[ ] hafta stripi ko'rinadi, bosilganda to'liq kalendar ochiladi
+[ ] kalendar ichidagi har bir qator bosilganda haqiqiy narsani ochadi
+[ ] tug'ilgan kun Mini App'dan qo'shiladi va yaqinlashsa Home'da chiqadi
+
+--- Odatlar ---
+[ ] odat bosilganda darhol belgilanadi, sahifa sakramaydi
+[ ] odat ustiga bosilsa: nom, kategoriya, kunlar, eslatma, tarix ochiladi
+[ ] Gym faqat Du/Chor/Jum bo'lsa, seshanba minus bermaydi
+[ ] hech narsa rejada yo'q kun streakni buzmaydi
+[ ] Pauza bosilsa maxrajdan chiqadi, eski loglar joyida qoladi
+[ ] tarix gridi, streak va % ko'rsatiladi
+[ ] 5x namoz qo'lda bosilmaydi (qulf)
+[ ] odatlar tartibi o'zgartiriladi va botda ham shu tartibda ko'rinadi
+
+--- Namoz ---
+[ ] birinchi ochilganda jins so'raladi va nega kerakligi yozilgan
+[ ] uch namoz kiritilsa "5x namoz bajarildi" DEB KO'RSATILMAYDI
+[ ] beshtasi kiritilganda 5x namoz bajarilgan bo'ladi
+[ ] qazo 5/5 ga kiradi, lekin ball 0.5
+[ ] xato bosilgan holat ✕ bilan olib tashlanadi
+[ ] ayolda Uzrli + vaqtida/qazo/o'qilmadi bor, Jamoat yo'q
+[ ] uzrli kun to'liq kun sifatida hisoblanadi
+
+--- Kundalik ---
+[ ] uch javob yozilsa "3 / 5 javob berildi" deydi, xato deb ko'rsatmaydi
+[ ] to'liq emasligi umumiy foizni tushirmaydi
+[ ] yozayotganda Telegram yopilsa, qayta kirganda matn tiklanadi
+[ ] kayfiyat check-in'i ixtiyoriy
+
+--- Vazifalar ---
+[ ] yangi vazifa: bitta maydon + Bugun/Ertaga/Shu hafta/Sanasiz
+[ ] Qo'shimcha sozlamalar ichida vaqt, eslatma, takrorlanish, loyiha
+[ ] vaqt belgilanmasa kun bo'yi vazifa bo'ladi
+[ ] eslatma belgilangan vaqtda keladi va ikki marta kelmaydi
+[ ] bajarilgan vazifa uchun eslatma kelmaydi
+[ ] takrorlanuvchi vazifani bir marta bajarish seriyani tugatmaydi
+[ ] kechikkan qator ostida Bugun/Ertaga/Shu hafta/Sanasiz tugmalari bor
+[ ] qidiruv va filtr ishlaydi
+[ ] Bajarilgan arxivi Bugun / Shu hafta / Oldin bo'yicha guruhlangan
+[ ] bajarilgan vazifa qayta ochiladi
+
+--- Loyihalar ---
+[ ] loyiha yaratishda izoh va muddat kiritish mumkin
+[ ] loyiha ichidan vazifa qo'shilganda o'sha loyiha avtomatik tanlanadi
+[ ] "57% · 7 ta vazifadan 4 tasi bajarilgan" ko'rinadi
+[ ] tugagan loyiha o'chirilmaydi — Tugallangan yoki Arxiv
 [ ] loyiha o'chirilganda vazifalari qolib ketadi
-[ ] ⚙️ Sozlamalar — til, jins, tema o'zgaradi
-[ ] 💬 Taklif admin kanalga yetib boradi
-[ ] Mini App ochiladi va bot bilan bir xil ma'lumotni ko'rsatadi
-[ ] Mini App'da qilingan o'zgarish botda ko'rinadi
-[ ] 04:00 da ertalabki hisobot keladi
-[ ] 21:00 da kechki hisobot keladi
+
+--- Statistika ---
+[ ] Vazifalar + Odatlar + Namoz + Umumiy, hafta/oy/yil
+[ ] har raqam yonida oldingi davrga nisbatan ↑ ↓
+[ ] eng yaxshi kun ko'rsatiladi
+[ ] namoz tafsiloti: 5/5 kunlar, vaqtida %, jamoat, qazo, o'qilmadi
+[ ] ⓘ bosilganda umumiy foiz qanday chiqqani bo'lim bo'yicha ochiladi
+[ ] botdagi va ilovadagi umumiy foiz bir xil
+[ ] CSV bot chatiga keladi
+
+--- Sozlamalar ---
+[ ] Saqlash tugmasi YO'Q — har o'zgarish darhol saqlanadi va toast chiqadi
+[ ] beshta tema haqiqatan boshqacha his beradi, faqat rang emas
+[ ] Pure/Sage yorug', Midnight/Aurora qorong'i — tanlov ekranida yozilgan
+[ ] Ocean telefon sozlamasiga qarab yorug'/qorong'i bo'ladi
+[ ] vaqt mintaqasi o'zgartirilganda "bugun" o'zgaradi
+[ ] hisobot vaqtlari va eslatma kalitlari ishlaydi
+[ ] avatar Telegram rasmidan o'zi keladi — botdan yuklash talab qilinmaydi
+[ ] Ma'lumotlarimni export qilish → JSON fayl bot chatiga keladi
+[ ] Akkauntni o'chirish DELETE deb yozishni talab qiladi
+[ ] Taklif Mini App'dan yuboriladi va yetkazilmasa "sent" deb ko'rsatmaydi
+
+--- Til va qurilma ---
+[ ] UZ → EN → RU almashtirilganda aralash til qolmaydi
+[ ] oy va hafta kunlari nomlari ham tarjima bo'ladi
+[ ] iPhone / Android / Telegram Desktop da gorizontal scroll yo'q
+[ ] kichik ekran (320px) va katta shriftda hamma narsa o'qiladi
+[ ] Telegram Back tugmasi sheet'ni yopadi, ilovani yopmaydi
+[ ] maxfiylik qatori nav ustida qotib turadi va kontentni yopmaydi
+
+--- Uzoq tanaffus ---
+[ ] 1 oy kirmasdan qaytilganda 300 ta kechikkan vazifa bosib ketmaydi
+[ ] bitta taklif chiqadi: Yengil reset
+[ ] hech qanday reset rejimi vazifani o'chirmaydi
+
+--- Bot ---
+[ ] bot menyusi aynan 7 ta: Home/Odatlar/Vazifalar/Statistika/Sozlamalar/Taklif/Mini App
+[ ] Mini App'da qilingan o'zgarish botda ko'rinadi va aksincha
+[ ] belgilangan vaqtda ertalabki va kechqurungi hisobot keladi
 [ ] ilova qayta ishga tushsa hisobot takrorlanmaydi
 ```
 
@@ -416,15 +656,20 @@ ernestos/
 ├── app.py              FastAPI + bot handlerlar + scheduler + admin log
 ├── services.py         umumiy biznes qatlami (bot va API ikkalasi ishlatadi)
 ├── db.py               SQLAlchemy modellari + engine
+├── migrations.py       qo'lda ishga tushiriladigan ma'lumot migratsiyalari
 ├── webapp/
-│   └── index.html      Mini App
+│   └── index.html      Mini App (bitta fayl, tashqi kutubxona yo'q)
 ├── tests/
-│   └── test_smoke.py   84 ta test
+│   └── test_smoke.py   323 ta test
 ├── requirements.txt
 ├── Procfile
 ├── .env.example
 └── README.md
 ```
+
+Mini App ataylab bitta fayl va **hech qanday frontend framework ishlatmaydi**:
+Telegram WebView'da yuklanish tezligi eng muhim, va bu hajmda build qadamining
+foydasi yo'q. Ikonkalar inline SVG.
 
 # Testlar
 
@@ -432,10 +677,24 @@ ernestos/
 python -m pytest tests/ -q
 ```
 
-**84 test o'tadi.**
+**323 test o'tadi.**
 
-Qamrov: foydalanuvchi izolyatsiyasi, Telegram initData tekshiruvi, egalik
-nazorati, obuna bloki, namoz balli, hisobot takrorlanmasligi.
+Qamrov:
+
+* foydalanuvchi/workspace izolyatsiyasi va har bir endpoint uchun egalik
+  nazorati;
+* Telegram initData tekshiruvi (imzo, muddat, boshqa bot tokeni);
+* obunaning uch holati va onboarding gate;
+* namoz **sifat balli** va **5/5 bajarilishi** — alohida-alohida;
+* odat jadvali (ish kunlari / tanlangan kunlar), pauza, streak;
+* takrorlanuvchi vazifa: bir marta bajarish seriyani tugatmasligi;
+* eslatma oynasi va ikki marta yuborilmasligi;
+* vaqt mintaqasi — uyg'onish chegarasi va "bugun" tushunchasi;
+* umumiy foizning har bir surat ustida bir xil chiqishi;
+* UZ/EN/RU kalitlarining to'liq mosligi va tarjima qolib ketmasligi;
+* migratsiyalar **to'ldirilgan** baza ustida, ikki marta ishga tushirilganda;
+* har bir UI action'ining real handler'ga bog'langani va route'lar
+  bir-birini to'sib qo'ymasligi.
 
 # Xavfsizlik
 
@@ -443,6 +702,28 @@ nazorati, obuna bloki, namoz balli, hisobot takrorlanmasligi.
   `telegram_id` **faqat imzolangan ma'lumotdan** olinadi, JSON body'dan emas.
 - Har bir so'rov `workspace_id` bo'yicha cheklanadi — begona ma'lumotga
   murojaat 404 qaytaradi va mavjudligini oshkor qilmaydi.
-- Telefon raqam faqat `contact.user_id == from_user.id` bo'lganda saqlanadi.
+- Telefon raqam faqat `contact.user_id == from_user.id` bo'lganda saqlanadi va
+  admin kanalga **hech qachon** yuborilmaydi.
 - Ichki xatolik hech qachon foydalanuvchiga qaytmaydi.
 - Admin kanalga sir, token yoki stack trace yuborilmaydi.
+- Har foydalanuvchi bo'yicha rate limit (o'qish/yozish/og'ir) va 256 KB body
+  cheklovi.
+- Akkauntni o'chirish `ON DELETE CASCADE` ga tayanmaydi: har bir jadval
+  ataylab qo'lda tozalanadi, chunki SQLite foreign key'ni faqat so'ralganda
+  tekshiradi va "o'chirdim" deb aytib kimningdir kundaligini qoldirib ketish
+  eng yomon xato bo'lardi.
+
+## Nima himoyalangan va nima yo'q
+
+Bu ochiq yozilishi kerak, chunki foydalanuvchiga ko'rsatiladigan matn ham
+shunga mos bo'lishi shart:
+
+| | Holat |
+|---|---|
+| Boshqa foydalanuvchi ma'lumotingizni ko'rishi | ❌ mumkin emas — 20+ test bilan qoplangan |
+| Ma'lumot tashqi xizmatga yuborilishi | ❌ yuborilmaydi (AI yo'q, analytics yo'q) |
+| Administrator bazaga texnik kirishi | ✅ mumkin — buni yashirish to'g'ri emas |
+| End-to-end shifrlash | ❌ yo'q, va da'vo ham qilinmaydi |
+
+Shuning uchun ilovadagi matn *"Ma'lumotlaringiz boshqa foydalanuvchilardan
+alohida saqlanadi"* deydi — *"to'liq himoyalangan"* demaydi.
