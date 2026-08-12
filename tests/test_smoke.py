@@ -214,8 +214,8 @@ def test_unknown_category_falls_back_to_target(alice):
     assert "Stretching" in [h["name"] for h in grouped["target"]]
 
 
-def test_default_theme_is_graphite(alice):
-    assert alice.get("/api/me").json()["theme"] == "graphite"
+def test_default_theme_is_cobalt(alice):
+    assert alice.get("/api/me").json()["theme"] == "cobalt"
 
 
 def test_protected_habit_cannot_be_toggled(alice):
@@ -697,38 +697,63 @@ def _set_theme(telegram_id: int, value: str) -> None:
 def test_every_offered_theme_is_one_the_mini_app_styles():
     """The picker and the stylesheet must not be able to disagree."""
     styled = (ROOT / "webapp" / "index.html").read_text()
-    assert application.THEMES == ["graphite", "midnight", "jade", "paper"]
+    assert application.THEMES == ["cobalt", "slate", "blossom", "oxford", "aurora"]
     for name in application.THEMES:
         assert f'"{name}"' in styled, f"{name} is offered but never styled"
 
 
+def test_every_theme_declares_exactly_five_colours():
+    """A theme is five colours; anything else belongs in the derived block.
+
+    `cobalt` lives in `:root` alongside the derivations, so it is checked by
+    the presence of its five names rather than by counting.
+    """
+    import re
+
+    styled = (ROOT / "webapp" / "index.html").read_text()
+    for name in ("slate", "blossom", "aurora"):
+        block = re.search(r'\[data-theme="%s"\]\s*\{(.*?)\}' % name,
+                          styled, re.S).group(1)
+        assert sorted(re.findall(r"--c-[a-z]+", block)) == [
+            "--c-accent", "--c-bg", "--c-flow", "--c-signal", "--c-surface"]
+
+
 def test_a_retired_theme_reads_as_the_default(alice):
     _set_theme(ALICE["id"], "pink")
-    assert alice.get("/api/me").json()["theme"] == "graphite"
+    assert alice.get("/api/me").json()["theme"] == "cobalt"
 
 
 def test_the_migration_moves_a_retired_theme_to_its_closest_survivor(alice):
-    _set_theme(ALICE["id"], "emerald")
+    """Someone who chose pink gets the pink one, not the default."""
+    _set_theme(ALICE["id"], "rose")
     result = migrations.m0003_retire_themes()
     assert result["total"] >= 1
     with SessionLocal() as s:
-        assert s.get(User, ALICE["id"]).theme == "jade"
+        assert s.get(User, ALICE["id"]).theme == "blossom"
 
 
 def test_the_theme_migration_leaves_a_current_choice_alone(alice):
-    _set_theme(ALICE["id"], "paper")
+    _set_theme(ALICE["id"], "oxford")
     migrations.m0003_retire_themes()
     with SessionLocal() as s:
-        assert s.get(User, ALICE["id"]).theme == "paper"
+        assert s.get(User, ALICE["id"]).theme == "oxford"
+
+
+def test_the_theme_migration_keeps_a_reused_name(alice):
+    """`aurora` names a current theme again — those rows must not be moved."""
+    _set_theme(ALICE["id"], "aurora")
+    migrations.m0003_retire_themes()
+    with SessionLocal() as s:
+        assert s.get(User, ALICE["id"]).theme == "aurora"
 
 
 def test_the_theme_migration_is_safe_to_run_twice(alice):
-    _set_theme(ALICE["id"], "rose")
+    _set_theme(ALICE["id"], "obsidian")
     migrations.m0003_retire_themes()
     again = migrations.m0003_retire_themes()
     assert again["total"] == 0
     with SessionLocal() as s:
-        assert s.get(User, ALICE["id"]).theme == "midnight"
+        assert s.get(User, ALICE["id"]).theme == "slate"
 
 
 def test_a_retired_theme_cannot_be_set_again(alice):

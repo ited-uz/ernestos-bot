@@ -1140,11 +1140,12 @@ async def show_project(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 # Settings
 # ---------------------------------------------------------------------------
 
-#: Four themes, kept in the same order as the Mini App's picker. The six that
-#: shipped before them were retired in migration 0003; a row still holding a
+#: Five themes, kept in the same order as the Mini App's picker: the default,
+#: a modest one, a pink one, a formal one and a casual one. Everything that
+#: shipped before them was retired in migration 0003; a row still holding a
 #: retired name is read as the default rather than rejected.
-THEMES = ["graphite", "midnight", "jade", "paper"]
-DEFAULT_THEME = "graphite"
+THEMES = ["cobalt", "slate", "blossom", "oxford", "aurora"]
+DEFAULT_THEME = "cobalt"
 
 
 def theme_of(name: str | None) -> str:

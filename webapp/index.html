@@ -9,96 +9,121 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
 /* ==================================================================
-   Design tokens — four themes, no more.
+   Design tokens — four themes, five colours each.
 
-   Every theme follows the same rule: the surfaces stay near-neutral and
-   all of the saturation goes into --accent, which is used only on things
-   that respond to a tap. That is what keeps a screen readable at 6am and
-   what makes the four feel like one product rather than four skins.
+   A theme declares five colours and nothing else:
 
-   Nine themes shipped before this; six were removed because taste in a
-   saturated purple or pink is personal, and a default has to be liked by
-   everyone rather than loved by a few. Accounts still holding a retired
-   name fall through to :root, which is `graphite` — migration 0003
-   rewrites the stored value so the bot's Settings screen agrees.
+     --c-bg      the page
+     --c-surface the cards that sit on it
+     --c-accent  everything that responds to a tap
+     --c-flow    the accent's gradient partner, and "done"
+     --c-signal  attention — overdue, delete, the top habit tier
+
+   Every other token on this page is mixed from those five further down,
+   and custom properties resolve where they are *used*, so overriding the
+   five in a theme block re-derives all of them. That is why a theme is
+   six lines long and cannot drift out of step with the components.
+
+   Five themes, one per way of using the app: the default, a modest one,
+   a pink one, a formal one and a casual one. Blue carries three of them,
+   because blue is the one hue almost nobody dislikes.
    ================================================================== */
 :root{
-  /* graphite — near-black neutral, indigo accent. The default. */
-  --bg:#0a0a0c; --bg-glow:#16161c; --surface:#141418; --surface-2:#1a1a20;
-  /* Anything tappable sits on --tap, a step lighter than --surface, so a
-     button is distinguishable from a plain panel at a glance. */
-  --tap:#20202a; --tap-line:#33333f;
-  --line:#26262e; --line-soft:#1e1e25;
-  --text:#f4f4f6; --muted:#9494a0; --faint:#63636f;
-  --accent:#5b5bf5; --accent-2:#8b8bff; --accent-dim:#1c1c48; --on-accent:#fff;
-  --ok:#3dc98a; --warn:#e8a33d; --danger:#f2545b;
-  --t1:#f2545b; --t2:#e8a33d; --t3:#3dc98a;
+  /* cobalt — the default. Electric blue over near-black navy. */
+  --c-bg:#060b1f; --c-surface:#101a3d;
+  --c-accent:#2e6bff; --c-flow:#00d9ff; --c-signal:#ff4d8d;
+  /* Which end of the scale text and hairlines are mixed from. Not a sixth
+     colour — it is the tone that says "dark theme" or "light theme". */
+  --fg:#ffffff;
+
+  /* ---- derived: nothing below is chosen per theme ---- */
+  --bg:var(--c-bg);
+  --bg-glow:color-mix(in srgb, var(--c-accent) 28%, var(--c-bg));
+  --surface:var(--c-surface);
+  --surface-2:color-mix(in srgb, var(--c-surface) 90%, var(--fg));
+  /* Anything tappable sits on --tap, pulled toward the accent, so a button
+     is distinguishable from a plain panel at a glance. */
+  --tap:color-mix(in srgb, var(--c-surface) 86%, var(--c-accent));
+  --tap-line:color-mix(in srgb, var(--c-surface) 62%, var(--c-accent));
+  --line:color-mix(in srgb, var(--c-surface) 88%, var(--fg));
+  --line-soft:color-mix(in srgb, var(--c-surface) 94%, var(--fg));
+  --text:color-mix(in srgb, var(--fg) 95%, var(--c-accent));
+  --muted:color-mix(in srgb, var(--fg) 56%, var(--c-surface));
+  --faint:color-mix(in srgb, var(--fg) 36%, var(--c-surface));
+  --accent:var(--c-accent);
+  --accent-2:var(--c-flow);
+  --accent-dim:color-mix(in srgb, var(--c-accent) 22%, var(--c-bg));
+  --on-accent:#fff;
+  --ok:var(--c-flow);
+  --warn:var(--c-signal);
+  --danger:var(--c-signal);
+  /* The three habit tiers are the three chromatic colours, hardest first. */
+  --t1:var(--c-signal); --t2:var(--c-flow); --t3:var(--c-accent);
 
   --r-sm:10px; --r:14px; --r-lg:20px;
   --pad:16px;
   --shadow:0 10px 30px rgba(0,0,0,.35);
-  --ring:0 0 0 1px rgba(255,255,255,.04) inset;
+  --ring:0 0 0 1px rgba(255,255,255,.05) inset;
+  /* A button carries its own accent as light. A restrained theme has a
+     restrained accent, so the glow quietens with it — no per-theme tuning. */
+  --glow:0 8px 24px color-mix(in srgb, var(--c-accent) 42%, transparent);
 }
 
-/* midnight — cool navy surfaces under a warm accent. The widest temperature
-   gap of the four, so a button never reads as part of the background. */
-[data-theme="midnight"]{
-  --bg:#0b1116; --bg-glow:#12202a; --surface:#111a22; --surface-2:#16222c;
-  --tap:#1b2a36; --tap-line:#2c4252;
-  --line:#20303c; --line-soft:#1a2833;
-  --text:#eaf1f6; --muted:#8598a6; --faint:#5b6e7c;
-  --accent:#ff8a3d; --accent-2:#ffb07a; --accent-dim:#3a1e0a; --on-accent:#1a0a00;
-  --ok:#3fbf8f; --warn:#f0b429; --danger:#f26b6b;
-  --t1:#f26b6b; --t2:#f0b429; --t3:#4fc3e8;
+/* slate — the modest one. The same blue held back: low chroma, cool surfaces,
+   a muted amber instead of a hot pink. For anyone who wants the app to
+   disappear behind the task. */
+[data-theme="slate"]{
+  --c-bg:#0b0e14; --c-surface:#161b24;
+  --c-accent:#4a6fa5; --c-flow:#7d98bd; --c-signal:#c08a4a;
 }
 
-/* jade — the calmest of the four. Green carries "done" in this app, so the
-   accent and the completed state are the same colour on purpose. */
-[data-theme="jade"]{
-  --bg:#08110e; --bg-glow:#0e2119; --surface:#0e1a16; --surface-2:#12231d;
-  --tap:#162c24; --tap-line:#26463a;
-  --line:#1c3229; --line-soft:#162a22;
-  --text:#e9f3ee; --muted:#87a397; --faint:#5a7568;
-  --accent:#10b981; --accent-2:#4ade9f; --accent-dim:#0a3a2b; --on-accent:#03150e;
-  --ok:#10b981; --warn:#f0b429; --danger:#f26b6b;
-  --t1:#f26b6b; --t2:#f0b429; --t3:#10b981;
+/* blossom — pink all the way through, not a pink button on a neutral app:
+   the page and the cards carry it too. */
+[data-theme="blossom"]{
+  --c-bg:#1a0718; --c-surface:#341031;
+  --c-accent:#ff3d9a; --c-flow:#ff8ac9; --c-signal:#ffc247;
 }
 
-/* Light appearance overlays the three dark themes, keeping each one's accent
-   and neutralising only the surfaces. */
+/* aurora — the casual one. Violet into magenta, the loudest of the five. */
+[data-theme="aurora"]{
+  --c-bg:#0d0524; --c-surface:#1e0c47;
+  --c-accent:#8b3dff; --c-flow:#ff4fd8; --c-signal:#ffd23d;
+}
+
+/* Light appearance neutralises the surfaces of the dark themes and leaves
+   their accent alone, so a theme keeps its identity in daylight. */
 :root[data-appearance="light"],
 :root[data-appearance="auto"]:not([data-dark="1"]){
-  --bg:#f6f6f8; --bg-glow:#ececf1; --surface:#fff; --surface-2:#f2f2f6;
-  --tap:#eeeef3; --tap-line:#d8d8e0;
-  --line:#e6e6ec; --line-soft:#f0f0f4;
-  --text:#111114; --muted:#61616e; --faint:#9a9aa6;
-  --accent-dim:#ececfb; --on-accent:#fff;
-  --shadow:0 8px 24px rgba(16,16,26,.07);
-  --ring:0 0 0 1px rgba(0,0,0,.02) inset;
+  --c-bg:#eef2fb; --c-surface:#ffffff;
+  --fg:#080d1c;
+  --shadow:0 8px 24px rgba(10,16,35,.08);
+  --ring:0 0 0 1px rgba(0,0,0,.03) inset;
 }
 
-/* paper — light by design, not by appearance: a warm paper surface with an ink
-   accent. Declared after the light overlay, and the second selector carries
-   enough specificity to out-rank it, so paper looks the same whether the phone
-   is in light or dark mode. */
-[data-theme="paper"],
-:root[data-theme="paper"][data-appearance][data-dark]{
-  --bg:#f7f5f1; --bg-glow:#efede7; --surface:#fff; --surface-2:#f2f0eb;
-  --tap:#edeae3; --tap-line:#dad6cc;
-  --line:#e3e0d9; --line-soft:#edeae3;
-  --text:#16150f; --muted:#6e6b60; --faint:#9a968a;
-  --accent:#15140e; --accent-2:#37331f; --accent-dim:#eae7de; --on-accent:#fff;
-  --ok:#3e7a55; --warn:#b4802b; --danger:#c4452f;
-  --t1:#c4452f; --t2:#b4802b; --t3:#3e7a55;
-  --shadow:0 8px 24px rgba(30,26,15,.08);
-  --ring:0 0 0 1px rgba(0,0,0,.02) inset;
+/* oxford — the formal one, and light by design rather than by appearance:
+   navy ink and a muted gold on paper. Declared after the light overlay, and
+   the second selector carries enough specificity to out-rank it, so oxford
+   looks the same whether the phone is in light or dark mode. */
+[data-theme="oxford"],
+:root[data-theme="oxford"][data-appearance][data-dark]{
+  --c-bg:#f1f2f6; --c-surface:#ffffff;
+  --c-accent:#14315c; --c-flow:#3d6ba8; --c-signal:#a67c2e;
+  --fg:#0b1220;
+  --shadow:0 8px 24px rgba(11,18,32,.09);
+  --ring:0 0 0 1px rgba(0,0,0,.03) inset;
+  --glow:0 8px 24px color-mix(in srgb, var(--c-accent) 24%, transparent);
 }
 
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{overflow-x:hidden;width:100%}
 body{
   background:var(--bg);
-  background-image:radial-gradient(120% 60% at 50% 0%, var(--bg-glow) 0%, transparent 62%);
+  /* Two washes rather than one: the accent from the top, its gradient partner
+     from the upper right, so the page has a direction instead of a halo. */
+  background-image:
+    radial-gradient(115% 55% at 50% 0%, var(--bg-glow) 0%, transparent 62%),
+    radial-gradient(80% 42% at 100% 4%,
+      color-mix(in srgb, var(--c-flow) 20%, transparent) 0%, transparent 60%);
   background-attachment:fixed;
   color:var(--text);
   font:15px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
@@ -142,8 +167,12 @@ h2{font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:1.2px;
 
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
       padding:15px;margin-bottom:10px;box-shadow:var(--ring)}
-.card.glow{background:linear-gradient(150deg,var(--accent-dim),var(--surface) 70%);
-           border-color:var(--accent-dim)}
+/* The one card that is meant to be looked at first carries the accent as a
+   gradient rather than a border, so it outweighs everything under it. */
+.card.glow{background:linear-gradient(150deg,
+             color-mix(in srgb, var(--c-accent) 34%, var(--surface)),
+             color-mix(in srgb, var(--c-flow) 14%, var(--surface)) 72%);
+           border-color:color-mix(in srgb, var(--c-accent) 40%, var(--surface))}
 
 .item{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
       padding:13px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px;
@@ -155,7 +184,7 @@ h2{font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:1.2px;
 .item.t3{border-left:3px solid var(--t3)}
 .item.pick{border-style:dashed;border-color:var(--danger)}
 
-.check{width:26px;height:26px;border-radius:9px;border:2px solid var(--line);flex:none;
+.check{width:26px;height:26px;border-radius:50%;border:2px solid var(--tap-line);flex:none;
        display:grid;place-items:center;font-size:14px;position:relative;
        transition:transform .12s,background .15s}
 /* Invisible 44px hit area around the 26px control — comfortable to tap
@@ -167,7 +196,7 @@ h2{font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:1.2px;
 
 .btn{background:linear-gradient(140deg,var(--accent),var(--accent-2));color:var(--on-accent);
      border:0;border-radius:13px;padding:13px 16px;font-size:15px;font-weight:680;
-     cursor:pointer;min-height:48px;width:100%;box-shadow:var(--shadow)}
+     cursor:pointer;min-height:48px;width:100%;box-shadow:var(--glow)}
 .btn:active{filter:brightness(.94)}
 .btn.ghost{background:var(--tap);color:var(--text);border:1px solid var(--tap-line);box-shadow:var(--ring)}
 .btn.danger{background:transparent;color:var(--danger);border:1px solid var(--danger);box-shadow:none}
@@ -190,7 +219,8 @@ label{display:block;font-size:11px;color:var(--faint);margin:15px 0 6px;
 .pill{display:inline-flex;align-items:center;gap:5px;background:var(--tap);
       border:1px solid var(--tap-line);border-radius:999px;padding:8px 14px;font-size:13px;
       font-weight:600;white-space:nowrap}
-.pill.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.pill.on{background:linear-gradient(140deg,var(--accent),var(--accent-2));
+         border-color:transparent;color:var(--on-accent);box-shadow:var(--glow)}
 /* Prayer statuses read faster with their own colour than as identical chips. */
 .pill.st-jamaat.on{background:#16a34a;border-color:#16a34a;color:#fff}
 .pill.st-on_time.on{background:#22c55e;border-color:#22c55e;color:#04140a}
@@ -239,8 +269,10 @@ label{display:block;font-size:11px;color:var(--faint);margin:15px 0 6px;
 /* Home's four numbers: two columns, so nothing shrinks below readable at
    320px and nothing scrolls sideways. */
 .metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0 4px}
-.metric{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
-        padding:13px 14px;box-shadow:var(--ring);min-width:0}
+.metric{background:linear-gradient(160deg,
+          color-mix(in srgb, var(--c-accent) 12%, var(--surface)), var(--surface) 72%);
+        border:1px solid var(--line);border-radius:var(--r-lg);
+        padding:14px 15px;box-shadow:var(--ring);min-width:0}
 .metric .k{font-size:10.5px;color:var(--faint);text-transform:uppercase;
            letter-spacing:.6px;font-weight:750}
 .metric .v{font-size:21px;font-weight:760;letter-spacing:-.5px;margin-top:4px;
@@ -249,20 +281,35 @@ label{display:block;font-size:11px;color:var(--faint);margin:15px 0 6px;
 .trend.up{color:var(--ok)} .trend.down{color:var(--danger)}
 .trend.flat{color:var(--muted)}
 
-/* Priority is carried by a coloured edge *and* a written label — colour
-   alone would say nothing to a colour-blind user or in a screenshot. */
-.mission{display:flex;align-items:flex-start;gap:12px;padding:16px;
-         border-radius:var(--r);margin-bottom:8px;background:var(--surface);
-         border:1px solid var(--line);border-left:4px solid var(--t2);
-         box-shadow:var(--ring)}
+/* The mission is the one thing on Home the user is meant to look at first, so
+   it is the only card painted in the accent itself. Everything under it stays
+   on --surface and reads as quieter by comparison.
+
+   Priority is carried by a coloured edge *and* a written label — colour alone
+   would say nothing to a colour-blind user or in a screenshot. On the gradient
+   the label turns into a translucent chip, because tier colours on a saturated
+   background stop being legible. */
+.mission{display:flex;align-items:flex-start;gap:12px;padding:18px;
+         border-radius:var(--r-lg);margin-bottom:8px;color:#fff;
+         background:linear-gradient(145deg,var(--c-accent),var(--c-flow));
+         border:1px solid transparent;border-left:4px solid var(--t2);
+         box-shadow:var(--glow);position:relative;overflow:hidden}
+/* A soft highlight in the corner keeps the flat gradient from looking printed. */
+.mission::after{content:"";position:absolute;top:-60px;right:-40px;width:170px;height:170px;
+  background:radial-gradient(circle,rgba(255,255,255,.26),transparent 66%);pointer-events:none}
 .mission.pri-high{border-left-color:var(--t1)}
 .mission.pri-medium{border-left-color:var(--t2)}
 .mission.pri-low{border-left-color:var(--t3)}
-.mission-title{font-size:16px;font-weight:700;line-height:1.35;overflow-wrap:anywhere}
+.mission-title{font-size:17px;font-weight:750;line-height:1.35;overflow-wrap:anywhere}
 .tag{display:inline-block;font-size:10.5px;font-weight:750;letter-spacing:.5px;
      text-transform:uppercase;margin-top:6px;color:var(--muted)}
 .tag.pri-high{color:var(--t1)} .tag.pri-medium{color:var(--t2)}
 .tag.pri-low{color:var(--t3)}
+/* Declared after the tier colours so it wins on the gradient, where those
+   colours would sit on top of a saturated background and stop being legible. */
+.mission .tag{color:#fff;background:rgba(255,255,255,.18);
+              border:1px solid rgba(255,255,255,.28);border-radius:999px;
+              padding:4px 11px;margin-top:9px}
 
 .group{font-size:12px;font-weight:750;color:var(--muted);margin:16px 0 7px;
        overflow-wrap:anywhere}
@@ -316,7 +363,11 @@ nav{position:fixed;left:0;right:0;bottom:0;z-index:40;
 nav button{background:0;border:0;color:var(--faint);padding:9px 4px 10px;font-size:10px;
            font-weight:700;cursor:pointer;display:grid;gap:3px;justify-items:center;
            min-height:56px;letter-spacing:.2px}
+/* The active tab is filled, not just tinted: on a colourful background a
+   colour change alone stops reading as "you are here". */
 nav button.on{color:var(--accent)}
+nav button.on .ic{background:linear-gradient(140deg,var(--accent),var(--accent-2));
+  border-radius:11px;padding:2px 12px;box-shadow:var(--glow)}
 nav .ic{font-size:19px;line-height:1}
 
 .sheet{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;
@@ -558,19 +609,22 @@ const DICT = {
  },
 };
 
-//: `a` is the accent, `b` the background — the two swatches the picker shows,
-//: which is also the one promise every theme makes: they are never the same.
+//: `a` and `b` are the theme's accent and its gradient partner. The picker
+//: paints them as the same gradient a button gets, so the swatch is a preview
+//: of the thing the user will actually tap rather than a decorative dot.
 const THEMES = [
-  {id:"graphite", a:"#5b5bf5", b:"#0a0a0c"},
-  {id:"midnight", a:"#ff8a3d", b:"#0b1116"},
-  {id:"jade",     a:"#10b981", b:"#08110e"},
-  {id:"paper",    a:"#15140e", b:"#f7f5f1"},
+  {id:"cobalt",  a:"#2e6bff", b:"#00d9ff"},
+  {id:"slate",   a:"#4a6fa5", b:"#7d98bd"},
+  {id:"blossom", a:"#ff3d9a", b:"#ff8ac9"},
+  {id:"oxford",  a:"#14315c", b:"#3d6ba8"},
+  {id:"aurora",  a:"#8b3dff", b:"#ff4fd8"},
 ];
 
-//: An account that still holds a retired theme name renders as graphite and
-//: shows graphite ticked, rather than showing a picker with nothing selected.
+//: An account that still holds a retired theme name renders as the default and
+//: shows the default ticked, rather than a picker with nothing selected.
+const DEFAULT_THEME = "cobalt";
 const themeOf = name =>
-  THEMES.some(th => th.id === name) ? name : "graphite";
+  THEMES.some(th => th.id === name) ? name : DEFAULT_THEME;
 
 /* ---------- state ---------- */
 const state = {
