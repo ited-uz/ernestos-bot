@@ -38,6 +38,7 @@ os.environ.update({
 import app as application  # noqa: E402
 import db  # noqa: E402
 import migrations  # noqa: E402
+import dependencies as deps  # noqa: E402
 import services as svc  # noqa: E402
 from db import SessionLocal, User  # noqa: E402
 
@@ -576,15 +577,90 @@ def test_only_subscribed_onboarded_users_receive_reports(alice):
 # Subscription gate
 # --------------------------------------------------------------------------
 
-def test_api_is_blocked_while_unsubscribed(client, monkeypatch):
-    monkeypatch.setattr(application, "REQUIRED_CHANNEL_ID", "-1001234567890")
+def _set_actions(telegram_id: int, count: int) -> None:
+    with SessionLocal() as s:
+        s.get(User, telegram_id).actions_count = count
+        s.commit()
+
+
+def test_a_new_account_is_not_asked_for_the_channel(client, monkeypatch):
+    """The free run comes first.
+
+    The channel used to be step two of onboarding — asked before the user had
+    seen one thing the product does. Somebody who has just arrived owes nobody
+    a subscription, so the first twenty actions are simply open.
+    """
+    monkeypatch.setattr(deps, "REQUIRED_CHANNEL_ID", "-1001234567890")
     with SessionLocal() as s:
         svc.get_or_create_user(s, BOB["id"], first_name="Bob")
         user = s.get(User, BOB["id"])
         user.is_subscribed = False
+        user.onboarded = True
+        user.actions_count = 0
+        s.commit()
+    r = client.get("/api/home", headers={"X-Telegram-Init-Data": init_data(BOB)})
+    assert r.status_code == 200, "a brand-new account was gated at the door"
+
+
+def test_the_api_is_blocked_once_the_free_run_is_spent(client, monkeypatch):
+    monkeypatch.setattr(deps, "REQUIRED_CHANNEL_ID", "-1001234567890")
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, BOB["id"], first_name="Bob")
+        user = s.get(User, BOB["id"])
+        user.is_subscribed = False
+        user.onboarded = True
+        user.actions_count = deps.FREE_ACTIONS
         s.commit()
     r = client.get("/api/home", headers={"X-Telegram-Init-Data": init_data(BOB)})
     assert r.status_code == 403
+
+
+def test_a_subscriber_is_never_gated_however_many_actions(client, monkeypatch):
+    monkeypatch.setattr(deps, "REQUIRED_CHANNEL_ID", "-1001234567890")
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, BOB["id"], first_name="Bob")
+        user = s.get(User, BOB["id"])
+        user.is_subscribed = True
+        user.onboarded = True
+        user.actions_count = deps.FREE_ACTIONS * 5
+        s.commit()
+    r = client.get("/api/home", headers={"X-Telegram-Init-Data": init_data(BOB)})
+    assert r.status_code == 200
+
+
+def test_reading_does_not_spend_the_free_run(alice):
+    """Scrolling is not use. Only a write counts."""
+    _set_actions(ALICE["id"], 0)
+    for _ in range(5):
+        alice.get("/api/home")
+    with SessionLocal() as s:
+        assert s.get(User, ALICE["id"]).actions_count == 0
+
+    alice.post("/api/tasks", json={"title": "A real action"})
+    with SessionLocal() as s:
+        assert s.get(User, ALICE["id"]).actions_count == 1
+
+
+def test_checking_the_subscription_does_not_spend_an_action(alice):
+    """Charging somebody for tapping "have I joined yet" would be absurd.
+
+    Nor for changing a theme or a report time: those are settings, not use.
+    """
+    _set_actions(ALICE["id"], 0)
+    alice.post("/api/settings", json={"theme": "ocean"})
+    alice.get("/api/subscription")
+    with SessionLocal() as s:
+        assert s.get(User, ALICE["id"]).actions_count == 0
+    assert "/api/prefs" in application.UNCOUNTED_PATHS
+    assert "/api/subscription" in application.UNCOUNTED_PATHS
+
+
+def test_a_rejected_write_costs_nothing(alice):
+    """A 4xx never spends a free action."""
+    _set_actions(ALICE["id"], 0)
+    alice.post("/api/tasks", json={"title": ""})
+    with SessionLocal() as s:
+        assert s.get(User, ALICE["id"]).actions_count == 0
 
 
 # --------------------------------------------------------------------------
@@ -1548,12 +1624,12 @@ async def test_membership_check_returns_none_when_telegram_fails():
         async def get_chat_member(self, **_):
             raise TelegramError("boom")
 
-    previous = application.REQUIRED_CHANNEL_ID
-    application.REQUIRED_CHANNEL_ID = "-1001234567890"
+    previous = deps.REQUIRED_CHANNEL_ID
+    deps.REQUIRED_CHANNEL_ID = "-1001234567890"
     try:
         assert await application.is_subscribed(Failing(), 42, retries=0) is None
     finally:
-        application.REQUIRED_CHANNEL_ID = previous
+        deps.REQUIRED_CHANNEL_ID = previous
 
 
 def test_unknown_membership_never_marks_a_user_subscribed():
@@ -1917,15 +1993,80 @@ def test_home_writes_the_date_in_the_users_language(alice):
 
 # --- One overall number, computed once -----------------------------------
 
-def test_a_category_with_nothing_due_is_left_out_of_the_average(alice):
-    """An empty category must not be averaged in as 0%."""
+def test_a_category_with_nothing_due_is_left_out_of_the_score(alice):
+    """An empty category must not be scored as 0%.
+
+    It is dropped from the weighting entirely, and the remaining weights are
+    renormalised over what is left — which is what makes a fixed 40/25/20/15
+    safe to state. A user with no prayer module does not carry a permanent 15%
+    hole; that 15 is split across the other three in proportion.
+    """
     _clear_tasks(ALICE["id"])
     with SessionLocal() as s:
         ws = svc.workspace_id_for(s, ALICE["id"])
         components = svc.overall_components(s, ws)
         assert components["tasks"] is None
-        available = [v for v in components.values() if v is not None]
-        assert svc.overall_percent(s, ws) == round(sum(available) / len(available))
+        assert svc.overall_percent(s, ws) == svc.weighted_overall(components)
+
+
+def test_the_weights_are_the_ones_the_product_promises():
+    assert svc.OVERALL_WEIGHTS == {"tasks": 0.40, "habits": 0.25,
+                                   "focus": 0.20, "prayer": 0.15}
+    assert round(sum(svc.OVERALL_WEIGHTS.values()), 6) == 1.0
+
+
+def test_one_category_on_its_own_scores_exactly_itself():
+    """The only defensible answer when there is nothing to weigh it against."""
+    assert svc.weighted_overall({"tasks": 73}) == 73
+    assert svc.weighted_overall({"prayer": 40}) == 40
+    assert svc.weighted_overall({}) == svc.EMPTY_OVERALL
+    assert svc.weighted_overall({"tasks": None, "habits": None}) == svc.EMPTY_OVERALL
+
+
+def test_a_missing_category_is_split_in_proportion_not_in_equal_shares():
+    """Dropping prayer must not hand its 15 points out evenly.
+
+    Tasks are worth more than habits, so tasks absorb more of the gap. An equal
+    split would quietly flatten the weighting the moment anybody stopped using
+    one module.
+    """
+    # tasks 40, habits 25, focus 20 → renormalised over 85
+    score = svc.weighted_overall({"tasks": 100, "habits": 0, "focus": 0})
+    assert score == round(100 * 0.40 / 0.85)
+    # and the same three at full marks is still exactly 100
+    assert svc.weighted_overall({"tasks": 100, "habits": 100, "focus": 100}) == 100
+
+
+def test_tasks_outweigh_habits_in_the_score():
+    """40 against 25 — the day's real work is not the same size as a habit."""
+    tasks_only = svc.weighted_overall({"tasks": 100, "habits": 0})
+    habits_only = svc.weighted_overall({"tasks": 0, "habits": 100})
+    assert tasks_only > habits_only
+
+
+def test_an_important_task_is_worth_more_than_a_trivial_one(alice):
+    """Marking something "high" tells the system what today is about.
+
+    If every task were worth the same, the cheapest route to a good percentage
+    would be to do the easy ones and leave the one that mattered.
+    """
+    _clear_tasks(ALICE["id"])
+    today = svc.today_local().isoformat()
+    big = alice.post("/api/tasks", json={"title": "The hard one",
+                                         "deadline": today,
+                                         "priority": "high"}).json()["id"]
+    alice.post("/api/tasks", json={"title": "A small one", "deadline": today,
+                                   "priority": "low"})
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        assert svc.overall_components(s, ws)["tasks"] == 0
+
+    alice.patch(f"/api/tasks/{big}", json={"status": "done"})
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        # 3 of 4 priority points, not 1 of 2.
+        assert svc.overall_components(s, ws)["tasks"] == 75
+    _clear_tasks(ALICE["id"])
 
 
 def test_finishing_todays_tasks_scores_them_at_a_hundred(alice):
@@ -2082,18 +2223,67 @@ def test_onboarding_starts_at_language():
         assert s.get(User, 808001).onboarding_step == "language"
 
 
-def test_onboarding_is_language_then_channel_and_nothing_else():
-    """Two steps, in that order, and nothing else.
+def test_setup_builds_a_day_instead_of_filling_a_form():
+    """Language, the pitch, then four questions that each create something.
 
-    The phone number used to sit between them, and it was the worst question
-    in the product: the most personal thing the app ever asked for, asked
-    before the user had seen one screen of what they were joining, in exchange
-    for nothing they could feel. It is not asked anywhere now.
+    Every step of setup writes a real row — the goal becomes the week's
+    mission, the tasks become today's tasks — so the last screen can show the
+    user their actual day. A form that collects answers and shows a tour at the
+    end has taught nobody anything.
+
+    What must not come back: the channel as step two, and the phone number
+    between them. Both were tolls charged before the user had seen a single
+    thing the product does.
     """
-    assert application.ONBOARDING_STEPS == ["language", "subscribe", "done"]
+    assert application.ONBOARDING_STEPS == [
+        "language", "intro", "name", "goal", "tasks", "habits", "done"]
     source = (ROOT / "app.py").read_text()
     assert 'user.onboarding_step = "phone"' not in source
-    assert 'user.onboarding_step = "subscribe"' in source
+    assert 'user.onboarding_step = "subscribe"' not in source, \
+        "the channel is back in onboarding"
+    # Legacy accounts parked on a retired step are moved on, not re-asked.
+    assert application.LEGACY_STEPS == {"phone", "gender", "subscribe"}
+
+
+def test_setup_writes_each_answer_as_it_is_given():
+    """Nothing is held in limbo until the end.
+
+    Somebody who walks away after the goal keeps the goal. Buffering the whole
+    setup and committing it on the last screen means an abandoned setup leaves
+    the account exactly as empty as it started.
+    """
+    source = (ROOT / "app.py").read_text()
+    handler = source[source.index("async def handle_setup_answer("):
+                     source.index("#: Three tasks and three habits.")]
+    assert "svc.add_focus(" in handler, "the goal is not written"
+    assert "svc.add_task(" in handler, "the tasks are not written"
+    assert "svc.add_habit(" in handler, "the habits are not written"
+    assert "user.first_name = " in handler, "the name is not written"
+
+
+@pytest.mark.parametrize("lang", ["uz", "en", "ru"])
+def test_every_setup_question_carries_an_example(lang):
+    """"What is your main goal?" is a question somebody stalls on.
+
+    An example is the difference between a prompt and a blank page, and it is
+    also how the answer arrives in the shape the product can use.
+    """
+    for key in ("ask_goal", "ask_tasks", "ask_habits"):
+        text = application.t(lang, key)
+        assert "<i>" in text, f"{lang}/{key} gives no example"
+        assert len(text) < 400, f"{lang}/{key} is a paragraph, not a question"
+
+
+@pytest.mark.parametrize("lang", ["uz", "en", "ru"])
+def test_the_intro_makes_a_promise_before_it_asks_anything(lang):
+    """One screen, one promise, one button — shown before any question."""
+    intro = application.t(lang, "intro")
+    assert 200 < len(intro) < 800, f"{lang} intro is the wrong size for a hook"
+    assert intro.count("<b>") >= 2
+    assert application.t(lang, "intro_go")
+    source = (ROOT / "app.py").read_text()
+    assert 'user.onboarding_step = "intro"' in source, \
+        "the pitch does not come straight after the language"
 
 
 def test_gender_is_not_an_onboarding_step():
@@ -2122,15 +2312,18 @@ def test_the_phone_number_is_never_asked_for():
         assert application.t(lang, "phone_not_needed")
 
 
-def test_a_new_account_is_given_the_guide():
-    """An empty app explains nothing on its own.
+def test_the_guide_is_on_demand_rather_than_pushed_at_a_new_account():
+    """Eleven paragraphs are not a welcome.
 
-    The guide is sent once on the way in and is reachable afterwards with
-    /guide, because once is not always the moment somebody reads it.
+    The guide used to be sent automatically on the way in — a manual for a
+    machine the reader had not been shown yet. The way in is now the intro and
+    the setup; the guide stays for the moment somebody actually wants it.
     """
     source = (ROOT / "app.py").read_text()
-    assert 't(lang, "guide")' in source
     assert 'CommandHandler("guide", show_guide)' in source
+    finish = source[source.index("async def finish_onboarding("):
+                    source.index("def render_day_ready(")]
+    assert 't(lang, "guide")' not in finish, "the guide is pushed again"
     for lang in ("uz", "en", "ru"):
         guide = application.t(lang, "guide")
         # Four features, each with a concrete example rather than a category:
@@ -2517,6 +2710,25 @@ def _clear_top3(telegram_id: int) -> None:
         s.commit()
 
 
+def test_nothing_still_calls_the_single_pick_a_top_three():
+    """The label has to agree with the limit.
+
+    `MAX_TOP3` is 1 — "the most important thing today" is singular by
+    definition — while every string still said "TOP 3", so the product promised
+    three slots and refused the second. The internal name stays (renaming a
+    column and an endpoint is a migration for no user benefit); the words the
+    user reads do not.
+    """
+    assert svc.MAX_TOP3 == 1
+    html = (ROOT / "webapp" / "index.html").read_text()
+    dicts = html[html.index("const DICT = {"):html.index("/* ---------- themes")]
+    for wrong in ("TOP 3", "top 3", "Топ-3", "топ-3"):
+        assert wrong not in dicts, f"the UI still says {wrong!r}"
+    for lang in ("uz", "en", "ru"):
+        assert "3" not in application.t(lang, "home_top3"), \
+            f"{lang} still advertises three slots"
+
+
 def test_the_day_has_exactly_one_mission(alice):
     """"The most important thing today" is singular by definition."""
     _clear_top3(ALICE["id"])
@@ -2843,7 +3055,7 @@ def test_statistics_carry_all_four_series(alice):
 
 def test_statistics_compare_with_the_previous_period(alice):
     body = alice.get("/api/stats?period=month").json()
-    assert set(body["previous"]) == {"overall", "tasks", "habits", "prayer"}
+    assert set(body["previous"]) == set(svc.SERIES_KEYS)
     for key, delta in body["deltas"].items():
         assert delta == body["averages"][key] - body["previous"][key]
 
@@ -2862,11 +3074,24 @@ def test_the_prayer_breakdown_separates_the_five_facts(alice):
 
 def test_the_overall_number_explains_itself(alice):
     body = alice.get("/api/overall").json()
-    assert body["rule"] == "mean_of_available"
-    assert [p["key"] for p in body["parts"]] == ["tasks", "habits", "prayer"]
-    counted = [p["percent"] for p in body["parts"] if p["percent"] is not None]
-    assert body["value"] == (round(sum(counted) / len(counted)) if counted else 0)
-    assert set(body["counted"]) <= {"tasks", "habits", "prayer"}
+    assert body["rule"] == "weighted_mean_of_available"
+    assert [p["key"] for p in body["parts"]] == \
+        ["tasks", "habits", "focus", "prayer"]
+    parts = {p["key"]: p["percent"] for p in body["parts"]}
+    assert body["value"] == svc.weighted_overall(parts)
+    assert set(body["counted"]) <= {"tasks", "habits", "focus", "prayer"}
+
+
+def test_the_explanation_prints_the_weights_that_actually_applied(alice):
+    """Showing the nominal 40/25/20/15 to somebody missing a category would be
+    a lie about their own number."""
+    body = alice.get("/api/overall").json()
+    weights = body["weights"]
+    assert set(weights) == set(body["counted"])
+    assert sum(weights.values()) in range(99, 102)     # rounding, not drift
+    assert body["nominal_weights"] == {"tasks": 40, "habits": 25,
+                                       "focus": 20, "prayer": 15}
+    assert body["task_priority_weights"] == {"high": 3, "medium": 2, "low": 1}
 
 
 def test_the_explanation_matches_the_number_home_shows(alice):
@@ -3336,6 +3561,40 @@ def test_the_mini_app_never_claims_a_save_it_did_not_make():
     assert "setState(back);" in html
 
 
+def test_every_timezone_the_platform_knows_is_offerable():
+    """A shortlist of twelve was a guess about where users live.
+
+    Reports fire on this clock, so somebody who cannot name their own zone gets
+    a morning report in the middle of the night. The common ones still lead the
+    list, because a picker sorted purely alphabetically opens on Africa/Abidjan.
+    """
+    from zoneinfo import ZoneInfo
+
+    assert len(svc.TIMEZONES) > 400, "still a shortlist"
+    assert svc.TIMEZONES[:len(svc.COMMON_TIMEZONES)] == svc.COMMON_TIMEZONES
+    assert svc.TIMEZONES[0] == "Asia/Tashkent"
+    assert len(svc.TIMEZONES) == len(set(svc.TIMEZONES)), "a zone is listed twice"
+    for name in ("Asia/Samarkand", "Europe/Kyiv", "America/Sao_Paulo",
+                 "Australia/Sydney", "Africa/Cairo"):
+        assert name in svc.TIMEZONES, f"{name} is not offerable"
+    # Every offered name must actually resolve, or saving it 422s.
+    for name in svc.TIMEZONES[:40]:
+        assert ZoneInfo(name)
+
+
+def test_the_timezone_picker_keeps_the_common_ones_within_reach():
+    """The UI must split the list, or the shortlist's whole benefit is lost."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    picker = html[html.index("function timezonePicker(zones, current){"):
+                  html.index("//: How many of the server's zones")]
+    assert "optgroup" in picker, "five hundred zones in one flat list"
+    assert 't("tz_common")' in picker
+    assert f"const TZ_COMMON_COUNT = {len(svc.COMMON_TIMEZONES)};" in html, \
+        "the app and the server disagree on how many zones lead the list"
+    # A zone the server no longer offers must still show, not silently reset.
+    assert "zones.includes(current)" in picker
+
+
 def test_a_form_control_saves_on_change_and_never_on_click():
     """The bug that made the report times and the timezone uneditable.
 
@@ -3390,12 +3649,17 @@ def test_home_reads_the_day_as_four_separate_blocks():
     assert 't("habits")' not in score, "the three parts are back inside the score"
 
     today = html[html.index("function todayBlock(d){"):html.index("function tasksBlock(d){")]
-    for key in ("tasks", "habits", "prayer"):
+    for key in ("tasks", "habits", "prayer", "week_focus"):
         assert f't("{key}")' in today, f"today's block is missing {key}"
-    # Each in a hue of its own, and each a way into the screen that owns it.
-    assert len(set(re.findall(r"tone-\d", today))) == 3, \
-        "the three parts share a colour"
+    # Each in a hue of its own, from the one table the whole app reads.
+    tones = html[html.index("const COMPONENT_TONE = {"):]
+    tones = tones[:tones.index("};") + 2]
+    assert len(set(re.findall(r"tone-\d", tones))) == 4, \
+        "two of the four parts share a colour"
     assert 'data-screen="tasks"' in today and 'data-tab="prayer"' in today
+    # And each carries what it is worth, or the tiles contradict the headline.
+    assert "WEIGHTS[key]" in today
+    assert "const WEIGHTS = {tasks:40, habits:25, focus:20, prayer:15};" in html
 
 
 def test_a_tinted_block_never_names_a_colour():

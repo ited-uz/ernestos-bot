@@ -41,6 +41,7 @@ from telegram.ext import (
 )
 
 import db
+import dependencies as deps
 import services as svc
 from db import SessionLocal, User
 
@@ -58,8 +59,11 @@ log = logging.getLogger("ernestos")
 # ---------------------------------------------------------------------------
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
-REQUIRED_CHANNEL_ID = os.environ.get("REQUIRED_CHANNEL_ID", "").strip()
-REQUIRED_CHANNEL_URL = os.environ.get("REQUIRED_CHANNEL_URL", "").strip()
+#: Access policy — the channel, the free run and the membership cache — lives
+#: in `dependencies` and is read from there at every call site. Deliberately
+#: not copied into a module-level name here: two copies of one setting is how
+#: the bot and the API end up disagreeing about who is let in, and a test that
+#: patches the copy silently changes nothing.
 ADMIN_LOG_CHANNEL_ID = os.environ.get("ADMIN_LOG_CHANNEL_ID", "").strip()
 #: Suggestions and complaints get their own channel, apart from event logs.
 FEEDBACK_CHANNEL_ID = os.environ.get("FEEDBACK_CHANNEL_ID", "").strip() or ADMIN_LOG_CHANNEL_ID
@@ -69,6 +73,20 @@ STATS_CHANNEL_ID = os.environ.get("STATS_CHANNEL_ID", "").strip() or ADMIN_LOG_C
 STATS_POST_HOUR = int(os.environ.get("STATS_POST_HOUR", "10"))
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "").strip().rstrip("/")
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "development").lower()
+
+#: Set to run the bot on a webhook instead of long-polling. Unset — the
+#: default — keeps polling, which needs no public URL and is the right choice
+#: for one instance. Behind a load balancer polling is not an option at all:
+#: several instances cannot each long-poll the same bot without stealing one
+#: another's updates.
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "").strip().rstrip("/")
+#: Telegram echoes this back in a header, which is the only thing separating a
+#: real update from anybody who guessed the path.
+WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "").strip()
+
+#: The update types this bot acts on. Anything else is refused at Telegram's
+#: end rather than delivered and dropped here.
+ALLOWED_UPDATES = ["message", "callback_query", "chat_member", "my_chat_member"]
 
 #: Telegram initData older than this is rejected, so a captured URL cannot be
 #: replayed days later.
@@ -174,10 +192,63 @@ T: dict[str, dict[str, str]] = {
         "sub_required": "ErnestOS'dan foydalanish uchun kanalimizga obuna bo'ling.",
         "btn_join": "📢 Kanalga qo'shilish",
         "btn_check": "✅ Tekshirish",
+        # --- the free run, and the ask at the end of it ---
+        "trial_soon": ("Yana <b>{n}</b> ta amaldan keyin kanalga qo'shilish "
+                       "so'raladi. Bir marta — va hammasi ochiq qoladi."),
+        "trial_over": ("<b>20 ta amalni bajardingiz.</b>\n\n"
+                       "Endi ErnestOS'ni ochiq saqlash uchun kanalimizga "
+                       "qo'shiling — bir marta bosasiz, xolos. "
+                       "Barcha ma'lumotlaringiz joyida turibdi."),
+        # --- the 60-second setup ---
+        "intro": (
+            "<b>ErnestOS — kuningizni boshqaradigan tizim.</b>\n\n"
+            "Ertalab turasiz — nima qilishni bilmaysiz. Kechqurun yotasiz — "
+            "nima qilganingizni eslay olmaysiz. Shu ikkisi orasidagi bo'shliqni "
+            "ErnestOS to'ldiradi.\n\n"
+            "🎯 U sizga <b>bitta</b> ish aytadi. O'ntasini emas — bittasini.\n"
+            "📊 Har kuni nechchi foiz yashaganingizni ko'rsatadi.\n"
+            "🔥 Va ketma-ketligingizni uzmaydi.\n\n"
+            "<i>60 soniya — va bugungi kuningiz tayyor bo'ladi.</i>"),
+        "intro_go": "🚀 Boshlash",
+        "ask_name": "Sizni qanday chaqiray?",
+        "name_set": "Xush kelibsiz, {name}.",
+        "skip_step": "⏭ Keyinroq",
+        "habits_keep": "✅ Yetarli",
+        "ask_goal": (
+            "<b>Shu haftaning asosiy maqsadi nima?</b>\n"
+            "Bitta. Eng muhimi.\n\n"
+            "<i>Masalan: «Diplomni yozib tugatish» · «Sport zalga 5 marta "
+            "borish» · «Mijozga taqdimotni topshirish»</i>"),
+        "goal_set": "🎯 Haftaning maqsadi: <b>{goal}</b>",
+        "ask_tasks": (
+            "<b>Bugun qaysi 3 ta ishni qilasiz?</b>\n"
+            "Har birini yangi qatordan yozing.\n\n"
+            "<i>Masalan:\n"
+            "Buxgalterga qo'ng'iroq qilish\n"
+            "2-bobni o'qib chiqish\n"
+            "Kechki mashg'ulot</i>"),
+        "tasks_set": "⚡ {n} ta vazifa bugunga qo'shildi",
+        "ask_habits": (
+            "<b>Har kuni takrorlanadigan 1–3 ta odat?</b>\n"
+            "Har birini yangi qatordan yozing.\n\n"
+            "<i>Masalan:\n"
+            "Ertalab 30 daqiqa kitob\n"
+            "10 000 qadam\n"
+            "Suv — 2 litr</i>\n\n"
+            "Uyg'onish, namoz va kundalik allaqachon qo'shilgan."),
+        "habits_set": "✅ {n} ta odat qo'shildi",
+        "day_ready": "🌅 {name}, bugungi kuningiz tayyor",
+        "day_ready_plain": "🌅 Bugungi kuningiz tayyor",
+        "day_ready_first": "Birinchi ish:",
+        "day_ready_open": "Kunni ErnestOS'da boshlang.",
+        "day_ready_app": "Hammasi shu yerda 👇",
         "sub_missing": "Hali obuna bo'lmadingiz. Kanalga qo'shilib, qayta tekshiring.",
         "sub_lost": "Siz ErnestOS kanalidan chiqdingiz. Davom etish uchun kanalga qayta qo'shiling.",
         "sub_restored": "Xush kelibsiz! ErnestOS yana ochiq.",
         "onboard_done": "Tayyor! ErnestOS ishga tushdi.",
+        "lang_changed": "Til o'zgartirildi ✓",
+        "theme_changed": "Tema o'zgartirildi — {name}",
+        "gender_changed": "Jins saqlandi — {value}",
         "menu_home": "🏠 Home", "menu_habits": "✅ Odatlar",
         "menu_tasks": "⚡ Vazifalar", "menu_stats": "📊 Statistika",
         "menu_settings": "⚙️ Sozlamalar", "menu_feedback": "💬 Taklif",
@@ -186,7 +257,7 @@ T: dict[str, dict[str, str]] = {
         "home_title_plain": "🏠 ErnestOS",
         "home_mission": "🎯 Missiya", "home_today": "⚡ Bugun",
         "home_now": "⚡ HOZIR",
-        "home_top3": "🎯 Bugungi TOP 3",
+        "home_top3": "🎯 Kun tanlovi",
         "now_wake": "Turdim — belgilang",
         "now_prayer": "Namozni kiriting",
         "now_journal": "Kun yakuni",
@@ -349,10 +420,61 @@ T: dict[str, dict[str, str]] = {
         "sub_required": "Join our channel to use ErnestOS.",
         "btn_join": "📢 Join channel",
         "btn_check": "✅ Check",
+        # --- the free run, and the ask at the end of it ---
+        "trial_soon": ("<b>{n}</b> more actions and you will be asked to join "
+                       "the channel. One tap, once, and everything stays open."),
+        "trial_over": ("<b>You have done 20 things here.</b>\n\n"
+                       "Join our channel to keep ErnestOS open — one tap, once. "
+                       "Everything you entered is exactly where you left it."),
+        # --- the 60-second setup ---
+        "intro": (
+            "<b>ErnestOS runs your day.</b>\n\n"
+            "You wake up not knowing what to do. You go to bed unable to "
+            "remember what you did. ErnestOS fills the gap between those two.\n\n"
+            "🎯 It tells you <b>one</b> thing to do. Not ten — one.\n"
+            "📊 It shows what percentage of the day you actually lived.\n"
+            "🔥 And it does not let your streak break.\n\n"
+            "<i>Sixty seconds — and your day is ready.</i>"),
+        "intro_go": "🚀 Start",
+        "ask_name": "What should I call you?",
+        "name_set": "Welcome, {name}.",
+        "skip_step": "⏭ Later",
+        "habits_keep": "✅ That's enough",
+        "ask_goal": (
+            "<b>What is this week's main goal?</b>\n"
+            "One. The one that matters.\n\n"
+            "<i>For example: &quot;Finish writing the thesis&quot; · &quot;Gym "
+            "five times&quot; · &quot;Ship the client presentation&quot;</i>"),
+        "goal_set": "🎯 This week: <b>{goal}</b>",
+        "ask_tasks": (
+            "<b>Which three things are you doing today?</b>\n"
+            "One per line.\n\n"
+            "<i>For example:\n"
+            "Call the accountant\n"
+            "Read chapter two\n"
+            "Evening workout</i>"),
+        "tasks_set": "⚡ {n} tasks added to today",
+        "ask_habits": (
+            "<b>One to three habits you repeat daily?</b>\n"
+            "One per line.\n\n"
+            "<i>For example:\n"
+            "30 minutes of reading\n"
+            "10,000 steps\n"
+            "Two litres of water</i>\n\n"
+            "Waking up, prayer and the journal are already in."),
+        "habits_set": "✅ {n} habits added",
+        "day_ready": "🌅 {name}, your day is ready",
+        "day_ready_plain": "🌅 Your day is ready",
+        "day_ready_first": "First up:",
+        "day_ready_open": "Start the day in ErnestOS.",
+        "day_ready_app": "It is all in here 👇",
         "sub_missing": "You are not subscribed yet. Join the channel and check again.",
         "sub_lost": "You left the required ErnestOS channel. Join the channel to continue using ErnestOS.",
         "sub_restored": "Welcome back! ErnestOS is open again.",
         "onboard_done": "All set! ErnestOS is ready.",
+        "lang_changed": "Language changed ✓",
+        "theme_changed": "Theme changed to {name}",
+        "gender_changed": "Gender saved as {value}",
         "menu_home": "🏠 Home", "menu_habits": "✅ Habits",
         "menu_tasks": "⚡ Tasks", "menu_stats": "📊 Statistics",
         "menu_settings": "⚙️ Settings", "menu_feedback": "💬 Feedback",
@@ -361,7 +483,7 @@ T: dict[str, dict[str, str]] = {
         "home_title_plain": "🏠 ErnestOS",
         "home_mission": "🎯 Mission", "home_today": "⚡ Today",
         "home_now": "⚡ NOW",
-        "home_top3": "🎯 Today's top 3",
+        "home_top3": "🎯 The day's pick",
         "now_wake": "Mark that you are up",
         "now_prayer": "Log your prayers",
         "now_journal": "Close the day",
@@ -523,10 +645,62 @@ T: dict[str, dict[str, str]] = {
         "sub_required": "Подпишитесь на наш канал, чтобы пользоваться ErnestOS.",
         "btn_join": "📢 Подписаться",
         "btn_check": "✅ Проверить",
+        # --- the free run, and the ask at the end of it ---
+        "trial_soon": ("Ещё <b>{n}</b> действия — и попросим подписаться на "
+                       "канал. Одно нажатие, один раз, и всё останется открытым."),
+        "trial_over": ("<b>Вы сделали здесь 20 действий.</b>\n\n"
+                       "Подпишитесь на канал, чтобы ErnestOS остался открытым — "
+                       "одно нажатие, один раз. Все ваши данные на месте."),
+        # --- the 60-second setup ---
+        "intro": (
+            "<b>ErnestOS ведёт ваш день.</b>\n\n"
+            "Утром встаёте и не знаете, что делать. Вечером ложитесь и не "
+            "можете вспомнить, что сделали. ErnestOS закрывает разрыв между "
+            "этими двумя моментами.\n\n"
+            "🎯 Он называет <b>одно</b> дело. Не десять — одно.\n"
+            "📊 Показывает, на сколько процентов вы прожили день.\n"
+            "🔥 И не даёт прервать серию.\n\n"
+            "<i>Шестьдесят секунд — и день готов.</i>"),
+        "intro_go": "🚀 Начать",
+        "ask_name": "Как к вам обращаться?",
+        "name_set": "Добро пожаловать, {name}.",
+        "skip_step": "⏭ Позже",
+        "habits_keep": "✅ Достаточно",
+        "ask_goal": (
+            "<b>Главная цель этой недели?</b>\n"
+            "Одна. Самая важная.\n\n"
+            "<i>Например: «Дописать диплом» · «Пять раз в зал» · "
+            "«Сдать презентацию клиенту»</i>"),
+        "goal_set": "🎯 Цель недели: <b>{goal}</b>",
+        "ask_tasks": (
+            "<b>Какие три дела вы сделаете сегодня?</b>\n"
+            "Каждое с новой строки.\n\n"
+            "<i>Например:\n"
+            "Позвонить бухгалтеру\n"
+            "Прочитать вторую главу\n"
+            "Вечерняя тренировка</i>"),
+        "tasks_set": "⚡ Добавлено задач на сегодня: {n}",
+        "ask_habits": (
+            "<b>1–3 привычки, которые повторяются каждый день?</b>\n"
+            "Каждую с новой строки.\n\n"
+            "<i>Например:\n"
+            "30 минут чтения\n"
+            "10 000 шагов\n"
+            "Два литра воды</i>\n\n"
+            "Подъём, намаз и дневник уже добавлены."),
+        "habits_set": "✅ Добавлено привычек: {n}",
+        "day_ready": "🌅 {name}, ваш день готов",
+        "day_ready_plain": "🌅 Ваш день готов",
+        "day_ready_first": "Первое дело:",
+        "day_ready_open": "Начните день в ErnestOS.",
+        "day_ready_app": "Всё здесь 👇",
         "sub_missing": "Вы ещё не подписаны. Подпишитесь и проверьте снова.",
         "sub_lost": "Вы вышли из канала ErnestOS. Подпишитесь снова, чтобы продолжить.",
         "sub_restored": "С возвращением! ErnestOS снова доступен.",
         "onboard_done": "Готово! ErnestOS запущен.",
+        "lang_changed": "Язык изменён ✓",
+        "theme_changed": "Тема изменена — {name}",
+        "gender_changed": "Пол сохранён — {value}",
         "menu_home": "🏠 Главная", "menu_habits": "✅ Привычки",
         "menu_tasks": "⚡ Задачи", "menu_stats": "📊 Статистика",
         "menu_settings": "⚙️ Настройки", "menu_feedback": "💬 Отзыв",
@@ -535,7 +709,7 @@ T: dict[str, dict[str, str]] = {
         "home_title_plain": "🏠 ErnestOS",
         "home_mission": "🎯 Миссия", "home_today": "⚡ Сегодня",
         "home_now": "⚡ СЕЙЧАС",
-        "home_top3": "🎯 Топ-3 на сегодня",
+        "home_top3": "🎯 Выбор дня",
         "now_wake": "Отметьте подъём",
         "now_prayer": "Отметьте намазы",
         "now_journal": "Итоги дня",
@@ -709,52 +883,20 @@ MEMBER_STATES = {"member", "administrator", "creator"}
 #: again. Short enough that leaving the channel locks the Mini App quickly
 #: (audit 002), long enough that normal use does not call Telegram per request
 #: (audit 004).
-MEMBERSHIP_TTL = timedelta(seconds=int(os.environ.get("MEMBERSHIP_TTL", "180")))
+MEMBERSHIP_TTL = deps.MEMBERSHIP_TTL
+FREE_ACTIONS = deps.FREE_ACTIONS
 
-
-async def is_subscribed(bot, telegram_id: int, *, retries: int = 2) -> bool | None:
-    """True / False / None — None means Telegram could not be asked.
-
-    None is never treated as a pass: callers must show "try again" rather than
-    letting an outage silently grant access (audit 001).
-    """
-    if not REQUIRED_CHANNEL_ID:
-        return True
-    for attempt in range(retries + 1):
-        try:
-            member = await bot.get_chat_member(chat_id=REQUIRED_CHANNEL_ID,
-                                               user_id=telegram_id)
-            return member.status in MEMBER_STATES
-        except TelegramError as e:
-            if attempt == retries:
-                log.warning("membership check failed for %s: %s", telegram_id, e)
-                return None
-            # Jittered backoff so a blip does not lock everyone out at once.
-            await asyncio.sleep(0.4 * (attempt + 1) + random.random() * 0.3)
-    return None
-
-
-def record_membership(s, telegram_id: int, subscribed: bool, source: str) -> bool:
-    """Persist a *confirmed* answer. Returns True when the value changed."""
-    user = s.get(User, telegram_id)
-    if user is None:
-        return False
-    changed = user.is_subscribed != subscribed
-    user.is_subscribed = subscribed
-    user.sub_checked_at = db.utcnow()
-    user.sub_source = source
-    return changed
-
-
-def membership_is_fresh(user: User) -> bool:
-    return (user.sub_checked_at is not None
-            and db.utcnow() - user.sub_checked_at <= MEMBERSHIP_TTL)
+#: Re-exported so the rest of this module and the suite keep one vocabulary.
+is_subscribed = deps.ask_telegram
+record_membership = deps.record_membership
+membership_is_fresh = deps.membership_is_fresh
+trial_state = deps.trial_state
 
 
 def subscribe_keyboard(lang: str) -> InlineKeyboardMarkup:
     rows = []
-    if REQUIRED_CHANNEL_URL:
-        rows.append([InlineKeyboardButton(t(lang, "btn_join"), url=REQUIRED_CHANNEL_URL)])
+    if deps.REQUIRED_CHANNEL_URL:
+        rows.append([InlineKeyboardButton(t(lang, "btn_join"), url=deps.REQUIRED_CHANNEL_URL)])
     rows.append([InlineKeyboardButton(t(lang, "btn_check"), callback_data="sub:check")])
     return InlineKeyboardMarkup(rows)
 
@@ -763,7 +905,9 @@ async def guard(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> tuple[User, i
     """Every protected action starts here.
 
     Returns (user, workspace_id) when the caller may proceed, otherwise sends
-    the appropriate prompt and returns None.
+    the appropriate prompt and returns None. The access decision itself is
+    `dependencies.check_subscription`, which the API calls too — the two
+    surfaces must never disagree about who is allowed in.
     """
     tg_user = update.effective_user
     if tg_user is None:
@@ -783,38 +927,45 @@ async def guard(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> tuple[User, i
         await start(update, ctx)
         return None
 
-    # Skip the round-trip while the last confirmed answer is still fresh
-    # (audit 004); otherwise ask Telegram and act on all three outcomes.
-    with SessionLocal() as s:
-        cached = s.get(User, tg_user.id)
-        fresh = cached is not None and membership_is_fresh(cached)
-        cached_ok = bool(cached and cached.is_subscribed)
-
-    state = True if (fresh and cached_ok) else await is_subscribed(ctx.bot, tg_user.id)
-
+    verdict = await deps.check_subscription(tg_user.id, ctx.bot)
     target = update.effective_message
-    if state is False:
-        with SessionLocal() as s:
-            record_membership(s, tg_user.id, False, "api")
-            s.commit()
+    if verdict not in deps.ALLOWED:
         if target:
-            await target.reply_text(t(lang, "sub_lost"),
-                                    reply_markup=subscribe_keyboard(lang))
+            # "missing" is the free run being spent, which is a different
+            # message from having left a channel already joined.
+            await target.reply_text(
+                t(lang, "sub_unknown" if verdict == "unknown" else "trial_over"),
+                parse_mode=ParseMode.HTML,
+                reply_markup=subscribe_keyboard(lang))
         return None
-    if state is None:
-        # Telegram unreachable — say so instead of quietly letting them in.
-        if target:
-            await target.reply_text(t(lang, "sub_unknown"),
-                                    reply_markup=subscribe_keyboard(lang))
-        return None
-    if not fresh:
-        with SessionLocal() as s:
-            record_membership(s, tg_user.id, True, "api")
-            s.commit()
 
     with SessionLocal() as s:
         user = s.get(User, tg_user.id)
         return user, ws
+
+
+async def count_action(telegram_id: int, ctx: ContextTypes.DEFAULT_TYPE | None = None,
+                       message=None, lang: str = "uz") -> None:
+    """Record one thing done, and say so at the two moments it matters.
+
+    Silence until the run is nearly spent, then one warning, then the ask. A
+    counter shown after every tick would turn using the app into watching a
+    meter run down, which is the opposite of the point.
+    """
+    with SessionLocal() as s:
+        svc.record_action(s, telegram_id)
+        s.commit()
+        user = s.get(User, telegram_id)
+        trial = deps.trial_state(user)
+
+    if message is None or not deps.REQUIRED_CHANNEL_ID:
+        return
+    if trial.remaining == 3 and trial.free:
+        await message.reply_text(t(lang, "trial_soon", n=trial.remaining),
+                                 parse_mode=ParseMode.HTML)
+    elif trial.gated:
+        await message.reply_text(t(lang, "trial_over"), parse_mode=ParseMode.HTML,
+                                 reply_markup=subscribe_keyboard(lang))
 
 
 # ---------------------------------------------------------------------------
@@ -888,16 +1039,35 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 #: The order onboarding walks, and the only place it is written down.
-#: language -> required channel -> in. Two screens, one of which is a tap.
 #:
-#: Nothing else is asked at the door. The phone number used to sit between
-#: them, and it was the single worst question in the product: it is the most
-#: personal thing the app ever asks for, it was asked before the user had seen
-#: one screen of what they were joining, and it bought them nothing they could
-#: feel. It is now not asked at all — not in onboarding, not in Settings.
-#: Gender is likewise not here: nothing outside the prayer module needs it, so
-#: it is asked the first time prayer is opened and explained when it is asked.
-ONBOARDING_STEPS = ["language", "subscribe", "done"]
+#:   language → intro → name → goal → tasks → habits → done
+#:
+#: Six taps and four short answers, and every one of them builds something the
+#: user then sees. That is the whole design: onboarding is not a form standing
+#: between somebody and the product, it *is* the product's first use. They
+#: finish it holding a real week's goal, three real tasks for today and their
+#: habits — so the last screen can be their actual day rather than a tour of
+#: an empty one.
+#:
+#: What is deliberately not here:
+#:   * the channel. It used to be step two, asked before the user had seen a
+#:     single thing the product does, which is a toll booth at the door. It is
+#:     now asked after `FREE_ACTIONS` real actions, when the answer is
+#:     "obviously, this is useful" instead of a gamble.
+#:   * the phone number, which was the most personal thing the app ever asked
+#:     for and bought the user nothing they could feel. Not asked anywhere.
+#:   * gender, which only the prayer module needs, so it is asked the first
+#:     time prayer is opened and explained when it is asked.
+ONBOARDING_STEPS = ["language", "intro", "name", "goal", "tasks", "habits", "done"]
+
+#: Steps from older builds. Anybody parked on one is moved into the new flow
+#: rather than shown a question that no longer exists.
+LEGACY_STEPS = {"phone", "gender", "subscribe"}
+
+
+def setup_data(ctx: ContextTypes.DEFAULT_TYPE) -> dict:
+    """The half-finished setup, kept per user for the length of the flow."""
+    return ctx.user_data.setdefault("setup", {})
 
 
 async def resume_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
@@ -911,6 +1081,15 @@ async def resume_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     with SessionLocal() as s:
         user = s.get(User, tg_user.id)
         lang = user.language if user else "uz"
+        name = (user.first_name if user else "") or tg_user.first_name or ""
+
+    if step in LEGACY_STEPS:
+        step = "name"
+        with SessionLocal() as s:
+            user = s.get(User, tg_user.id)
+            if user is not None:
+                user.onboarding_step = step
+                s.commit()
 
     if step == "language":
         # No language is chosen yet, so the prompt is the one screen written in
@@ -922,15 +1101,146 @@ async def resume_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                 [InlineKeyboardButton("🇷🇺 Русский", callback_data="lang:ru")],
             ]))
 
-    elif step in ("phone", "gender", "subscribe"):
-        # "phone" and "gender" are steps from older builds; anyone still parked
-        # on one is moved forward rather than asked a question that no longer
-        # exists.
-        await message.reply_text(t(lang, "sub_required"),
-                                 reply_markup=subscribe_keyboard(lang))
+    elif step == "intro":
+        await send_intro(message, lang)
+
+    elif step == "name":
+        rows = []
+        if name:
+            rows.append([InlineKeyboardButton(f"👤 {name}",
+                                              callback_data="setup:name")])
+        await message.reply_text(t(lang, "ask_name"), parse_mode=ParseMode.HTML,
+                                 reply_markup=InlineKeyboardMarkup(rows) if rows
+                                 else None)
+
+    elif step == "goal":
+        await message.reply_text(t(lang, "ask_goal"), parse_mode=ParseMode.HTML,
+                                 reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton(t(lang, "skip_step"), callback_data="setup:skip")]]))
+
+    elif step == "tasks":
+        await message.reply_text(t(lang, "ask_tasks"), parse_mode=ParseMode.HTML,
+                                 reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton(t(lang, "skip_step"), callback_data="setup:skip")]]))
+
+    elif step == "habits":
+        await message.reply_text(t(lang, "ask_habits"), parse_mode=ParseMode.HTML,
+                                 reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton(t(lang, "habits_keep"), callback_data="setup:skip")]]))
 
     else:
         await finish_onboarding(update, ctx)
+
+
+async def send_intro(message, lang: str) -> None:
+    """The hook: what this is, in the fewest words that can carry it.
+
+    One screen, one promise, one button. The old guide was eleven paragraphs
+    sent to somebody who had not yet done anything — a manual for a machine
+    they had not been shown. It still exists behind /guide, for the moment
+    somebody actually wants it.
+    """
+    await message.reply_text(t(lang, "intro"), parse_mode=ParseMode.HTML,
+                             disable_web_page_preview=True,
+                             reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton(t(lang, "intro_go"), callback_data="setup:go")]]))
+
+
+async def advance_setup(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                        step: str) -> None:
+    """Write the next step down, then ask it."""
+    tg_user = update.effective_user
+    with SessionLocal() as s:
+        user = s.get(User, tg_user.id)
+        if user is not None:
+            user.onboarding_step = step
+            s.commit()
+    if step == "done":
+        await finish_onboarding(update, ctx)
+    else:
+        await resume_onboarding(update, ctx, step)
+
+
+async def handle_setup_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                              step: str, text: str) -> None:
+    """A typed answer during setup. Each step writes something real.
+
+    Nothing is stored in limbo: the goal becomes the week's mission the moment
+    it is typed, the tasks become tasks. If somebody walks away at step five,
+    what they entered in steps three and four is already theirs.
+    """
+    tg_user = update.effective_user
+    message = update.effective_message
+    with SessionLocal() as s:
+        user = s.get(User, tg_user.id)
+        if user is None:
+            return
+        lang = user.language
+        ws = svc.workspace_id_for(s, tg_user.id)
+        tz = svc.user_tz(user)
+
+    if step == "name":
+        with SessionLocal() as s:
+            user = s.get(User, tg_user.id)
+            user.first_name = text.strip()[:200]
+            s.commit()
+        return await advance_setup(update, ctx, "goal")
+
+    if step == "goal":
+        with SessionLocal() as s:
+            try:
+                svc.add_focus(s, ws, text, tz=tz, priority="high")
+            except ValueError:
+                pass                     # empty or a full week — move on either way
+        await message.reply_text(t(lang, "goal_set", goal=esc(text.strip()[:200])),
+                                 parse_mode=ParseMode.HTML)
+        return await advance_setup(update, ctx, "tasks")
+
+    if step == "tasks":
+        # One per line, so three tasks is one message rather than three rounds
+        # of question and answer. That is most of the sixty seconds.
+        titles = [line.strip(" -•\t") for line in text.splitlines()]
+        titles = [x for x in titles if x][:SETUP_MAX_TASKS]
+        today = svc.today_local(tz)
+        with SessionLocal() as s:
+            for title in titles:
+                try:
+                    svc.add_task(s, ws, title, deadline=today)
+                except ValueError:
+                    continue
+        if titles:
+            await message.reply_text(
+                t(lang, "tasks_set", n=len(titles)), parse_mode=ParseMode.HTML)
+        return await advance_setup(update, ctx, "habits")
+
+    if step == "habits":
+        names = [line.strip(" -•\t") for line in text.splitlines()]
+        names = [x for x in names if x][:SETUP_MAX_HABITS]
+        with SessionLocal() as s:
+            for name in names:
+                try:
+                    svc.add_habit(s, ws, name, "target")
+                except ValueError:
+                    continue
+        if names:
+            await message.reply_text(t(lang, "habits_set", n=len(names)),
+                                     parse_mode=ParseMode.HTML)
+        return await advance_setup(update, ctx, "done")
+
+    # Any other step takes no typed answer; re-ask rather than swallow it.
+    await resume_onboarding(update, ctx, step)
+
+
+#: Three tasks and three habits. The caps are the product's opinion: a first
+#: day with nine things on it is a first day that does not get finished, and
+#: the number somebody can actually hold is three.
+SETUP_MAX_TASKS = 3
+SETUP_MAX_HABITS = 3
+
+#: Callback actions that change the day, and therefore spend a free action.
+#: `set` and `theme` are settings, not use — the same reasoning as
+#: `UNCOUNTED_PATHS` on the API side.
+COUNTED_CALLBACKS = {"habit", "task", "taskday", "taskproj", "project", "habitcat"}
 
 
 async def on_contact(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1003,44 +1313,82 @@ async def show_guide(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def finish_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """The last screen of setup: the day they just built, not a tour.
+
+    Nothing is checked here any more. The channel used to be the gate at this
+    exact point — somebody could answer every question and still be turned away
+    at the end, which is the worst possible place to put a wall. It is now
+    asked after `FREE_ACTIONS` real actions instead.
+    """
     tg_user = update.effective_user
     message = update.effective_message
     if tg_user is None or message is None:
         return
 
-    state = await is_subscribed(ctx.bot, tg_user.id)
     with SessionLocal() as s:
         user = s.get(User, tg_user.id)
         if user is None:
             return
-        lang = user.language
-        if state is not True:
-            # False = not a member, None = could not check. Neither may finish
-            # onboarding or set is_subscribed (audit 001).
-            user.onboarding_step = "subscribe"
-            s.commit()
-            await message.reply_text(
-                t(lang, "sub_missing" if state is False else "sub_unknown"),
-                reply_markup=subscribe_keyboard(lang))
-            return
-        record_membership(s, tg_user.id, True, "api")
         user.onboarding_step = "done"
         user.onboarded = True
         s.commit()
-        snapshot = user
-        name = user.first_name or ""
+        lang, snapshot = user.language, user
+        ws = svc.workspace_id_for(s, tg_user.id)
+        data = svc.home(s, ws, user)
 
-    await message.reply_text(t(lang, "welcome_in", name=esc(name)),
-                             parse_mode=ParseMode.HTML,
+    ctx.user_data.pop("setup", None)
+    await message.reply_text(render_day_ready(data, lang), parse_mode=ParseMode.HTML,
                              reply_markup=main_menu(lang))
-    # The guide, once, on the account's first way in. It is a separate message
-    # rather than a longer welcome so it can be scrolled back to later, and it
-    # goes out before Home: an empty Home explains nothing on its own.
-    await message.reply_text(t(lang, "guide"), parse_mode=ParseMode.HTML,
-                             disable_web_page_preview=True)
+    markup = webapp_button(lang)
+    if markup:
+        await message.reply_text(t(lang, "day_ready_app"), reply_markup=markup)
     await log_event(ctx.bot, snapshot, "✅ ONBOARDING COMPLETE",
                     f"Language: {snapshot.language}")
-    await show_home(update, ctx)
+
+
+def render_day_ready(data: dict, lang: str) -> str:
+    """"Your day is ready" — the setup's closing screen.
+
+    It prints what the user just created, in the order they created it, and
+    ends on the one thing to do first. Not a summary of features: a summary of
+    *their* day, which is the only proof that any of the questions were worth
+    answering.
+    """
+    name = (data.get("name") or "").strip()
+    lines = [f"<b>{t(lang, 'day_ready', name=esc(name)) if name else t(lang, 'day_ready_plain')}</b>",
+             ""]
+
+    focus = data.get("focus") or {}
+    primary = focus.get("primary")
+    if primary:
+        lines.append(f"🎯 <b>{t(lang, 'r_mission')}</b>")
+        lines.append(esc(primary["title"]))
+        lines.append("")
+
+    groups = data.get("tasks_today") or []
+    # Whatever was pinned leads, then the rest of today — the same order the
+    # app itself shows them in.
+    tasks = list(data.get("top3") or [])
+    tasks += [x for group in groups for x in group["tasks"]]
+    if tasks:
+        lines.append(f"⚡ <b>{t(lang, 'r_today_plan')}</b>")
+        for task in tasks[:SETUP_MAX_TASKS]:
+            lines.append(f"• {esc(task['title'])}")
+        lines.append("")
+
+    habits = data.get("habits") or {}
+    if habits.get("total"):
+        lines.append(f"✅ <b>{t(lang, 'r_habits_today')}</b> · {habits['total']}")
+    lines.append(f"🕌 <b>{t(lang, 'r_prayer_today')}</b>")
+    lines.append("")
+
+    now = data.get("now") or {}
+    if now.get("title"):
+        lines.append(f"👉 <b>{t(lang, 'day_ready_first')}</b>")
+        lines.append(esc(now["title"]))
+    else:
+        lines.append(t(lang, "day_ready_open"))
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -1588,11 +1936,12 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         step = user.onboarding_step
 
     if not onboarded:
-        # Onboarding accepts no typed answers: the phone step needs Telegram's
-        # own contact button, and a typed number cannot be verified as the
-        # sender's. Anything typed re-prompts rather than being swallowed, so a
-        # user who types "salom" is never left staring at nothing.
-        await resume_onboarding(update, ctx, step)
+        # Setup is mostly typed now — a name, a goal, three tasks, some habits
+        # — so a typed message during it is an answer, not noise. The steps
+        # that take no typing re-prompt instead of swallowing the text, so
+        # somebody who types "salom" at the language screen is never left
+        # staring at nothing.
+        await handle_setup_answer(update, ctx, step, text)
         return
 
     flow = current_flow(ctx)
@@ -1849,23 +2198,51 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             user = s.get(User, tg_user.id)
             user.language = parts[1]
             if not user.onboarded:
-                user.onboarding_step = "subscribe"
+                user.onboarding_step = "intro"
             s.commit()
             lang, onboarded = user.language, user.onboarded
             snapshot = user
         await log_event(ctx.bot, snapshot, "🌐 LANGUAGE CHANGED", f"Language: {lang}")
 
         if not onboarded:
-            # First words in the language they just picked, by name, then the
-            # only thing still standing between them and the app.
+            # First words in the language they just picked, by name — then the
+            # pitch, before a single question is asked.
             await query.edit_message_text(
                 t(lang, "hello_named", name=esc(tg_user.first_name or "")),
                 parse_mode=ParseMode.HTML)
-            await resume_onboarding(update, ctx, "subscribe")
+            await resume_onboarding(update, ctx, "intro")
         else:
-            await query.edit_message_text(t(lang, "saved"))
-            await update.effective_message.reply_text(t(lang, "saved"),
+            # A settings change says what it changed, not just "saved".
+            await query.edit_message_text(t(lang, "lang_changed"))
+            await update.effective_message.reply_text(t(lang, "lang_changed"),
                                                       reply_markup=main_menu(lang))
+        return
+
+    # Setup runs before onboarding completes, so it sits above the guard.
+    if action == "setup":
+        tg_user = update.effective_user
+        with SessionLocal() as s:
+            user = s.get(User, tg_user.id)
+            if user is None:
+                return
+            lang, step = user.language, user.onboarding_step
+            telegram_name = user.first_name or tg_user.first_name or ""
+
+        if parts[1] == "go":
+            await query.edit_message_reply_markup(reply_markup=None)
+            return await advance_setup(update, ctx, "name")
+
+        if parts[1] == "name":
+            # Keeping the Telegram name is one tap, which is what it should be.
+            await query.edit_message_text(t(lang, "name_set", name=esc(telegram_name)),
+                                          parse_mode=ParseMode.HTML)
+            return await advance_setup(update, ctx, "goal")
+
+        if parts[1] == "skip":
+            await query.edit_message_reply_markup(reply_markup=None)
+            order = ONBOARDING_STEPS
+            nxt = order[order.index(step) + 1] if step in order else "done"
+            return await advance_setup(update, ctx, nxt)
         return
 
     if action == "gender":
@@ -1876,7 +2253,8 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             s.commit()
             lang = user.language
             snapshot = user
-        await query.edit_message_text(t(lang, "saved"))
+        await query.edit_message_text(
+            t(lang, "gender_changed", value=t(lang, parts[1])))
         await log_event(ctx.bot, snapshot, "👤 GENDER CHANGED", f"Gender: {parts[1]}")
         # Gender is asked when prayer needs it, so land back on that screen.
         await show_habits(update, ctx)
@@ -1899,6 +2277,11 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
     try:
         await route_callback(update, ctx, action, parts, user, ws, lang)
+        # The same rule the API middleware applies, on the other surface: a
+        # button that changed something counts, a button that only navigated
+        # or opened a settings panel does not.
+        if action in COUNTED_CALLBACKS:
+            await count_action(user.telegram_id, ctx, update.effective_message, lang)
     except svc.NotFound:
         await query.answer(t(lang, "not_found"), show_alert=True)
     except ValueError as e:
@@ -2144,7 +2527,11 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             row.theme = parts[1] if parts[1] in THEMES else DEFAULT_THEME
             s.commit()
             snapshot = row
-        await query.edit_message_text(t(lang, "saved"))
+        # A confirmation that does not name the change is a confirmation the
+        # user has to verify by going and looking.
+        await query.edit_message_text(
+            t(lang, "theme_changed",
+              name=THEME_NAMES.get(row.theme, row.theme.title())))
         await log_event(ctx.bot, snapshot, "🎨 THEME CHANGED", f"Theme: {parts[1]}")
 
 
@@ -2155,9 +2542,9 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 async def on_chat_member(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     """React the moment a user joins or leaves the required channel."""
     member = update.chat_member
-    if member is None or not REQUIRED_CHANNEL_ID:
+    if member is None or not deps.REQUIRED_CHANNEL_ID:
         return
-    if str(member.chat.id) != str(REQUIRED_CHANNEL_ID):
+    if str(member.chat.id) != str(deps.REQUIRED_CHANNEL_ID):
         return
 
     telegram_id = member.new_chat_member.user.id
@@ -2570,8 +2957,13 @@ def auth(init_data: str | None, *, require_onboarded: bool = True) -> tuple[User
 
     Three gates, in order:
       1. a valid Telegram signature (always);
-      2. channel membership — a stale answer is flagged for re-verification;
+      2. access — the free run, then channel membership. The rule is
+         `dependencies.trial_state`, the same one the bot's `guard` applies;
       3. completed onboarding — status endpoints opt out via require_onboarded.
+
+    The membership half is deliberately synchronous and cache-only here: an
+    HTTP handler must not block on a Telegram round-trip, so a stale answer is
+    flagged for the background re-check instead.
     """
     tg_user = verify_init_data(init_data or "")
     with SessionLocal() as s:
@@ -2584,11 +2976,12 @@ def auth(init_data: str | None, *, require_onboarded: bool = True) -> tuple[User
         s.commit()
         ws = svc.workspace_id_for(s, user.telegram_id)
 
-        if REQUIRED_CHANNEL_ID:
-            if not user.is_subscribed:
-                raise HTTPException(status_code=403, detail="subscription_required")
-            if not membership_is_fresh(user):
-                _stale_membership.add(user.telegram_id)
+        trial = deps.trial_state(user)
+        if trial.gated:
+            raise HTTPException(status_code=403, detail="subscription_required")
+        if deps.REQUIRED_CHANNEL_ID and not trial.free \
+                and not membership_is_fresh(user):
+            _stale_membership.add(user.telegram_id)
 
         if require_onboarded and not user.onboarded:
             # A half-registered account must not create rows (audit 003).
@@ -2603,6 +2996,16 @@ def auth(init_data: str | None, *, require_onboarded: bool = True) -> tuple[User
 
 telegram_app: Application | None = None
 scheduler: AsyncIOScheduler | None = None
+
+#: The screens reachable by command as well as by keyboard button. `/start`,
+#: `/home` and `/guide` are registered separately because they are also the
+#: entry points, and must work before onboarding finishes.
+BOT_COMMANDS = [
+    ("tasks", lambda u, c: show_tasks(u, c)),
+    ("habits", lambda u, c: show_habits(u, c)),
+    ("stats", lambda u, c: show_stats(u, c)),
+    ("settings", lambda u, c: show_settings(u, c)),
+]
 
 
 
@@ -2631,6 +3034,11 @@ async def lifespan(_: FastAPI):
         telegram_app.add_handler(CommandHandler("start", start))
         telegram_app.add_handler(CommandHandler("home", show_home))
         telegram_app.add_handler(CommandHandler("guide", show_guide))
+        # Every screen the keyboard offers also has a command. Somebody who
+        # cleared the reply keyboard, or who simply types faster than they tap,
+        # was previously stuck with three commands and no way to reach the rest.
+        for command, handler in BOT_COMMANDS:
+            telegram_app.add_handler(CommandHandler(command, handler))
         telegram_app.add_handler(MessageHandler(filters.CONTACT, on_contact))
         telegram_app.add_handler(MessageHandler(filters.PHOTO, on_photo))
         telegram_app.add_handler(CallbackQueryHandler(on_callback))
@@ -2642,12 +3050,23 @@ async def lifespan(_: FastAPI):
 
         await telegram_app.initialize()
         await telegram_app.start()
-        await telegram_app.updater.start_polling(
-            allowed_updates=["message", "callback_query", "chat_member", "my_chat_member"],
-            # Dropping these loses whatever users tapped during a deploy
-            # (audit 033). Handlers are idempotent, so replaying is safer.
-            drop_pending_updates=False)
-        log.info("telegram bot polling")
+        if WEBHOOK_URL:
+            # One HTTP call per update instead of a permanent long-poll. Worth
+            # it once there are enough users that polling is the process's main
+            # activity, and required behind a load balancer, where several
+            # instances cannot all poll the same bot.
+            await telegram_app.bot.set_webhook(
+                WEBHOOK_URL, allowed_updates=ALLOWED_UPDATES,
+                secret_token=WEBHOOK_SECRET or None,
+                drop_pending_updates=False)
+            log.info("telegram bot on webhook: %s", WEBHOOK_URL)
+        else:
+            await telegram_app.updater.start_polling(
+                allowed_updates=ALLOWED_UPDATES,
+                # Dropping these loses whatever users tapped during a deploy
+                # (audit 033). Handlers are idempotent, so replaying is safer.
+                drop_pending_updates=False)
+            log.info("telegram bot polling")
 
         scheduler = AsyncIOScheduler(timezone=svc.TZ)
         # Report times are a per-user setting now, so the jobs run on a short
@@ -2683,7 +3102,8 @@ async def lifespan(_: FastAPI):
     if scheduler:
         scheduler.shutdown(wait=False)
     if telegram_app:
-        await telegram_app.updater.stop()
+        if not WEBHOOK_URL:
+            await telegram_app.updater.stop()
         await telegram_app.stop()
         await telegram_app.shutdown()
 
@@ -2751,7 +3171,35 @@ async def guard_requests(request: Request, call_next):
         return JSONResponse(status_code=429, content={"detail": "rate_limited"},
                             headers={"Retry-After": str(retry_after)})
 
-    return await call_next(request)
+    response = await call_next(request)
+
+    # One place decides what spends a free action: a write that succeeded.
+    # Counting in the middleware rather than in forty handlers is what stops
+    # the definition from drifting endpoint by endpoint — and counting only on
+    # a 2xx means a rejected body or a 404 never costs anybody anything.
+    if (key > 0 and request.method in MUTATING_METHODS
+            and 200 <= response.status_code < 300
+            and request.url.path not in UNCOUNTED_PATHS):
+        try:
+            with SessionLocal() as s:
+                svc.record_action(s, key)
+                s.commit()
+        except Exception:               # never fail a request over a counter
+            log.exception("could not record an action for %s", key)
+
+    return response
+
+
+#: Requests that change something. A GET never spends a free action.
+MUTATING_METHODS = {"POST", "PATCH", "PUT", "DELETE"}
+
+#: Writes that are not *use* of the product: checking whether the channel was
+#: joined, changing a theme, sending feedback, or leaving. Charging somebody a
+#: free action for tapping "check my subscription" would be absurd.
+UNCOUNTED_PATHS = {
+    "/api/subscription", "/api/settings", "/api/prefs", "/api/feedback",
+    "/api/export/send", "/api/account/delete", "/api/stats/export",
+}
 
 
 @app.exception_handler(Exception)
@@ -3019,6 +3467,29 @@ def api_prefs_save(body: PrefsIn,
     return {"ok": True, "prefs": prefs}
 
 
+@app.post("/webhook", include_in_schema=False)
+async def telegram_webhook(request: Request):
+    """Telegram's delivery endpoint, live only when WEBHOOK_URL is set.
+
+    Refused outright when the bot is polling, so a stale webhook left over from
+    an earlier deploy cannot inject updates into an instance that is also
+    long-polling — that combination delivers everything twice.
+    """
+    if not WEBHOOK_URL or telegram_app is None:
+        raise HTTPException(status_code=404, detail="not_found")
+    if WEBHOOK_SECRET and request.headers.get(
+            "x-telegram-bot-api-secret-token") != WEBHOOK_SECRET:
+        # Wrong secret is somebody who found the path, not Telegram.
+        raise HTTPException(status_code=403, detail="forbidden")
+    try:
+        update = Update.de_json(await request.json(), telegram_app.bot)
+    except Exception:
+        log.warning("undecodable webhook payload")
+        raise HTTPException(status_code=400, detail="bad_update")
+    await telegram_app.process_update(update)
+    return {"ok": True}
+
+
 @app.get("/api/subscription")
 async def api_subscription(init=Header(default=None, alias="X-Telegram-Init-Data")):
     """Re-check channel membership from inside the Mini App.
@@ -3031,7 +3502,7 @@ async def api_subscription(init=Header(default=None, alias="X-Telegram-Init-Data
     tg_user = verify_init_data(init or "")
     telegram_id = int(tg_user["id"])
 
-    if not REQUIRED_CHANNEL_ID:
+    if not deps.REQUIRED_CHANNEL_ID:
         return {"subscribed": True, "state": "subscribed"}
     if telegram_app is None:
         # Nothing to ask Telegram with. Report the stored answer and say it is
@@ -3045,13 +3516,13 @@ async def api_subscription(init=Header(default=None, alias="X-Telegram-Init-Data
     if state is None:
         # Telegram could not be reached: neither grant nor revoke.
         return {"subscribed": False, "state": "unknown",
-                "channel": REQUIRED_CHANNEL_URL}
+                "channel": deps.REQUIRED_CHANNEL_URL}
     with SessionLocal() as s:
         record_membership(s, telegram_id, state, "api")
         s.commit()
     return {"subscribed": state,
             "state": "subscribed" if state else "not_subscribed",
-            "channel": REQUIRED_CHANNEL_URL}
+            "channel": deps.REQUIRED_CHANNEL_URL}
 
 
 @app.get("/api/home")
@@ -3836,6 +4307,30 @@ class DeleteAccountIn(BaseModel):
     """The typed confirmation. A destructive action needs an explicit word, not
     a second tap in the same place the first one was."""
     confirm: str = Field(max_length=20)
+
+
+class WipeDataIn(BaseModel):
+    """A second, explicit confirmation. One tap is not a confirmation."""
+    confirm: str = Field(max_length=20)
+
+
+@app.post("/api/account/wipe", summary="Erase everything in the workspace",
+          tags=["Privacy"])
+def api_account_wipe(body: WipeDataIn,
+                     init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Empty the workspace without closing the account.
+
+    Tasks, habits, logs, prayers, journal, projects and missions all go; the
+    account, the language, the theme and the notification settings stay. The
+    default habits are put back, because landing on an ErnestOS with no habits
+    in it is landing on a broken one.
+    """
+    user, _ = auth(init)
+    if body.confirm.strip().upper() != "WIPE":
+        raise HTTPException(status_code=422, detail="confirmation_required")
+    with SessionLocal() as s:
+        svc.wipe_workspace(s, user.telegram_id)
+    return {"ok": True}
 
 
 @app.post("/api/account/delete")

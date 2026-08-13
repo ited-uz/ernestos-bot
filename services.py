@@ -38,11 +38,45 @@ TZ = ZoneInfo("Asia/Tashkent")
 #: Offered in Settings. A full IANA list is 600 entries the user has to scroll;
 #: these are the zones ErnestOS users actually live in, and any other valid
 #: IANA name still works if it is already stored.
-TIMEZONES = [
+#: The zones offered first. Not a whitelist — the full IANA database follows
+#: them in `TIMEZONES` — but the twelve somebody is most likely to be in,
+#: sitting at the top of a list of six hundred so the common case stays one
+#: tap. A picker sorted purely alphabetically opens on Africa/Abidjan, which
+#: is nobody's timezone here.
+COMMON_TIMEZONES = [
     "Asia/Tashkent", "Asia/Almaty", "Asia/Dubai", "Asia/Istanbul",
     "Asia/Seoul", "Asia/Tokyo", "Europe/Moscow", "Europe/Berlin",
     "Europe/London", "America/New_York", "America/Los_Angeles", "UTC",
 ]
+
+
+def _all_timezones() -> list[str]:
+    """Every zone this platform knows, common ones first.
+
+    The short list was a guess about where users live, and it was wrong for
+    anybody outside it: their only options were somebody else's city or a UTC
+    offset they would have to work out twice a year. Reports fire on this
+    clock, so being unable to name your own zone means being sent a morning
+    report in the middle of the night.
+
+    Deprecated aliases and the `posix/`/`right/` trees are dropped — they are
+    the same zones under older names, and six hundred entries is already a long
+    list without three copies of each.
+    """
+    try:
+        from zoneinfo import available_timezones
+        names = {name for name in available_timezones()
+                 if "/" in name and not name.startswith(("posix/", "right/",
+                                                         "Etc/", "SystemV/"))}
+    except Exception:                    # no tzdata on this platform
+        log.warning("no timezone database available — offering the short list")
+        return list(COMMON_TIMEZONES)
+    # UTC is not in the set above (no slash) and is worth keeping offerable.
+    rest = sorted(names - set(COMMON_TIMEZONES))
+    return list(COMMON_TIMEZONES) + rest
+
+
+TIMEZONES = _all_timezones()
 
 
 class NotFound(Exception):
@@ -226,13 +260,23 @@ def get_or_create_user(s: Session, telegram_id: int, *, first_name: str = "",
     s.add(workspace)
     s.flush()
 
+    seed_default_habits(s, workspace.id)
+    s.commit()
+    return user, True
+
+
+def seed_default_habits(s: Session, ws: int) -> None:
+    """Put the starting set of habits into an empty workspace.
+
+    Used when an account is created and again when somebody wipes their data:
+    a workspace with no habits at all is not a clean slate, it is a dead one.
+    The caller commits.
+    """
     for position, (name, category, system_key) in enumerate(DEFAULT_HABITS, start=1):
-        s.add(Habit(workspace_id=workspace.id, name=name, category=category,
+        s.add(Habit(workspace_id=ws, name=name, category=category,
                     position=position, is_protected=bool(system_key),
                     system_key=system_key,
                     target_time=DEFAULT_WAKE_TIME if system_key == SYSTEM_WAKEUP else None))
-    s.commit()
-    return user, True
 
 
 def workspace_id_for(s: Session, telegram_id: int) -> int:
@@ -247,6 +291,24 @@ def touch_activity(s: Session, telegram_id: int) -> None:
     user = s.get(User, telegram_id)
     if user is not None:
         user.last_active_at = utcnow()
+
+
+def record_action(s: Session, telegram_id: int) -> int:
+    """Count one thing actually done, and return the new total.
+
+    "Done" means the day changed: a task ticked or added, a habit logged, a
+    prayer recorded, a journal written. Opening a screen is not an action —
+    counting reads would let somebody exhaust their free run by scrolling, and
+    the count exists to measure whether the product has been *used*.
+
+    The caller commits. Every increment goes through here so the definition of
+    an action lives in one place rather than in each endpoint.
+    """
+    user = s.get(User, telegram_id)
+    if user is None:
+        return 0
+    user.actions_count = (user.actions_count or 0) + 1
+    return user.actions_count
 
 
 def set_subscription(s: Session, telegram_id: int, subscribed: bool) -> bool:
@@ -1926,12 +1988,38 @@ def prayer_breakdown(s: Session, ws: int, start: date, end: date,
 EMPTY_OVERALL = 0
 
 
+#: What each part of a day is worth.
+#:
+#: A flat average said a five-minute habit and the day's real work were the
+#: same size, which is not what anybody means by "how did today go". Tasks lead
+#: because they are the thing a person actually chose to do today; the week's
+#: focus is next-heaviest per unit because it is the one goal that survives the
+#: day; habits are the base rhythm; prayer is a fixed personal routine that is
+#: either kept or not.
+#:
+#: The weights only ever apply to the parts a user *has*. A user who never
+#: opens the prayer module is not carrying a permanent 15% hole — see
+#: `weighted_overall`, which renormalises over whatever is present.
+OVERALL_WEIGHTS = {"tasks": 0.40, "habits": 0.25, "focus": 0.20, "prayer": 0.15}
+
+#: What a task is worth inside the tasks component, by its own priority.
+#:
+#: Three high-priority tasks and one trivial one is not a four-item day where
+#: every item is a quarter. Marking something "high" is the user telling the
+#: system what today is really about, and the score has to agree with them —
+#: otherwise the cheapest way to a good percentage is to do the easy ones.
+TASK_PRIORITY_WEIGHTS = {"high": 3, "medium": 2, "low": 1}
+
+
 def today_task_progress(s: Session, ws: int, day: date | None = None) -> tuple[int, int]:
     """(completed, total) tasks that belong to this day.
 
     Only tasks actually scheduled for the day count. Folding in the whole
     backlog would mean a user with 200 open tasks can never move the number,
     and finishing today's work would not show up at all.
+
+    Plain counts, for the places that print "3 / 5". The score itself uses
+    `today_task_score`, which weighs each task by its priority.
     """
     day = day or today_local()
     total = s.scalar(select(func.count(Task.id)).where(
@@ -1943,17 +2031,46 @@ def today_task_progress(s: Session, ws: int, day: date | None = None) -> tuple[i
     return done, total
 
 
+def today_task_score(s: Session, ws: int, day: date | None = None) -> tuple[int, int]:
+    """(earned, available) task points for the day, weighted by priority."""
+    day = day or today_local()
+    rows = s.execute(select(Task.priority, Task.status).where(
+        Task.workspace_id == ws, Task.archived_at.is_(None),
+        Task.deadline == day)).all()
+    earned = available = 0
+    for priority, status in rows:
+        weight = TASK_PRIORITY_WEIGHTS.get(priority, 2)
+        available += weight
+        if status == "done":
+            earned += weight
+    return earned, available
+
+
+def focus_progress(s: Session, ws: int, day: date | None = None, *,
+                   tz: ZoneInfo | None = None) -> tuple[int, int]:
+    """(done, total) of this week's missions.
+
+    The week's focus is a weekly commitment read on a daily screen, which is
+    the point of it: it is the part of the score that does not reset overnight.
+    """
+    rows = list_focus(s, ws, day, tz=tz)
+    return sum(1 for r in rows if r["done"]), len(rows)
+
+
 def overall_components(s: Session, ws: int, day: date | None = None) -> dict:
     """Each component's percentage, or None when it has no denominator today.
 
-    A category with nothing due is *absent*, not zero. Counting an empty
+    A category with nothing in it is *absent*, not zero. Counting an empty
     category as 0% would punish a user for a day with no tasks, which is the
-    opposite of what the number is for.
+    opposite of what the number is for — and it is also what makes the weights
+    safe to state as fixed numbers, because an unused category is removed from
+    the calculation rather than scored at nought.
     """
     day = day or today_local()
 
     habits_done, habits_total = habit_progress(s, ws, day)
-    tasks_done, tasks_total = today_task_progress(s, ws, day)
+    tasks_earned, tasks_available = today_task_score(s, ws, day)
+    focus_done, focus_total = focus_progress(s, ws, day)
     prayer_row = s.scalar(select(PrayerDay).where(
         PrayerDay.workspace_id == ws, PrayerDay.day == day))
     prayer_habit = s.scalar(select(Habit.id).where(
@@ -1961,8 +2078,10 @@ def overall_components(s: Session, ws: int, day: date | None = None) -> dict:
         Habit.archived_at.is_(None)))
 
     return {
+        "tasks": (round(tasks_earned / tasks_available * 100)
+                  if tasks_available else None),
         "habits": round(habits_done / habits_total * 100) if habits_total else None,
-        "tasks": round(tasks_done / tasks_total * 100) if tasks_total else None,
+        "focus": round(focus_done / focus_total * 100) if focus_total else None,
         # Prayer's denominator is the five daily prayers, which exist for as
         # long as the user keeps the habit — not only on days they logged one.
         "prayer": (round(float(prayer_row.score if prayer_row else 0.0)
@@ -1971,12 +2090,29 @@ def overall_components(s: Session, ws: int, day: date | None = None) -> dict:
     }
 
 
-def overall_percent(s: Session, ws: int, day: date | None = None) -> int:
-    """The arithmetic mean of whichever components exist today."""
-    available = [v for v in overall_components(s, ws, day).values() if v is not None]
-    if not available:
+def weighted_overall(components: dict) -> int:
+    """One number from the parts, each carrying its own weight.
+
+    Absent parts are dropped and the remaining weights renormalised, which is
+    what redistributes a missing category across the others in proportion
+    rather than in equal shares — somebody who does not use the prayer module
+    gets that 15% split 40:25:20, not 5 points each. A user with only tasks
+    scores exactly their task percentage, which is the only defensible answer.
+    """
+    present = {k: v for k, v in components.items()
+               if v is not None and k in OVERALL_WEIGHTS}
+    if not present:
         return EMPTY_OVERALL
-    return round(sum(available) / len(available))
+    total_weight = sum(OVERALL_WEIGHTS[k] for k in present)
+    if total_weight <= 0:
+        return EMPTY_OVERALL
+    return round(sum(value * OVERALL_WEIGHTS[key]
+                     for key, value in present.items()) / total_weight)
+
+
+def overall_percent(s: Session, ws: int, day: date | None = None) -> int:
+    """The weighted score for a day."""
+    return weighted_overall(overall_components(s, ws, day))
 
 
 def overall_state(s: Session, ws: int, day: date | None = None) -> dict:
@@ -1990,12 +2126,11 @@ def overall_state(s: Session, ws: int, day: date | None = None) -> dict:
 
     today_components = overall_components(s, ws, day)
     today_available = [v for v in today_components.values() if v is not None]
-    y_available = [v for v in overall_components(s, ws, yesterday).values()
-                   if v is not None]
+    y_components = overall_components(s, ws, yesterday)
+    y_available = [v for v in y_components.values() if v is not None]
 
-    value = round(sum(today_available) / len(today_available)) if today_available \
-        else EMPTY_OVERALL
-    previous = round(sum(y_available) / len(y_available)) if y_available else None
+    value = weighted_overall(today_components)
+    previous = weighted_overall(y_components) if y_available else None
 
     if previous is None or not today_available or value == previous:
         trend = "flat"
@@ -2007,13 +2142,27 @@ def overall_state(s: Session, ws: int, day: date | None = None) -> dict:
 
 
 def _task_percent(s: Session, ws: int, day: date) -> int:
-    done, total = today_task_progress(s, ws, day)
+    """The priority-weighted task percentage, or 0 on a day with no tasks.
+
+    The chart needs a number for every day, so an absent component is drawn as
+    zero here. The *score* never does that — see `overall_components`, which
+    returns None and drops the category from the weighting entirely.
+    """
+    earned, available = today_task_score(s, ws, day)
+    return round(earned / available * 100) if available else 0
+
+
+def _focus_percent(s: Session, ws: int, day: date) -> int:
+    done, total = focus_progress(s, ws, day)
     return round(done / total * 100) if total else 0
 
 
 def _overall_percent_for(s: Session, ws: int, day: date) -> int:
-    values = [v for v in overall_components(s, ws, day).values() if v is not None]
-    return round(sum(values) / len(values)) if values else 0
+    return weighted_overall(overall_components(s, ws, day))
+
+
+#: The four series every chart and average is built from, plus the headline.
+SERIES_KEYS = ("habits", "prayer", "tasks", "focus", "overall")
 
 
 def _day_point(s: Session, ws: int, day: date) -> dict:
@@ -2021,6 +2170,7 @@ def _day_point(s: Session, ws: int, day: date) -> dict:
         "habits": _habit_percent(s, ws, day),
         "prayer": _prayer_percent(s, ws, day),
         "tasks": _task_percent(s, ws, day),
+        "focus": _focus_percent(s, ws, day),
         "overall": _overall_percent_for(s, ws, day),
     }
 
@@ -2029,8 +2179,8 @@ def _range_average(s: Session, ws: int, start: date, end: date) -> dict:
     """Average of each series across an inclusive day range."""
     days = (end - start).days + 1
     if days <= 0:
-        return {k: 0 for k in ("habits", "prayer", "tasks", "overall")}
-    totals = {k: 0 for k in ("habits", "prayer", "tasks", "overall")}
+        return {k: 0 for k in SERIES_KEYS}
+    totals = {k: 0 for k in SERIES_KEYS}
     for offset in range(days):
         point = _day_point(s, ws, start + timedelta(days=offset))
         for key in totals:
@@ -2046,7 +2196,7 @@ def _range_percent(s: Session, ws: int, start: date, end: date) -> tuple[int, in
 
 #: What each component of the overall number means and where it comes from, so
 #: the info panel is generated from the same place the number is.
-OVERALL_COMPONENTS = ["tasks", "habits", "prayer"]
+OVERALL_COMPONENTS = ["tasks", "habits", "focus", "prayer"]
 
 
 def overall_explain(s: Session, ws: int, user: User,
@@ -2063,9 +2213,15 @@ def overall_explain(s: Session, ws: int, user: User,
 
     tasks_done, tasks_total = today_task_progress(s, ws, day)
     habits_done, habits_total = habit_progress(s, ws, day)
+    focus_done, focus_total = focus_progress(s, ws, day)
     prayer = prayer_state(s, ws, day, user.gender)
     components = overall_components(s, ws, day)
     counted = [k for k in OVERALL_COMPONENTS if components.get(k) is not None]
+    # The weight each counted part actually carried today, after the absent
+    # ones were dropped and the rest renormalised. Printing the nominal 40/25/
+    # 20/15 to somebody who has no prayer module would be a lie about their
+    # own number.
+    live = sum(OVERALL_WEIGHTS[k] for k in counted) or 1
 
     return {
         "day": day.isoformat(),
@@ -2076,11 +2232,18 @@ def overall_explain(s: Session, ws: int, user: User,
              "done": tasks_done, "total": tasks_total},
             {"key": "habits", "percent": components["habits"],
              "done": habits_done, "total": habits_total},
+            {"key": "focus", "percent": components["focus"],
+             "done": focus_done, "total": focus_total},
             {"key": "prayer", "percent": components["prayer"],
              "done": prayer["score"], "total": PRAYER_MAX_SCORE},
         ],
+        "weights": {k: round(OVERALL_WEIGHTS[k] / live * 100)
+                    for k in counted},
+        "nominal_weights": {k: round(v * 100)
+                            for k, v in OVERALL_WEIGHTS.items()},
+        "task_priority_weights": dict(TASK_PRIORITY_WEIGHTS),
         # Spelled out so the UI never has to reimplement the rule.
-        "rule": "mean_of_available",
+        "rule": "weighted_mean_of_available",
     }
 
 
@@ -2097,7 +2260,7 @@ def stats(s: Session, ws: int, period: str = "week", *,
     means nothing on its own and "74%, down from 81%" is something to act on.
     """
     today = today_local(tz)
-    keys = ("habits", "prayer", "tasks", "overall")
+    keys = SERIES_KEYS
 
     if period == "year":
         series = []
@@ -2175,6 +2338,7 @@ def stats(s: Session, ws: int, period: str = "week", *,
             "yesterday": overall["yesterday"],
             "tasks": components["tasks"],
             "habits": components["habits"],
+            "focus": components["focus"],
             "prayer": components["prayer"],
             "prayer_score": prayer_today["score"],
             "prayer_max": PRAYER_MAX_SCORE,
@@ -2622,6 +2786,41 @@ def home(s: Session, ws: int, user: User) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# External calendars
+# ---------------------------------------------------------------------------
+
+#: Providers the sync layer is being built for. Listed rather than hard-coded
+#: at the call site so the UI can ask what exists without guessing.
+CALENDAR_PROVIDERS = ("google", "icloud", "caldav")
+
+
+def sync_calendar(s: Session, ws: int, provider: str,
+                  credentials: dict | None = None) -> dict:
+    """Two-way sync with an external calendar. Not implemented yet.
+
+    Deliberately a stub with a real signature rather than nothing at all: the
+    shape of this call is the decision that matters, and it is worth fixing
+    before the first provider is written. What it will do, when it does it:
+
+      * read events in the window ErnestOS already draws (this month forward);
+      * map each to a task with a deadline and a due_time, keyed by the
+        provider's own event id so a second sync updates rather than duplicates;
+      * never write back a task the user did not explicitly share, because a
+        personal task list appearing in somebody's work calendar is a privacy
+        incident, not a feature.
+
+    Returns the same shape it will return when it works, so a caller written
+    against it today keeps working.
+    """
+    if provider not in CALENDAR_PROVIDERS:
+        raise ValueError("unknown provider")
+    log.info("calendar sync requested for workspace %s (%s) — not implemented",
+             ws, provider)
+    return {"provider": provider, "supported": False,
+            "imported": 0, "updated": 0, "skipped": 0}
+
+
+# ---------------------------------------------------------------------------
 # Data and privacy
 # ---------------------------------------------------------------------------
 
@@ -2705,6 +2904,33 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
 WORKSPACE_TABLES = [HabitLog, Habit, PrayerLog, PrayerDay, Task, Project,
                     WeeklyFocus, WeeklyReview, JournalEntry, Birthday,
                     Feedback, DailyReportLog]
+
+
+def wipe_workspace(s: Session, telegram_id: int) -> bool:
+    """Erase everything the user has written, but keep the account.
+
+    The difference from `delete_account` is the whole reason both exist:
+    somebody who wants to start over is not somebody who wants to leave. This
+    empties the workspace — tasks, habits, logs, prayers, journal, projects,
+    missions — and then puts the default habits back, so what they land on is a
+    fresh ErnestOS rather than a broken one with no habits in it at all.
+
+    The account, the language, the theme and the notification settings survive,
+    because none of those are "data the user wrote", they are how they use the
+    product.
+    """
+    from sqlalchemy import delete as sql_delete
+
+    ws = s.scalar(select(Workspace.id).where(Workspace.user_id == telegram_id))
+    if ws is None:
+        return False
+    for model in WORKSPACE_TABLES:
+        s.execute(sql_delete(model).where(model.workspace_id == ws))
+    s.commit()
+    # A workspace with no habits is not a clean slate, it is a dead one.
+    seed_default_habits(s, ws)
+    s.commit()
+    return True
 
 
 def delete_account(s: Session, telegram_id: int) -> bool:
@@ -2846,7 +3072,7 @@ def morning_data(s: Session, ws: int, user: User) -> dict:
     # surface uses, plus the components behind it.
     y_components = overall_components(s, ws, yesterday)
     y_available = [v for v in y_components.values() if v is not None]
-    y_overall = round(sum(y_available) / len(y_available)) if y_available else 0
+    y_overall = weighted_overall(y_components)
 
     return {
         # The report opens by greeting somebody, so it needs to know who.

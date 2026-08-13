@@ -463,7 +463,10 @@ cp .env.example .env
 | `TZ` | `Asia/Tashkent` | tavsiya etiladi |
 | `INIT_DATA_MAX_AGE` | Mini App sessiyasi umri (sekund, default 86400) | yo'q |
 | `REPORT_TICK_MINUTES` | Hisobot job'i necha minutda bir uyg'onadi (default 2). Bu qiymat — hisobotning eng ko'p kechikishi | yo'q |
-| `MEMBERSHIP_TTL` | Obuna javobi necha sekund keshlanadi (default 180) | yo'q |
+| `MEMBERSHIP_TTL` | Obuna javobi necha sekund keshlanadi (default 600) | yo'q |
+| `FREE_ACTIONS` | Kanal so'ralguncha nechta amal bepul (default 20) | yo'q |
+| `WEBHOOK_URL` | Botni webhook rejimida ishlatish uchun to'liq https manzil (`.../webhook`). Bo'sh = polling | yo'q |
+| `WEBHOOK_SECRET` | Telegram qaytaradigan maxfiy token — webhook'ni himoyalaydi | `WEBHOOK_URL` bo'lsa tavsiya etiladi |
 
 `ENVIRONMENT=production` bo'lsa `DATABASE_URL` majburiy — SQLite'ga
 qaytish yo'q.
@@ -564,8 +567,101 @@ Buyruqlar:
 
 `Procfile` da ham shu yozilgan, ya'ni Railway avtomatik topadi.
 
-> **Muhim:** bitta instansiya ishlatilsin. Ikkita bo'lsa Telegram polling
-> to'qnashadi va hisobotlar ikki marta ketishi mumkin.
+> **Muhim:** polling rejimida bitta instansiya ishlatilsin. Ikkita bo'lsa
+> Telegram polling to'qnashadi. Bir nechta instansiya kerak bo'lsa —
+> webhook rejimiga o'ting (quyida).
+
+## K2. Webhook rejimi (ixtiyoriy)
+
+Polling bitta instansiya uchun yetarli va hech qanday ochiq manzil talab
+qilmaydi. Webhook esa ikki holatda kerak bo'ladi: foydalanuvchi ko'payib,
+doimiy long-poll protsessning asosiy ishiga aylanganda; va load balancer
+ortida bir nechta instansiya ishlaganda — chunki ular bitta botni birga
+poll qila olmaydi.
+
+```bash
+WEBHOOK_URL=https://sizning-domeningiz.com/webhook
+WEBHOOK_SECRET=uzun-tasodifiy-satr
+```
+
+`WEBHOOK_URL` qo'yilishi bilan ilova polling'ni ishga tushirmaydi va
+o'rniga Telegram'ga webhook o'rnatadi. `/webhook` endpoint faqat shu
+o'zgaruvchi bor bo'lgandagina javob beradi — eski webhook qolib ketsa ham
+polling ishlayotgan instansiyaga update tushmaydi.
+
+`WEBHOOK_SECRET` — Telegram har so'rovda qaytaradigan sarlavha. Usiz
+manzilni topgan har kim bot nomidan update yubora oladi.
+
+## K3. Boshqa platformalar
+
+### Heroku
+
+```bash
+heroku create ernestos
+heroku addons:create heroku-postgresql:essential-0
+heroku config:set BOT_TOKEN=... ENVIRONMENT=production TZ=Asia/Tashkent
+git push heroku main
+```
+
+`Procfile` allaqachon mavjud. `runtime.txt` qo'shing:
+
+```
+python-3.12.3
+```
+
+`DATABASE_URL` ni Heroku o'zi qo'shadi, lekin u `postgres://` bilan
+boshlanadi — `db.py` buni `postgresql://` ga o'zi o'giradi.
+
+### Fly.io
+
+```bash
+flyctl launch --no-deploy
+flyctl postgres create --name ernestos-db
+flyctl postgres attach ernestos-db
+flyctl secrets set BOT_TOKEN=... ENVIRONMENT=production TZ=Asia/Tashkent
+flyctl deploy
+```
+
+`fly.toml` da portni ochiq qoldiring:
+
+```toml
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false   # bot va scheduler doim ishlab turishi kerak
+  min_machines_running = 1
+```
+
+`auto_stop_machines` ni **albatta** `false` qiling: mashina uxlab qolsa
+ertalabki hisobot yuborilmaydi.
+
+### DigitalOcean App Platform
+
+`app.yaml`:
+
+```yaml
+name: ernestos
+services:
+  - name: web
+    github:
+      repo: sizning-foydalanuvchi/ErnestOS
+      branch: main
+    run_command: uvicorn app:app --host 0.0.0.0 --port $PORT
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    envs:
+      - key: ENVIRONMENT
+        value: production
+      - key: BOT_TOKEN
+        type: SECRET
+databases:
+  - name: db
+    engine: PG
+    production: true
+```
+
+`instance_count: 1` — polling uchun. Ko'proq kerak bo'lsa webhook rejimiga
+o'ting (K2 bo'limi).
 
 ## L. Hammasini tekshirish
 

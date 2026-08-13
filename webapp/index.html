@@ -665,6 +665,12 @@ label{display:block;font-size:12px;color:var(--text-2);margin:var(--s3) 0 var(--
 /* Today in three tiles: one per measurable part of the day, each its own
    object, each opening the screen that owns it. */
 .tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s1)}
+/* Four parts read better two by two than as four slivers on one line. */
+.tiles.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+/* What this part is worth in the score, on the block itself. */
+.wt{font-size:10.5px;font-weight:650;color:var(--text-3);
+    background:color-mix(in srgb, var(--tint, var(--c1)) 14%, transparent);
+    border-radius:var(--radius-pill);padding:2px 7px;flex:none}
 .tile{padding:var(--s2);min-width:0;cursor:pointer;
       transition:transform var(--motion)}
 .tile:active{transform:scale(.985)}
@@ -1027,9 +1033,9 @@ const DICT = {
   period_month:"Oy",
   pick_task:"Bugungi missiyani tanlang",
   week_focus:"Haftaning fokusi",
-  top3:"Bugungi TOP 3", top3_add:"Vazifa tanlash", top3_full:"Uchtadan ko'p bo'lmaydi",
-  top3_pick:"TOP 3 ga qo'shish", top3_unpick:"TOP 3 dan olib tashlash",
-  top3_hint:"Bugun eng muhim uchtasini tanlang",
+  top3:"Kun tanlovi", top3_add:"Vazifa tanlash", top3_full:"Bir kunga bitta",
+  top3_pick:"Kun tanloviga qo'yish", top3_unpick:"Kun tanlovidan olib tashlash",
+  top3_hint:"Bugungi eng muhim bitta ishni tanlang",
   mission:"Haftaning fokusi", mission_main:"Asosiy", mission_extra:"Qo'shimcha",
   add_mission:"Asosiy maqsad qo'shish", add_supporting:"Qo'shimcha prioritet",
   mission_full:"Bir haftaga bitta asosiy va ikkita qo'shimcha",
@@ -1119,7 +1125,11 @@ const DICT = {
   week:"Hafta", month:"Oy", year:"Yil", average:"O'rtacha",
   best_day:"Eng yaxshi kun", vs_prev:"oldingi davrga nisbatan",
   how_calculated:"Bu qanday hisoblandi?",
-  overall_rule:"Umumiy — bugun o'lchanadigan bo'limlarning o'rtachasi.",
+  overall_rule:"Umumiy — har bo'limning o'z og'irligi bilan hisoblanadi — vazifa 40%, odat 25%, fokus 20%, namoz 15%.",
+  focus:"Fokus", weight:"og'irlik",
+  weighted_note:"Og'irlik bo'yicha hisoblanadi",
+  weight_shift:"Bugun bo'sh bo'lgan bo'limning og'irligi qolganlariga nisbatan taqsimlandi.",
+  priority_note:"Muhim (yuqori) vazifa ko'proq ball beradi — yuqori 3 · o'rta 2 · past 1.",
   overall_absent:"Bugun bo'sh bo'lgan bo'lim hisobga olinmaydi.",
   counted:"Hisobga olindi", not_counted:"Bugun yo'q",
   download:"Hisobotni yuklab olish", report_sent:"Hisobot botga yuborildi",
@@ -1134,7 +1144,7 @@ const DICT = {
   theme_bento:"Yorug' va tartibli bloklar — eng tez o'qiladi",
   theme_spatial:"Qatlamli chuqurlik, suzuvchi kartalar",
   theme_fixed:"Bu tema o'z ko'rinishida ishlaydi",
-  timezone:"Vaqt mintaqasi", notifications:"Eslatmalar va hisobotlar",
+  timezone:"Vaqt mintaqasi", tz_common:"Tez-tez ishlatiladigan", notifications:"Eslatmalar va hisobotlar",
   morning_report:"Ertalabki hisobot", evening_report:"Kechqurungi hisobot",
   task_reminders:"Vazifa eslatmalari", habit_reminders:"Odat eslatmalari",
   reminders:"Eslatmalar", report_at:"Yuboriladigan vaqt",
@@ -1148,6 +1158,21 @@ const DICT = {
   data_privacy:"Ma'lumotlar va maxfiylik",
   export_data:"Ma'lumotlarimni export qilish", export_sent:"Fayl botga yuborildi",
   privacy_info:"Maxfiylik haqida",
+  privacy_data:"Maxfiylik va ma'lumotlar", privacy_hint:"Ma'lumotlaringiz sizniki",
+  data_yours:"Ma'lumotlaringiz — sizniki",
+  data_yours_body:"Siz yozgan hamma narsa sizga tegishli. Istagan vaqtda nusxasini oling yoki butunlay o'chiring — hech kim so'ramaydi.",
+  your_copy:"Nusxasi", what_we_keep:"Nima saqlanadi", irreversible:"Qaytarib bo'lmaydi",
+  download_backup:"Zaxira nusxani yuklab olish",
+  backup_hint:"JSON fayl — qurilmangizga", backup_saved:"Zaxira nusxa saqlandi",
+  export_hint:"Botga fayl sifatida yuboriladi",
+  privacy_policy:"Maxfiylik siyosati", policy_hint:"Nima saqlanadi va qayerda",
+  sessions:"Kirishlar", sessions_hint:"Hisob qayerdan ochilgan",
+  sessions_body:"ErnestOS Telegram hisobingiz orqali ishlaydi — alohida parol yo'q. Seansni yopish uchun Telegram sozlamalaridagi «Qurilmalar» bo'limidan foydalaning.",
+  delete_all_data:"Barcha ma'lumotni o'chirish", wipe_hint:"Hisob qoladi, ichi bo'shaydi",
+  delete_hint:"Hisob ham, ma'lumot ham o'chadi",
+  wipe_warn:"Barcha vazifa, odat, namoz yozuvi, kundalik, loyiha va maqsadlar butunlay o'chiriladi. Buni qaytarib bo'lmaydi.",
+  wipe_keeps:"Hisobingiz, tilingiz, temangiz va sozlamalaringiz saqlanadi. Standart odatlar qaytariladi.",
+  wipe_continue:"Ha, hammasini o'chirish", wipe_done:"Ma'lumotlar o'chirildi",
   privacy_body:"Har bir foydalanuvchining ma'lumoti alohida ish maydonida saqlanadi va boshqa foydalanuvchilarga ko'rinmaydi. Ma'lumotlar PostgreSQL bazasida saqlanadi; texnik xizmat uchun administrator bazaga kirish huquqiga ega. Kundalik yozuvlaringiz hech qanday tashqi xizmatga yuborilmaydi.",
   delete_account:"Akkaunt va ma'lumotlarni o'chirish",
   delete_account_warn:"Barcha odatlar, vazifalar, namoz yozuvlari va kundalik butunlay o'chiriladi. Buni qaytarib bo'lmaydi.",
@@ -1207,9 +1232,9 @@ const DICT = {
   period_month:"Month",
   pick_task:"Choose today's mission",
   week_focus:"This week's focus",
-  top3:"Today's top 3", top3_add:"Pick a task", top3_full:"Three at most",
-  top3_pick:"Add to top 3", top3_unpick:"Remove from top 3",
-  top3_hint:"Pick the three that matter most today",
+  top3:"The day's pick", top3_add:"Pick a task", top3_full:"One a day",
+  top3_pick:"Make it the day's pick", top3_unpick:"Remove the day's pick",
+  top3_hint:"Pick the one thing that matters most today",
   mission:"This week's focus", mission_main:"Primary", mission_extra:"Supporting",
   add_mission:"Set the primary goal", add_supporting:"Supporting priority",
   mission_full:"One primary and two supporting per week",
@@ -1291,7 +1316,11 @@ const DICT = {
   week:"Week", month:"Month", year:"Year", average:"Average",
   best_day:"Best day", vs_prev:"vs the previous period",
   how_calculated:"How was this calculated?",
-  overall_rule:"Overall is the average of the parts that had something to measure today.",
+  overall_rule:"Overall weighs each part — tasks 40%, habits 25%, focus 20%, prayer 15%.",
+  focus:"Focus", weight:"weight",
+  weighted_note:"Weighted, not averaged",
+  weight_shift:"A part with nothing in it today had its weight split across the rest, in proportion.",
+  priority_note:"An important task is worth more — high 3 · medium 2 · low 1.",
   overall_absent:"A part with nothing due today is left out.",
   counted:"Counted", not_counted:"Nothing today",
   download:"Download the report", report_sent:"Report sent to the bot chat",
@@ -1305,7 +1334,7 @@ const DICT = {
   theme_bento:"Light, structured blocks — fastest to read",
   theme_spatial:"Layered depth and floating cards",
   theme_fixed:"This theme keeps its own appearance",
-  timezone:"Time zone", notifications:"Reminders and reports",
+  timezone:"Time zone", tz_common:"Common", notifications:"Reminders and reports",
   morning_report:"Morning report", evening_report:"Evening report",
   task_reminders:"Task reminders", habit_reminders:"Habit reminders",
   reminders:"Reminders", report_at:"Sent at",
@@ -1319,6 +1348,21 @@ const DICT = {
   data_privacy:"Data and privacy",
   export_data:"Export my data", export_sent:"File sent to the bot chat",
   privacy_info:"About privacy",
+  privacy_data:"Privacy & data", privacy_hint:"Your data belongs to you",
+  data_yours:"Your data belongs to you",
+  data_yours_body:"Everything you write here is yours. Take a copy whenever you like, or delete all of it — nobody will ask why.",
+  your_copy:"Your copy", what_we_keep:"What is kept", irreversible:"Cannot be undone",
+  download_backup:"Download backup",
+  backup_hint:"A JSON file, on your device", backup_saved:"Backup saved",
+  export_hint:"Sent to the bot as a file",
+  privacy_policy:"Privacy policy", policy_hint:"What is stored, and where",
+  sessions:"Sessions", sessions_hint:"Where this account is open",
+  sessions_body:"ErnestOS signs you in through your Telegram account — there is no separate password. To end a session, use Devices in your Telegram settings.",
+  delete_all_data:"Delete all data", wipe_hint:"Keeps the account, empties it",
+  delete_hint:"Removes the account and the data",
+  wipe_warn:"Every task, habit, prayer record, journal entry, project and mission is erased for good. This cannot be undone.",
+  wipe_keeps:"Your account, language, theme and settings stay. The default habits are put back.",
+  wipe_continue:"Yes, erase everything", wipe_done:"Your data was erased",
   privacy_body:"Each user's data lives in its own workspace and is not visible to other users. It is stored in a PostgreSQL database, which an administrator can access for maintenance. Your journal entries are never sent to any external service.",
   delete_account:"Delete account and data",
   delete_account_warn:"Every habit, task, prayer record and journal entry will be permanently erased. This cannot be undone.",
@@ -1377,9 +1421,9 @@ const DICT = {
   period_month:"Месяц",
   pick_task:"Выберите миссию дня",
   week_focus:"Фокус недели",
-  top3:"Топ-3 на сегодня", top3_add:"Выбрать задачу", top3_full:"Не больше трёх",
-  top3_pick:"Добавить в топ-3", top3_unpick:"Убрать из топ-3",
-  top3_hint:"Выберите три самых важных дела на сегодня",
+  top3:"Выбор дня", top3_add:"Выбрать задачу", top3_full:"Одна на день",
+  top3_pick:"Сделать выбором дня", top3_unpick:"Убрать выбор дня",
+  top3_hint:"Выберите одно самое важное дело на сегодня",
   mission:"Фокус недели", mission_main:"Главное", mission_extra:"Дополнительно",
   add_mission:"Задать главную цель", add_supporting:"Дополнительный приоритет",
   mission_full:"Одна главная и две дополнительные в неделю",
@@ -1461,7 +1505,11 @@ const DICT = {
   week:"Неделя", month:"Месяц", year:"Год", average:"Среднее",
   best_day:"Лучший день", vs_prev:"к прошлому периоду",
   how_calculated:"Как это посчитано?",
-  overall_rule:"Общий результат — среднее тех разделов, где сегодня было что измерять.",
+  overall_rule:"Общий считается с весами — задачи 40%, привычки 25%, фокус 20%, намаз 15%.",
+  focus:"Фокус", weight:"вес",
+  weighted_note:"Считается с весами",
+  weight_shift:"Вес пустого сегодня раздела распределён между остальными пропорционально.",
+  priority_note:"Важная задача даёт больше баллов — высокая 3 · средняя 2 · низкая 1.",
   overall_absent:"Раздел, в котором на сегодня ничего не было, не учитывается.",
   counted:"Учтено", not_counted:"Сегодня нет",
   download:"Скачать отчёт", report_sent:"Отчёт отправлен в чат бота",
@@ -1475,7 +1523,7 @@ const DICT = {
   theme_bento:"Светлые структурные блоки — читается быстрее всех",
   theme_spatial:"Слои, глубина и парящие карточки",
   theme_fixed:"Эта тема сохраняет своё оформление",
-  timezone:"Часовой пояс", notifications:"Напоминания и отчёты",
+  timezone:"Часовой пояс", tz_common:"Частые", notifications:"Напоминания и отчёты",
   morning_report:"Утренний отчёт", evening_report:"Вечерний отчёт",
   task_reminders:"Напоминания о задачах", habit_reminders:"Напоминания о привычках",
   reminders:"Напоминания", report_at:"Время отправки",
@@ -1489,6 +1537,21 @@ const DICT = {
   data_privacy:"Данные и приватность",
   export_data:"Экспорт моих данных", export_sent:"Файл отправлен в чат бота",
   privacy_info:"О приватности",
+  privacy_data:"Приватность и данные", privacy_hint:"Ваши данные принадлежат вам",
+  data_yours:"Ваши данные принадлежат вам",
+  data_yours_body:"Всё, что вы здесь пишете, — ваше. Заберите копию когда угодно или удалите всё целиком — никто не спросит зачем.",
+  your_copy:"Ваша копия", what_we_keep:"Что хранится", irreversible:"Необратимо",
+  download_backup:"Скачать резервную копию",
+  backup_hint:"Файл JSON на ваше устройство", backup_saved:"Копия сохранена",
+  export_hint:"Придёт в бот файлом",
+  privacy_policy:"Политика приватности", policy_hint:"Что хранится и где",
+  sessions:"Входы", sessions_hint:"Где открыт этот аккаунт",
+  sessions_body:"ErnestOS входит через ваш аккаунт Telegram — отдельного пароля нет. Чтобы завершить сеанс, откройте «Устройства» в настройках Telegram.",
+  delete_all_data:"Удалить все данные", wipe_hint:"Аккаунт остаётся, содержимое стирается",
+  delete_hint:"Удаляет и аккаунт, и данные",
+  wipe_warn:"Все задачи, привычки, записи намаза, дневник, проекты и цели будут стёрты навсегда. Отменить это нельзя.",
+  wipe_keeps:"Аккаунт, язык, тема и настройки останутся. Привычки по умолчанию вернутся.",
+  wipe_continue:"Да, стереть всё", wipe_done:"Данные удалены",
   privacy_body:"Данные каждого пользователя лежат в отдельном рабочем пространстве и не видны другим пользователям. Они хранятся в базе PostgreSQL, к которой администратор имеет доступ для обслуживания. Записи дневника не передаются никаким внешним сервисам.",
   delete_account:"Удалить аккаунт и данные",
   delete_account_warn:"Все привычки, задачи, записи намазов и дневник будут удалены безвозвратно. Это нельзя отменить.",
@@ -1603,7 +1666,7 @@ const state = {
   statsPeriod:"week", summary:null,
   /* One line to open with. Three overlapping lines is a picture nobody reads
      first; the legend adds the others when a comparison is actually wanted. */
-  statsSeries:{overall:true, tasks:false, habits:false, prayer:false},
+  statsSeries:{overall:true, tasks:false, habits:false, focus:false, prayer:false},
   lang:"uz", appearance:"auto",
   reorderMode:false,
   taskQuery:"", taskFilter:"", doneQuery:"",
@@ -2005,32 +2068,47 @@ function scoreBlock(d){
    grey, so the three read apart at a glance, and a bar under each so the
    ratio is visible without doing the division. */
 function todayBlock(d){
-  const tasks = d.overall.components.tasks;
-  const habits = d.habits.total ? Math.round(d.habits.done / d.habits.total * 100) : 0;
+  const c = d.overall.components;
+  const focus = d.focus || {};
+  const ratio = (done, total) => total ? Math.round(done / total * 100) : 0;
   const prayer = d.prayer.excused ? 100
-    : d.prayer.required ? Math.round(d.prayer.performed / d.prayer.required * 100) : 0;
+    : ratio(d.prayer.performed, d.prayer.required);
 
-  const tile = (tone, ic, label, value, percent, act) => `
-    <div class="tinted tile ${tone}" ${act}>
-      <span class="itile">${ic}</span>
+  /* Four blocks, two by two. Each carries the weight it weighs in the score,
+     because a screen that shows four equal-looking tiles behind an unequal
+     formula is a screen that cannot be reconciled with its own headline. */
+  const tile = (key, label, value, percent, act) => `
+    <div class="tinted tile ${COMPONENT_TONE[key]}" ${act}>
+      <div class="row" style="gap:var(--s1)">
+        <span class="itile">${icon(COMPONENT_ICON[key], 17)}</span>
+        <div class="grow"></div>
+        <span class="wt num">${WEIGHTS[key]}%</span>
+      </div>
       <div class="k ellipsis">${label}</div>
       <div class="v num">${value}</div>
       ${bar(percent)}
     </div>`;
 
   return `<h2>${t("today_parts")}</h2>
-    <div class="tiles">
-      ${tile("tone-1", icon("list", 17), t("tasks"), pct(tasks),
-             tasks === null ? 0 : tasks,
+    <div class="tiles two">
+      ${tile("tasks", t("tasks"), pct(c.tasks), c.tasks || 0,
              `data-act="nav" data-screen="tasks"`)}
-      ${tile("tone-5", icon("check", 17), t("habits"),
-             `${d.habits.done}/${d.habits.total}`, habits,
+      ${tile("habits", t("habits"), `${d.habits.done}/${d.habits.total}`,
+             ratio(d.habits.done, d.habits.total),
              `data-act="go-tab" data-tab="habits"`)}
-      ${tile("tone-3", icon("moon", 17), t("prayer"),
+      ${tile("focus", t("week_focus"), `${focus.done || 0}/${focus.total || 0}`,
+             ratio(focus.done, focus.total),
+             `data-act="nav" data-screen="tasks"`)}
+      ${tile("prayer", t("prayer"),
              d.prayer.excused ? "✓" : `${d.prayer.performed}/${d.prayer.required}`,
              prayer, `data-act="go-tab" data-tab="prayer"`)}
     </div>`;
 }
+
+/* The nominal weights, for display only. The score itself is computed on the
+   server — there is no second copy of the formula here, and these numbers are
+   read from the payload wherever the *applied* weight matters. */
+const WEIGHTS = {tasks:40, habits:25, focus:20, prayer:15};
 
 /* Today's work, grouped by the project it belongs to. */
 function tasksBlock(d){
@@ -2922,21 +3000,27 @@ SCREENS.stats = () => {
      three, in the same three colours, as on Home, so the two screens teach one
      vocabulary instead of two. Each carries the period's change underneath,
      which is the number this screen exists for. */
-  const tile = (tone, ic, key, value, percent, delta) => `
-    <div class="tinted tile ${tone}">
-      <span class="itile">${ic}</span>
-      <div class="k ellipsis">${t(key)}</div>
+  const tile = (key, label, value, percent, delta) => `
+    <div class="tinted tile ${COMPONENT_TONE[key]}">
+      <div class="row" style="gap:var(--s1)">
+        <span class="itile">${icon(COMPONENT_ICON[key], 17)}</span>
+        <div class="grow"></div>
+        <span class="wt num">${WEIGHTS[key]}%</span>
+      </div>
+      <div class="k ellipsis">${label}</div>
       <div class="v num">${value}</div>
       <div class="sub num">${deltaTag(delta)}</div>
       ${bar(percent)}
     </div>`;
 
-  h += `<div class="tiles" style="margin-top:var(--s2)">
-      ${tile("tone-1", icon("list", 17), "tasks", pct(today.tasks),
+  h += `<div class="tiles two" style="margin-top:var(--s2)">
+      ${tile("tasks", t("tasks"), pct(today.tasks),
              today.tasks || 0, st.deltas.tasks)}
-      ${tile("tone-5", icon("check", 17), "habits", pct(today.habits),
+      ${tile("habits", t("habits"), pct(today.habits),
              today.habits || 0, st.deltas.habits)}
-      ${tile("tone-3", icon("moon", 17), "prayer",
+      ${tile("focus", t("week_focus"), pct(today.focus),
+             today.focus || 0, st.deltas.focus)}
+      ${tile("prayer", t("prayer"),
              `${today.prayer_performed}/${today.prayer_required}`,
              today.prayer || 0, st.deltas.prayer)}
     </div>
@@ -2959,6 +3043,7 @@ SCREENS.stats = () => {
     {field:"overall", color:"var(--c1)", label:t("overall")},
     {field:"tasks",   color:"var(--c2)", label:t("tasks")},
     {field:"habits",  color:"var(--c3)", label:t("habits")},
+    {field:"focus",   color:"var(--c5)", label:t("week_focus")},
     {field:"prayer",  color:"var(--c4)", label:t("prayer")},
   ];
   const active = SERIES.filter(k => state.statsSeries[k.field]);
@@ -2975,13 +3060,15 @@ SCREENS.stats = () => {
      four deltas as the four at the top of the screen, so half of the block
      was a second printing of numbers already read. */
   h += `<h2>${t("average")}</h2>
-    <div class="card"><div class="trio" style="grid-template-columns:repeat(4,1fr)">
+    <div class="card"><div class="trio" style="grid-template-columns:repeat(5,1fr)">
       <div><div class="k">${t("overall")}</div>
         <div class="v num">${pct(st.averages.overall)}</div></div>
       <div><div class="k">${t("tasks")}</div>
         <div class="v num">${pct(st.averages.tasks)}</div></div>
       <div><div class="k">${t("habits")}</div>
         <div class="v num">${pct(st.averages.habits)}</div></div>
+      <div><div class="k">${t("focus")}</div>
+        <div class="v num">${pct(st.averages.focus)}</div></div>
       <div><div class="k">${t("prayer")}</div>
         <div class="v num">${pct(st.averages.prayer)}</div></div>
     </div></div>`;
@@ -3308,25 +3395,57 @@ function pickTaskSheet(){
 /* ---------- overall explanation ----------
    The formula, spelled out, with the same numbers that produced it. A
    score the user cannot check is a score they stop believing. */
+/* The arithmetic behind the headline, from the same payload that produced it.
+
+   The weight column is the one that has to be shown: a number built from four
+   unequal parts is not checkable without it, and the weight a part *actually*
+   carried today is not the weight on the tin — a user with no prayer module
+   sees 47/29/24, because the missing 15 was split across the rest in
+   proportion. Printing the nominal figures to that user would be a lie about
+   their own score. */
 function overallSheet(x){
+  const weights = x.weights || {};
+  const nominal = x.nominal_weights || {};
+  const shifted = x.counted.length < Object.keys(nominal).length;
+
   return `<h3>${icon("info", 18)} ${t("how_calculated")}</h3>
     <div class="hint">${t("overall_rule")}<br>${t("overall_absent")}</div>
-    <div class="card" style="margin-top:12px">
-      <div class="row"><div class="grow"><b>${t("overall")}</b></div>
-        <div class="num" style="font-size:22px;font-weight:750">${x.value}%</div></div>
+    <div class="tinted block tone-2" style="margin-top:var(--s2)">
+      <div class="bh">
+        <span class="itile lg">${icon("chart", 18)}</span>
+        <div class="grow"><div class="bt">${t("overall")}</div>
+          <div class="t2 tiny">${t("weighted_note")}</div></div>
+        <div class="num" style="font-size:24px;font-weight:750">${x.value}%</div>
+      </div>
     </div>
-    ${x.parts.map(p => `
-      <div class="item" style="min-height:44px">
+    ${x.parts.map(p => {
+      const absent = p.percent === null;
+      const share = weights[p.key];
+      return `<div class="item" style="min-height:48px">
+        <span class="itile ${COMPONENT_TONE[p.key] || "tone-1"}"
+              >${icon(COMPONENT_ICON[p.key] || "list", 16)}</span>
         <div class="grow"><div>${t(p.key)}</div>
-          <div class="meta">${p.percent === null ? t("not_counted")
-            : `${p.done} / ${p.total}`}</div></div>
-        <div class="num ${p.percent === null ? "t3" : ""}">${pct(p.percent)}</div>
-      </div>`).join("")}
-    <div class="t3 tiny" style="margin-top:8px">
-      ${t("counted")}: ${x.counted.map(k => t(k)).join(", ") || "—"}</div>
+          <div class="meta">${absent ? t("not_counted") : `${p.done} / ${p.total}`}
+            ${share !== undefined ? `· ${t("weight")} ${share}%` : ""}</div></div>
+        <div class="num ${absent ? "t3" : ""}"
+             style="font-weight:640">${pct(p.percent)}</div>
+      </div>`;
+    }).join("")}
+    ${shifted ? `<div class="t3 tiny" style="margin-top:var(--s2)">
+      ${t("weight_shift")}</div>` : ""}
+    <div class="t3 tiny" style="margin-top:var(--s1)">
+      ${t("priority_note")}</div>
     <button class="btn secondary" data-act="close" style="margin-top:14px">
       ${t("close")}</button>`;
 }
+
+/* One hue and one glyph per component, everywhere in the app: the tile on
+   Home, the block on Statistics and the row in this sheet are the same three
+   — now four — things, and they teach one vocabulary by never changing. */
+const COMPONENT_TONE = {tasks:"tone-1", habits:"tone-5", focus:"tone-3",
+                        prayer:"tone-2"};
+const COMPONENT_ICON = {tasks:"list", habits:"check", focus:"target",
+                        prayer:"moon"};
 
 /* ---------- day detail ----------
    Every row here opens the actual thing. A calendar full of text that
@@ -3454,6 +3573,7 @@ function settingsSheet(){
     ${row("set-look", "sun", "tone-4", t("appearance"), t("appearance_hint"))}
     ${row("set-notify", "bell", "tone-1", t("notifications"), t("notify_hint"))}
     ${row("set-account", "user", "tone-3", t("account"), t("account_hint"))}
+    ${row("set-privacy", "shield", "tone-5", t("privacy_data"), t("privacy_hint"))}
 
     <button class="btn secondary" data-act="close" style="margin-top:14px">
       ${t("close")}</button>`;
@@ -3465,6 +3585,7 @@ function settingsSheet(){
 const SETTINGS_VIEWS = {
   root: () => settingsSheet(), look: () => appearanceSheet(),
   notify: () => notifySheet(), account: () => accountSheet(),
+  privacy: () => privacyDataSheet(),
 };
 function openSettings(view){
   state.settingsView = SETTINGS_VIEWS[view] ? view : "root";
@@ -3563,17 +3684,54 @@ function notifySheet(){
     ${sw("habit_reminders", t("habit_reminders"))}
 
     <label>${t("timezone")}</label>
-    <select id="tz-select" data-act="set-tz">
-      ${(me.timezones || []).map(z =>
-        `<option value="${z}" ${prefs.timezone === z ? "selected" : ""}>${z}</option>`).join("")}
-      ${(me.timezones || []).includes(prefs.timezone) ? ""
-        : `<option value="${esc(prefs.timezone)}" selected>${esc(prefs.timezone)}</option>`}
-    </select>
+    ${timezonePicker(me.timezones || [], prefs.timezone)}
     <div class="t3 tiny" style="margin-top:var(--s0)">${t("timezone_hint")}</div>
 
     <button class="btn secondary" data-act="settings" style="margin-top:14px">
       ${t("back")}</button>`;
 }
+
+/* Every zone the platform knows, not a shortlist of twelve.
+
+   The server sends the common ones first and the rest of the IANA database
+   after them, so the two are split into groups here rather than run together:
+   a flat list of five hundred opens on Africa/Abidjan, and the person who
+   needed Asia/Tashkent has to scroll past four continents to reach a zone that
+   was one tap away before. The region prefix is dropped from the label inside
+   each group — the group heading already says it — which is what keeps the
+   city readable on a 375px phone.
+
+   A stored zone the server no longer offers is still listed, selected, rather
+   than silently reset to somebody else's city. */
+function timezonePicker(zones, current){
+  const common = zones.slice(0, TZ_COMMON_COUNT);
+  const rest = zones.slice(TZ_COMMON_COUNT);
+  const option = z =>
+    `<option value="${esc(z)}" ${current === z ? "selected" : ""}>${esc(z)}</option>`;
+
+  const byRegion = {};
+  rest.forEach(z => {
+    const region = z.includes("/") ? z.split("/")[0] : "UTC";
+    (byRegion[region] = byRegion[region] || []).push(z);
+  });
+
+  return `<select id="tz-select" data-act="set-tz">
+      ${zones.includes(current) ? ""
+        : `<option value="${esc(current)}" selected>${esc(current)}</option>`}
+      <optgroup label="${t("tz_common")}">${common.map(option).join("")}</optgroup>
+      ${Object.keys(byRegion).sort().map(region => `
+        <optgroup label="${esc(region.split("_").join(" "))}">
+          ${byRegion[region].map(z => `<option value="${esc(z)}"
+            ${current === z ? "selected" : ""}
+            >${esc(z.split("/").slice(1).join(" / ").split("_").join(" "))}</option>`
+          ).join("")}
+        </optgroup>`).join("")}
+    </select>`;
+}
+
+//: How many of the server's zones are the "common" ones it puts first. Kept in
+//: step with services.COMMON_TIMEZONES, and asserted by the test suite.
+const TZ_COMMON_COUNT = 12;
 
 /* The profile, the data, and the two ways out. Deleting stays last and stays
    red, with a confirmation of its own. */
@@ -3610,11 +3768,97 @@ function accountSheet(){
       ${t("back")}</button>`;
 }
 
+/* ---------- Privacy & Data ----------
+   Everything about who owns what, in one place, instead of four rows buried
+   under Account. It opens by saying the thing that is actually true and that
+   the user is entitled to hold us to — the data is theirs — and then gives
+   them the four buttons that make that sentence mean something: take a copy,
+   read the policy, wipe the contents, or leave entirely.
+
+   The two destructive rows are last, in red, and neither of them fires on one
+   tap: erasing everything asks a second time, and deleting the account asks
+   for a typed word. A second tap in the same place as the first is not a
+   confirmation, it is the same gesture twice. */
+function privacyDataSheet(){
+  const row = (act, ic, tone, label, hint) => `
+    <div class="item pressable" style="min-height:54px" data-act="${act}">
+      <span class="itile ${tone}">${icon(ic, 17)}</span>
+      <div class="grow"><div style="font-weight:550">${label}</div>
+        <div class="t3 tiny">${hint}</div></div>
+      ${icon("chevron", 15)}</div>`;
+
+  const danger = (act, ic, label, hint) => `
+    <div class="item pressable" style="min-height:54px" data-act="${act}">
+      <span class="itile" style="--tint:var(--danger)">${icon(ic, 17)}</span>
+      <div class="grow"><div style="font-weight:550;color:var(--danger)">${label}</div>
+        <div class="t3 tiny">${hint}</div></div></div>`;
+
+  return `
+    <h3>${icon("shield", 18)} ${t("privacy_data")}</h3>
+
+    <div class="tinted block tone-5" style="margin-top:var(--s2)">
+      <div class="bh">
+        <span class="itile lg">${icon("user", 18)}</span>
+        <div class="grow"><div class="bt">${t("data_yours")}</div>
+          <div class="t2 tiny">${t("data_yours_body")}</div></div>
+      </div>
+    </div>
+
+    <label>${t("your_copy")}</label>
+    ${row("export", "download", "tone-1", t("export_data"), t("export_hint"))}
+    ${row("backup", "shield", "tone-2", t("download_backup"), t("backup_hint"))}
+
+    <label>${t("what_we_keep")}</label>
+    ${row("privacy-info", "book", "tone-3", t("privacy_policy"), t("policy_hint"))}
+    ${row("sessions", "globe", "tone-4", t("sessions"), t("sessions_hint"))}
+
+    <label style="color:var(--danger)">${t("irreversible")}</label>
+    ${danger("wipe-data", "trash", t("delete_all_data"), t("wipe_hint"))}
+    ${danger("delete-account", "x", t("delete_account"), t("delete_hint"))}
+
+    <button class="btn secondary" data-act="settings" style="margin-top:14px">
+      ${t("back")}</button>`;
+}
+
 function privacySheet(){
-  return `<h3>${icon("shield", 18)} ${t("privacy_info")}</h3>
+  return `<h3>${icon("book", 18)} ${t("privacy_policy")}</h3>
     <div class="hint" style="margin-top:8px">${t("privacy_body")}</div>
-    <button class="btn secondary" data-act="set-account" style="margin-top:16px">
+    <div class="hint" style="margin-top:var(--s2)">${t("data_yours_body")}</div>
+    <button class="btn secondary" data-act="set-privacy" style="margin-top:16px">
       ${t("close")}</button>`;
+}
+
+/* Where this account is open. Telegram does not hand a Mini App a session
+   list, so this states what is actually true rather than inventing rows: one
+   account, reachable from wherever that Telegram account is signed in, and the
+   only way to end a session is to end it in Telegram itself. Saying so is
+   worth more than an empty table. */
+function sessionsSheet(){
+  const me = state.me || {};
+  return `<h3>${icon("globe", 18)} ${t("sessions")}</h3>
+    <div class="item" style="margin-top:var(--s2);min-height:52px">
+      <span class="itile tone-1">${icon("user", 17)}</span>
+      <div class="grow"><div style="font-weight:550">
+        ${me.username ? "@" + esc(me.username) : t("account")}</div>
+        <div class="t3 tiny">${t("member")} #${me.member_no ?? "—"}</div></div>
+    </div>
+    <div class="hint" style="margin-top:var(--s2)">${t("sessions_body")}</div>
+    <button class="btn secondary" data-act="set-privacy" style="margin-top:16px">
+      ${t("close")}</button>`;
+}
+
+/* Erasing the contents without closing the account: two steps, and the second
+   one names exactly what is about to go. */
+function wipeDataSheet(){
+  return `<h3 style="color:var(--danger)">${icon("trash", 18)}
+      ${t("delete_all_data")}</h3>
+    <div class="hint">${t("wipe_warn")}</div>
+    <div class="item" style="margin-top:var(--s2)">
+      <div class="grow t2 small">${t("wipe_keeps")}</div></div>
+    <button class="btn danger" data-act="wipe-data-confirm" style="margin-top:12px">
+      ${t("wipe_continue")}</button>
+    <button class="btn secondary" data-act="set-privacy" style="margin-top:8px">
+      ${t("cancel")}</button>`;
 }
 
 function feedbackSheet(){
@@ -4421,11 +4665,51 @@ const A = {
   },
 
   /* ---- data and privacy ---- */
+  "set-privacy": () => { haptic(); openSettings("privacy"); },
   "privacy-info": () => openSheet(privacySheet()),
+  sessions: () => openSheet(sessionsSheet()),
   export: async () => {
     try{ await api("/api/export/send", {method:"POST"});
          toast(t("export_sent")); }
     catch(e){ handleError(e); }
+  },
+  /* A backup is the same bytes as the export, taken a different way: straight
+     into a file on the device. Telegram's in-app browser blocks ordinary
+     downloads, so a browser that refuses falls back to the route that always
+     works rather than failing silently — a backup button that does nothing is
+     worse than no backup button. */
+  backup: async () => {
+    try{
+      const data = await api("/api/export");
+      const blob = new Blob([JSON.stringify(data, null, 2)],
+                            {type:"application/json"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ernestos-${todayISO()}.json`;
+      if(a.download === undefined) throw new Error("no download support");
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      toast(t("backup_saved"));
+    }catch(_){
+      try{ await api("/api/export/send", {method:"POST"});
+           toast(t("export_sent")); }
+      catch(e){ handleError(e); }
+    }
+  },
+  "wipe-data": () => { haptic(); openSheet(wipeDataSheet()); },
+  "wipe-data-confirm": async () => {
+    // Step two of two. The first tap opened a sheet naming what goes; this one
+    // sends the word the server insists on, so a stray tap cannot reach here.
+    try{
+      await api("/api/account/wipe", {method:"POST", body:{confirm:"WIPE"}});
+      closeSheet();
+      toast(t("wipe_done"));
+      state.calendar = null;
+      await loadScreen(state.screen);
+    }catch(e){ handleError(e); }
   },
   feedback: () => openSheet(feedbackSheet()),
   "feedback-send": async () => {

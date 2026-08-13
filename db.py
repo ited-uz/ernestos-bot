@@ -110,6 +110,14 @@ class User(Base):
     task_reminders: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     habit_reminders: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
+    #: How many real actions this account has taken — a task ticked, a habit
+    #: logged, a prayer recorded. The channel is not asked for until this
+    #: passes `FREE_ACTIONS`: somebody who has just arrived has no reason to
+    #: join a channel about a product they have not used yet, and asking at the
+    #: door is where most of them left. Reading and scrolling do not count;
+    #: only the things that change the day do.
+    actions_count: Mapped[int] = mapped_column(Integer, default=0)
+
     is_subscribed: Mapped[bool] = mapped_column(Boolean, default=False)
     #: When membership was last confirmed with Telegram, and how. The Mini App
     #: re-checks once this goes stale instead of trusting the flag forever
