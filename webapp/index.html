@@ -29,39 +29,24 @@
 
    Spacing is an 8px scale (--s1..--s6) with 4px available as --s0.
    ================================================================== */
+/* ------------------------------------------------------------------
+   Structure. Shared by every theme and every mode; only the values a
+   theme overrides below differ. Colour lives in the theme blocks.
+   ------------------------------------------------------------------ */
 :root{
-  /* ---- 01 CALM — default. Modern productivity software: clean light
-     ground, white panels, blue used deliberately rather than
-     everywhere, cyan reserved for analytics, navy for authority. ---- */
-  --bg:#F7F9FC;
-  --surface:#FFFFFF;
-  --surface-2:#EEF2F7;
-  --text:#111827;
-  --text-2:#6B7280;
-  --text-3:#9AA4B2;
-  --primary:#3563E9;
-  --primary-2:#2A50C0;
-  --on-primary:#FFFFFF;
-  --accent:#47B5D6;
-  --accent-2:#172554;
-  --border:#E5EAF0;
-  --border-2:#D3DBE6;
-  --ok:#12A150;
-  --warn:#C77700;
-  --danger:#D64550;
-
-  /* ---- structure ---- */
   --radius-sm:10px;
   --radius:16px;
   --radius-lg:20px;
   --radius-pill:999px;
   --border-w:1px;
-  --shadow-1:0 1px 2px rgba(17,24,39,.05);
-  --shadow-2:0 8px 24px rgba(17,24,39,.08);
-  --shadow-3:0 16px 40px rgba(17,24,39,.12);
+  /* Shadows are composed from the mode's own tint and strength, so one
+     definition covers both light and dark. */
+  --shadow-1:0 1px 2px rgba(var(--shadow-rgb), calc(.05 * var(--shadow-k)));
+  --shadow-2:0 8px 24px rgba(var(--shadow-rgb), calc(.08 * var(--shadow-k)));
+  --shadow-3:0 16px 40px rgba(var(--shadow-rgb), calc(.12 * var(--shadow-k)));
   /* A theme opts into gradient here, once, instead of per component. */
   --primary-fill:var(--primary);
-  --hero-fill:linear-gradient(135deg,var(--primary),var(--primary-2));
+  --hero-fill:linear-gradient(135deg,var(--c1),var(--c3));
   --hero-text:#FFFFFF;
   --ring:0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent);
   --title-w:680;
@@ -71,148 +56,210 @@
   /* ---- 8px spacing scale ---- */
   --s0:4px; --s1:8px; --s2:12px; --s3:16px; --s4:24px; --s5:32px; --s6:48px;
   --pad:var(--s3);
-  /* Height of the floating create button plus its offset, so page
-     content can always scroll clear of it. */
+  /* Height of the floating create button plus its offset, so page content
+     can always scroll clear of it. */
   --fab-clear:76px;
 }
 
-/* ---- 02 TITAN — obsidian, steel and titanium. Executive productivity
-   and premium fintech, not a gaming rig: high contrast, tighter
-   geometry, heavier numbers, no neon. ---- */
+/* ------------------------------------------------------------------
+   Themes: five identities, each in a light and a dark mode.
+
+   Every block below sets the same token names, so no combination can
+   inherit another one's surfaces — that bug shipped once and is now
+   impossible by construction. Structure (radius, type weight, motion)
+   is keyed on the theme alone, further down; only colour depends on
+   the mode.
+   ------------------------------------------------------------------ */
+
+/* ---- CALM — Balanced & minimal. Royal blue leads, cyan for analytics,
+   violet, amber and emerald for the rest. The default. ---- */
+
+:root[data-theme="calm"][data-mode="light"]{
+  --bg:#F4F7FC; --surface:#FFFFFF; --surface-2:#E8EEF7;
+  --text:#0E1729; --text-2:#5B6879; --text-3:#93A1B4;
+  --border:#DCE5F0; --border-2:#C6D3E4;
+  /* five vivid brand colours; c1 leads, c2 carries analytics */
+  --c1:#2563EB; --c2:#06B6D4; --c3:#7C3AED; --c4:#F59E0B; --c5:#10B981;
+  --primary:var(--c1);
+  --primary-2:color-mix(in srgb, var(--c1) 78%, #000);
+  --on-primary:#FFFFFF;
+  --accent:var(--c2); --accent-2:var(--c3);
+  --ok:#0F9D58; --warn:#B45309; --danger:#DC2626;
+  --shadow-rgb:15,23,42; --shadow-k:1;
+}
+
+:root[data-theme="calm"][data-mode="dark"]{
+  --bg:#0A1020; --surface:#131C31; --surface-2:#1C2740;
+  --text:#EDF2FA; --text-2:#94A3B8; --text-3:#64748B;
+  --border:#243149; --border-2:#33425E;
+  /* five vivid brand colours; c1 leads, c2 carries analytics */
+  --c1:#2563EB; --c2:#06B6D4; --c3:#7C3AED; --c4:#F59E0B; --c5:#10B981;
+  --primary:var(--c1);
+  --primary-2:color-mix(in srgb, var(--c1) 78%, #fff);
+  --on-primary:#FFFFFF;
+  --accent:var(--c2); --accent-2:var(--c3);
+  --ok:#34D399; --warn:#FBBF24; --danger:#F87171;
+  --shadow-rgb:0,0,0; --shadow-k:7;
+}
+
+/* ---- TITAN — Strong & premium. Electric blue over obsidian, with steel,
+   cyan and amber. Executive, not a gaming rig. ---- */
+
+:root[data-theme="titan"][data-mode="light"]{
+  --bg:#EEF1F5; --surface:#FFFFFF; --surface-2:#E1E7EE;
+  --text:#0B1118; --text-2:#4B5766; --text-3:#8593A3;
+  --border:#D4DCE5; --border-2:#BAC5D1;
+  /* five vivid brand colours; c1 leads, c2 carries analytics */
+  --c1:#3B82F6; --c2:#22D3EE; --c3:#64748B; --c4:#F59E0B; --c5:#34D399;
+  --primary:var(--c1);
+  --primary-2:color-mix(in srgb, var(--c1) 78%, #000);
+  --on-primary:#FFFFFF;
+  --accent:var(--c2); --accent-2:var(--c3);
+  --ok:#0F9D58; --warn:#B45309; --danger:#DC2626;
+  --shadow-rgb:15,23,42; --shadow-k:1;
+}
+
+:root[data-theme="titan"][data-mode="dark"]{
+  --bg:#07090C; --surface:#101419; --surface-2:#181E26;
+  --text:#F2F6FA; --text-2:#8A96A4; --text-3:#5C6875;
+  --border:#222A34; --border-2:#333D49;
+  /* five vivid brand colours; c1 leads, c2 carries analytics */
+  --c1:#3B82F6; --c2:#22D3EE; --c3:#64748B; --c4:#F59E0B; --c5:#34D399;
+  --primary:var(--c1);
+  --primary-2:color-mix(in srgb, var(--c1) 78%, #fff);
+  --on-primary:#FFFFFF;
+  --accent:var(--c2); --accent-2:var(--c3);
+  --ok:#34D399; --warn:#FBBF24; --danger:#F87171;
+  --shadow-rgb:0,0,0; --shadow-k:7;
+}
+
+/* ---- MUSE — Elegant & warm. Dusty rose with lavender, fuchsia, amber and
+   teal. Softest geometry of the five; never candy pink. ---- */
+
+:root[data-theme="muse"][data-mode="light"]{
+  --bg:#FCF7F8; --surface:#FFFFFF; --surface-2:#F8EDF1;
+  --text:#2B2126; --text-2:#7A6B72; --text-3:#A99BA1;
+  --border:#EEDDE4; --border-2:#DFC8D2;
+  /* five vivid brand colours; c1 leads, c2 carries analytics */
+  --c1:#DB2777; --c2:#A855F7; --c3:#F472B6; --c4:#F59E0B; --c5:#14B8A6;
+  --primary:var(--c1);
+  --primary-2:color-mix(in srgb, var(--c1) 78%, #000);
+  --on-primary:#FFFFFF;
+  --accent:var(--c2); --accent-2:var(--c3);
+  --ok:#0F9D58; --warn:#B45309; --danger:#DC2626;
+  --shadow-rgb:15,23,42; --shadow-k:1;
+}
+
+:root[data-theme="muse"][data-mode="dark"]{
+  --bg:#160F13; --surface:#221720; --surface-2:#2E1F2A;
+  --text:#F8EFF3; --text-2:#B79FAC; --text-3:#8A7480;
+  --border:#3A2833; --border-2:#4B3543;
+  /* five vivid brand colours; c1 leads, c2 carries analytics */
+  --c1:#DB2777; --c2:#A855F7; --c3:#F472B6; --c4:#F59E0B; --c5:#14B8A6;
+  --primary:var(--c1);
+  --primary-2:color-mix(in srgb, var(--c1) 78%, #fff);
+  --on-primary:#FFFFFF;
+  --accent:var(--c2); --accent-2:var(--c3);
+  --ok:#34D399; --warn:#FBBF24; --danger:#F87171;
+  --shadow-rgb:0,0,0; --shadow-k:7;
+}
+
+/* ---- RAGE — Focus & performance. Red leads, orange and yellow behind it,
+   lime for completion. Emphasis, never wallpaper. ---- */
+
+:root[data-theme="rage"][data-mode="light"]{
+  --bg:#F6F6F6; --surface:#FFFFFF; --surface-2:#ECECEC;
+  --text:#141414; --text-2:#565656; --text-3:#8A8A8A;
+  --border:#DEDEDE; --border-2:#C7C7C7;
+  /* five vivid brand colours; c1 leads, c2 carries analytics */
+  --c1:#EF4444; --c2:#F97316; --c3:#FACC15; --c4:#84CC16; --c5:#06B6D4;
+  --primary:var(--c1);
+  --primary-2:color-mix(in srgb, var(--c1) 78%, #000);
+  --on-primary:#FFFFFF;
+  --accent:var(--c2); --accent-2:var(--c3);
+  --ok:#0F9D58; --warn:#B45309; --danger:#DC2626;
+  --shadow-rgb:15,23,42; --shadow-k:1;
+}
+
+:root[data-theme="rage"][data-mode="dark"]{
+  --bg:#0D0D0D; --surface:#161616; --surface-2:#1F1F1F;
+  --text:#F5F5F5; --text-2:#8D8D8D; --text-3:#5F5F5F;
+  --border:#282828; --border-2:#383838;
+  /* five vivid brand colours; c1 leads, c2 carries analytics */
+  --c1:#EF4444; --c2:#F97316; --c3:#FACC15; --c4:#84CC16; --c5:#06B6D4;
+  --primary:var(--c1);
+  --primary-2:color-mix(in srgb, var(--c1) 78%, #fff);
+  --on-primary:#FFFFFF;
+  --accent:var(--c2); --accent-2:var(--c3);
+  --ok:#34D399; --warn:#FBBF24; --danger:#F87171;
+  --shadow-rgb:0,0,0; --shadow-k:7;
+}
+
+/* ---- NEXUS — Futuristic & intelligent. Indigo into violet and cyan, with
+   fuchsia and lime. Gradient only on the headline surface. ---- */
+
+:root[data-theme="nexus"][data-mode="light"]{
+  --bg:#F5F5FE; --surface:#FFFFFF; --surface-2:#ECEBFB;
+  --text:#12122A; --text-2:#5B5A78; --text-3:#9291AE;
+  --border:#DEDDF3; --border-2:#C8C7E6;
+  /* five vivid brand colours; c1 leads, c2 carries analytics */
+  --c1:#6366F1; --c2:#A855F7; --c3:#22D3EE; --c4:#D946EF; --c5:#A3E635;
+  --primary:var(--c1);
+  --primary-2:color-mix(in srgb, var(--c1) 78%, #000);
+  --on-primary:#FFFFFF;
+  --accent:var(--c2); --accent-2:var(--c3);
+  --ok:#0F9D58; --warn:#B45309; --danger:#DC2626;
+  --shadow-rgb:15,23,42; --shadow-k:1;
+}
+
+:root[data-theme="nexus"][data-mode="dark"]{
+  --bg:#0C0C16; --surface:#151522; --surface-2:#1E1E30;
+  --text:#F4F3FF; --text-2:#9997B4; --text-3:#6B6989;
+  --border:#282740; --border-2:#383654;
+  /* five vivid brand colours; c1 leads, c2 carries analytics */
+  --c1:#6366F1; --c2:#A855F7; --c3:#22D3EE; --c4:#D946EF; --c5:#A3E635;
+  --primary:var(--c1);
+  --primary-2:color-mix(in srgb, var(--c1) 78%, #fff);
+  --on-primary:#FFFFFF;
+  --accent:var(--c2); --accent-2:var(--c3);
+  --ok:#34D399; --warn:#FBBF24; --danger:#F87171;
+  --shadow-rgb:0,0,0; --shadow-k:7;
+}
+
+
+/* ------------------------------------------------------------------
+   Per-theme structure. Keyed on the theme alone: geometry and weight
+   are part of a theme's identity and do not change with the mode.
+   ------------------------------------------------------------------ */
 [data-theme="titan"]{
-  --bg:#090B0E;
-  --surface:#11151A;
-  --surface-2:#171C22;
-  --text:#F4F7FA;
-  --text-2:#89939E;
-  --text-3:#5E6874;
-  --primary:#3478F6;
-  --primary-2:#315C7D;
-  --on-primary:#FFFFFF;
-  --accent:#A7B0BA;
-  --accent-2:#315C7D;
-  --border:#252C34;
-  --border-2:#323B45;
-  --ok:#2BB673;
-  --warn:#D9903A;
-  --danger:#E5484D;
-
-  --radius-sm:8px;
-  --radius:14px;
-  --radius-lg:16px;
-  --shadow-1:0 1px 2px rgba(0,0,0,.5);
-  --shadow-2:0 10px 28px rgba(0,0,0,.55);
-  --shadow-3:0 18px 44px rgba(0,0,0,.6);
-  --primary-fill:var(--primary);
+  --radius-sm:8px; --radius:14px; --radius-lg:16px;
+  --title-w:700; --display-w:720;
   /* Steel: a restrained top-lit gradient, not a metal texture. */
-  --hero-fill:linear-gradient(160deg,#1C2530,#12171D);
+  --hero-fill:linear-gradient(160deg,
+    color-mix(in srgb, var(--c1) 26%, var(--surface)),
+    color-mix(in srgb, var(--c3) 16%, var(--surface)));
   --hero-text:var(--text);
-  --title-w:700;
-  --display-w:720;
 }
-
-/* ---- 03 MUSE — warm ivory, dusty rose, lavender. Elegant and warm,
-   still a serious productivity system: softest radius of the five, low
-   contrast, no pastel candy. ---- */
 [data-theme="muse"]{
-  --bg:#FCF8F7;
-  --surface:#FFFFFF;
-  --surface-2:#F7EEF1;
-  --text:#30282C;
-  --text-2:#806F76;
-  --text-3:#A99A9F;
-  --primary:#C9798D;
-  --primary-2:#704052;
-  --on-primary:#FFFFFF;
-  --accent:#9B8AC4;
-  --accent-2:#704052;
-  --border:#EBDDE1;
-  --border-2:#DCC8CE;
-  --ok:#4F9D77;
-  --warn:#C08A3E;
-  --danger:#C0555F;
-
-  --radius-sm:14px;
-  --radius:20px;
-  --radius-lg:24px;
-  --shadow-1:0 1px 2px rgba(112,64,82,.05);
-  --shadow-2:0 8px 24px rgba(112,64,82,.08);
-  --shadow-3:0 16px 40px rgba(112,64,82,.10);
-  --primary-fill:var(--primary);
-  --hero-fill:linear-gradient(135deg,var(--primary),var(--primary-2));
-  --hero-text:#FFFFFF;
-  --title-w:640;
-  --display-w:660;
+  --radius-sm:14px; --radius:20px; --radius-lg:24px;
+  --title-w:640; --display-w:660;
+  --hero-fill:linear-gradient(135deg,var(--c1),var(--c2));
 }
-
-/* ---- 04 RAGE — carbon black with red used as emphasis, not as
-   wallpaper: roughly 70% neutral, 20% surface, 10% signal. Tighter
-   radius, more solid cards, faster interactions. ---- */
 [data-theme="rage"]{
-  --bg:#101010;
-  --surface:#171717;
-  --surface-2:#202020;
-  --text:#F5F5F5;
-  --text-2:#8D8D8D;
-  --text-3:#666666;
-  --primary:#E63946;
-  --primary-2:#C22B37;
-  --on-primary:#FFFFFF;
-  --accent:#FF6B35;
-  --accent-2:#F5F5F5;
-  --border:#2A2A2A;
-  --border-2:#3A3A3A;
-  --ok:#3DBE6B;
-  --warn:#FF6B35;
-  --danger:#E63946;
-
-  --radius-sm:8px;
-  --radius:12px;
-  --radius-lg:14px;
-  --shadow-1:0 1px 2px rgba(0,0,0,.6);
-  --shadow-2:0 8px 22px rgba(0,0,0,.6);
-  --shadow-3:0 16px 36px rgba(0,0,0,.7);
-  --primary-fill:var(--primary);
-  --hero-fill:linear-gradient(135deg,#1C1C1C,#141414);
+  --radius-sm:8px; --radius:12px; --radius-lg:14px;
+  --title-w:720; --display-w:760;
+  /* Red is emphasis, not wallpaper: the headline surface stays neutral and
+     the colour appears on the controls. */
+  --hero-fill:linear-gradient(135deg,
+    color-mix(in srgb, var(--c1) 14%, var(--surface)), var(--surface));
   --hero-text:var(--text);
-  --title-w:720;
-  --display-w:760;
   /* Execution mode: interactions land faster. */
   --motion:150ms;
 }
-
-/* ---- 05 NEXUS — deep ink with indigo, violet and cyan. Futuristic
-   without becoming a crypto dashboard: gradient is reserved for the one
-   headline surface, glass for the two layers that genuinely float. ---- */
 [data-theme="nexus"]{
-  --bg:#0D0D16;
-  --surface:#151521;
-  --surface-2:#1D1D2B;
-  --text:#F5F4FF;
-  --text-2:#9997AE;
-  --text-3:#6E6C85;
-  --primary:#625BF6;
-  --primary-2:#8B5CF6;
-  --on-primary:#FFFFFF;
-  --accent:#20C7D9;
-  --accent-2:#8B5CF6;
-  --border:#29283A;
-  --border-2:#38374D;
-  --ok:#20C7D9;
-  --warn:#E0A33C;
-  --danger:#F0546C;
-
-  --radius-sm:10px;
-  --radius:16px;
-  --radius-lg:20px;
-  --shadow-1:0 1px 2px rgba(0,0,0,.5);
-  --shadow-2:0 10px 30px rgba(0,0,0,.55);
-  --shadow-3:0 18px 46px rgba(0,0,0,.6);
-  --primary-fill:linear-gradient(135deg,var(--primary),var(--primary-2));
-  --hero-fill:linear-gradient(135deg,#625BF6 0%,#8B5CF6 52%,#20C7D9 100%);
-  --hero-text:#FFFFFF;
   --title-w:660;
-  --display-w:700;
+  --primary-fill:linear-gradient(135deg,var(--c1),var(--c2));
+  --hero-fill:linear-gradient(135deg,var(--c1) 0%,var(--c2) 52%,var(--c3) 100%);
 }
 
 /* ==================================================================
@@ -486,8 +533,8 @@ label{display:block;font-size:12px;color:var(--text-2);margin:var(--s3) 0 var(--
 .cal-day.has{cursor:pointer}
 .cal-dots{display:flex;gap:2px;height:4px}
 .cal-dots i{width:4px;height:4px;border-radius:50%}
-.k-task{background:var(--primary)} .k-project{background:var(--accent)}
-.k-birthday{background:var(--warn)}
+.k-task{background:var(--c1)} .k-project{background:var(--c2)}
+.k-birthday{background:var(--c4)}
 
 /* Habit history grid */
 .hgrid{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:4px}
@@ -624,10 +671,9 @@ details[open] > summary .chev{transform:rotate(90deg)}
        background:var(--surface);cursor:pointer;
        transition:border-color var(--motion)}
 .tcard.on{border-color:var(--primary)}
-.tcard .swatches{display:flex;flex:none}
-.tcard .swatches i{width:22px;height:34px;display:block}
-.tcard .swatches i:first-child{border-radius:8px 0 0 8px}
-.tcard .swatches i:last-child{border-radius:0 8px 8px 0}
+.tcard .swatches{display:flex;flex:none;box-shadow:var(--shadow-1);
+                 border-radius:8px;overflow:hidden}
+.tcard .swatches i{width:15px;height:34px;display:block}
 
 
 /* ---- header row: greeting, settings, avatar ---- */
@@ -1165,11 +1211,11 @@ const DICT = {
    theme is a complete visual system; the tokens live in the stylesheet and
    nothing here needs to know what they are. */
 const THEMES = [
-  {id:"calm",  a:"#3563E9", b:"#47B5D6", c:"#172554", bg:"#F7F9FC"},
-  {id:"titan", a:"#3478F6", b:"#315C7D", c:"#A7B0BA", bg:"#090B0E"},
-  {id:"muse",  a:"#C9798D", b:"#9B8AC4", c:"#704052", bg:"#FCF8F7"},
-  {id:"rage",  a:"#E63946", b:"#FF6B35", c:"#F5F5F5", bg:"#101010"},
-  {id:"nexus", a:"#625BF6", b:"#8B5CF6", c:"#20C7D9", bg:"#0D0D16"},
+  {id:"calm",  c:["#2563EB","#06B6D4","#7C3AED","#F59E0B","#10B981"]},
+  {id:"titan", c:["#3B82F6","#22D3EE","#64748B","#F59E0B","#34D399"]},
+  {id:"muse",  c:["#DB2777","#A855F7","#F472B6","#F59E0B","#14B8A6"]},
+  {id:"rage",  c:["#EF4444","#F97316","#FACC15","#84CC16","#06B6D4"]},
+  {id:"nexus", c:["#6366F1","#A855F7","#22D3EE","#D946EF","#A3E635"]},
 ];
 const THEME_NAMES = {calm:"Calm", titan:"Titan", muse:"Muse",
                      rage:"Rage", nexus:"Nexus"};
@@ -1226,11 +1272,11 @@ const icon = (name, size = 19) =>
 const state = {
   screen:"home", tab:"habits", taskTab:"open",
   statsPeriod:"week", scorePeriod:"day", summary:null, statsSeries:{overall:true, tasks:true, habits:true, prayer:false},
-  lang:"uz",
+  lang:"uz", appearance:"auto",
   reorderMode:false,
   taskQuery:"", taskFilter:"", doneQuery:"",
   loading:true, error:null, blocked:null,
-  me:null, home:null, calendar:null, showCalendar:false,
+  me:null, home:null, calendar:null,
   habits:null, prayer:null, journal:null, journalQuestions:[], journalHistory:null,
   stats:null, tasks:null, tasksDone:null, projects:[], project:null,
   birthdays:null, focus:null, dismissedBreak:false,
@@ -1309,12 +1355,11 @@ document.getElementById("sheet").addEventListener("click", e => {
 function syncBackButton(){
   const bb = tg?.BackButton;
   if(!bb) return;
-  if(sheetOpen() || state.screen === "project" || state.showCalendar) bb.show?.();
+  if(sheetOpen() || state.screen === "project") bb.show?.();
   else bb.hide?.();
 }
 tg?.BackButton?.onClick?.(() => {
   if(sheetOpen()) return closeSheet();
-  if(state.showCalendar) return setState({showCalendar:false});
   if(state.screen === "project") return goto("tasks");
   setState({screen:"home"});
 });
@@ -1413,8 +1458,15 @@ SCREENS.home = () => {
   return headBlock(d)
        + missionBlock(d)
        + scoreBlock(d)
-       + tasksBlock(d);
+       + tasksBlock(d)
+       + homeCalendar();
 };
+
+/* The month, at the bottom, below the things that are about today. Loaded on
+   demand: Home's first paint never waits for a grid nobody has scrolled to. */
+function homeCalendar(){
+  return `<h2>${t("calendar")}</h2>` + calendarBlock();
+}
 
 function headBlock(d){
   const initial = (d.name || "E").charAt(0).toUpperCase();
@@ -1514,6 +1566,11 @@ function scoreBlock(d){
   let value, tasks, habits, prayer, delta = null;
   if(period === "day" || !s){
     value = d.overall.value;
+    // Today's change is against yesterday. It is only meaningful when
+    // yesterday had something to measure, so it stays absent otherwise
+    // rather than being reported as a fall from zero.
+    if(d.overall.yesterday !== null && d.overall.yesterday !== undefined)
+      delta = value - d.overall.yesterday;
     tasks = pct(d.overall.components.tasks);
     habits = `${d.habits.done}/${d.habits.total}`;
     prayer = d.prayer.excused ? "✓"
@@ -1605,6 +1662,10 @@ function calendarBlock(){
     </div>
     <div class="cal-grid">${dows}${cells}</div></div>`;
 }
+
+/* Direction as a glyph as well as a colour, so it survives a monochrome
+   screen. Read by both the Home score block and the Statistics header. */
+const TREND_ICON = {up:"↑", down:"↓", flat:""};
 
 /* ---------- Habits / Prayer / Journal ---------- */
 SCREENS.habits = () => {
@@ -2247,11 +2308,14 @@ SCREENS.stats = () => {
 
   // The series are togglable, because four lines at once is a mess and
   // which two matter is the user's call, not ours.
+  // Four series, four of the theme's five brand colours. The palette comes
+  // from the theme rather than being fixed here, so a chart never clashes
+  // with the screen it sits on.
   const SERIES = [
-    {field:"overall", color:"var(--accent)",  label:t("overall")},
-    {field:"tasks",   color:"var(--t2)",      label:t("tasks")},
-    {field:"habits",  color:"var(--t1)",      label:t("habits")},
-    {field:"prayer",  color:"var(--warn)",    label:t("prayer")},
+    {field:"overall", color:"var(--c1)", label:t("overall")},
+    {field:"tasks",   color:"var(--c2)", label:t("tasks")},
+    {field:"habits",  color:"var(--c3)", label:t("habits")},
+    {field:"prayer",  color:"var(--c4)", label:t("prayer")},
   ];
   const active = SERIES.filter(k => state.statsSeries[k.field]);
   h += `<div class="card">
@@ -2729,13 +2793,16 @@ function settingsSheet(){
         data-value="${c}">${l}</div>`).join("")}</div>
 
     <label>${t("appearance")}</label>
+    <div class="seg" style="margin-bottom:var(--s2)">
+      ${[["auto", t("auto")], ["light", t("light")], ["dark", t("dark")]]
+        .map(([v, l]) => `<div class="${state.appearance === v ? "on" : ""}"
+          data-act="set-appearance" data-value="${v}">${l}</div>`).join("")}</div>
     <div class="stack">
     ${THEMES.map(th => `
       <div class="tcard ${themeOf(me.theme) === th.id ? "on" : ""}"
            data-act="set-theme" data-value="${th.id}">
-        <span class="swatches" style="box-shadow:0 0 0 2px ${th.bg}">
-          <i style="background:${th.a}"></i><i style="background:${th.b}"></i>
-          <i style="background:${th.c}"></i></span>
+        <span class="swatches">${th.c.map(colour =>
+          `<i style="background:${colour}"></i>`).join("")}</span>
         <div class="grow">
           <div style="font-weight:600">${THEME_NAMES[th.id]}</div>
           <div class="t2 tiny">${t("theme_" + th.id)}</div></div>
@@ -2885,12 +2952,25 @@ function errorScreen(){
       </div></div>`;
 }
 
+/* Light or dark, resolved once. `auto` follows Telegram's own colour scheme
+   when it reports one and the operating system otherwise, so the app matches
+   the chat it opened from. */
+function resolveMode(){
+  if(state.appearance === "light" || state.appearance === "dark")
+    return state.appearance;
+  if(tg?.colorScheme === "light" || tg?.colorScheme === "dark")
+    return tg.colorScheme;
+  return window.matchMedia("(prefers-color-scheme: light)").matches
+    ? "light" : "dark";
+}
+
 function render(){
   const root = document.documentElement;
-  /* One attribute drives the entire visual system. Each theme owns its own
-     ground — Calm and Muse are light, Titan, Rage and Nexus are dark — so
-     there is no separate appearance switch to disagree with it. */
+  /* Two attributes drive the entire visual system: which identity, and which
+     mode. Every theme defines both, so no combination inherits another's
+     surfaces. */
   root.dataset.theme = themeOf(state.me?.theme);
+  root.dataset.mode = resolveMode();
 
   const app = document.getElementById("app");
   if(state.blocked)      app.innerHTML = blockedScreen();
@@ -2936,8 +3016,11 @@ async function loadScreen(screen){
     if(screen === "home"){
       // Home is one request. The week/month figures behind the score switch
       // are fetched only if the user asks for them.
-      setState({home: await api("/api/home"), summary: null,
-                scorePeriod: "day"});
+      const [home, calendar] = await Promise.all([
+        api("/api/home"),
+        state.calendar ? Promise.resolve(state.calendar) : api("/api/calendar"),
+      ]);
+      setState({home, calendar, summary: null, scorePeriod: "day"});
     } else if(screen === "habits"){
       const [habits, prayer, journal] = await Promise.all([
         api("/api/habits"), api("/api/prayers"),
@@ -3124,14 +3207,6 @@ const A = {
   },
 
   /* ---- week / calendar ---- */
-  "week-expand": async () => {
-    setState({showCalendar:true});
-    if(!state.calendar){
-      try{ setState({calendar: await api("/api/calendar")}); }
-      catch(e){ handleError(e); }
-    }
-  },
-  "week-collapse": () => setState({showCalendar:false}),
   "cal-prev": () => shiftMonth(-1),
   "cal-next": () => shiftMonth(1),
   "day-open": async el => {
@@ -3577,6 +3652,15 @@ const A = {
                       settingSave({language: el.dataset.value}); },
   "set-gender": el => settingSave({gender: el.dataset.value}),
   "set-theme": el => { haptic(); settingSave({theme: el.dataset.value}); },
+  "set-appearance": el => {
+    haptic();
+    state.appearance = el.dataset.value;
+    // Remembered locally: it is a device preference, not account data — the
+    // same account may be read on a bright phone and a dark desktop.
+    try{ localStorage.setItem("ernestos-appearance", el.dataset.value); }catch(_){}
+    render();
+    if(sheetOpen()) openSheet(settingsSheet());
+  },
   "set-tz": () => prefSave({timezone: val("tz-select")}),
   "pref-toggle": el => {
     haptic();
@@ -3775,11 +3859,16 @@ document.addEventListener("change", e => {
   const el = e.target.closest("[data-act='pref-time'],[data-act='set-tz']");
   if(el) A[el.dataset.act]?.(el);
 });
+window.matchMedia("(prefers-color-scheme: light)")
+  .addEventListener?.("change", () => render());
+tg?.onEvent?.("themeChanged", () => render());
 window.addEventListener("resize", syncShell);
 tg?.onEvent?.("viewportChanged", syncShell);
 
 /* ---------- boot ---------- */
 async function boot(){
+  try{ state.appearance = localStorage.getItem("ernestos-appearance") || "auto"; }
+  catch(_){}
   try{
     const me = await api("/api/me");
     state.lang = me.language || "uz";

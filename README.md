@@ -12,7 +12,7 @@ Mahsulotning asosiy sikli:
 
 | Bo'lim | Mazmuni |
 |---|---|
-| 🏠 Bosh sahifa | **HOZIR** bloki (bitta keyingi harakat), 4 ta ko'rsatkich, **Bugungi TOP 3**, haftaning fokusi, qolgan vazifalar, hafta stripi |
+| 🏠 Bosh sahifa | **Bugungi missiya** (bitta vazifa), kun/hafta/oy foizi va o'zgarishi, vazifa/odat/namoz, bugungi vazifalar, kalendar |
 | ✅ Odatlar | Odatlar (3 kategoriya, jadval, pauza, tarix) + namoz + kundalik |
 | ⚡ Vazifalar | Qidiruv va filtr, kechikkanlar uchun tez ko'chirish, loyihalar, **Bajarilgan** arxivi |
 | 📊 Statistika | Umumiy % + Vazifalar / Odatlar / Namoz, o'zgarish (↑↓), eng yaxshi kun, namoz tafsiloti |
@@ -21,47 +21,47 @@ Pastdagi navigatsiya aynan shu to'rtta. Qolgan hamma narsa — kalendar,
 tug'ilgan kunlar, haftalik yakun, sozlamalar, export — kerakli joydan
 ochiladi, alohida tab sifatida emas.
 
-Uch til (o'zbek, ingliz, rus) **to'liq** tarjima qilingan, beshta dizayn uslubi.
+Uch til (o'zbek, ingliz, rus) **to'liq** tarjima qilingan, beshta dizayn
+uslubi × yorug'/qorong'i rejim.
 
-## HOZIR bloki
+## Bosh sahifa — bir ochishda ko'rinadigan narsa
 
-Bosh sahifaning birinchi va eng katta bloki bitta savolga javob beradi:
-*hozir nima qilishim kerak?*
+Bosh sahifa faqat to'rt blok, shu tartibda:
 
-Javob **deterministik** — AI yo'q, ball yo'q, bir xil kun uchun har doim bir
-xil natija. Tartib qat'iy:
+1. salom, sana, quote, sozlamalar va rasm;
+2. **Bugungi missiya** — bitta vazifa, mavjud vazifalardan tanlanadi;
+3. **kun / hafta / oy** foizi, o'sish yoki pasayish belgisi bilan, va bitta
+   qatorda vazifa / odat / namoz;
+4. loyihalarga bo'lingan **bugungi vazifalar**, pastida **kalendar**.
 
-1. ☀️ **Turdim** — hali vaqt o'tmagan bo'lsa;
-2. ⚡ **Bugungi TOP 3** dan birinchi bajarilmagani;
-3. ⚡ bugunga belgilangan boshqa vazifa;
-4. ✅ bugun rejada bo'lgan, hali bajarilmagan odat;
-5. 🕌 namoz (tushdan keyin, 5/5 to'lmagan bo'lsa);
-6. 🌙 **Kun yakuni** — 20:00 dan keyin, kundalik yozilmagan bo'lsa;
-7. ✓ *Bugungi muhim ishlar tugadi* — hech narsa o'ylab topilmaydi.
+Boshqa hamma narsa — haftaning fokusi, tug'ilgan kunlar, haftalik yakun —
+o'ziga tegishli ekranda. Maqsad: ochish bilan kerakli narsani ko'rish.
 
-## Bugungi TOP 3
+## Bugungi missiya
 
-Hamma vazifa bir xil muhim emas. Foydalanuvchi bugun uchun **maksimal uchta**
-vazifani tanlaydi; ular bosh sahifada alohida turadi. Vazifa ro'yxatidagi ☆
-tugmasi bilan tanlanadi. Tanlash o'sha vazifani bugunga belgilaydi ham.
+"Bugun eng muhim ish nima?" savolining javobi **bitta** yoki yo'q. Uchta
+"eng muhim" ish — bu ro'yxat.
 
-Tanlov **sanaga bog'langan**, shuning uchun kechagi tanlov ertaga o'zi
-yo'qoladi — tozalash kerak emas.
+Missiya mavjud vazifalardan tanlanadi, shuning uchun parallel ro'yxat
+saqlanmaydi. Boshqasini tanlash avvalgisini **almashtiradi** — chegara bitta
+bo'lganda rad javobi berish ko'chaga olib boradi. Tanlov **sanaga bog'langan**,
+shuning uchun kechagisi ertaga o'zi yo'qoladi.
 
 ## Odatlar
 
 | Kategoriya | Standart odatlar |
 |---|---|
-| 🔴 Non-negotiable | **Get up** · **5x namoz** |
+| 🔴 Non-negotiable | **Get up** · **5x namoz** · **Kundalik** |
 | 🟡 Target | Deep flow · Sport |
 | 🟢 Bonus | Podcast · Read |
 
-Ikkitasi **avtomatik hisoblanadi** — qo'lda bosib bo'lmaydi:
+Uchtasi **avtomatik hisoblanadi** — qo'lda bosib bo'lmaydi:
 
 | Odat | Nimadan hisoblanadi |
 |---|---|
 | **Get up** | Mini App'dagi «Turdim» tugmasi yoki botga «Turdim» deb yozilganda |
 | **5x namoz** | Beshta namozning **hammasi** o'qilganda (yoki uzrli kun) |
+| **Kundalik** | Beshta savolning **hammasiga** javob berilganda |
 
 Har bir odatni bosib ochish mumkin: nomi, kategoriyasi, **qaysi kunlar**,
 eslatma vaqti, streak, oxirgi 7/30 kun va tarix gridi.
@@ -86,18 +86,25 @@ Odatni o'chirish odatning o'z sahifasida, tasdiqlash bilan.
 
 Odat sahifasida **uyg'onish vaqti** belgilanadi (default 05:00).
 
-O'sha vaqtdan **bir soat** kutiladi. Shu oraliqda «Turdim» bosilsa — odat
-bajarilgan, `✓ 04:53` deb aniq vaqti ko'rsatiladi. Kechiksa — vaqt yana
-ko'rsatiladi, lekin `06:18 — bugungi targetdan kechroq` degan yumshoq status
-bilan; odat bugun bajarilmagan hisoblanadi.
+«Turdim» tugmasi bot klaviaturasida, **ErnestOS tugmasi ustida** turadi —
+ertalab barmoq birinchi tegadigan joy.
+
+O'sha vaqtdan **bir soat** kutiladi. Shu oraliqda bosilsa:
+`☀️ Xayrli tong! 04:53 da turdingiz.` Kechiksa:
+`😴 Afsuski, kech qoldingiz — 08:20. Target 05:00 edi. Ertaga o'zib ketamiz!`
+Vaqt ikkalasida ham ko'rsatiladi; odat esa faqat vaqtida bajarilgan bo'ladi.
 
 Erta turish ham hisoblanadi: 04:45 da bosilsa ham bajarilgan bo'ladi.
 
 ## Kundalik
 
 Har kuni beshta savol. **Qancha yozilsa — shuncha saqlanadi**: uchta javob
-uchta javob sifatida qoladi va `3 / 5 javob berildi` deb ko'rsatiladi. To'liq
-emasligi umumiy foizni tushirmaydi — kundalik odat emas, holat.
+uchta javob sifatida qoladi va `3 / 5 javob berildi` deb ko'rsatiladi.
+
+Kundalik — **non-negotiable odat**, lekin u **faqat beshta javob to'liq
+bo'lganda** bajarilgan bo'ladi. Ikkisi bir vaqtda to'g'ri: yozuv saqlangan va
+odat hali tugamagan. To'liq emasligi umumiy foizni tushirmaydi — kundalik
+umumiy hisobga kirmaydi.
 
 Yozilayotgan matn har bosishda **brauzerda** saqlanadi va backend'ga
 debounce bilan yuboriladi. Telegram yopilib qolsa, qayta kirganda matn
@@ -134,7 +141,8 @@ bu tuzatildi (`migrations.py 0004` eski kunlarni qayta hisoblaydi).
 * **takrorlanish**: har kuni / ish kunlari / har hafta / har oy. Bir marta
   bajarish takrorlanishni yo'q qilmaydi — keyingi nusxa o'zi paydo bo'ladi,
   bajarilgani esa arxivda o'z sanasi bilan qoladi;
-* **qidiruv va filtr** (Bugun / Kechikkan / Muddatsiz / Yuqori);
+* **qidiruv va filtr**: Hammasi / Shu hafta / Shu oy / Kechikkan /
+  Muddatsiz / Yuqori / Past;
 * **Bajarilgan** arxivi Bugun / Shu hafta / Oldin bo'yicha guruhlangan.
 
 Yangi vazifa yaratish: bitta maydon va to'rtta chip —
@@ -160,6 +168,9 @@ bajarilgan`. Loyiha ichidan vazifa qo'shilganda o'sha loyiha avtomatik
 tanlanadi.
 
 ## Haftaning fokusi
+
+**Vazifalar** bo'limining tepasida — bu rejalashtirish qarori, va shu yer
+rejalashtirish ekrani. Bosh sahifa bugun haqida qoladi.
 
 Bitta **asosiy** maqsad va maksimal ikkita **qo'shimcha** prioritet. Asosiysi
 kattaroq va birinchi turadi — uchta teng maqsad "asosiy" degan tushunchani
@@ -200,34 +211,43 @@ Sozlamalarda boshqariladi:
 | Sozlama | Default |
 |---|---|
 | Ertalabki hisobot | ✅ 04:00 |
-| Kechqurungi hisobot | ✅ 21:00 |
+| Kechqurungi hisobot | ✅ 21:30 |
 | Vazifa eslatmalari | ✅ yoqilgan |
 | Odat eslatmalari | ❌ o'chirilgan |
 
 Hisobot vaqti har foydalanuvchida o'zining bo'lgani uchun job bitta cron
-yozuvi emas: `REPORT_TICK_MINUTES` (default 10) da bir marta uyg'onadi va har
+yozuvi emas: `REPORT_TICK_MINUTES` (default 2) da bir marta uyg'onadi va har
 foydalanuvchidan "vaqti keldimi?" deb so'raydi. Kuniga **bir marta**
 yuborilishini cron emas, outbox claim kafolatlaydi.
 
 Platforma statistikasi operator kanaliga **23:00** da boradi.
 
-## Beshta dizayn uslubi
+## Beshta dizayn uslubi × yorug'/qorong'i
 
-Har biri bir xil UI'ning boshqa rangi emas — o'z radiusi, soyasi, gradient
-siyosati, zichligi va tipografiyasi bor. Tanlov PostgreSQL'da saqlanadi.
+Har biri bir xil UI'ning boshqa rangi emas: o'z radiusi, soyasi, gradient
+siyosati, tipografiyasi va animatsiya tezligi bor. Har birida **beshta yorqin
+brend rangi** (`--c1`..`--c5`) — ular grafik seriyalari va aksentlar uchun ham
+ishlatiladi.
 
-| Tema | Nima |
-|---|---|
-| **Ocean** *(default)* | Royal ko'k, neytral fon, juda kam glow. Yorug'/qorong'i — ikkalasi |
-| **Pure** | Oq qog'oz, charcoal matn, gradient yo'q, ingichka chiziqlar, ko'p whitespace |
-| **Midnight** | Grafit va deyarli qora, bitta electric ko'k accent, jilovlangan glow |
-| **Sage** | Iliq oq, stone, muted yashil, yumshoq burchaklar, past kontrast |
-| **Aurora** | Qorong'i neytral fon + nazorat ostidagi binafsha→pushti gradient |
+| Tema | Xarakter | Yetakchi ranglar |
+|---|---|---|
+| **Calm** *(default)* | Muvozanatli va sokin | ko'k · siyan · binafsha · amber · emerald |
+| **Titan** | Kuchli va premium | electric blue · siyan · steel · amber |
+| **Muse** | Nafis va iliq | rose · lavender · fuchsia · amber · teal |
+| **Rage** | Fokus va tezlik | qizil · orange · sariq · lime |
+| **Nexus** | Futuristik va aqlli | indigo · binafsha · siyan · fuchsia · lime |
 
-Faqat **Ocean** telefonning yorug'/qorong'i sozlamasiga qaraydi. Pure va Sage
-— yorug', Midnight va Aurora — qorong'i: "iliq, tinch, past kontrast" temani
-deyarli qora qilib ko'rsatish uni boshqa temaga aylantiradi. Tanlov ekranida
-buni har bir tema o'zi aytadi.
+Beshtasi ham **yorug' va qorong'i** rejimda ishlaydi. Rejim: Sozlamalar →
+Ko'rinish → `Avto / Yorug' / Qorong'i`. `Avto` Telegram'ning o'z rejimiga
+qaraydi, u bo'lmasa operatsion tizimga. Tanlov qurilmada saqlanadi (bir xil
+akkaunt yorqin telefonda va qorong'i desktopda o'qilishi mumkin), tema esa
+PostgreSQL'da.
+
+Texnik jihatdan: bitta semantik token qatlami (`--bg`, `--surface`, `--text`,
+`--primary`, `--accent`, `--border`, `--ok/--warn/--danger`) va **o'n** ta
+kombinatsiya bloki. Hech bir komponent rang nomini yozmaydi — test buni
+tekshiradi, shuning uchun temani o'zgartirish komponentni qayta yozishni
+talab qilmaydi.
 
 ## Ma'lumotlar va maxfiylik
 
@@ -422,7 +442,7 @@ cp .env.example .env
 | `ENVIRONMENT` | `production` yoki `development` | ✅ ha |
 | `TZ` | `Asia/Tashkent` | tavsiya etiladi |
 | `INIT_DATA_MAX_AGE` | Mini App sessiyasi umri (sekund, default 86400) | yo'q |
-| `REPORT_TICK_MINUTES` | Hisobot job'i necha minutda bir uyg'onadi (default 10) | yo'q |
+| `REPORT_TICK_MINUTES` | Hisobot job'i necha minutda bir uyg'onadi (default 2). Bu qiymat — hisobotning eng ko'p kechikishi | yo'q |
 | `MEMBERSHIP_TTL` | Obuna javobi necha sekund keshlanadi (default 180) | yo'q |
 
 `ENVIRONMENT=production` bo'lsa `DATABASE_URL` majburiy — SQLite'ga

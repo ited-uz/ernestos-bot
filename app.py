@@ -74,9 +74,14 @@ INIT_DATA_MAX_AGE = int(os.environ.get("INIT_DATA_MAX_AGE", "86400"))
 
 #: How often the report jobs wake up. Report times are per user, so the job
 #: cannot be a single cron entry at 04:00 any more; it ticks and asks each user
-#: whether their chosen time has arrived. Ten minutes is fine granularity for a
-#: daily summary and keeps the query volume trivial.
-REPORT_TICK_MINUTES = int(os.environ.get("REPORT_TICK_MINUTES", "10"))
+#: whether their chosen time has arrived.
+#:
+#: Two minutes, because the tick interval *is* the worst-case lateness: at ten
+#: a report set for 21:30 could arrive at 21:40, which reads as the bot being
+#: slow. The cost of the extra ticks is one cheap query per user per tick, and
+#: sending exactly once a day is still guaranteed by the outbox claim rather
+#: than by the schedule.
+REPORT_TICK_MINUTES = int(os.environ.get("REPORT_TICK_MINUTES", "2"))
 
 if ENVIRONMENT == "production" and not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN is required in production")
@@ -102,8 +107,8 @@ T: dict[str, dict[str, str]] = {
         "sub_unknown": "Hozir obunani tekshirib bo'lmadi. Bir ozdan keyin qayta urinib ko'ring.",
         "menu_wake": "☀️ Turdim",
         "wake_ok": "Xayrli tong! Turdingiz ✓ ({now})",
-        "wake_ok_at": "✓ {now} da turdingiz",
-        "wake_late_soft": "{now} 😴 Quyosh sizdan {target} da xafa bo'lib ketdi. Ertaga o'zib ketamiz!",
+        "wake_ok_at": "☀️ Xayrli tong! {now} da turdingiz.",
+        "wake_late_soft": "😴 Afsuski, kech qoldingiz — {now}. Target {target} edi. Ertaga o'zib ketamiz!",
         "wake_late": "Kech bo'ldi — {deadline} gacha yozish kerak edi. Bugun hisoblanmadi.",
         "wake_time_btn": "⏰ Uyg'onish vaqti",
         "ask_wake_time": "Soatni yozing (masalan 05:00):",
@@ -248,8 +253,8 @@ T: dict[str, dict[str, str]] = {
         "sub_unknown": "Could not verify your subscription right now. Please try again shortly.",
         "menu_wake": "☀️ I'm up",
         "wake_ok": "Good morning! You are up ✓ ({now})",
-        "wake_ok_at": "✓ up at {now}",
-        "wake_late_soft": "{now} 😴 The sun gave up waiting at {target}. Tomorrow we beat it!",
+        "wake_ok_at": "☀️ Good morning! You were up at {now}.",
+        "wake_late_soft": "😴 Afraid you were late — {now}. The target was {target}. Tomorrow we beat it!",
         "wake_late": "Too late — the cut-off was {deadline}. It does not count today.",
         "wake_time_btn": "⏰ Wake-up time",
         "ask_wake_time": "Enter the time (e.g. 05:00):",
@@ -394,8 +399,8 @@ T: dict[str, dict[str, str]] = {
         "sub_unknown": "Сейчас не удалось проверить подписку. Попробуйте чуть позже.",
         "menu_wake": "☀️ Я встал",
         "wake_ok": "Доброе утро! Вы встали ✓ ({now})",
-        "wake_ok_at": "✓ встали в {now}",
-        "wake_late_soft": "{now} 😴 Солнце ждало вас до {target} и обиделось. Завтра обгоним!",
+        "wake_ok_at": "☀️ Доброе утро! Вы встали в {now}.",
+        "wake_late_soft": "😴 К сожалению, вы проспали — {now}. Цель была {target}. Завтра обгоним!",
         "wake_late": "Поздно — крайний срок был {deadline}. Сегодня не засчитано.",
         "wake_time_btn": "⏰ Время подъёма",
         "ask_wake_time": "Введите время (например 05:00):",
@@ -729,16 +734,16 @@ def main_menu(lang: str) -> ReplyKeyboardMarkup:
     Home, Habits, Tasks and Statistics are the four screens the Mini App also
     has, so a feature found in one surface is findable in the other.
 
-    "Turdim" sits at the top on its own row. It is the first thing a person
-    touches in the morning and the one action that expires — telling someone to
-    type it, or to go two screens in to find it, is how a wake-up habit stops
-    being recorded.
+    "Turdim" gets its own full-width row directly above the Mini App button —
+    the two rows a thumb reaches first, at the bottom of the keyboard. It is the
+    one action that expires, so telling someone to type it, or to go two screens
+    in to find it, is how a wake-up habit stops being recorded.
     """
     rows = [
-        [t(lang, "menu_wake")],
         [t(lang, "menu_home"), t(lang, "menu_habits")],
         [t(lang, "menu_tasks"), t(lang, "menu_stats")],
         [t(lang, "menu_settings"), t(lang, "menu_feedback")],
+        [t(lang, "menu_wake")],
     ]
     if WEBAPP_URL:
         rows.append([t(lang, "menu_app")])

@@ -614,15 +614,15 @@ def _menu_labels(lang: str) -> list[str]:
 
 
 @pytest.mark.parametrize("lang", ["uz", "en", "ru"])
-def test_the_menu_is_the_wake_button_then_the_six_destinations(lang):
-    """Turdim sits alone at the top: it is the first thing touched in the
-    morning and the only action that expires."""
+def test_the_menu_puts_the_wake_button_above_the_mini_app(lang):
+    """Turdim gets its own row directly above the Mini App button — the two
+    rows a thumb reaches first, and the one action that expires."""
     labels = _menu_labels(lang)
     assert len(labels) == 8
     assert labels == [application.t(lang, key) for key in (
-        "menu_wake",
         "menu_home", "menu_habits", "menu_tasks", "menu_stats",
-        "menu_settings", "menu_feedback", "menu_app")]
+        "menu_settings", "menu_feedback",
+        "menu_wake", "menu_app")]
 
 
 @pytest.mark.parametrize("lang", ["uz", "en", "ru"])
@@ -841,11 +841,22 @@ def test_every_offered_theme_is_one_the_mini_app_styles():
             for line in picker.splitlines() if 'id:"' in line] == application.THEMES
 
 
-def _theme_block(styled: str, name: str) -> str:
+def _theme_block(styled: str, name: str, mode: str = "light") -> str:
+    """The colour block for one theme in one mode."""
     import re
+
+    pattern = (r':root\[data-theme="%s"\]\[data-mode="%s"\]\{(.*?)\n\}'
+               % (name, mode))
+    return re.search(pattern, styled, re.S).group(1)
+
+
+def _structure_block(styled: str, name: str) -> str:
+    """The geometry/weight block, which is keyed on the theme alone."""
+    import re
+
     if name == "calm":
-        return re.search(r":root\{(.*?)\n\}", styled, re.S).group(1)
-    return re.search(r'\[data-theme="%s"\]\s*\{(.*?)\n\}' % name,
+        return re.search(r"\n:root\{(.*?)\n\}", styled, re.S).group(1)
+    return re.search(r'\n\[data-theme="%s"\]\{(.*?)\n\}' % name,
                      styled, re.S).group(1)
 
 
@@ -862,15 +873,57 @@ SEMANTIC_TOKENS = [
 
 
 @pytest.mark.parametrize("name", ["calm", "titan", "muse", "rage", "nexus"])
-def test_every_theme_defines_the_whole_semantic_palette(name):
-    """One vocabulary, redefined five times — never a component-level colour."""
+@pytest.mark.parametrize("mode", ["light", "dark"])
+def test_every_theme_and_mode_defines_the_whole_palette(name, mode):
+    """One vocabulary, redefined ten times.
+
+    Every combination sets every token, so no theme in no mode can inherit
+    another one's surfaces. That bug shipped once — two "light" themes rendered
+    identically — and generating the blocks from one table makes it impossible.
+    """
+    import re
+
+    styled = (ROOT / "webapp" / "index.html").read_text()
+    block = _theme_block(styled, name, mode)
+    declared = set(re.findall(r"(--[a-z0-9-]+)\s*:", block))
+    missing = [token for token in SEMANTIC_TOKENS if token not in declared]
+    assert not missing, f"{name}/{mode} does not define {missing}"
+
+
+@pytest.mark.parametrize("name", ["calm", "titan", "muse", "rage", "nexus"])
+def test_every_theme_offers_three_to_five_vivid_colours(name):
+    """A theme is a palette of its own, not one hue plus grey."""
     import re
 
     styled = (ROOT / "webapp" / "index.html").read_text()
     block = _theme_block(styled, name)
-    declared = set(re.findall(r"(--[a-z0-9-]+)\s*:", block))
-    missing = [token for token in SEMANTIC_TOKENS if token not in declared]
-    assert not missing, f"{name} does not define {missing}"
+    brand = re.findall(r"--c[1-5]:\s*(#[0-9A-Fa-f]{6})", block)
+    assert len(brand) == 5, f"{name} declares {len(brand)} brand colours"
+    assert len(set(c.lower() for c in brand)) == 5, f"{name} repeats a colour"
+
+    # And they are actually vivid rather than five greys: at least three need a
+    # meaningful spread between their brightest and dullest channel.
+    def saturated(hex_colour: str) -> bool:
+        r, g, b = (int(hex_colour[i:i+2], 16) for i in (1, 3, 5))
+        return (max(r, g, b) - min(r, g, b)) > 60
+
+    assert sum(1 for c in brand if saturated(c)) >= 3, \
+        f"{name}'s palette is not vivid: {brand}"
+
+
+def test_the_picker_shows_the_same_palette_the_theme_uses():
+    """The swatches must be the theme's real colours, not decoration."""
+    import re
+
+    styled = (ROOT / "webapp" / "index.html").read_text()
+    picker = styled[styled.index("const THEMES = ["):styled.index("const THEME_NAMES")]
+    for entry in re.findall(r'\{id:"(\w+)",\s*c:\[([^\]]*)\]\}', picker):
+        name, colours = entry
+        shown = [c.strip().strip('"').lower() for c in colours.split(",")]
+        block = _theme_block(styled, name)
+        actual = [c.lower() for c in
+                  re.findall(r"--c[1-5]:\s*(#[0-9A-Fa-f]{6})", block)]
+        assert shown == actual, f"{name}: picker shows {shown}, css uses {actual}"
 
 
 def test_components_never_hard_code_a_colour():
@@ -892,34 +945,64 @@ def test_a_theme_is_more_than_a_palette(name):
     """Each theme also sets structure, or it is only a hue swap.
 
     The five are supposed to feel different, not merely be different colours:
-    radius, shadow depth, gradient policy and type weight are what carry that.
+    radius, gradient policy, type weight and motion are what carry that. Those
+    are keyed on the theme alone — geometry is part of an identity and does not
+    change between light and dark.
     """
     styled = (ROOT / "webapp" / "index.html").read_text()
-    block = _theme_block(styled, name)
+    block = _structure_block(styled, name)
     structural = [token for token in
-                  ("--radius:", "--shadow-2:", "--hero-fill:",
-                   "--title-w:", "--display-w:")
+                  ("--radius:", "--hero-fill:", "--title-w:", "--display-w:",
+                   "--motion:", "--primary-fill:")
                   if token in block]
-    assert len(structural) >= 4, f"{name} only changes colour: {structural}"
+    assert len(structural) >= 3, f"{name} only changes colour: {structural}"
 
 
-def test_each_theme_owns_its_ground():
-    """Every theme commits to its own light or dark background.
-
-    There is no separate appearance switch any more: a theme whose ground can
-    be flipped underneath it is two half-designs rather than one.
-    """
+@pytest.mark.parametrize("mode", ["light", "dark"])
+def test_each_theme_owns_its_ground_in_each_mode(mode):
+    """Five distinct grounds per mode: two themes sharing one are one theme."""
     import re
 
     styled = (ROOT / "webapp" / "index.html").read_text()
     grounds = {}
     for name in application.THEMES:
-        block = _theme_block(styled, name)
-        grounds[name] = re.search(r"--bg:\s*(#[0-9A-Fa-f]+)", block).group(1).lower()
+        block = _theme_block(styled, name, mode)
+        grounds[name] = re.search(r"--bg:\s*(#[0-9A-Fa-f]+)",
+                                  block).group(1).lower()
     assert len(set(grounds.values())) == 5, grounds
-    # And nothing re-derives the ground from the operating system.
-    assert "prefers-color-scheme" not in styled
-    assert "data-scheme" not in styled
+
+
+def test_light_and_dark_are_genuinely_different():
+    """A "dark mode" that only nudges the background is not one."""
+    import re
+
+    styled = (ROOT / "webapp" / "index.html").read_text()
+    for name in application.THEMES:
+        light = _theme_block(styled, name, "light")
+        dark = _theme_block(styled, name, "dark")
+        get = lambda block, token: re.search(  # noqa: E731
+            r"%s:\s*(#[0-9A-Fa-f]{6})" % token, block).group(1).lower()
+
+        def luma(hex_colour):
+            r, g, b = (int(hex_colour[i:i+2], 16) for i in (1, 3, 5))
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+        # The ground and the text swap ends of the scale.
+        assert luma(get(light, "--bg")) > 200, name
+        assert luma(get(dark, "--bg")) < 60, name
+        assert luma(get(light, "--text")) < 80, name
+        assert luma(get(dark, "--text")) > 200, name
+
+
+def test_the_mode_is_resolved_in_one_place():
+    """Telegram's scheme first, then the OS, and the user can always override."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert "function resolveMode()" in html
+    assert "tg?.colorScheme" in html
+    assert "prefers-color-scheme" in html
+    assert 'root.dataset.mode = resolveMode();' in html
+    # And the choice is remembered on the device rather than in the account.
+    assert 'localStorage.setItem("ernestos-appearance"' in html
 
 
 def test_a_retired_theme_reads_as_the_default(alice):
@@ -3256,26 +3339,33 @@ def test_the_privacy_body_is_written_in_every_language():
 
 
 def test_no_appearance_overlay_can_outrank_a_theme():
-    """A previous build had `:root[data-scheme="light"]` — an element plus an
-    attribute — outranking the single-attribute theme blocks, which handed two
-    themes somebody else's surfaces. The overlay is gone entirely now.
+    """A previous build had a bare `:root[data-mode=...]` overlay, which
+    outranked the single-attribute theme blocks and handed two themes somebody
+    else's surfaces. Every colour block now names both attributes, so all ten
+    have identical specificity and each matches exactly one combination.
     """
+    import re
+
     styled = (ROOT / "webapp" / "index.html").read_text()
-    assert "data-scheme" not in styled
-    assert "data-appearance" not in styled
+    blocks = re.findall(r"\n(:root\[[^{]*|\[data-[^{]*)\{", styled)
+    for selector in blocks:
+        selector = selector.strip()
+        if "data-mode" in selector:
+            assert "data-theme" in selector, \
+                f"{selector} sets colour for every theme at once"
 
 
-def test_each_theme_declares_its_own_primary():
+def test_each_theme_declares_its_own_lead_colour():
     """Two themes sharing a brand colour are one theme with two names."""
     import re
 
     styled = (ROOT / "webapp" / "index.html").read_text()
-    primaries = {}
+    leads = {}
     for name in application.THEMES:
         block = _theme_block(styled, name)
-        primaries[name] = re.search(r"--primary:\s*(#[0-9A-Fa-f]+)",
-                                    block).group(1).lower()
-    assert len(set(primaries.values())) == 5, primaries
+        leads[name] = re.search(r"--c1:\s*(#[0-9A-Fa-f]+)",
+                                block).group(1).lower()
+    assert len(set(leads.values())) == 5, leads
 
 
 def test_the_brand_surface_control_is_visible_on_it():
@@ -3458,3 +3548,102 @@ def test_the_whole_migration_chain_is_idempotent(fresh):
     assert second["0006_restore_journal_habit"]["unarchived"] == 0
     assert second["0006_restore_journal_habit"]["created"] == 0
     assert second["0007_redesign_themes"]["total"] == 0
+
+
+# ==========================================================================
+# Regressions from the redesign round
+# ==========================================================================
+
+def test_every_symbol_the_mini_app_uses_is_defined():
+    """The Statistics screen once threw on every open.
+
+    `TREND_ICON` was defined beside the Home block that a redesign replaced, and
+    nothing failed until a user opened Statistics — where it is read. A static
+    check is the only thing that catches this class of break without clicking
+    through every screen.
+    """
+    import re
+
+    html = (ROOT / "webapp" / "index.html").read_text()
+    js = html.split('<script>\n"use strict";', 1)[1].rsplit("</script>", 1)[0]
+
+    declared = set()
+    for pattern in (r"\bfunction\s+([A-Za-z_$][\w$]*)",
+                    r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)"):
+        declared.update(re.findall(pattern, js))
+
+    # Screaming-case module constants are the ones that get orphaned; locals and
+    # parameters are out of scope for a regex and not what broke.
+    GLOBALS = {"JSON", "Math", "Object", "Array", "String", "Number", "Boolean",
+               "Promise", "Date", "Set", "Map", "Error", "Intl"}
+    used = set(re.findall(r"(?<![\w$.\"'`])([A-Z][A-Z_0-9]{3,})\s*[\[\(.]", js))
+    missing = sorted(used - declared - GLOBALS)
+    assert not missing, f"used but never defined: {missing}"
+
+
+def test_the_statistics_screen_reads_the_trend_arrows():
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert "const TREND_ICON =" in html
+    stats = html[html.index("SCREENS.stats = () => {"):html.index("/* ====")
+                 if "/* ====" in html[html.index("SCREENS.stats = () => {"):]
+                 else len(html)]
+    assert "TREND_ICON" in html[html.index("SCREENS.stats = () => {"):]
+
+
+def test_the_report_tick_is_short_enough_to_be_punctual():
+    """The tick interval *is* the worst-case lateness: a report set for 21:30
+    on a ten-minute tick could arrive at 21:40, which reads as a slow bot."""
+    assert application.REPORT_TICK_MINUTES <= 3
+
+
+def test_a_wake_up_on_time_says_good_morning(alice):
+    on_time = application.wake_reply(
+        {"done": True, "now": "04:53", "target": "05:00"}, "uz")
+    assert "Xayrli tong" in on_time and "04:53" in on_time
+    for lang in ("en", "ru"):
+        assert application.t(lang, "wake_ok_at")
+
+
+def test_a_late_wake_up_is_regretful_not_punitive(alice):
+    late = application.wake_reply(
+        {"done": False, "now": "08:20", "target": "05:00"}, "uz")
+    assert "Afsuski" in late and "08:20" in late
+    # It still reports the fact without declaring the day a failure.
+    for verdict in ("hisoblanmadi", "bajarilmadi"):
+        assert verdict not in late.lower()
+
+
+def test_home_carries_only_the_numbers_it_shows():
+    """Home is a glance: the day/week/month figures, the three parts, the day's
+    mission, today's tasks and the month. Nothing else earns the space."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    home = html[html.index("SCREENS.home = () => {"):html.index("function headBlock")]
+    for block in ("headBlock", "missionBlock", "scoreBlock", "tasksBlock",
+                  "homeCalendar"):
+        assert block in home, f"Home no longer renders {block}"
+    # The blocks that moved off it must not have come back.
+    assert "top3Block" not in html and "weekBlock" not in html
+    assert "focusBlock" not in html, "the week's focus belongs on Tasks"
+
+
+def test_the_score_switch_offers_day_week_and_month():
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert 'data-act="score-period"' in html
+    for period in ("period_day", "period_week", "period_month"):
+        assert f't("{period}")' in html
+
+
+def test_todays_change_is_measured_against_yesterday():
+    """A delta on the day panel needs a comparison, and yesterday only counts
+    when it had something to measure — otherwise it is absent, not a fall."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert "d.overall.yesterday" in html
+    assert "delta = value - d.overall.yesterday" in html
+
+
+def test_the_calendar_sits_on_home(alice):
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert "function homeCalendar()" in html
+    assert "calendarBlock()" in html
+    # And the payload it needs is fetched with Home rather than on demand.
+    assert 'api("/api/calendar")' in html
