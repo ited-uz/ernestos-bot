@@ -60,6 +60,21 @@ WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "").strip()
 #: end rather than delivered and dropped here.
 ALLOWED_UPDATES = ["message", "callback_query", "chat_member", "my_chat_member"]
 
+
+def _bot_username(raw: str) -> str:
+    """`@ernestos_bot`, `ernestos_bot` and a full t.me URL all mean one thing."""
+    name = (raw or "").strip()
+    for prefix in ("https://t.me/", "http://t.me/", "t.me/", "@"):
+        if name.startswith(prefix):
+            name = name[len(prefix):]
+    return name.strip("/ ")
+
+
+#: The bot's public @name, used to build invite links. Optional: without it the
+#: referral API reports sharing as unconfigured and the rest of the product is
+#: unaffected, rather than the process refusing to start over a growth feature.
+BOT_USERNAME = _bot_username(os.environ.get("BOT_USERNAME", ""))
+
 # --- Mini App --------------------------------------------------------------
 
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "").strip().rstrip("/")

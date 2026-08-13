@@ -213,6 +213,30 @@ T: dict[str, dict[str, str]] = {
         "project_tasks": "Vazifalar",
         "settings_title": "⚙️ Sozlamalar",
         "btn_lang": "🌐 Til", "btn_gender": "👤 Jins", "btn_theme": "🎨 Tema",
+        #: Referrals. "Tasdiqlangan" (confirmed) rather than "taklif qilingan"
+        #: (invited), because the number that moves is the one where somebody
+        #: actually started using ErnestOS — and promising otherwise would make
+        #: the counter feel broken.
+        "ref_title": "🎁 Do'stlarni taklif qiling",
+        "ref_body": ("ErnestOS sizga foydali bo'lsa, do'stlaringiz bilan "
+                     "ulashing. Do'stingiz ro'yxatdan o'tib, ErnestOS'dan "
+                     "haqiqatan foydalana boshlagach hisobga olinadi."),
+        "ref_qualified_count": "Tasdiqlangan: <b>{n}</b>",
+        "ref_next_level": "Keyingi daraja: {done} / {target}",
+        "ref_max_level": "Eng yuqori daraja ochilgan 🏆",
+        "ref_your_link": "Sizning havolangiz:",
+        "ref_share": "📤 Ulashish",
+        "ref_open_app": "🚀 ErnestOS'ni ochish",
+        "ref_invite_again": "🎁 Yana taklif qilish",
+        "ref_not_configured": "Taklif havolasi hozir mavjud emas.",
+        "ref_qualified": ("🎉 <b>Yangi referral tasdiqlandi!</b>\n\n"
+                          "Do'stingiz ErnestOS'dan haqiqatan foydalanishni "
+                          "boshladi.\n\nTasdiqlangan: <b>{qualified}</b>\n"
+                          "{progress}"),
+        "ref_share_text": ("Hayotingni shunchaki rejalashtirma — tizimlashtir."
+                           "\n\nMen ErnestOS'dan foydalanyapman. Sen ham sinab "
+                           "ko'r 👇"),
+        "ref_menu": "🎁 Do'st taklif qilish",
         "saved": "Saqlandi ✓",
         "ask_feedback": "Taklif yoki shikoyatingizni yozing:",
         "feedback_sent": "Rahmat! Taklifingiz qabul qilindi.",
@@ -439,6 +463,23 @@ T: dict[str, dict[str, str]] = {
         "project_tasks": "Tasks",
         "settings_title": "⚙️ Settings",
         "btn_lang": "🌐 Language", "btn_gender": "👤 Gender", "btn_theme": "🎨 Theme",
+        "ref_title": "🎁 Invite your friends",
+        "ref_body": ("If ErnestOS is useful to you, share it. A friend counts "
+                     "once they have signed up and actually started using it."),
+        "ref_qualified_count": "Confirmed: <b>{n}</b>",
+        "ref_next_level": "Next level: {done} / {target}",
+        "ref_max_level": "Top level unlocked 🏆",
+        "ref_your_link": "Your link:",
+        "ref_share": "📤 Share",
+        "ref_open_app": "🚀 Open ErnestOS",
+        "ref_invite_again": "🎁 Invite another",
+        "ref_not_configured": "Invite links aren't available right now.",
+        "ref_qualified": ("🎉 <b>A referral was confirmed!</b>\n\n"
+                          "Your friend has genuinely started using ErnestOS."
+                          "\n\nConfirmed: <b>{qualified}</b>\n{progress}"),
+        "ref_share_text": ("Don't just plan your life — systemize it.\n\n"
+                           "I'm using ErnestOS. Try it with me 👇"),
+        "ref_menu": "🎁 Invite a friend",
         "saved": "Saved ✓",
         "ask_feedback": "Write your suggestion or complaint:",
         "feedback_sent": "Thank you! Your feedback was received.",
@@ -665,6 +706,24 @@ T: dict[str, dict[str, str]] = {
         "project_tasks": "Задачи",
         "settings_title": "⚙️ Настройки",
         "btn_lang": "🌐 Язык", "btn_gender": "👤 Пол", "btn_theme": "🎨 Тема",
+        "ref_title": "🎁 Пригласите друзей",
+        "ref_body": ("Если ErnestOS вам полезен — поделитесь. Друг "
+                     "засчитывается, когда он зарегистрировался и начал "
+                     "по-настоящему пользоваться приложением."),
+        "ref_qualified_count": "Подтверждено: <b>{n}</b>",
+        "ref_next_level": "Следующий уровень: {done} / {target}",
+        "ref_max_level": "Открыт высший уровень 🏆",
+        "ref_your_link": "Ваша ссылка:",
+        "ref_share": "📤 Поделиться",
+        "ref_open_app": "🚀 Открыть ErnestOS",
+        "ref_invite_again": "🎁 Пригласить ещё",
+        "ref_not_configured": "Ссылка-приглашение сейчас недоступна.",
+        "ref_qualified": ("🎉 <b>Реферал подтверждён!</b>\n\n"
+                          "Ваш друг действительно начал пользоваться ErnestOS."
+                          "\n\nПодтверждено: <b>{qualified}</b>\n{progress}"),
+        "ref_share_text": ("Не просто планируй жизнь — систематизируй её.\n\n"
+                           "Я пользуюсь ErnestOS. Попробуй и ты 👇"),
+        "ref_menu": "🎁 Пригласить друга",
         "saved": "Сохранено ✓",
         "ask_feedback": "Напишите ваше предложение или жалобу:",
         "feedback_sent": "Спасибо! Ваш отзыв получен.",

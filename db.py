@@ -426,6 +426,89 @@ class DailyReportLog(Base):
     )
 
 
+class ReferralCode(Base):
+    """One stable, opaque invite code per account.
+
+    Keyed on the user, so the code is generated once and never rotates — a link
+    somebody has already shared must keep working. The code is random rather
+    than derived from the Telegram id: `ref_123456789` would publish the id of
+    everybody who ever sent an invite, to everybody who ever received one.
+
+    Deliberately its own table rather than a column on `users`. The project
+    creates missing tables on boot but adds columns in place, and a new table
+    is the change with no effect at all on the existing `users` rows.
+    """
+
+    __tablename__ = "referral_codes"
+
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"),
+        primary_key=True)
+    #: Telegram deep-link safe alphabet only: A-Z a-z 0-9 _ -
+    code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class Referral(Base):
+    """Who brought this account, recorded once and never rewritten.
+
+    `referred_user_id` is the primary key, and that single choice is what makes
+    attribution first-touch and immutable: there is physically nowhere to put a
+    second inviter for the same person. A later link from somebody else hits
+    the primary key and loses, which is the correct outcome rather than an
+    error to handle.
+
+    The database is the last line of defence, not the first — `claim_referral`
+    checks before inserting — but under concurrent /start retries the check can
+    race and the constraint is what actually holds.
+    """
+
+    __tablename__ = "referrals"
+
+    referred_user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"),
+        primary_key=True)
+    inviter_user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"),
+        index=True)
+    #: bot | miniapp — which surface the link was opened through.
+    source: Mapped[str] = mapped_column(String(10), default="bot")
+    #: pending -> qualified. A referral is only ever promoted, never demoted.
+    status: Mapped[str] = mapped_column(String(10), default="pending", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    qualified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class JobRun(Base):
+    """One row per job, per day it actually ran.
+
+    `DailyReportLog` does this for reports, but it is keyed on a workspace and
+    the daily statistics post belongs to no user — it is one message about the
+    whole platform. This is the same idea without the workspace: the unique
+    constraint is the lock, so the first tick of the day to INSERT wins and
+    every other tick, in this process or another, finds the row taken.
+
+    It exists because a `cron(hour=10)` job on an in-memory jobstore has no
+    memory. APScheduler computes the next fire from *now* at boot, so a deploy
+    at 11:00 moved the statistics post to 10:00 tomorrow — and a project being
+    redeployed most days never reached it at all. A frequent tick that asks
+    "has today's run been claimed?" cannot be starved by a restart, and cannot
+    double-post either.
+    """
+
+    __tablename__ = "job_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_name: Mapped[str] = mapped_column(String(40), index=True)
+    #: The local date, on the project clock, this run belongs to.
+    run_date: Mapped[date] = mapped_column(Date, index=True)
+    ran_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("job_name", "run_date", name="uq_job_run"),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Schema creation
 # ---------------------------------------------------------------------------

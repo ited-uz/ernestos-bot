@@ -1159,6 +1159,20 @@ const DICT = {
   export_data:"Ma'lumotlarimni export qilish", export_sent:"Fayl botga yuborildi",
   privacy_info:"Maxfiylik haqida",
   privacy_data:"Maxfiylik va ma'lumotlar", privacy_hint:"Ma'lumotlaringiz sizniki",
+  /* Referral. "Tasdiqlangan" — do'st ro'yxatdan o'tib, ErnestOS'dan
+     haqiqatan foydalana boshlagach hisobga olinadi. */
+  ref_title:"Do'stlarni taklif qilish", ref_hint:"Havolangiz va progress",
+  ref_head:"🎁 Do'stlarni taklif qiling",
+  ref_body:"ErnestOS sizga foydali bo'lsa, do'stlaringiz bilan ulashing.",
+  ref_rule:"Do'stingiz ro'yxatdan o'tib, ErnestOS'dan haqiqatan foydalana boshlagach hisobga olinadi.",
+  ref_qualified:"tasdiqlangan do'st", ref_pending:"kutilmoqda",
+  ref_next:"Keyingi daraja", ref_max:"Eng yuqori daraja 🏆",
+  ref_share:"🎁 Do'st taklif qilish", ref_copy:"🔗 Linkni nusxalash",
+  ref_copied:"Link nusxalandi", ref_copy_failed:"Nusxalab bo'lmadi",
+  ref_not_configured:"Taklif havolasi hozir mavjud emas.",
+  ref_share_text:"Hayotingni shunchaki rejalashtirma — tizimlashtir.\n\nMen ErnestOS'dan foydalanyapman. Sen ham sinab ko'r 👇",
+  ref_lvl_new:"Boshlanish", ref_lvl_inviter:"Taklifchi", ref_lvl_builder:"Builder",
+  ref_lvl_connector:"Connector", ref_lvl_ambassador:"Ambassador",
   data_yours:"Ma'lumotlaringiz — sizniki",
   data_yours_body:"Siz yozgan hamma narsa sizga tegishli. Istagan vaqtda nusxasini oling yoki butunlay o'chiring — hech kim so'ramaydi.",
   your_copy:"Nusxasi", what_we_keep:"Nima saqlanadi", irreversible:"Qaytarib bo'lmaydi",
@@ -1349,6 +1363,18 @@ const DICT = {
   export_data:"Export my data", export_sent:"File sent to the bot chat",
   privacy_info:"About privacy",
   privacy_data:"Privacy & data", privacy_hint:"Your data belongs to you",
+  ref_title:"Invite friends", ref_hint:"Your link and progress",
+  ref_head:"🎁 Invite your friends",
+  ref_body:"If ErnestOS is useful to you, share it with your friends.",
+  ref_rule:"A friend counts once they have signed up and actually started using ErnestOS.",
+  ref_qualified:"confirmed friends", ref_pending:"pending",
+  ref_next:"Next level", ref_max:"Top level 🏆",
+  ref_share:"🎁 Invite a friend", ref_copy:"🔗 Copy link",
+  ref_copied:"Link copied", ref_copy_failed:"Could not copy",
+  ref_not_configured:"Invite links aren't available right now.",
+  ref_share_text:"Don't just plan your life — systemize it.\n\nI'm using ErnestOS. Try it with me 👇",
+  ref_lvl_new:"New", ref_lvl_inviter:"Inviter", ref_lvl_builder:"Builder",
+  ref_lvl_connector:"Connector", ref_lvl_ambassador:"Ambassador",
   data_yours:"Your data belongs to you",
   data_yours_body:"Everything you write here is yours. Take a copy whenever you like, or delete all of it — nobody will ask why.",
   your_copy:"Your copy", what_we_keep:"What is kept", irreversible:"Cannot be undone",
@@ -1538,6 +1564,18 @@ const DICT = {
   export_data:"Экспорт моих данных", export_sent:"Файл отправлен в чат бота",
   privacy_info:"О приватности",
   privacy_data:"Приватность и данные", privacy_hint:"Ваши данные принадлежат вам",
+  ref_title:"Пригласить друзей", ref_hint:"Ваша ссылка и прогресс",
+  ref_head:"🎁 Пригласите друзей",
+  ref_body:"Если ErnestOS вам полезен — поделитесь с друзьями.",
+  ref_rule:"Друг засчитывается, когда он зарегистрировался и начал по-настоящему пользоваться ErnestOS.",
+  ref_qualified:"подтверждённых друзей", ref_pending:"в ожидании",
+  ref_next:"Следующий уровень", ref_max:"Высший уровень 🏆",
+  ref_share:"🎁 Пригласить друга", ref_copy:"🔗 Скопировать ссылку",
+  ref_copied:"Ссылка скопирована", ref_copy_failed:"Не удалось скопировать",
+  ref_not_configured:"Ссылка-приглашение сейчас недоступна.",
+  ref_share_text:"Не просто планируй жизнь — систематизируй её.\n\nЯ пользуюсь ErnestOS. Попробуй и ты 👇",
+  ref_lvl_new:"Начало", ref_lvl_inviter:"Пригласивший", ref_lvl_builder:"Builder",
+  ref_lvl_connector:"Connector", ref_lvl_ambassador:"Ambassador",
   data_yours:"Ваши данные принадлежат вам",
   data_yours_body:"Всё, что вы здесь пишете, — ваше. Заберите копию когда угодно или удалите всё целиком — никто не спросит зачем.",
   your_copy:"Ваша копия", what_we_keep:"Что хранится", irreversible:"Необратимо",
@@ -1628,6 +1666,13 @@ const ICONS = {
   folder:'<path d="M3.5 7.4a2 2 0 0 1 2-2h3.3l2 2.5h7.7a2 2 0 0 1 2 2v8.1a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z"/>',
   inbox:'<path d="M6.3 5.5h11.4l2.8 7.4v3.6a2 2 0 0 1-2 2H5.5a2 2 0 0 1-2-2v-3.6Z"/><path d="M3.5 12.9h4.2l1.4 2.4h5.8l1.4-2.4h4.2"/>',
   plus:'<path d="M12 5v14M5 12h14"/>',
+  /* A wrapped box: lid, body, and the ribbon running down the middle. Drawn
+     with the same 24-box and stroke weight as its neighbours so it does not
+     read as heavier than the icons beside it in the settings list. */
+  gift:'<rect x="3.5" y="8.5" width="17" height="4"/>'
+    + '<path d="M5 12.5V20h14v-7.5M12 8.5V20"/>'
+    + '<path d="M12 8.5S10.8 4.5 8.6 4.5a2.05 2.05 0 0 0 0 4Z"/>'
+    + '<path d="M12 8.5s1.2-4 3.4-4a2.05 2.05 0 0 1 0 4Z"/>',
   calendar:'<rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3.5v3M16 3.5v3"/>',
   edit:'<path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17v3Z"/>',
   trash:'<path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13"/>',
@@ -1675,6 +1720,9 @@ const state = {
   habits:null, prayer:null, journal:null, journalQuestions:[], journalHistory:null,
   stats:null, tasks:null, tasksDone:null, projects:[], project:null,
   birthdays:null, focus:null, dismissedBreak:false,
+  //: Filled by /api/referrals/me when the invite sheet opens. Counts only —
+  //: the API never returns who was invited.
+  referral:null,
 };
 
 const D = () => DICT[state.lang] || DICT.uz;
@@ -3587,6 +3635,7 @@ function settingsSheet(){
     ${row("set-notify", "bell", "tone-1", t("notifications"), t("notify_hint"))}
     ${row("set-account", "user", "tone-3", t("account"), t("account_hint"))}
     ${row("set-privacy", "shield", "tone-5", t("privacy_data"), t("privacy_hint"))}
+    ${row("set-referral", "gift", "tone-2", t("ref_title"), t("ref_hint"))}
 
     <button class="btn secondary" data-act="close" style="margin-top:14px">
       ${t("close")}</button>`;
@@ -3598,7 +3647,7 @@ function settingsSheet(){
 const SETTINGS_VIEWS = {
   root: () => settingsSheet(), look: () => appearanceSheet(),
   notify: () => notifySheet(), account: () => accountSheet(),
-  privacy: () => privacyDataSheet(),
+  privacy: () => privacyDataSheet(), referral: () => referralSheet(),
 };
 function openSettings(view){
   state.settingsView = SETTINGS_VIEWS[view] ? view : "root";
@@ -3792,6 +3841,66 @@ function accountSheet(){
    tap: erasing everything asks a second time, and deleting the account asks
    for a typed word. A second tap in the same place as the first is not a
    confirmation, it is the same gesture twice. */
+/* ---------- referrals ----------
+   One screen: how many friends genuinely arrived, how far to the next level,
+   and two buttons. Counts only — the API deliberately never says *who* joined,
+   so there is nothing here that could show one user another user's activity.
+
+   `state.referral` is null until /api/referrals/me answers, so the sheet opens
+   on a spinner rather than on an empty card that fills in and jumps. */
+const REF_LEVELS = ["new", "inviter", "builder", "connector", "ambassador"];
+
+function referralSheet(){
+  const r = state.referral;
+  if(!r) return `<h3>${icon("gift", 18)} ${t("ref_head")}</h3>
+    <div class="spin"></div>`;
+
+  if(!r.configured){
+    return `<h3>${icon("gift", 18)} ${t("ref_head")}</h3>
+      <div class="hint" style="margin-top:var(--s2)">${t("ref_not_configured")}</div>
+      <button class="btn secondary" data-act="settings"
+              style="margin-top:16px">${t("close")}</button>`;
+  }
+
+  const qualified = r.counts.qualified;
+  const next = r.next_milestone;
+  /* The bar tracks confirmed friends toward the next milestone — not clicks,
+     not link opens. Anything else would be a number that moves without
+     anything having happened. */
+  const percent = next
+    ? Math.min(100, Math.round(qualified / next.target * 100)) : 100;
+  const levelName = t("ref_lvl_" + (REF_LEVELS.includes(r.level.key)
+    ? r.level.key : "new"));
+
+  return `
+    <h3>${icon("gift", 18)} ${t("ref_head")}</h3>
+    <div class="t2 small" style="margin-top:4px">${t("ref_body")}</div>
+
+    <div class="tinted block tone-2" style="margin-top:var(--s3)">
+      <div class="bh">
+        <span class="itile lg">${icon("gift", 18)}</span>
+        <div class="grow">
+          <div class="bt">${esc(levelName)}</div>
+          <div class="t2 tiny">${qualified} ${t("ref_qualified")}${
+            r.counts.pending ? ` · ${r.counts.pending} ${t("ref_pending")}` : ""}</div>
+        </div>
+      </div>
+      <div style="margin-top:var(--s2)">${bar(percent)}</div>
+      <div class="t3 tiny" style="margin-top:6px">${
+        next ? `${t("ref_next")}: ${qualified} / ${next.target}`
+             : t("ref_max")}</div>
+    </div>
+
+    <div class="t3 tiny" style="margin-top:var(--s2)">${t("ref_rule")}</div>
+
+    <button class="btn" data-act="ref-share" style="margin-top:var(--s3)">
+      ${t("ref_share")}</button>
+    <button class="btn secondary" data-act="ref-copy" style="margin-top:8px">
+      ${t("ref_copy")}</button>
+    <button class="btn secondary" data-act="settings" style="margin-top:8px">
+      ${t("close")}</button>`;
+}
+
 function privacyDataSheet(){
   const row = (act, ic, tone, label, hint) => `
     <div class="item pressable" style="min-height:54px" data-act="${act}">
@@ -4675,6 +4784,56 @@ const A = {
     // An empty field is the picker being cleared, not a request to save 00:00.
     if(!el.value) return;
     prefSave({[el.dataset.key]: el.value}, false);
+  },
+
+  /* ---- referrals ---- */
+  /* The sheet opens immediately on its spinner and the fetch fills it in, so
+     the tap always feels answered even on a slow connection. */
+  "set-referral": async () => {
+    haptic();
+    openSettings("referral");
+    try{
+      state.referral = await api("/api/referrals/me");
+      reopenSettings();
+    }catch(e){ handleError(e); }
+  },
+  "ref-share": () => {
+    const r = state.referral;
+    if(!r?.link) return;
+    haptic();
+    /* Telegram's own share picker. The user chooses the recipients, in
+       Telegram's UI — nothing is ever sent on their behalf, and no contacts
+       are read. `openTelegramLink` keeps it inside the client rather than
+       bouncing out to a browser. */
+    const url = "https://t.me/share/url?url=" + encodeURIComponent(r.link)
+              + "&text=" + encodeURIComponent(t("ref_share_text"));
+    if(tg?.openTelegramLink) tg.openTelegramLink(url);
+    else window.open(url, "_blank");
+  },
+  "ref-copy": async () => {
+    const r = state.referral;
+    if(!r?.link) return;
+    haptic();
+    try{
+      /* The Clipboard API needs a secure context and permission, and neither
+         is guaranteed inside a WebView. The textarea fallback works where it
+         does not, and if both fail the user is told rather than left with a
+         button that silently did nothing. */
+      if(navigator.clipboard?.writeText) await navigator.clipboard.writeText(r.link);
+      else {
+        const box = document.createElement("textarea");
+        box.value = r.link;
+        box.setAttribute("readonly", "");
+        box.style.cssText = "position:fixed;opacity:0";
+        document.body.appendChild(box);
+        box.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(box);
+        if(!ok) throw new Error("copy refused");
+      }
+      notify("success");
+      toast(t("ref_copied"));
+    }catch(_){ toast(t("ref_copy_failed")); }
   },
 
   /* ---- data and privacy ---- */

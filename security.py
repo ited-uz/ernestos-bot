@@ -49,11 +49,18 @@ def esc(value) -> str:
     return html.escape(str(value or ""), quote=False)
 
 
-def verify_init_data(init_data: str) -> dict:
-    """Validate Telegram WebApp initData and return the embedded user.
+def verify_init_payload(init_data: str) -> dict:
+    """Validate Telegram WebApp initData and return the **whole** signed payload.
 
-    The Telegram id is taken from the signed payload only — a client-supplied
-    id in the JSON body is never trusted.
+    Returns the parsed fields with `user` decoded, so a caller can reach
+    `start_param` — the referral code from a `?startapp=` link — knowing it
+    came from inside Telegram's signature rather than from the page.
+
+    That distinction is the entire point of this function existing. The client
+    also has `Telegram.WebApp.initDataUnsafe.start_param` and can put
+    `tgWebAppStartParam` in a URL, and both are attacker-controlled strings:
+    trusting either would let anybody mint referrals for themselves by editing
+    a query parameter. Only what survives the HMAC below is used.
 
     Every rejection returns the same 401 with the same body. The reason is
     written to the log, not to the response: telling a caller *why* their
@@ -82,12 +89,23 @@ def verify_init_data(init_data: str) -> dict:
         user = json.loads(parsed.get("user", "{}"))
         if not user.get("id"):
             raise ValueError("no user")
-        return user
+        parsed["user"] = user
+        return parsed
     except Exception as e:
         # The reason, never the payload: initData is a bearer credential and
         # must not reach the log.
         log.info("initData rejected: %s", e)
         raise HTTPException(status_code=401, detail="unauthorized")
+
+
+def verify_init_data(init_data: str) -> dict:
+    """Validate initData and return just the embedded user.
+
+    The long-standing contract, unchanged: callers and tests that want "who is
+    this" get the user dict and nothing else. `verify_init_payload` does the
+    work; this is the narrow view of it.
+    """
+    return verify_init_payload(init_data)["user"]
 
 
 def auth(init_data: str | None, *, require_onboarded: bool = True) -> tuple[User, int]:
@@ -109,15 +127,23 @@ def auth(init_data: str | None, *, require_onboarded: bool = True) -> tuple[User
     That is the whole of ErnestOS's data isolation: a handler that used an id
     from the request body instead of this one would be the bug.
     """
-    tg_user = verify_init_data(init_data or "")
+    payload = verify_init_payload(init_data or "")
+    tg_user = payload["user"]
     with SessionLocal() as s:
-        user, _ = svc.get_or_create_user(
+        user, created = svc.get_or_create_user(
             s, int(tg_user["id"]),
             first_name=tg_user.get("first_name", ""),
             last_name=tg_user.get("last_name", ""),
             username=tg_user.get("username", ""))
         svc.touch_activity(s, user.telegram_id)
         s.commit()
+        # First touch, from a `?startapp=ref_…` link. `start_param` is read
+        # from the *signed* payload, so a hand-edited `tgWebAppStartParam` or a
+        # value pulled out of `initDataUnsafe` cannot mint a referral. Same
+        # `created` gate as the bot: an existing account is never attributed.
+        if created:
+            svc.claim_referral(s, user.telegram_id, payload.get("start_param"),
+                               source="miniapp", newly_created=True)
         ws = svc.workspace_id_for(s, user.telegram_id)
 
         trial = deps.trial_state(user)

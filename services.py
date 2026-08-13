@@ -17,17 +17,19 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+import secrets
 from datetime import date, datetime, time as dtime, timedelta, timezone as _utc
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select, text as sql_text
+from sqlalchemy import func, or_, select, text as sql_text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from db import (
-    Birthday, DailyReportLog, Feedback, Habit, HabitLog, JournalEntry,
-    PrayerDay, PrayerLog, Project, Task, User, WeeklyFocus, WeeklyReview,
-    Workspace, utcnow,
+    Birthday, DailyReportLog, Feedback, Habit, HabitLog, JobRun,
+    JournalEntry, PrayerDay, PrayerLog, Project, Referral, ReferralCode,
+    Task, User, WeeklyFocus, WeeklyReview, Workspace, utcnow,
 )
 
 log = logging.getLogger("ernestos")
@@ -319,6 +321,24 @@ def record_action(s: Session, telegram_id: int) -> int:
         return 0
     user.actions_count = (user.actions_count or 0) + 1
     return user.actions_count
+
+
+def record_action_and_qualify(s: Session, telegram_id: int) -> tuple[int, int | None]:
+    """`record_action`, then the referral check. Returns (total, inviter_to_tell).
+
+    A separate function rather than a change to `record_action`, because that
+    one has callers and a return type they rely on, and "count an action" and
+    "maybe promote a referral" are not the same sentence.
+
+    This is the *only* place the qualification check hangs off ordinary usage.
+    Every write in the product already funnels through the action counter — the
+    bot's `count_action` and the API middleware — so hooking it here reaches all
+    of them without putting referral logic into forty endpoints, and without a
+    scheduler sweeping every user to ask who has grown up yet.
+    """
+    total = record_action(s, telegram_id)
+    s.commit()
+    return total, maybe_qualify_referral(s, telegram_id)
 
 
 def set_subscription(s: Session, telegram_id: int, subscribed: bool) -> bool:
@@ -2963,6 +2983,20 @@ def delete_account(s: Session, telegram_id: int) -> bool:
         for model in WORKSPACE_TABLES:
             s.execute(sql_delete(model).where(model.workspace_id == ws))
         s.execute(sql_delete(Workspace).where(Workspace.id == ws))
+
+    # Referral rows hang off the *user*, not the workspace, so the loop above
+    # does not reach them — and a foreign key pointing at a user being deleted
+    # would block the delete outright on PostgreSQL. Leaving means leaving:
+    # their own invite code goes, the record of who invited them goes, and so
+    # does their side of anybody they invited. Somebody else's *count* drops by
+    # one, which is the correct price of an account that no longer exists —
+    # keeping the row to protect a statistic would be keeping data about a
+    # person who asked to be forgotten.
+    s.execute(sql_delete(ReferralCode).where(ReferralCode.user_id == telegram_id))
+    s.execute(sql_delete(Referral).where(
+        or_(Referral.referred_user_id == telegram_id,
+            Referral.inviter_user_id == telegram_id)))
+
     s.delete(user)
     s.commit()
     return True
@@ -2987,6 +3021,229 @@ def mark_feedback_delivered(s: Session, feedback_id: int) -> None:
     if row is not None:
         row.delivered = True
         s.commit()
+
+
+# ---------------------------------------------------------------------------
+# Referrals
+# ---------------------------------------------------------------------------
+#
+# One level only: A invites B. If B then invites C, C belongs to B and nobody
+# gets credit twice. There is no tree here and there is not meant to be one.
+#
+# The whole system rests on two rules that are enforced by the schema rather
+# than by care:
+#
+#   * `Referral.referred_user_id` is the primary key, so an account has at most
+#     one inviter, for ever. First touch wins and cannot be overwritten.
+#   * attribution is only attempted when `get_or_create_user` reports the
+#     account was *just created*. An existing user opening a link is not a
+#     referral, however the link was constructed.
+
+#: How many real actions the invited person must take before the referral
+#: counts. Clicking a link is not usage; neither is pressing /start. Three is
+#: roughly "they came back and did something", which is the smallest signal
+#: that distinguishes a referral from a click.
+REFERRAL_QUALIFY_ACTIONS = 3
+
+#: The prefix that marks a Telegram start parameter as one of ours.
+REFERRAL_PREFIX = "ref_"
+
+#: Length of the random part. ~10 characters of urlsafe base64 is about 60 bits
+#: — far beyond guessable, and short enough that `ref_<code>` stays well inside
+#: Telegram's 64-character start-parameter limit.
+REFERRAL_CODE_BYTES = 8
+
+#: Codes are matched exactly against this. `token_urlsafe` emits A-Z a-z 0-9 _ -
+#: which is precisely the set Telegram accepts in a deep link, so no encoding
+#: is ever needed and a code can be pasted anywhere.
+REFERRAL_CODE_RE = re.compile(r"^[A-Za-z0-9_-]{6,32}$")
+
+#: Qualified referrals -> status key. Computed from the count on read; storing
+#: a level would be a second copy of a number the referrals already answer.
+REFERRAL_LEVELS = [
+    (0, "new"),
+    (1, "inviter"),
+    (3, "builder"),
+    (5, "connector"),
+    (10, "ambassador"),
+]
+
+
+def get_or_create_referral_code(s: Session, user_id: int) -> str:
+    """This account's invite code, generated once and stable for ever.
+
+    Stable matters more than it sounds: a link already sitting in somebody's
+    chat history has to keep working, so this never rotates. Repeated calls
+    return the same string.
+
+    The retry loop is not for the birthday problem — at 60 bits a collision is
+    not going to happen — it is for the case where two requests for the same
+    brand-new user race each other. Whichever loses the insert re-reads and
+    returns the winner's code, so both callers still get one stable answer.
+    """
+    for _ in range(5):
+        row = s.get(ReferralCode, user_id)
+        if row is not None:
+            return row.code
+        s.add(ReferralCode(user_id=user_id,
+                           code=secrets.token_urlsafe(REFERRAL_CODE_BYTES)))
+        try:
+            s.commit()
+        except IntegrityError:
+            # Either this user was given a code by a concurrent request, or the
+            # random code collided. Both are answered by looking again.
+            s.rollback()
+            continue
+        return s.get(ReferralCode, user_id).code
+    raise RuntimeError("could not allocate a referral code")
+
+
+def parse_referral_payload(payload: str | None) -> str | None:
+    """`ref_<code>` -> `<code>`, or None for anything else.
+
+    Deliberately total: every malformed, hostile or simply unrelated start
+    parameter returns None and onboarding carries on. A referral link is not
+    something the user typed, so a broken one is never their problem to see.
+    """
+    if not payload or not isinstance(payload, str):
+        return None
+    if not payload.startswith(REFERRAL_PREFIX):
+        return None
+    code = payload[len(REFERRAL_PREFIX):]
+    return code if REFERRAL_CODE_RE.match(code) else None
+
+
+def claim_referral(s: Session, referred_user_id: int, payload: str | None, *,
+                   source: str = "bot", newly_created: bool = False) -> bool:
+    """Attribute a brand-new account to whoever invited them. Returns success.
+
+    Every rejection here is silent and returns False, because none of them are
+    the user's fault and none should interrupt onboarding:
+
+      * the account already existed — attribution is first-touch only, and this
+        is the check that stops an existing user being claimed by anybody who
+        can get them to open a link;
+      * the payload is not one of ours, or names a code nobody owns;
+      * the code is the caller's own — a self-referral;
+      * this account already has an inviter.
+
+    The caller commits nothing: this function owns its own transaction, and on
+    any failure the database is exactly as it was.
+    """
+    if not newly_created:
+        return False
+
+    code = parse_referral_payload(payload)
+    if code is None:
+        return False
+
+    inviter_id = s.scalar(select(ReferralCode.user_id)
+                          .where(ReferralCode.code == code))
+    if inviter_id is None or inviter_id == referred_user_id:
+        return False
+
+    if s.get(Referral, referred_user_id) is not None:
+        return False
+
+    s.add(Referral(referred_user_id=referred_user_id, inviter_user_id=inviter_id,
+                   source=source if source in ("bot", "miniapp") else "bot",
+                   status="pending"))
+    try:
+        s.commit()
+    except IntegrityError:
+        # Two /start retries arriving together. The primary key settles it and
+        # the first inviter keeps the attribution.
+        s.rollback()
+        return False
+    return True
+
+
+def maybe_qualify_referral(s: Session, user_id: int) -> int | None:
+    """Promote a pending referral once the invited person genuinely arrived.
+
+    Returns the inviter's telegram id when this call is the one that flipped
+    it, else None — so the caller knows whether a congratulation is owed, and
+    knows it exactly once. Callers may fire a Telegram message on a non-None
+    result without any risk of sending it twice.
+
+    The two conditions are deliberately both required. Actions without
+    onboarding means somebody poking at the API mid-signup; onboarding without
+    actions means somebody who arrived and left. Only the pair is usage.
+
+    Cheap enough to call on every recorded action: it is one indexed primary
+    key lookup that returns None immediately for the overwhelming majority of
+    users, who were never referred at all.
+    """
+    referral = s.get(Referral, user_id)
+    if referral is None or referral.status != "pending":
+        return None
+
+    user = s.get(User, user_id)
+    if user is None or not user.onboarded:
+        return None
+    if (user.actions_count or 0) < REFERRAL_QUALIFY_ACTIONS:
+        return None
+
+    referral.status = "qualified"
+    referral.qualified_at = utcnow()
+    s.commit()
+    return referral.inviter_user_id
+
+
+def referral_level(qualified: int) -> dict:
+    """Status key and the next milestone, from the qualified count alone."""
+    key, minimum = REFERRAL_LEVELS[0][1], REFERRAL_LEVELS[0][0]
+    nxt = None
+    for threshold, name in REFERRAL_LEVELS:
+        if qualified >= threshold:
+            key, minimum = name, threshold
+        else:
+            nxt = threshold
+            break
+    return {
+        "key": key,
+        "minimum": minimum,
+        "next": None if nxt is None else {"target": nxt,
+                                          "remaining": nxt - qualified},
+    }
+
+
+def referral_stats(s: Session, user_id: int) -> dict:
+    """Aggregate counts for one inviter. Never the identity of the invited.
+
+    Counts only, on purpose: knowing *that* four people joined is the whole of
+    what the inviter needs, and knowing *who* would hand one user a list of
+    other users they can now see the activity of.
+    """
+    rows = s.execute(
+        select(Referral.status, func.count())
+        .where(Referral.inviter_user_id == user_id)
+        .group_by(Referral.status)).all()
+    counts = {status: n for status, n in rows}
+    qualified = counts.get("qualified", 0)
+    pending = counts.get("pending", 0)
+    return {
+        "counts": {"total": qualified + pending,
+                   "pending": pending, "qualified": qualified},
+        "level": referral_level(qualified),
+    }
+
+
+def platform_referral_stats(s: Session) -> dict:
+    """Aggregate-only growth numbers for the operator channel."""
+    rows = s.execute(select(Referral.status, func.count())
+                     .group_by(Referral.status)).all()
+    counts = {status: n for status, n in rows}
+    qualified = counts.get("qualified", 0)
+    total = qualified + counts.get("pending", 0)
+    inviters = s.scalar(select(func.count(func.distinct(Referral.inviter_user_id)))) or 0
+    return {
+        "referrals_total": total,
+        "referrals_pending": counts.get("pending", 0),
+        "referrals_qualified": qualified,
+        "referral_inviters": inviters,
+        "referral_conversion": round(qualified / total * 100, 1) if total else 0.0,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -3051,6 +3308,39 @@ def release_report(s: Session, report_id: int) -> None:
     if row is not None:
         s.delete(row)
         s.commit()
+
+
+def claim_job_run(s: Session, job_name: str, run_date: date) -> bool:
+    """Claim today's run of a platform-wide job. True means "you send it".
+
+    The same trick `claim_report` uses, minus the workspace: the INSERT is the
+    lock, so of every tick in every process exactly one gets True and the rest
+    get False. That is what lets a once-a-day job run on a two-minute tick —
+    the schedule stops being the thing that guarantees "once", and a restart at
+    any hour can no longer cost a day.
+    """
+    s.add(JobRun(job_name=job_name, run_date=run_date))
+    try:
+        s.commit()
+    except IntegrityError:
+        s.rollback()
+        return False
+    return True
+
+
+def release_job_run(s: Session, job_name: str, run_date: date) -> None:
+    """Hand the claim back so the next tick may try again."""
+    row = s.scalar(select(JobRun).where(JobRun.job_name == job_name,
+                                        JobRun.run_date == run_date))
+    if row is not None:
+        s.delete(row)
+        s.commit()
+
+
+def job_last_run(s: Session, job_name: str) -> date | None:
+    """The most recent date this job claimed. For the operator's own check."""
+    return s.scalar(select(func.max(JobRun.run_date))
+                    .where(JobRun.job_name == job_name))
 
 
 def mark_sent(s: Session, ws: int, report_type: str, report_date: date) -> None:
@@ -3172,11 +3462,51 @@ def evening_data(s: Session, ws: int, user: User) -> dict:
 
 
 def active_recipients(s: Session) -> list[tuple[int, int, str]]:
-    """(telegram_id, workspace_id, language) for every user who should get reports."""
+    """(telegram_id, workspace_id, language) for every user who should get reports.
+
+    The question this asks is the same one the API and the bot ask before
+    letting somebody in: *is this account allowed through right now?* It used
+    to ask something subtly different — `is_subscribed IS TRUE` — and that was
+    wrong in a way that was invisible from the outside and switched the whole
+    feature off.
+
+    `is_subscribed` is not "may use ErnestOS". It is "Telegram confirmed, at
+    some point, that this account is in the channel", and it is written in
+    exactly two places, both of them behind a *confirmed* membership check.
+    A user inside their free run never reaches one — `check_subscription`
+    returns "free" and stops — and if no channel is configured, nobody ever
+    reaches one at all. So a fully onboarded user whom `trial_state` reports as
+    `gated=False` sat at `is_subscribed=False` forever, matched nothing here,
+    and silently received no morning report, no evening report and no
+    reminders. The suite missed it because its fixtures set the flag by hand.
+
+    The rule below is `dependencies.trial_state` written as SQL, deliberately
+    in the same order:
+
+      * onboarded, always — a half-registered account gets nothing;
+      * no channel configured → everybody qualifies, because there is nothing
+        to gate on;
+      * otherwise → in the channel, **or** still inside the free run.
+
+    Kept as one query rather than a Python loop over every user: this runs on
+    every scheduler tick.
+    """
+    import dependencies as deps
+
+    allowed = [User.onboarded.is_(True)]
+    if deps.REQUIRED_CHANNEL_ID:
+        allowed.append(or_(
+            User.is_subscribed.is_(True),
+            # `actions_count` is NULL for rows written before the counter
+            # existed; coalesce so those users read as "free run untouched"
+            # rather than dropping out of the comparison entirely.
+            func.coalesce(User.actions_count, 0) < deps.FREE_ACTIONS,
+        ))
+
     rows = s.execute(
         select(User.telegram_id, Workspace.id, User.language)
         .join(Workspace, Workspace.user_id == User.telegram_id)
-        .where(User.onboarded.is_(True), User.is_subscribed.is_(True))
+        .where(*allowed)
     ).all()
     return [(r[0], r[1], r[2]) for r in rows]
 
@@ -3377,6 +3707,9 @@ def platform_stats(s: Session) -> dict:
         "feedback_week": count(Feedback, Feedback.created_at >= week_ago),
         "languages": languages,
         "genders": genders,
+        # Growth, aggregate only — counts and a conversion rate, never who
+        # invited whom. Two grouped queries over an indexed column.
+        **platform_referral_stats(s),
     }
 
 

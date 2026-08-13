@@ -18,6 +18,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import date, datetime, time as dtime, timedelta
+from urllib.parse import quote
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -61,6 +62,7 @@ log = logging.getLogger("ernestos")
 config.check()
 
 BOT_TOKEN = config.BOT_TOKEN
+BOT_USERNAME = config.BOT_USERNAME
 ENVIRONMENT = config.ENVIRONMENT
 WEBAPP_URL = config.WEBAPP_URL
 WEBHOOK_URL = config.WEBHOOK_URL
@@ -96,11 +98,20 @@ t = translations.t
 esc = security.esc
 
 
-async def admin_log(bot, text: str, chat_id: str | None = None) -> None:
+async def admin_log(bot, text: str, chat_id: str | None = None, *,
+                    reraise: bool = False) -> None:
     """Send a business event to a private admin channel.
 
     Never carries secrets or stack traces — technical failures go to the
     application log instead.
+
+    Failures are swallowed by default, because a per-event log line must never
+    be able to break the user action that produced it. `reraise=True` is for
+    the callers where silence is the bug rather than the safety: a statistics
+    post that cannot reach its channel should be visible and retried, not
+    quietly dropped. Either way the reason is logged at `exception` level — it
+    was `warning`, which is how a channel the bot had never been made an admin
+    of stayed a mystery.
     """
     target = chat_id or ADMIN_LOG_CHANNEL_ID
     if not target:
@@ -109,8 +120,11 @@ async def admin_log(bot, text: str, chat_id: str | None = None) -> None:
         await bot.send_message(chat_id=target, text=text,
                                parse_mode=ParseMode.HTML,
                                disable_web_page_preview=True)
-    except TelegramError as e:
-        log.warning("admin log failed: %s", e)
+    except TelegramError:
+        log.exception("could not post to channel %s — is the bot an "
+                      "administrator there?", target)
+        if reraise:
+            raise
 
 
 def _who(user: User) -> str:
@@ -214,10 +228,12 @@ async def count_action(telegram_id: int, ctx: ContextTypes.DEFAULT_TYPE | None =
     meter run down, which is the opposite of the point.
     """
     with SessionLocal() as s:
-        svc.record_action(s, telegram_id)
-        s.commit()
+        _total, inviter = svc.record_action_and_qualify(s, telegram_id)
         user = s.get(User, telegram_id)
         trial = deps.trial_state(user)
+
+    if inviter is not None and ctx is not None:
+        await notify_referral_qualified(ctx.bot, inviter)
 
     if message is None or not deps.REQUIRED_CHANNEL_ID:
         return
@@ -271,17 +287,80 @@ def cancel_keyboard(lang: str) -> InlineKeyboardMarkup:
 # Onboarding
 # ---------------------------------------------------------------------------
 
+#: Where an invite points. The bot, not the Mini App, because ErnestOS
+#: onboarding starts in the chat — a `startapp` link would drop somebody into
+#: an app that immediately tells them to go and finish signing up.
+def referral_link(code: str) -> str | None:
+    if not BOT_USERNAME:
+        return None
+    return f"https://t.me/{BOT_USERNAME}?start={svc.REFERRAL_PREFIX}{code}"
+
+
+def referral_miniapp_link(code: str) -> str | None:
+    """The `startapp` form. Returned by the API for later use; not the CTA."""
+    if not BOT_USERNAME:
+        return None
+    return f"https://t.me/{BOT_USERNAME}?startapp={svc.REFERRAL_PREFIX}{code}"
+
+
+async def notify_referral_qualified(bot, inviter_id: int) -> None:
+    """Tell an inviter their friend actually started using ErnestOS.
+
+    Called only when `maybe_qualify_referral` reports it was *this* call that
+    promoted the referral, so it fires exactly once per friend and cannot
+    become a recurring nudge.
+
+    Deliberately application-layer: `services` never opens a socket, so the
+    core stays testable without a bot and a Telegram outage can never roll back
+    a database transaction. Failures here are logged and dropped — a missed
+    congratulation must not undo a qualification that genuinely happened.
+    """
+    try:
+        with SessionLocal() as s:
+            inviter = s.get(User, inviter_id)
+            if inviter is None:
+                return
+            lang = inviter.language
+            stats = svc.referral_stats(s, inviter_id)
+
+        nxt = stats["level"]["next"]
+        progress = (t(lang, "ref_next_level",
+                      done=stats["counts"]["qualified"], target=nxt["target"])
+                    if nxt else t(lang, "ref_max_level"))
+        await bot.send_message(
+            inviter_id,
+            t(lang, "ref_qualified", qualified=stats["counts"]["qualified"],
+              progress=progress),
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(
+                [[InlineKeyboardButton(t(lang, "ref_invite_again"),
+                                       callback_data="ref:show")]]))
+    except Exception:
+        log.warning("could not tell %s their referral qualified", inviter_id,
+                    exc_info=True)
+
+
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     tg_user = update.effective_user
     message = update.effective_message
     if tg_user is None or message is None:
         return
 
+    # `/start ref_xxxx` — Telegram hands the payload over as the first argument.
+    # Only the first one is read; a start parameter is a single opaque token.
+    payload = ctx.args[0] if getattr(ctx, "args", None) else None
+
     with SessionLocal() as s:
         user, created = svc.get_or_create_user(
             s, tg_user.id, first_name=tg_user.first_name or "",
             last_name=tg_user.last_name or "", username=tg_user.username or "")
         s.commit()
+        # Attribution is attempted only for an account that did not exist a
+        # moment ago. That single condition is what stops an existing user from
+        # being claimed by anybody who can persuade them to open a link.
+        if created:
+            svc.claim_referral(s, tg_user.id, payload,
+                               source="bot", newly_created=True)
         lang, step, onboarded = user.language, user.onboarding_step, user.onboarded
         snapshot = user
 
@@ -593,6 +672,11 @@ async def finish_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> N
         user.onboarding_step = "done"
         user.onboarded = True
         s.commit()
+        # Qualification needs `onboarded` *and* three actions, and onboarding
+        # itself creates tasks and habits — so somebody can arrive here with
+        # the actions already banked and only this flag missing. Same central
+        # check as the action path; it is a no-op for everybody else.
+        qualified_inviter = svc.maybe_qualify_referral(s, tg_user.id)
         lang, snapshot = user.language, user
         ws = svc.workspace_id_for(s, tg_user.id)
         data = svc.home(s, ws, user)
@@ -605,6 +689,8 @@ async def finish_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> N
         await message.reply_text(t(lang, "day_ready_app"), reply_markup=markup)
     await log_event(ctx.bot, snapshot, "✅ ONBOARDING COMPLETE",
                     f"Language: {snapshot.language}")
+    if qualified_inviter is not None:
+        await notify_referral_qualified(ctx.bot, qualified_inviter)
 
 
 def render_day_ready(data: dict, lang: str) -> str:
@@ -1147,6 +1233,50 @@ def theme_of(name: str | None) -> str:
     return name if name in THEMES else DEFAULT_THEME
 
 
+async def show_invite(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """`/invite`, and the 🎁 button in Settings. One screen, one link.
+
+    Nothing here sends anything to anybody: it hands the user their link and a
+    Share button that opens Telegram's own picker. Who receives an invite is
+    always a person's choice, made in Telegram's UI, not something the bot does
+    on their behalf.
+    """
+    got = await guard(update, ctx)
+    if got is None:
+        return
+    user, _ = got
+    lang = user.language
+    message = update.effective_message
+    if message is None:
+        return
+
+    with SessionLocal() as s:
+        stats = svc.referral_stats(s, user.telegram_id)
+        code = svc.get_or_create_referral_code(s, user.telegram_id)
+
+    link = referral_link(code)
+    if link is None:
+        await message.reply_text(t(lang, "ref_not_configured"))
+        return
+
+    nxt = stats["level"]["next"]
+    progress = (t(lang, "ref_next_level", done=stats["counts"]["qualified"],
+                  target=nxt["target"]) if nxt else t(lang, "ref_max_level"))
+    body = (f"<b>{t(lang, 'ref_title')}</b>\n\n{t(lang, 'ref_body')}\n\n"
+            f"{t(lang, 'ref_qualified_count', n=stats['counts']['qualified'])}\n"
+            f"{progress}\n\n{t(lang, 'ref_your_link')}\n{esc(link)}")
+
+    share = ("https://t.me/share/url?url=" + quote(link, safe="")
+             + "&text=" + quote(t(lang, "ref_share_text"), safe=""))
+    rows = [[InlineKeyboardButton(t(lang, "ref_share"), url=share)]]
+    if WEBAPP_URL:
+        rows.append([InlineKeyboardButton(t(lang, "ref_open_app"),
+                                          web_app=WebAppInfo(url=WEBAPP_URL))])
+    await message.reply_text(body, parse_mode=ParseMode.HTML,
+                             disable_web_page_preview=True,
+                             reply_markup=InlineKeyboardMarkup(rows))
+
+
 async def show_settings(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                         edit: bool = False) -> None:
     got = await guard(update, ctx)
@@ -1164,6 +1294,9 @@ async def show_settings(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         [InlineKeyboardButton(t(lang, "btn_theme"), callback_data="set:theme")],
         [InlineKeyboardButton(t(lang, "btn_photo"), callback_data="set:photo")],
         [InlineKeyboardButton(t(lang, "wake_time_btn"), callback_data="set:waketime")],
+        # One row, at the bottom, where it is findable without competing with
+        # the settings somebody actually opened this screen to change.
+        [InlineKeyboardButton(t(lang, "ref_menu"), callback_data="ref:show")],
     ])
     if edit and update.callback_query:
         await update.callback_query.edit_message_text(
@@ -1442,9 +1575,15 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
                 user.onboarding_step = "done"
                 user.onboarded = True
             s.commit()
+            # Onboarding can also finish here, on the far side of the channel
+            # check — so the same referral question has to be asked.
+            qualified_inviter = svc.maybe_qualify_referral(s, tg_user.id) \
+                if first_time else None
             snapshot, name = user, user.first_name or ""
         if changed:
             await log_event(ctx.bot, snapshot, "🔓 SUBSCRIPTION RESTORED")
+        if qualified_inviter is not None:
+            await notify_referral_qualified(ctx.bot, qualified_inviter)
         # Joining and checking lands the user inside — never back at /start.
         await query.edit_message_text(t(lang, "sub_restored"))
         await update.effective_message.reply_text(
@@ -1527,6 +1666,12 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             user = s.get(User, update.effective_user.id)
             lang = user.language if user else "uz"
         await query.edit_message_text(t(lang, "cancelled"))
+        return
+
+    # The invite screen, from Settings and from the "invite again" button on a
+    # qualification message. `show_invite` runs its own guard.
+    if action == "ref" and parts[1] == "show":
+        await show_invite(update, ctx)
         return
 
     # Everything below requires a completed, subscribed account.
@@ -2004,23 +2149,89 @@ def render_evening(data: dict, lang: str) -> str:
     return "\n".join(lines)
 
 
-async def send_platform_stats(bot) -> None:
-    """Aggregate usage numbers for the operator. No user content, ever."""
+#: The name today's statistics run is claimed under.
+STATS_JOB = "platform_stats"
+
+
+async def send_platform_stats(bot, *, force: bool = False) -> bool:
+    """Aggregate usage numbers for the operator. No user content, ever.
+
+    Runs on the same frequent tick the reports use, and decides for itself
+    whether today's post is owed. It used to be a `cron(hour=10)` entry, which
+    looked right and quietly did not work: APScheduler's default jobstore is
+    in memory, so at every boot cron computes the next fire *after now*. A
+    deploy at 11:00 pushed the post to 10:00 tomorrow — and a project being
+    redeployed most days never reached it. `misfire_grace_time` could not help,
+    because with nothing persisted there was no record a run had been missed.
+
+    Now the schedule is not what guarantees "once a day"; `claim_job_run` is.
+    A restart at any hour still delivers today's post, and any number of
+    instances still deliver exactly one.
+
+    Returns True when a post actually went out — `force` skips the clock check
+    for `/admin stats`, but never the claim, so a manual trigger cannot produce
+    a second copy of a post that already went.
+    """
     if not STATS_CHANNEL_ID:
-        return
-    # The lock must span the send, not just the query — otherwise a second
-    # instance takes it the moment the query ends and posts a duplicate.
-    with svc.JobLock(SessionLocal, "stats") as lock:
-        if not lock.acquired:
-            return
+        log.warning("STATS_CHANNEL_ID and ADMIN_LOG_CHANNEL_ID are both unset "
+                    "— the statistics post has nowhere to go")
+        return False
+
+    today = svc.today_local()
+    if not force and svc.now_local().hour < STATS_POST_HOUR:
+        return False                      # the hour has not arrived yet today
+
+    with SessionLocal() as s:
+        if not svc.claim_job_run(s, STATS_JOB, today):
+            return False                  # already posted today, by someone
+
+    try:
         with SessionLocal() as s:
             st = svc.platform_stats(s)
         await _post_platform_stats(bot, st)
+    except Exception:
+        # Give the claim back. Unlike a user report — where a failed send
+        # usually means a blocked account and retrying all day is pointless —
+        # this is one message to one channel the operator controls, so a blip
+        # should cost a couple of minutes rather than the whole day.
+        with SessionLocal() as s:
+            svc.release_job_run(s, STATS_JOB, today)
+        raise
+
+    log.info("platform statistics posted for %s", today)
+    return True
+
+
+async def send_platform_stats_tick(bot) -> None:
+    """The scheduled entry point: never let a failure escape into APScheduler.
+
+    An exception here used to vanish into the scheduler's own logger, which is
+    the worst place for it — the channel stays silent and nothing says why.
+    """
+    try:
+        await send_platform_stats(bot)
+    except Exception:
+        log.exception("platform statistics post failed")
+
+
+def _tally(counts: dict) -> str:
+    """`uz 31 · en 4 · — 1`, sorted, with the unset bucket named.
+
+    Sorted by `str(k or "")` rather than by the key itself, and that is not
+    defensive padding — it is the bug that kept this channel silent. `gender`
+    is NULL until the prayer screen asks for it, and `sorted()` on the raw
+    pairs compares `None` with `"male"` the moment one user has answered and
+    another has not, which is every real deployment. The `TypeError` went off
+    inside the scheduled job, where nothing was catching it, so the post
+    simply never appeared and no error was ever attributed to it.
+    """
+    return " · ".join(f"{k or '—'} {v}"
+                      for k, v in sorted(counts.items(), key=lambda kv: str(kv[0] or "")))
 
 
 async def _post_platform_stats(bot, st: dict) -> None:
-    languages = " · ".join(f"{k or '—'} {v}" for k, v in sorted(st["languages"].items()))
-    genders = " · ".join(f"{k or '—'} {v}" for k, v in sorted(st["genders"].items()))
+    languages = _tally(st["languages"])
+    genders = _tally(st["genders"])
 
     await admin_log(bot, (
         f"<b>📊 ERNESTOS STATISTIKA</b>\n{datetime.now(svc.TZ):%Y-%m-%d %H:%M}\n\n"
@@ -2034,8 +2245,13 @@ async def _post_platform_stats(bot, st: dict) -> None:
         f"Vazifa: +{st['tasks_created']} · bajarildi {st['tasks_done']}\n"
         f"Bugun kundalik: {st['journal_today']}\n"
         f"Taklif: {st['feedback_week']}\n\n"
-        f"<b>Til</b>: {languages or '—'}\n<b>Jins</b>: {genders or '—'}"
-    ), chat_id=STATS_CHANNEL_ID)
+        f"<b>Til</b>: {languages or '—'}\n<b>Jins</b>: {genders or '—'}\n\n"
+        f"<b>Referral</b>\n"
+        f"Jami: {st['referrals_total']} · qualified: {st['referrals_qualified']}"
+        f" · pending: {st['referrals_pending']}\n"
+        f"Conversion: {st['referral_conversion']}% · inviters: "
+        f"{st['referral_inviters']}"
+    ), chat_id=STATS_CHANNEL_ID, reraise=True)
 
 
 async def send_reports(bot, report_type: str) -> None:
@@ -2234,6 +2450,7 @@ BOT_COMMANDS = [
     ("habits", lambda u, c: show_habits(u, c)),
     ("stats", lambda u, c: show_stats(u, c)),
     ("settings", lambda u, c: show_settings(u, c)),
+    ("invite", lambda u, c: show_invite(u, c)),
 ]
 
 
@@ -2303,7 +2520,7 @@ async def lifespan(_: FastAPI):
             telegram_app.bot,
             send_reports=send_reports,
             send_reminders=send_reminders,
-            send_platform_stats=send_platform_stats)
+            send_platform_stats=send_platform_stats_tick)
     else:
         log.warning("BOT_TOKEN missing — API only, no bot and no scheduler")
 
@@ -2388,8 +2605,12 @@ async def guard_requests(request: Request, call_next):
             and request.url.path not in UNCOUNTED_PATHS):
         try:
             with SessionLocal() as s:
-                svc.record_action(s, key)
-                s.commit()
+                _total, inviter = svc.record_action_and_qualify(s, key)
+            # The Mini App is the other half of the same loop: a friend who
+            # only ever uses the web UI must still qualify, and their inviter
+            # must still hear about it.
+            if inviter is not None and telegram_app is not None:
+                await notify_referral_qualified(telegram_app.bot, inviter)
         except Exception:               # never fail a request over a counter
             log.exception("could not record an action for %s", key)
 
@@ -3244,6 +3465,43 @@ def api_stats(period: str = "week", init=Header(default=None, alias="X-Telegram-
     with SessionLocal() as s:
         return svc.stats(s, ws, period, gender=user.gender,
                          tz=svc.user_tz(user))
+
+
+@app.get("/api/referrals/me")
+def api_referrals_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """This caller's own invite link and counts. Never anybody else's.
+
+    There is deliberately no user id in the path or the query. The identity
+    comes from the Telegram signature and nowhere else, which means there is no
+    parameter to change and therefore no way to ask for a stranger's referral
+    data — the strongest form of the ownership check, because it removes the
+    question rather than answering it.
+
+    The response carries counts, a level and a link. It does not carry who was
+    invited: an inviter needs to know *that* four people joined, and telling
+    them *who* would hand one user a roster of others.
+    """
+    user, _ws = auth(init)
+    with SessionLocal() as s:
+        stats = svc.referral_stats(s, user.telegram_id)
+        code = svc.get_or_create_referral_code(s, user.telegram_id)
+
+    link = referral_link(code)
+    if link is None:
+        # Sharing is off, not broken. The screen says so plainly instead of
+        # offering a button that would copy a malformed URL.
+        log.warning("BOT_USERNAME is not set — referral links cannot be built")
+    return {
+        "configured": link is not None,
+        "code": code,
+        "link": link,
+        "miniapp_link": referral_miniapp_link(code),
+        "counts": stats["counts"],
+        "level": {"key": stats["level"]["key"],
+                  "minimum": stats["level"]["minimum"]},
+        "next_milestone": stats["level"]["next"],
+        "qualify_actions": svc.REFERRAL_QUALIFY_ACTIONS,
+    }
 
 
 @app.get("/api/summary")

@@ -22,6 +22,7 @@ from pathlib import Path
 from urllib.parse import quote, urlencode
 
 import pytest
+from sqlalchemy import func, select
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -47,9 +48,17 @@ BOB = {"id": 2002, "first_name": "Bob", "username": "bob"}
 
 
 def init_data(user: dict, auth_date: int | None = None, token: str = TOKEN,
-              tamper: bool = False) -> str:
+              tamper: bool = False, start_param: str | None = None) -> str:
+    """Build initData exactly as Telegram would sign it.
+
+    `start_param` goes *inside* the signed field set, which is the whole point
+    of the referral tests: an attacker can put anything in the query string,
+    but only what is covered by this hash reaches the backend as trustworthy.
+    """
     fields = {"user": json.dumps(user, separators=(",", ":")),
               "auth_date": str(auth_date if auth_date is not None else int(time.time()))}
+    if start_param is not None:
+        fields["start_param"] = start_param
     check = "\n".join(f"{k}={v}" for k, v in sorted(fields.items()))
     secret = hmac.new(b"WebAppData", token.encode(), hashlib.sha256).digest()
     digest = hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
@@ -632,18 +641,81 @@ def test_morning_and_evening_are_tracked_separately(alice):
         assert svc.already_sent(s, ws, "evening", day) is False
 
 
-def test_only_subscribed_onboarded_users_receive_reports(alice):
-    alice.get("/api/me")
+def _recipient(telegram_id: int) -> bool:
     with SessionLocal() as s:
-        user = s.get(User, ALICE["id"])
-        user.onboarded, user.is_subscribed = True, True
-        s.commit()
-        assert any(r[0] == ALICE["id"] for r in svc.active_recipients(s))
+        return any(r[0] == telegram_id for r in svc.active_recipients(s))
 
-        user = s.get(User, ALICE["id"])
-        user.is_subscribed = False
+
+def _make_user(telegram_id: int, *, onboarded=True, subscribed=False, actions=0):
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, telegram_id, first_name="R")
+        user = s.get(User, telegram_id)
+        user.onboarded = onboarded
+        user.is_subscribed = subscribed
+        user.actions_count = actions
         s.commit()
-        assert not any(r[0] == ALICE["id"] for r in svc.active_recipients(s))
+
+
+def test_an_onboarded_user_receives_reports_without_a_channel(client):
+    """The bug this replaces switched reports off for almost everybody.
+
+    `is_subscribed` means "Telegram confirmed this account is in the channel",
+    and it is only ever written behind a confirmed membership check. A user
+    inside their free run never reaches one, and with no channel configured
+    nobody ever does — so this flag stayed False and the recipient list came
+    back empty. Reports, and reminders with them, silently did nothing.
+    """
+    telegram_id = next(_next_id)
+    _make_user(telegram_id, subscribed=False)
+    assert _recipient(telegram_id), "an onboarded user was not sent their report"
+
+
+def test_a_user_still_inside_the_free_run_receives_reports(client, monkeypatch):
+    """They are allowed to use the product, so they are allowed to hear from it."""
+    monkeypatch.setattr(deps, "REQUIRED_CHANNEL_ID", "-1001234567890")
+    telegram_id = next(_next_id)
+    _make_user(telegram_id, subscribed=False, actions=deps.FREE_ACTIONS - 1)
+    assert _recipient(telegram_id)
+
+
+def test_a_gated_user_receives_nothing(client, monkeypatch):
+    """Free run spent and not in the channel: the API refuses them, so does this."""
+    monkeypatch.setattr(deps, "REQUIRED_CHANNEL_ID", "-1001234567890")
+    telegram_id = next(_next_id)
+    _make_user(telegram_id, subscribed=False, actions=deps.FREE_ACTIONS)
+    assert not _recipient(telegram_id)
+
+
+def test_a_subscriber_receives_reports_however_many_actions(client, monkeypatch):
+    monkeypatch.setattr(deps, "REQUIRED_CHANNEL_ID", "-1001234567890")
+    telegram_id = next(_next_id)
+    _make_user(telegram_id, subscribed=True, actions=deps.FREE_ACTIONS * 5)
+    assert _recipient(telegram_id)
+
+
+def test_a_half_registered_account_receives_nothing(client):
+    """Onboarding is the one gate that never has an exception."""
+    telegram_id = next(_next_id)
+    _make_user(telegram_id, onboarded=False, subscribed=True)
+    assert not _recipient(telegram_id)
+
+
+def test_the_recipient_rule_matches_the_access_rule(client, monkeypatch):
+    """Two surfaces, one question. They must not answer it differently.
+
+    Whatever `trial_state` says about an account, the scheduler must agree —
+    otherwise somebody is either using an app that never writes to them, or
+    being written to by an app that will not let them in.
+    """
+    monkeypatch.setattr(deps, "REQUIRED_CHANNEL_ID", "-1001234567890")
+    for subscribed, actions in ((False, 0), (False, deps.FREE_ACTIONS),
+                                (True, 0), (True, deps.FREE_ACTIONS * 3)):
+        telegram_id = next(_next_id)
+        _make_user(telegram_id, subscribed=subscribed, actions=actions)
+        with SessionLocal() as s:
+            allowed = not deps.trial_state(s.get(User, telegram_id)).gated
+        assert _recipient(telegram_id) is allowed, \
+            f"subscribed={subscribed} actions={actions} disagreed"
 
 
 # --------------------------------------------------------------------------
@@ -2090,6 +2162,126 @@ async def test_a_second_run_of_the_same_day_sends_nothing(monkeypatch, client):
     second = _FakeBot()
     await application._send_reports_locked(second, "morning", day)
     assert second.sent == [], "every slot was already claimed"
+
+
+# --- the daily statistics post survives a restart ------------------------
+#
+# It used to be `cron(hour=10)` on an in-memory jobstore, so every boot moved
+# the next fire to *after now* — a deploy at 11:00 pushed it to tomorrow, and
+# redeploying most days meant it never fired. "Once a day" is now the claim's
+# job, not the schedule's.
+
+def _clear_stats_claims():
+    from sqlalchemy import delete
+    with SessionLocal() as s:
+        s.execute(delete(db.JobRun).where(
+            db.JobRun.job_name == application.STATS_JOB))
+        s.commit()
+
+
+async def test_the_statistics_post_goes_out_once_a_day(monkeypatch, client):
+    _clear_stats_claims()
+    monkeypatch.setattr(application, "STATS_CHANNEL_ID", "-100999")
+    bot = _FakeBot()
+
+    assert await application.send_platform_stats(bot, force=True) is True
+    assert len(bot.sent) == 1
+    # A second tick two minutes later, and a third from another instance.
+    assert await application.send_platform_stats(bot, force=True) is False
+    assert await application.send_platform_stats(bot, force=True) is False
+    assert len(bot.sent) == 1, "the channel was posted to twice in one day"
+
+
+def test_the_statistics_tally_survives_users_who_never_answered():
+    """The bug that actually kept the channel silent.
+
+    `gender` is NULL until the prayer screen asks for it, so any real user base
+    holds a mix of None and "male"/"female". `sorted()` on the raw pairs then
+    compares None with a string and raises TypeError — inside a scheduled job,
+    where nothing was catching it. The post never appeared and nothing said why.
+    """
+    assert application._tally({"male": 3, None: 5, "female": 2}) == \
+        "— 5 · female 2 · male 3"
+    assert application._tally({None: 1}) == "— 1"
+    assert application._tally({}) == ""
+
+
+async def test_the_statistics_post_renders_with_mixed_genders(monkeypatch, client):
+    """End to end, against a workspace where only some users answered."""
+    _clear_stats_claims()
+    monkeypatch.setattr(application, "STATS_CHANNEL_ID", "-100999")
+    answered = next(_next_id)
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, answered, first_name="Answered")
+        s.get(User, answered).gender = "male"
+        s.commit()
+
+    bot = _FakeBot()
+    assert await application.send_platform_stats(bot, force=True) is True
+    assert len(bot.sent) == 1
+
+
+async def test_the_statistics_post_waits_for_its_hour(monkeypatch, client):
+    """A tick before STATS_POST_HOUR must not post the day's numbers early."""
+    _clear_stats_claims()
+    monkeypatch.setattr(application, "STATS_CHANNEL_ID", "-100999")
+    monkeypatch.setattr(application, "STATS_POST_HOUR", 23)
+    monkeypatch.setattr(svc, "now_local",
+                        lambda tz=None: datetime.combine(svc.today_local(),
+                                                         dtime(9, 0)))
+    bot = _FakeBot()
+    assert await application.send_platform_stats(bot) is False
+    assert bot.sent == []
+
+
+async def test_a_restart_after_the_hour_still_delivers_the_post(
+        monkeypatch, client):
+    """The whole point. A process that boots at 11:00 must still post today."""
+    _clear_stats_claims()
+    monkeypatch.setattr(application, "STATS_CHANNEL_ID", "-100999")
+    monkeypatch.setattr(application, "STATS_POST_HOUR", 10)
+    monkeypatch.setattr(svc, "now_local",
+                        lambda tz=None: datetime.combine(svc.today_local(),
+                                                         dtime(11, 0)))
+    bot = _FakeBot()
+    assert await application.send_platform_stats(bot) is True
+    assert len(bot.sent) == 1
+
+
+async def test_a_failed_statistics_post_is_retried_not_lost(monkeypatch, client):
+    """One blip must cost a couple of minutes, not the whole day's numbers."""
+    from telegram.error import TimedOut
+
+    _clear_stats_claims()
+    monkeypatch.setattr(application, "STATS_CHANNEL_ID", "-100999")
+
+    failing = _FakeBot({"-100999": TimedOut()})
+    with pytest.raises(TimedOut):
+        await application.send_platform_stats(failing, force=True)
+
+    # The claim was handed back, so the next tick genuinely retries.
+    working = _FakeBot()
+    assert await application.send_platform_stats(working, force=True) is True
+    assert len(working.sent) == 1
+
+
+async def test_a_statistics_failure_never_escapes_into_the_scheduler(
+        monkeypatch, client):
+    """APScheduler's own logger is the worst place for this to surface."""
+    from telegram.error import TimedOut
+
+    _clear_stats_claims()
+    monkeypatch.setattr(application, "STATS_CHANNEL_ID", "-100999")
+    # Must not raise: the tick wrapper is what the scheduler actually calls.
+    await application.send_platform_stats_tick(_FakeBot({"-100999": TimedOut()}))
+
+
+async def test_no_statistics_channel_posts_nothing(monkeypatch, client):
+    _clear_stats_claims()
+    monkeypatch.setattr(application, "STATS_CHANNEL_ID", "")
+    bot = _FakeBot()
+    assert await application.send_platform_stats(bot, force=True) is False
+    assert bot.sent == []
 
 
 async def test_a_failed_recipient_does_not_stop_the_reminder_batch(
@@ -4654,8 +4846,10 @@ def test_the_channel_statistics_post_goes_out_in_the_morning():
     assert application.STATS_POST_HOUR == 10
     stats = _built_jobs()["stats"]
     fields = {f.name: str(f) for f in stats.trigger.fields}
-    assert fields["hour"] == str(application.STATS_POST_HOUR)
-    assert fields["minute"] == "0"
+    # The hour is no longer in the trigger — it is checked inside the job, so
+    # that a restart cannot skip the day. The trigger only decides how often
+    # the question gets asked.
+    assert fields["minute"] == f"*/{application.REPORT_TICK_MINUTES}"
     # The project clock, so 10:00 means 10:00 in Tashkent wherever this runs.
     assert stats.trigger.timezone == svc.TZ
 
@@ -4769,3 +4963,486 @@ def test_the_app_renders_in_the_system_face_where_there_is_one():
     styled = (ROOT / "webapp" / "index.html").read_text()
     stack = styled[styled.index("font:15px/"):][:200]
     assert stack.index("-apple-system") < stack.index("Inter")
+
+
+# ==========================================================================
+# Referrals
+# ==========================================================================
+#
+# The loop these protect: someone shares a link, a genuinely new person joins,
+# and the referral only counts once that person actually used ErnestOS. Every
+# test below is really one of two questions — can attribution be faked, and
+# can it be counted twice.
+
+def _new_user(telegram_id: int, *, onboarded=True, actions=0):
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, telegram_id, first_name=f"U{telegram_id}")
+        user = s.get(User, telegram_id)
+        user.onboarded = onboarded
+        user.actions_count = actions
+        s.commit()
+
+
+def _code_for(telegram_id: int) -> str:
+    with SessionLocal() as s:
+        return svc.get_or_create_referral_code(s, telegram_id)
+
+
+def _referral(telegram_id: int):
+    with SessionLocal() as s:
+        return s.get(db.Referral, telegram_id)
+
+
+# --- codes ----------------------------------------------------------------
+
+def test_a_referral_code_is_stable_for_the_life_of_the_account():
+    """A link already sitting in somebody's chat has to keep working."""
+    uid = next(_next_id)
+    _new_user(uid)
+    first = _code_for(uid)
+    assert first and _code_for(uid) == first
+    assert _code_for(uid) == first
+
+
+def test_two_users_get_different_codes():
+    a, b = next(_next_id), next(_next_id)
+    _new_user(a); _new_user(b)
+    assert _code_for(a) != _code_for(b)
+
+
+def test_a_code_is_deep_link_safe_and_not_the_telegram_id():
+    """`ref_123456789` would publish the id of everybody who sent an invite."""
+    uid = next(_next_id)
+    _new_user(uid)
+    code = _code_for(uid)
+    assert re.fullmatch(r"[A-Za-z0-9_-]{6,32}", code), code
+    assert str(uid) not in code
+
+
+# --- payload parsing ------------------------------------------------------
+
+@pytest.mark.parametrize("payload", [
+    None, "", "123", "abc", "ref_", "ref:code", "javascript:alert(1)",
+    "ref_has spaces", "ref_" + "x" * 40, "REF_abcdefgh", "ref_bad/slash",
+])
+def test_a_malformed_referral_payload_is_simply_ignored(payload):
+    """Never the user's fault, so never the user's error to look at."""
+    assert svc.parse_referral_payload(payload) is None
+
+
+def test_a_well_formed_payload_yields_the_code():
+    assert svc.parse_referral_payload("ref_G7krP_2XaF") == "G7krP_2XaF"
+
+
+# --- attribution ----------------------------------------------------------
+
+def test_a_new_user_joining_through_a_link_is_attributed_as_pending():
+    alice, bob = next(_next_id), next(_next_id)
+    _new_user(alice)
+    code = _code_for(alice)
+
+    with SessionLocal() as s:
+        _user, created = svc.get_or_create_user(s, bob, first_name="Bob")
+        s.commit()
+        assert svc.claim_referral(s, bob, f"ref_{code}",
+                                  source="bot", newly_created=created) is True
+
+    row = _referral(bob)
+    assert row.inviter_user_id == alice
+    assert row.status == "pending"
+    assert row.qualified_at is None
+
+
+def test_an_existing_account_can_never_be_attributed():
+    """The single most important rule: /start is not a claim ticket.
+
+    Without the `created` gate, anybody could get an established user to open
+    a link and harvest them as a referral.
+    """
+    alice, bob = next(_next_id), next(_next_id)
+    _new_user(alice); _new_user(bob)
+    code = _code_for(alice)
+
+    with SessionLocal() as s:
+        _user, created = svc.get_or_create_user(s, bob)
+        s.commit()
+        assert created is False
+        assert svc.claim_referral(s, bob, f"ref_{code}",
+                                  source="bot", newly_created=created) is False
+    assert _referral(bob) is None
+
+
+def test_the_first_inviter_cannot_be_displaced():
+    """Attribution is first-touch and there is nowhere to write a second one."""
+    alice, charlie, bob = next(_next_id), next(_next_id), next(_next_id)
+    _new_user(alice); _new_user(charlie)
+    alice_code, charlie_code = _code_for(alice), _code_for(charlie)
+
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, bob); s.commit()
+        svc.claim_referral(s, bob, f"ref_{alice_code}", newly_created=True)
+        # Bob later opens Charlie's link, and even if `created` were somehow
+        # true again, the row already exists.
+        assert svc.claim_referral(s, bob, f"ref_{charlie_code}",
+                                  newly_created=True) is False
+    assert _referral(bob).inviter_user_id == alice
+
+
+def test_a_user_cannot_refer_themselves():
+    alice = next(_next_id)
+    _new_user(alice)
+    code = _code_for(alice)
+    with SessionLocal() as s:
+        assert svc.claim_referral(s, alice, f"ref_{code}",
+                                  newly_created=True) is False
+    assert _referral(alice) is None
+
+
+def test_a_code_nobody_owns_creates_nothing():
+    bob = next(_next_id)
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, bob); s.commit()
+        assert svc.claim_referral(s, bob, "ref_nosuchcode1",
+                                  newly_created=True) is False
+    assert _referral(bob) is None
+
+
+def test_opening_the_same_link_twice_creates_one_referral():
+    alice, bob = next(_next_id), next(_next_id)
+    _new_user(alice)
+    code = _code_for(alice)
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, bob); s.commit()
+        assert svc.claim_referral(s, bob, f"ref_{code}", newly_created=True) is True
+        assert svc.claim_referral(s, bob, f"ref_{code}", newly_created=True) is False
+    with SessionLocal() as s:
+        assert s.scalar(select(func.count()).select_from(db.Referral)
+                        .where(db.Referral.referred_user_id == bob)) == 1
+
+
+# --- qualification --------------------------------------------------------
+
+def _attach(inviter: int, invited: int):
+    code = _code_for(inviter)
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, invited, first_name="Invited")
+        s.commit()
+        svc.claim_referral(s, invited, f"ref_{code}", newly_created=True)
+
+
+def test_a_referral_qualifies_only_on_the_third_action():
+    """Clicking a link is not usage. Three real actions is the smallest signal
+    that separates a referral from a click."""
+    alice, bob = next(_next_id), next(_next_id)
+    _new_user(alice)
+    _attach(alice, bob)
+    with SessionLocal() as s:
+        s.get(User, bob).onboarded = True
+        s.commit()
+
+    assert svc.REFERRAL_QUALIFY_ACTIONS == 3
+    for expected_status, _n in (("pending", 1), ("pending", 2)):
+        with SessionLocal() as s:
+            svc.record_action_and_qualify(s, bob)
+        assert _referral(bob).status == expected_status
+
+    with SessionLocal() as s:
+        _total, inviter = svc.record_action_and_qualify(s, bob)
+    assert inviter == alice, "the inviter should be told, exactly once"
+    row = _referral(bob)
+    assert row.status == "qualified" and row.qualified_at is not None
+
+
+def test_actions_without_onboarding_do_not_qualify():
+    alice, bob = next(_next_id), next(_next_id)
+    _new_user(alice)
+    _attach(alice, bob)
+    with SessionLocal() as s:
+        s.get(User, bob).onboarded = False
+        s.commit()
+        for _ in range(10):
+            svc.record_action_and_qualify(s, bob)
+    assert _referral(bob).status == "pending"
+
+    # Finishing onboarding is the other half, and the same central check.
+    with SessionLocal() as s:
+        s.get(User, bob).onboarded = True
+        s.commit()
+        assert svc.maybe_qualify_referral(s, bob) == alice
+    assert _referral(bob).status == "qualified"
+
+
+def test_a_qualified_referral_is_never_qualified_twice():
+    """Otherwise every later action would re-congratulate the inviter."""
+    alice, bob = next(_next_id), next(_next_id)
+    _new_user(alice)
+    _attach(alice, bob)
+    with SessionLocal() as s:
+        s.get(User, bob).onboarded = True
+        s.commit()
+
+    fired = []
+    for _ in range(100):
+        with SessionLocal() as s:
+            _total, inviter = svc.record_action_and_qualify(s, bob)
+        if inviter is not None:
+            fired.append(inviter)
+
+    assert fired == [alice], "the qualification message must fire exactly once"
+    with SessionLocal() as s:
+        assert s.scalar(select(func.count()).select_from(db.Referral)
+                        .where(db.Referral.referred_user_id == bob)) == 1
+
+
+def test_referral_counts_and_levels_follow_the_qualified_total():
+    alice = next(_next_id)
+    _new_user(alice)
+    with SessionLocal() as s:
+        assert svc.referral_stats(s, alice)["level"]["key"] == "new"
+
+    for _ in range(2):
+        invited = next(_next_id)
+        _attach(alice, invited)
+        with SessionLocal() as s:
+            s.get(User, invited).onboarded = True
+            s.commit()
+            for _ in range(svc.REFERRAL_QUALIFY_ACTIONS):
+                svc.record_action_and_qualify(s, invited)
+
+    # One more who joined but never really arrived.
+    _attach(alice, next(_next_id))
+
+    with SessionLocal() as s:
+        stats = svc.referral_stats(s, alice)
+    assert stats["counts"] == {"total": 3, "pending": 1, "qualified": 2}
+    assert stats["level"]["key"] == "inviter"
+    assert stats["level"]["next"] == {"target": 3, "remaining": 1}
+
+
+# --- the bot deep link ----------------------------------------------------
+
+class _Ctx:
+    """Enough of a python-telegram-bot context for /start."""
+
+    def __init__(self, args=None):
+        self.args = args or []
+        self.bot = _FakeBot()
+        self.user_data = {}
+
+
+class _Msg:
+    def __init__(self):
+        self.replies = []
+
+    async def reply_text(self, text, **kw):
+        self.replies.append(text)
+
+
+class _Update:
+    def __init__(self, telegram_id):
+        self.effective_user = type("U", (), {
+            "id": telegram_id, "first_name": "Deep", "last_name": "",
+            "username": ""})()
+        self.effective_message = _Msg()
+        self.callback_query = None
+
+
+async def test_start_with_a_referral_payload_attributes_a_new_user(monkeypatch):
+    alice, bob = next(_next_id), next(_next_id)
+    _new_user(alice)
+    code = _code_for(alice)
+
+    await application.start(_Update(bob), _Ctx([f"ref_{code}"]))
+
+    assert _referral(bob).inviter_user_id == alice
+
+
+async def test_start_with_nonsense_does_not_break_onboarding(monkeypatch):
+    """A bad link must cost the new user nothing at all."""
+    bob = next(_next_id)
+    update = _Update(bob)
+
+    await application.start(update, _Ctx(["utter-nonsense"]))
+
+    assert _referral(bob) is None
+    with SessionLocal() as s:
+        assert s.get(User, bob) is not None, "the account must still be created"
+        ws = svc.workspace_id_for(s, bob)
+        names = [h["name"] for h in svc.list_habits(s, ws)]
+    assert names == ["Get up", "5x namoz", "Kundalik"], \
+        "onboarding must have run normally, defaults and all"
+
+
+async def test_start_without_any_payload_still_works():
+    bob = next(_next_id)
+    await application.start(_Update(bob), _Ctx([]))
+    with SessionLocal() as s:
+        assert s.get(User, bob) is not None
+    assert _referral(bob) is None
+
+
+# --- the Mini App signed start_param --------------------------------------
+
+def test_a_signed_start_param_attributes_a_new_miniapp_user(client):
+    alice, bob = next(_next_id), next(_next_id)
+    _new_user(alice)
+    code = _code_for(alice)
+
+    profile = {"id": bob, "first_name": "WebBob"}
+    r = client.get("/api/me", headers={
+        "X-Telegram-Init-Data": init_data(profile, start_param=f"ref_{code}")})
+    assert r.status_code == 200
+
+    row = _referral(bob)
+    assert row is not None and row.inviter_user_id == alice
+    assert row.source == "miniapp"
+
+
+def test_an_unsigned_start_param_cannot_mint_a_referral(client):
+    """The attack this closes.
+
+    `initDataUnsafe.start_param` and `tgWebAppStartParam` are both fully
+    client-controlled. If either were trusted, anybody could award themselves
+    referrals by editing a query string. Only the HMAC-covered field counts —
+    so a payload signed *without* start_param, with the code bolted on
+    afterwards, must attribute nothing.
+    """
+    alice, bob = next(_next_id), next(_next_id)
+    _new_user(alice)
+    code = _code_for(alice)
+
+    profile = {"id": bob, "first_name": "Forger"}
+    signed_without = init_data(profile)          # start_param not in the hash
+    forged = signed_without + f"&start_param=ref_{code}"
+
+    r = client.get("/api/me", headers={"X-Telegram-Init-Data": forged})
+    # Either the extra field breaks the signature (401) or it is ignored — but
+    # under no circumstances may it create a referral.
+    assert r.status_code in (200, 401)
+    assert _referral(bob) is None
+
+
+def test_verify_init_data_still_returns_just_the_user():
+    """The long-standing contract other callers and tests rely on."""
+    profile = {"id": 909001, "first_name": "Contract"}
+    got = application.verify_init_data(init_data(profile))
+    assert got["id"] == 909001
+    assert "auth_date" not in got and "hash" not in got
+
+
+# --- the API --------------------------------------------------------------
+
+def test_referrals_me_returns_only_the_callers_own_aggregate(alice, bob):
+    """No id in the path or the query, so there is nothing to tamper with."""
+    a = alice.get("/api/referrals/me").json()
+    b = bob.get("/api/referrals/me").json()
+
+    assert a["code"] != b["code"]
+    assert a["counts"]["qualified"] >= 0
+    # Nothing about *who* was invited may appear anywhere in the payload.
+    assert "referred" not in json.dumps(a)
+    assert str(BOB["id"]) not in json.dumps(a)
+
+
+def test_referrals_me_needs_authentication(client):
+    assert client.get("/api/referrals/me").status_code == 401
+
+
+def test_the_referral_link_carries_the_bot_username(alice, monkeypatch):
+    monkeypatch.setattr(application, "BOT_USERNAME", "ernestos_bot")
+    body = alice.get("/api/referrals/me").json()
+    assert body["configured"] is True
+    assert body["link"] == f"https://t.me/ernestos_bot?start=ref_{body['code']}"
+    assert body["miniapp_link"].endswith(f"?startapp=ref_{body['code']}")
+
+
+def test_without_a_bot_username_sharing_reports_itself_unconfigured(
+        alice, monkeypatch):
+    """Missing config must degrade to an honest message, not a broken link."""
+    monkeypatch.setattr(application, "BOT_USERNAME", "")
+    body = alice.get("/api/referrals/me").json()
+    assert body["configured"] is False and body["link"] is None
+    assert body["code"], "the code still exists — only the link is unavailable"
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("@ernestos_bot", "ernestos_bot"),
+    ("ernestos_bot", "ernestos_bot"),
+    ("https://t.me/ernestos_bot", "ernestos_bot"),
+    ("  ernestos_bot  ", "ernestos_bot"),
+    ("", ""),
+])
+def test_the_bot_username_is_normalised(raw, expected):
+    import config
+    assert config._bot_username(raw) == expected
+
+
+# --- account lifecycle ----------------------------------------------------
+
+def test_wiping_a_workspace_keeps_the_referral_identity(client):
+    """A wipe is starting over, not leaving — the invite link must survive."""
+    uid = next(_next_id)
+    _new_user(uid)
+    code = _code_for(uid)
+    with SessionLocal() as s:
+        svc.wipe_workspace(s, uid)
+    assert _code_for(uid) == code
+
+
+def test_deleting_an_account_is_not_blocked_by_referrals(client):
+    """Foreign keys must never stand between a person and leaving."""
+    alice, bob = next(_next_id), next(_next_id)
+    _new_user(alice)
+    _attach(alice, bob)
+    assert _referral(bob) is not None
+
+    with SessionLocal() as s:
+        assert svc.delete_account(s, bob) is True
+
+    with SessionLocal() as s:
+        assert s.get(User, bob) is None
+        assert s.get(db.Referral, bob) is None, "no orphan row may survive"
+        assert s.get(db.ReferralCode, bob) is None
+
+
+def test_deleting_an_inviter_removes_their_side_too():
+    alice, bob = next(_next_id), next(_next_id)
+    _new_user(alice)
+    _attach(alice, bob)
+
+    with SessionLocal() as s:
+        assert svc.delete_account(s, alice) is True
+
+    with SessionLocal() as s:
+        assert s.get(db.ReferralCode, alice) is None
+        assert s.scalar(select(func.count()).select_from(db.Referral)
+                        .where(db.Referral.inviter_user_id == alice)) == 0
+
+
+# --- growth metrics -------------------------------------------------------
+
+def test_platform_stats_carry_aggregate_referral_numbers_only():
+    with SessionLocal() as s:
+        st = svc.platform_stats(s)
+    for key in ("referrals_total", "referrals_pending", "referrals_qualified",
+                "referral_inviters", "referral_conversion"):
+        assert key in st
+    assert st["referrals_total"] >= st["referrals_qualified"]
+    # Aggregates only: no identity may appear in the operator's numbers.
+    assert all(isinstance(v, (int, float)) for k, v in st.items()
+               if k.startswith("referral"))
+
+
+# --- the defaults must not regress ---------------------------------------
+
+def test_referral_work_did_not_change_the_new_user_defaults():
+    """User creation was edited for referrals. The defaults are still three."""
+    uid = next(_next_id)
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, uid, first_name="Defaults")
+        s.commit()
+        ws = svc.workspace_id_for(s, uid)
+        names = [h["name"] for h in svc.list_habits(s, ws)]
+    assert names == ["Get up", "5x namoz", "Kundalik"]
+    for gone in ("Deep flow", "Sport", "Podcast", "Read"):
+        assert gone not in names

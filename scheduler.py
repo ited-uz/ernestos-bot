@@ -84,10 +84,16 @@ def build(bot, *, send_reports, send_reminders, send_platform_stats
                       args=[bot], id="reminders",
                       max_instances=1, misfire_grace_time=REMINDER_GRACE)
 
-    # The channel post goes out in the morning, when the channel is read,
-    # rather than at 23:00 when it was written for whoever was still up.
+    # The statistics post ticks like the reports do, and decides for itself
+    # whether today's is owed. It used to be `cron(hour=STATS_POST_HOUR)`,
+    # which is the obvious way to say "once a day at ten" and does not
+    # survive contact with a restart: this scheduler's jobstore is in memory,
+    # so at every boot cron computes the next fire *after now*, and a deploy
+    # at 11:00 moved the post to 10:00 tomorrow. Redeploy most days and it
+    # never fires at all. "Once a day" is now guaranteed by the claim in
+    # `job_runs`, which a restart cannot forget.
     scheduler.add_job(send_platform_stats, "cron",
-                      hour=config.STATS_POST_HOUR, minute=0,
+                      minute=f"*/{config.REPORT_TICK_MINUTES}",
                       args=[bot], id="stats",
                       max_instances=1, misfire_grace_time=STATS_GRACE)
 
