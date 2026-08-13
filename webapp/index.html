@@ -591,6 +591,10 @@ label{display:block;font-size:12px;color:var(--text-2);margin:var(--s3) 0 var(--
 .score-cell .v{font-size:20px;font-weight:660;letter-spacing:-.4px;
                margin-top:2px;display:flex;align-items:baseline;gap:var(--s0);
                flex-wrap:wrap}
+/* Today leads: it is the only one of the three the user can still change. */
+.score-cell.lead .k{color:var(--text-2)}
+.score-cell.lead .v{font-size:25px;font-weight:700;letter-spacing:-.7px}
+.scores > div:first-child{padding-left:0}
 
 .trio{display:grid;grid-template-columns:repeat(3,1fr);align-items:center}
 .trio > div{padding:0 var(--s1);text-align:center;min-width:0}
@@ -615,6 +619,87 @@ label{display:block;font-size:12px;color:var(--text-2);margin:var(--s3) 0 var(--
 .delta{font-size:12.5px;font-weight:600}
 .delta.up{color:var(--ok)} .delta.down{color:var(--danger)}
 .delta.flat{color:var(--text-3)}
+
+/* ==================================================================
+   Tinted blocks
+   ==================================================================
+   Three facts about the same day used to be three cells of one grey card,
+   and the eye read them as one object. A block now carries a hue of its
+   own — one of the theme's five brand colours, set once in `--tint` — so
+   tasks, habits and prayer are three things on the screen rather than one
+   paragraph of numbers.
+
+   The tint paints the frame: the wash the block sits on, its hairline, its
+   icon tile and its bar. It never paints body text. systemGreen is 1.9:1 on
+   white, and legibility is not where a palette gets spent — so a glyph is
+   the tint pushed a little towards the foreground colour, which darkens it
+   on a light ground and lightens it on a dark one without either mode
+   needing a rule of its own.
+
+   Nothing here names a colour, so the whole set repaints with the theme. */
+.tinted{--tint:var(--c1);
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--tint) 13%, transparent),
+      color-mix(in srgb, var(--tint) 4%, transparent)),
+    var(--card-bg);
+  border:var(--border-w) solid color-mix(in srgb, var(--tint) 30%, var(--border));
+  border-radius:var(--radius);
+  box-shadow:var(--shadow-1);
+  backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur)}
+/* The five hues, named by position rather than by colour: a screen asks for
+   "the second tone", not "the teal one", and a theme decides what that is. */
+.tone-1{--tint:var(--c1)} .tone-2{--tint:var(--c2)} .tone-3{--tint:var(--c3)}
+.tone-4{--tint:var(--c4)} .tone-5{--tint:var(--c5)}
+
+/* The rounded icon tile in front of a block's title — the one shape that
+   makes a list of blocks scannable without reading a word of it. */
+/* The fallback matters: a tile is also used on its own, outside a tinted
+   block, where there is no `--tint` to inherit. */
+.itile{width:30px;height:30px;border-radius:9px;flex:none;display:grid;
+  place-items:center;
+  background:color-mix(in srgb, var(--tint, var(--c1)) 18%, transparent);
+  color:color-mix(in srgb, var(--tint, var(--c1)) 84%, var(--text))}
+.itile.lg{width:34px;height:34px;border-radius:10px}
+
+/* Today in three tiles: one per measurable part of the day, each its own
+   object, each opening the screen that owns it. */
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s1)}
+.tile{padding:var(--s2);min-width:0;cursor:pointer;
+      transition:transform var(--motion)}
+.tile:active{transform:scale(.985)}
+.tile .k{font-size:10.5px;font-weight:600;letter-spacing:.36px;
+         text-transform:uppercase;color:var(--text-2);margin-top:var(--s1)}
+.tile .v{font-size:20px;font-weight:670;letter-spacing:-.5px;margin-top:1px;
+         line-height:1.15}
+.tile .sub{font-size:11.5px;color:var(--text-3);margin-top:1px}
+.tile .bar{margin-top:var(--s1);height:5px;
+           background:color-mix(in srgb, var(--tint) 15%, var(--surface-2))}
+.tile .bar > span{background:var(--tint)}
+
+/* A tinted block used as a full-width panel: the icon tile, a title, and
+   whatever the block is about underneath. */
+.block{padding:var(--s3)}
+.block + .block{margin-top:var(--s1)}
+.tinted.off{opacity:.6}
+.tinted[data-act]{cursor:pointer;transition:transform var(--motion)}
+.tinted[data-act]:active{transform:scale(.995)}
+.block .bh{display:flex;align-items:center;gap:var(--s2)}
+.block .bt{font-size:15px;font-weight:620;letter-spacing:-.2px}
+.block .bar > span{background:var(--tint)}
+
+/* A section heading that carries the same hue as the blocks under it, so a
+   screen reads as a few labelled groups instead of one long scroll. */
+.sechead{display:flex;align-items:center;gap:var(--s1);
+         margin:var(--s4) 0 var(--s1)}
+.sechead .lbl{font-size:12px;font-weight:600;letter-spacing:.4px;
+              text-transform:uppercase;color:var(--text-3);flex:1;min-width:0}
+.sechead .act{text-transform:none;letter-spacing:0;font-size:13px;
+              font-weight:550;color:var(--primary);display:inline-flex;
+              align-items:center;gap:4px;position:relative;cursor:pointer}
+.sechead .act::after{content:"";position:absolute;inset:-10px}
+.sechead .dotline{width:22px;height:3px;border-radius:2px;flex:none;
+                  background:var(--tint, var(--primary))}
 
 /* ==================================================================
    Rows
@@ -925,6 +1010,8 @@ const DICT = {
   now_open:"Ochish", now_done:"Bajarildi",
   quote_ph:"O'zingizga kuch beradigan gap", quote_add:"Quote qo'shish",
   overall:"Umumiy", streak_short:"Ketma-ket", prayer:"Namoz",
+  overall_sub:"Kun · hafta · oy", today_parts:"Bugungi ko'rsatkichlar",
+  vs_yesterday:"kechagiga nisbatan", vs_yesterday_none:"Kecha o'lchanmagan",
   today_mission:"Bugungi missiya",
   mission_add:"Vazifa tanlang",
   mission_change:"O'zgartirish",
@@ -988,6 +1075,11 @@ const DICT = {
   of_tasks:"{total} ta vazifadan {done} tasi bajarilgan",
   remaining:"Qolgan", completed:"Bajarilgan",
   no_projects:"Hozircha loyiha yo'q", add_first_project:"Birinchi loyihani qo'shish",
+  pr_active:"Faol", pr_open_tasks:"Ochiq ish", pr_average:"O'rtacha",
+  pr_left:"{n} ta vazifa qoldi", pr_all_done:"Hammasi bajarildi",
+  pr_no_tasks:"Vazifa qo'shilmagan",
+  inbox_zone:"Inbox — barcha ochiq ishlar",
+  inbox_hint:"Muddatli, muddatsiz va kechikkanlar — hammasi shu yerda",
   /* habits */
   add_habit:"Odat qo'shish", habit_name:"Odat nomi", category:"Kategoriya",
   non_negotiable:"Asosiy", target:"Rivojlanish", bonus:"Qo'shimcha",
@@ -1045,6 +1137,13 @@ const DICT = {
   timezone:"Vaqt mintaqasi", notifications:"Eslatmalar va hisobotlar",
   morning_report:"Ertalabki hisobot", evening_report:"Kechqurungi hisobot",
   task_reminders:"Vazifa eslatmalari", habit_reminders:"Odat eslatmalari",
+  reminders:"Eslatmalar", report_at:"Yuboriladigan vaqt",
+  morning_report_hint:"Xayrli tong, kechagi natija va bugungi reja",
+  evening_report_hint:"Kun yakuni, natijalar va xayrli tun",
+  timezone_hint:"Hisobotlar shu mintaqa vaqtida yuboriladi",
+  appearance_hint:"Til, rejim va tema",
+  notify_hint:"Hisobot vaqtlari va eslatmalar",
+  account_hint:"Ma'lumotlar, maxfiylik va export",
   profile:"Profil", member:"Foydalanuvchi", photo_hint:"Telegram rasmi ishlatiladi",
   data_privacy:"Ma'lumotlar va maxfiylik",
   export_data:"Ma'lumotlarimni export qilish", export_sent:"Fayl botga yuborildi",
@@ -1091,6 +1190,8 @@ const DICT = {
   now_open:"Open", now_done:"Done",
   quote_ph:"Something that keeps you going", quote_add:"Add a quote",
   overall:"Overall", streak_short:"Streak", prayer:"Prayer",
+  overall_sub:"Day · week · month", today_parts:"Today's numbers",
+  vs_yesterday:"vs yesterday", vs_yesterday_none:"Nothing measured yesterday",
   today_mission:"Today's mission",
   mission_add:"Choose a task",
   mission_change:"Change",
@@ -1151,6 +1252,11 @@ const DICT = {
   of_tasks:"{done} of {total} tasks done",
   remaining:"Remaining", completed:"Completed",
   no_projects:"No projects yet", add_first_project:"Add your first project",
+  pr_active:"Active", pr_open_tasks:"Open work", pr_average:"Average",
+  pr_left:"{n} tasks left", pr_all_done:"Everything done",
+  pr_no_tasks:"No tasks yet",
+  inbox_zone:"Inbox — every open task",
+  inbox_hint:"Dated, undated and late — all of it, here",
   add_habit:"Add habit", habit_name:"Habit name", category:"Category",
   non_negotiable:"Non-negotiable", target:"Target", bonus:"Bonus",
   edit_habit:"Edit habit", schedule:"Days", every_day:"Every day",
@@ -1202,6 +1308,13 @@ const DICT = {
   timezone:"Time zone", notifications:"Reminders and reports",
   morning_report:"Morning report", evening_report:"Evening report",
   task_reminders:"Task reminders", habit_reminders:"Habit reminders",
+  reminders:"Reminders", report_at:"Sent at",
+  morning_report_hint:"Good morning, yesterday's score and today's plan",
+  evening_report_hint:"How the day landed, then good night",
+  timezone_hint:"Reports are sent on this zone's clock",
+  appearance_hint:"Language, mode and theme",
+  notify_hint:"Report times and reminders",
+  account_hint:"Data, privacy and export",
   profile:"Profile", member:"Member", photo_hint:"Your Telegram photo is used",
   data_privacy:"Data and privacy",
   export_data:"Export my data", export_sent:"File sent to the bot chat",
@@ -1247,6 +1360,8 @@ const DICT = {
   now_open:"Открыть", now_done:"Выполнено",
   quote_ph:"Фраза, которая вас держит", quote_add:"Добавить цитату",
   overall:"Общий результат", streak_short:"Серия", prayer:"Намаз",
+  overall_sub:"День · неделя · месяц", today_parts:"Показатели дня",
+  vs_yesterday:"по сравнению со вчера", vs_yesterday_none:"Вчера ничего не измерено",
   today_mission:"Миссия дня",
   mission_add:"Выберите задачу",
   mission_change:"Изменить",
@@ -1307,6 +1422,11 @@ const DICT = {
   of_tasks:"{done} из {total} задач выполнено",
   remaining:"Осталось", completed:"Выполнено",
   no_projects:"Проектов пока нет", add_first_project:"Добавить первый проект",
+  pr_active:"Активные", pr_open_tasks:"Открытых дел", pr_average:"В среднем",
+  pr_left:"осталось задач: {n}", pr_all_done:"Всё сделано",
+  pr_no_tasks:"Задач пока нет",
+  inbox_zone:"Входящие — все открытые дела",
+  inbox_hint:"Со сроком, без срока и просроченные — всё здесь",
   add_habit:"Добавить привычку", habit_name:"Название", category:"Категория",
   non_negotiable:"Обязательные", target:"Развитие", bonus:"Дополнительные",
   edit_habit:"Изменить привычку", schedule:"Дни", every_day:"Каждый день",
@@ -1358,6 +1478,13 @@ const DICT = {
   timezone:"Часовой пояс", notifications:"Напоминания и отчёты",
   morning_report:"Утренний отчёт", evening_report:"Вечерний отчёт",
   task_reminders:"Напоминания о задачах", habit_reminders:"Напоминания о привычках",
+  reminders:"Напоминания", report_at:"Время отправки",
+  morning_report_hint:"Доброе утро, вчерашний результат и план на день",
+  evening_report_hint:"Итоги дня, а затем — спокойной ночи",
+  timezone_hint:"Отчёты приходят по времени этой зоны",
+  appearance_hint:"Язык, режим и тема",
+  notify_hint:"Время отчётов и напоминания",
+  account_hint:"Данные, приватность и экспорт",
   profile:"Профиль", member:"Участник", photo_hint:"Используется фото из Telegram",
   data_privacy:"Данные и приватность",
   export_data:"Экспорт моих данных", export_sent:"Файл отправлен в чат бота",
@@ -1427,7 +1554,16 @@ const ICONS = {
   check:'<path d="M4.5 12.5 9 17 19.5 6.5"/>',
   list:'<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
   chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
-  settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M4.2 7l2.6 1.5M17.2 15.5l2.6 1.5M4.2 17l2.6-1.5M17.2 8.5 19.8 7"/>',
+  /* A cog, not six spokes around a dot. The old glyph drew three pairs of
+     detached strokes with nothing to attach them to, which at 19px read as
+     a smudge rather than as settings: a ring, eight rounded teeth on the
+     45° marks, and a hub. */
+  settings:'<circle cx="12" cy="12" r="7.2"/><circle cx="12" cy="12" r="2.9"/>'
+    + '<path d="M19.2 12h2M4.8 12h-2M12 4.8v-2M12 19.2v2'
+    + 'M17.09 6.91 18.5 5.5M6.91 17.09 5.5 18.5'
+    + 'M17.09 17.09 18.5 18.5M6.91 6.91 5.5 5.5"/>',
+  folder:'<path d="M3.5 7.4a2 2 0 0 1 2-2h3.3l2 2.5h7.7a2 2 0 0 1 2 2v8.1a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z"/>',
+  inbox:'<path d="M6.3 5.5h11.4l2.8 7.4v3.6a2 2 0 0 1-2 2H5.5a2 2 0 0 1-2-2v-3.6Z"/><path d="M3.5 12.9h4.2l1.4 2.4h5.8l1.4-2.4h4.2"/>',
   plus:'<path d="M12 5v14M5 12h14"/>',
   calendar:'<rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3.5v3M16 3.5v3"/>',
   edit:'<path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17v3Z"/>',
@@ -1657,6 +1793,7 @@ SCREENS.home = () => {
   return headBlock(d)
        + nowBlock(d)
        + scoreBlock(d)
+       + todayBlock(d)
        + tasksBlock(d)
        + privacyNote();
 };
@@ -1805,30 +1942,29 @@ function nowBlock(d){
 }
 
 /* ---------- the score block ----------
-   Day, week and month on one card, at the same time. They used to sit behind
-   a three-way switch, which meant the only comparison anybody actually wants
-   — is today better or worse than the way I have been going? — required two
-   taps and remembering the first number. Three rows answer it by being read.
+   Day, week and month on one card, at the same time, and nothing else on it.
+   They used to sit behind a three-way switch, which meant the only comparison
+   anybody actually wants — is today better or worse than the way I have been
+   going? — required two taps and remembering the first number. Three cells
+   answer it by being read.
 
    The three sit side by side on one line, not stacked, because that is the
-   shape the comparison has: three numbers in the same units read left to
-   right, the way the trio underneath already reads.
+   shape the comparison has: three numbers in the same units, read left to
+   right. A percentage and its change against the previous window of the same
+   length, and nothing else. The change is a colour *and* an arrow, so the
+   direction survives a monochrome screen and a red/green colour blindness.
 
-   A percentage and its change against the previous window of the same
-   length, and nothing else. Each cell also carried a progress bar, which was
-   the same fact drawn twice — the number already says how full it is, and
-   three bars turned a two-line answer into a block. The change is a colour
-   *and* an arrow, so the direction survives a monochrome screen and a
-   red/green colour blindness.
-
-   Underneath, unchanged: the three parts of today — tasks, habits, prayer. */
+   What used to sit underneath — tasks, habits and prayer as three cells of
+   this same card — is now three blocks of its own. Six numbers in one box is
+   one object as far as the eye is concerned, and the whole point of those
+   three is that they are three different things. */
 function scoreBlock(d){
   const s = state.summary;
   const rows = [["day", t("period_day")], ["week", t("period_week")],
                 ["month", t("period_month")]];
 
   /* Today comes from the Home payload, which is already loaded, so the block
-     draws its most important row immediately and fills the other two in when
+     draws its most important cell immediately and fills the other two in when
      the summary arrives rather than showing three spinners. */
   const dayDelta = (d.overall.yesterday === null || d.overall.yesterday === undefined)
     ? null : d.overall.value - d.overall.yesterday;
@@ -1839,29 +1975,61 @@ function scoreBlock(d){
     const delta = id === "day" ? dayDelta : w?.delta;
     const known = value !== undefined && value !== null;
 
-    return `<div class="score-cell">
+    return `<div class="score-cell ${id === "day" ? "lead" : ""}">
         <div class="k">${label}</div>
         <div class="v num">${known ? value + "%" : "—"}${
           known ? deltaTag(delta || 0) : ""}</div>
       </div>`;
   };
 
-  return `<div class="card" style="margin-top:var(--s3)">
-      <div class="row" style="margin-bottom:var(--s2)">
-        <div class="grow eyebrow">${t("overall")}</div>
+  return `<div class="tinted block tone-2" style="margin-top:var(--s3)">
+      <div class="bh" style="margin-bottom:var(--s2)">
+        <span class="itile">${icon("chart", 17)}</span>
+        <div class="grow"><div class="bt">${t("overall")}</div>
+          <div class="t3 tiny">${t("overall_sub")}</div></div>
         <button class="iconbtn sm bare" data-act="overall-why"
                 aria-label="${t("how_calculated")}">${icon("info", 17)}</button>
       </div>
       <div class="scores">${rows.map(line).join("")}</div>
-      <div class="trio" style="margin-top:var(--s3)">
-        <div><div class="k">${t("tasks")}</div>
-          <div class="v num">${pct(d.overall.components.tasks)}</div></div>
-        <div><div class="k">${t("habits")}</div>
-          <div class="v num">${d.habits.done}/${d.habits.total}</div></div>
-        <div><div class="k">${t("prayer")}</div>
-          <div class="v num">${d.prayer.excused ? "✓"
-            : `${d.prayer.performed}/${d.prayer.required}`}</div></div>
-      </div></div>`;
+    </div>`;
+}
+
+/* ---------- today, in three blocks ----------
+   Tasks, habits and prayer: the three measurable parts of a day, each in its
+   own tinted block, each opening the screen that owns it. They were three
+   cells of the overall card, which made them look like a footnote to the
+   percentage above them — they are not, they are the three things the
+   percentage is made of, and they are also the three places a tap goes next.
+
+   Each block carries a hue from the theme's palette rather than a shared
+   grey, so the three read apart at a glance, and a bar under each so the
+   ratio is visible without doing the division. */
+function todayBlock(d){
+  const tasks = d.overall.components.tasks;
+  const habits = d.habits.total ? Math.round(d.habits.done / d.habits.total * 100) : 0;
+  const prayer = d.prayer.excused ? 100
+    : d.prayer.required ? Math.round(d.prayer.performed / d.prayer.required * 100) : 0;
+
+  const tile = (tone, ic, label, value, percent, act) => `
+    <div class="tinted tile ${tone}" ${act}>
+      <span class="itile">${ic}</span>
+      <div class="k ellipsis">${label}</div>
+      <div class="v num">${value}</div>
+      ${bar(percent)}
+    </div>`;
+
+  return `<h2>${t("today_parts")}</h2>
+    <div class="tiles">
+      ${tile("tone-1", icon("list", 17), t("tasks"), pct(tasks),
+             tasks === null ? 0 : tasks,
+             `data-act="nav" data-screen="tasks"`)}
+      ${tile("tone-5", icon("check", 17), t("habits"),
+             `${d.habits.done}/${d.habits.total}`, habits,
+             `data-act="go-tab" data-tab="habits"`)}
+      ${tile("tone-3", icon("moon", 17), t("prayer"),
+             d.prayer.excused ? "✓" : `${d.prayer.performed}/${d.prayer.required}`,
+             prayer, `data-act="go-tab" data-tab="prayer"`)}
+    </div>`;
 }
 
 /* Today's work, grouped by the project it belongs to. */
@@ -1952,20 +2120,40 @@ function habitsTab(){
     + `<button class="btn" data-act="reorder-off"
          style="margin-top:14px">${t("finish")}</button>`;
 
-  let h = "";
-  if(data.streak)
-    h += `<div class="card flat" style="text-align:center">🔥
-        <b class="num">${data.streak}</b>
-        <span class="t2 small">${t("streak")}</span></div>`;
+  /* Today's habits and the streak, in one block at the top: the count is the
+     thing being worked on and the streak is why it is worth working on, so
+     they belong to each other rather than to two separate cards. */
+  const due = data.habits.filter(x => x.due);
+  const done = due.filter(x => x.done).length;
+  const percent = due.length ? Math.round(done / due.length * 100) : 0;
+
+  let h = `<div class="tinted block tone-5">
+      <div class="bh">
+        <span class="itile lg">${icon("check", 18)}</span>
+        <div class="grow"><div class="bt">${t("today")}</div>
+          <div class="t2 tiny">${done}/${due.length} · ${percent}%</div></div>
+        ${data.streak ? `<div style="text-align:right">
+          <div class="num" style="font-size:19px;font-weight:700">
+            🔥 ${data.streak}</div>
+          <div class="t3 tiny">${t("streak")}</div></div>` : ""}
+      </div>
+      <div style="margin-top:var(--s2)">${bar(percent)}</div>
+    </div>`;
 
   // The wake-up control sits in the habit it belongs to, and it is a
   // real button rather than an instruction to go and use the chat.
-  const anyDue = data.habits.some(x => x.due);
+  const anyDue = due.length > 0;
+
+  /* One hue per tier, so the non-negotiable ones are visibly not the bonus
+     ones — which is the entire distinction the three tiers exist to draw. */
+  const TIER_TONE = {non_negotiable:"tone-1", target:"tone-5", bonus:"tone-3"};
+  const TIER_ICON = {non_negotiable:"target", target:"up", bonus:"plus"};
 
   data.categories.forEach(cat => {
     const items = (data.grouped[cat] || []);
     if(!items.length) return;
-    h += `<h2>${t(cat)}</h2>`;
+    h += sectionHead(TIER_TONE[cat] || "tone-1", TIER_ICON[cat] || "check",
+                     t(cat));
     h += items.map(x => habitRow(x, cat, data.wake)).join("");
   });
 
@@ -2109,21 +2297,29 @@ function prayerTab(){
   });
   h += `</div>`;
 
-  // Two numbers, never merged: how many were prayed, and how well they were
-  // prayed. The bar tracks the first of those, because that is the one the
-  // `5x namoz` habit turns on.
-  h += `<div class="metrics">
-      <div class="metric"><div class="k">${t("performed")}</div>
+  /* Two numbers, never merged: how many were prayed, and how well they were
+     prayed. Each in a block of its own — they are measured differently and
+     merging them into one figure is how a five-out-of-five day and a
+     five-late day end up looking the same. The bar tracks the first, because
+     that is the one the `5x namoz` habit turns on. */
+  const performed = Math.round(p.performed / p.required * 100);
+  h += `<div class="tiles" style="margin-top:var(--s2)">
+      <div class="tinted tile tone-3" style="grid-column:span 2">
+        <span class="itile">${icon("moon", 17)}</span>
+        <div class="k ellipsis">${t("performed")}</div>
         <div class="v num">${p.performed} / ${p.required}
-          ${p.complete ? `<span class="delta up">✓</span>` : ""}</div></div>
-      <div class="metric"><div class="k">${t("score")}</div>
-        <div class="v num">${p.score} / ${p.max}</div></div>
+          ${p.complete ? `<span class="delta up">✓</span>` : ""}</div>
+        ${bar(performed)}
+      </div>
+      <div class="tinted tile tone-2">
+        <span class="itile">${icon("chart", 17)}</span>
+        <div class="k ellipsis">${t("score")}</div>
+        <div class="v num">${p.score}/${p.max}</div>
+      </div>
     </div>
-    <div class="card flat" style="margin-top:8px">
-      <div class="row"><div class="grow small ${p.complete ? "" : "t2"}">
-        ${p.complete ? `✓ ${t("full_day")}`
-          : t("performed_of", {done:p.performed, total:p.required})}</div></div>
-      ${bar(Math.round(p.performed / p.required * 100))}</div>`;
+    <div class="t2 small" style="margin-top:var(--s2)">
+      ${p.complete ? `✓ ${t("full_day")}`
+        : t("performed_of", {done:p.performed, total:p.required})}</div>`;
   return h;
 }
 
@@ -2232,26 +2428,25 @@ document.addEventListener("input", e => {
 });
 
 /* ---------- Tasks ---------- */
-/* Tasks, in three views of the same data rather than three lists.
+/* Tasks, in four views of the same data rather than four lists.
 
-     Asosiy / Main   what actually matters right now — the week's focus, the
-                     tasks pinned to today, anything late, today's work, and
-                     the projects they belong to
-     Ochiq / Open    every open task, searchable and filterable
-     Bajarilgan/Done the archive
+     Asosiy / Main     what actually matters right now — the week's focus, the
+                       tasks pinned to today, anything late, today's work, and
+                       the month underneath it
+     Ochiq / Open      the inbox: every open task, searchable and filterable
+     Loyihalar/Projects each project's state — how far it is, how much is left
+     Bajarilgan/Done   the archive
 
-   The calendar opens from the header rather than living inline: a month grid
-   is forty-two cells about the rest of the month, and this screen is read to
-   answer a question about this week. It is one tap from where somebody
-   looking for a month would tap anyway. */
+   The calendar sits at the foot of Main rather than behind a header button.
+   It is the last thing on the screen because it answers the last question a
+   planner asks — what is coming after today — and putting it there means the
+   whole plan is one scroll instead of a screen plus a sheet. */
 SCREENS.tasks = () => {
   const tabs = [["main", t("main_tab")], ["open", t("open_tab")],
-                ["done", t("done_tab")]];
+                ["projects", t("projects")], ["done", t("done_tab")]];
 
   let h = `<div class="head">
       <h1 class="grow">${t("tasks")}</h1>
-      <button class="iconbtn" data-act="calendar-open"
-              aria-label="${t("calendar")}">${icon("calendar")}</button>
       <button class="iconbtn" data-act="task-add"
               aria-label="${t("add_task")}">${icon("plus")}</button>
     </div>
@@ -2262,13 +2457,23 @@ SCREENS.tasks = () => {
 
   if(state.taskTab === "done") return h + doneTab();
   if(state.taskTab === "open") return h + openTab();
+  if(state.taskTab === "projects") return h + projectsTab();
   return h + mainTab();
 };
 
+/* A section heading that carries a hue, so the screen reads as a few
+   labelled groups rather than one uninterrupted scroll. */
+function sectionHead(tone, ic, label, action){
+  return `<div class="sechead ${tone}">
+      <span class="itile">${icon(ic, 16)}</span>
+      <div class="lbl">${label}</div>
+      ${action || ""}</div>`;
+}
+
 /* The first thing the Tasks screen shows, and deliberately not the whole
-   list: the week's one goal, whatever has been pinned to today, whatever is
-   late, and the rest of today. The complete inventory is one tab across for
-   the moment when the inventory is the question. */
+   list: the week's one goal, then everything today actually asks for, then
+   the month. The complete inventory is one tab across for the moment when
+   the inventory is the question. */
 function mainTab(){
   const d = state.tasks;
   let h = weekFocusBlock();
@@ -2282,19 +2487,23 @@ function mainTab(){
   late.forEach(x => seen.add(x.id));
   const now = all.filter(x => x.deadline === today && !seen.has(x.id));
 
-  const section = (label, rows, opts) => rows.length
-    ? `<h2>${label}</h2>` + rows.map(x => taskRow(x, opts)).join("") : "";
+  const section = (tone, ic, label, rows, opts) => rows.length
+    ? sectionHead(tone, ic, label) + rows.map(x => taskRow(x, opts)).join("") : "";
 
-  const body = section(t("pinned_tasks"), pinned)
-    + section(t("overdue"), late)
-    + section(t("due_today"), now, {hideDate: true});
+  /* One hue per section, and the same hue for the same idea everywhere in the
+     app: tasks are the first tone on Home and they are the first tone here. */
+  const body = section("tone-5", "target", t("pinned_tasks"), pinned)
+    + section("tone-4", "clock", t("overdue"), late)
+    + section("tone-1", "list", t("due_today"), now, {hideDate: true});
 
   h += body || `<div class="empty">${t("nothing_today")}
       <button class="btn secondary sm" data-act="task-add"
               style="margin:12px auto 0;display:flex">
         ${icon("plus", 16)} ${t("add_first_task")}</button></div>`;
 
-  return h + projectsSection();
+  // The month, last: what is coming after today, once today has been read.
+  h += sectionHead("tone-2", "calendar", t("calendar")) + calendarBlock();
+  return h;
 }
 
 function searchBox(id, value, placeholder, action){
@@ -2317,10 +2526,10 @@ function weekFocusBlock(){
   if(!focus) return "";
   const primary = focus.primary;
 
-  let h = `<h2>${t("week_focus")}
-      ${focus.slots_free > 0 && primary
-        ? `<span class="act" data-act="focus-add" data-slot="supporting">
-             ${icon("plus", 14)} ${t("add_supporting")}</span>` : ""}</h2>`;
+  let h = sectionHead("tone-3", "target", t("week_focus"),
+    focus.slots_free > 0 && primary
+      ? `<span class="act" data-act="focus-add" data-slot="supporting">
+           ${icon("plus", 14)} ${t("add_supporting")}</span>` : "");
 
   if(!primary){
     // One row, not a panel: the block printed "Add a main goal" as a line of
@@ -2334,7 +2543,7 @@ function weekFocusBlock(){
         ${icon("plus", 16)}</div>`;
   }
 
-  h += `<div class="card">
+  h += `<div class="tinted block tone-3">
       <div class="row">
         <div class="check ${primary.done ? "on" : ""}" data-act="focus-toggle"
              data-id="${primary.id}">${icon("check", 14)}</div>
@@ -2365,9 +2574,25 @@ function weekFocusBlock(){
   return h;
 }
 
+/* The inbox: every open task there is, in one place.
+   Main answers "what now"; this one answers "what is there", so nothing is
+   held back here — late, dated, undated and later, all of it, with a search
+   box and three filters over the top. */
 function openTab(){
   const d = state.tasks;
-  let h = searchBox("task-q", state.taskQuery, t("search_tasks"), "task-search");
+  const total = d ? [d.overdue, d.upcoming, d.undated, d.later || []]
+    .reduce((n, rows) => n + rows.length, 0) : null;
+
+  let h = `<div class="tinted block tone-2">
+      <div class="bh">
+        <span class="itile lg">${icon("inbox", 18)}</span>
+        <div class="grow"><div class="bt">${t("inbox_zone")}</div>
+          <div class="t2 tiny">${t("inbox_hint")}</div></div>
+        <div class="num" style="font-size:22px;font-weight:700"
+             >${total === null ? "—" : total}</div>
+      </div></div>`;
+
+  h += searchBox("task-q", state.taskQuery, t("search_tasks"), "task-search");
 
   /* Filters as chips rather than a menu: one tap to narrow, one to clear, and
      the active one visible without opening anything.
@@ -2399,16 +2624,19 @@ function openTab(){
     return true;
   };
 
-  const section = (label, rows) => {
+  const section = (tone, ic, label, rows) => {
     const items = (rows || []).filter(keep);
-    return items.length ? `<h2>${label}</h2>` + items.map(taskRow).join("") : "";
+    return items.length
+      ? sectionHead(tone, ic, `${label} · ${items.length}`)
+        + items.map(taskRow).join("")
+      : "";
   };
 
   let body = "";
-  body += section(t("overdue"), d.overdue);
-  body += section(t("upcoming"), d.upcoming);
-  body += section(t("no_date"), d.undated);
-  body += section(t("later"), d.later || []);
+  body += section("tone-4", "clock", t("overdue"), d.overdue);
+  body += section("tone-1", "calendar", t("upcoming"), d.upcoming);
+  body += section("tone-2", "inbox", t("no_date"), d.undated);
+  body += section("tone-3", "list", t("later"), d.later || []);
 
   if(!body){
     h += (state.taskQuery || state.taskFilter)
@@ -2427,12 +2655,13 @@ function doneTab(){
   let h = searchBox("done-q", state.doneQuery, t("search"), "done-search");
   if(!g) return h + `<div class="spin"></div>`;
 
-  const section = (label, rows) => rows.length
-    ? `<h2>${label}</h2>` + rows.map(doneRow).join("") : "";
+  const section = (tone, label, rows) => rows.length
+    ? sectionHead(tone, "check", `${label} · ${rows.length}`)
+      + rows.map(doneRow).join("") : "";
 
-  const body = section(t("done_today"), g.today)
-    + section(t("done_week"), g.week)
-    + section(t("done_earlier"), g.earlier);
+  const body = section("tone-5", t("done_today"), g.today)
+    + section("tone-2", t("done_week"), g.week)
+    + section("tone-3", t("done_earlier"), g.earlier);
 
   return h + (body || `<div class="empty">${
     state.doneQuery ? t("no_results") : t("empty")}</div>`);
@@ -2494,26 +2723,93 @@ function taskRow(task, opts){
     </div>`;
 }
 
-/* Projects are a section of Tasks, not a fifth tab. */
-function projectsSection(){
+/* ---------- Projects ----------
+   Its own tab, because a project is a different question from a task: not
+   "what do I do next" but "where has this got to". It used to be a strip of
+   name-and-percentage rows at the foot of the main list, which said how far
+   each one was and nothing about what that meant — a project at 60% with two
+   tasks left and one due Friday is a different object from a project at 60%
+   with fourteen left, and the row drew them identically.
+
+   The tab opens on the portfolio in one line — how many are running, how much
+   work is still open across all of them, where they average — and then gives
+   each project a block of its own carrying its progress, what is left, its
+   deadline and its state. */
+function projectsTab(){
   const list = state.projects || [];
-  let h = `<h2>${t("projects")}
-      <span class="act" data-act="project-add">${icon("plus", 14)}
-        ${t("add_project")}</span></h2>`;
+
+  let h = sectionHead("tone-2", "folder", t("projects"),
+    `<span class="act" data-act="project-add">${icon("plus", 14)}
+       ${t("add_project")}</span>`);
+
   if(!list.length)
     return h + `<div class="empty">${t("no_projects")}
       <button class="btn secondary sm" data-act="project-add"
               style="margin:12px auto 0;display:flex">
         ${icon("plus", 16)} ${t("add_first_project")}</button></div>`;
 
-  return h + list.map(p => `
-    <div class="card" data-act="project-open" data-id="${p.id}">
-      <div class="row">
-        <div class="grow ellipsis">${esc(p.name)}
-          ${p.status === "done" ? `<span class="tag">${t("st_done")}</span>` : ""}</div>
-        <div class="t3 tiny num">${p.progress}%</div>
-        ${icon("chevron", 15)}
-      </div>${bar(p.progress)}</div>`).join("");
+  const live = list.filter(p => p.status !== "done" && !p.archived);
+  const open = list.reduce((n, p) => n + p.tasks_open, 0);
+  const average = list.length
+    ? Math.round(list.reduce((n, p) => n + p.progress, 0) / list.length) : 0;
+
+  h = `<div class="tiles">
+      <div class="tinted tile tone-2">
+        <span class="itile">${icon("folder", 17)}</span>
+        <div class="k ellipsis">${t("pr_active")}</div>
+        <div class="v num">${live.length}</div></div>
+      <div class="tinted tile tone-4">
+        <span class="itile">${icon("list", 17)}</span>
+        <div class="k ellipsis">${t("pr_open_tasks")}</div>
+        <div class="v num">${open}</div></div>
+      <div class="tinted tile tone-5">
+        <span class="itile">${icon("chart", 17)}</span>
+        <div class="k ellipsis">${t("pr_average")}</div>
+        <div class="v num">${average}%</div>
+        ${bar(average)}</div>
+    </div>` + h;
+
+  /* One hue per project, cycling the theme's palette, so a list of five reads
+     as five things. The tone follows the position in the list rather than the
+     id, which keeps it stable while the screen is open and never lands two
+     neighbours on the same colour. */
+  const TONES = ["tone-1", "tone-3", "tone-5", "tone-4", "tone-2"];
+
+  return h + list.map((p, i) => {
+    const done = p.status === "done";
+    const state_tag = p.archived ? t("st_archived")
+      : done ? t("st_done") : t("st_active");
+
+    // What is actually left, in words. "60%" is a measurement; "4 ta qoldi"
+    // is the thing somebody opens this screen to find out.
+    const facts = [];
+    facts.push(p.tasks_open
+      ? t("pr_left", {n: p.tasks_open})
+      : p.tasks_total ? t("pr_all_done") : t("pr_no_tasks"));
+    if(p.deadline) facts.push(`${icon("calendar", 12)} ${isoToLabel(p.deadline)}`);
+
+    return `<div class="tinted block ${TONES[i % TONES.length]}
+                 ${done || p.archived ? "off" : ""}"
+                 data-act="project-open" data-id="${p.id}">
+        <div class="bh">
+          <span class="itile lg">${icon("folder", 18)}</span>
+          <div class="grow" style="min-width:0">
+            <div class="bt ellipsis">${esc(p.name)}</div>
+            <div class="t2 tiny row" style="gap:6px;margin-top:2px">
+              ${facts.join(" · ")}</div>
+          </div>
+          <div style="text-align:right">
+            <div class="num" style="font-size:19px;font-weight:700"
+                 >${p.progress}%</div>
+            <div class="t3 tiny num">${p.tasks_done}/${p.tasks_total}</div>
+          </div>
+          ${icon("chevron", 15)}
+        </div>
+        <div style="margin-top:var(--s2)">${bar(p.progress)}</div>
+        ${done || p.archived
+          ? `<div class="tag" style="margin-top:var(--s2)">${state_tag}</div>` : ""}
+      </div>`;
+  }).join("");
 }
 
 /* ---------- one project and the work inside it ---------- */
@@ -2593,32 +2889,61 @@ SCREENS.stats = () => {
   const st = state.stats;
   if(!st) return `<h1>${t("stats")}</h1><div class="spin"></div>`;
   const today = st.today;
-  const arrow = TREND_ICON[today.delta] || "";
+
+  /* Today against yesterday, as a number rather than as an arrow. The header
+     used to draw a single ↑ next to the percentage, which said a direction and
+     withheld the size — and the size is the whole question. Yesterday's own
+     score is printed underneath, because "+12%" is only meaningful next to
+     what it moved from. */
+  const yesterday = today.yesterday;
+  const known = yesterday !== null && yesterday !== undefined;
+  const change = known ? today.overall - yesterday : null;
+  const dir = !known || change === 0 ? "flat" : change > 0 ? "up" : "down";
 
   let h = `<h1>${t("stats")}</h1>
     <div class="hero" style="margin-top:14px" data-act="overall-why">
       <div class="row">
-        <div class="grow">
-          <div class="k">${t("overall")}</div>
-          <div class="num" style="font-size:32px;font-weight:760;letter-spacing:-1px">
-            ${today.overall}%
-            ${arrow ? `<span class="delta ${today.delta}">${arrow}</span>` : ""}</div>
-        </div>
-        <div class="tag">${icon("info", 13)} ${t("how_calculated")}</div>
-      </div></div>`;
+        <div class="grow eyebrow">${t("overall")} · ${t("today")}</div>
+        <button class="iconbtn sm bare" style="color:inherit;opacity:.8"
+                aria-label="${t("how_calculated")}">${icon("info", 17)}</button>
+      </div>
+      <div class="num" style="font-size:42px;font-weight:760;
+           letter-spacing:-1.5px;line-height:1.02;margin-top:2px">
+        ${today.overall}%</div>
+      <div class="small wrap" style="margin-top:var(--s1)">
+        ${known
+          ? `<b>${TREND_ICON[dir] || ""}${change > 0 ? "+" : ""}${change}%</b>
+             ${t("vs_yesterday")} <span class="t2">(${yesterday}%)</span>`
+          : t("vs_yesterday_none")}</div>
+      <div style="margin-top:var(--s2)">${bar(today.overall)}</div>
+    </div>`;
 
-  // Four numbers, each with how it moved. A percentage on its own is not
-  // actionable; a percentage and a direction is.
-  const cell = (key, value, delta) =>
-    `<div class="metric"><div class="k">${t(key)}</div>
-       <div class="v num">${pct(value)} ${deltaTag(delta)}</div></div>`;
-  h += `<div class="metrics">
-      ${cell("tasks", today.tasks, st.deltas.tasks)}
-      ${cell("habits", today.habits, st.deltas.habits)}
-      <div class="metric wide"><div class="k">${t("prayer")}</div>
-        <div class="v num">${today.prayer_performed} / ${today.prayer_required}
-          ${deltaTag(st.deltas.prayer)}
-          <span class="k">🔥 ${today.streak}</span></div></div>
+  /* The three parts of today, each its own block in its own hue — the same
+     three, in the same three colours, as on Home, so the two screens teach one
+     vocabulary instead of two. Each carries the period's change underneath,
+     which is the number this screen exists for. */
+  const tile = (tone, ic, key, value, percent, delta) => `
+    <div class="tinted tile ${tone}">
+      <span class="itile">${ic}</span>
+      <div class="k ellipsis">${t(key)}</div>
+      <div class="v num">${value}</div>
+      <div class="sub num">${deltaTag(delta)}</div>
+      ${bar(percent)}
+    </div>`;
+
+  h += `<div class="tiles" style="margin-top:var(--s2)">
+      ${tile("tone-1", icon("list", 17), "tasks", pct(today.tasks),
+             today.tasks || 0, st.deltas.tasks)}
+      ${tile("tone-5", icon("check", 17), "habits", pct(today.habits),
+             today.habits || 0, st.deltas.habits)}
+      ${tile("tone-3", icon("moon", 17), "prayer",
+             `${today.prayer_performed}/${today.prayer_required}`,
+             today.prayer || 0, st.deltas.prayer)}
+    </div>
+    <div class="item" style="margin-top:var(--s1)">
+      <span class="itile tone-4">${icon("flame", 17)}</span>
+      <div class="grow">${t("streak")}</div>
+      <div class="num" style="font-weight:660">${today.streak}</div>
     </div>`;
 
   h += `<div class="seg" style="margin:16px 0 12px">
@@ -3110,9 +3435,15 @@ function freshStartSheet(p){
    and what it holds. */
 function settingsSheet(){
   const me = state.me || {};
-  const row = (act, ic, label) => `
-    <div class="item pressable" style="min-height:50px" data-act="${act}">
-      ${icon(ic, 17)}<div class="grow">${label}</div>${icon("chevron", 15)}</div>`;
+  /* An icon tile per row, in its own colour, the way a native settings list
+     does it: the colour is what the eye returns to, and three grey chevrons
+     in a column are three rows nobody can tell apart at a glance. */
+  const row = (act, ic, tone, label, hint) => `
+    <div class="item pressable" style="min-height:56px" data-act="${act}">
+      <span class="itile ${tone}">${icon(ic, 17)}</span>
+      <div class="grow"><div style="font-weight:550">${label}</div>
+        <div class="t3 tiny">${hint}</div></div>
+      ${icon("chevron", 15)}</div>`;
 
   return `
     <h3>${icon("settings", 18)} ${t("settings")}</h3>
@@ -3120,9 +3451,9 @@ function settingsSheet(){
       ${t("member")} #${me.member_no ?? "—"}
       ${me.username ? `· @${esc(me.username)}` : ""}</div>
 
-    ${row("set-look", "sun", t("appearance"))}
-    ${row("set-notify", "bell", t("notifications"))}
-    ${row("set-account", "user", t("account"))}
+    ${row("set-look", "sun", "tone-4", t("appearance"), t("appearance_hint"))}
+    ${row("set-notify", "bell", "tone-1", t("notifications"), t("notify_hint"))}
+    ${row("set-account", "user", "tone-3", t("account"), t("account_hint"))}
 
     <button class="btn secondary" data-act="close" style="margin-top:14px">
       ${t("close")}</button>`;
@@ -3194,25 +3525,40 @@ function notifySheet(){
            aria-checked="${prefs[key] ? "true" : "false"}"></div>
     </div>`;
 
+  /* Each report is a block of its own: what it is, when it arrives, and
+     whether it arrives at all. The two used to be rows in a hairline list
+     where a 104px time field sat between a label and a switch, and the field
+     read as decoration rather than as the control it is. */
+  const report = (tone, ic, key, timeKey, title, hint, id, fallback) => `
+    <div class="tinted block ${tone}" style="margin-top:var(--s2)">
+      <div class="bh">
+        <span class="itile lg">${icon(ic, 18)}</span>
+        <div class="grow"><div class="bt">${title}</div>
+          <div class="t2 tiny">${hint}</div></div>
+        <div class="sw ${prefs[key] ? "on" : ""}" data-act="pref-toggle"
+             data-key="${key}" role="switch"
+             aria-checked="${prefs[key] ? "true" : "false"}"></div>
+      </div>
+      <div class="row" style="margin-top:var(--s2)">
+        <div class="grow t2 small">${t("report_at")}</div>
+        <input type="time" id="${id}" value="${prefs[timeKey] || fallback}"
+               data-act="pref-time" data-key="${timeKey}"
+               aria-label="${title}"
+               style="width:118px;min-height:40px;padding:6px 10px" />
+      </div>
+    </div>`;
+
   return `
     <h3>${icon("bell", 18)} ${t("notifications")}</h3>
 
-    <div class="setrow" style="margin-top:var(--s2)">
-      <div class="grow lbl">${t("morning_report")}</div>
-      <input type="time" id="pref-morning" value="${prefs.morning_time || "04:00"}"
-             data-act="pref-time" data-key="morning_time"
-             style="width:104px;min-height:38px;padding:6px 8px" />
-      <div class="sw ${prefs.morning_report ? "on" : ""}" data-act="pref-toggle"
-           data-key="morning_report" role="switch"></div>
-    </div>
-    <div class="setrow">
-      <div class="grow lbl">${t("evening_report")}</div>
-      <input type="time" id="pref-evening" value="${prefs.evening_time || "21:00"}"
-             data-act="pref-time" data-key="evening_time"
-             style="width:104px;min-height:38px;padding:6px 8px" />
-      <div class="sw ${prefs.evening_report ? "on" : ""}" data-act="pref-toggle"
-           data-key="evening_report" role="switch"></div>
-    </div>
+    ${report("tone-4", "sun", "morning_report", "morning_time",
+             t("morning_report"), t("morning_report_hint"),
+             "pref-morning", "04:00")}
+    ${report("tone-3", "moon", "evening_report", "evening_time",
+             t("evening_report"), t("evening_report_hint"),
+             "pref-evening", "21:30")}
+
+    <label>${t("reminders")}</label>
     ${sw("task_reminders", t("task_reminders"))}
     ${sw("habit_reminders", t("habit_reminders"))}
 
@@ -3223,6 +3569,7 @@ function notifySheet(){
       ${(me.timezones || []).includes(prefs.timezone) ? ""
         : `<option value="${esc(prefs.timezone)}" selected>${esc(prefs.timezone)}</option>`}
     </select>
+    <div class="t3 tiny" style="margin-top:var(--s0)">${t("timezone_hint")}</div>
 
     <button class="btn secondary" data-act="settings" style="margin-top:14px">
       ${t("back")}</button>`;
@@ -3232,9 +3579,10 @@ function notifySheet(){
    red, with a confirmation of its own. */
 function accountSheet(){
   const me = state.me || {};
-  const row = (act, ic, label) => `
-    <div class="item pressable" style="min-height:48px" data-act="${act}">
-      ${icon(ic, 17)}<div class="grow">${label}</div>${icon("chevron", 15)}</div>`;
+  const row = (act, ic, tone, label) => `
+    <div class="item pressable" style="min-height:52px" data-act="${act}">
+      <span class="itile ${tone}">${icon(ic, 17)}</span>
+      <div class="grow">${label}</div>${icon("chevron", 15)}</div>`;
 
   return `
     <h3>${icon("user", 18)} ${t("account")}</h3>
@@ -3249,10 +3597,10 @@ function accountSheet(){
       </div></div>` : ""}
 
     <label>${t("data_privacy")}</label>
-    ${row("export", "download", t("export_data"))}
-    ${row("privacy-info", "shield", t("privacy_info"))}
-    ${row("fresh-start", "repeat", t("fresh_start"))}
-    ${row("feedback", "message", t("feedback"))}
+    ${row("export", "download", "tone-1", t("export_data"))}
+    ${row("privacy-info", "shield", "tone-5", t("privacy_info"))}
+    ${row("fresh-start", "repeat", "tone-4", t("fresh_start"))}
+    ${row("feedback", "message", "tone-3", t("feedback"))}
     <div class="item pressable" style="min-height:48px;margin-top:var(--s2)"
          data-act="delete-account">
       <span style="color:var(--danger)">${icon("trash", 17)}</span>
@@ -3420,11 +3768,16 @@ async function loadScreen(screen){
                 journalQuestions: journal.questions});
     } else if(screen === "tasks"){
       const query = state.taskQuery ? "&q=" + encodeURIComponent(state.taskQuery) : "";
-      const [tasks, projects, focus] = await Promise.all([
+      /* The month is part of this screen now rather than a sheet opened from
+         it, so it is fetched with the rest — but only once: moving between the
+         tabs must not re-request a grid that is already drawn, and paging to
+         another month must not be undone by the next tab tap. */
+      const [tasks, projects, focus, calendar] = await Promise.all([
         api("/api/tasks?days=365" + query), api("/api/projects"),
         api("/api/focus"),
+        state.calendar ? Promise.resolve(state.calendar) : api("/api/calendar"),
       ]);
-      setState({tasks, projects: projects.projects, focus: focus.week});
+      setState({tasks, projects: projects.projects, focus: focus.week, calendar});
       if(state.taskTab === "done"){
         const q = state.doneQuery ? "?q=" + encodeURIComponent(state.doneQuery) : "";
         setState({tasksDone: (await api("/api/tasks/done" + q)).groups});
@@ -4053,13 +4406,19 @@ const A = {
     render();
     reopenSettings();
   },
-  "set-tz": () => prefSave({timezone: val("tz-select")}),
+  /* The two below fire on `change`, from the control itself, and save without
+     rebuilding the sheet — see the listener at the foot of this file. */
+  "set-tz": el => prefSave({timezone: el.value || val("tz-select")}, false),
   "pref-toggle": el => {
     haptic();
     const key = el.dataset.key;
     prefSave({[key]: !(state.me?.prefs || {})[key]});
   },
-  "pref-time": el => prefSave({[el.dataset.key]: el.value}),
+  "pref-time": el => {
+    // An empty field is the picker being cleared, not a request to save 00:00.
+    if(!el.value) return;
+    prefSave({[el.dataset.key]: el.value}, false);
+  },
 
   /* ---- data and privacy ---- */
   "privacy-info": () => openSheet(privacySheet()),
@@ -4147,12 +4506,16 @@ async function settingSave(patch){
   }catch(e){ handleError(e); }
 }
 
-async function prefSave(patch){
+async function prefSave(patch, redraw = true){
   try{
     const r = await api("/api/prefs", {method:"POST", body:patch});
     state.me = {...state.me, prefs:r.prefs};
-    render();
-    reopenSettings();
+    /* A switch has to be redrawn, because the switch itself is the only thing
+       showing its new state. A time field and the timezone select are already
+       showing exactly what the user picked — and rebuilding the sheet under an
+       open picker closes it, which on iOS meant a value could be set once and
+       never adjusted. */
+    if(redraw){ render(); reopenSettings(); }
     toast(t("saved"));
     // A timezone change moves what "today" means, so the screen is refetched.
     if(patch.timezone) await loadScreen(state.screen);
@@ -4240,11 +4603,26 @@ document.addEventListener("pointerup", e => {
   saveOrder(ids);
 });
 
+/* A form control carries its action on `change`, never on `click`.
+
+   This is the bug that made the report times and the timezone impossible to
+   edit. Clicking an `<input type="time">` or a `<select>` is how its picker
+   *opens*; the delegated click handler below matched the control, called
+   `preventDefault()` — which stopped the picker from ever appearing — and
+   then ran the save with the value that was already in the field. The screen
+   answered "Saqlandi" every time and nothing ever changed, which is the worst
+   shape a bug can take: it looks like it worked.
+
+   The tag is the rule rather than a list of act names, so a control added
+   later cannot bring the behaviour back by accident. */
+const CHANGE_TAGS = new Set(["INPUT", "SELECT", "TEXTAREA"]);
+
 /* One delegated listener: rebuilt HTML never loses its handlers because
    the handler lives on document, not on the nodes. */
 document.addEventListener("click", e => {
   const el = e.target.closest("[data-act]");
   if(!el) return;
+  if(CHANGE_TAGS.has(el.tagName)) return;
   const action = A[el.dataset.act];
   if(action){ e.preventDefault(); action(el); }
 });
@@ -4253,9 +4631,11 @@ document.addEventListener("keydown", e => {
   const el = e.target.closest("[data-search]");
   if(el && e.key === "Enter"){ e.preventDefault(); A[el.dataset.search]?.(el); }
 });
+/* …and the other half of the same rule: every form control with an action
+   runs it here, when the value has actually changed. */
 document.addEventListener("change", e => {
-  const el = e.target.closest("[data-act='pref-time'],[data-act='set-tz']");
-  if(el) A[el.dataset.act]?.(el);
+  const el = e.target.closest("[data-act]");
+  if(el && CHANGE_TAGS.has(el.tagName)) A[el.dataset.act]?.(el);
 });
 window.matchMedia("(prefers-color-scheme: light)")
   .addEventListener?.("change", () => render());

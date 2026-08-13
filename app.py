@@ -254,8 +254,15 @@ T: dict[str, dict[str, str]] = {
         "r_journal": "📓 Kundalik", "r_yes": "yozilgan", "r_no": "yozilmagan",
         "r_unfinished": "❗ Tugallanmagan:",
         "r_yesterday": "Kecha",
+        "r_good_morning": "🌅 Xayrli tong, {name}!",
+        "r_good_morning_plain": "🌅 Xayrli tong!",
+        "r_good_night": "🌙 Xayrli tun! Yaxshi dam oling.",
+        "r_today_all": "📌 BUGUN QILINADI",
+        "r_habits_today": "Odatlar",
+        "r_prayer_today": "Namoz — 5 mahal",
+        "r_nothing_planned": "Bugunga hech narsa qo'shilmagan. Bitta ish yozib qo'ying — kun shundan boshlanadi.",
         "r_mission": "Haftaning asosiy maqsadi",
-        "r_today_plan": "Bugun rejadagi ishlar",
+        "r_today_plan": "Vazifalar",
         "r_overdue_hint": "Ularni bugunga ko'chirish 10 sekund oladi — Vazifalar bo'limida.",
         "r_start_now": "Eng kichigidan boshlang. Birinchi ishni tanlang va 25 daqiqa bering.",
         "coach_high": "Kecha {pct}% — bu tasodif emas, tizim ishlayapti. Bugun ham shu darajani ushlab turing.",
@@ -422,8 +429,15 @@ T: dict[str, dict[str, str]] = {
         "r_journal": "📓 Journal", "r_yes": "written", "r_no": "not written",
         "r_unfinished": "❗ Still unfinished:",
         "r_yesterday": "Yesterday",
+        "r_good_morning": "🌅 Good morning, {name}!",
+        "r_good_morning_plain": "🌅 Good morning!",
+        "r_good_night": "🌙 Good night — rest well.",
+        "r_today_all": "📌 TODAY'S PLAN",
+        "r_habits_today": "Habits",
+        "r_prayer_today": "Prayer — five times",
+        "r_nothing_planned": "Nothing is on today yet. Write one thing down — that is where the day starts.",
         "r_mission": "This week's mission",
-        "r_today_plan": "On today's plan",
+        "r_today_plan": "Tasks",
         "r_overdue_hint": "Moving them to today takes ten seconds — see Tasks.",
         "r_start_now": "Start with the smallest one. Pick the first task and give it 25 minutes.",
         "coach_high": "Yesterday {pct}% — that is not luck, that is the system working. Hold the same line today.",
@@ -589,8 +603,15 @@ T: dict[str, dict[str, str]] = {
         "r_journal": "📓 Дневник", "r_yes": "заполнен", "r_no": "не заполнен",
         "r_unfinished": "❗ Не завершено:",
         "r_yesterday": "Вчера",
+        "r_good_morning": "🌅 Доброе утро, {name}!",
+        "r_good_morning_plain": "🌅 Доброе утро!",
+        "r_good_night": "🌙 Спокойной ночи — хорошего отдыха.",
+        "r_today_all": "📌 ПЛАН НА СЕГОДНЯ",
+        "r_habits_today": "Привычки",
+        "r_prayer_today": "Намаз — пять раз",
+        "r_nothing_planned": "На сегодня пока ничего нет. Запишите одно дело — с этого и начинается день.",
         "r_mission": "Главная цель недели",
-        "r_today_plan": "В плане на сегодня",
+        "r_today_plan": "Задачи",
         "r_overdue_hint": "Перенести их на сегодня — десять секунд, в разделе Задачи.",
         "r_start_now": "Начните с самого маленького. Выберите первую задачу и дайте ей 25 минут.",
         "coach_high": "Вчера {pct}% — это не случайность, это работает система. Удержите тот же уровень сегодня.",
@@ -2190,19 +2211,31 @@ def morning_note(lang: str, overall: int, measured: bool) -> str:
 
 
 def render_morning(data: dict, lang: str) -> str:
-    """04:00 — yesterday in one number, then today in one decision.
+    """The first thing read that day: a greeting, yesterday, then the whole day.
 
-    Order matters: the number is small and factual, the ask is concrete and
-    immediate. A report that opens with a list of yesterday's failures gets
-    closed before the plan is read.
+    Order matters, and it is the order a person actually wants at four in the
+    morning. It opens by greeting them by name — a report that opens with a
+    percentage is a dashboard, and nobody wants to be handed a dashboard before
+    breakfast. Then yesterday, in one percentage and one line of parts, because
+    the only useful thing about yesterday now is whether to hold the line or
+    change something.
+
+    Then the day itself, complete: the week's mission, the tasks, the habits
+    that repeat and the five prayers. "Complete" is the point — this is the one
+    message that has to be readable instead of opening the app, so nothing that
+    is expected of somebody today is left out of it.
     """
     y, today = data["yesterday"], data["today"]
+    name = (data.get("name") or "").strip()
 
-    lines = [f"<b>{t(lang, 'morning_title', date=short_date(today['date'], lang))}</b>",
+    greeting = (t(lang, "r_good_morning", name=esc(name)) if name
+                else t(lang, "r_good_morning_plain"))
+    lines = [f"<b>{greeting}</b>",
+             f"<i>{short_date(today['date'], lang)}</i>",
              ""]
 
     # Yesterday: one line, one percentage, no autopsy.
-    lines.append(f"{t(lang, 'r_yesterday')}: <b>{y['overall']}%</b>  "
+    lines.append(f"<b>{t(lang, 'r_yesterday')}: {y['overall']}%</b>  "
                  f"{_bar(y['overall'], 8)}")
     lines.append(f"<i>{t(lang, 'r_habits')} {y['habits_done']}/{y['habits_total']} · "
                  f"{t(lang, 'r_prayer')} {y['prayer_performed']}/{y['prayer_required']} · "
@@ -2218,13 +2251,40 @@ def render_morning(data: dict, lang: str) -> str:
         lines.append(f"🎯 <b>{t(lang, 'r_mission')}</b>")
         lines.append(esc(primary["title"]))
 
+    # Everything today asks for, under one heading, so the plan reads as one
+    # thing rather than as three unrelated lists.
+    lines.append("")
+    lines.append(f"<b>{t(lang, 'r_today_all')}</b>")
+
+    planned = False
     if today["tasks"]:
+        planned = True
         lines.append("")
-        lines.append(f"⚡ <b>{t(lang, 'r_today_plan')}</b>")
+        lines.append(f"⚡ <b>{t(lang, 'r_today_plan')}</b> · {len(today['tasks'])}")
         lines += _task_lines(today["tasks"][:6], lang)
+        if len(today["tasks"]) > 6:
+            lines.append(f"<i>+{len(today['tasks']) - 6}</i>")
+
+    if today.get("habits_total"):
+        planned = True
+        lines.append("")
+        lines.append(f"✅ <b>{t(lang, 'r_habits_today')}</b> · "
+                     f"{today['habits_done']}/{today['habits_total']}")
+        # Only the ones still open: a list that repeats what is already ticked
+        # is a list somebody stops reading.
+        for habit in today["habits"][:6]:
+            lines.append(f"• {esc(habit)}")
+        if len(today["habits"]) > 6:
+            lines.append(f"<i>+{len(today['habits']) - 6}</i>")
+
+    # Prayer is always part of the day, so it is always in the plan — but it
+    # is not what decides whether the day has anything in it.
+    lines.append("")
+    lines.append(f"🕌 <b>{t(lang, 'r_prayer_today')}</b>")
+
     if today["overdue"]:
         lines.append("")
-        lines.append(f"{t(lang, 'home_overdue')}: {len(today['overdue'])}")
+        lines.append(f"<b>{t(lang, 'home_overdue')}</b> · {len(today['overdue'])}")
         lines.append(f"<i>{t(lang, 'r_overdue_hint')}</i>")
     if today["birthdays"]:
         lines.append("")
@@ -2234,19 +2294,22 @@ def render_morning(data: dict, lang: str) -> str:
             lines.append(f"🎂 {esc(b['person_name'])} — {when}")
 
     lines.append("")
-    lines.append(t(lang, "r_start_now"))
+    lines.append(t(lang, "r_start_now") if planned else t(lang, "r_nothing_planned"))
     return "\n".join(lines)
 
 
 def render_evening(data: dict, lang: str) -> str:
-    """21:30 — the day's statistics, closed out.
+    """The last thing read that day: how it went, then good night.
 
     The whole day as one number with its parts drawn as bars, then what is still
-    open. Listed at the end rather than the start: at half past nine the useful
-    framing is "here is where the day landed", not a fresh to-do list.
+    open, and it closes by wishing the reader a good night. The order is the
+    point: at half past nine the useful framing is "here is where the day
+    landed", not a fresh to-do list — and the last line of the last message of
+    the day should be a human one, not a statistic.
     """
     overall = data["overall"]
-    lines = [f"<b>{t(lang, 'evening_title')}</b>", ""]
+    lines = [f"<b>{t(lang, 'evening_title')}</b>",
+             f"<i>{short_date(data['date'], lang)}</i>", ""]
 
     lines.append(f"📊 <b>{overall['value']}%</b> "
                  f"{TREND_MARK.get(overall['trend'], '▪️')}  {_bar(overall['value'])}")
@@ -2257,13 +2320,13 @@ def render_evening(data: dict, lang: str) -> str:
                 f"{done}/{total}")
 
     components = overall.get("components", {})
+    lines.append(row(t(lang, "r_tasks"), data["tasks_completed"],
+                     data["tasks_completed"] + len(data["tasks_remaining"]),
+                     components.get("tasks")))
     lines.append(row(t(lang, "r_habits"), data["habits_done"],
                      data["habits_total"], components.get("habits")))
     lines.append(row(t(lang, "r_prayer"), data["prayer_performed"],
                      data["prayer_required"], components.get("prayer")))
-    lines.append(row(t(lang, "r_tasks"), data["tasks_completed"],
-                     data["tasks_completed"] + len(data["tasks_remaining"]),
-                     components.get("tasks")))
     lines.append(f"{t(lang, 'r_journal')}: "
                  f"{t(lang, 'r_yes') if data['journal'] else t(lang, 'r_no')}")
 
@@ -2278,11 +2341,17 @@ def render_evening(data: dict, lang: str) -> str:
         lines.append(f"{t(lang, 'r_unfinished')}")
         for item in unfinished[:8]:
             lines.append(f"• {esc(item)}")
+        if len(unfinished) > 8:
+            lines.append(f"<i>+{len(unfinished) - 8}</i>")
         lines.append("")
         lines.append(f"<i>{t(lang, 'r_evening_close')}</i>")
     else:
         lines.append("")
         lines.append(t(lang, "r_evening_clear"))
+
+    # The last line of the day.
+    lines.append("")
+    lines.append(f"<b>{t(lang, 'r_good_night')}</b>")
 
     return "\n".join(lines)
 

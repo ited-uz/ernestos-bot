@@ -13,6 +13,7 @@ import hmac
 import itertools
 import json
 import os
+import re
 import sys
 import tempfile
 import time
@@ -3335,6 +3336,182 @@ def test_the_mini_app_never_claims_a_save_it_did_not_make():
     assert "setState(back);" in html
 
 
+def test_a_form_control_saves_on_change_and_never_on_click():
+    """The bug that made the report times and the timezone uneditable.
+
+    Both carry a `data-act`, and the delegated click handler matched them: it
+    called `preventDefault()` — which is how a `<select>` is stopped from ever
+    opening — and then ran the save with the value already in the field. The
+    app answered "Saqlandi" and changed nothing, every time.
+
+    The rule is the element's tag rather than a list of action names, so a
+    control added later cannot quietly reintroduce it.
+    """
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert 'const CHANGE_TAGS = new Set(["INPUT", "SELECT", "TEXTAREA"]);' in html
+
+    click = html[html.index('document.addEventListener("click", e => {'):]
+    click = click[:click.index("});")]
+    assert "if(CHANGE_TAGS.has(el.tagName)) return;" in click, \
+        "a click on a form control still runs its action"
+
+    change = html[html.index('document.addEventListener("change", e => {'):]
+    change = change[:change.index("});")]
+    assert 'e.target.closest("[data-act]")' in change, \
+        "the change path is still hard-coded to two action names"
+    assert "CHANGE_TAGS.has(el.tagName)" in change
+
+    # And saving a time or a zone must not rebuild the sheet under the open
+    # picker, which closed it after the first value on iOS.
+    assert "async function prefSave(patch, redraw = true){" in html
+    for act in ('"set-tz": el =>', '"pref-time": el =>'):
+        assert act in html, f"{act} no longer takes the element it fired on"
+    assert 'prefSave({timezone: el.value || val("tz-select")}, false)' in html
+    assert "prefSave({[el.dataset.key]: el.value}, false)" in html
+
+
+def test_home_reads_the_day_as_four_separate_blocks():
+    """Greeting and now, then the score, then today's three parts, then work.
+
+    Tasks, habits and prayer used to be three cells inside the overall card,
+    which made them look like a footnote to the percentage above them. They are
+    what the percentage is made of, and they are three different things — so
+    each is its own block, in its own colour, opening its own screen.
+    """
+    html = (ROOT / "webapp" / "index.html").read_text()
+    home = html[html.index("SCREENS.home = () => {"):html.index("function privacyNote(")]
+    order = [home.index(f"{fn}(d)") for fn in
+             ("headBlock", "nowBlock", "scoreBlock", "todayBlock", "tasksBlock")]
+    assert order == sorted(order), "Home's blocks are out of order"
+
+    score = html[html.index("function scoreBlock(d){"):html.index("function todayBlock(d){")]
+    for period in ("period_day", "period_week", "period_month"):
+        assert f't("{period}")' in score, f"the score block dropped {period}"
+    assert 't("habits")' not in score, "the three parts are back inside the score"
+
+    today = html[html.index("function todayBlock(d){"):html.index("function tasksBlock(d){")]
+    for key in ("tasks", "habits", "prayer"):
+        assert f't("{key}")' in today, f"today's block is missing {key}"
+    # Each in a hue of its own, and each a way into the screen that owns it.
+    assert len(set(re.findall(r"tone-\d", today))) == 3, \
+        "the three parts share a colour"
+    assert 'data-screen="tasks"' in today and 'data-tab="prayer"' in today
+
+
+def test_a_tinted_block_never_names_a_colour():
+    """The tint is one of the theme's own five, chosen by position.
+
+    A block that reached for a literal hex would be a block that stops working
+    the moment somebody switches theme — which is the whole reason the token
+    layer exists.
+    """
+    html = (ROOT / "webapp" / "index.html").read_text()
+    css = html[html.index(".tinted{"):html.index("/* ==================================================================\n   Rows")]
+    assert not re.findall(r":\s*#[0-9a-fA-F]{3,8}\b", css), \
+        "a tinted block hard-codes a colour"
+    for tone in range(1, 6):
+        assert f".tone-{tone}{{--tint:var(--c{tone})}}" in css, \
+            f"tone {tone} is not wired to the palette"
+
+
+# ==========================================================================
+# The daily reports
+# ==========================================================================
+
+def _morning_payload() -> dict:
+    return {
+        "name": "Ernest",
+        "yesterday": {"date": "2026-08-12", "overall": 72, "measured": True,
+                      "components": {"tasks": 60, "habits": 80, "prayer": 76},
+                      "habits_done": 4, "habits_total": 5, "prayer_score": 4,
+                      "prayer_performed": 5, "prayer_required": 5,
+                      "tasks_completed": 3, "tasks_missed": 1, "journal": True},
+        "today": {"date": "2026-08-13",
+                  "tasks": [{"title": "Send the proposal", "due_time": "10:00",
+                             "priority": "high", "project": "Launch",
+                             "deadline": "2026-08-13"}],
+                  "top3": [], "overdue": [],
+                  "focus": [{"slot": 1, "title": "Ship the beta", "done": False}],
+                  "focus_done": 0, "birthdays": [],
+                  "habits": ["Workout"], "habits_done": 3, "habits_total": 5,
+                  "prayer_required": 5},
+    }
+
+
+def _evening_payload() -> dict:
+    return {
+        "date": "2026-08-13",
+        "overall": {"value": 78, "trend": "up", "yesterday": 72,
+                    "components": {"tasks": 75, "habits": 80, "prayer": 80}},
+        "habits_done": 4, "habits_total": 5, "habits_remaining": ["Workout"],
+        "prayer_score": 4, "prayer_performed": 4, "prayer_required": 5,
+        "tasks_completed": 3, "tasks_remaining": ["Call the accountant"],
+        "tasks_overdue": [], "focus": [], "focus_done": 0, "journal": True,
+    }
+
+
+@pytest.mark.parametrize("lang", ["uz", "en", "ru"])
+def test_the_morning_report_greets_before_it_measures(lang):
+    """The first message of the day opens by greeting a person by name.
+
+    A report that opens with a percentage is a dashboard, and nobody wants a
+    dashboard before breakfast. The number follows immediately — it is still
+    the second line — but the order is the point.
+    """
+    text = application.render_morning(_morning_payload(), lang)
+    first = text.splitlines()[0]
+    assert application.t(lang, "r_good_morning", name="Ernest") in first
+    assert "%" not in first, "the greeting line carries a statistic"
+    # Yesterday, once, as a percentage, above the plan.
+    assert text.index("72%") < text.index(application.t(lang, "r_today_all"))
+
+
+def test_the_morning_report_names_the_whole_day():
+    """Tasks, habits and prayer — everything expected of somebody today.
+
+    It used to list tasks alone, so the habits due that day and the five
+    prayers were things you had to open the app to find out about, which is
+    exactly what this message exists to save.
+    """
+    text = application.render_morning(_morning_payload(), "uz")
+    assert "Send the proposal" in text, "today's tasks are missing"
+    assert "Workout" in text, "today's habits are missing"
+    assert application.t("uz", "r_prayer_today") in text, "prayer is missing"
+    assert application.t("uz", "r_habits_today") in text
+
+
+def test_the_morning_report_still_works_without_a_name():
+    """A user who never gave Telegram a first name is still greeted."""
+    payload = _morning_payload()
+    payload["name"] = ""
+    text = application.render_morning(payload, "uz")
+    assert text.splitlines()[0].strip("<b>").startswith("🌅")
+    assert "{name}" not in text and "None" not in text
+
+
+@pytest.mark.parametrize("lang", ["uz", "en", "ru"])
+def test_the_evening_report_ends_by_saying_good_night(lang):
+    """The last line of the last message of the day is a human one.
+
+    The day's numbers come first and the wish comes last — a good night wished
+    before the summary is a sign-off in the middle of a message.
+    """
+    text = application.render_evening(_evening_payload(), lang)
+    good_night = application.t(lang, "r_good_night")
+    assert good_night in text
+    assert text.rstrip().endswith(f"{good_night}</b>"), \
+        "the good-night line is not the last thing said"
+    assert text.index("78%") < text.index(good_night)
+
+
+def test_the_evening_report_leads_with_tasks_habits_prayer_in_that_order():
+    """The same order as every other surface, so one vocabulary is learned."""
+    text = application.render_evening(_evening_payload(), "uz")
+    order = [text.index(application.t("uz", key))
+             for key in ("r_tasks", "r_habits", "r_prayer")]
+    assert order == sorted(order)
+
+
 # ==========================================================================
 # Translations — three languages, no gaps and no leftovers
 # ==========================================================================
@@ -3818,27 +3995,57 @@ def test_a_reason_comes_back_for_every_rung(alice):
     assert alice.get("/api/home").json()["now"]["reason"]
 
 
-def test_tasks_is_three_views_of_the_same_data():
-    """Main, Open, Done — and the calendar reachable from the header.
+def test_tasks_is_four_views_of_the_same_data():
+    """Main, Open, Projects, Done — one screen, four questions.
 
-    Main is what matters now: the week's focus, what is pinned, what is late,
-    what is due today, and the projects. Open is the whole inventory with the
-    search and the filters. Neither may print the other's blocks: the week's
-    focus and the project list under a searchable list of every open task was
-    the same content twice on one screen.
+    Main is what matters now, in the order it is asked: the week's focus, then
+    what is pinned, late and due today, and the month at the foot. The calendar
+    used to open from a header button into a sheet; it reads as the last part
+    of the plan, so it is the last block of the plan.
+
+    Open is the inbox — the whole inventory with the search and the filters.
+    Projects is its own view, because "where has this got to" is not the same
+    question as "what do I do next" and the two were sharing one scroll.
+
+    No view may print another's blocks: the week's focus and the project list
+    under a searchable list of every open task was the same content twice.
     """
     html = (ROOT / "webapp" / "index.html").read_text()
-    screen = html[html.index("SCREENS.tasks = () => {"):html.index("function mainTab(")]
+    screen = html[html.index("SCREENS.tasks = () => {"):html.index("function sectionHead(")]
     for tab in ("main_tab", "open_tab", "done_tab"):
         assert f't("{tab}")' in screen, f"the {tab} view is missing"
-    assert 'data-act="calendar-open"' in screen, "no calendar on Tasks"
+    assert 't("projects")' in screen, "the projects view is missing"
 
     main = html[html.index("function mainTab("):html.index("function searchBox(")]
-    assert "weekFocusBlock()" in main and "projectsSection()" in main
+    assert "weekFocusBlock()" in main
+    assert "calendarBlock()" in main, "the month left the plan"
+    assert main.index("weekFocusBlock()") < main.index("calendarBlock()"), \
+        "the month is above the week's focus"
+    assert "projectsTab()" not in main, "projects are a view of their own"
+
     open_tab = html[html.index("function openTab("):html.index("function doneTab(")]
     assert "weekFocusBlock()" not in open_tab, "the focus block is printed twice"
-    assert "projectsSection()" not in open_tab, "the project list is printed twice"
+    assert "projectsTab()" not in open_tab, "the project list is printed twice"
     assert 'searchBox("task-q"' in open_tab
+    for section in ("overdue", "upcoming", "no_date", "later"):
+        assert f't("{section}")' in open_tab, \
+            f"the inbox holds back {section}"
+
+
+def test_the_projects_view_says_what_is_left_not_only_how_far():
+    """A percentage is a measurement; "4 tasks left" is the answer.
+
+    The old row drew a name and a progress bar, which made a project with two
+    tasks outstanding and one with fourteen look identical at 60%.
+    """
+    html = (ROOT / "webapp" / "index.html").read_text()
+    view = html[html.index("function projectsTab("):html.index("SCREENS.project =")]
+    assert "p.tasks_open" in view, "nothing says how much work is left"
+    assert 't("pr_left"' in view
+    assert "p.progress" in view and "p.deadline" in view
+    # And the portfolio in one line above the list.
+    for key in ("pr_active", "pr_open_tasks", "pr_average"):
+        assert f't("{key}")' in view, f"the summary is missing {key}"
 
 
 def test_a_new_task_is_reminded_about_half_an_hour_before():

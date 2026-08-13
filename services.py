@@ -2169,6 +2169,10 @@ def stats(s: Session, ws: int, period: str = "week", *,
         "today": {
             "overall": overall["value"],
             "trend": overall["trend"],
+            # Yesterday's own number, so the screen can say how far today has
+            # moved rather than only which way. "Up" is a direction; "+12%
+            # against yesterday" is the fact the direction was standing in for.
+            "yesterday": overall["yesterday"],
             "tasks": components["tasks"],
             "habits": components["habits"],
             "prayer": components["prayer"],
@@ -2833,6 +2837,11 @@ def morning_data(s: Session, ws: int, user: User) -> dict:
     focus = list_focus(s, ws, tz=tz)
     top3 = top3_tasks(s, ws, today, tz=tz)
 
+    # What today actually asks for, not what yesterday asked for. The habit
+    # count in this payload used to be yesterday's total under a "today" key,
+    # so a Monday/Wednesday habit was announced on a Tuesday.
+    today_habits = [h for h in list_habits(s, ws, today, tz=tz) if h["due"]]
+
     # Yesterday as one comparable number, from the same function every other
     # surface uses, plus the components behind it.
     y_components = overall_components(s, ws, yesterday)
@@ -2840,6 +2849,8 @@ def morning_data(s: Session, ws: int, user: User) -> dict:
     y_overall = round(sum(y_available) / len(y_available)) if y_available else 0
 
     return {
+        # The report opens by greeting somebody, so it needs to know who.
+        "name": user.first_name or "",
         "yesterday": {
             "date": yesterday.isoformat(),
             "overall": y_overall,
@@ -2860,7 +2871,13 @@ def morning_data(s: Session, ws: int, user: User) -> dict:
             "focus": focus,
             "focus_done": sum(1 for f in focus if f["done"]),
             "birthdays": [b for b in list_birthdays(s, ws, within_days=1, tz=tz)],
-            "habits_total": y_total,
+            # Today's habits: the ones still to do, and how many are due at
+            # all — a morning report that lists the day's work has to include
+            # the part of it that repeats.
+            "habits": [h["name"] for h in today_habits if not h["done"]],
+            "habits_done": sum(1 for h in today_habits if h["done"]),
+            "habits_total": len(today_habits),
+            "prayer_required": PRAYER_REQUIRED,
         },
     }
 
