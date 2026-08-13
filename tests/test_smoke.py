@@ -341,6 +341,96 @@ def test_the_derived_habits_are_protected(alice):
 
 
 # --------------------------------------------------------------------------
+# Habit tiers as arithmetic
+#
+# The three tiers were labels for a long time: the screen sorted habits into
+# non-negotiable, target and bonus, and the score counted every one of them the
+# same. That made a missed 5x namoz cost exactly what a missed podcast cost,
+# and it made the headings dishonest. These pin the weighting down.
+# --------------------------------------------------------------------------
+
+def test_the_tiers_are_weighted_in_the_declared_order(fresh):
+    """Non-negotiable outweighs the other two together — or the word is a lie."""
+    w = svc.HABIT_TIER_WEIGHTS
+    assert w["non_negotiable"] > w["target"] > w["bonus"]
+    # At least as much as the other two put together: a day that loses every
+    # mandatory habit can never be a majority-scoring day, whatever else was
+    # ticked.
+    assert w["non_negotiable"] >= w["target"] + w["bonus"]
+    assert sum(w.values()) == 100
+
+
+def test_a_workspace_of_only_mandatory_habits_can_still_reach_full_marks(fresh):
+    """The renormalisation, which is what makes the weighting usable.
+
+    A new workspace holds three non-negotiable habits and nothing else. Under a
+    fixed 50/30/20 split that user is capped at 50% on a day they did every
+    single thing they had — a score they can never move, which is worse than no
+    score. Weights are renormalised over the tiers actually in play.
+    """
+    tiers = fresh.get("/api/habits").json()["tiers"]
+    assert tiers["non_negotiable"]["due"] == 3
+    assert tiers["target"]["due"] == 0 and tiers["bonus"]["due"] == 0
+    # The only tier in play carries the whole 100%.
+    assert tiers["non_negotiable"]["applied"] == 100
+
+
+def test_optional_habits_cannot_carry_a_day_the_mandatory_ones_lost(fresh):
+    """Ticking every bonus habit while skipping the floor is not a good day.
+
+    Under the old flat count this workspace read 3/6 = 50% — a passing-looking
+    number for a day that missed getting up, prayer and the journal entirely.
+
+    Two tiers are in play, so the weights renormalise over 50 + 20 = 70, and
+    the bonus tier's full share is 20/70 ≈ 29. Still well under half, which is
+    the property that matters: the optional habits cannot buy a majority.
+    """
+    for name in ("Podcast", "Read", "Stretch"):
+        fresh.post("/api/habits", json={"name": name, "category": "bonus"})
+    for habit in fresh.get("/api/habits").json()["habits"]:
+        if not habit["protected"]:
+            fresh.post(f"/api/habits/{habit['id']}/toggle")
+
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        assert svc.habit_percent(s, ws, svc.today_local()) == 29
+
+    # And the raw counts are untouched: "3/6 ticked" is still what the list says.
+    done, total = None, None
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        done, total = svc.habit_progress(s, ws, svc.today_local())
+    assert (done, total) == (3, 6)
+
+
+def test_a_mandatory_habit_cannot_be_rescheduled_off_a_day(fresh):
+    """The schedule of a derived habit is a contract with the score.
+
+    "5x namoz, Mondays only" does not mean "I pray on Mondays" — it means the
+    other six days stop being counted and the percentage silently rises. The
+    Mini App stopped offering the picker for these three; this is the half a
+    hand-written request cannot get around.
+    """
+    protected = next(h for h in fresh.get("/api/habits").json()["habits"]
+                     if h["protected"])
+    fresh.patch(f"/api/habits/{protected['id']}", json={"schedule": "1,3"})
+
+    after = next(h for h in fresh.get("/api/habits").json()["habits"]
+                 if h["id"] == protected["id"])
+    assert after["schedule"] == "daily"
+    assert after["due"] is True
+
+    # An ordinary habit is still the user's to schedule.
+    fresh.post("/api/habits", json={"name": "Gym", "category": "target"})
+    gym = next(h for h in fresh.get("/api/habits").json()["habits"]
+               if h["name"] == "Gym")
+    fresh.patch(f"/api/habits/{gym['id']}", json={"schedule": "weekdays"})
+    gym = next(h for h in fresh.get("/api/habits").json()["habits"]
+               if h["name"] == "Gym")
+    assert gym["schedule"] == "weekdays"
+
+
+# --------------------------------------------------------------------------
 # Habit order
 # --------------------------------------------------------------------------
 
@@ -924,7 +1014,7 @@ def test_the_privacy_line_is_said_once_on_home():
     assert html.count('class="privacy-strip"') == 1
     assert html.count("privacyNote()") == 2, \
         "the privacy note is defined once and rendered once, on Home"
-    assert "+ privacyNote();" in html.split("SCREENS.home")[1][:900], \
+    assert "+ privacyNote();" in html.split("SCREENS.home")[1][:2000], \
         "the privacy note left Home"
     rule = html.split(".privacy-strip{")[1].split("}")[0]
     assert "position:fixed" not in rule, "the privacy line is chrome again"
@@ -3309,10 +3399,20 @@ def test_the_wake_up_boundary_follows_the_users_timezone(fresh):
 # Notification preferences and per-user report times
 # ==========================================================================
 
-def test_report_defaults_are_on_at_four_and_half_past_nine(alice):
+def test_report_defaults_are_on_at_five_and_half_past_nine(alice):
+    """05:00, not 04:00, and the difference is the whole point.
+
+    The old default was a literal left over from when the scheduler ran on the
+    server clock: 04:00 UTC is 09:00 in Tashkent. Moving the scheduler onto the
+    project clock turned it into four in the morning without failing anything —
+    reports went out on time, every day, to people who were asleep.
+
+    05:00 matches the product's own wake target, so the report arrives as the
+    day is meant to start rather than an hour before it.
+    """
     with SessionLocal() as s:
         prefs = svc.prefs_for(s.get(User, ALICE["id"]))
-    assert prefs["morning_report"] is True and prefs["morning_time"] == "04:00"
+    assert prefs["morning_report"] is True and prefs["morning_time"] == "05:00"
     assert prefs["evening_report"] is True and prefs["evening_time"] == "21:30"
 
 
@@ -3321,25 +3421,30 @@ def test_a_report_is_due_only_inside_its_window(alice):
         user = s.get(User, ALICE["id"])
         today = svc.today_local()
         assert svc.report_is_due(user, "morning",
-                                 datetime.combine(today, dtime(4, 5))) is True
+                                 datetime.combine(today, dtime(5, 5))) is True
         # Far past its time: a "good morning" at noon is noise, and a user who
         # joins at 15:00 must not be sent one immediately.
         assert svc.report_is_due(user, "morning",
                                  datetime.combine(today, dtime(12, 0))) is False
+        # And nothing at four in the morning any more: 04:05 is before the
+        # window opens, which is the whole reason the default moved.
         assert svc.report_is_due(user, "morning",
-                                 datetime.combine(today, dtime(3, 30))) is False
+                                 datetime.combine(today, dtime(4, 5))) is False
 
 
 def test_a_report_time_the_user_chose_is_the_one_used(alice):
-    alice.post("/api/prefs", json={"morning_time": "07:15"})
+    # Far enough from the 05:00 default that the 90-minute window cannot cover
+    # both — otherwise the test passes without proving the choice was read.
+    alice.post("/api/prefs", json={"morning_time": "09:30"})
     with SessionLocal() as s:
         user = s.get(User, ALICE["id"])
         today = svc.today_local()
         assert svc.report_is_due(user, "morning",
-                                 datetime.combine(today, dtime(7, 20))) is True
+                                 datetime.combine(today, dtime(9, 35))) is True
+        # The default no longer applies once a time has been chosen.
         assert svc.report_is_due(user, "morning",
-                                 datetime.combine(today, dtime(4, 5))) is False
-    alice.post("/api/prefs", json={"morning_time": "04:00"})
+                                 datetime.combine(today, dtime(5, 5))) is False
+    alice.post("/api/prefs", json={"morning_time": "05:00"})
 
 
 def test_a_switched_off_report_is_never_due(alice):
@@ -4124,17 +4229,22 @@ def test_a_form_control_saves_on_change_and_never_on_click():
 
 
 def test_home_reads_the_day_as_four_separate_blocks():
-    """Greeting and now, then the score, then today's three parts, then work.
+    """Greeting and now, then today's work, then the numbers about it.
 
     Tasks, habits and prayer used to be three cells inside the overall card,
     which made them look like a footnote to the percentage above them. They are
     what the percentage is made of, and they are three different things — so
     each is its own block, in its own colour, opening its own screen.
+
+    Work now comes before the numbers. The Now card names one task and the
+    question that immediately follows is "what else is there today?"; the
+    answer used to be two blocks of percentages further down the scroll. A
+    score is a reading of the day's work, so it is placed after the work.
     """
     html = (ROOT / "webapp" / "index.html").read_text()
     home = html[html.index("SCREENS.home = () => {"):html.index("function privacyNote(")]
     order = [home.index(f"{fn}(d)") for fn in
-             ("headBlock", "nowBlock", "scoreBlock", "todayBlock", "tasksBlock")]
+             ("headBlock", "nowBlock", "tasksBlock", "scoreBlock", "todayBlock")]
     assert order == sorted(order), "Home's blocks are out of order"
 
     score = html[html.index("function scoreBlock(d){"):html.index("function todayBlock(d){")]
@@ -5446,3 +5556,637 @@ def test_referral_work_did_not_change_the_new_user_defaults():
     assert names == ["Get up", "5x namoz", "Kundalik"]
     for gone in ("Deep flow", "Sport", "Podcast", "Read"):
         assert gone not in names
+
+
+# ==========================================================================
+# Screen changes from the UX round
+#
+# These read the Mini App source rather than a rendered DOM, which is what the
+# rest of the file's UI tests do: there is no build step and no component tree
+# to mount, so the source *is* the artefact. Each one pins a decision that is
+# invisible from the API and easy to undo by accident.
+# ==========================================================================
+
+def test_every_priority_paints_its_own_edge():
+    """Red, amber, and a quiet default — not one colour and two blanks.
+
+    Only `.pri-high` was styled, so "is this urgent?" had exactly two answers
+    on screen: red, or unknown. Medium is deliberately the weaker of the two
+    colours — it is what every task is born with, and at full strength it would
+    drown the red it exists to set off.
+    """
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert ".trow.pri-high{border-left-color:var(--danger)}" in html
+    assert ".trow.pri-medium{border-left-color:color-mix(" in html
+    assert ".trow.pri-low{border-left-color:var(--border)}" in html
+    # And the row still carries the class the CSS hangs off.
+    assert 'return `<div class="trow pri-${task.priority}">' in html
+
+
+def test_the_prayer_screen_asks_for_honesty_in_every_language():
+    """One quiet line, above the rows, in all three languages.
+
+    Above rather than below, because it is only worth anything if it is read
+    before the tapping starts.
+    """
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert html.count("prayer_honesty:") == 3, \
+        "the prayer note is missing from a language"
+    prayer = html[html.index("function prayerTab(){"):html.index("function journalTab(){")]
+    note = prayer.index('t("prayer_honesty")')
+    rows = prayer.index('["bomdod","peshin","asr","shom","xufton"]')
+    assert note < rows, "the honesty note sits below the prayers it is about"
+    # No English left in the Russian string (it was there once).
+    assert "honestly — эта запись" not in html
+
+
+def test_the_three_default_habits_are_not_offered_a_day_picker():
+    """They are every day by definition; the question had one right answer."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    sheet = html[html.index("function habitSheet(h){"):html.index("function missionSheet(")]
+    picker = sheet.index('data-act="habit-sched"')
+    guard = sheet.index("h.protected")
+    assert guard < picker, "the schedule picker is no longer behind the guard"
+    assert 't("habit_always_daily")' in sheet
+    assert html.count("habit_always_daily:") == 3
+
+
+def test_each_habit_tier_shows_what_it_is_worth():
+    """The badge comes from the API's applied weight, not a second formula."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    tab = html[html.index("function habitsTab(){"):html.index("function habitRow(")]
+    assert "data.tiers?.[cat]" in tab
+    assert "tier.applied" in tab
+    assert "sectionHead(TIER_TONE[cat]" in tab and ", badge)" in tab
+
+
+def test_home_puts_the_work_before_the_numbers():
+    """Now → today's tasks → the score. Complements the block-order test."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    home = html[html.index("SCREENS.home = () => {"):html.index("function privacyNote(")]
+    assert home.index("tasksBlock(d)") < home.index("scoreBlock(d)")
+    # And the lower half is introduced as a section rather than a loose card.
+    assert 't("overall_section")' in html
+    assert html.count("overall_section:") == 3
+
+
+# ==========================================================================
+# Personal progression
+#
+# Two progression systems exist and they are deliberately separate: referrals
+# measure who you brought in, this measures how you run your own life. The last
+# test in this block is the one that pins them apart.
+# ==========================================================================
+
+def _progress_user(onboarded: bool = True) -> int:
+    """A bare user with a workspace, outside anybody else's fixtures."""
+    uid = next(_next_id)
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, uid, first_name="Prog")
+        s.get(User, uid).onboarded = onboarded
+        s.commit()
+    return uid
+
+
+def _seed_days(user_id: int, scores: list[int], *, ending: date | None = None,
+               start_offset: int | None = None) -> None:
+    """Write a run of daily scores ending on `ending` (default today).
+
+    Straight into `daily_scores`, because these tests are about what the
+    progression engine does *with* a history, not about reproducing one
+    through the UI a day at a time.
+    """
+    ending = ending or svc.today_local()
+    with SessionLocal() as s:
+        for i, score in enumerate(reversed(scores)):
+            day = ending - timedelta(days=i if start_offset is None else i + start_offset)
+            s.add(db.DailyScore(user_id=user_id, day=day, total_score=score,
+                                grade=svc.grade_for(score), task_score=score,
+                                habit_score=score, focus_score=score,
+                                prayer_score=score))
+        s.commit()
+
+
+# --- the daily score ------------------------------------------------------
+
+def test_a_daily_score_never_leaves_its_range(alice):
+    """Whatever the components do, the total is a percentage."""
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        for offset in range(0, 5):
+            day = svc.today_local() - timedelta(days=offset)
+            row = svc.recompute_daily_score(s, ALICE["id"], ws, day)
+            assert 0 <= row.total_score <= 100
+        s.commit()
+
+
+@pytest.mark.parametrize("score,grade", [
+    (100, "S"), (90, "S"), (89, "A"), (80, "A"), (79, "B"), (70, "B"),
+    (69, "C"), (60, "C"), (59, "D"), (40, "D"), (39, "E"), (0, "E"),
+])
+def test_grade_boundaries_are_exact(score, grade):
+    assert svc.grade_for(score) == grade
+
+
+def test_the_daily_score_is_the_score_already_on_the_home_screen(alice):
+    """One formula, not two.
+
+    A second set of weights would mean two numbers on two screens of the same
+    app both claiming to be "how today went" and disagreeing by a few points.
+    The daily score *is* the overall percentage.
+    """
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        today = svc.today_local()
+        row = svc.recompute_daily_score(s, ALICE["id"], ws, today)
+        s.commit()
+        assert row.total_score == svc.overall_percent(s, ws, today)
+
+
+def test_a_component_with_no_denominator_is_absent_not_zero(alice):
+    """A day with no tasks is not a day that failed its tasks."""
+    uid = _progress_user()
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        row = svc.recompute_daily_score(s, uid, ws, svc.today_local())
+        s.commit()
+        # No tasks and no weekly focus exist for a brand-new workspace.
+        assert row.task_score == -1 and row.focus_score == -1
+    snapshot = None
+    with SessionLocal() as s:
+        snapshot = svc.progress_snapshot(s, uid)
+    assert snapshot["daily"]["breakdown"]["tasks"] is None
+
+
+# --- XP ----------------------------------------------------------------
+
+def test_the_same_event_is_never_paid_twice():
+    uid = _progress_user()
+    day = svc.today_local()
+    with SessionLocal() as s:
+        first = svc.award_xp(s, uid, f"task:{uid}:1", "task", 10, day)
+        second = svc.award_xp(s, uid, f"task:{uid}:1", "task", 10, day)
+        s.commit()
+        assert (first, second) == (10, 0)
+        assert svc.xp_total(s, uid) == 10
+
+
+def test_completing_undoing_and_completing_again_pays_once(fresh):
+    """The toggle-farming hole, closed by the key rather than by a guard."""
+    uid = fresh.user["id"]
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        task_id = svc.add_task(s, ws, "Farm me").id
+        s.commit()
+
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        for _ in range(5):
+            svc.complete_task(s, ws, task_id)
+            svc.sync_day_xp(s, uid, ws, svc.today_local())
+            svc.reopen_task(s, ws, task_id)
+        svc.complete_task(s, ws, task_id)
+        svc.sync_day_xp(s, uid, ws, svc.today_local())
+        s.commit()
+        paid = s.scalar(select(func.count()).select_from(db.XPEvent).where(
+            db.XPEvent.user_id == uid,
+            db.XPEvent.event_key == f"task:{task_id}"))
+    assert paid == 1
+
+
+def test_ordinary_activity_cannot_exceed_the_daily_cap():
+    """Forty trivial tasks must not out-earn a real day."""
+    uid = _progress_user()
+    day = svc.today_local()
+    with SessionLocal() as s:
+        for i in range(40):
+            svc.award_xp(s, uid, f"task:{uid}:{i}", "task", 10, day)
+        s.commit()
+        assert svc.xp_total(s, uid) == svc.XP_DAILY_CAP
+
+
+def test_milestone_xp_is_paid_outside_the_cap():
+    """A 30-day streak bonus that vanished because the day was busy is a lie."""
+    uid = _progress_user()
+    day = svc.today_local()
+    with SessionLocal() as s:
+        for i in range(40):
+            svc.award_xp(s, uid, f"task:{uid}:{i}", "task", 10, day)
+        bonus = svc.award_xp(s, uid, f"streak_30:{uid}:{day}", "streak", 200, day)
+        s.commit()
+        assert bonus == 200
+        assert svc.xp_total(s, uid) == svc.XP_DAILY_CAP + 200
+
+
+def test_the_cap_is_counted_per_local_day():
+    uid = _progress_user()
+    today = svc.today_local()
+    with SessionLocal() as s:
+        for i in range(40):
+            svc.award_xp(s, uid, f"task:{uid}:a{i}", "task", 10, today)
+        for i in range(40):
+            svc.award_xp(s, uid, f"task:{uid}:b{i}", "task", 10,
+                         today - timedelta(days=1))
+        s.commit()
+        assert svc.xp_total(s, uid) == svc.XP_DAILY_CAP * 2
+
+
+# --- levels ---------------------------------------------------------------
+
+@pytest.mark.parametrize("xp,key,number", [
+    (0, "starter", 1), (499, "starter", 1), (500, "builder", 2),
+    (1499, "builder", 2), (1500, "operator", 3), (3500, "architect", 4),
+    (7000, "commander", 5), (15000, "elite", 6), (30000, "master", 7),
+    (999999, "master", 7),
+])
+def test_level_thresholds(xp, key, number):
+    level = svc.get_personal_level(xp)
+    assert (level["key"], level["number"]) == (key, number)
+
+
+def test_the_top_level_has_nowhere_left_to_go():
+    level = svc.get_personal_level(50000)
+    assert level["next_threshold"] is None and level["remaining"] == 0
+    assert level["progress"] == 1.0
+
+
+def test_level_progress_is_measured_across_the_gap_it_is_in():
+    """2,000 XP is a third of the way from Operator to Architect, not of 3,500."""
+    level = svc.get_personal_level(2000)
+    assert level["key"] == "operator"
+    assert level["remaining"] == 1500
+    assert level["progress"] == round(500 / 2000, 4)
+
+
+def test_level_is_computed_from_xp_and_never_stored_separately():
+    """A stored level number is a second copy that drifts on replay."""
+    assert not hasattr(db.UserProgress, "level")
+    assert not hasattr(db.UserProgress, "level_key")
+
+
+# --- streak, recovery, comeback -------------------------------------------
+
+def test_a_qualifying_day_extends_the_streak():
+    uid = _progress_user()
+    with SessionLocal() as s:
+        p = svc._progress_row(s, uid)
+        day = svc.today_local() - timedelta(days=3)
+        for i in range(3):
+            svc._apply_day_to_streak(p, day + timedelta(days=i), 80)
+        s.commit()
+        assert p.current_streak == 3 and p.best_streak == 3
+
+
+def test_a_weak_day_spends_a_recovery_day_instead_of_resetting():
+    """One hard day must not cost a month."""
+    uid = _progress_user()
+    with SessionLocal() as s:
+        p = svc._progress_row(s, uid)
+        start = svc.today_local() - timedelta(days=10)
+        for i in range(8):
+            svc._apply_day_to_streak(p, start + timedelta(days=i), 80)
+        assert p.current_streak == 8
+
+        moved = svc._apply_day_to_streak(p, start + timedelta(days=8), 20)
+        s.commit()
+        assert moved["recovery_used"] is True
+        assert p.current_streak == 8, "the streak was not protected"
+        assert p.recovery_used == 1
+
+
+def test_the_recovery_allowance_runs_out():
+    uid = _progress_user()
+    with SessionLocal() as s:
+        p = svc._progress_row(s, uid)
+        start = svc.today_local() - timedelta(days=10)
+        svc._apply_day_to_streak(p, start, 80)
+        for i in (1, 2):
+            svc._apply_day_to_streak(p, start + timedelta(days=i), 10)
+        assert p.recovery_used == svc.RECOVERY_DAYS_PER_MONTH
+        assert p.current_streak == 1
+        # The third weak day in a row has nothing left to spend.
+        svc._apply_day_to_streak(p, start + timedelta(days=3), 10)
+        s.commit()
+        assert p.current_streak == 0
+
+
+def test_the_recovery_allowance_comes_back_next_month():
+    uid = _progress_user()
+    with SessionLocal() as s:
+        p = svc._progress_row(s, uid)
+        p.recovery_used = svc.RECOVERY_DAYS_PER_MONTH
+        p.recovery_month = "2026-07"
+        p.last_score_date = date(2026, 7, 31)
+        p.current_streak = 12
+        svc._apply_day_to_streak(p, date(2026, 8, 1), 10)
+        s.commit()
+        assert p.recovery_month == "2026-08"
+        assert p.recovery_used == 1 and p.current_streak == 12
+
+
+def test_a_comeback_cannot_be_farmed_by_disappearing():
+    """Returning is worth recognising once, not every third day."""
+    uid = _progress_user()
+    with SessionLocal() as s:
+        p = svc._progress_row(s, uid)
+        base = date(2026, 8, 1)
+        p.last_score_date = base
+        first = svc._apply_day_to_streak(p, base + timedelta(days=6), 80)
+        assert first["comeback"] is True
+
+        # Vanish and return again, inside the cooldown.
+        again = svc._apply_day_to_streak(p, base + timedelta(days=12), 80)
+        s.commit()
+        assert again["comeback"] is False, "a comeback was farmable"
+
+
+def test_backfilling_an_earlier_day_never_rewrites_the_streak():
+    uid = _progress_user()
+    with SessionLocal() as s:
+        p = svc._progress_row(s, uid)
+        today = svc.today_local()
+        svc._apply_day_to_streak(p, today, 90)
+        before = p.current_streak
+        svc._apply_day_to_streak(p, today - timedelta(days=5), 10)
+        s.commit()
+        assert p.current_streak == before
+        assert p.last_score_date == today
+
+
+def test_the_same_day_arriving_twice_moves_nothing():
+    """Every write in the product triggers a refresh; most are the same day."""
+    uid = _progress_user()
+    with SessionLocal() as s:
+        p = svc._progress_row(s, uid)
+        today = svc.today_local()
+        svc._apply_day_to_streak(p, today - timedelta(days=1), 80)
+        svc._apply_day_to_streak(p, today, 80)
+        assert p.current_streak == 2
+        for _ in range(10):
+            svc._apply_day_to_streak(p, today, 80)
+        s.commit()
+        assert p.current_streak == 2
+
+
+# --- perfect days ---------------------------------------------------------
+
+def test_a_perfect_day_is_paid_once_however_often_the_day_is_rescored():
+    uid = _progress_user()
+    day = svc.today_local()
+    with SessionLocal() as s:
+        for _ in range(6):
+            svc.award_xp(s, uid, f"perfect_day:{uid}:{day}", "perfect_day",
+                         svc.XP_VALUES["perfect_day"], day)
+        s.commit()
+        assert svc.xp_total(s, uid) == svc.XP_VALUES["perfect_day"]
+
+
+# --- ranking --------------------------------------------------------------
+
+def test_users_are_ranked_by_recent_performance():
+    """Alice ahead of Bob ahead of Charlie, on their last 30 days."""
+    strong, middle, weak = (_progress_user() for _ in range(3))
+    _seed_days(strong, [95] * 10)
+    _seed_days(middle, [80] * 10)
+    _seed_days(weak, [65] * 10)
+
+    today = svc.today_local()
+    with SessionLocal() as s:
+        for uid in (strong, middle, weak):
+            p = svc._progress_row(s, uid)
+            p.scored_days = 10
+            p.performance_index_30d = svc.performance_index(s, uid, today)
+        s.commit()
+        ranks = {uid: svc.global_rank(s, uid)["global"]
+                 for uid in (strong, middle, weak)}
+        s.commit()
+
+    assert ranks[strong] < ranks[middle] < ranks[weak]
+
+
+def test_equal_performance_shares_a_rank():
+    """#184, #184, #186 — not invented decimals to force an order."""
+    a, b = _progress_user(), _progress_user()
+    with SessionLocal() as s:
+        for uid in (a, b):
+            p = svc._progress_row(s, uid)
+            p.scored_days = svc.RANK_MIN_DAYS
+            p.performance_index_30d = 77.0
+        s.commit()
+        assert svc.global_rank(s, a)["global"] == svc.global_rank(s, b)["global"]
+        s.commit()
+
+
+def test_a_brand_new_account_is_not_ranked_on_one_good_day():
+    """One 100-point day must not sit above people with a year behind them."""
+    uid = _progress_user()
+    _seed_days(uid, [100, 100])
+    with SessionLocal() as s:
+        p = svc._progress_row(s, uid)
+        p.scored_days = 2
+        p.performance_index_30d = 100.0
+        s.commit()
+        rank = svc.global_rank(s, uid)
+        s.commit()
+    assert rank["eligible"] is False
+    assert rank["global"] is None
+    assert rank["days_remaining"] == svc.RANK_MIN_DAYS - 2
+
+
+def test_going_quiet_lowers_the_rolling_index_on_its_own():
+    """Calendar days, not active days — no punishment rule needed."""
+    uid = _progress_user()
+    today = svc.today_local()
+    # Ten strong days, but they finished three weeks ago.
+    _seed_days(uid, [95] * 10, ending=today - timedelta(days=20))
+    with SessionLocal() as s:
+        stale = svc.performance_index(s, uid, today)
+
+    active = _progress_user()
+    _seed_days(active, [95] * 10)
+    with SessionLocal() as s:
+        fresh_index = svc.performance_index(s, active, today)
+
+    assert stale < fresh_index
+
+
+def test_a_personal_best_rank_only_ever_improves():
+    uid = _progress_user()
+    with SessionLocal() as s:
+        p = svc._progress_row(s, uid)
+        p.scored_days = svc.RANK_MIN_DAYS
+        p.best_global_rank = 42
+        p.performance_index_30d = 1.0
+        s.commit()
+        # Comfortably more than 42 people ahead, so this read really does
+        # produce a worse rank than the stored best.
+        for _ in range(60):
+            s.add(db.UserProgress(user_id=next(_next_id),
+                                  scored_days=svc.RANK_MIN_DAYS,
+                                  performance_index_30d=99.0))
+        s.commit()
+        rank = svc.global_rank(s, uid)
+        s.commit()
+    assert rank["global"] > 42
+    assert rank["best"] == 42, "a worse rank overwrote the personal best"
+
+
+def test_rank_movement_is_never_invented_on_a_first_view():
+    uid = _progress_user()
+    with SessionLocal() as s:
+        p = svc._progress_row(s, uid)
+        p.scored_days = svc.RANK_MIN_DAYS
+        p.performance_index_30d = 50.0
+        s.commit()
+        assert svc.global_rank(s, uid)["movement"] is None
+        s.commit()
+    with SessionLocal() as s:
+        # Second read has a previous rank to compare against.
+        assert svc.global_rank(s, uid)["movement"] == 0
+        s.commit()
+
+
+# --- the two systems stay apart -------------------------------------------
+
+def test_referrals_do_not_move_a_personal_rank():
+    """The rule the whole split exists for.
+
+    Somebody who invited a hundred people and does not use ErnestOS must not
+    outrank somebody who uses it every day.
+    """
+    inviter = _progress_user()
+    worker = _progress_user()
+    _seed_days(inviter, [30] * 10)
+    _seed_days(worker, [95] * 10)
+
+    today = svc.today_local()
+    with SessionLocal() as s:
+        # Give the inviter a pile of qualified referrals.
+        for _ in range(20):
+            friend = next(_next_id)
+            svc.get_or_create_user(s, friend, first_name="F")
+            s.add(db.Referral(referred_user_id=friend, inviter_user_id=inviter,
+                              status="qualified", source="bot"))
+        s.commit()
+        for uid in (inviter, worker):
+            p = svc._progress_row(s, uid)
+            p.scored_days = 10
+            p.performance_index_30d = svc.performance_index(s, uid, today)
+        s.commit()
+        ranks = {uid: svc.global_rank(s, uid)["global"] for uid in (inviter, worker)}
+        s.commit()
+
+    assert ranks[worker] < ranks[inviter], "referrals bought a personal rank"
+
+
+# --- privacy --------------------------------------------------------------
+
+def test_the_progress_endpoint_takes_no_user_id(alice):
+    """No parameter to tamper with is stronger than a parameter checked well."""
+    import inspect as _inspect
+    signature = _inspect.signature(application.api_progress_me)
+    assert list(signature.parameters) == ["init"]
+
+    source = (ROOT / "app.py").read_text()
+    assert '@app.get("/api/progress/me")' in source
+    assert "/api/progress/{" not in source
+
+
+def test_progress_is_scoped_to_the_caller(alice, bob):
+    """Two callers, two different answers, no way to ask for the other's."""
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        svc.recompute_daily_score(s, ALICE["id"], ws, svc.today_local())
+        svc.award_xp(s, ALICE["id"], f"probe:{ALICE['id']}", "task", 10,
+                     svc.today_local())
+        s.commit()
+
+    mine = alice.get("/api/progress/me")
+    theirs = bob.get("/api/progress/me")
+    assert mine.status_code == 200 and theirs.status_code == 200
+    assert mine.json()["xp"]["total"] != theirs.json()["xp"]["total"]
+
+    # And nothing in the payload names another human being.
+    body = mine.text.lower()
+    for leak in ("bob", "username", "telegram_id", "first_name"):
+        assert leak not in body, f"{leak} leaked into the progress payload"
+
+
+def test_the_progress_endpoint_needs_a_signature(client):
+    assert client.get("/api/progress/me").status_code == 401
+    assert client.get("/api/progress/achievements").status_code == 401
+
+
+# --- achievements ---------------------------------------------------------
+
+def test_an_achievement_is_unlocked_once(alice):
+    uid = _progress_user()
+    with SessionLocal() as s:
+        p = svc._progress_row(s, uid)
+        p.scored_days = 1
+        row = db.DailyScore(user_id=uid, day=svc.today_local(), total_score=50,
+                            grade="D")
+        s.add(row)
+        s.flush()
+        first = svc.check_achievements(s, uid, p, row)
+        second = svc.check_achievements(s, uid, p, row)
+        s.commit()
+    assert "first_step" in first
+    assert second == [], "an achievement was handed out twice"
+
+
+def test_the_achievement_list_shows_locked_ones_with_progress(alice):
+    body = alice.get("/api/progress/achievements").json()["achievements"]
+    assert len(body) == len(svc.ACHIEVEMENTS)
+    locked = [a for a in body if not a["unlocked"]]
+    assert locked, "every achievement was already unlocked"
+    for entry in body:
+        assert entry["progress"] <= entry["target"]
+
+
+# --- the existing product must not regress -------------------------------
+
+def test_progression_did_not_change_the_new_user_defaults():
+    """User creation and the action funnel were both edited. Still three."""
+    uid = next(_next_id)
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, uid, first_name="Still")
+        s.commit()
+        ws = svc.workspace_id_for(s, uid)
+        names = [h["name"] for h in svc.list_habits(s, ws)]
+    assert names == ["Get up", "5x namoz", "Kundalik"]
+    for gone in ("Deep flow", "Sport", "Podcast", "Read"):
+        assert gone not in names
+
+
+def test_a_progression_failure_never_fails_the_users_action(alice, monkeypatch):
+    """Ticking a task is what they asked for. Scoring it is bookkeeping."""
+    def explode(*a, **kw):
+        raise RuntimeError("progression is broken")
+
+    monkeypatch.setattr(svc, "refresh_progress", explode)
+    with SessionLocal() as s:
+        outcome = svc.record_action_and_progress(s, ALICE["id"])
+    assert outcome["actions"] > 0
+    assert outcome["progress"] == {}
+
+
+def test_deleting_an_account_takes_its_progression_with_it():
+    """No orphan rows, and no progression outliving the person."""
+    uid = _progress_user()
+    with SessionLocal() as s:
+        svc.award_xp(s, uid, f"task:{uid}:x", "task", 10, svc.today_local())
+        svc.refresh_progress(s, uid)
+        s.commit()
+        assert s.get(db.UserProgress, uid) is not None
+
+    with SessionLocal() as s:
+        assert svc.delete_account(s, uid) is True
+        s.commit()
+
+    with SessionLocal() as s:
+        assert s.get(db.UserProgress, uid) is None
+        for model in (db.XPEvent, db.DailyScore, db.UserAchievement):
+            left = s.scalar(select(func.count()).select_from(model)
+                            .where(model.user_id == uid))
+            assert left == 0, f"{model.__tablename__} kept orphan rows"

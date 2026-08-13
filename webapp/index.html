@@ -733,10 +733,15 @@ label{display:block;font-size:12px;color:var(--text-2);margin:var(--s3) 0 var(--
       padding:var(--s2) var(--s3);display:flex;align-items:flex-start;
       gap:var(--s2)}
 .trow + .trow{margin-top:2px}
-/* Only the exception is marked. "Medium" is the default every task is born
-   with, so colouring it painted an amber stripe down the whole list and left
-   the genuinely urgent one indistinguishable from the rest. */
+/* The edge carries the priority, as a colour: red is urgent, amber is the
+   ordinary middle, and low is left unpainted so the list still has somewhere
+   quiet to rest. Amber sits at 55% alpha rather than full strength — "medium"
+   is what every task is born with, so a full-strength stripe on all of them
+   would drown the red one it exists to set off. Full red still reads as the
+   only saturated edge on the screen. */
 .trow.pri-high{border-left-color:var(--danger)}
+.trow.pri-medium{border-left-color:color-mix(in srgb,var(--warn) 55%,transparent)}
+.trow.pri-low{border-left-color:var(--border)}
 .trow .tt{font-weight:550;line-height:1.35;overflow-wrap:anywhere;cursor:pointer}
 .trow .td{font-size:12.5px;color:var(--text-2);margin-top:3px;display:flex;
           align-items:center;gap:6px;flex-wrap:wrap}
@@ -1017,6 +1022,7 @@ const DICT = {
   quote_ph:"O'zingizga kuch beradigan gap", quote_add:"Quote qo'shish",
   overall:"Umumiy", streak_short:"Ketma-ket", prayer:"Namoz",
   overall_sub:"Kun · hafta · oy", today_parts:"Bugungi ko'rsatkichlar",
+  overall_section:"Umumiy ko'rsatkichlar",
   vs_yesterday:"kechagiga nisbatan", vs_yesterday_none:"Kecha o'lchanmagan",
   today_mission:"Bugungi missiya",
   mission_add:"Vazifa tanlang",
@@ -1095,6 +1101,7 @@ const DICT = {
   not_today:"Bugun rejada yo'q", history:"Tarix", streak:"Ketma-ket",
   last7:"Oxirgi 7 kun", last30:"Oxirgi 30 kun", completion:"Bajarilish",
   auto_habit:"Bu odat avtomatik belgilanadi", habit_auto_prayer:"Namoz bo'limidan",
+  habit_always_daily:"o'zgartirib bo'lmaydi",
   habit_auto_journal:"Kundalik bo'limidan",
   reorder:"Tartib", reorder_hint:"Ushlab suring yoki ↑ ↓ dan foydalaning",
   move_up:"Yuqoriga", move_down:"Pastga", finish:"Tayyor",
@@ -1106,6 +1113,7 @@ const DICT = {
   full_day:"5 mahal to'liq", prayer_clear:"Belgini olib tashlash",
   performed_of:"{done} / {total} mahal o'qildi",
   ask_gender:"Jinsingiz", ask_gender_why:"Namoz holatlarini to'g'ri ko'rsatish uchun",
+  prayer_honesty:"Iltimos, vijdonan javob bering — bu yozuv faqat siz uchun.",
   male:"Erkak", female:"Ayol",
   pr_full_days:"5/5 bo'lgan kunlar", pr_on_time:"Vaqtida", pr_jamaat:"Jamoat",
   pr_qaza:"Qazo", pr_missed:"O'qilmadi", pr_consistency:"Barqarorlik",
@@ -1171,6 +1179,33 @@ const DICT = {
   ref_copied:"Link nusxalandi", ref_copy_failed:"Nusxalab bo'lmadi",
   ref_not_configured:"Taklif havolasi hozir mavjud emas.",
   ref_share_text:"Hayotingni shunchaki rejalashtirma — tizimlashtir.\n\nMen ErnestOS'dan foydalanyapman. Sen ham sinab ko'r 👇",
+  /* --- Shaxsiy progressiya. Referral darajalaridan butunlay ajratilgan —
+         biri hayotni qanday boshqarayotganingizni, ikkinchisi kimni olib
+         kelganingizni o'lchaydi. Ikkalasi hech qachon aralashmaydi. --- */
+  progress:"Progressiya", plevel_starter:"Boshlovchi", plevel_builder:"Builder",
+  plevel_operator:"Operator", plevel_architect:"Architect",
+  plevel_commander:"Commander", plevel_elite:"Elite", plevel_master:"Master",
+  xp_to_next:"{level} darajasiga {n} XP qoldi",
+  grade_S:"Mukammal kun", grade_A:"A'lo", grade_B:"Kuchli", grade_C:"Harakat",
+  grade_D:"Tiklanish", grade_E:"Qaytadan",
+  to_perfect_day:"Mukammal kun uchun yana {n} ball.",
+  perfect_day:"Mukammal kun", perfect_days:"Mukammal kunlar",
+  nothing_measured_yet:"Bugun hali hech narsa o'lchanmagan.",
+  consistency:"Izchillik", best:"Eng yaxshi", recovery_days:"Tiklanish kunlari",
+  recovery_hint:"Kuni {n} balldan yuqori bo'lsa streak davom etadi. Oyiga 2 marta himoyalanadi.",
+  rank:"Reyting", rank_global:"Global", rank_weekly:"Haftalik",
+  rank_best:"Shaxsiy rekord", rank_users:"Foydalanuvchi",
+  rank_locked:"Reyting ochilishiga {n} kun qoldi.",
+  rank_locked_short:"{n} kun",
+  top_percent_of:"{n} foydalanuvchi ichida yuqori {p}%",
+  rank_privacy:"Faqat o'z o'rningizni ko'rasiz. Hech kimning ismi ko'rsatilmaydi.",
+  achievements:"Yutuqlar", unlocked:"Ochildi",
+  ach_first_step:"Birinchi qadam", ach_perfect_day:"Mukammal kun",
+  ach_consistent:"7 kun izchillik", ach_disciplined:"30 kun intizom",
+  ach_century:"100 vazifa", ach_early_riser:"Erta turuvchi",
+  ach_focused:"Fokusda", ach_never_miss_twice:"Ikki marta o'tkazmadim",
+  ach_comeback:"Qaytish", ach_architect:"Architect", ach_commander:"Commander",
+  ach_elite:"Elite", ach_master:"Master",
   ref_lvl_new:"Boshlanish", ref_lvl_inviter:"Taklifchi", ref_lvl_builder:"Builder",
   ref_lvl_connector:"Connector", ref_lvl_ambassador:"Ambassador",
   data_yours:"Ma'lumotlaringiz — sizniki",
@@ -1230,6 +1265,7 @@ const DICT = {
   quote_ph:"Something that keeps you going", quote_add:"Add a quote",
   overall:"Overall", streak_short:"Streak", prayer:"Prayer",
   overall_sub:"Day · week · month", today_parts:"Today's numbers",
+  overall_section:"Overall numbers",
   vs_yesterday:"vs yesterday", vs_yesterday_none:"Nothing measured yesterday",
   today_mission:"Today's mission",
   mission_add:"Choose a task",
@@ -1304,6 +1340,7 @@ const DICT = {
   not_today:"Not scheduled today", history:"History", streak:"Streak",
   last7:"Last 7 days", last30:"Last 30 days", completion:"Completion",
   auto_habit:"This habit is marked automatically", habit_auto_prayer:"from the Prayer tab",
+  habit_always_daily:"cannot be changed",
   habit_auto_journal:"from the Journal tab",
   reorder:"Reorder", reorder_hint:"Drag to reorder, or use ↑ ↓",
   move_up:"Move up", move_down:"Move down", finish:"Done",
@@ -1314,6 +1351,7 @@ const DICT = {
   full_day:"All five prayed", prayer_clear:"Clear this entry",
   performed_of:"{done} of {total} prayed",
   ask_gender:"Your gender", ask_gender_why:"So prayer statuses are shown correctly",
+  prayer_honesty:"Please answer honestly — this record is for you alone.",
   male:"Male", female:"Female",
   pr_full_days:"Days with all five", pr_on_time:"On time", pr_jamaat:"Jamaat",
   pr_qaza:"Qaza", pr_missed:"Missed", pr_consistency:"Consistency",
@@ -1373,6 +1411,33 @@ const DICT = {
   ref_copied:"Link copied", ref_copy_failed:"Could not copy",
   ref_not_configured:"Invite links aren't available right now.",
   ref_share_text:"Don't just plan your life — systemize it.\n\nI'm using ErnestOS. Try it with me 👇",
+  /* --- Personal progression, kept entirely apart from referral status —
+         one measures how you run your life, the other measures who you
+         brought in. The two never mix. --- */
+  progress:"Progress", plevel_starter:"Starter", plevel_builder:"Builder",
+  plevel_operator:"Operator", plevel_architect:"Architect",
+  plevel_commander:"Commander", plevel_elite:"Elite", plevel_master:"Master",
+  xp_to_next:"{n} XP to {level}",
+  grade_S:"Perfect day", grade_A:"Excellent", grade_B:"Strong",
+  grade_C:"Progress", grade_D:"Recovery", grade_E:"Reset",
+  to_perfect_day:"{n} more points for a Perfect Day.",
+  perfect_day:"Perfect day", perfect_days:"Perfect days",
+  nothing_measured_yet:"Nothing measured today yet.",
+  consistency:"Consistency", best:"Best", recovery_days:"Recovery days",
+  recovery_hint:"A day above {n} keeps the streak. Two protected days a month.",
+  rank:"Rank", rank_global:"Global", rank_weekly:"Weekly",
+  rank_best:"Personal best", rank_users:"Users",
+  rank_locked:"Rank unlocks in {n} days.",
+  rank_locked_short:"{n}d",
+  top_percent_of:"Top {p}% of {n} users",
+  rank_privacy:"You only ever see your own position. No one is named.",
+  achievements:"Achievements", unlocked:"Unlocked",
+  ach_first_step:"First step", ach_perfect_day:"Perfect day",
+  ach_consistent:"7 day consistency", ach_disciplined:"30 days disciplined",
+  ach_century:"100 tasks", ach_early_riser:"Early riser",
+  ach_focused:"Focused", ach_never_miss_twice:"Never miss twice",
+  ach_comeback:"Comeback", ach_architect:"Architect", ach_commander:"Commander",
+  ach_elite:"Elite", ach_master:"Master",
   ref_lvl_new:"New", ref_lvl_inviter:"Inviter", ref_lvl_builder:"Builder",
   ref_lvl_connector:"Connector", ref_lvl_ambassador:"Ambassador",
   data_yours:"Your data belongs to you",
@@ -1431,6 +1496,7 @@ const DICT = {
   quote_ph:"Фраза, которая вас держит", quote_add:"Добавить цитату",
   overall:"Общий результат", streak_short:"Серия", prayer:"Намаз",
   overall_sub:"День · неделя · месяц", today_parts:"Показатели дня",
+  overall_section:"Общие показатели",
   vs_yesterday:"по сравнению со вчера", vs_yesterday_none:"Вчера ничего не измерено",
   today_mission:"Миссия дня",
   mission_add:"Выберите задачу",
@@ -1505,6 +1571,7 @@ const DICT = {
   not_today:"Сегодня не запланировано", history:"История", streak:"Серия",
   last7:"Последние 7 дней", last30:"Последние 30 дней", completion:"Выполнение",
   auto_habit:"Эта привычка отмечается автоматически", habit_auto_prayer:"из раздела Намаз",
+  habit_always_daily:"нельзя изменить",
   habit_auto_journal:"из раздела Дневник",
   reorder:"Порядок", reorder_hint:"Перетащите или используйте ↑ ↓",
   move_up:"Вверх", move_down:"Вниз", finish:"Готово",
@@ -1515,6 +1582,7 @@ const DICT = {
   full_day:"Все пять совершены", prayer_clear:"Убрать отметку",
   performed_of:"Совершено {done} из {total}",
   ask_gender:"Ваш пол", ask_gender_why:"Чтобы статусы намаза показывались правильно",
+  prayer_honesty:"Пожалуйста, отвечайте честно — эта запись только для вас.",
   male:"Мужской", female:"Женский",
   pr_full_days:"Дней со всеми пятью", pr_on_time:"Вовремя", pr_jamaat:"Джамаат",
   pr_qaza:"Каза", pr_missed:"Пропущено", pr_consistency:"Стабильность",
@@ -1574,6 +1642,33 @@ const DICT = {
   ref_copied:"Ссылка скопирована", ref_copy_failed:"Не удалось скопировать",
   ref_not_configured:"Ссылка-приглашение сейчас недоступна.",
   ref_share_text:"Не просто планируй жизнь — систематизируй её.\n\nЯ пользуюсь ErnestOS. Попробуй и ты 👇",
+  /* --- Личная прогрессия, полностью отдельная от реферального статуса —
+         одно измеряет, как вы управляете своей жизнью, другое — кого вы
+         привели. Они никогда не смешиваются. --- */
+  progress:"Прогресс", plevel_starter:"Начинающий", plevel_builder:"Builder",
+  plevel_operator:"Operator", plevel_architect:"Architect",
+  plevel_commander:"Commander", plevel_elite:"Elite", plevel_master:"Master",
+  xp_to_next:"{n} XP до уровня {level}",
+  grade_S:"Идеальный день", grade_A:"Отлично", grade_B:"Уверенно",
+  grade_C:"Движение", grade_D:"Восстановление", grade_E:"С начала",
+  to_perfect_day:"Ещё {n} баллов до идеального дня.",
+  perfect_day:"Идеальный день", perfect_days:"Идеальные дни",
+  nothing_measured_yet:"Сегодня пока нечего измерять.",
+  consistency:"Постоянство", best:"Лучший", recovery_days:"Дни восстановления",
+  recovery_hint:"День выше {n} баллов сохраняет серию. Два защищённых дня в месяц.",
+  rank:"Рейтинг", rank_global:"Общий", rank_weekly:"Недельный",
+  rank_best:"Личный рекорд", rank_users:"Пользователей",
+  rank_locked:"Рейтинг откроется через {n} дн.",
+  rank_locked_short:"{n} дн",
+  top_percent_of:"Топ {p}% из {n} пользователей",
+  rank_privacy:"Вы видите только своё место. Ничьи имена не показываются.",
+  achievements:"Достижения", unlocked:"Получено",
+  ach_first_step:"Первый шаг", ach_perfect_day:"Идеальный день",
+  ach_consistent:"7 дней подряд", ach_disciplined:"30 дней дисциплины",
+  ach_century:"100 задач", ach_early_riser:"Ранний подъём",
+  ach_focused:"В фокусе", ach_never_miss_twice:"Не пропускать дважды",
+  ach_comeback:"Возвращение", ach_architect:"Architect",
+  ach_commander:"Commander", ach_elite:"Elite", ach_master:"Master",
   ref_lvl_new:"Начало", ref_lvl_inviter:"Пригласивший", ref_lvl_builder:"Builder",
   ref_lvl_connector:"Connector", ref_lvl_ambassador:"Ambassador",
   data_yours:"Ваши данные принадлежат вам",
@@ -1723,6 +1818,13 @@ const state = {
   //: Filled by /api/referrals/me when the invite sheet opens. Counts only —
   //: the API never returns who was invited.
   referral:null,
+  //: Personal progression, loaded with Home. Separate from `referral` in the
+  //: state for the same reason the two are separate in the database: how well
+  //: somebody runs their own life and how many people they brought in are
+  //: different questions, and nothing should make them look like one.
+  progress:null,
+  //: Filled on demand when the progress sheet opens its achievements.
+  achievements:null,
 };
 
 const D = () => DICT[state.lang] || DICT.uz;
@@ -1891,12 +1993,17 @@ function lineChart(series, keys){
    ================================================================== */
 const SCREENS = {};
 
-/* Home, top to bottom: who and when, then ONE action, then today's
-   numbers, then the three that matter, the week's focus, the rest of
-   today, and the week strip. Everything on this screen is either the
-   next action or a number about today. Editing and deleting live on the
-   screens that own the data, so a mis-tap here cannot destroy
-   anything. */
+/* Home, top to bottom: who and when, then ONE action, then the work that
+   action came out of, and only then the numbers. Everything on this screen is
+   either the next action or a number about today. Editing and deleting live on
+   the screens that own the data, so a mis-tap here cannot destroy anything.
+
+   Work before numbers, and that order is deliberate. The Now card names one
+   task; the question it immediately raises is "what else is there today?", and
+   the answer used to be two blocks of percentages further down the scroll. A
+   score is a reading *of* the day's work, so it belongs after the work it is
+   measuring — somebody who opens Home to act now gets the list without
+   scrolling, and somebody who opens it to check on themselves scrolls once. */
 SCREENS.home = () => {
   const d = state.home;
   if(!d) return `<div class="spin"></div>`;
@@ -1916,9 +2023,10 @@ SCREENS.home = () => {
      scrolling. */
   return headBlock(d)
        + nowBlock(d)
+       + tasksBlock(d)
        + scoreBlock(d)
        + todayBlock(d)
-       + tasksBlock(d)
+       + progressCard()
        + privacyNote();
 };
 
@@ -2106,7 +2214,13 @@ function scoreBlock(d){
       </div>`;
   };
 
-  return `<div class="tinted block tone-2" style="margin-top:var(--s3)">
+  /* The block now opens the lower half of Home rather than sitting in the
+     middle of it, so it gets a heading of its own. Without one, the score card
+     and the four tiles under it read as two unrelated cards; with one, they
+     read as the section they are — how the day is going, after the list of
+     what the day actually holds. */
+  return `<h2>${t("overall_section")}</h2>
+    <div class="tinted block tone-2">
       <div class="bh" style="margin-bottom:var(--s2)">
         <span class="itile">${icon("chart", 17)}</span>
         <div class="grow"><div class="bt">${t("overall")}</div>
@@ -2264,7 +2378,20 @@ function habitsTab(){
      they belong to each other rather than to two separate cards. */
   const due = data.habits.filter(x => x.due);
   const done = due.filter(x => x.done).length;
-  const percent = due.length ? Math.round(done / due.length * 100) : 0;
+  /* Two different questions, and the card answers both rather than picking
+     one. "4/6" is how many habits are ticked — a count, and the only honest
+     way to describe a list. The percentage is what those ticks are worth once
+     the tiers are weighted, which is the number the overall score on Home is
+     built from. They disagree on purpose: four bonus habits out of six is not
+     67% of a day. The weighted figure comes from the API so there is only ever
+     one copy of the formula. */
+  const tiers = data.tiers || {};
+  const live = Object.values(tiers).reduce(
+    (n, x) => n + (x.due ? x.weight : 0), 0);
+  const percent = live
+    ? Math.round(Object.values(tiers).reduce(
+        (n, x) => n + (x.due ? x.weight * x.done / x.due : 0), 0) / live * 100)
+    : (due.length ? Math.round(done / due.length * 100) : 0);
 
   let h = `<div class="tinted block tone-5">
       <div class="bh">
@@ -2288,11 +2415,22 @@ function habitsTab(){
   const TIER_TONE = {non_negotiable:"tone-1", target:"tone-5", bonus:"tone-3"};
   const TIER_ICON = {non_negotiable:"target", target:"up", bonus:"plus"};
 
+  /* Each tier says what it is worth. The three tiers used to be labels only —
+     a heading that claimed one group mattered more, over a score that counted
+     every habit the same — so the badge is not decoration, it is the screen
+     finally agreeing with its own arithmetic. The number is the *applied*
+     weight from the API, renormalised over the tiers that actually have a
+     habit due today, so three non-negotiable habits and nothing else reads
+     100% rather than a permanently unreachable 50%. */
   data.categories.forEach(cat => {
     const items = (data.grouped[cat] || []);
     if(!items.length) return;
+    const tier = data.tiers?.[cat];
+    const badge = tier && tier.due
+      ? `<span class="wt num">${tier.done}/${tier.due} · ${tier.applied}%</span>`
+      : "";
     h += sectionHead(TIER_TONE[cat] || "tone-1", TIER_ICON[cat] || "check",
-                     t(cat));
+                     t(cat), badge);
     h += items.map(x => habitRow(x, cat, data.wake)).join("");
   });
 
@@ -2420,6 +2558,15 @@ function prayerTab(){
         <div class="check ${p.excused ? "on" : ""}">${icon("check", 14)}</div>
         <div class="grow">🌸 ${t("excused")}</div></div>`;
   }
+
+  /* One quiet line, above the five rows rather than under them, because it is
+     only worth anything if it is read *before* the tapping starts. Deliberately
+     small, grey and unpunctuated by an icon: this screen records something
+     between the user and their own conscience, and nothing here is checked,
+     shared or reported. A loud banner would read as the app doubting them,
+     which is the opposite of the point. */
+  h += `<div class="t3 tiny wrap" style="margin:var(--s2) 0 var(--s1)">
+      ${t("prayer_honesty")}</div>`;
 
   h += `<div class="card">`;
   ["bomdod","peshin","asr","shom","xufton"].forEach(name => {
@@ -3336,7 +3483,16 @@ function habitSheet(h){
           data-act="habit-cat" data-id="${h.id}" data-value="${c}">${t(c)}</div>`).join("")}
       </div>`}
 
-    <label>${t("schedule")}</label>
+    ${/* The three defaults — Get up, 5x namoz, Kundalik — are every day, by
+          definition: they are the floor the whole system is measured against,
+          and "5x namoz on Mondays and Thursdays" is not a thing this product
+          has an opinion about. Offering a day picker for them asked a question
+          with only one right answer, and any other answer quietly punched a
+          hole in the score. They say "every day" instead. */
+      h.protected
+      ? `<label>${t("schedule")}</label>
+         <div class="t2 small">${t("every_day")} · ${t("habit_always_daily")}</div>`
+      : `<label>${t("schedule")}</label>
     <div class="chips">
       <div class="chip sm ${h.schedule === "daily" ? "on" : ""}"
            data-act="habit-sched" data-id="${h.id}" data-value="daily">${t("every_day")}</div>
@@ -3348,7 +3504,7 @@ function habitSheet(h){
     ${custom ? `<div class="chips" style="margin-top:8px">
       ${D().dow.map((label, i) => `<div class="chip sm
         ${days.includes(i) ? "on" : ""}" data-act="habit-day"
-        data-id="${h.id}" data-day="${i}">${label}</div>`).join("")}</div>` : ""}
+        data-id="${h.id}" data-day="${i}">${label}</div>`).join("")}</div>` : ""}`}
 
     ${h.system_key === "wakeup" ? `<label>${t("wake_at")}</label>
       <div class="field">
@@ -3841,6 +3997,186 @@ function accountSheet(){
    tap: erasing everything asks a second time, and deleting the account asks
    for a typed word. A second tap in the same place as the first is not a
    confirmation, it is the same gesture twice. */
+/* ---------- personal progression ----------
+   One card at the foot of Home, and a sheet behind it. Deliberately *below*
+   the day's own numbers: today's work is what Home is for, and a level is a
+   slow number that changes on the scale of weeks. Putting it at the top would
+   make the first thing anybody sees each morning a score about the past.
+
+   The card carries four things and no more — who you are becoming, how far to
+   the next one, how today went, and where you stand. Everything else is one
+   tap away.
+
+   Referral status is *not* on this card, and that is the product rule rather
+   than a layout choice: personal progression measures how somebody runs their
+   own life, referral progression measures who they brought in, and a card that
+   mixes them would suggest inviting people is a way to level up. It is not. */
+function progressCard(){
+  const p = state.progress;
+  if(!p) return "";
+
+  const lvl = p.level, rank = p.rank;
+  const pct = Math.round((lvl.progress || 0) * 100);
+  const xp = n => String(n ?? 0).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+
+  /* Rank has three states and they are genuinely different, so the card says
+     which one it is in rather than showing "—" for two of them. */
+  const rankCell = rank.eligible
+    ? `<div class="score-cell"><div class="k">${t("rank_global")}</div>
+         <div class="v num">#${rank.global}</div></div>`
+    : `<div class="score-cell"><div class="k">${t("rank_global")}</div>
+         <div class="v num" style="font-size:15px">${
+           t("rank_locked_short", {n: rank.days_remaining})}</div></div>`;
+
+  return `<h2>${t("progress")}</h2>
+    <div class="tinted block tone-4" data-act="progress-open"
+         style="cursor:pointer">
+      <div class="bh" style="margin-bottom:var(--s2)">
+        <span class="itile">${icon("up", 17)}</span>
+        <div class="grow">
+          <div class="bt">${t("plevel_" + lvl.key)} ${lvl.numeral}</div>
+          <div class="t3 tiny num">${xp(lvl.xp)}${
+            lvl.next_threshold ? " / " + xp(lvl.next_threshold) : ""} XP</div>
+        </div>
+        ${icon("chevron", 16)}
+      </div>
+      ${bar(pct)}
+      ${lvl.next_threshold ? `<div class="t2 tiny" style="margin-top:var(--s1)">
+        ${t("xp_to_next", {n: xp(lvl.remaining),
+                           level: t("plevel_" + lvl.next_key)})}</div>` : ""}
+      <div class="scores" style="margin-top:var(--s2)">
+        <div class="score-cell lead"><div class="k">${t("today")}</div>
+          <div class="v num">${p.daily.grade} · ${p.daily.score}</div></div>
+        <div class="score-cell"><div class="k">${t("streak")}</div>
+          <div class="v num">🔥 ${p.streak.current}</div></div>
+        ${rankCell}
+      </div>
+      ${rank.eligible && rank.top_percent !== null
+        ? `<div class="t3 tiny" style="margin-top:var(--s1)">
+             ${t("top_percent_of", {p: rank.top_percent,
+                                    n: xp(rank.users)})}</div>` : ""}
+    </div>`;
+}
+
+/* The detail, in a sheet rather than a fifth tab. The bottom navigation is
+   four items and has been since the app was designed around them; a
+   progression screen is something people open occasionally, not one of the
+   four places they live. */
+function progressSheet(){
+  const p = state.progress;
+  if(!p) return `<div class="spin"></div>`;
+
+  const lvl = p.level, rank = p.rank, d = p.daily;
+  const xp = n => String(n ?? 0).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  const pct = Math.round((lvl.progress || 0) * 100);
+
+  let h = `<h3>${icon("up", 18)} ${t("progress")}</h3>
+
+    <div class="tinted block tone-4" style="margin-top:var(--s2)">
+      <div style="font-size:19px;font-weight:650">
+        ${t("plevel_" + lvl.key)} ${lvl.numeral}</div>
+      <div class="t2 small num">${xp(lvl.xp)}${
+        lvl.next_threshold ? " / " + xp(lvl.next_threshold) : ""} XP</div>
+      <div style="margin-top:var(--s2)">${bar(pct)}</div>
+      ${lvl.next_threshold ? `<div class="t3 tiny" style="margin-top:var(--s1)">
+        ${t("xp_to_next", {n: xp(lvl.remaining),
+                           level: t("plevel_" + lvl.next_key)})}</div>` : ""}
+    </div>`;
+
+  /* Today, with the same four components the overall score is built from and
+     the same weights printed on them. Not a second formula — the API sends the
+     stored breakdown, so this cannot drift from the number above it. */
+  const LABEL = {tasks:"tasks", habits:"habits", focus:"week_focus", prayer:"prayer"};
+  const rows = Object.entries(LABEL)
+    .filter(([key]) => d.breakdown[key] !== null && d.breakdown[key] !== undefined)
+    .map(([key, label]) => `
+      <div class="row" style="gap:var(--s2);margin-top:var(--s1)">
+        <div class="grow t2 small">${t(label)}</div>
+        <span class="wt num">${Math.round((d.weights?.[key] || 0) * 100)}%</span>
+        <div class="num" style="min-width:42px;text-align:right">
+          ${d.breakdown[key]}</div>
+      </div>`).join("");
+
+  h += `<label>${t("today")}</label>
+    <div class="card tight">
+      <div class="row">
+        <div class="grow" style="font-size:22px;font-weight:700">
+          ${d.score} <span class="t3" style="font-size:15px">/ 100</span></div>
+        <div class="num" style="font-size:17px;font-weight:650">
+          ${d.grade} · ${t("grade_" + d.grade)}</div>
+      </div>
+      ${rows || `<div class="t3 tiny" style="margin-top:var(--s1)">
+        ${t("nothing_measured_yet")}</div>`}
+      ${!d.perfect_day && d.to_perfect > 0 && d.score > 0
+        ? `<div class="t2 tiny" style="margin-top:var(--s2)">
+             ${t("to_perfect_day", {n: d.to_perfect})}</div>` : ""}
+      ${d.perfect_day ? `<div class="t2 tiny" style="margin-top:var(--s2)">
+        ✨ ${t("perfect_day")}</div>` : ""}
+    </div>`;
+
+  h += `<label>${t("consistency")}</label>
+    <div class="metrics">
+      <div class="metric"><div class="k">${t("streak")}</div>
+        <div class="v num">🔥 ${p.streak.current}</div></div>
+      <div class="metric"><div class="k">${t("best")}</div>
+        <div class="v num">${p.streak.best}</div></div>
+      <div class="metric"><div class="k">${t("perfect_days")}</div>
+        <div class="v num">${p.perfect_days}</div></div>
+      <div class="metric wide"><div class="k">${t("recovery_days")}</div>
+        <div class="v num">${p.streak.recovery_remaining} / 2</div></div>
+    </div>
+    <div class="t3 tiny" style="margin-top:var(--s1)">
+      ${t("recovery_hint", {n: p.streak.threshold})}</div>`;
+
+  h += `<label>${t("rank")}</label>`;
+  if(!rank.eligible){
+    /* Not "—". A locked rank with a countdown is information; a dash is a
+       screen refusing to explain itself. */
+    h += `<div class="card tight"><div class="t2 small">
+        ${t("rank_locked", {n: rank.days_remaining})}</div></div>`;
+  }else{
+    const move = rank.movement;
+    h += `<div class="metrics">
+        <div class="metric"><div class="k">${t("rank_global")}</div>
+          <div class="v num">#${rank.global}${
+            move ? `<span class="delta ${move > 0 ? "up" : "down"}">${
+              move > 0 ? "↑" : "↓"}${Math.abs(move)}</span>` : ""}</div></div>
+        <div class="metric"><div class="k">${t("rank_weekly")}</div>
+          <div class="v num">#${rank.weekly}</div></div>
+        <div class="metric"><div class="k">${t("rank_best")}</div>
+          <div class="v num">#${rank.best}</div></div>
+        <div class="metric"><div class="k">${t("rank_users")}</div>
+          <div class="v num">${xp(rank.users)}</div></div>
+      </div>
+      ${rank.top_percent !== null ? `<div class="t2 small"
+        style="margin-top:var(--s1)">${t("top_percent_of",
+          {p: rank.top_percent, n: xp(rank.users)})}</div>` : ""}
+      <div class="t3 tiny" style="margin-top:var(--s1)">
+        ${t("rank_privacy")}</div>`;
+  }
+
+  h += `<label>${t("achievements")}</label>`;
+  const list = state.achievements;
+  if(!list){
+    h += `<div class="spin"></div>`;
+  }else{
+    h += list.map(a => `
+      <div class="item ${a.unlocked ? "" : "off"}">
+        <div class="check ${a.unlocked ? "on" : ""} lock">
+          ${a.unlocked ? icon("check", 14) : ""}</div>
+        <div class="grow">
+          <div class="ellipsis">${t("ach_" + a.key)}</div>
+          <div class="meta">${a.unlocked ? t("unlocked")
+            : `${a.progress} / ${a.target}`}</div>
+        </div>
+      </div>`).join("");
+  }
+
+  h += `<button class="btn secondary" data-act="close"
+          style="margin-top:var(--s3)">${t("close")}</button>`;
+  return h;
+}
+
 /* ---------- referrals ----------
    One screen: how many friends genuinely arrived, how far to the next level,
    and two buttons. Counts only — the API deliberately never says *who* joined,
@@ -4121,10 +4457,15 @@ async function loadScreen(screen){
          is still fetched when that sheet opens; the summary is here because
          the score block now shows the week and the month next to today rather
          than behind a switch, so "on demand" would mean every single time. */
-      const [home, summary] = await Promise.all([
-        api("/api/home"), api("/api/summary"),
+      /* Progression joins the same parallel batch rather than being fetched
+         when its card scrolls into view: it is one indexed row read on the
+         server — the day is scored when the day changes, not here — and a
+         card that pops in late is worse than one more request in a batch that
+         was already three wide. */
+      const [home, summary, progress] = await Promise.all([
+        api("/api/home"), api("/api/summary"), api("/api/progress/me"),
       ]);
-      setState({home, summary});
+      setState({home, summary, progress});
     } else if(screen === "habits"){
       const [habits, prayer, journal] = await Promise.all([
         api("/api/habits"), api("/api/prayers"),
@@ -4789,6 +5130,18 @@ const A = {
   /* ---- referrals ---- */
   /* The sheet opens immediately on its spinner and the fetch fills it in, so
      the tap always feels answered even on a slow connection. */
+  /* The sheet opens immediately on what Home already loaded, then fills in the
+     achievements when they arrive. Waiting for the second request before
+     drawing anything would mean a tap that appears to do nothing on a slow
+     connection, for a list that is the least important thing on the sheet. */
+  "progress-open": async () => {
+    haptic();
+    openSheet(progressSheet());
+    try{
+      state.achievements = (await api("/api/progress/achievements")).achievements;
+      if(sheetOpen()) openSheet(progressSheet());
+    }catch(e){ handleError(e); }
+  },
   "set-referral": async () => {
     haptic();
     openSettings("referral");

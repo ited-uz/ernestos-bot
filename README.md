@@ -232,7 +232,7 @@ Sozlamalarda boshqariladi:
 
 | Sozlama | Default |
 |---|---|
-| Ertalabki hisobot | ✅ 04:00 |
+| Ertalabki hisobot | ✅ 05:00 |
 | Kechqurungi hisobot | ✅ 21:30 |
 | Vazifa eslatmalari | ✅ yoqilgan |
 | Odat eslatmalari | ❌ o'chirilgan |
@@ -241,6 +241,18 @@ Hisobot vaqti har foydalanuvchida o'zining bo'lgani uchun job bitta cron
 yozuvi emas: `REPORT_TICK_MINUTES` (default 2) da bir marta uyg'onadi va har
 foydalanuvchidan "vaqti keldimi?" deb so'raydi. Kuniga **bir marta**
 yuborilishini cron emas, outbox claim kafolatlaydi.
+
+> **Ertalabki hisobot 04:00 dan 05:00 ga ko'chirildi.** Eski qiymat scheduler
+> server soatida ishlagan davrdan qolgan edi: 04:00 UTC — Toshkentda 09:00.
+> Scheduler loyiha soatiga (`Asia/Tashkent`) o'tganda o'sha raqam jimgina
+> tunning to'rtiga aylandi. Hech narsa xato bermadi — hisobotlar har kuni
+> o'z vaqtida, uxlab yotgan odamlarga ketdi. Bu faqat **default** qiymat:
+> vaqtini o'zi tanlagan foydalanuvchilarga ta'sir qilmaydi.
+
+Jo'natish ishlayaptimi-yo'qmi degan savolga `GET /health/ready` javob beradi:
+`stats_last_post`, `stats`, `morning_today` va `evening_today` bugun nima
+yuborilganini (`sent · failed · claimed`) ko'rsatadi. Kanal jim bo'lsa,
+odatda sabab bitta — bot o'sha kanalda **administrator emas**.
 
 Platforma statistikasi operator kanaliga har kuni **10:00** da boradi
 (`STATS_POST_HOUR`, loyiha soati bo'yicha).
@@ -280,6 +292,98 @@ Texnik jihatdan: bitta semantik token qatlami (`--bg`, `--surface`, `--text`,
 kombinatsiya bloki. Hech bir komponent rang nomini yozmaydi — test buni
 tekshiradi, shuning uchun temani o'zgartirish komponentni qayta yozishni
 talab qilmaydi.
+
+## Shaxsiy progressiya — Daily Score, XP, Daraja, Reyting
+
+ErnestOS'da **ikkita butunlay alohida** progressiya tizimi bor:
+
+| Tizim | Nimani o'lchaydi | Qayerda |
+|---|---|---|
+| **Shaxsiy** | Hayotingizni qanday boshqarayotganingiz | Bosh sahifadagi Progressiya kartasi |
+| **Referral** | Nechta odamni olib kelganingiz | Sozlamalar → 🎁 Do'st taklif qilish |
+
+Ular **hech qachon aralashmaydi**. 100 ta odam taklif qilgan, lekin o'zi
+ErnestOS'dan foydalanmaydigan odam yuqori shaxsiy darajaga **chiqmaydi**.
+
+### Daily Score — 0..100
+
+Kunlik ball **yangi formula emas**. Bu Bosh sahifada allaqachon turgan umumiy
+foiz: vazifa 40 / odat 25 / fokus 20 / namoz 15. Ikkinchi formula kiritilsa,
+bitta ilovaning ikkita ekranida "bugun qanday o'tdi" degan ikkita raqam bir-
+biriga to'g'ri kelmay qolardi. Bo'sh kategoriya **nol emas, yo'q** — vazifasi
+yo'q kun vazifani bajarmagan kun emas.
+
+| Ball | Baho |
+|---|---|
+| 90–100 | S · Mukammal kun |
+| 80–89 | A · A'lo |
+| 70–79 | B · Kuchli |
+| 60–69 | C · Harakat |
+| 40–59 | D · Tiklanish |
+| 0–39 | E · Qaytadan |
+
+Pastki baho ham **ayblamaydi**: "Failed" emas, "Qaytadan".
+
+### XP va darajalar
+
+XP **ledger** orqali beriladi (`xp_events`), har bir mukofot o'z kaliti bilan:
+`task:412`, `perfect_day:1001:2026-08-14`. Kalit UNIQUE — shuning uchun
+Telegram retry, ikki marta bosish yoki *bajardim → bekor qildim → bajardim*
+XP'ni **takrorlamaydi**. Kunlik oddiy faollik chegarasi: **120 XP**. Milestone
+(perfect day, streak, comeback, achievement) chegaradan tashqarida.
+
+| Daraja | XP |
+|---|---|
+| I Boshlovchi | 0 |
+| II Builder | 500 |
+| III Operator | 1 500 |
+| IV Architect | 3 500 |
+| V Commander | 7 000 |
+| VI Elite | 15 000 |
+| VII Master | 30 000 |
+
+Daraja **saqlanmaydi** — har safar `xp_total`dan hisoblanadi.
+
+### Streak va Tiklanish kunlari
+
+Kun **60 balldan** yuqori bo'lsa streak +1. Bir og'ir kun 30 kunlik streakni
+buzmasligi kerak, shuning uchun oyiga **2 ta Tiklanish kuni** avtomatik
+sarflanadi — streak saqlanadi, lekin o'sha kun uchun XP berilmaydi. Uzoq
+tanaffusdan keyin qaytish **Comeback** (+15 XP), 14 kunlik cooldown bilan —
+ataylab yo'qolib turib farm qilib bo'lmaydi.
+
+### Reyting
+
+Reyting **umrbod XP bo'yicha emas**. Bo'lsa, taxta faqat akkaunt yoshini
+ko'rsatardi. Reyting **oxirgi 30 kalendar kun** bo'yicha Performance Index:
+
+```
+70% — o'rtacha kunlik ball
+20% — izchillik (60+ ballli kunlar ulushi)
+10% — haftalik fokus bajarilishi
+```
+
+Kalendar kunlar, faol kunlar emas — ErnestOS'ni tashlab ketgan odam o'z-o'zidan
+pastga tushadi, alohida jazo qoidasi kerak emas. Reyting **7 kundan keyin**
+ochiladi, aks holda bitta 100 ballik kun yangi akkauntni #1 ga chiqarardi.
+Teng indeks — teng o'rin (#184, #184, #186).
+
+**Maxfiylik:** foydalanuvchi faqat **o'z o'rnini** va umumiy sonni ko'radi —
+`#184 / 12 842`. Hech kimning ismi, username'i yoki telegram_id'si
+ko'rsatilmaydi. Ochiq leaderboard **qilinmadi**.
+
+### Ishlash
+
+Profil ochilganda hech qachon butun tarix skanerlanmaydi. Kun **o'zgarganda**
+hisoblanadi (action funnel), reyting esa `user_progress` dagi indeksli bitta
+ustunni o'qiydi. 300 foydalanuvchi × 30 kunlik tarixda: reyting **0.7 ms**,
+profil **1.2 ms**.
+
+### Eski foydalanuvchilar
+
+Backfill **qilinmadi** — soxta umrbod XP yaratilmaydi. Progressiya feature
+yoqilgan kundan boshlanadi, `user_progress` qatori esa har kimga birinchi
+marta kuni hisoblanganda o'zi paydo bo'ladi. Migratsiya kerak emas.
 
 ## Ma'lumotlar va maxfiylik
 

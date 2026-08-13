@@ -237,6 +237,22 @@ T: dict[str, dict[str, str]] = {
                            "\n\nMen ErnestOS'dan foydalanyapman. Sen ham sinab "
                            "ko'r 👇"),
         "ref_menu": "🎁 Do'st taklif qilish",
+
+        # --- Personal progression ---------------------------------------
+        # Level names are nouns the user becomes, not scores they hold:
+        # "Siz Architect'siz" has to read naturally in all three languages,
+        # so the English words stay untranslated where they already work as
+        # identities and are localised where they do not.
+        "plevel_starter": "Boshlovchi",
+        "plevel_builder": "Builder",
+        "plevel_operator": "Operator",
+        "plevel_architect": "Architect",
+        "plevel_commander": "Commander",
+        "plevel_elite": "Elite",
+        "plevel_master": "Master",
+        "level_up": ("🎖 <b>YANGI DARAJA</b>\n\n"
+                     "<b>{name} {numeral}</b>\n{xp} XP\n\n"
+                     "<i>Siz shunchaki reja tuzmayapsiz. Tizim quryapsiz.</i>"),
         "saved": "Saqlandi ✓",
         "ask_feedback": "Taklif yoki shikoyatingizni yozing:",
         "feedback_sent": "Rahmat! Taklifingiz qabul qilindi.",
@@ -480,6 +496,19 @@ T: dict[str, dict[str, str]] = {
         "ref_share_text": ("Don't just plan your life — systemize it.\n\n"
                            "I'm using ErnestOS. Try it with me 👇"),
         "ref_menu": "🎁 Invite a friend",
+
+        # --- Personal progression ---------------------------------------
+        "plevel_starter": "Starter",
+        "plevel_builder": "Builder",
+        "plevel_operator": "Operator",
+        "plevel_architect": "Architect",
+        "plevel_commander": "Commander",
+        "plevel_elite": "Elite",
+        "plevel_master": "Master",
+        "level_up": ("🎖 <b>LEVEL UP</b>\n\n"
+                     "<b>{name} {numeral}</b>\n{xp} XP\n\n"
+                     "<i>You are not just planning your life. "
+                     "You are building a system.</i>"),
         "saved": "Saved ✓",
         "ask_feedback": "Write your suggestion or complaint:",
         "feedback_sent": "Thank you! Your feedback was received.",
@@ -724,6 +753,19 @@ T: dict[str, dict[str, str]] = {
         "ref_share_text": ("Не просто планируй жизнь — систематизируй её.\n\n"
                            "Я пользуюсь ErnestOS. Попробуй и ты 👇"),
         "ref_menu": "🎁 Пригласить друга",
+
+        # --- Personal progression ---------------------------------------
+        "plevel_starter": "Начинающий",
+        "plevel_builder": "Builder",
+        "plevel_operator": "Operator",
+        "plevel_architect": "Architect",
+        "plevel_commander": "Commander",
+        "plevel_elite": "Elite",
+        "plevel_master": "Master",
+        "level_up": ("🎖 <b>НОВЫЙ УРОВЕНЬ</b>\n\n"
+                     "<b>{name} {numeral}</b>\n{xp} XP\n\n"
+                     "<i>Вы не просто планируете жизнь. "
+                     "Вы строите систему.</i>"),
         "saved": "Сохранено ✓",
         "ask_feedback": "Напишите ваше предложение или жалобу:",
         "feedback_sent": "Спасибо! Ваш отзыв получен.",

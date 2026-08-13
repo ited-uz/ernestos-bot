@@ -25,8 +25,8 @@ import os
 from datetime import date, datetime, time, timezone
 
 from sqlalchemy import (
-    BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, String, Text,
-    Time, UniqueConstraint, create_engine,
+    BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Index, Integer,
+    String, Text, Time, UniqueConstraint, create_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
@@ -477,6 +477,196 @@ class Referral(Base):
     status: Mapped[str] = mapped_column(String(10), default="pending", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     qualified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# Personal progression
+# ---------------------------------------------------------------------------
+#
+# Three tables, and the split between them is the point. `DailyScore` and
+# `XPEvent` are the *record* — append-mostly, never derived from anything else,
+# and the thing any number shown to a user can be traced back to. `UserProgress`
+# is a *cache*: every field on it can be recomputed from the other two, and it
+# exists so that opening a profile is one indexed row read rather than a scan of
+# a year of history for every user on the platform.
+#
+# Keeping that distinction honest is what stops the cache from quietly becoming
+# the only copy. Nothing writes to `UserProgress` that was not first written to
+# `DailyScore` or `XPEvent`.
+#
+# All three are new tables rather than columns on `users`, for the same reason
+# the referral tables were: this project creates missing tables on boot and adds
+# columns in place, and a new table is the change with no effect at all on the
+# rows that already exist.
+
+class DailyScore(Base):
+    """One row per user per local day: how that day actually went.
+
+    The day is the user's own calendar date, not the server's. Storing it as a
+    plain `Date` computed in their zone is what makes "my Tuesday" mean the same
+    thing to the database as it did to them — comparing a UTC timestamp against
+    a local date is the bug this project already had once, and the reason
+    `local_date_of` exists.
+
+    The component columns are stored rather than recomputed because the source
+    rows move underneath them: a task edited next week must not silently rewrite
+    last Tuesday's score. Recomputing today is fine and expected; recomputing
+    the past is not, which is why `upsert_daily_score` only ever writes the day
+    it was asked for.
+    """
+
+    __tablename__ = "daily_scores"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), index=True)
+    day: Mapped[date] = mapped_column(Date, index=True)
+
+    #: The four components, each 0-100, or -1 for "this category had no
+    #: denominator that day". -1 rather than NULL so the column is cheap to read
+    #: back into the same shape `overall_components` produces, where absent and
+    #: zero are deliberately different things.
+    task_score: Mapped[int] = mapped_column(Integer, default=-1)
+    habit_score: Mapped[int] = mapped_column(Integer, default=-1)
+    focus_score: Mapped[int] = mapped_column(Integer, default=-1)
+    prayer_score: Mapped[int] = mapped_column(Integer, default=-1)
+
+    total_score: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    #: S | A | B | C | D | E — the grade the total falls into.
+    grade: Mapped[str] = mapped_column(String(1), default="E")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow,
+                                                 onupdate=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "day", name="uq_daily_score"),
+        # Ranking reads "every user's scores in the last 30 days" and nothing
+        # else; this is the index that query lives on.
+        Index("ix_daily_score_day_user", "day", "user_id"),
+    )
+
+
+class XPEvent(Base):
+    """One row per thing that earned XP. The ledger, not a running total.
+
+    `event_key` is the whole design. Every award names itself deterministically
+    — `task_complete:412`, `perfect_day:1001:2026-08-14`, `streak_7:1001:...` —
+    and the unique constraint means the second attempt to write it does nothing.
+    That is what makes XP survive the things that actually happen in production:
+    a Telegram retry, a double-tapped button, a user completing a task, undoing
+    it and completing it again, and the API being called twice because the phone
+    lost signal mid-request.
+
+    A `xp_total` column incremented in place would have none of that. It would
+    also have no way to answer "where did these 2,840 points come from?", which
+    is the question anybody disputing their score is really asking.
+    """
+
+    __tablename__ = "xp_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), index=True)
+    #: Globally unique, and deterministic from what happened. The user id is
+    #: part of every key so two people completing task 412 do not collide.
+    event_key: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    #: Coarse bucket for reporting: task | ritual | focus | perfect_day |
+    #: streak | comeback | onboarding | achievement | level.
+    event_type: Mapped[str] = mapped_column(String(20), default="task")
+    xp: Mapped[int] = mapped_column(Integer, default=0)
+    #: The user's local day this belongs to — what the daily cap is counted
+    #: against, and what "XP earned today" on the profile means.
+    event_date: Mapped[date] = mapped_column(Date, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    __table_args__ = (
+        Index("ix_xp_user_date", "user_id", "event_date"),
+    )
+
+
+class UserProgress(Base):
+    """The rolled-up summary. Every field here is derivable; none is the source.
+
+    This exists for one reason: ranking. "Where am I among 12,842 users?" is a
+    question about every user at once, and answering it from `daily_scores`
+    would mean aggregating a month of rows per person on every profile open.
+    Instead each user's index is maintained when their own day changes, and the
+    rank query is one indexed scan of a single narrow column.
+
+    `best_global_rank` is the one field that is *not* recomputable, and that is
+    deliberate rather than an oversight: it is a high-water mark over ranks that
+    existed at moments in the past, and those moments are gone. It only ever
+    moves toward a better rank.
+    """
+
+    __tablename__ = "user_progress"
+
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"),
+        primary_key=True)
+
+    xp_total: Mapped[int] = mapped_column(Integer, default=0, index=True)
+
+    current_streak: Mapped[int] = mapped_column(Integer, default=0)
+    best_streak: Mapped[int] = mapped_column(Integer, default=0)
+    perfect_days: Mapped[int] = mapped_column(Integer, default=0)
+
+    #: Recovery days are a monthly allowance, so the month they belong to is
+    #: stored beside the count. Comparing that to the user's current local month
+    #: is what resets them, rather than a scheduled job that has to visit every
+    #: user on the first of the month.
+    recovery_used: Mapped[int] = mapped_column(Integer, default=0)
+    recovery_month: Mapped[str] = mapped_column(String(7), default="")
+
+    #: The ranking inputs. Indexed because the rank query orders by them.
+    performance_index_30d: Mapped[float] = mapped_column(Float, default=0.0)
+    performance_index_7d: Mapped[float] = mapped_column(Float, default=0.0)
+    #: Local days with a score on record. Ranking unlocks at 7, so that a new
+    #: account cannot take #1 on the strength of one good day.
+    scored_days: Mapped[int] = mapped_column(Integer, default=0)
+
+    best_global_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: What the last shown rank was, so movement (↑7) can be reported honestly
+    #: rather than invented.
+    last_global_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    #: The most recent local day this user has a score for. Drives the streak,
+    #: the comeback check and "is this user still active".
+    last_score_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    #: The last day a comeback was awarded, so returning cannot be farmed by
+    #: disappearing on purpose.
+    last_comeback_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow,
+                                                 onupdate=utcnow)
+
+    __table_args__ = (
+        # The two ranking scans, and nothing else reads these columns in bulk.
+        Index("ix_progress_30d", "performance_index_30d"),
+        Index("ix_progress_7d", "performance_index_7d"),
+    )
+
+
+class UserAchievement(Base):
+    """One row the first time a user earns something. Never written twice.
+
+    The definitions live in `services.ACHIEVEMENTS` rather than in a table:
+    they are code — a key, a rule and three translations — and a row per
+    definition would mean a migration every time the wording changed.
+    """
+
+    __tablename__ = "user_achievements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), index=True)
+    achievement_key: Mapped[str] = mapped_column(String(40))
+    unlocked_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "achievement_key", name="uq_user_achievement"),
+    )
 
 
 class JobRun(Base):

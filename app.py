@@ -228,12 +228,21 @@ async def count_action(telegram_id: int, ctx: ContextTypes.DEFAULT_TYPE | None =
     meter run down, which is the opposite of the point.
     """
     with SessionLocal() as s:
-        _total, inviter = svc.record_action_and_qualify(s, telegram_id)
+        outcome = svc.record_action_and_progress(s, telegram_id)
+        inviter = outcome["inviter_to_tell"]
+        progress = outcome["progress"]
         user = s.get(User, telegram_id)
         trial = deps.trial_state(user)
 
     if inviter is not None and ctx is not None:
         await notify_referral_qualified(ctx.bot, inviter)
+
+    # A level is the one progression event worth interrupting somebody for, and
+    # only on the tick that crosses it. Streaks, XP and rank live on the screen
+    # they belong to — a bot message for every one of them is how an app gets
+    # muted, and the product is explicit that it must not spam.
+    if progress.get("level_up") and ctx is not None:
+        await notify_level_up(ctx.bot, telegram_id, progress["level"], lang)
 
     if message is None or not deps.REQUIRED_CHANNEL_ID:
         return
@@ -338,6 +347,54 @@ async def notify_referral_qualified(bot, inviter_id: int) -> None:
     except Exception:
         log.warning("could not tell %s their referral qualified", inviter_id,
                     exc_info=True)
+
+
+async def notify_level_up(bot, telegram_id: int, level: dict, lang: str) -> None:
+    """One message, on the tick a level is actually crossed. Never again.
+
+    The only progression event that interrupts somebody. Streaks, XP and rank
+    changes live on the Progress screen, where they can be looked at when the
+    user chooses to — a notification for each of them is exactly the
+    gamification spam the product is not allowed to become.
+
+    Application layer for the same reason `notify_referral_qualified` is: the
+    service layer never opens a socket, so a Telegram outage cannot roll back
+    the transaction that awarded the level in the first place.
+    """
+    try:
+        await bot.send_message(
+            telegram_id,
+            t(lang, "level_up", numeral=level["numeral"],
+              name=t(lang, f"plevel_{level['key']}"),
+              xp=f"{level['current_threshold']:,}".replace(",", " ")),
+            parse_mode=ParseMode.HTML,
+            reply_markup=webapp_button(lang))
+    except Exception:
+        log.warning("could not tell %s about their level", telegram_id,
+                    exc_info=True)
+
+
+async def finish_onboarding_progress(telegram_id: int) -> None:
+    """Score the day and pay the welcome XP the moment onboarding completes.
+
+    Two reasons this cannot wait for the user's next action. Onboarding itself
+    creates habits and a first task, so there is already a day's worth of work
+    banked behind a flag that was only just set — and a progression system that
+    shows 0 XP to somebody who has just spent five minutes setting up reads as
+    broken.
+
+    The welcome award is real progress for real work, not a fake head start:
+    it is paid for *completing onboarding*, once, keyed on the user id.
+    """
+    try:
+        with SessionLocal() as s:
+            svc.award_xp(s, telegram_id, f"onboarding:{telegram_id}",
+                         "onboarding", svc.XP_VALUES["onboarding"],
+                         svc.today_local())
+            svc.refresh_progress(s, telegram_id)
+            s.commit()
+    except Exception:
+        log.exception("could not start progression for %s", telegram_id)
 
 
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -680,6 +737,11 @@ async def finish_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> N
         lang, snapshot = user.language, user
         ws = svc.workspace_id_for(s, tg_user.id)
         data = svc.home(s, ws, user)
+
+    # Same reasoning as the referral check above, for the other progression
+    # system: onboarding has already created habits and a task, so the day has
+    # a score before the user's next tap.
+    await finish_onboarding_progress(tg_user.id)
 
     ctx.user_data.pop("setup", None)
     await message.reply_text(render_day_ready(data, lang), parse_mode=ParseMode.HTML,
@@ -1584,6 +1646,8 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             await log_event(ctx.bot, snapshot, "🔓 SUBSCRIPTION RESTORED")
         if qualified_inviter is not None:
             await notify_referral_qualified(ctx.bot, qualified_inviter)
+        if first_time:
+            await finish_onboarding_progress(tg_user.id)
         # Joining and checking lands the user inside — never back at /start.
         await query.edit_message_text(t(lang, "sub_restored"))
         await update.effective_message.reply_text(
@@ -2250,7 +2314,14 @@ async def _post_platform_stats(bot, st: dict) -> None:
         f"Jami: {st['referrals_total']} · qualified: {st['referrals_qualified']}"
         f" · pending: {st['referrals_pending']}\n"
         f"Conversion: {st['referral_conversion']}% · inviters: "
-        f"{st['referral_inviters']}"
+        f"{st['referral_inviters']}\n\n"
+        f"<b>Progression</b>\n"
+        f"O'rtacha ball: {st['avg_daily_score']} · perfect: "
+        f"{st['perfect_days_today']}\n"
+        f"Faol streak: {st['active_streaks']} · reytingda: "
+        f"{st['rank_eligible_users']}\n"
+        f"Bugun XP: {st['xp_today']}\n"
+        f"Darajalar: {_tally(st['users_by_level']) or '—'}"
     ), chat_id=STATS_CHANNEL_ID, reraise=True)
 
 
@@ -2260,11 +2331,22 @@ async def send_reports(bot, report_type: str) -> None:
     The job runs often and decides per user, because report times are now a
     setting rather than one hour for everybody. Sending exactly once per local
     day is still guaranteed by the outbox claim, not by the schedule.
+
+    Nothing escapes into APScheduler. The per-recipient loop already survives
+    one bad user, but everything *around* it — taking the advisory lock, and
+    the query that lists recipients — ran unguarded, and a failure there is the
+    worst possible kind: it takes out the whole batch, for every user, and the
+    traceback lands in APScheduler's own logger where nobody is looking. The
+    statistics job has had this guard since it was written; the two report jobs
+    were the ones without it.
     """
-    with svc.JobLock(SessionLocal, f"report:{report_type}") as lock:
-        if not lock.acquired:
-            return
-        await _send_reports_locked(bot, report_type, None)
+    try:
+        with svc.JobLock(SessionLocal, f"report:{report_type}") as lock:
+            if not lock.acquired:
+                return
+            await _send_reports_locked(bot, report_type, None)
+    except Exception:
+        log.exception("%s report job failed before any recipient", report_type)
 
 
 async def _send_reports_locked(bot, report_type: str, report_date) -> None:
@@ -2359,26 +2441,31 @@ async def send_reminders(bot) -> None:
     vanished mid-pass — escaped the loop, and every user after the failure got
     nothing, silently, until the next tick.
     """
-    with svc.JobLock(SessionLocal, "reminders") as lock:
-        if not lock.acquired:
-            return
+    try:
+        with svc.JobLock(SessionLocal, "reminders") as lock:
+            if not lock.acquired:
+                return
 
-        with SessionLocal() as s:
-            recipients = svc.active_recipients(s)
+            with SessionLocal() as s:
+                recipients = svc.active_recipients(s)
 
-        sent = failed = 0
-        for telegram_id, ws, lang in recipients:
-            try:
-                sent += await _send_user_reminders(bot, telegram_id, ws, lang)
-            except Exception:
-                # Whatever went wrong here belongs to this user alone.
-                log.exception("reminders for %s errored", telegram_id)
-                failed += 1
+            sent = failed = 0
+            for telegram_id, ws, lang in recipients:
+                try:
+                    sent += await _send_user_reminders(bot, telegram_id, ws, lang)
+                except Exception:
+                    # Whatever went wrong here belongs to this user alone.
+                    log.exception("reminders for %s errored", telegram_id)
+                    failed += 1
 
-            await asyncio.sleep(0.05)   # stay inside Telegram's rate limit
+                await asyncio.sleep(0.05)   # stay inside Telegram's rate limit
 
-        if sent or failed:
-            log.info("reminders: %s sent, %s recipients errored", sent, failed)
+            if sent or failed:
+                log.info("reminders: %s sent, %s recipients errored", sent, failed)
+    except Exception:
+        # Same gap the report jobs had: the per-user loop was guarded, the lock
+        # and the recipient query around it were not.
+        log.exception("reminder job failed before any recipient")
 
 
 async def _send_user_reminders(bot, telegram_id: int, ws: int, lang: str) -> int:
@@ -2605,12 +2692,22 @@ async def guard_requests(request: Request, call_next):
             and request.url.path not in UNCOUNTED_PATHS):
         try:
             with SessionLocal() as s:
-                _total, inviter = svc.record_action_and_qualify(s, key)
+                outcome = svc.record_action_and_progress(s, key)
             # The Mini App is the other half of the same loop: a friend who
             # only ever uses the web UI must still qualify, and their inviter
             # must still hear about it.
+            inviter = outcome["inviter_to_tell"]
             if inviter is not None and telegram_app is not None:
                 await notify_referral_qualified(telegram_app.bot, inviter)
+            # Progression is scored on this path too, so a user who only ever
+            # touches the Mini App still has a level and a rank. One service,
+            # both surfaces — not two systems that drift.
+            if outcome["progress"].get("level_up") and telegram_app is not None:
+                with SessionLocal() as s:
+                    user = s.get(User, key)
+                    lang = user.language if user else "uz"
+                await notify_level_up(telegram_app.bot, key,
+                                      outcome["progress"]["level"], lang)
         except Exception:               # never fail a request over a counter
             log.exception("could not record an action for %s", key)
 
@@ -2808,6 +2905,46 @@ def health_ready():
 
     checks["scheduler"] = "ok" if (scheduler and scheduler.running) else "disabled"
 
+    # Where the unattended messages are configured to go, and whether they
+    # actually went. "The stats channel is not working" was, until this existed,
+    # a question with no answer short of reading the deploy log: the job claims
+    # its run, the send fails because the bot was never made an administrator of
+    # the channel, the reason is logged once, and the channel stays quiet
+    # forever. `job_runs` and the report outbox already record what happened —
+    # this only reads them back out.
+    checks["stats_channel"] = STATS_CHANNEL_ID or "unset"
+    try:
+        from sqlalchemy import func, select
+
+        from db import DailyReportLog
+
+        with SessionLocal() as s:
+            last = svc.job_last_run(s, STATS_JOB)
+            today = svc.today_local()
+            checks["stats_last_post"] = str(last) if last else "never"
+            if not STATS_CHANNEL_ID:
+                checks["stats"] = "no channel configured"
+            elif last == today:
+                checks["stats"] = "ok — posted today"
+            elif svc.now_local().hour < STATS_POST_HOUR:
+                checks["stats"] = f"waiting for {STATS_POST_HOUR:02d}:00"
+            else:
+                # Claimed-but-not-today, or never: the hour has passed and
+                # nothing went out. Almost always the bot not being an admin of
+                # the channel; the application log carries the Telegram error.
+                checks["stats"] = "overdue — check the bot is an admin there"
+            for kind in ("morning", "evening"):
+                rows = s.execute(select(DailyReportLog.status, func.count())
+                                 .where(DailyReportLog.report_date == today,
+                                        DailyReportLog.report_type == kind)
+                                 .group_by(DailyReportLog.status)).all()
+                counts = {status: n for status, n in rows}
+                checks[f"{kind}_today"] = (
+                    f"sent {counts.get('sent', 0)} · failed {counts.get('failed', 0)}"
+                    f" · claimed {counts.get('claimed', 0)}")
+    except Exception as e:
+        checks["stats"] = f"error: {type(e).__name__}"
+
     return JSONResponse(status_code=200 if ok else 503,
                         content={"ok": ok, "checks": checks})
 
@@ -2968,6 +3105,11 @@ def api_habits(day: str | None = None, init=Header(default=None, alias="X-Telegr
         return {"habits": svc.list_habits(s, ws, target, tz=tz),
                 "grouped": svc.habits_by_category(s, ws, target, tz=tz),
                 "categories": svc.HABIT_CATEGORIES,
+                # Per-tier completion and the weight each tier actually carries
+                # today. Sent from here rather than recomputed in the browser:
+                # the weighting is the score's own arithmetic, and a second
+                # copy of it in JavaScript is a second copy that can disagree.
+                "tiers": svc.habit_tier_progress(s, ws, target or svc.today_local(tz)),
                 "wake": svc.wake_state(s, ws, tz=tz),
                 "streak": svc.habit_streak(s, ws, tz=tz)}
 
@@ -3465,6 +3607,49 @@ def api_stats(period: str = "week", init=Header(default=None, alias="X-Telegram-
     with SessionLocal() as s:
         return svc.stats(s, ws, period, gender=user.gender,
                          tz=svc.user_tz(user))
+
+
+@app.get("/api/progress/me")
+def api_progress_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """This caller's own score, XP, level, streak and rank. Never anybody else's.
+
+    Same shape of protection as `/api/referrals/me`, and for the same reason:
+    no user id appears in the path or the query, so the identity comes from the
+    Telegram signature and there is no parameter anybody could change to read a
+    stranger's productivity. Removing the question is stronger than answering
+    it correctly.
+
+    What ranking discloses about other people is a *count* and a *position* —
+    "#184 of 12,842" — and nothing else. No names, no usernames, no Telegram
+    ids, no other person's scores.
+
+    This reads. It never recomputes: the day is scored when the day changes,
+    on the action funnel, so opening a profile is a handful of indexed row
+    reads rather than an aggregation over history.
+    """
+    user, _ws = auth(init)
+    with SessionLocal() as s:
+        snapshot = svc.progress_snapshot(s, user.telegram_id,
+                                         tz=svc.user_tz(user))
+        # `global_rank` refreshes the stored best and last rank as it reads,
+        # which is the only write on this path and is what makes "↑7" and
+        # "personal best" honest rather than recomputed guesses.
+        s.commit()
+    return snapshot
+
+
+@app.get("/api/progress/achievements")
+def api_progress_achievements(init=Header(default=None,
+                                          alias="X-Telegram-Init-Data")):
+    """The thirteen achievements, locked and unlocked, with progress.
+
+    All of them, not just the earned ones: a locked row reading "7 / 30" is the
+    part that motivates, and a screen showing only what somebody already has
+    cannot do that. Thirteen rows, so there is nothing to paginate.
+    """
+    user, _ws = auth(init)
+    with SessionLocal() as s:
+        return {"achievements": svc.achievement_state(s, user.telegram_id)}
 
 
 @app.get("/api/referrals/me")

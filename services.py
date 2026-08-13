@@ -27,9 +27,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from db import (
-    Birthday, DailyReportLog, Feedback, Habit, HabitLog, JobRun,
+    Birthday, DailyReportLog, DailyScore, Feedback, Habit, HabitLog, JobRun,
     JournalEntry, PrayerDay, PrayerLog, Project, Referral, ReferralCode,
-    Task, User, WeeklyFocus, WeeklyReview, Workspace, utcnow,
+    Task, User, UserAchievement, UserProgress, WeeklyFocus, WeeklyReview,
+    Workspace, XPEvent, utcnow,
 )
 
 log = logging.getLogger("ernestos")
@@ -207,6 +208,19 @@ def date_label(day: date, lang: str = "uz") -> str:
 #: Habits are grouped into three tiers everywhere they are shown.
 HABIT_CATEGORIES = ["non_negotiable", "target", "bonus"]
 
+#: What each tier is worth inside the habit percentage. The three tiers existed
+#: as *labels* long before they existed as arithmetic: a workspace could sort
+#: its habits into non-negotiable, target and bonus, and then every one of them
+#: counted for exactly the same amount, so a missed 5x namoz and a missed
+#: podcast cost the day the same number of points. That made the sorting
+#: decorative, and worse, it made the number dishonest — the screen said one of
+#: these matters more and the score disagreed.
+#:
+#: Fifty / thirty / twenty. Non-negotiable is worth more than the other two put
+#: together, which is what "non-negotiable" has to mean if the word is doing any
+#: work; bonus is worth having and never worth much.
+HABIT_TIER_WEIGHTS = {"non_negotiable": 50, "target": 30, "bonus": 20}
+
 #: (name, category, system_key). A system_key marks a derived habit the user
 #: cannot tick by hand: "wakeup" follows the morning check-in, "prayer" follows
 #: the daily prayer score and "journal" follows a fully answered entry.
@@ -341,6 +355,37 @@ def record_action_and_qualify(s: Session, telegram_id: int) -> tuple[int, int | 
     return total, maybe_qualify_referral(s, telegram_id)
 
 
+def record_action_and_progress(s: Session, telegram_id: int) -> dict:
+    """The action counter, the referral check and personal progression, once.
+
+    One funnel, three consequences. `record_action_and_qualify` already had two
+    of them; progression is the third, and it hangs off the same single point
+    for the same reason — every write in the product passes through the action
+    counter, so scoring the day here reaches all of them without putting XP
+    logic into forty endpoints and without a nightly job that visits every user
+    to ask how they did.
+
+    Progression failing must never fail the user's actual action. Ticking a
+    task is the thing they asked for; recomputing their level is bookkeeping
+    that happens to be attached to it, and if the bookkeeping raises, the tick
+    still stands. So it is caught, logged and dropped.
+
+    Returns the progression result — including whether a level was just
+    crossed — for callers that want to say something about it. Callers that do
+    not care can ignore it, which is why the referral pair is still its own
+    function rather than being folded in here.
+    """
+    total, inviter = record_action_and_qualify(s, telegram_id)
+    result: dict = {}
+    try:
+        result = refresh_progress(s, telegram_id)
+        s.commit()
+    except Exception:
+        s.rollback()
+        log.exception("progression refresh failed for %s", telegram_id)
+    return {"actions": total, "inviter_to_tell": inviter, "progress": result}
+
+
 def set_subscription(s: Session, telegram_id: int, subscribed: bool) -> bool:
     """Update membership state. Returns True when the value actually changed."""
     user = s.get(User, telegram_id)
@@ -473,9 +518,17 @@ def update_habit(s: Session, ws: int, habit_id: int, **fields) -> Habit:
     """Edit a habit in place.
 
     A habit the user cannot rename or reschedule is one they delete and
-    recreate, which throws away every log it had. The name of a derived habit
-    is fixed — it is the contract with the module that drives it — but its
-    schedule and reminder are the user's to set.
+    recreate, which throws away every log it had. So an ordinary habit's name,
+    tier, schedule and reminder are all the user's to set.
+
+    The three derived habits are the exception, and on two counts. Their names
+    are the contract with the module that drives them, and their *schedule* is
+    the contract with the score: Get up, 5x namoz and Kundalik are the daily
+    floor every other number on Home is measured against, so a schedule of
+    "Mondays only" would not mean "I do this on Mondays", it would mean the
+    other six days stop counting and the day's percentage silently rises. The
+    Mini App no longer offers the picker for them; this is the half that a
+    hand-written request cannot get around.
     """
     habit = _owned_habit(s, ws, habit_id)
 
@@ -488,7 +541,8 @@ def update_habit(s: Session, ws: int, habit_id: int, **fields) -> Habit:
         habit.name = name
     if fields.get("category") in HABIT_CATEGORIES:
         habit.category = fields["category"]
-    if "schedule" in fields and fields["schedule"] is not None:
+    if ("schedule" in fields and fields["schedule"] is not None
+            and not habit.is_protected):
         habit.schedule = clean_schedule(fields["schedule"])
     if "remind_at" in fields:
         habit.remind_at = fields["remind_at"]
@@ -686,6 +740,62 @@ def habit_progress(s: Session, ws: int, day: date) -> tuple[int, int]:
         HabitLog.workspace_id == ws, HabitLog.day == day,
         HabitLog.done.is_(True))).all())
     return len(due_ids & done_ids), len(due_ids)
+
+
+def habit_tier_progress(s: Session, ws: int, day: date) -> dict[str, dict]:
+    """Per-tier completion for one day: done, due, percent and applied weight.
+
+    Only tiers that actually have a habit due that day get a weight. This is
+    the part that keeps the number reachable: the default workspace holds three
+    non-negotiable habits and nothing else, and a fixed 50/30/20 split would
+    cap that user at 50% on a day they did everything they had. Renormalising
+    over the tiers in play means "I did all of it" is always 100%, whether "all
+    of it" is three habits or eleven.
+
+    `applied` is the weight after that renormalisation — what the tier is
+    really worth to *this* user today — and it is what the Mini App shows, so
+    the badge on the screen and the arithmetic behind it cannot drift apart.
+    """
+    habits = [h for h in _active_habits(s, ws) if habit_is_due(h, day)]
+    done_ids = set(s.scalars(select(HabitLog.habit_id).where(
+        HabitLog.workspace_id == ws, HabitLog.day == day,
+        HabitLog.done.is_(True))).all()) if habits else set()
+
+    tiers: dict[str, dict] = {}
+    for name in HABIT_CATEGORIES:
+        due = [h for h in habits if h.category == name]
+        done = sum(1 for h in due if h.id in done_ids)
+        tiers[name] = {
+            "done": done,
+            "due": len(due),
+            "percent": round(done / len(due) * 100) if due else 0,
+            "weight": HABIT_TIER_WEIGHTS[name],
+            "applied": 0,
+        }
+
+    live = sum(HABIT_TIER_WEIGHTS[n] for n in HABIT_CATEGORIES if tiers[n]["due"])
+    if live:
+        for name in HABIT_CATEGORIES:
+            if tiers[name]["due"]:
+                tiers[name]["applied"] = round(
+                    HABIT_TIER_WEIGHTS[name] / live * 100)
+    return tiers
+
+
+def habit_percent(s: Session, ws: int, day: date) -> int:
+    """The day's habit score, 0–100, with the three tiers weighted.
+
+    Replaces a flat done/total. Under the old arithmetic a user with three
+    non-negotiable habits and seven bonus ones could skip every mandatory one,
+    tick the seven optional ones and read 70% — which is not a description of
+    that day. Now the mandatory half of the score is missing and it reads 30%.
+    """
+    tiers = habit_tier_progress(s, ws, day)
+    live = sum(t["weight"] for t in tiers.values() if t["due"])
+    if not live:
+        return 0
+    return round(sum(t["weight"] * t["done"] / t["due"]
+                     for t in tiers.values() if t["due"]) / live * 100)
 
 
 def habit_history(s: Session, ws: int, habit_id: int, *, days: int = 30,
@@ -1879,8 +1989,12 @@ def delete_birthday(s: Session, ws: int, birthday_id: int) -> str:
 # ---------------------------------------------------------------------------
 
 def _habit_percent(s: Session, ws: int, day: date) -> int:
-    done, total = habit_progress(s, ws, day)
-    return round(done / total * 100) if total else 0
+    """The habit component of the overall score — tier-weighted since the three
+    tiers became arithmetic rather than labels. `habit_progress` still returns
+    the raw counts, which is what "4/6 done" on screen means and what the
+    streak asks for; this is the *scored* value, and they are different
+    questions."""
+    return habit_percent(s, ws, day)
 
 
 def _prayer_score_for(s: Session, ws: int, day: date) -> float:
@@ -2100,6 +2214,10 @@ def overall_components(s: Session, ws: int, day: date | None = None) -> dict:
 
     habits_done, habits_total = habit_progress(s, ws, day)
     tasks_earned, tasks_available = today_task_score(s, ws, day)
+    # Weighted across the three tiers, not a flat count of ticks. The counts
+    # above are still what "4/6" on screen means; this is what the score is
+    # built from, and they are different questions on purpose.
+    habits_scored = habit_percent(s, ws, day)
     focus_done, focus_total = focus_progress(s, ws, day)
     prayer_row = s.scalar(select(PrayerDay).where(
         PrayerDay.workspace_id == ws, PrayerDay.day == day))
@@ -2110,7 +2228,7 @@ def overall_components(s: Session, ws: int, day: date | None = None) -> dict:
     return {
         "tasks": (round(tasks_earned / tasks_available * 100)
                   if tasks_available else None),
-        "habits": round(habits_done / habits_total * 100) if habits_total else None,
+        "habits": habits_scored if habits_total else None,
         "focus": round(focus_done / focus_total * 100) if focus_total else None,
         # Prayer's denominator is the five daily prayers, which exist for as
         # long as the user keeps the habit — not only on days they logged one.
@@ -2997,6 +3115,14 @@ def delete_account(s: Session, telegram_id: int) -> bool:
         or_(Referral.referred_user_id == telegram_id,
             Referral.inviter_user_id == telegram_id)))
 
+    # Progression hangs off the user for the same reason referrals do, and so
+    # needs the same explicit removal. A deleted account must not leave a row on
+    # the ranking table: it would keep occupying a position in a leaderboard
+    # made of people, and every rank below it would be one worse than the truth.
+    for model in (XPEvent, DailyScore, UserAchievement):
+        s.execute(sql_delete(model).where(model.user_id == telegram_id))
+    s.execute(sql_delete(UserProgress).where(UserProgress.user_id == telegram_id))
+
     s.delete(user)
     s.commit()
     return True
@@ -3243,6 +3369,834 @@ def platform_referral_stats(s: Session) -> dict:
         "referrals_qualified": qualified,
         "referral_inviters": inviters,
         "referral_conversion": round(qualified / total * 100, 1) if total else 0.0,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Personal progression — score, XP, levels
+# ---------------------------------------------------------------------------
+#
+# Two progression systems live in ErnestOS and they are deliberately kept
+# apart. *Referral* progression measures how many genuinely active people
+# somebody brought in; *personal* progression measures how well they run their
+# own life. Nothing below reads a referral, and nothing in the referral section
+# reads any of this. Somebody who invited a hundred people and does not use the
+# product has a low personal level, and that is the correct answer.
+#
+# The scoring formula is not a new one. ErnestOS already computes a weighted
+# daily percentage — `overall_components` and `weighted_overall`, tasks 40 /
+# habits 25 / focus 20 / prayer 15 — and it is already on the Home screen with
+# those weights printed on the tiles. Introducing a second formula with
+# different weights would mean two numbers that both claim to be "how today
+# went", disagreeing by a few points, on two screens of the same app. That is
+# the single most corrosive thing this codebase can do to its own credibility,
+# and it is why the daily score *is* the overall percentage rather than a
+# parallel calculation.
+#
+# Two categories a generic design would add are deliberately absent:
+#
+#   * **Execution quality.** ErnestOS does not reliably track whether a task
+#     was done on the day it was planned for, and inventing a proxy would be
+#     fake precision dressed as a metric. Its weight is not redistributed by
+#     hand — `weighted_overall` already renormalises over whatever is present.
+#   * **Reflection as its own component.** The journal is already a
+#     non-negotiable habit, so it is counted through `habits`. Scoring it twice
+#     would make one screen's worth of writing move the number twice.
+
+#: Score -> grade. Read top down, first threshold wins. The labels are graded
+#: rather than judgemental on purpose: the bottom band is "Reset", not "Failed".
+#: Nothing in this product tells somebody they were a bad person on a Tuesday.
+GRADE_BANDS = [(90, "S"), (80, "A"), (70, "B"), (60, "C"), (40, "D"), (0, "E")]
+
+#: A day at or above this is a Perfect Day.
+PERFECT_DAY_SCORE = 90
+
+#: What a day has to reach to count toward the consistency streak. Deliberately
+#: not "opened the app": a streak that survives on attendance measures nothing
+#: and everybody knows it. 60 is the C band — a day with real work in it.
+STREAK_THRESHOLD = 60
+
+#: Missing a day does not have to cost a month. Two protected days per calendar
+#: month, spent automatically, and they buy the streak only — no XP is awarded
+#: for a day that did not earn it.
+RECOVERY_DAYS_PER_MONTH = 2
+
+#: How many days away before returning counts as a comeback, and how long
+#: before another one can be earned. The cooldown is what stops the obvious
+#: exploit of disappearing on purpose every few days to farm the bonus.
+COMEBACK_AFTER_DAYS = 3
+COMEBACK_COOLDOWN_DAYS = 14
+
+#: Local days on record before a user is ranked. One brilliant first day must
+#: not put a brand-new account at #1 above people with a year of work behind
+#: them.
+RANK_MIN_DAYS = 7
+
+#: The rolling windows the two ranks are computed over, in calendar days.
+#: Calendar, not active — a user who stops using ErnestOS should slide down as
+#: the window fills with empty days, without anybody having to punish them.
+RANK_WINDOW_DAYS = 30
+WEEKLY_WINDOW_DAYS = 7
+
+#: (threshold XP, key, roman numeral). Seven levels, and the level is always
+#: computed from `xp_total` rather than stored: a stored level is a second copy
+#: of a number XP already answers, and the two drift the first time an award is
+#: replayed. Names belong to personal progression only — referral status levels
+#: are a separate ladder in the referral section, and the two never mix.
+PERSONAL_LEVELS = [
+    (0, "starter", "I"),
+    (500, "builder", "II"),
+    (1500, "operator", "III"),
+    (3500, "architect", "IV"),
+    (7000, "commander", "V"),
+    (15000, "elite", "VI"),
+    (30000, "master", "VII"),
+]
+
+#: What each kind of event is worth. Awarded once per key, ever — see `award_xp`.
+XP_VALUES = {
+    "task": 10,          # a task completed
+    "ritual_wake": 5,    # got up on time
+    "ritual_prayer": 10,  # all five prayers
+    "ritual_journal": 5,  # a complete journal entry
+    "habit": 5,          # any other habit ticked
+    "focus": 10,         # a weekly focus mission finished
+    "perfect_day": 25,
+    "streak_7": 50,
+    "streak_30": 200,
+    "comeback": 15,
+    "onboarding": 40,
+    "achievement": 20,
+}
+
+#: The most XP ordinary activity can produce in one local day. Without it, the
+#: cheapest way to a high level is to create and complete forty trivial tasks,
+#: which is the opposite of what the number is supposed to mean.
+XP_DAILY_CAP = 120
+
+#: Event types that are milestones rather than activity, and so are paid
+#: outside the cap. A 30-day streak bonus that silently vanished because the
+#: user also had a busy day would be a bug the user experiences as a lie.
+XP_UNCAPPED = {"perfect_day", "streak", "comeback", "onboarding", "achievement"}
+
+
+def grade_for(score: int) -> str:
+    """The letter a score falls into."""
+    for threshold, letter in GRADE_BANDS:
+        if score >= threshold:
+            return letter
+    return "E"
+
+
+def get_personal_level(xp: int) -> dict:
+    """Everything the UI needs about where this XP total sits on the ladder.
+
+    Returns the current level, the next one, and how far through the gap the
+    user is — computed, never stored, so replaying an award cannot leave a
+    level number that disagrees with the XP behind it.
+    """
+    xp = max(int(xp or 0), 0)
+    index = 0
+    for i, (threshold, _, _) in enumerate(PERSONAL_LEVELS):
+        if xp >= threshold:
+            index = i
+    threshold, key, numeral = PERSONAL_LEVELS[index]
+    nxt = PERSONAL_LEVELS[index + 1] if index + 1 < len(PERSONAL_LEVELS) else None
+
+    if nxt is None:
+        return {"key": key, "number": index + 1, "numeral": numeral,
+                "current_threshold": threshold, "next_threshold": None,
+                "next_key": None, "remaining": 0, "progress": 1.0, "xp": xp}
+
+    span = nxt[0] - threshold
+    return {
+        "key": key, "number": index + 1, "numeral": numeral,
+        "current_threshold": threshold, "next_threshold": nxt[0],
+        "next_key": nxt[1], "remaining": nxt[0] - xp,
+        "progress": round((xp - threshold) / span, 4) if span else 1.0,
+        "xp": xp,
+    }
+
+
+def _progress_row(s: Session, user_id: int) -> UserProgress:
+    """This user's summary row, created empty on first sight.
+
+    Created lazily rather than at signup so the feature needs no backfill pass
+    over existing accounts: the first time anybody's day is scored, their row
+    appears. An account that never comes back never gets one, which is correct.
+    """
+    row = s.get(UserProgress, user_id)
+    if row is None:
+        try:
+            with s.begin_nested():
+                row = UserProgress(user_id=user_id)
+                s.add(row)
+        except IntegrityError:
+            # Two concurrent requests both found nothing and both inserted.
+            # The savepoint keeps the loser's other work intact.
+            row = s.get(UserProgress, user_id)
+            if row is None:
+                raise
+    return row
+
+
+def award_xp(s: Session, user_id: int, event_key: str, event_type: str,
+             xp: int, day: date) -> int:
+    """Write one XP event if it has never been written. Returns XP granted.
+
+    The unique constraint on `event_key` is the whole mechanism, not a
+    belt-and-braces check on top of one: the caller does not have to know
+    whether this award already happened, and two concurrent requests cannot
+    both win. Everything that awards XP goes through here, so "can this be
+    claimed twice?" has one answer in one place.
+
+    Returns 0 when the key already existed or the daily cap is reached, so a
+    caller can tell whether anything actually happened without a second query.
+    """
+    if xp <= 0:
+        return 0
+
+    if event_type not in XP_UNCAPPED:
+        earned = s.scalar(select(func.coalesce(func.sum(XPEvent.xp), 0)).where(
+            XPEvent.user_id == user_id, XPEvent.event_date == day,
+            XPEvent.event_type.not_in(XP_UNCAPPED))) or 0
+        if earned >= XP_DAILY_CAP:
+            return 0
+        xp = min(xp, XP_DAILY_CAP - earned)
+
+    # A SAVEPOINT, not a plain flush, and this is not defensive decoration.
+    # `sync_day_xp` calls this in a loop inside one transaction, and a bare
+    # `s.rollback()` on the duplicate would discard *every award already made
+    # in that transaction* — so a user whose second habit had already been paid
+    # would silently lose the XP for the first. The nested block rolls back
+    # only the insert that collided.
+    try:
+        with s.begin_nested():
+            s.add(XPEvent(user_id=user_id, event_key=event_key,
+                          event_type=event_type, xp=xp, event_date=day))
+    except IntegrityError:
+        return 0
+    return xp
+
+
+def xp_total(s: Session, user_id: int) -> int:
+    """Sum of the ledger. The only definition of somebody's XP there is."""
+    return int(s.scalar(select(func.coalesce(func.sum(XPEvent.xp), 0))
+                        .where(XPEvent.user_id == user_id)) or 0)
+
+
+def recompute_daily_score(s: Session, user_id: int, ws: int,
+                          day: date) -> DailyScore:
+    """Write (or rewrite) one day's score row from that day's live data.
+
+    Only ever the day it is asked for. Recomputing today as the day goes on is
+    the whole point; recomputing *last Tuesday* is not, because the source rows
+    move — a task edited next week must not rewrite a score the user has
+    already been shown, and a streak must not change retroactively under them.
+
+    Components are stored as -1 for "absent", matching the distinction
+    `overall_components` draws between a category with nothing in it and a
+    category scored zero. A day with no tasks is not a day that failed its
+    tasks.
+    """
+    components = overall_components(s, ws, day)
+    total = weighted_overall(components)
+
+    row = s.scalar(select(DailyScore).where(DailyScore.user_id == user_id,
+                                            DailyScore.day == day))
+    if row is None:
+        try:
+            with s.begin_nested():
+                row = DailyScore(user_id=user_id, day=day)
+                s.add(row)
+        except IntegrityError:
+            row = s.scalar(select(DailyScore).where(
+                DailyScore.user_id == user_id, DailyScore.day == day))
+            if row is None:
+                raise
+
+    def part(name: str) -> int:
+        value = components.get(name)
+        return -1 if value is None else int(value)
+
+    row.task_score = part("tasks")
+    row.habit_score = part("habits")
+    row.focus_score = part("focus")
+    row.prayer_score = part("prayer")
+    row.total_score = int(total)
+    row.grade = grade_for(int(total))
+
+    try:
+        s.flush()
+    except IntegrityError:
+        # Another request inserted this user's day between the read and the
+        # write. Theirs is as correct as ours — both read the same source rows.
+        s.rollback()
+        row = s.scalar(select(DailyScore).where(DailyScore.user_id == user_id,
+                                                DailyScore.day == day))
+        if row is None:
+            raise
+    return row
+
+
+def sync_day_xp(s: Session, user_id: int, ws: int, day: date) -> int:
+    """Award every XP event today's state has earned. Returns XP newly granted.
+
+    Driven by *state*, not by intercepting each action, and that is what makes
+    it safe to call on every write. Each award names itself after the thing it
+    is for — the task's id, the habit and the day — so running this a hundred
+    times in a row grants exactly what running it once granted.
+
+    It is also what closes the toggle-farming hole for free. Completing a task,
+    undoing it and completing it again produces the key `task:412` all three
+    times; the ledger accepts it once. No XP is taken back when something is
+    undone, because "award once, when it first happens" needs no refund path
+    and a refund path is where double-spend bugs live.
+    """
+    granted = 0
+
+    # Tasks completed on this local day. `completed_at` is a UTC instant, so
+    # the day is converted to a UTC window rather than compared directly —
+    # anything finished after 19:00 in Tashkent carries yesterday's UTC date.
+    start, end = utc_window(day)
+    task_ids = s.scalars(select(Task.id).where(
+        Task.workspace_id == ws, Task.status == "done",
+        Task.completed_at >= start, Task.completed_at < end)).all()
+    for task_id in task_ids:
+        granted += award_xp(s, user_id, f"task:{task_id}", "task",
+                            XP_VALUES["task"], day)
+
+    # Habits ticked today. The three derived ones are worth naming separately —
+    # they are the floor the product is built on — and everything else is a
+    # habit the user chose, worth the ordinary amount.
+    rows = s.execute(select(Habit.id, Habit.system_key)
+                     .join(HabitLog, HabitLog.habit_id == Habit.id)
+                     .where(HabitLog.workspace_id == ws, HabitLog.day == day,
+                            HabitLog.done.is_(True))).all()
+    SYSTEM_XP = {SYSTEM_WAKEUP: ("ritual_wake", "ritual"),
+                 SYSTEM_PRAYER: ("ritual_prayer", "ritual"),
+                 SYSTEM_JOURNAL: ("ritual_journal", "ritual")}
+    for habit_id, system_key in rows:
+        value_key, event_type = SYSTEM_XP.get(system_key, ("habit", "task"))
+        granted += award_xp(s, user_id, f"habit:{habit_id}:{day}", event_type,
+                            XP_VALUES[value_key], day)
+
+    # Weekly focus missions finished. Keyed on the mission, not the day, so
+    # finishing one is worth ten once — not ten every day of the week it stays
+    # ticked.
+    focus_ids = s.scalars(select(WeeklyFocus.id).where(
+        WeeklyFocus.workspace_id == ws, WeeklyFocus.done.is_(True),
+        WeeklyFocus.week_start == week_start(day))).all()
+    for focus_id in focus_ids:
+        granted += award_xp(s, user_id, f"focus:{focus_id}", "focus",
+                            XP_VALUES["focus"], day)
+
+    return granted
+
+
+def _month_key(day: date) -> str:
+    return f"{day.year:04d}-{day.month:02d}"
+
+
+def _apply_day_to_streak(progress: UserProgress, day: date, score: int) -> dict:
+    """Move the streak on by one day. Returns what happened, for the caller.
+
+    Called once per local day, in order, from `refresh_progress`. The same day
+    arriving twice is a no-op — `last_score_date` is the guard — which matters
+    because every single write in the product triggers a refresh.
+
+    The rules, in the order they are checked:
+
+      * same day again  -> nothing moves;
+      * a good day right after the last one -> streak + 1;
+      * a weak day right after the last one -> spend a Recovery Day if one is
+        left this month, otherwise the streak resets to zero;
+      * a gap of more than one day -> the streak restarts at 1 if today was
+        good, and a long enough gap also earns a Comeback.
+
+    A Recovery Day protects the streak and nothing else: no XP is granted for a
+    day that did not earn any. The allowance resets by comparing the stored
+    month with today's, so nothing has to sweep every user on the first.
+    """
+    result = {"streak_changed": False, "recovery_used": False,
+              "comeback": False, "gap": 0}
+
+    last = progress.last_score_date
+    if last == day:
+        return result
+
+    # A new calendar month hands the allowance back.
+    if progress.recovery_month != _month_key(day):
+        progress.recovery_month = _month_key(day)
+        progress.recovery_used = 0
+
+    good = score >= STREAK_THRESHOLD
+    gap = (day - last).days if last else None
+    result["gap"] = gap or 0
+
+    if last is None or gap is not None and gap > 1:
+        # Returning after a break, or arriving for the first time.
+        if gap is not None and gap - 1 >= COMEBACK_AFTER_DAYS and good:
+            cooldown = progress.last_comeback_date
+            if (cooldown is None
+                    or (day - cooldown).days >= COMEBACK_COOLDOWN_DAYS):
+                result["comeback"] = True
+                progress.last_comeback_date = day
+        progress.current_streak = 1 if good else 0
+    elif gap == 1:
+        if good:
+            progress.current_streak = (progress.current_streak or 0) + 1
+        elif progress.recovery_used < RECOVERY_DAYS_PER_MONTH:
+            progress.recovery_used += 1
+            result["recovery_used"] = True   # streak survives, untouched
+        else:
+            progress.current_streak = 0
+    else:
+        # gap < 0: a day earlier than the last one scored. Backfilling history
+        # must never rewrite a streak the user has already been shown.
+        return result
+
+    progress.last_score_date = day
+    progress.best_streak = max(progress.best_streak or 0,
+                               progress.current_streak or 0)
+    result["streak_changed"] = True
+    return result
+
+
+def _eligible_window(s: Session, user_id: int, today: date,
+                     days: int) -> tuple[date, int]:
+    """(first day, how many calendar days) the rolling index is averaged over.
+
+    Calendar days, so that going quiet lowers the index on its own rather than
+    needing a punishment rule. But never days from before this account existed:
+    a user three days old is measured over three days, not charged for
+    twenty-seven days of absence that happened before they arrived.
+    """
+    first_scored = s.scalar(select(func.min(DailyScore.day))
+                            .where(DailyScore.user_id == user_id))
+    start = today - timedelta(days=days - 1)
+    if first_scored and first_scored > start:
+        start = first_scored
+    return start, (today - start).days + 1
+
+
+def performance_index(s: Session, user_id: int, today: date,
+                      days: int = RANK_WINDOW_DAYS) -> float:
+    """How this user has actually been doing lately, 0-100. The ranking metric.
+
+    Explicitly *not* lifetime XP. Ranking on a lifetime total would mean the
+    board is ordered by how long each account has existed, and nobody joining
+    this year could ever pass somebody who stopped using the product in March.
+    Lifetime effort is what Level is for; this is current form.
+
+        70%  average daily score across the window
+        20%  consistency — the share of days that cleared the streak threshold
+        10%  weekly focus follow-through
+
+    Missing days count as zero inside the window, which is what makes the
+    number decay on its own when somebody stops showing up.
+    """
+    start, span = _eligible_window(s, user_id, today, days)
+    if span <= 0:
+        return 0.0
+
+    rows = s.execute(select(DailyScore.total_score, DailyScore.focus_score)
+                     .where(DailyScore.user_id == user_id,
+                            DailyScore.day >= start,
+                            DailyScore.day <= today)).all()
+    if not rows:
+        return 0.0
+
+    totals = [r[0] for r in rows]
+    average = sum(totals) / span                       # absent days are zeroes
+    consistency = sum(1 for t in totals if t >= STREAK_THRESHOLD) / span * 100
+    focus_days = [r[1] for r in rows if r[1] >= 0]
+    focus = sum(focus_days) / len(focus_days) if focus_days else 0.0
+
+    return round(0.70 * average + 0.20 * consistency + 0.10 * focus, 2)
+
+
+def refresh_progress(s: Session, user_id: int, *, day: date | None = None,
+                     tz: ZoneInfo | None = None) -> dict:
+    """Bring one user's progression up to date. The single entry point.
+
+    Everything hangs off this: scoring the day, paying out whatever the day
+    earned, moving the streak, and refreshing the two ranking indexes. It is
+    called from exactly one place in ordinary use — the action counter every
+    write in the product already funnels through — plus onboarding completion,
+    because a day's worth of work can be done before `onboarded` flips.
+
+    Returns what changed, so a caller can decide whether anything is worth
+    telling the user about. Nothing here sends a message: this is a database
+    service, and putting a Telegram call inside it would make every write in
+    the product depend on the network.
+
+    Callers commit.
+    """
+    user = s.get(User, user_id)
+    if user is None:
+        return {}
+    ws = s.scalar(select(Workspace.id).where(Workspace.user_id == user_id))
+    if ws is None:
+        return {}
+
+    zone = tz or user_tz(user)
+    day = day or today_local(zone)
+
+    progress = _progress_row(s, user_id)
+    before_xp = progress.xp_total or 0
+    before_level = get_personal_level(before_xp)["number"]
+
+    score_row = recompute_daily_score(s, user_id, ws, day)
+    granted = sync_day_xp(s, user_id, ws, day)
+
+    # A Perfect Day is paid once per day, ever — the key carries the date, so
+    # a day that dips back below 90 and climbs again does not pay twice.
+    if score_row.total_score >= PERFECT_DAY_SCORE:
+        granted += award_xp(s, user_id, f"perfect_day:{user_id}:{day}",
+                            "perfect_day", XP_VALUES["perfect_day"], day)
+
+    moved = _apply_day_to_streak(progress, day, score_row.total_score)
+
+    if moved["comeback"]:
+        granted += award_xp(s, user_id, f"comeback:{user_id}:{day}",
+                            "comeback", XP_VALUES["comeback"], day)
+    for milestone in (7, 30):
+        if (progress.current_streak or 0) >= milestone:
+            granted += award_xp(
+                s, user_id, f"streak_{milestone}:{user_id}:{day}", "streak",
+                XP_VALUES[f"streak_{milestone}"], day)
+
+    # Perfect days are counted from the ledger rather than incremented, so a
+    # recomputed score cannot inflate the count.
+    progress.perfect_days = int(s.scalar(select(func.count()).select_from(XPEvent)
+                                         .where(XPEvent.user_id == user_id,
+                                                XPEvent.event_type == "perfect_day")) or 0)
+    progress.xp_total = xp_total(s, user_id)
+    progress.scored_days = int(s.scalar(select(func.count()).select_from(DailyScore)
+                                        .where(DailyScore.user_id == user_id)) or 0)
+    progress.performance_index_30d = performance_index(s, user_id, day,
+                                                       RANK_WINDOW_DAYS)
+    progress.performance_index_7d = performance_index(s, user_id, day,
+                                                      WEEKLY_WINDOW_DAYS)
+
+    after_level = get_personal_level(progress.xp_total)["number"]
+    unlocked = check_achievements(s, user_id, progress, score_row)
+
+    return {
+        "score": score_row.total_score,
+        "grade": score_row.grade,
+        "xp_gained": granted,
+        "xp_total": progress.xp_total,
+        "level_up": after_level > before_level,
+        "level": get_personal_level(progress.xp_total),
+        "streak": progress.current_streak or 0,
+        "perfect_day": score_row.total_score >= PERFECT_DAY_SCORE,
+        "achievements": unlocked,
+        **moved,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Achievements
+# ---------------------------------------------------------------------------
+#
+# Definitions live here rather than in a table: each one is a key, a rule and
+# three translations — code, in other words — and a row per definition would
+# mean a migration every time a word changed. `user_achievements` stores only
+# the fact that somebody earned one.
+#
+# Thirteen, and no more for now. A wall of badges is how a progression system
+# stops meaning anything: if everything is an achievement, nothing is.
+
+#: key -> (rule, target) where `rule` reads the progress row and the day.
+#: `target` is what the UI draws a progress bar toward, or None when the
+#: achievement is a single event rather than a count.
+ACHIEVEMENTS = [
+    ("first_step",      "scored_days",   1),
+    ("perfect_day",     "perfect_days",  1),
+    ("consistent",      "best_streak",   7),
+    ("disciplined",     "best_streak",  30),
+    ("century",         "tasks_done",  100),
+    ("early_riser",     "wake_days",    30),
+    ("focused",         "focus_done",   10),
+    ("never_miss_twice", "recoveries",   1),
+    ("comeback",        "comebacks",     1),
+    ("architect",       "level",         4),
+    ("commander",       "level",         5),
+    ("elite",           "level",         6),
+    ("master",          "level",         7),
+]
+
+
+def _achievement_values(s: Session, user_id: int,
+                        progress: UserProgress) -> dict[str, int]:
+    """Every number the achievement rules read, in one pass.
+
+    Deliberately one function rather than a query per achievement: thirteen
+    rules that each go to the database would be thirteen round trips on every
+    single write in the product.
+    """
+    counts = dict(s.execute(
+        select(XPEvent.event_type, func.count())
+        .where(XPEvent.user_id == user_id)
+        .group_by(XPEvent.event_type)).all())
+    task_xp = int(s.scalar(select(func.count()).select_from(XPEvent).where(
+        XPEvent.user_id == user_id,
+        XPEvent.event_key.like("task:%"))) or 0)
+    wake_xp = int(s.scalar(select(func.count()).select_from(XPEvent).where(
+        XPEvent.user_id == user_id,
+        XPEvent.event_key.like("habit:%"),
+        XPEvent.event_type == "ritual")) or 0)
+    return {
+        "scored_days": progress.scored_days or 0,
+        "perfect_days": progress.perfect_days or 0,
+        "best_streak": progress.best_streak or 0,
+        "tasks_done": task_xp,
+        "wake_days": wake_xp,
+        "focus_done": counts.get("focus", 0),
+        "recoveries": progress.recovery_used or 0,
+        "comebacks": counts.get("comeback", 0),
+        "level": get_personal_level(progress.xp_total or 0)["number"],
+    }
+
+
+def check_achievements(s: Session, user_id: int, progress: UserProgress,
+                       score_row: DailyScore) -> list[str]:
+    """Unlock whatever this user has now earned. Returns only what is new.
+
+    The unique constraint on (user_id, achievement_key) is what makes this
+    idempotent, exactly as `event_key` does for XP — so this can run on every
+    write without a "have I already?" check per achievement.
+    """
+    values = _achievement_values(s, user_id, progress)
+    already = set(s.scalars(select(UserAchievement.achievement_key)
+                            .where(UserAchievement.user_id == user_id)).all())
+
+    unlocked: list[str] = []
+    for key, field, target in ACHIEVEMENTS:
+        if key in already or values.get(field, 0) < target:
+            continue
+        # Savepoint for the same reason `award_xp` uses one: this runs in a
+        # loop, and a collision on the fourth achievement must not undo the
+        # three already written in this transaction.
+        try:
+            with s.begin_nested():
+                s.add(UserAchievement(user_id=user_id, achievement_key=key))
+        except IntegrityError:
+            continue
+        unlocked.append(key)
+        award_xp(s, user_id, f"achievement:{user_id}:{key}", "achievement",
+                 XP_VALUES["achievement"], score_row.day)
+
+    if unlocked:
+        progress.xp_total = xp_total(s, user_id)
+    return unlocked
+
+
+def achievement_state(s: Session, user_id: int) -> list[dict]:
+    """Every achievement, unlocked or not, with progress where it is meaningful.
+
+    Returns all thirteen rather than only the earned ones: a locked achievement
+    with "7 / 30" against it is the part that does the motivating, and a screen
+    that shows only what somebody already has cannot do that.
+    """
+    progress = s.get(UserProgress, user_id)
+    if progress is None:
+        values = {}
+    else:
+        values = _achievement_values(s, user_id, progress)
+
+    rows = dict(s.execute(
+        select(UserAchievement.achievement_key, UserAchievement.unlocked_at)
+        .where(UserAchievement.user_id == user_id)).all())
+
+    out = []
+    for key, field, target in ACHIEVEMENTS:
+        have = values.get(field, 0)
+        out.append({
+            "key": key,
+            "unlocked": key in rows,
+            "unlocked_at": rows[key].isoformat() if key in rows else None,
+            "progress": min(have, target),
+            "target": target,
+        })
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Ranking
+# ---------------------------------------------------------------------------
+#
+# One indexed scan of one narrow column, and nothing else. The tempting
+# implementation — aggregate everybody's daily scores when somebody opens their
+# profile — is O(all users x all history) per request, and it is why
+# `user_progress` exists at all. Each user's index is written when their own day
+# changes; ranking only ever reads it.
+
+def _rank_for(s: Session, column, value: float) -> tuple[int, int]:
+    """(rank, eligible users) for a value in one of the index columns.
+
+    Rank is "how many people are strictly ahead, plus one", so equal indexes
+    share a rank — #184, #184, #186. Inventing decimal places to break ties
+    would be precision the underlying numbers do not have.
+    """
+    eligible = int(s.scalar(select(func.count()).select_from(UserProgress)
+                            .where(UserProgress.scored_days >= RANK_MIN_DAYS)) or 0)
+    ahead = int(s.scalar(select(func.count()).select_from(UserProgress)
+                         .where(UserProgress.scored_days >= RANK_MIN_DAYS,
+                                column > value)) or 0)
+    return ahead + 1, eligible
+
+
+def global_rank(s: Session, user_id: int) -> dict:
+    """Where this user stands, and whether they stand anywhere yet.
+
+    Ranking unlocks after `RANK_MIN_DAYS` days on record. Before that the
+    payload says how many are left rather than showing a rank built on two
+    days of data — a brand-new account with one 100-point day would otherwise
+    sit at #1 above people with a year behind them, which discredits the board
+    for everybody who can see it.
+    """
+    progress = s.get(UserProgress, user_id)
+    if progress is None or (progress.scored_days or 0) < RANK_MIN_DAYS:
+        remaining = RANK_MIN_DAYS - ((progress.scored_days or 0) if progress else 0)
+        return {"eligible": False, "days_remaining": max(remaining, 0),
+                "global": None, "weekly": None, "best": None,
+                "users": 0, "top_percent": None, "movement": None}
+
+    rank, users = _rank_for(s, UserProgress.performance_index_30d,
+                            progress.performance_index_30d or 0.0)
+    weekly, _ = _rank_for(s, UserProgress.performance_index_7d,
+                          progress.performance_index_7d or 0.0)
+
+    previous = progress.last_global_rank
+    # Best only ever improves. Overwriting it with a worse rank would make
+    # "personal best" mean "most recent", which is not what the words say.
+    if progress.best_global_rank is None or rank < progress.best_global_rank:
+        progress.best_global_rank = rank
+    progress.last_global_rank = rank
+
+    return {
+        "eligible": True,
+        "days_remaining": 0,
+        "global": rank,
+        "weekly": weekly,
+        "best": progress.best_global_rank,
+        "users": users,
+        # Rounded to whole percent above 1%, one decimal below it — a top-2%
+        # user is not helped by being told 1.4327%.
+        "top_percent": (round(rank / users * 100)
+                        if users and rank / users * 100 >= 1
+                        else round(rank / users * 100, 1) if users else None),
+        # Only reported when there is a real previous rank to compare with.
+        # Inventing movement on a first view would be a number that means
+        # nothing dressed as one that means something.
+        "movement": (previous - rank) if previous is not None else None,
+    }
+
+
+def progress_snapshot(s: Session, user_id: int, *,
+                      tz: ZoneInfo | None = None) -> dict:
+    """Everything the Progress screen shows, for one user, about themselves.
+
+    Never takes a user id from the caller's request — the id comes from the
+    verified Telegram identity — so there is no parameter to tamper with and
+    no way to read somebody else's day. What ranking exposes about other people
+    is a count and a position, never a name.
+    """
+    user = s.get(User, user_id)
+    zone = tz or user_tz(user)
+    today = today_local(zone)
+
+    progress = s.get(UserProgress, user_id)
+    if progress is None:
+        # Same shape as the populated payload, down to the breakdown keys. A
+        # client that has to branch on whether a field exists is a client that
+        # will get it wrong on the one screen nobody tests: the first one a new
+        # user ever opens.
+        level = get_personal_level(0)
+        return {
+            "daily": {"score": 0, "grade": "E", "perfect_day": False,
+                      "to_perfect": PERFECT_DAY_SCORE,
+                      "breakdown": {"tasks": None, "habits": None,
+                                    "focus": None, "prayer": None},
+                      "weights": OVERALL_WEIGHTS},
+            "xp": {"total": 0, "today": 0, "cap": XP_DAILY_CAP},
+            "level": level,
+            "streak": {"current": 0, "best": 0,
+                       "recovery_remaining": RECOVERY_DAYS_PER_MONTH},
+            "rank": global_rank(s, user_id),
+            "perfect_days": 0,
+            "scored_days": 0,
+        }
+
+    row = s.scalar(select(DailyScore).where(DailyScore.user_id == user_id,
+                                            DailyScore.day == today))
+    today_xp = int(s.scalar(select(func.coalesce(func.sum(XPEvent.xp), 0)).where(
+        XPEvent.user_id == user_id, XPEvent.event_date == today)) or 0)
+
+    def part(value: int | None) -> int | None:
+        return None if value is None or value < 0 else value
+
+    used = (progress.recovery_used or 0) if progress.recovery_month == _month_key(today) else 0
+
+    return {
+        "daily": {
+            "score": row.total_score if row else 0,
+            "grade": row.grade if row else "E",
+            "perfect_day": bool(row and row.total_score >= PERFECT_DAY_SCORE),
+            "to_perfect": max(PERFECT_DAY_SCORE - (row.total_score if row else 0), 0),
+            "breakdown": {
+                "tasks": part(row.task_score if row else None),
+                "habits": part(row.habit_score if row else None),
+                "focus": part(row.focus_score if row else None),
+                "prayer": part(row.prayer_score if row else None),
+            },
+            "weights": OVERALL_WEIGHTS,
+        },
+        "xp": {"total": progress.xp_total or 0, "today": today_xp,
+               "cap": XP_DAILY_CAP},
+        "level": get_personal_level(progress.xp_total or 0),
+        "streak": {
+            "current": progress.current_streak or 0,
+            "best": progress.best_streak or 0,
+            "recovery_remaining": max(RECOVERY_DAYS_PER_MONTH - used, 0),
+            "threshold": STREAK_THRESHOLD,
+        },
+        "rank": global_rank(s, user_id),
+        "perfect_days": progress.perfect_days or 0,
+        "scored_days": progress.scored_days or 0,
+    }
+
+
+def platform_progress_stats(s: Session) -> dict:
+    """Aggregate progression numbers for the operator. No personal content."""
+    ranked = int(s.scalar(select(func.count()).select_from(UserProgress)
+                          .where(UserProgress.scored_days >= RANK_MIN_DAYS)) or 0)
+    today = today_local()
+    avg = s.scalar(select(func.avg(DailyScore.total_score))
+                   .where(DailyScore.day == today))
+    perfect = int(s.scalar(select(func.count()).select_from(DailyScore).where(
+        DailyScore.day == today,
+        DailyScore.total_score >= PERFECT_DAY_SCORE)) or 0)
+    streaks = int(s.scalar(select(func.count()).select_from(UserProgress)
+                           .where(UserProgress.current_streak > 0)) or 0)
+    xp_today = int(s.scalar(select(func.coalesce(func.sum(XPEvent.xp), 0))
+                            .where(XPEvent.event_date == today)) or 0)
+
+    levels: dict[str, int] = {}
+    for (xp,) in s.execute(select(UserProgress.xp_total)).all():
+        key = get_personal_level(xp or 0)["key"]
+        levels[key] = levels.get(key, 0) + 1
+
+    return {
+        "avg_daily_score": round(float(avg), 1) if avg is not None else 0.0,
+        "perfect_days_today": perfect,
+        "active_streaks": streaks,
+        "rank_eligible_users": ranked,
+        "xp_today": xp_today,
+        "users_by_level": levels,
     }
 
 
@@ -3520,7 +4474,21 @@ def active_recipients(s: Session) -> list[tuple[int, int, str]]:
 # through one function is what stops "the default" from being three different
 # things in three files.
 
-DEFAULT_MORNING_TIME = dtime(4, 0)
+#: 07:00, and the previous value is worth recording because it was a bug that
+#: looked like a setting. This was `dtime(4, 0)`, from when the scheduler ran on
+#: the server clock: 04:00 UTC is 09:00 in Tashkent, which is a reasonable hour
+#: to be told about your day. When the scheduler moved to the project clock
+#: (`svc.TZ`, Asia/Tashkent) that same literal silently became four in the
+#: morning. Nothing failed, no error was logged, and the reports went out on
+#: time every day — to people who were asleep, who reported the morning report
+#: as "not arriving" because they only ever saw it hours later under a stack of
+#: other notifications.
+#:
+#: 05:00 matches `DEFAULT_WAKE_TIME` — the report arrives as the day is meant to
+#: start, not an hour before it, and it lands near bomdod for the audience this
+#: is built for. The 90-minute window carries it to 06:30 for anybody who is up
+#: a little later. This is only what NULL means; a chosen time always wins.
+DEFAULT_MORNING_TIME = dtime(5, 0)
 #: 21:30 rather than 21:00: the day's last habits and prayers are usually still
 #: being entered on the hour, and a summary that arrives mid-entry is wrong.
 DEFAULT_EVENING_TIME = dtime(21, 30)
@@ -3710,6 +4678,9 @@ def platform_stats(s: Session) -> dict:
         # Growth, aggregate only — counts and a conversion rate, never who
         # invited whom. Two grouped queries over an indexed column.
         **platform_referral_stats(s),
+        # Progression, aggregate only — averages and counts, never a name and
+        # never one person's day.
+        **platform_progress_stats(s),
     }
 
 
