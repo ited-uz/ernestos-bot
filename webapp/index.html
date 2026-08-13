@@ -52,6 +52,15 @@
   --title-w:680;
   --display-w:700;
   --motion:200ms;
+  /* Glass is a theme decision, made once here. A theme that wants frosted
+     panels sets --card-bg to a translucent mix and --blur to a filter; the
+     opaque themes leave both alone and pay nothing for the feature. */
+  --card-bg:var(--surface);
+  --card-2-bg:var(--surface-2);
+  --blur:none;
+  /* The ground behind everything. Themes that want light behind the glass
+     paint it here rather than inside a component. */
+  --backdrop:none;
 
   /* ---- 8px spacing scale ---- */
   --s0:4px; --s1:8px; --s2:12px; --s3:16px; --s4:24px; --s5:32px; --s6:48px;
@@ -71,196 +80,290 @@
    the mode.
    ------------------------------------------------------------------ */
 
-/* ---- CALM — Balanced & minimal. Royal blue leads, cyan for analytics,
-   violet, amber and emerald for the rest. The default. ---- */
+/* Every hue below is an Apple system colour, in its light or dark variant,
+   and every grey is from Apple's own neutral ramp (systemGray..systemGray6,
+   label/secondaryLabel/tertiaryLabel, separator). That is not decoration: the
+   set is contrast-tested at both ends, the light and dark variants of a hue
+   are calibrated to feel like the same colour rather than merely to share a
+   name, and the greys are the exact values a native list sits on. Picking
+   hexes by eye is how an interface ends up looking almost right.
 
-:root[data-theme="calm"][data-mode="light"]{
-  --bg:#F4F7FC; --surface:#FFFFFF; --surface-2:#E8EEF7;
-  --text:#0E1729; --text-2:#5B6879; --text-3:#93A1B4;
-  --border:#DCE5F0; --border-2:#C6D3E4;
+   Where a hue is used for *text or an icon* on a light ground, the darker
+   accessible variant is used instead of the vivid one — systemGreen #34C759
+   is 1.9:1 on white and unreadable as a label. The vivid one stays for fills,
+   which is what it is for. */
+
+/* ---- OCEAN GLASS — the default. systemBlue under frosted glass, over a
+   softly lit ground. Universal, premium, safe to open on. ---- */
+
+:root[data-theme="ocean"][data-mode="light"]{
+  --bg:#F1F4F9; --surface:#FFFFFF; --surface-2:#E8ECF3;
+  --text:#06070A; --text-2:#6C7280; --text-3:#A2A7B2;
+  --border:#DCE0E8; --border-2:#C6CBD4;
   /* five vivid brand colours; c1 leads, c2 carries analytics */
-  --c1:#2563EB; --c2:#06B6D4; --c3:#7C3AED; --c4:#F59E0B; --c5:#10B981;
+  --c1:#007AFF; --c2:#30B0C7; --c3:#5856D6; --c4:#FF9500; --c5:#34C759;
   --primary:var(--c1);
   --primary-2:color-mix(in srgb, var(--c1) 78%, #000);
   --on-primary:#FFFFFF;
   --accent:var(--c2); --accent-2:var(--c3);
-  --ok:#0F9D58; --warn:#B45309; --danger:#DC2626;
-  --shadow-rgb:15,23,42; --shadow-k:1;
+  --ok:#248A3D; --warn:#B25000; --danger:#D70015;
+  --shadow-rgb:9,30,66; --shadow-k:1.2;
+  --card-bg:color-mix(in srgb, #FFFFFF 78%, transparent);
+  --card-2-bg:color-mix(in srgb, var(--surface-2) 72%, transparent);
+  --backdrop:
+    radial-gradient(58% 40% at 6% 0%, rgba(0,122,255,.15), transparent 70%),
+    radial-gradient(50% 36% at 98% 4%, rgba(48,176,199,.13), transparent 72%),
+    radial-gradient(70% 44% at 50% 100%, rgba(88,86,214,.08), transparent 72%);
 }
 
-:root[data-theme="calm"][data-mode="dark"]{
-  --bg:#0A1020; --surface:#131C31; --surface-2:#1C2740;
-  --text:#EDF2FA; --text-2:#94A3B8; --text-3:#64748B;
-  --border:#243149; --border-2:#33425E;
+:root[data-theme="ocean"][data-mode="dark"]{
+  --bg:#060A12; --surface:#111621; --surface-2:#1A2130;
+  --text:#FFFFFF; --text-2:#98A0AE; --text-3:#6C7280;
+  --border:#232B3A; --border-2:#333B4D;
   /* five vivid brand colours; c1 leads, c2 carries analytics */
-  --c1:#2563EB; --c2:#06B6D4; --c3:#7C3AED; --c4:#F59E0B; --c5:#10B981;
+  --c1:#0A84FF; --c2:#40C8E0; --c3:#5E5CE6; --c4:#FF9F0A; --c5:#30D158;
   --primary:var(--c1);
   --primary-2:color-mix(in srgb, var(--c1) 78%, #fff);
   --on-primary:#FFFFFF;
   --accent:var(--c2); --accent-2:var(--c3);
-  --ok:#34D399; --warn:#FBBF24; --danger:#F87171;
-  --shadow-rgb:0,0,0; --shadow-k:7;
+  --ok:#30D158; --warn:#FF9F0A; --danger:#FF453A;
+  --shadow-rgb:0,0,0; --shadow-k:8;
+  --card-bg:color-mix(in srgb, var(--surface) 68%, transparent);
+  --card-2-bg:color-mix(in srgb, var(--surface-2) 64%, transparent);
+  --backdrop:
+    radial-gradient(58% 40% at 6% 0%, rgba(10,132,255,.20), transparent 70%),
+    radial-gradient(50% 36% at 98% 4%, rgba(64,200,224,.13), transparent 72%),
+    radial-gradient(72% 46% at 50% 100%, rgba(94,92,230,.14), transparent 74%);
 }
 
-/* ---- TITAN — Strong & premium. Electric blue over obsidian, with steel,
-   cyan and amber. Executive, not a gaming rig. ---- */
+/* ---- MIDNIGHT MINIMAL — the native-looking one. Apple's exact grouped
+   backgrounds and separators, one systemBlue accent, true black in the dark.
+   No gradient, no blur, almost no shadow. ---- */
 
-:root[data-theme="titan"][data-mode="light"]{
-  --bg:#EEF1F5; --surface:#FFFFFF; --surface-2:#E1E7EE;
-  --text:#0B1118; --text-2:#4B5766; --text-3:#8593A3;
-  --border:#D4DCE5; --border-2:#BAC5D1;
+:root[data-theme="midnight"][data-mode="light"]{
+  --bg:#F2F2F7; --surface:#FFFFFF; --surface-2:#E5E5EA;
+  --text:#000000; --text-2:#6C6C70; --text-3:#AEAEB2;
+  --border:#D8D8DC; --border-2:#C6C6C8;
   /* five vivid brand colours; c1 leads, c2 carries analytics */
-  --c1:#3B82F6; --c2:#22D3EE; --c3:#64748B; --c4:#F59E0B; --c5:#34D399;
+  --c1:#5856D6; --c2:#8E8E93; --c3:#5AC8FA; --c4:#FF9500; --c5:#34C759;
   --primary:var(--c1);
   --primary-2:color-mix(in srgb, var(--c1) 78%, #000);
   --on-primary:#FFFFFF;
   --accent:var(--c2); --accent-2:var(--c3);
-  --ok:#0F9D58; --warn:#B45309; --danger:#DC2626;
-  --shadow-rgb:15,23,42; --shadow-k:1;
+  --ok:#248A3D; --warn:#B25000; --danger:#D70015;
+  --shadow-rgb:0,0,0; --shadow-k:.5;
 }
 
-:root[data-theme="titan"][data-mode="dark"]{
-  --bg:#07090C; --surface:#101419; --surface-2:#181E26;
-  --text:#F2F6FA; --text-2:#8A96A4; --text-3:#5C6875;
-  --border:#222A34; --border-2:#333D49;
+:root[data-theme="midnight"][data-mode="dark"]{
+  --bg:#000000; --surface:#1C1C1E; --surface-2:#2C2C2E;
+  --text:#FFFFFF; --text-2:#98989F; --text-3:#6C6C70;
+  --border:#38383A; --border-2:#48484A;
   /* five vivid brand colours; c1 leads, c2 carries analytics */
-  --c1:#3B82F6; --c2:#22D3EE; --c3:#64748B; --c4:#F59E0B; --c5:#34D399;
+  --c1:#5E5CE6; --c2:#98989D; --c3:#64D2FF; --c4:#FF9F0A; --c5:#30D158;
   --primary:var(--c1);
   --primary-2:color-mix(in srgb, var(--c1) 78%, #fff);
   --on-primary:#FFFFFF;
   --accent:var(--c2); --accent-2:var(--c3);
-  --ok:#34D399; --warn:#FBBF24; --danger:#F87171;
-  --shadow-rgb:0,0,0; --shadow-k:7;
+  --ok:#30D158; --warn:#FF9F0A; --danger:#FF453A;
+  --shadow-rgb:0,0,0; --shadow-k:4;
 }
 
-/* ---- MUSE — Elegant & warm. Dusty rose with lavender, fuchsia, amber and
-   teal. Softest geometry of the five; never candy pink. ---- */
+/* ---- AURORA GLASS — systemIndigo into systemPurple into systemCyan, seen
+   through glass. The most expressive of the five; the gradient stays on the
+   headline surface and the primary button, never on a reading surface. ---- */
 
-:root[data-theme="muse"][data-mode="light"]{
-  --bg:#FCF7F8; --surface:#FFFFFF; --surface-2:#F8EDF1;
-  --text:#2B2126; --text-2:#7A6B72; --text-3:#A99BA1;
-  --border:#EEDDE4; --border-2:#DFC8D2;
+:root[data-theme="aurora"][data-mode="light"]{
+  --bg:#F3F2F9; --surface:#FFFFFF; --surface-2:#EBE9F6;
+  --text:#0C0A18; --text-2:#615F74; --text-3:#9997AB;
+  --border:#DEDBEC; --border-2:#C7C3DE;
   /* five vivid brand colours; c1 leads, c2 carries analytics */
-  --c1:#DB2777; --c2:#A855F7; --c3:#F472B6; --c4:#F59E0B; --c5:#14B8A6;
+  --c1:#AF52DE; --c2:#32ADE6; --c3:#5856D6; --c4:#FF2D55; --c5:#00C7BE;
   --primary:var(--c1);
   --primary-2:color-mix(in srgb, var(--c1) 78%, #000);
   --on-primary:#FFFFFF;
   --accent:var(--c2); --accent-2:var(--c3);
-  --ok:#0F9D58; --warn:#B45309; --danger:#DC2626;
-  --shadow-rgb:15,23,42; --shadow-k:1;
+  --ok:#248A3D; --warn:#B25000; --danger:#D70015;
+  --shadow-rgb:40,26,90; --shadow-k:1.4;
+  --card-bg:color-mix(in srgb, #FFFFFF 76%, transparent);
+  --card-2-bg:color-mix(in srgb, var(--surface-2) 70%, transparent);
+  --backdrop:
+    radial-gradient(46% 32% at 0% 0%, rgba(88,86,214,.22), transparent 70%),
+    radial-gradient(44% 30% at 100% 8%, rgba(50,173,230,.20), transparent 70%),
+    radial-gradient(52% 34% at 78% 92%, rgba(175,82,222,.16), transparent 72%);
 }
 
-:root[data-theme="muse"][data-mode="dark"]{
-  --bg:#160F13; --surface:#221720; --surface-2:#2E1F2A;
-  --text:#F8EFF3; --text-2:#B79FAC; --text-3:#8A7480;
-  --border:#3A2833; --border-2:#4B3543;
+:root[data-theme="aurora"][data-mode="dark"]{
+  --bg:#08060F; --surface:#151228; --surface-2:#1F1B3A;
+  --text:#FFFFFF; --text-2:#A3A0C0; --text-3:#726F8E;
+  --border:#292350; --border-2:#38316B;
   /* five vivid brand colours; c1 leads, c2 carries analytics */
-  --c1:#DB2777; --c2:#A855F7; --c3:#F472B6; --c4:#F59E0B; --c5:#14B8A6;
+  --c1:#BF5AF2; --c2:#64D2FF; --c3:#5E5CE6; --c4:#FF375F; --c5:#66D4CF;
   --primary:var(--c1);
   --primary-2:color-mix(in srgb, var(--c1) 78%, #fff);
   --on-primary:#FFFFFF;
   --accent:var(--c2); --accent-2:var(--c3);
-  --ok:#34D399; --warn:#FBBF24; --danger:#F87171;
-  --shadow-rgb:0,0,0; --shadow-k:7;
+  --ok:#30D158; --warn:#FF9F0A; --danger:#FF453A;
+  --shadow-rgb:0,0,0; --shadow-k:9;
+  --card-bg:color-mix(in srgb, var(--surface) 66%, transparent);
+  --card-2-bg:color-mix(in srgb, var(--surface-2) 62%, transparent);
+  --backdrop:
+    radial-gradient(46% 32% at 0% 0%, rgba(94,92,230,.32), transparent 70%),
+    radial-gradient(44% 30% at 100% 8%, rgba(100,210,255,.20), transparent 70%),
+    radial-gradient(54% 36% at 80% 94%, rgba(191,90,242,.24), transparent 72%);
 }
 
-/* ---- RAGE — Focus & performance. Red leads, orange and yellow behind it,
-   lime for completion. Emphasis, never wallpaper. ---- */
+/* ---- PURE BENTO — a structured grouped list. Apple's own greys, label
+   black as the brand, systemBlue as the single accent. No blur, no shadow,
+   no gradient: the blocks and their hairlines are the design. ---- */
 
-:root[data-theme="rage"][data-mode="light"]{
-  --bg:#F6F6F6; --surface:#FFFFFF; --surface-2:#ECECEC;
-  --text:#141414; --text-2:#565656; --text-3:#8A8A8A;
-  --border:#DEDEDE; --border-2:#C7C7C7;
+:root[data-theme="bento"][data-mode="light"]{
+  --bg:#F2F2F0; --surface:#FFFFFF; --surface-2:#EAEAE6;
+  --text:#111110; --text-2:#6B6B66; --text-3:#ADADA6;
+  --border:#DEDED9; --border-2:#C6C6C0;
   /* five vivid brand colours; c1 leads, c2 carries analytics */
-  --c1:#EF4444; --c2:#F97316; --c3:#FACC15; --c4:#84CC16; --c5:#06B6D4;
+  --c1:#1C1C1A; --c2:#007AFF; --c3:#00C7BE; --c4:#FF9500; --c5:#AF52DE;
+  --primary:var(--c1);
+  --primary-2:color-mix(in srgb, var(--c1) 82%, #fff);
+  --on-primary:#FFFFFF;
+  --accent:var(--c2); --accent-2:var(--c3);
+  --ok:#248A3D; --warn:#B25000; --danger:#D70015;
+  --shadow-rgb:0,0,0; --shadow-k:0;
+}
+
+:root[data-theme="bento"][data-mode="dark"]{
+  --bg:#0B0B0A; --surface:#1A1A18; --surface-2:#262622;
+  --text:#FFFFFF; --text-2:#99998F; --text-3:#6D6D65;
+  --border:#333330; --border-2:#45453F;
+  /* five vivid brand colours; c1 leads, c2 carries analytics */
+  --c1:#F2F2ED; --c2:#0A84FF; --c3:#66D4CF; --c4:#FF9F0A; --c5:#BF5AF2;
+  --primary:var(--c1);
+  --primary-2:color-mix(in srgb, var(--c1) 82%, #000);
+  --on-primary:#111110;
+  --accent:var(--c2); --accent-2:var(--c3);
+  --ok:#30D158; --warn:#FF9F0A; --danger:#FF453A;
+  --shadow-rgb:0,0,0; --shadow-k:0;
+}
+
+/* ---- SPATIAL LAYERED — depth instead of decoration. systemIndigo leads,
+   cards sit on visible planes above the ground, radii are generous and the
+   shadows are long and soft rather than dark. ---- */
+
+:root[data-theme="spatial"][data-mode="light"]{
+  --bg:#EDEFF5; --surface:#FFFFFF; --surface-2:#E3E6EF;
+  --text:#0A0A14; --text-2:#5D6270; --text-3:#8F94A3;
+  --border:#DDE0E9; --border-2:#C5C9D6;
+  /* five vivid brand colours; c1 leads, c2 carries analytics */
+  --c1:#30B0C7; --c2:#007AFF; --c3:#5856D6; --c4:#FF9500; --c5:#34C759;
   --primary:var(--c1);
   --primary-2:color-mix(in srgb, var(--c1) 78%, #000);
-  --on-primary:#FFFFFF;
+  /* Teal is light enough that white on it is unreadable, so the label is
+     dark. Apple does the same on its yellow and mint fills. */
+  --on-primary:#00252E;
   --accent:var(--c2); --accent-2:var(--c3);
-  --ok:#0F9D58; --warn:#B45309; --danger:#DC2626;
-  --shadow-rgb:15,23,42; --shadow-k:1;
+  --ok:#248A3D; --warn:#B25000; --danger:#D70015;
+  --shadow-rgb:14,20,45; --shadow-k:2;
 }
 
-:root[data-theme="rage"][data-mode="dark"]{
-  --bg:#0D0D0D; --surface:#161616; --surface-2:#1F1F1F;
-  --text:#F5F5F5; --text-2:#8D8D8D; --text-3:#5F5F5F;
-  --border:#282828; --border-2:#383838;
+:root[data-theme="spatial"][data-mode="dark"]{
+  --bg:#08090F; --surface:#161825; --surface-2:#1F2233;
+  --text:#FFFFFF; --text-2:#9BA0B2; --text-3:#6B7082;
+  --border:#262A3A; --border-2:#353A4D;
   /* five vivid brand colours; c1 leads, c2 carries analytics */
-  --c1:#EF4444; --c2:#F97316; --c3:#FACC15; --c4:#84CC16; --c5:#06B6D4;
+  --c1:#40C8E0; --c2:#0A84FF; --c3:#5E5CE6; --c4:#FF9F0A; --c5:#30D158;
   --primary:var(--c1);
   --primary-2:color-mix(in srgb, var(--c1) 78%, #fff);
-  --on-primary:#FFFFFF;
+  --on-primary:#00252E;
   --accent:var(--c2); --accent-2:var(--c3);
-  --ok:#34D399; --warn:#FBBF24; --danger:#F87171;
-  --shadow-rgb:0,0,0; --shadow-k:7;
-}
-
-/* ---- NEXUS — Futuristic & intelligent. Indigo into violet and cyan, with
-   fuchsia and lime. Gradient only on the headline surface. ---- */
-
-:root[data-theme="nexus"][data-mode="light"]{
-  --bg:#F5F5FE; --surface:#FFFFFF; --surface-2:#ECEBFB;
-  --text:#12122A; --text-2:#5B5A78; --text-3:#9291AE;
-  --border:#DEDDF3; --border-2:#C8C7E6;
-  /* five vivid brand colours; c1 leads, c2 carries analytics */
-  --c1:#6366F1; --c2:#A855F7; --c3:#22D3EE; --c4:#D946EF; --c5:#A3E635;
-  --primary:var(--c1);
-  --primary-2:color-mix(in srgb, var(--c1) 78%, #000);
-  --on-primary:#FFFFFF;
-  --accent:var(--c2); --accent-2:var(--c3);
-  --ok:#0F9D58; --warn:#B45309; --danger:#DC2626;
-  --shadow-rgb:15,23,42; --shadow-k:1;
-}
-
-:root[data-theme="nexus"][data-mode="dark"]{
-  --bg:#0C0C16; --surface:#151522; --surface-2:#1E1E30;
-  --text:#F4F3FF; --text-2:#9997B4; --text-3:#6B6989;
-  --border:#282740; --border-2:#383654;
-  /* five vivid brand colours; c1 leads, c2 carries analytics */
-  --c1:#6366F1; --c2:#A855F7; --c3:#22D3EE; --c4:#D946EF; --c5:#A3E635;
-  --primary:var(--c1);
-  --primary-2:color-mix(in srgb, var(--c1) 78%, #fff);
-  --on-primary:#FFFFFF;
-  --accent:var(--c2); --accent-2:var(--c3);
-  --ok:#34D399; --warn:#FBBF24; --danger:#F87171;
-  --shadow-rgb:0,0,0; --shadow-k:7;
+  --ok:#30D158; --warn:#FF9F0A; --danger:#FF453A;
+  --shadow-rgb:0,0,0; --shadow-k:10;
 }
 
 
 /* ------------------------------------------------------------------
-   Per-theme structure. Keyed on the theme alone: geometry and weight
-   are part of a theme's identity and do not change with the mode.
+   Per-theme structure. Keyed on the theme alone: geometry, weight, blur
+   and shadow depth are part of a theme's identity and do not change with
+   the mode.
+
+   The radii follow Apple's own: a grouped list cell is 10–12, a card is
+   14–16, a sheet is 26–28. Bigger than that reads as a toy, smaller as a
+   web form.
    ------------------------------------------------------------------ */
-[data-theme="titan"]{
-  --radius-sm:8px; --radius:14px; --radius-lg:16px;
-  --title-w:700; --display-w:720;
-  /* Steel: a restrained top-lit gradient, not a metal texture. */
-  --hero-fill:linear-gradient(160deg,
-    color-mix(in srgb, var(--c1) 26%, var(--surface)),
-    color-mix(in srgb, var(--c3) 16%, var(--surface)));
-  --hero-text:var(--text);
+[data-theme="ocean"]{
+  --radius-sm:12px; --radius:16px; --radius-lg:20px;
+  --blur:blur(20px) saturate(170%);
+  /* White sits on this, so it is built from fixed dark stops rather than
+     from --c1/--c2, which lighten in dark mode and would take the headline
+     from readable to white-on-cyan. */
+  --hero-fill:linear-gradient(135deg,#0060DF,#0E7490);
+  --shadow-2:0 6px 22px rgba(var(--shadow-rgb), calc(.08 * var(--shadow-k)));
 }
-[data-theme="muse"]{
-  --radius-sm:14px; --radius:20px; --radius-lg:24px;
-  --title-w:640; --display-w:660;
-  --hero-fill:linear-gradient(135deg,var(--c1),var(--c2));
-}
-[data-theme="rage"]{
-  --radius-sm:8px; --radius:12px; --radius-lg:14px;
-  --title-w:720; --display-w:760;
-  /* Red is emphasis, not wallpaper: the headline surface stays neutral and
-     the colour appears on the controls. */
-  --hero-fill:linear-gradient(135deg,
-    color-mix(in srgb, var(--c1) 14%, var(--surface)), var(--surface));
+[data-theme="midnight"]{
+  --radius-sm:10px; --radius:12px; --radius-lg:14px;
+  --title-w:600; --display-w:640;
+  /* No gradient anywhere. The headline surface is a panel with a hairline,
+     and colour appears only where something is actionable. */
+  --hero-fill:var(--surface);
   --hero-text:var(--text);
-  /* Execution mode: interactions land faster. */
+  --hero-border:var(--border);
+  --shadow-1:none;
+  --shadow-2:0 1px 3px rgba(var(--shadow-rgb), calc(.10 * var(--shadow-k)));
+  --shadow-3:0 8px 24px rgba(var(--shadow-rgb), calc(.14 * var(--shadow-k)));
+  --motion:170ms;
+}
+[data-theme="aurora"]{
+  --radius-sm:14px; --radius:20px; --radius-lg:26px;
+  --title-w:650;
+  --blur:blur(24px) saturate(180%);
+  --primary-fill:linear-gradient(135deg,var(--c1),var(--c2));
+  --hero-fill:linear-gradient(135deg,#4B49C6 0%,#8E43D6 50%,#1187A8 100%);
+  --shadow-2:0 8px 28px rgba(var(--shadow-rgb), calc(.09 * var(--shadow-k)));
+}
+[data-theme="bento"]{
+  --radius-sm:10px; --radius:12px; --radius-lg:14px;
+  --title-w:680; --display-w:720;
+  /* No wash of colour anywhere: bento is about the grid, not the paint. */
+  --hero-fill:var(--surface);
+  --hero-text:var(--text);
+  --hero-border:var(--border-2);
+  --shadow-1:none; --shadow-2:none; --shadow-3:none;
   --motion:150ms;
 }
-[data-theme="nexus"]{
-  --title-w:660;
-  --primary-fill:linear-gradient(135deg,var(--c1),var(--c2));
-  --hero-fill:linear-gradient(135deg,var(--c1) 0%,var(--c2) 52%,var(--c3) 100%);
+/* Bento has no shadow to separate a block from the ground, so the hairline
+   does that job instead — which is also what makes it read as a grid. */
+[data-theme="bento"] .item,
+[data-theme="bento"] .trow,
+[data-theme="bento"] .metric{border:var(--border-w) solid var(--border)}
+[data-theme="bento"] .item + .item,
+[data-theme="bento"] .trow + .trow{margin-top:var(--s0)}
+[data-theme="bento"] .metrics{gap:var(--s0)}
+[data-theme="bento"] .trow{border-left-width:3px}
+[data-theme="spatial"]{
+  --radius-sm:14px; --radius:20px; --radius-lg:28px;
+  --title-w:650; --display-w:690;
+  --hero-fill:linear-gradient(150deg,#3F3DB8,#7C33C4 68%,#0E7490);
+  /* Depth is the whole idea, so every plane is lifted further than the
+     shared scale would lift it — and lifted with a wide, soft, low-opacity
+     shadow rather than a dark one, which is the difference between a card
+     floating and a card with a border drawn under it. */
+  --shadow-1:0 1px 4px rgba(var(--shadow-rgb), calc(.05 * var(--shadow-k)));
+  --shadow-2:0 10px 30px -8px rgba(var(--shadow-rgb), calc(.09 * var(--shadow-k)));
+  --shadow-3:0 24px 56px -12px rgba(var(--shadow-rgb), calc(.12 * var(--shadow-k)));
+  --motion:230ms;
 }
+/* Spatial's whole argument is that things sit on planes. Rows are lifted off
+   the ground and spaced far enough apart that the lift is legible; the card
+   is lifted further still, so the two read as different heights rather than
+   as the same box drawn twice. */
+[data-theme="spatial"] .item,
+[data-theme="spatial"] .trow,
+[data-theme="spatial"] .metric{box-shadow:var(--shadow-2)}
+[data-theme="spatial"] .item + .item,
+[data-theme="spatial"] .trow + .trow{margin-top:var(--s1)}
+[data-theme="spatial"] .metrics{gap:var(--s1)}
+[data-theme="spatial"] .card{box-shadow:var(--shadow-2)}
+[data-theme="spatial"] .card + .card{margin-top:var(--s2)}
+[data-theme="spatial"] .item.pressable:active,
+[data-theme="spatial"] .card:active{transform:translateY(1px) scale(.995)}
 
 /* ==================================================================
    Base
@@ -270,41 +373,46 @@ html,body{overflow-x:hidden;width:100%}
 body{
   background:var(--bg);
   color:var(--text);
-  font:15px/1.5 Inter,-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",
-       Roboto,sans-serif;
+  font:15px/1.47 -apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display",
+       Inter,"Segoe UI",Roboto,sans-serif;
   font-feature-settings:"cv11","ss01";
   -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
   /* Telegram reports its own usable height; 100vh is wrong inside the
      in-app browser, so --vh is kept in sync from JS. */
   min-height:var(--vh, 100dvh);
   padding-bottom:calc(var(--shell-b, 58px) + var(--fab-clear) + var(--s2))}
+/* The theme's own light, behind every screen. `none` on the themes that do
+   not use it, so the layer costs nothing there. */
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+             background:var(--backdrop)}
 #app{padding:calc(var(--s2) + var(--safe-t, 0px)) var(--pad) var(--s2);
      max-width:640px;margin:0 auto;width:100%}
 
 /* Type scale. One family, five sizes, and no bold below 15px. */
-h1{font-size:26px;font-weight:var(--title-w);letter-spacing:-.5px;line-height:1.2;
+h1{font-size:26px;font-weight:var(--title-w);letter-spacing:-.6px;line-height:1.16;
    overflow-wrap:anywhere}
 /* Home's title is a greeting, and a greeting is the least informative thing
    on the screen. At the screen-title size "Assalomu alaykum, Ernest" wrapped
    to two lines and took the top fifth of the page before the day's mission —
    the thing Home exists to show — appeared. */
-h1.greet{font-size:19px;letter-spacing:-.2px}
-h2{font-size:12px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;
+h1.greet{font-size:19px;letter-spacing:-.35px}
+h2{font-size:12px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;
    color:var(--text-3);margin:var(--s4) 0 var(--s1);
    display:flex;align-items:center;justify-content:space-between;gap:var(--s1)}
 h2 .act{text-transform:none;letter-spacing:0;font-size:13px;font-weight:550;
         color:var(--primary);display:inline-flex;align-items:center;gap:4px;
         position:relative;cursor:pointer}
 h2 .act::after{content:"";position:absolute;inset:-10px}
-h3{font-size:17px;font-weight:600;letter-spacing:-.2px}
-.display{font-size:34px;font-weight:var(--display-w);letter-spacing:-1.2px;
+h3{font-size:17px;font-weight:600;letter-spacing:-.4px}
+.display{font-size:34px;font-weight:var(--display-w);letter-spacing:-1.1px;
          line-height:1}
 .t2{color:var(--text-2)} .t3{color:var(--text-3)}
 .small{font-size:13px} .tiny{font-size:12px}
 /* The small uppercase label above a number or a title. It was written
    inline in five places, each with its own letter-spacing; one class means
    one look. */
-.eyebrow{font-size:11px;font-weight:600;letter-spacing:.6px;
+.eyebrow{font-size:11px;font-weight:600;letter-spacing:.42px;
          text-transform:uppercase;color:var(--text-3)}
 .hero .eyebrow{color:color-mix(in srgb, var(--hero-text) 66%, transparent)}
 .num{font-variant-numeric:tabular-nums}
@@ -321,17 +429,22 @@ h3{font-size:17px;font-weight:600;letter-spacing:-.2px}
    ================================================================== */
 /* A card is a panel with a hairline. No nesting: hierarchy comes from
    whitespace and type, not from boxes inside boxes. */
-.card{background:var(--surface);border:var(--border-w) solid var(--border);
-      border-radius:var(--radius);padding:var(--s3);box-shadow:var(--shadow-1)}
+.card{background:var(--card-bg);border:var(--border-w) solid var(--border);
+      border-radius:var(--radius);padding:var(--s3);box-shadow:var(--shadow-1);
+      backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur)}
 .card + .card{margin-top:var(--s1)}
 .card.tight{padding:var(--s2) var(--s3)}
 .card.plain{background:none;border-color:transparent;box-shadow:none;padding:0}
 
 /* The one surface per screen that carries the brand. */
+/* The themes that do not fill the hero with colour need its edge back, or
+   the block dissolves into the page. */
 .hero{background:var(--hero-fill);color:var(--hero-text);
-      border:var(--border-w) solid transparent;border-radius:var(--radius-lg);
+      border:var(--border-w) solid var(--hero-border, transparent);
+      border-radius:var(--radius-lg);
       padding:var(--s3);box-shadow:var(--shadow-2);position:relative;
-      overflow:hidden}
+      overflow:hidden;backdrop-filter:var(--blur);
+      -webkit-backdrop-filter:var(--blur)}
 .hero .t2,.hero .t3{color:color-mix(in srgb, var(--hero-text) 66%, transparent)}
 
 .stack{display:flex;flex-direction:column;gap:var(--s1)}
@@ -463,6 +576,22 @@ label{display:block;font-size:12px;color:var(--text-2);margin:var(--s3) 0 var(--
 
 /* Three numbers on one line, divided rather than boxed: three separate
    cards for three small facts is three containers too many. */
+/* Day, week and month, side by side. Three cells of identical shape on one
+   line, so the eye compares the numbers rather than the layouts; a hairline
+   divides them, because three boxes for three facts about the same score is
+   three boxes too many. Same grid as the trio underneath, on purpose — the
+   card then reads as two rows of three rather than as two different ideas. */
+.scores{display:grid;grid-template-columns:repeat(3,1fr);align-items:start}
+.scores > div{padding:0 var(--s1);min-width:0}
+.scores > div + div{border-left:var(--border-w) solid var(--border)}
+.score-cell .k{font-size:11px;color:var(--text-3);font-weight:550;
+               text-transform:uppercase;letter-spacing:.4px}
+/* The delta sits on the same line as the number and wraps under it on a
+   narrow phone rather than pushing the percentage out of the cell. */
+.score-cell .v{font-size:20px;font-weight:660;letter-spacing:-.4px;
+               margin-top:2px;display:flex;align-items:baseline;gap:var(--s0);
+               flex-wrap:wrap}
+
 .trio{display:grid;grid-template-columns:repeat(3,1fr);align-items:center}
 .trio > div{padding:0 var(--s1);text-align:center;min-width:0}
 .trio > div + div{border-left:var(--border-w) solid var(--border)}
@@ -473,7 +602,8 @@ label{display:block;font-size:12px;color:var(--text-2);margin:var(--s3) 0 var(--
                         var(--hero-text) 24%, transparent)}
 
 .metrics{display:grid;grid-template-columns:1fr 1fr;gap:2px}
-.metric{background:var(--surface);border:0;
+.metric{background:var(--card-bg);border:0;
+        backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
         border-radius:var(--radius);padding:var(--s2) var(--s3);min-width:0}
 .metric .k{font-size:11px;color:var(--text-3);text-transform:uppercase;
            letter-spacing:.4px;font-weight:550}
@@ -494,7 +624,8 @@ label{display:block;font-size:12px;color:var(--text-2);margin:var(--s3) 0 var(--
    lines for eight facts. The fill already separates the row from the ground,
    so the border is a second separator doing the same job, and the rows sit
    close enough to read as one list. */
-.item{background:var(--surface);border:0;
+.item{background:var(--card-bg);border:0;
+      backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
       border-radius:var(--radius);padding:var(--s2) var(--s3);
       display:flex;align-items:center;gap:var(--s2);min-height:52px}
 .item + .item{margin-top:2px}
@@ -505,7 +636,8 @@ label{display:block;font-size:12px;color:var(--text-2);margin:var(--s3) 0 var(--
 .item.pressable:active{transform:scale(.995)}
 
 /* A task row's only decoration is the priority edge. */
-.trow{background:var(--surface);border:0;
+.trow{background:var(--card-bg);border:0;
+      backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
       border-left:3px solid transparent;border-radius:var(--radius);
       padding:var(--s2) var(--s3);display:flex;align-items:flex-start;
       gap:var(--s2)}
@@ -776,7 +908,7 @@ const DICT = {
  uz:{
   /* chrome */
   home:"Bosh sahifa", habits:"Odatlar", tasks:"Vazifalar", stats:"Statistika",
-  privacy_line:"Ma'lumotlaringiz to'liq himoya qilingan. 🔒",
+  privacy_line:"Ma'lumotlaringiz boshqa foydalanuvchilardan ajratilgan va xavfsiz saqlanadi. 🔒",
   /* common */
   save:"Saqlash", cancel:"Bekor qilish", close:"Yopish", delete:"O'chirish",
   edit:"Tahrirlash", saved:"Saqlandi", deleted:"O'chirildi", undo:"Qaytarish",
@@ -796,6 +928,13 @@ const DICT = {
   today_mission:"Bugungi missiya",
   mission_add:"Vazifa tanlang",
   mission_change:"O'zgartirish",
+  why_pinned:"Siz o'zingiz tanlagansiz",
+  why_overdue:"Muddati o'tgan — eng oldin shu",
+  why_due_today:"Bugun muddati tugaydi",
+  why_habit:"Bugungi odat hali bajarilmagan",
+  why_wake:"Kun shundan boshlanadi",
+  why_prayer:"Bugungi namozlar to'liq emas",
+  why_evening:"Kun tugadi — yakunlab qo'ying",
   period_day:"Kun",
   period_week:"Hafta",
   period_month:"Oy",
@@ -826,12 +965,16 @@ const DICT = {
   when_today:"Bugun", when_tomorrow:"Ertaga", when_week:"Shu hafta",
   when_none:"Sanasiz", when_pick:"Sana tanlash",
   reminder:"Eslatma", remind_none:"Kerak emas", remind_0:"Aynan vaqtida",
-  remind_10:"10 minut oldin", remind_60:"1 soat oldin", remind_1440:"1 kun oldin",
+  remind_10:"10 minut oldin", remind_30:"30 minut oldin",
+  remind_60:"1 soat oldin", remind_1440:"1 kun oldin",
   repeat:"Takrorlanish", repeat_none:"Takrorlanmaydi", repeat_daily:"Har kuni",
   repeat_weekdays:"Ish kunlari", repeat_weekly:"Har hafta", repeat_monthly:"Har oy",
   repeat_custom:"Tanlangan kunlarda",
   overdue:"Kechikkan", upcoming:"Yaqin kunlar", later:"Keyinroq", no_date:"Muddatsiz",
-  done_tab:"Bajarilgan", open_tab:"Ochiq", reopen:"Qayta ochish",
+  done_tab:"Bajarilgan", open_tab:"Ochiq", main_tab:"Asosiy",
+  reopen:"Qayta ochish",
+  pinned_tasks:"Tanlangan", due_today:"Bugun",
+  nothing_today:"Bugunga ish yo'q",
   done_today:"Bugun", done_week:"Shu hafta", done_earlier:"Oldin",
   filter:"Filtr", search_tasks:"Vazifa qidirish",
   no_tasks_yet:"Hozircha vazifa yo'q", add_first_task:"Birinchi vazifani qo'shish",
@@ -893,11 +1036,11 @@ const DICT = {
   settings:"Sozlamalar", language:"Til", gender:"Jins", theme:"Tema",
   appearance:"Ko'rinish", auto:"Avto", light:"Yorug'", dark:"Qorong'i",
   mode:"Rejim", account:"Hisob", back:"Orqaga",
-  theme_calm:"Muvozanatli va sokin",
-  theme_titan:"Kuchli va premium",
-  theme_muse:"Nafis va iliq",
-  theme_rage:"Fokus va tezlik",
-  theme_nexus:"Futuristik va aqlli",
+  theme_ocean:"Shaffof shisha, chuqur ko'k — universal",
+  theme_midnight:"Sokin qorong'i, chalg'itmaydigan minimalizm",
+  theme_aurora:"Shisha va aurora gradient — futuristik",
+  theme_bento:"Yorug' va tartibli bloklar — eng tez o'qiladi",
+  theme_spatial:"Qatlamli chuqurlik, suzuvchi kartalar",
   theme_fixed:"Bu tema o'z ko'rinishida ishlaydi",
   timezone:"Vaqt mintaqasi", notifications:"Eslatmalar va hisobotlar",
   morning_report:"Ertalabki hisobot", evening_report:"Kechqurungi hisobot",
@@ -933,7 +1076,7 @@ const DICT = {
  },
  en:{
   home:"Home", habits:"Habits", tasks:"Tasks", stats:"Statistics",
-  privacy_line:"Your data is fully protected. 🔒",
+  privacy_line:"Your data is kept separate from other users' and stored securely. 🔒",
   save:"Save", cancel:"Cancel", close:"Close", delete:"Delete",
   edit:"Edit", saved:"Saved", deleted:"Deleted", undo:"Undo",
   empty:"Nothing yet", error:"Something went wrong", offline:"No connection",
@@ -951,6 +1094,13 @@ const DICT = {
   today_mission:"Today's mission",
   mission_add:"Choose a task",
   mission_change:"Change",
+  why_pinned:"You pinned this one",
+  why_overdue:"Late — this comes first",
+  why_due_today:"Due today",
+  why_habit:"Today's habit, not done yet",
+  why_wake:"The day starts here",
+  why_prayer:"Today's prayers are not complete",
+  why_evening:"The day is over — close it",
   period_day:"Day",
   period_week:"Week",
   period_month:"Month",
@@ -979,12 +1129,16 @@ const DICT = {
   when_today:"Today", when_tomorrow:"Tomorrow", when_week:"This week",
   when_none:"No date", when_pick:"Pick a date",
   reminder:"Reminder", remind_none:"None", remind_0:"At the time",
-  remind_10:"10 minutes before", remind_60:"1 hour before", remind_1440:"1 day before",
+  remind_10:"10 minutes before", remind_30:"30 minutes before",
+  remind_60:"1 hour before", remind_1440:"1 day before",
   repeat:"Repeat", repeat_none:"Does not repeat", repeat_daily:"Every day",
   repeat_weekdays:"Weekdays", repeat_weekly:"Every week", repeat_monthly:"Every month",
   repeat_custom:"Chosen days",
   overdue:"Overdue", upcoming:"Coming up", later:"Later", no_date:"No date",
-  done_tab:"Done", open_tab:"Open", reopen:"Reopen",
+  done_tab:"Done", open_tab:"Open", main_tab:"Main",
+  reopen:"Reopen",
+  pinned_tasks:"Pinned", due_today:"Today",
+  nothing_today:"Nothing due today",
   done_today:"Today", done_week:"This week", done_earlier:"Earlier",
   filter:"Filter", search_tasks:"Search tasks",
   no_tasks_yet:"No tasks yet", add_first_task:"Add your first task",
@@ -1039,11 +1193,11 @@ const DICT = {
   settings:"Settings", language:"Language", gender:"Gender", theme:"Theme",
   appearance:"Appearance", auto:"Auto", light:"Light", dark:"Dark",
   mode:"Mode", account:"Account", back:"Back",
-  theme_calm:"Balanced & minimal",
-  theme_titan:"Strong & premium",
-  theme_muse:"Elegant & warm",
-  theme_rage:"Focus & performance",
-  theme_nexus:"Futuristic & intelligent",
+  theme_ocean:"Frosted glass over deep blue — universal",
+  theme_midnight:"Calm dark, distraction-free minimalism",
+  theme_aurora:"Glass with aurora gradients — futuristic",
+  theme_bento:"Light, structured blocks — fastest to read",
+  theme_spatial:"Layered depth and floating cards",
   theme_fixed:"This theme keeps its own appearance",
   timezone:"Time zone", notifications:"Reminders and reports",
   morning_report:"Morning report", evening_report:"Evening report",
@@ -1078,7 +1232,7 @@ const DICT = {
  },
  ru:{
   home:"Главная", habits:"Привычки", tasks:"Задачи", stats:"Статистика",
-  privacy_line:"Ваши данные полностью защищены. 🔒",
+  privacy_line:"Ваши данные отделены от данных других пользователей и хранятся безопасно. 🔒",
   save:"Сохранить", cancel:"Отмена", close:"Закрыть", delete:"Удалить",
   edit:"Изменить", saved:"Сохранено", deleted:"Удалено", undo:"Вернуть",
   empty:"Пока пусто", error:"Произошла ошибка", offline:"Нет соединения",
@@ -1096,6 +1250,13 @@ const DICT = {
   today_mission:"Миссия дня",
   mission_add:"Выберите задачу",
   mission_change:"Изменить",
+  why_pinned:"Вы выбрали это сами",
+  why_overdue:"Просрочено — сначала это",
+  why_due_today:"Срок сегодня",
+  why_habit:"Сегодняшняя привычка ещё не выполнена",
+  why_wake:"День начинается отсюда",
+  why_prayer:"Сегодняшние намазы не завершены",
+  why_evening:"День закончился — подведите итог",
   period_day:"День",
   period_week:"Неделя",
   period_month:"Месяц",
@@ -1124,12 +1285,16 @@ const DICT = {
   when_today:"Сегодня", when_tomorrow:"Завтра", when_week:"Эта неделя",
   when_none:"Без срока", when_pick:"Выбрать дату",
   reminder:"Напоминание", remind_none:"Не нужно", remind_0:"Точно в срок",
-  remind_10:"За 10 минут", remind_60:"За 1 час", remind_1440:"За 1 день",
+  remind_10:"За 10 минут", remind_30:"За 30 минут",
+  remind_60:"За 1 час", remind_1440:"За 1 день",
   repeat:"Повтор", repeat_none:"Не повторяется", repeat_daily:"Каждый день",
   repeat_weekdays:"По рабочим дням", repeat_weekly:"Каждую неделю",
   repeat_monthly:"Каждый месяц", repeat_custom:"Выбранные дни",
   overdue:"Просрочено", upcoming:"Ближайшие", later:"Позже", no_date:"Без срока",
-  done_tab:"Выполнено", open_tab:"Открытые", reopen:"Открыть снова",
+  done_tab:"Выполнено", open_tab:"Открытые", main_tab:"Главное",
+  reopen:"Открыть снова",
+  pinned_tasks:"Закреплённые", due_today:"Сегодня",
+  nothing_today:"На сегодня дел нет",
   done_today:"Сегодня", done_week:"На этой неделе", done_earlier:"Ранее",
   filter:"Фильтр", search_tasks:"Поиск задач",
   no_tasks_yet:"Задач пока нет", add_first_task:"Добавить первую задачу",
@@ -1184,11 +1349,11 @@ const DICT = {
   settings:"Настройки", language:"Язык", gender:"Пол", theme:"Тема",
   appearance:"Оформление", auto:"Авто", light:"Светлое", dark:"Тёмное",
   mode:"Режим", account:"Аккаунт", back:"Назад",
-  theme_calm:"Спокойная и минимальная",
-  theme_titan:"Сильная и премиальная",
-  theme_muse:"Элегантная и тёплая",
-  theme_rage:"Фокус и скорость",
-  theme_nexus:"Футуристичная и умная",
+  theme_ocean:"Матовое стекло на глубоком синем — универсальная",
+  theme_midnight:"Спокойная тёмная, минимум отвлечений",
+  theme_aurora:"Стекло и аврора-градиенты — футуристичная",
+  theme_bento:"Светлые структурные блоки — читается быстрее всех",
+  theme_spatial:"Слои, глубина и парящие карточки",
   theme_fixed:"Эта тема сохраняет своё оформление",
   timezone:"Часовой пояс", notifications:"Напоминания и отчёты",
   morning_report:"Утренний отчёт", evening_report:"Вечерний отчёт",
@@ -1229,17 +1394,26 @@ const DICT = {
    theme is a complete visual system; the tokens live in the stylesheet and
    nothing here needs to know what they are. */
 const THEMES = [
-  {id:"calm",  c:["#2563EB","#06B6D4","#7C3AED","#F59E0B","#10B981"]},
-  {id:"titan", c:["#3B82F6","#22D3EE","#64748B","#F59E0B","#34D399"]},
-  {id:"muse",  c:["#DB2777","#A855F7","#F472B6","#F59E0B","#14B8A6"]},
-  {id:"rage",  c:["#EF4444","#F97316","#FACC15","#84CC16","#06B6D4"]},
-  {id:"nexus", c:["#6366F1","#A855F7","#22D3EE","#D946EF","#A3E635"]},
+  {id:"ocean",    c:["#007AFF","#30B0C7","#5856D6","#FF9500","#34C759"]},
+  {id:"midnight", c:["#5856D6","#8E8E93","#5AC8FA","#FF9500","#34C759"]},
+  {id:"aurora",   c:["#AF52DE","#32ADE6","#5856D6","#FF2D55","#00C7BE"]},
+  {id:"bento",    c:["#1C1C1A","#007AFF","#00C7BE","#FF9500","#AF52DE"]},
+  {id:"spatial",  c:["#30B0C7","#007AFF","#5856D6","#FF9500","#34C759"]},
 ];
-const THEME_NAMES = {calm:"Calm", titan:"Titan", muse:"Muse",
-                     rage:"Rage", nexus:"Nexus"};
+const THEME_NAMES = {ocean:"Ocean Glass", midnight:"Midnight Minimal",
+                     aurora:"Aurora Glass", bento:"Pure Bento",
+                     spatial:"Spatial Layered"};
 //: An account holding an unknown theme renders as the default and shows the
 //: default ticked, rather than a picker with nothing selected.
-const DEFAULT_THEME = "calm";
+const DEFAULT_THEME = "ocean";
+
+/* ---------- reminders ----------
+   The offsets the picker offers, and the one a task is born with. Half an
+   hour is the useful default: "at the time" is a notification about something
+   already starting, and an hour out is early enough to be read and forgotten.
+   Kept in step with services.REMINDER_OFFSETS. */
+const REMINDER_OFFSETS = [0, 10, 30, 60, 1440];
+const DEFAULT_REMIND_BEFORE = 30;
 const themeOf = name => THEMES.some(x => x.id === name) ? name : DEFAULT_THEME;
 const themeMeta = name => THEMES.find(x => x.id === themeOf(name));
 
@@ -1289,8 +1463,8 @@ const icon = (name, size = 19) =>
 
 /* ---------- state ---------- */
 const state = {
-  screen:"home", tab:"habits", taskTab:"open",
-  statsPeriod:"week", scorePeriod:"day", summary:null,
+  screen:"home", tab:"habits", taskTab:"main",
+  statsPeriod:"week", summary:null,
   /* One line to open with. Three overlapping lines is a picture nobody reads
      first; the legend adds the others when a comparison is actually wanted. */
   statsSeries:{overall:true, tasks:false, habits:false, prayer:false},
@@ -1481,7 +1655,7 @@ SCREENS.home = () => {
      The point of Home is that opening it answers the question without
      scrolling. */
   return headBlock(d)
-       + missionBlock(d)
+       + nowBlock(d)
        + scoreBlock(d)
        + tasksBlock(d)
        + privacyNote();
@@ -1552,101 +1726,153 @@ function headBlock(d){
   return h;
 }
 
-/* The day's one mission: a single task, chosen from the tasks that already
-   exist. Not three, not a separate list — the question "what is today
-   about?" has one answer or it has none. */
-function missionBlock(d){
-  const pick = (d.top3 || [])[0];
+/* ---------- the Now card ----------
+   The single largest thing on Home, and the reason Home exists: it answers
+   "what do I do at this moment?" without the user reading the screen and
+   choosing. The answer is computed by the backend's fixed ladder — pinned
+   mission, then anything late, then what is due today by time and priority,
+   then a due habit, then prayers, then closing the day — so it changes on its
+   own as the day moves, and two people with the same day get the same answer.
 
-  if(!pick){
-    return `<div class="hero" style="margin-top:var(--s3)"
-                 data-act="mission-pick">
-        <div class="eyebrow">${t("today_mission")}</div>
-        <div class="row" style="margin-top:var(--s1)">
-          <div class="grow" style="font-size:17px;font-weight:600;opacity:.85">
-            ${t("mission_add")}</div>
-          ${icon("plus", 20)}
-        </div></div>`;
+   It is a suggestion, not an instruction: the edit button opens the picker and
+   pinning something overrides the ladder for the rest of the day. The one-line
+   reason under the title is what makes that offer legible — a card that
+   decides on the user's behalf owes them the sentence saying why. */
+function nowBlock(d){
+  const n = d.now || {kind:"clear", reason:"clear"};
+
+  /* Everything the card needs to draw, per kind, in one place: the line to
+     show, the tap target for finishing it, and whether it is a real task
+     (which is the only kind that can be swapped for another). */
+  const KINDS = {
+    wake:    {title: t("now_wake"),    act:"wake"},
+    prayer:  {title: t("now_prayer"),  act:"go-tab", data:'data-tab="prayer"'},
+    journal: {title: t("now_journal"), act:"go-tab", data:'data-tab="journal"'},
+    habit:   {title: n.title,          act:"habit-toggle-home"},
+    task:    {title: n.title,          act:"task-done"},
+  };
+  const kind = KINDS[n.kind];
+
+  const head = `<div class="row">
+      <div class="grow eyebrow">${t("now")}</div>
+      <button class="iconbtn sm bare" data-act="mission-pick"
+              aria-label="${t("mission_change")}"
+              style="color:inherit;opacity:.75">${icon("edit", 15)}</button>
+    </div>`;
+
+  // Nothing left. Not an empty state — a finished one, which is worth saying
+  // plainly rather than showing a blank card with a plus in it.
+  if(!kind){
+    return `<div class="hero" style="margin-top:var(--s3)">
+        ${head}
+        <div style="font-size:18px;font-weight:600;margin-top:var(--s1)">
+          ${t("now_clear")}</div>
+        <div class="t2 small" style="margin-top:2px">${t("now_clear_hint")}</div>
+      </div>`;
   }
 
-  const done = pick.status === "done";
+  /* Why this one. Kept to a single short line: the value is in knowing the
+     card did not pick at random, not in a paragraph of justification. */
+  const REASONS = {pinned:"why_pinned", overdue:"why_overdue",
+                   due_today:"why_due_today", habit:"why_habit",
+                   wake:"why_wake", prayer:"why_prayer", evening:"why_evening"};
+  const why = REASONS[n.reason];
+
+  // Time and project, when the payload carries them. A high-priority task
+  // says so; medium is what every task is born with and marking it would
+  // mark everything.
+  const meta = [];
+  if(n.due_time) meta.push(`${icon("clock", 12)} ${esc(n.due_time)}`);
+  else if(n.meta && n.kind !== "task") meta.push(esc(n.meta));
+  if(n.priority === "high") meta.push(t("high"));
+  if(n.project) meta.push(esc(n.project));
+
   return `<div class="hero" style="margin-top:var(--s3)">
-      <div class="row">
-        <div class="grow eyebrow">${t("today_mission")}</div>
-        <button class="iconbtn sm bare" data-act="mission-pick"
-                aria-label="${t("mission_change")}"
-                style="color:inherit;opacity:.7">${icon("edit", 15)}</button>
-      </div>
-      <div class="row" style="margin-top:var(--s1)">
-        <div class="check ${done ? "on" : ""}"
-             data-act="${done ? "task-reopen" : "task-done"}"
-             data-id="${pick.id}">${icon("check", 14)}</div>
-        <div class="grow wrap ${done ? "strike" : ""}"
-             style="font-size:18px;font-weight:600;line-height:1.3">
-          ${esc(pick.title)}</div>
+      ${head}
+      <div class="row" style="margin-top:var(--s1);align-items:flex-start">
+        <div class="check" style="margin-top:2px"
+             data-act="${kind.act}" ${kind.data || ""}
+             ${n.id ? `data-id="${n.id}"` : ""}
+             aria-label="${t("now_done")}">${icon("check", 14)}</div>
+        <div class="grow">
+          <div class="wrap" style="font-size:18px;font-weight:600;line-height:1.3">
+            ${esc(kind.title)}</div>
+          ${meta.length ? `<div class="t2 tiny row" style="margin-top:4px;gap:8px">
+            ${meta.join(" · ")}</div>` : ""}
+          ${why ? `<div class="t3 tiny" style="margin-top:4px">${t(why)}</div>` : ""}
+        </div>
       </div></div>`;
 }
 
-/* One number with a day/week/month switch, and the three parts on a single
-   divided line underneath. Three separate cards for three small facts was
-   three containers too many, and it pushed today's tasks off the screen. */
-function scoreBlock(d){
-  const period = state.scorePeriod || "day";
-  const s = state.summary;
-  const periods = [["day", t("period_day")], ["week", t("period_week")],
-                   ["month", t("period_month")]];
+/* ---------- the score block ----------
+   Day, week and month on one card, at the same time. They used to sit behind
+   a three-way switch, which meant the only comparison anybody actually wants
+   — is today better or worse than the way I have been going? — required two
+   taps and remembering the first number. Three rows answer it by being read.
 
-  let value, tasks, habits, prayer, delta = null;
-  if(period === "day" || !s){
-    value = d.overall.value;
-    // Today's change is against yesterday. It is only meaningful when
-    // yesterday had something to measure, so it stays absent otherwise
-    // rather than being reported as a fall from zero.
-    if(d.overall.yesterday !== null && d.overall.yesterday !== undefined)
-      delta = value - d.overall.yesterday;
-    tasks = pct(d.overall.components.tasks);
-    habits = `${d.habits.done}/${d.habits.total}`;
-    prayer = d.prayer.excused ? "✓"
-      : `${d.prayer.performed}/${d.prayer.required}`;
-  } else {
-    const w = s.windows[period];
-    value = w.overall;
-    tasks = `${w.tasks}%`;
-    habits = `${w.habits}%`;
-    prayer = `${w.prayer}%`;
-    delta = w.delta;
-  }
+   The three sit side by side on one line, not stacked, because that is the
+   shape the comparison has: three numbers in the same units read left to
+   right, the way the trio underneath already reads.
+
+   A percentage and its change against the previous window of the same
+   length, and nothing else. Each cell also carried a progress bar, which was
+   the same fact drawn twice — the number already says how full it is, and
+   three bars turned a two-line answer into a block. The change is a colour
+   *and* an arrow, so the direction survives a monochrome screen and a
+   red/green colour blindness.
+
+   Underneath, unchanged: the three parts of today — tasks, habits, prayer. */
+function scoreBlock(d){
+  const s = state.summary;
+  const rows = [["day", t("period_day")], ["week", t("period_week")],
+                ["month", t("period_month")]];
+
+  /* Today comes from the Home payload, which is already loaded, so the block
+     draws its most important row immediately and fills the other two in when
+     the summary arrives rather than showing three spinners. */
+  const dayDelta = (d.overall.yesterday === null || d.overall.yesterday === undefined)
+    ? null : d.overall.value - d.overall.yesterday;
+
+  const line = ([id, label]) => {
+    const w = s?.windows?.[id];
+    const value = id === "day" ? d.overall.value : w?.overall;
+    const delta = id === "day" ? dayDelta : w?.delta;
+    const known = value !== undefined && value !== null;
+
+    return `<div class="score-cell">
+        <div class="k">${label}</div>
+        <div class="v num">${known ? value + "%" : "—"}${
+          known ? deltaTag(delta || 0) : ""}</div>
+      </div>`;
+  };
 
   return `<div class="card" style="margin-top:var(--s3)">
-      <div class="seg" style="margin-bottom:var(--s3)">
-        ${periods.map(([id, label]) => `<div class="${period === id ? "on" : ""}"
-          data-act="score-period" data-period="${id}">${label}</div>`).join("")}
-      </div>
-      <div class="row" style="align-items:flex-end">
-        <div class="grow">
-          <div class="display num">${value}%</div>
-          <div class="t3 tiny" style="margin-top:2px">${t("overall")}</div>
-        </div>
-        ${delta ? deltaTag(delta) : ""}
+      <div class="row" style="margin-bottom:var(--s2)">
+        <div class="grow eyebrow">${t("overall")}</div>
         <button class="iconbtn sm bare" data-act="overall-why"
                 aria-label="${t("how_calculated")}">${icon("info", 17)}</button>
       </div>
-      <div class="bar" style="margin:var(--s2) 0 var(--s3)">
-        <span style="width:${Math.max(0, Math.min(100, value))}%"></span></div>
-      <div class="trio">
+      <div class="scores">${rows.map(line).join("")}</div>
+      <div class="trio" style="margin-top:var(--s3)">
         <div><div class="k">${t("tasks")}</div>
-          <div class="v num">${tasks}</div></div>
+          <div class="v num">${pct(d.overall.components.tasks)}</div></div>
         <div><div class="k">${t("habits")}</div>
-          <div class="v num">${habits}</div></div>
+          <div class="v num">${d.habits.done}/${d.habits.total}</div></div>
         <div><div class="k">${t("prayer")}</div>
-          <div class="v num">${prayer}</div></div>
+          <div class="v num">${d.prayer.excused ? "✓"
+            : `${d.prayer.performed}/${d.prayer.required}`}</div></div>
       </div></div>`;
 }
 
 /* Today's work, grouped by the project it belongs to. */
 function tasksBlock(d){
   const groups = d.tasks_today || [];
-  const missionId = (d.top3 || [])[0]?.id;
+  /* Whatever the Now card is showing is already the largest thing on the
+     screen; printing it again three inches lower is the same task twice. The
+     backend drops the pinned ones, and the card can also be showing an
+     unpinned task the ladder chose, so that one is dropped here. */
+  const shownAbove = d.now?.kind === "task" ? d.now.id : (d.top3 || [])[0]?.id;
+  const missionId = shownAbove;
 
   let h = `<h2>${t("today_tasks")}
       <span class="act" data-act="task-add">${icon("plus", 15)}
@@ -2006,21 +2232,70 @@ document.addEventListener("input", e => {
 });
 
 /* ---------- Tasks ---------- */
+/* Tasks, in three views of the same data rather than three lists.
+
+     Asosiy / Main   what actually matters right now — the week's focus, the
+                     tasks pinned to today, anything late, today's work, and
+                     the projects they belong to
+     Ochiq / Open    every open task, searchable and filterable
+     Bajarilgan/Done the archive
+
+   The calendar opens from the header rather than living inline: a month grid
+   is forty-two cells about the rest of the month, and this screen is read to
+   answer a question about this week. It is one tap from where somebody
+   looking for a month would tap anyway. */
 SCREENS.tasks = () => {
+  const tabs = [["main", t("main_tab")], ["open", t("open_tab")],
+                ["done", t("done_tab")]];
+
   let h = `<div class="head">
       <h1 class="grow">${t("tasks")}</h1>
+      <button class="iconbtn" data-act="calendar-open"
+              aria-label="${t("calendar")}">${icon("calendar")}</button>
       <button class="iconbtn" data-act="task-add"
               aria-label="${t("add_task")}">${icon("plus")}</button>
     </div>
     <div class="seg" style="margin:12px 0 12px">
-      <div class="${state.taskTab === "open" ? "on" : ""}"
-           data-act="task-tab" data-tab="open">${t("open_tab")}</div>
-      <div class="${state.taskTab === "done" ? "on" : ""}"
-           data-act="task-tab" data-tab="done">${t("done_tab")}</div>
+      ${tabs.map(([id, label]) => `<div class="${state.taskTab === id ? "on" : ""}"
+        data-act="task-tab" data-tab="${id}">${label}</div>`).join("")}
     </div>`;
 
-  return h + (state.taskTab === "done" ? doneTab() : openTab());
+  if(state.taskTab === "done") return h + doneTab();
+  if(state.taskTab === "open") return h + openTab();
+  return h + mainTab();
 };
+
+/* The first thing the Tasks screen shows, and deliberately not the whole
+   list: the week's one goal, whatever has been pinned to today, whatever is
+   late, and the rest of today. The complete inventory is one tab across for
+   the moment when the inventory is the question. */
+function mainTab(){
+  const d = state.tasks;
+  let h = weekFocusBlock();
+  if(!d) return h + `<div class="spin"></div>`;
+
+  const all = [...d.overdue, ...d.upcoming, ...d.undated, ...(d.later || [])];
+  const today = todayISO();
+  const pinned = all.filter(x => x.top3);
+  const seen = new Set(pinned.map(x => x.id));
+  const late = all.filter(x => x.overdue && !seen.has(x.id));
+  late.forEach(x => seen.add(x.id));
+  const now = all.filter(x => x.deadline === today && !seen.has(x.id));
+
+  const section = (label, rows, opts) => rows.length
+    ? `<h2>${label}</h2>` + rows.map(x => taskRow(x, opts)).join("") : "";
+
+  const body = section(t("pinned_tasks"), pinned)
+    + section(t("overdue"), late)
+    + section(t("due_today"), now, {hideDate: true});
+
+  h += body || `<div class="empty">${t("nothing_today")}
+      <button class="btn secondary sm" data-act="task-add"
+              style="margin:12px auto 0;display:flex">
+        ${icon("plus", 16)} ${t("add_first_task")}</button></div>`;
+
+  return h + projectsSection();
+}
 
 function searchBox(id, value, placeholder, action){
   return `<div class="row" style="margin:var(--s4) 0 var(--s2)">
@@ -2092,8 +2367,7 @@ function weekFocusBlock(){
 
 function openTab(){
   const d = state.tasks;
-  let h = weekFocusBlock();
-  h += searchBox("task-q", state.taskQuery, t("search_tasks"), "task-search");
+  let h = searchBox("task-q", state.taskQuery, t("search_tasks"), "task-search");
 
   /* Filters as chips rather than a menu: one tap to narrow, one to clear, and
      the active one visible without opening anything.
@@ -2145,7 +2419,6 @@ function openTab(){
             ${icon("plus", 16)} ${t("add_first_task")}</button></div>`;
   } else h += body;
 
-  h += projectsSection();
   return h;
 }
 
@@ -2483,7 +2756,7 @@ function taskSheet(task, presetProject){
       <select id="task-remind">
         <option value="" ${f.remind_before === null || f.remind_before === undefined
           ? "selected" : ""}>${t("remind_none")}</option>
-        ${[0, 10, 60, 1440].map(m =>
+        ${REMINDER_OFFSETS.map(m =>
           `<option value="${m}" ${String(f.remind_before) === String(m)
             ? "selected" : ""}>${t("remind_" + m)}</option>`).join("")}
       </select>
@@ -3130,11 +3403,14 @@ function syncShell(){
 async function loadScreen(screen){
   try{
     if(screen === "home"){
-      // Home is one request, and now genuinely one: the month grid moved into
-      // a sheet, so its payload is fetched when that sheet opens rather than
-      // on every paint of a screen that no longer shows it. The week/month
-      // figures behind the score switch are likewise fetched on demand.
-      setState({home: await api("/api/home"), summary: null, scorePeriod: "day"});
+      /* Two requests, in parallel. The month grid still moved into a sheet and
+         is still fetched when that sheet opens; the summary is here because
+         the score block now shows the week and the month next to today rather
+         than behind a switch, so "on demand" would mean every single time. */
+      const [home, summary] = await Promise.all([
+        api("/api/home"), api("/api/summary"),
+      ]);
+      setState({home, summary});
     } else if(screen === "habits"){
       const [habits, prayer, journal] = await Promise.all([
         api("/api/habits"), api("/api/prayers"),
@@ -3600,24 +3876,15 @@ const A = {
     {method:"POST", body:{picked:true}}), "home"),
   "mission-clear": el => save(() => api(`/api/tasks/${el.dataset.id}/top3`,
     {method:"POST", body:{picked:false}}), "home", true),
-  "score-period": async el => {
-    haptic();
-    const period = el.dataset.period;
-    // The week and month numbers are only fetched when they are asked for.
-    if(period !== "day" && !state.summary){
-      try{ state.summary = await api("/api/summary"); }
-      catch(e){ return handleError(e); }
-    }
-    setState({scorePeriod:period});
-  },
-
   "task-add": el => {
     const project = el?.dataset?.project || state.project?.project?.id || "";
-    state.form = {when:"today", priority:"medium", project_id: project || null};
+    state.form = {when:"today", priority:"medium", project_id: project || null,
+                  remind_before: DEFAULT_REMIND_BEFORE};
     openSheet(taskSheet(null, project));
   },
   "task-add-on": el => {
-    state.form = {when:"pick", deadline: el.dataset.date, priority:"medium"};
+    state.form = {when:"pick", deadline: el.dataset.date, priority:"medium",
+                  remind_before: DEFAULT_REMIND_BEFORE};
     closeSheet();
     openSheet(taskSheet(null));
   },

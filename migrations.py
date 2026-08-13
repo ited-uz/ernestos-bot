@@ -365,6 +365,18 @@ THEME_REDESIGN = {
 }
 
 
+#: The names that are live today. A rename step must never rewrite one of
+#: these, or running the chain twice walks a row in a circle: 0008 renames
+#: `calm` to `ocean`, and a second pass of 0007 would rename that `ocean`
+#: straight back to `calm`.
+#:
+#: Skipping them is also the semantically right answer rather than a guard
+#: bolted on. `ocean` meant "the default blue" in the 0005 set and means the
+#: same thing in this one; `aurora` meant "the gradient one" then and means it
+#: now. A row holding either is already where the chain was taking it.
+LIVE_THEMES = {"ocean", "midnight", "aurora", "bento", "spatial"}
+
+
 def m0007_redesign_themes() -> dict:
     """Move every account onto the redesigned theme set.
 
@@ -383,12 +395,61 @@ def m0007_redesign_themes() -> dict:
     moved: dict[str, int] = {}
     with SessionLocal() as s:
         for old, new in THEME_REDESIGN.items():
+            if old in LIVE_THEMES:
+                continue
             count = s.execute(
                 update(User).where(User.theme == old).values(theme=new)).rowcount
             if count:
                 moved[f"{old}→{new}"] = count
         s.commit()
     return {"migration": "0007_redesign_themes", "moved": moved,
+            "total": sum(moved.values())}
+
+
+#: The five themes were rebuilt again, this time as five named visual systems
+#: rather than five moods. Mapped by what the account already had: whoever
+#: chose the restrained dark one stays on a restrained dark one, and the
+#: default blue stays the default blue.
+THEME_SYSTEMS = {
+    # The set 0007 produced.
+    "calm": "ocean",       # the default blue -> glass over deep blue
+    "titan": "midnight",   # obsidian and steel -> calm dark minimal
+    "nexus": "aurora",     # indigo to cyan gradient -> aurora glass
+    "muse": "bento",       # the softest, lightest one -> the light one
+    "rage": "spatial",     # geometry and speed -> depth and motion
+    # Anything that never ran 0005 or 0007 lands correctly in one step.
+    "pure": "bento", "sage": "bento", "blossom": "bento",
+    "emerald": "bento", "rose": "bento", "pink": "bento",
+    "cobalt": "ocean", "oxford": "ocean",
+    "slate": "midnight", "obsidian": "midnight",
+}
+
+
+def m0008_named_theme_systems() -> dict:
+    """Move every account onto the named theme set.
+
+    A row holding an old name is not broken — the app reads anything unknown
+    as the default — but the stored value and the Settings screen would
+    disagree until the user picked something, so it is rewritten once here.
+
+    `ocean` and `aurora` are also *old* names from the 0005 set, and they are
+    deliberately absent from the mapping: they already mean, in the new set,
+    the closest thing to what they meant in the old one, so leaving them
+    untouched is the correct migration rather than an oversight.
+    """
+    from sqlalchemy import update
+
+    from db import User
+
+    moved: dict[str, int] = {}
+    with SessionLocal() as s:
+        for old, new in THEME_SYSTEMS.items():
+            count = s.execute(
+                update(User).where(User.theme == old).values(theme=new)).rowcount
+            if count:
+                moved[f"{old}→{new}"] = count
+        s.commit()
+    return {"migration": "0008_named_theme_systems", "moved": moved,
             "total": sum(moved.values())}
 
 
@@ -400,6 +461,7 @@ MIGRATIONS = {
     "0005": m0005_rename_themes,
     "0006": m0006_restore_journal_habit,
     "0007": m0007_redesign_themes,
+    "0008": m0008_named_theme_systems,
 }
 
 

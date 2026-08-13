@@ -227,8 +227,8 @@ def test_unknown_category_falls_back_to_target(alice):
     assert "Stretching" in [h["name"] for h in grouped["target"]]
 
 
-def test_default_theme_is_calm(alice):
-    assert alice.get("/api/me").json()["theme"] == "calm"
+def test_default_theme_is_ocean(alice):
+    assert alice.get("/api/me").json()["theme"] == "ocean"
 
 
 def test_protected_habit_cannot_be_toggled(alice):
@@ -706,9 +706,12 @@ def test_the_privacy_line_is_said_once_on_home():
         "the privacy note left Home"
     rule = html.split(".privacy-strip{")[1].split("}")[0]
     assert "position:fixed" not in rule, "the privacy line is chrome again"
-    for lang, phrase in (("uz", "to'liq himoya qilingan"),
-                         ("en", "fully protected"),
-                         ("ru", "полностью защищены")):
+    # "Fully protected" was a promise no product can keep, and the one
+    # sentence a user is entitled to hold you to. What replaced it is what is
+    # actually true, and is also what they wanted to know.
+    for lang, phrase in (("uz", "boshqa foydalanuvchilardan ajratilgan"),
+                         ("en", "separate from other users"),
+                         ("ru", "отделены от данных других")):
         assert phrase in html, f"{lang} privacy line missing"
         assert phrase in application.t(lang, "privacy_line")
 
@@ -845,9 +848,10 @@ def _set_theme(telegram_id: int, value: str) -> None:
 def test_every_offered_theme_is_one_the_mini_app_styles():
     """The picker and the stylesheet must not be able to disagree."""
     styled = (ROOT / "webapp" / "index.html").read_text()
-    assert application.THEMES == ["calm", "titan", "muse", "rage", "nexus"]
+    assert application.THEMES == ["ocean", "midnight", "aurora", "bento",
+                                  "spatial"]
     for name in application.THEMES:
-        assert f'[data-theme="{name}"]' in styled or name == "calm", \
+        assert f'[data-theme="{name}"]' in styled, \
             f"{name} is offered but never styled"
     picker = styled[styled.index("const THEMES = ["):styled.index("const THEME_NAMES")]
     assert [line.split('id:"')[1].split('"')[0]
@@ -867,8 +871,6 @@ def _structure_block(styled: str, name: str) -> str:
     """The geometry/weight block, which is keyed on the theme alone."""
     import re
 
-    if name == "calm":
-        return re.search(r"\n:root\{(.*?)\n\}", styled, re.S).group(1)
     return re.search(r'\n\[data-theme="%s"\]\{(.*?)\n\}' % name,
                      styled, re.S).group(1)
 
@@ -885,7 +887,7 @@ SEMANTIC_TOKENS = [
 ]
 
 
-@pytest.mark.parametrize("name", ["calm", "titan", "muse", "rage", "nexus"])
+@pytest.mark.parametrize("name", application.THEMES)
 @pytest.mark.parametrize("mode", ["light", "dark"])
 def test_every_theme_and_mode_defines_the_whole_palette(name, mode):
     """One vocabulary, redefined ten times.
@@ -903,7 +905,7 @@ def test_every_theme_and_mode_defines_the_whole_palette(name, mode):
     assert not missing, f"{name}/{mode} does not define {missing}"
 
 
-@pytest.mark.parametrize("name", ["calm", "titan", "muse", "rage", "nexus"])
+@pytest.mark.parametrize("name", application.THEMES)
 def test_every_theme_offers_three_to_five_vivid_colours(name):
     """A theme is a palette of its own, not one hue plus grey."""
     import re
@@ -953,7 +955,7 @@ def test_components_never_hard_code_a_colour():
     assert not literals, f"hard-coded colours in components: {set(literals)}"
 
 
-@pytest.mark.parametrize("name", ["titan", "muse", "rage", "nexus"])
+@pytest.mark.parametrize("name", application.THEMES)
 def test_a_theme_is_more_than_a_palette(name):
     """Each theme also sets structure, or it is only a hue swap.
 
@@ -966,7 +968,7 @@ def test_a_theme_is_more_than_a_palette(name):
     block = _structure_block(styled, name)
     structural = [token for token in
                   ("--radius:", "--hero-fill:", "--title-w:", "--display-w:",
-                   "--motion:", "--primary-fill:")
+                   "--motion:", "--primary-fill:", "--blur:", "--shadow-2:")
                   if token in block]
     assert len(structural) >= 3, f"{name} only changes colour: {structural}"
 
@@ -1020,7 +1022,7 @@ def test_the_mode_is_resolved_in_one_place():
 
 def test_a_retired_theme_reads_as_the_default(alice):
     _set_theme(ALICE["id"], "pink")
-    assert alice.get("/api/me").json()["theme"] == "calm"
+    assert alice.get("/api/me").json()["theme"] == "ocean"
 
 
 def test_the_migration_moves_a_retired_theme_to_its_closest_survivor(alice):
@@ -2079,15 +2081,17 @@ def test_onboarding_starts_at_language():
         assert s.get(User, 808001).onboarding_step == "language"
 
 
-def test_onboarding_is_language_then_phone_then_channel():
-    """Three steps, in that order, and nothing else.
+def test_onboarding_is_language_then_channel_and_nothing_else():
+    """Two steps, in that order, and nothing else.
 
-    Phone is asked because it is what account recovery is keyed on, and the
-    prompt explains that. It is skippable, so it cannot become a wall.
+    The phone number used to sit between them, and it was the worst question
+    in the product: the most personal thing the app ever asked for, asked
+    before the user had seen one screen of what they were joining, in exchange
+    for nothing they could feel. It is not asked anywhere now.
     """
-    assert application.ONBOARDING_STEPS == ["language", "phone", "subscribe", "done"]
+    assert application.ONBOARDING_STEPS == ["language", "subscribe", "done"]
     source = (ROOT / "app.py").read_text()
-    assert 'user.onboarding_step = "phone"' in source
+    assert 'user.onboarding_step = "phone"' not in source
     assert 'user.onboarding_step = "subscribe"' in source
 
 
@@ -2099,22 +2103,43 @@ def test_gender_is_not_an_onboarding_step():
     assert "ask_gender_why" in html, "the prayer screen must explain why it asks"
 
 
-def test_the_phone_step_is_required_and_explains_itself():
-    """The number is what account recovery is keyed on, so there is no Skip.
+def test_the_phone_number_is_never_asked_for():
+    """No prompt, no keyboard, no Settings row — the question is gone.
 
-    It is also the one field the user cannot type: only Telegram's own contact
-    button proves the number belongs to the sender.
+    A contact can still arrive unprompted from a keyboard left over from an
+    older build. It is acknowledged and dropped rather than stored: keeping a
+    number the product has stopped asking for is exactly the surprise this
+    change was meant to remove.
     """
+    source = (ROOT / "app.py").read_text()
+    assert not hasattr(application, "phone_keyboard")
+    assert "request_contact=True" not in source, "a contact button is back"
+    assert 'callback_data="set:phone"' not in source, "Settings asks again"
+    assert "user.phone_number = contact.phone_number" not in source, \
+        "a volunteered number is being stored"
     for lang in ("uz", "en", "ru"):
-        keyboard = application.phone_keyboard(lang)
-        buttons = [b for row in keyboard.keyboard for b in row]
-        assert len(buttons) == 1
-        assert buttons[0].request_contact is True
-        assert application.t(lang, "btn_skip") not in [
-            getattr(b, "text", b) for b in buttons]
-        # And the prompt says why it is being asked.
-        assert application.t(lang, "phone_why")
-    assert "tiklab beramiz" in application.t("uz", "phone_why")
+        assert application.t(lang, "phone_not_needed")
+
+
+def test_a_new_account_is_given_the_guide():
+    """An empty app explains nothing on its own.
+
+    The guide is sent once on the way in and is reachable afterwards with
+    /guide, because once is not always the moment somebody reads it.
+    """
+    source = (ROOT / "app.py").read_text()
+    assert 't(lang, "guide")' in source
+    assert 'CommandHandler("guide", show_guide)' in source
+    for lang in ("uz", "en", "ru"):
+        guide = application.t(lang, "guide")
+        # Four features, each with a concrete example rather than a category:
+        # "track your habits" describes a genre, "wake up at 6:00" describes a
+        # Tuesday.
+        assert len(guide) > 400, f"{lang} guide is a sentence, not a guide"
+        assert guide.count("<b>") >= 5, f"{lang} guide has no structure"
+        assert "<i>" in guide, f"{lang} guide gives no examples"
+        for emoji in ("🎯", "✅", "🔁", "📊"):
+            assert emoji in guide, f"{lang} guide is missing {emoji}"
 
 
 # ==========================================================================
@@ -3181,20 +3206,31 @@ def test_the_older_theme_migration_cannot_undo_the_newer_one(alice):
 
 def test_every_theme_rename_target_is_a_theme_that_exists():
     """The last mapping in the chain has to land on something real."""
-    for target in migrations.THEME_REDESIGN.values():
+    for target in migrations.THEME_SYSTEMS.values():
         assert target in application.THEMES, target
-    # And every name an earlier migration can produce is handled by the last.
+    # And every name an earlier migration can produce is handled by the next.
+    # Every name an earlier step can produce is either handled by the next
+    # step or already a live name that needs no move. A rename that rewrites a
+    # live name would make the chain cyclic: running it twice would walk a row
+    # from calm to ocean and back again.
+    def handled(target, mapping, by):
+        assert target in mapping or target in migrations.LIVE_THEMES, \
+            f"{target} is produced but {by} neither maps nor keeps it"
+
     for target in migrations.THEME_RENAMES.values():
-        assert target in migrations.THEME_REDESIGN, \
-            f"0005 lands on {target}, which 0007 does not map"
+        handled(target, migrations.THEME_REDESIGN, "0007")
     for target in migrations.RETIRED_THEMES.values():
-        assert target in migrations.THEME_REDESIGN, \
-            f"0003 lands on {target}, which 0007 does not map"
+        handled(target, migrations.THEME_REDESIGN, "0007")
+    for target in migrations.THEME_REDESIGN.values():
+        handled(target, migrations.THEME_SYSTEMS, "0008")
+    for name in migrations.LIVE_THEMES:
+        assert name in application.THEMES
+        assert name not in migrations.THEME_SYSTEMS, \
+            f"0008 renames {name}, which is a live theme"
 
 
 @pytest.mark.parametrize("old,new", [
-    ("ocean", "calm"), ("pure", "calm"), ("midnight", "titan"),
-    ("sage", "muse"), ("aurora", "nexus"), ("cobalt", "calm"),
+    ("pure", "calm"), ("sage", "muse"), ("cobalt", "calm"),
     ("slate", "titan"), ("blossom", "muse"),
 ])
 def test_the_redesign_moves_a_theme_to_its_closest_survivor(alice, old, new):
@@ -3204,16 +3240,43 @@ def test_the_redesign_moves_a_theme_to_its_closest_survivor(alice, old, new):
         assert s.get(User, ALICE["id"]).theme == new
 
 
+@pytest.mark.parametrize("name", ["ocean", "midnight", "aurora"])
+def test_the_redesign_leaves_a_name_that_is_live_again(alice, name):
+    """Three of the names 0007 used to rewrite are live themes now.
+
+    Rewriting them would make the chain cyclic — 0008 renames `calm` to
+    `ocean`, and a second pass of 0007 would send it straight back. It would
+    also be wrong on its own terms: `ocean` meant "the default blue" in the
+    old set and means the same thing in this one.
+    """
+    _set_theme(ALICE["id"], name)
+    migrations.m0007_redesign_themes()
+    with SessionLocal() as s:
+        assert s.get(User, ALICE["id"]).theme == name
+
+
 def test_the_redesign_is_safe_to_run_twice(alice):
-    _set_theme(ALICE["id"], "ocean")
+    _set_theme(ALICE["id"], "pure")
     migrations.m0007_redesign_themes()
     assert migrations.m0007_redesign_themes()["total"] == 0
     with SessionLocal() as s:
         assert s.get(User, ALICE["id"]).theme == "calm"
 
 
+@pytest.mark.parametrize("old,new", [
+    ("calm", "ocean"), ("titan", "midnight"), ("nexus", "aurora"),
+    ("muse", "bento"), ("rage", "spatial"), ("pink", "bento"),
+])
+def test_the_named_systems_migration_lands_on_a_live_theme(alice, old, new):
+    _set_theme(ALICE["id"], old)
+    migrations.m0008_named_theme_systems()
+    with SessionLocal() as s:
+        assert s.get(User, ALICE["id"]).theme == new
+    assert migrations.m0008_named_theme_systems()["total"] == 0
+
+
 def test_nobody_is_migrated_into_execution_mode():
-    """Rage has no predecessor. Putting somebody in it uninvited is a decision
+    """Rage had no predecessor. Putting somebody in it uninvited was a decision
     on their behalf, not a migration."""
     assert "rage" not in migrations.THEME_REDESIGN.values()
 
@@ -3561,6 +3624,7 @@ def test_the_whole_migration_chain_is_idempotent(fresh):
     assert second["0006_restore_journal_habit"]["unarchived"] == 0
     assert second["0006_restore_journal_habit"]["created"] == 0
     assert second["0007_redesign_themes"]["total"] == 0
+    assert second["0008_named_theme_systems"]["total"] == 0
 
 
 # ==========================================================================
@@ -3627,7 +3691,7 @@ def test_a_late_wake_up_is_regretful_not_punitive(alice):
 
 
 def test_home_carries_only_the_numbers_it_shows():
-    """Home is a glance: the day's mission, how today is going, today's tasks.
+    """Home is a glance: what to do now, how today is going, today's tasks.
 
     Four blocks. The month grid was the fifth and the tallest — forty-two
     cells about the rest of the month on the one screen whose whole job is
@@ -3635,7 +3699,7 @@ def test_home_carries_only_the_numbers_it_shows():
     """
     html = (ROOT / "webapp" / "index.html").read_text()
     home = html[html.index("SCREENS.home = () => {"):html.index("function privacyNote")]
-    for block in ("headBlock", "missionBlock", "scoreBlock", "tasksBlock"):
+    for block in ("headBlock", "nowBlock", "scoreBlock", "tasksBlock"):
         assert block in home, f"Home no longer renders {block}"
     assert "homeCalendar" not in html, "the month grid is back on Home"
     # The blocks that moved off it must not have come back.
@@ -3643,11 +3707,23 @@ def test_home_carries_only_the_numbers_it_shows():
     assert "focusBlock" not in html, "the week's focus belongs on Tasks"
 
 
-def test_the_score_switch_offers_day_week_and_month():
+def test_the_score_block_shows_day_week_and_month_at_once():
+    """The comparison people actually want is between the three windows.
+
+    Behind a switch it took two taps and remembering the first number; three
+    rows answer it by being read. The switch is gone, so nothing may bring
+    back a "current period" for this block to be in.
+    """
     html = (ROOT / "webapp" / "index.html").read_text()
-    assert 'data-act="score-period"' in html
+    assert 'data-act="score-period"' not in html, "the switch is back"
+    assert "scorePeriod" not in html, "the block has a current period again"
+    block = html[html.index("function scoreBlock("):html.index("function tasksBlock(")]
     for period in ("period_day", "period_week", "period_month"):
-        assert f't("{period}")' in html
+        assert f't("{period}")' in block
+    # Each row carries its own change, and the arrow means the direction
+    # survives a screen where the colour does not.
+    assert "deltaTag(" in block
+    assert "state.summary" in block, "the week and month are not read"
 
 
 def test_todays_change_is_measured_against_yesterday():
@@ -3655,7 +3731,7 @@ def test_todays_change_is_measured_against_yesterday():
     when it had something to measure — otherwise it is absent, not a fall."""
     html = (ROOT / "webapp" / "index.html").read_text()
     assert "d.overall.yesterday" in html
-    assert "delta = value - d.overall.yesterday" in html
+    assert "d.overall.value - d.overall.yesterday" in html
 
 
 def test_the_calendar_opens_from_the_date_on_home(alice):
@@ -3674,3 +3750,242 @@ def test_the_calendar_opens_from_the_date_on_home(alice):
     home_load = html.split('if(screen === "home")')[1][:400]
     assert 'api("/api/calendar")' not in home_load, \
         "Home fetches a month grid it does not show"
+
+
+# ==========================================================================
+# The UX round: one "now", one score block, three task views
+# ==========================================================================
+
+def test_the_now_card_decides_and_says_why():
+    """Home's largest block answers "what do I do at this moment?".
+
+    It is computed rather than chosen: the user does not have to read the
+    screen and pick. A card that decides on somebody's behalf owes them the
+    sentence explaining why this one, so every rung of the ladder carries a
+    reason and the card prints it.
+    """
+    html = (ROOT / "webapp" / "index.html").read_text()
+    block = html[html.index("function nowBlock("):html.index("function scoreBlock(")]
+    assert "d.now" in block, "the card is not reading the computed answer"
+    assert 't("now")' in block, "the card is still titled something else"
+    assert 'data-act="mission-pick"' in block, "the suggestion cannot be changed"
+    for reason in ("pinned", "overdue", "due_today", "habit", "wake",
+                   "prayer", "evening"):
+        assert f'{reason}:"why_' in block or f'{reason}:"' in block, reason
+    for lang in ("uz", "en", "ru"):
+        assert f'why_overdue:' in html
+
+
+def test_the_ladder_prefers_late_work_over_work_due_later(alice):
+    """A missed deadline outranks a future one.
+
+    Overdue tasks were not on the ladder at all, so a task that was late
+    yesterday lost to one due at the end of today — which is exactly backwards
+    from how anybody actually works.
+    """
+    today = date.today()
+    late = alice.post("/api/tasks", json={
+        "title": "Late invoice",
+        "deadline": (today - timedelta(days=2)).isoformat()}).json()
+    alice.post("/api/tasks", json={
+        "title": "Later today", "deadline": today.isoformat(),
+        "due_time": "23:00"})
+
+    now = alice.get("/api/home").json()["now"]
+    assert now["title"] == "Late invoice"
+    assert now["id"] == late["id"]
+    assert now["reason"] == "overdue"
+
+
+def test_pinning_a_task_overrules_the_ladder(alice):
+    """The card is a suggestion. Pinning is how the user overrides it, and the
+    reason then says so rather than pretending the ladder chose."""
+    today = date.today()
+    alice.post("/api/tasks", json={
+        "title": "Late invoice",
+        "deadline": (today - timedelta(days=2)).isoformat()})
+    chosen = alice.post("/api/tasks", json={
+        "title": "Write the proposal", "deadline": today.isoformat()}).json()
+    alice.post(f"/api/tasks/{chosen['id']}/top3", json={"picked": True})
+
+    now = alice.get("/api/home").json()["now"]
+    assert now["title"] == "Write the proposal"
+    assert now["reason"] == "pinned"
+
+
+def test_a_reason_comes_back_for_every_rung(alice):
+    """An answer with no reason would print a card that cannot explain itself."""
+    assert alice.get("/api/home").json()["now"]["reason"]
+
+
+def test_tasks_is_three_views_of_the_same_data():
+    """Main, Open, Done — and the calendar reachable from the header.
+
+    Main is what matters now: the week's focus, what is pinned, what is late,
+    what is due today, and the projects. Open is the whole inventory with the
+    search and the filters. Neither may print the other's blocks: the week's
+    focus and the project list under a searchable list of every open task was
+    the same content twice on one screen.
+    """
+    html = (ROOT / "webapp" / "index.html").read_text()
+    screen = html[html.index("SCREENS.tasks = () => {"):html.index("function mainTab(")]
+    for tab in ("main_tab", "open_tab", "done_tab"):
+        assert f't("{tab}")' in screen, f"the {tab} view is missing"
+    assert 'data-act="calendar-open"' in screen, "no calendar on Tasks"
+
+    main = html[html.index("function mainTab("):html.index("function searchBox(")]
+    assert "weekFocusBlock()" in main and "projectsSection()" in main
+    open_tab = html[html.index("function openTab("):html.index("function doneTab(")]
+    assert "weekFocusBlock()" not in open_tab, "the focus block is printed twice"
+    assert "projectsSection()" not in open_tab, "the project list is printed twice"
+    assert 'searchBox("task-q"' in open_tab
+
+
+def test_a_new_task_is_reminded_about_half_an_hour_before():
+    """Nobody chooses a reminder offset, so the default has to be the useful
+    one. "At the time" is a notification about something already starting."""
+    assert svc.DEFAULT_REMIND_BEFORE == 30
+    assert 30 in svc.REMINDER_OFFSETS
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert "const DEFAULT_REMIND_BEFORE = 30;" in html
+    assert "remind_before: DEFAULT_REMIND_BEFORE" in html
+    # And the picker offers the same set the server accepts, plus none at all.
+    assert "const REMINDER_OFFSETS = [0, 10, 30, 60, 1440];" in html
+    for offset in svc.REMINDER_OFFSETS:
+        assert f"remind_{offset}:" in html, f"no label for {offset} minutes"
+    assert "remind_none:" in html
+
+
+def test_the_reminder_default_can_still_be_turned_off(alice):
+    """A default that cannot be refused is not a default."""
+    alice.post("/api/tasks", json={
+        "title": "Quiet one", "deadline": date.today().isoformat(),
+        "remind_before": None})
+    alice.post("/api/tasks", json={
+        "title": "Remind me", "deadline": date.today().isoformat(),
+        "remind_before": 30})
+    rows = {t["title"]: t for group in alice.get("/api/tasks").json().values()
+            if isinstance(group, list) for t in group}
+    assert rows["Quiet one"]["remind_before"] is None
+    assert rows["Remind me"]["remind_before"] == 30
+
+
+def test_the_channel_statistics_post_goes_out_in_the_morning():
+    """23:00 was written for whoever was still up. The channel is read in the
+    morning, so that is when the post lands."""
+    assert application.STATS_POST_HOUR == 10
+    source = (ROOT / "app.py").read_text()
+    job = source[source.index("send_platform_stats, \"cron\""):][:200]
+    assert "hour=STATS_POST_HOUR" in job
+    assert "hour=23" not in job
+
+
+def test_the_now_card_is_not_printed_twice(alice):
+    """Whatever the Now card shows must not appear again in today's list.
+
+    The backend drops the pinned tasks from that list, but the ladder can also
+    choose an unpinned task due today — which the old filter, keyed on the
+    pinned id alone, would have let through.
+    """
+    html = (ROOT / "webapp" / "index.html").read_text()
+    block = html[html.index("function tasksBlock("):html.index("function calendarBlock(")]
+    assert 'd.now?.kind === "task" ? d.now.id' in block
+
+    created = alice.post("/api/tasks", json={
+        "title": "The only one", "deadline": date.today().isoformat()}).json()
+    alice.post(f"/api/tasks/{created['id']}/top3", json={"picked": True})
+
+    home = alice.get("/api/home").json()
+    assert home["now"]["id"] == created["id"]
+    # A pinned task is dropped from today's list by the backend; the filter in
+    # the screen is what covers the unpinned case the ladder can also choose.
+    listed = [t["id"] for g in home["tasks_today"] for t in g["tasks"]]
+    assert created["id"] not in listed
+
+
+# ==========================================================================
+# The palette is Apple's, on purpose
+# ==========================================================================
+
+#: Apple's system colours, light variant then dark, plus the accessible
+#: darker variants the platform ships for coloured *text* on a light ground.
+#: Every brand hue in every theme comes from this table.
+#:
+#: The point is not brand-worship. The set is contrast-tested at both ends,
+#: the light and dark variant of a hue are calibrated to read as the same
+#: colour rather than merely to share a name, and it is the palette the
+#: operating system around the Mini App is already using. Hexes picked by eye
+#: are how an interface ends up looking almost right.
+APPLE_SYSTEM_COLOURS = {
+    # light                                   # dark
+    "#007AFF", "#0A84FF",   # blue
+    "#5856D6", "#5E5CE6",   # indigo
+    "#AF52DE", "#BF5AF2",   # purple
+    "#FF2D55", "#FF375F",   # pink
+    "#FF3B30", "#FF453A",   # red
+    "#FF9500", "#FF9F0A",   # orange
+    "#FFCC00", "#FFD60A",   # yellow
+    "#34C759", "#30D158",   # green
+    "#00C7BE", "#66D4CF",   # mint
+    "#30B0C7", "#40C8E0",   # teal
+    "#32ADE6", "#64D2FF",   # cyan
+    "#5AC8FA", "#64D2FF",   # light blue
+    "#8E8E93", "#98989D",   # gray
+    # Accessible variants, for a hue used as text on a light ground.
+    "#248A3D", "#B25000", "#D70015",
+    # The ink both light-on-dark and dark-on-light themes lead with.
+    "#1C1C1A", "#F2F2ED",
+}
+
+
+@pytest.mark.parametrize("name", application.THEMES)
+@pytest.mark.parametrize("mode", ["light", "dark"])
+def test_every_brand_colour_is_an_apple_system_colour(name, mode):
+    import re
+
+    styled = (ROOT / "webapp" / "index.html").read_text()
+    block = _theme_block(styled, name, mode)
+    for token in ("--c1", "--c2", "--c3", "--c4", "--c5",
+                  "--ok", "--warn", "--danger"):
+        found = re.search(r"%s:\s*(#[0-9A-Fa-f]{6})" % token, block)
+        assert found, f"{name}/{mode} does not set {token}"
+        colour = found.group(1).upper()
+        assert colour in APPLE_SYSTEM_COLOURS, \
+            f"{name}/{mode} {token} is {colour}, which is not a system colour"
+
+
+def test_a_light_lead_colour_carries_a_dark_label():
+    """White on teal is unreadable, so that fill takes a dark label instead.
+
+    Apple does the same on its own yellow and mint fills. What must not happen
+    is a theme keeping white because every other theme has white.
+    """
+    import re
+
+    styled = (ROOT / "webapp" / "index.html").read_text()
+
+    def luma(hex_colour):
+        r, g, b = (int(hex_colour[i:i+2], 16) for i in (1, 3, 5))
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+    for name in application.THEMES:
+        for mode in ("light", "dark"):
+            block = _theme_block(styled, name, mode)
+            lead = re.search(r"--c1:\s*(#[0-9A-Fa-f]{6})", block).group(1)
+            label = re.search(r"--on-primary:\s*(#[0-9A-Fa-f]{6})",
+                              block).group(1)
+            # The label and the fill it sits on must be at opposite ends.
+            assert abs(luma(lead) - luma(label)) > 90, \
+                f"{name}/{mode}: {label} on {lead} is not readable"
+
+
+def test_the_app_renders_in_the_system_face_where_there_is_one():
+    """San Francisco first, Inter as the fallback for Windows and Android.
+
+    On an iPhone, and in Telegram Desktop on a Mac, the Mini App then renders
+    in the same face as everything around it — which is most of what "it looks
+    native" turns out to mean.
+    """
+    styled = (ROOT / "webapp" / "index.html").read_text()
+    stack = styled[styled.index("font:15px/"):][:200]
+    assert stack.index("-apple-system") < stack.index("Inter")

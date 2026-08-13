@@ -90,7 +90,7 @@ class User(Base):
 
     language: Mapped[str] = mapped_column(String(2), default="uz")     # uz|en|ru
     gender: Mapped[str | None] = mapped_column(String(6), nullable=True)  # male|female
-    theme: Mapped[str] = mapped_column(String(20), default="calm")
+    theme: Mapped[str] = mapped_column(String(20), default="ocean")
     quote: Mapped[str] = mapped_column(Text, default="")
     #: Telegram file_id of the uploaded avatar, or empty for initials.
     photo_file_id: Mapped[str] = mapped_column(String(200), default="")

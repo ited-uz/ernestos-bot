@@ -974,7 +974,12 @@ RECURRENCES = ["daily", "weekdays", "weekly", "monthly"]
 
 #: Reminder offsets in minutes before the due moment, as offered in the UI.
 #: 0 means exactly on time.
-REMINDER_OFFSETS = [0, 10, 60, 1440]
+REMINDER_OFFSETS = [0, 10, 30, 60, 1440]
+#: What a task is given when nobody chose. Half an hour is the offset that is
+#: actually useful: on time is a notification about something already late,
+#: and an hour is early enough to be read and forgotten. The picker still
+#: offers every other value, including none at all.
+DEFAULT_REMIND_BEFORE = 30
 #: A reminder cannot be asked for further ahead than this.
 MAX_REMIND_BEFORE = 60 * 24 * 7
 
@@ -2446,6 +2451,15 @@ def save_weekly_review(s: Session, ws: int, *, went_well: str = "",
 DAY_CLOSE_HOUR = 20
 
 
+def _now_task(task: dict, reason: str) -> dict:
+    """One open task, in the shape the "now" card reads."""
+    return {"kind": "task", "title": task["title"], "id": task["id"],
+            "action": "task", "meta": task["due_time"] or "",
+            "reason": reason, "priority": task["priority"],
+            "due_time": task["due_time"], "deadline": task["deadline"],
+            "project": task["project"]}
+
+
 def now_next(s: Session, ws: int, user: User, *,
              tz: ZoneInfo | None = None) -> dict:
     """The one thing to do next, decided by a fixed ladder.
@@ -2456,11 +2470,18 @@ def now_next(s: Session, ws: int, user: User, *,
     answer for the same day:
 
       1. get up, while it still counts
-      2. the top-three picks, in the order they were picked
-      3. anything else due today
-      4. a habit that is due and not done
-      5. close the day, once the evening has started
-      6. otherwise: today's important work is finished
+      2. whatever the user pinned as the day's mission
+      3. anything already late — a missed deadline outranks a future one
+      4. anything else due today, earliest time first, then by priority
+      5. a habit that is due and not done
+      6. today's prayers, once the day is past noon
+      7. close the day, once the evening has started
+      8. otherwise: today's important work is finished
+
+    Every answer carries a `reason`, because a card that decides on the user's
+    behalf owes them the sentence explaining why this one and not another. It
+    is also why the pinned mission sits at the top of the ladder: the user can
+    always overrule the order by pinning something, and then the card says so.
 
     Nothing here invents work. If the day is empty, it says so.
     """
@@ -2471,34 +2492,42 @@ def now_next(s: Session, ws: int, user: User, *,
     wake = wake_state(s, ws, tz=tz)
     if wake and not wake["logged"] and not wake["late"]:
         return {"kind": "wake", "title": "", "id": wake["habit_id"],
-                "action": "wakeup", "meta": wake["target"]}
+                "action": "wakeup", "meta": wake["target"], "reason": "wake"}
 
     for task in top3_tasks(s, ws, today, tz=tz):
         if task["status"] != "done":
-            return {"kind": "task", "title": task["title"], "id": task["id"],
-                    "action": "task", "meta": task["due_time"] or ""}
+            return _now_task(task, "pinned")
+
+    # Late work first. `list_tasks` already sorts by deadline, then time of
+    # day, then priority, so the oldest genuinely urgent thing surfaces rather
+    # than whichever row happened to be created first.
+    for task in list_tasks(s, ws, horizon_days=0, tz=tz)["overdue"]:
+        if task["status"] != "done":
+            return _now_task(task, "overdue")
 
     for task in tasks_due_today(s, ws, tz=tz):
         if task["status"] != "done":
-            return {"kind": "task", "title": task["title"], "id": task["id"],
-                    "action": "task", "meta": task["due_time"] or ""}
+            return _now_task(task, "due_today")
 
     for habit in list_habits(s, ws, today, tz=tz):
         if habit["due"] and not habit["done"] and not habit["protected"]:
             return {"kind": "habit", "title": habit["name"], "id": habit["id"],
-                    "action": "habit", "meta": habit["target_time"] or ""}
+                    "action": "habit", "meta": habit["target_time"] or "",
+                    "reason": "habit"}
 
     prayer = prayer_state(s, ws, today, user.gender)
     if not prayer["complete"] and prayer["performed"] < PRAYER_REQUIRED \
             and now.hour >= 12:
         return {"kind": "prayer", "title": "", "id": None, "action": "prayer",
-                "meta": f"{prayer['performed']}/{PRAYER_REQUIRED}"}
+                "meta": f"{prayer['performed']}/{PRAYER_REQUIRED}",
+                "reason": "prayer"}
 
     if now.hour >= DAY_CLOSE_HOUR and not journal_done(s, ws, today):
         return {"kind": "journal", "title": "", "id": None, "action": "journal",
-                "meta": ""}
+                "meta": "", "reason": "evening"}
 
-    return {"kind": "clear", "title": "", "id": None, "action": "", "meta": ""}
+    return {"kind": "clear", "title": "", "id": None, "action": "", "meta": "",
+            "reason": "clear"}
 
 
 def week_strip(s: Session, ws: int, *, tz: ZoneInfo | None = None) -> dict:

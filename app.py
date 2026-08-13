@@ -30,8 +30,8 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field, field_validator
 from telegram import (
-    InlineKeyboardButton, InlineKeyboardMarkup, InputFile, KeyboardButton,
-    ReplyKeyboardMarkup, ReplyKeyboardRemove, Update, WebAppInfo,
+    InlineKeyboardButton, InlineKeyboardMarkup, InputFile,
+    ReplyKeyboardMarkup, Update, WebAppInfo,
 )
 from telegram.constants import ParseMode
 from telegram.error import TelegramError
@@ -65,6 +65,8 @@ ADMIN_LOG_CHANNEL_ID = os.environ.get("ADMIN_LOG_CHANNEL_ID", "").strip()
 FEEDBACK_CHANNEL_ID = os.environ.get("FEEDBACK_CHANNEL_ID", "").strip() or ADMIN_LOG_CHANNEL_ID
 #: Aggregate platform statistics — counts only, never user content.
 STATS_CHANNEL_ID = os.environ.get("STATS_CHANNEL_ID", "").strip() or ADMIN_LOG_CHANNEL_ID
+#: The hour, on the project clock, that the daily statistics post goes out.
+STATS_POST_HOUR = int(os.environ.get("STATS_POST_HOUR", "10"))
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "").strip().rstrip("/")
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "development").lower()
 
@@ -95,10 +97,43 @@ T: dict[str, dict[str, str]] = {
         "pick_lang_multi": ("ErnestOS\n\n🇺🇿 Tilni tanlang\n"
                             "🇬🇧 Choose your language\n🇷🇺 Выберите язык"),
         "hello_named": "Assalomu alaykum, {name}!",
-        "phone_why": ("📱 Telefon raqamingizni ulashing.\n\n"
-                      "Agar accountingiz yo'qolib qolsa, ma'lumotlaringizni "
-                      "shu raqam orqali tiklab beramiz.\n\n"
-                      "Pastdagi tugmani bosing."),
+        #: The one screen a new account is given before it is left alone with
+        #: an empty app. Written as four concrete things they will actually do
+        #: today, with a real example under each, because "track your habits"
+        #: describes a category and "Ertalab 6:00 da turish" describes a
+        #: Tuesday. HTML, so it can be sent with the rest of the welcome.
+        "guide": (
+            "<b>ErnestOS nima qiladi?</b>\n"
+            "Kuningizni bir joyda ushlab turadi va ayni damda nima qilish "
+            "kerakligini aytadi. Boshqa hech narsa.\n\n"
+
+            "🎯 <b>Hozir</b> — bosh sahifadagi eng katta karta.\n"
+            "Sizda 12 ta ish bo'lsa ham, u bittasini ko'rsatadi: "
+            "<i>«Diplom ishining 2-bobini yozish»</i>. Tugatdingiz — keyingisi "
+            "chiqadi.\n\n"
+
+            "✅ <b>Vazifalar</b> — muddat, vaqt va eslatma bilan.\n"
+            "<i>«Soliq to'lovi — 25-avgust, 14:00»</i> qo'ysangiz, "
+            "13:30 da eslatma keladi. Kalendarda ham ko'rinadi.\n\n"
+
+            "🔁 <b>Odatlar</b> — har kuni takrorlanadigan ishlar.\n"
+            "<i>«Ertalab 6:00 da turish»</i>, <i>«30 daqiqa kitob»</i>. "
+            "Ketma-ket necha kun bajarganingiz 🔥 bilan ko'rsatiladi.\n\n"
+
+            "📊 <b>Statistika</b> — kun, hafta va oy bitta ekranda.\n"
+            "Foizingiz kecha 64% edi, bugun 71% — o'sish ham, tushish ham "
+            "ko'rinib turadi.\n\n"
+
+            "<b>Bugun nima qilish kerak</b>\n"
+            "1️⃣ Bitta vazifa qo'shing — hozir bajaradigan ishingizni.\n"
+            "2️⃣ Bitta odat qo'shing — har kuni takrorlanadiganini.\n"
+            "3️⃣ Kechqurun 📔 Kundalikni to'ldiring.\n\n"
+
+            "Hammasi shu. Ertaga ochganingizda ErnestOS sizga nimadan "
+            "boshlashni aytib turadi."
+        ),
+        "phone_not_needed": ("Rahmat, lekin telefon raqam kerak emas — "
+                             "ErnestOS uni so'ramaydi va saqlamaydi."),
         "welcome_in": "Xush kelibsiz, {name}! ErnestOS ishga tushdi.",
         "remind_task": "⏰ {title}",
         "remind_task_at": "⏰ {title} — {time}",
@@ -124,21 +159,14 @@ T: dict[str, dict[str, str]] = {
         "cat_target": "🟡 Target",
         "cat_bonus": "🟢 Bonus",
         "ask_habit_cat": "Qaysi kategoriyaga?",
-        "btn_phone_set": "📱 Telefon raqam",
         "btn_photo": "🖼 Profil rasmi",
         "ask_photo": "Profil rasmini foto sifatida yuboring:",
         "photo_saved": "Rasm saqlandi ✓",
         "photo_removed": "Rasm o'chirildi",
         "btn_photo_del": "🗑 Rasmni o'chirish",
-        "btn_phone_del": "🗑 Raqamni o'chirish",
-        "phone_removed": "Raqam o'chirildi",
         "streak": "🔥 Ketma-ket",
         "welcome": "Assalomu alaykum, {name}!\n\nErnestOS — Telegram ichidagi shaxsiy tizimingiz.",
-        "ask_phone": "Telefon raqamingizni ulashing.\n\nBu hisobingizni tiklash va sizni tanib olish uchun kerak.",
-        "btn_phone": "📱 Raqamni ulashish",
         "btn_skip": "⏭ O'tkazib yuborish",
-        "phone_saved": "Raqam saqlandi ✓",
-        "phone_wrong": "Bu sizning raqamingiz emas. O'z kontaktingizni yuboring.",
         "phone_skipped": "Yaxshi, keyinroq qo'shasiz.",
         "ask_lang": "Tilni tanlang:",
         "ask_gender": "Jinsingiz:",
@@ -163,7 +191,8 @@ T: dict[str, dict[str, str]] = {
         "now_prayer": "Namozni kiriting",
         "now_journal": "Kun yakuni",
         "now_clear": "Bugungi muhim ishlar tugadi",
-        "privacy_line": "🔒 Ma'lumotlaringiz to'liq himoya qilingan.",
+        "privacy_line": ("🔒 Ma'lumotlaringiz boshqa foydalanuvchilardan "
+                         "ajratilgan va xavfsiz saqlanadi."),
         "stats_title": "📊 Statistika",
         "st_today": "📅 Bugun",
         "st_week": "📆 Oxirgi 7 kun",
@@ -242,9 +271,37 @@ T: dict[str, dict[str, str]] = {
         "pick_lang_multi": ("ErnestOS\n\n🇺🇿 Tilni tanlang\n"
                             "🇬🇧 Choose your language\n🇷🇺 Выберите язык"),
         "hello_named": "Hello, {name}!",
-        "phone_why": ("📱 Please share your phone number.\n\n"
-                      "If you ever lose your account, this is how we restore "
-                      "your data.\n\nTap the button below."),
+        "guide": (
+            "<b>What ErnestOS does</b>\n"
+            "It holds your day in one place and tells you what to do right "
+            "now. Nothing else.\n\n"
+
+            "🎯 <b>Now</b> — the largest card on the home screen.\n"
+            "Even with 12 things open, it shows one: "
+            "<i>&quot;Write chapter 2 of the thesis&quot;</i>. Finish it and "
+            "the next one appears.\n\n"
+
+            "✅ <b>Tasks</b> — with a date, a time and a reminder.\n"
+            "Add <i>&quot;Pay the tax bill — 25 August, 14:00&quot;</i> and a "
+            "reminder arrives at 13:30. It shows up on the calendar too.\n\n"
+
+            "🔁 <b>Habits</b> — the things you repeat every day.\n"
+            "<i>&quot;Wake up at 6:00&quot;</i>, <i>&quot;30 minutes of "
+            "reading&quot;</i>. Your run of days shows as 🔥.\n\n"
+
+            "📊 <b>Statistics</b> — day, week and month on one screen.\n"
+            "You were on 64% yesterday and 71% today; both the rise and the "
+            "fall are visible.\n\n"
+
+            "<b>What to do today</b>\n"
+            "1️⃣ Add one task — whatever you are doing next.\n"
+            "2️⃣ Add one habit — something you repeat daily.\n"
+            "3️⃣ Fill in the 📔 journal this evening.\n\n"
+
+            "That is all of it. Tomorrow, ErnestOS tells you where to start."
+        ),
+        "phone_not_needed": ("Thanks, but no phone number is needed — "
+                             "ErnestOS does not ask for one or store one."),
         "welcome_in": "Welcome, {name}! ErnestOS is running.",
         "remind_task": "⏰ {title}",
         "remind_task_at": "⏰ {title} — {time}",
@@ -270,21 +327,14 @@ T: dict[str, dict[str, str]] = {
         "cat_target": "🟡 Target",
         "cat_bonus": "🟢 Bonus",
         "ask_habit_cat": "Which category?",
-        "btn_phone_set": "📱 Phone number",
         "btn_photo": "🖼 Profile photo",
         "ask_photo": "Send your profile photo:",
         "photo_saved": "Photo saved ✓",
         "photo_removed": "Photo removed",
         "btn_photo_del": "🗑 Remove photo",
-        "btn_phone_del": "🗑 Remove phone",
-        "phone_removed": "Phone removed",
         "streak": "🔥 Streak",
         "welcome": "Hello, {name}!\n\nErnestOS — your personal system inside Telegram.",
-        "ask_phone": "Please share your phone number.\n\nIt is used to recover your account and recognise you.",
-        "btn_phone": "📱 Share phone number",
         "btn_skip": "⏭ Skip",
-        "phone_saved": "Phone saved ✓",
-        "phone_wrong": "That is not your own contact. Please share your own number.",
         "phone_skipped": "No problem, you can add it later.",
         "ask_lang": "Choose your language:",
         "ask_gender": "Your gender:",
@@ -309,7 +359,8 @@ T: dict[str, dict[str, str]] = {
         "now_prayer": "Log your prayers",
         "now_journal": "Close the day",
         "now_clear": "Today's important work is done",
-        "privacy_line": "🔒 Your data is fully protected.",
+        "privacy_line": ("🔒 Your data is kept separate from other users' "
+                         "and stored securely."),
         "stats_title": "📊 Statistics",
         "st_today": "📅 Today",
         "st_week": "📆 Last 7 days",
@@ -388,9 +439,36 @@ T: dict[str, dict[str, str]] = {
         "pick_lang_multi": ("ErnestOS\n\n🇺🇿 Tilni tanlang\n"
                             "🇬🇧 Choose your language\n🇷🇺 Выберите язык"),
         "hello_named": "Здравствуйте, {name}!",
-        "phone_why": ("📱 Поделитесь номером телефона.\n\n"
-                      "Если вы потеряете аккаунт, мы восстановим ваши данные "
-                      "по этому номеру.\n\nНажмите кнопку ниже."),
+        "guide": (
+            "<b>Что делает ErnestOS</b>\n"
+            "Держит ваш день в одном месте и говорит, что делать прямо "
+            "сейчас. Больше ничего.\n\n"
+
+            "🎯 <b>Сейчас</b> — самая большая карточка на главной.\n"
+            "Даже если открыто 12 дел, она показывает одно: "
+            "<i>«Написать вторую главу диплома»</i>. Закончили — появится "
+            "следующее.\n\n"
+
+            "✅ <b>Задачи</b> — с датой, временем и напоминанием.\n"
+            "Добавьте <i>«Оплатить налог — 25 августа, 14:00»</i>, и в 13:30 "
+            "придёт напоминание. Задача видна и в календаре.\n\n"
+
+            "🔁 <b>Привычки</b> — то, что повторяется каждый день.\n"
+            "<i>«Вставать в 6:00»</i>, <i>«30 минут чтения»</i>. Серия дней "
+            "подряд показывается значком 🔥.\n\n"
+
+            "📊 <b>Статистика</b> — день, неделя и месяц на одном экране.\n"
+            "Вчера было 64%, сегодня 71% — видно и рост, и падение.\n\n"
+
+            "<b>Что сделать сегодня</b>\n"
+            "1️⃣ Добавьте одну задачу — то, чем займётесь сейчас.\n"
+            "2️⃣ Добавьте одну привычку — то, что повторяете каждый день.\n"
+            "3️⃣ Вечером заполните 📔 дневник.\n\n"
+
+            "Это всё. Завтра ErnestOS сам подскажет, с чего начать."
+        ),
+        "phone_not_needed": ("Спасибо, но номер телефона не нужен — "
+                             "ErnestOS его не запрашивает и не хранит."),
         "welcome_in": "Добро пожаловать, {name}! ErnestOS запущен.",
         "remind_task": "⏰ {title}",
         "remind_task_at": "⏰ {title} — {time}",
@@ -416,21 +494,14 @@ T: dict[str, dict[str, str]] = {
         "cat_target": "🟡 Target",
         "cat_bonus": "🟢 Bonus",
         "ask_habit_cat": "Какая категория?",
-        "btn_phone_set": "📱 Номер телефона",
         "btn_photo": "🖼 Фото профиля",
         "ask_photo": "Отправьте фото профиля:",
         "photo_saved": "Фото сохранено ✓",
         "photo_removed": "Фото удалено",
         "btn_photo_del": "🗑 Удалить фото",
-        "btn_phone_del": "🗑 Удалить номер",
-        "phone_removed": "Номер удалён",
         "streak": "🔥 Серия",
         "welcome": "Здравствуйте, {name}!\n\nErnestOS — ваша личная система внутри Telegram.",
-        "ask_phone": "Поделитесь номером телефона.\n\nЭто нужно для восстановления аккаунта.",
-        "btn_phone": "📱 Отправить номер",
         "btn_skip": "⏭ Пропустить",
-        "phone_saved": "Номер сохранён ✓",
-        "phone_wrong": "Это не ваш контакт. Отправьте свой номер.",
         "phone_skipped": "Хорошо, добавите позже.",
         "ask_lang": "Выберите язык:",
         "ask_gender": "Ваш пол:",
@@ -455,7 +526,8 @@ T: dict[str, dict[str, str]] = {
         "now_prayer": "Отметьте намазы",
         "now_journal": "Итоги дня",
         "now_clear": "Важные дела на сегодня закрыты",
-        "privacy_line": "🔒 Ваши данные полностью защищены.",
+        "privacy_line": ("🔒 Ваши данные отделены от данных других "
+                         "пользователей и хранятся безопасно."),
         "stats_title": "📊 Статистика",
         "st_today": "📅 Сегодня",
         "st_week": "📆 Последние 7 дней",
@@ -795,23 +867,16 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 #: The order onboarding walks, and the only place it is written down.
-#: language -> phone (skippable) -> required channel -> in.
-#: Gender is not here: nothing outside the prayer module needs it, so it is
-#: asked the first time prayer is opened and explained when it is asked.
-ONBOARDING_STEPS = ["language", "phone", "subscribe", "done"]
-
-
-def phone_keyboard(lang: str) -> ReplyKeyboardMarkup:
-    """One button: share the contact.
-
-    Telegram will only hand over a number through its own contact button, so
-    this has to be a reply keyboard rather than an inline one. There is no Skip:
-    the number is what account recovery is keyed on, and an account that cannot
-    be recovered is the one support problem with no answer.
-    """
-    return ReplyKeyboardMarkup(
-        [[KeyboardButton(t(lang, "btn_phone"), request_contact=True)]],
-        resize_keyboard=True, one_time_keyboard=False)
+#: language -> required channel -> in. Two screens, one of which is a tap.
+#:
+#: Nothing else is asked at the door. The phone number used to sit between
+#: them, and it was the single worst question in the product: it is the most
+#: personal thing the app ever asks for, it was asked before the user had seen
+#: one screen of what they were joining, and it bought them nothing they could
+#: feel. It is now not asked at all — not in onboarding, not in Settings.
+#: Gender is likewise not here: nothing outside the prayer module needs it, so
+#: it is asked the first time prayer is opened and explained when it is asked.
+ONBOARDING_STEPS = ["language", "subscribe", "done"]
 
 
 async def resume_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
@@ -836,13 +901,10 @@ async def resume_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                 [InlineKeyboardButton("🇷🇺 Русский", callback_data="lang:ru")],
             ]))
 
-    elif step == "phone":
-        await message.reply_text(t(lang, "phone_why"),
-                                 reply_markup=phone_keyboard(lang))
-
-    elif step in ("gender", "subscribe"):
-        # "gender" is a step from an older build; anyone still parked on it is
-        # moved forward rather than asked a question that no longer exists.
+    elif step in ("phone", "gender", "subscribe"):
+        # "phone" and "gender" are steps from older builds; anyone still parked
+        # on one is moved forward rather than asked a question that no longer
+        # exists.
         await message.reply_text(t(lang, "sub_required"),
                                  reply_markup=subscribe_keyboard(lang))
 
@@ -851,36 +913,26 @@ async def resume_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 
 
 async def on_contact(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    """Accept a shared contact only when it belongs to the sender."""
+    """A shared contact is acknowledged and dropped.
+
+    ErnestOS no longer asks for a phone number, and nothing in the bot offers
+    a contact button, so the only way one arrives is a user sending it
+    unprompted — usually from a keyboard left over from an older build.
+    Storing a number the product has stopped asking for would be exactly the
+    surprise the change was meant to remove, so it is not stored. The reply
+    clears that stale keyboard and says why.
+    """
     message = update.effective_message
     tg_user = update.effective_user
     if message is None or message.contact is None or tg_user is None:
         return
 
-    contact = message.contact
     with SessionLocal() as s:
         user = s.get(User, tg_user.id)
-        if user is None:
-            return
-        lang = user.language
-        if contact.user_id != tg_user.id:
-            # Someone forwarded another person's card — never store it.
-            await message.reply_text(t(lang, "phone_wrong"))
-            return
-        user.phone_number = contact.phone_number
-        onboarded_already = user.onboarded
-        if not onboarded_already:
-            user.onboarding_step = "subscribe"
-        s.commit()
-        snapshot = user
+        lang = user.language if user else "uz"
 
-    await message.reply_text(t(lang, "phone_saved"), reply_markup=ReplyKeyboardRemove())
-    await log_event(ctx.bot, snapshot, "📱 PHONE SUBMITTED", "phone_added=true")
-    if onboarded_already:
-        # Changed from Settings — go straight back to the menu.
-        await message.reply_text(t(lang, "saved"), reply_markup=main_menu(lang))
-    else:
-        await resume_onboarding(update, ctx, "subscribe")
+    await message.reply_text(t(lang, "phone_not_needed"),
+                             reply_markup=main_menu(lang))
 
 
 async def on_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -910,6 +962,23 @@ async def on_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await log_event(ctx.bot, snapshot, "🖼 PHOTO UPDATED")
 
 
+
+
+async def show_guide(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """The new-user guide, on demand.
+
+    It is sent once automatically, and once is not always the moment somebody
+    reads it, so /guide brings it back rather than making them scroll a month
+    of chat.
+    """
+    got = await guard(update, ctx)
+    if got is None:
+        return
+    user, _ = got
+    if update.effective_message:
+        await update.effective_message.reply_text(
+            t(user.language, "guide"), parse_mode=ParseMode.HTML,
+            disable_web_page_preview=True)
 
 
 async def finish_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -943,9 +1012,13 @@ async def finish_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> N
     await message.reply_text(t(lang, "welcome_in", name=esc(name)),
                              parse_mode=ParseMode.HTML,
                              reply_markup=main_menu(lang))
+    # The guide, once, on the account's first way in. It is a separate message
+    # rather than a longer welcome so it can be scrolled back to later, and it
+    # goes out before Home: an empty Home explains nothing on its own.
+    await message.reply_text(t(lang, "guide"), parse_mode=ParseMode.HTML,
+                             disable_web_page_preview=True)
     await log_event(ctx.bot, snapshot, "✅ ONBOARDING COMPLETE",
-                    f"Language: {snapshot.language}\n"
-                    f"Phone: {'yes' if snapshot.phone_number else 'skipped'}")
+                    f"Language: {snapshot.language}")
     await show_home(update, ctx)
 
 
@@ -1418,17 +1491,25 @@ async def show_project(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 #: system — its own colour, radius, shadow depth, gradient policy, type weight
 #: and motion timing — not the same screen in a different hue:
 #:
-#:   calm    Balanced & minimal. Light, blue, deliberate. The default.
-#:   titan   Strong & premium. Obsidian, steel, high contrast.
-#:   muse    Elegant & warm. Ivory, dusty rose, softest geometry.
-#:   rage    Focus & performance. Carbon black, red as emphasis only.
-#:   nexus   Futuristic & intelligent. Deep ink, indigo to cyan.
+#:   ocean     Ocean Glass. Frosted panels over deep blue. The default.
+#:   midnight  Midnight Minimal. Calm dark, no gradient, low stimulus.
+#:   aurora    Aurora Glass. Glass over indigo/violet/cyan light.
+#:   bento     Pure Bento. Light, bordered blocks; fastest to read.
+#:   spatial   Spatial Layered. Floating planes and long soft shadows.
 #:
-#: Every earlier name is mapped forward by migration 0007; an unknown value
-#: reads as the default rather than being rejected, so no account can end up
-#: with no theme at all.
-THEMES = ["calm", "titan", "muse", "rage", "nexus"]
-DEFAULT_THEME = "calm"
+#: Every earlier name is mapped forward by migrations 0007 and 0008; an
+#: unknown value reads as the default rather than being rejected, so no
+#: account can end up with no theme at all.
+THEMES = ["ocean", "midnight", "aurora", "bento", "spatial"]
+DEFAULT_THEME = "ocean"
+
+#: Product names, so the chat picker and the Mini App picker say the same
+#: thing. The id is what is stored; this is only ever displayed.
+THEME_NAMES = {
+    "ocean": "Ocean Glass", "midnight": "Midnight Minimal",
+    "aurora": "Aurora Glass", "bento": "Pure Bento",
+    "spatial": "Spatial Layered",
+}
 
 
 def theme_of(name: str | None) -> str:
@@ -1444,14 +1525,13 @@ async def show_settings(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     user, _ = got
     lang = user.language
     text = (f"<b>{t(lang, 'settings_title')}</b>\n\n"
-            f"🌐 {lang}\n👤 {user.gender or '—'}\n🎨 {theme_of(user.theme)}\n"
-            f"📱 {user.phone_number or '—'}\n"
+            f"🌐 {lang}\n👤 {user.gender or '—'}\n"
+            f"🎨 {THEME_NAMES.get(theme_of(user.theme), theme_of(user.theme))}\n"
             f"🖼 {'✓' if user.photo_file_id else '—'}")
     markup = InlineKeyboardMarkup([
         [InlineKeyboardButton(t(lang, "btn_lang"), callback_data="set:lang")],
         [InlineKeyboardButton(t(lang, "btn_gender"), callback_data="set:gender")],
         [InlineKeyboardButton(t(lang, "btn_theme"), callback_data="set:theme")],
-        [InlineKeyboardButton(t(lang, "btn_phone_set"), callback_data="set:phone")],
         [InlineKeyboardButton(t(lang, "btn_photo"), callback_data="set:photo")],
         [InlineKeyboardButton(t(lang, "wake_time_btn"), callback_data="set:waketime")],
     ])
@@ -1748,7 +1828,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             user = s.get(User, tg_user.id)
             user.language = parts[1]
             if not user.onboarded:
-                user.onboarding_step = "phone"
+                user.onboarding_step = "subscribe"
             s.commit()
             lang, onboarded = user.language, user.onboarded
             snapshot = user
@@ -1756,11 +1836,11 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
         if not onboarded:
             # First words in the language they just picked, by name, then the
-            # one thing still worth asking before they are inside.
+            # only thing still standing between them and the app.
             await query.edit_message_text(
                 t(lang, "hello_named", name=esc(tg_user.first_name or "")),
                 parse_mode=ParseMode.HTML)
-            await resume_onboarding(update, ctx, "phone")
+            await resume_onboarding(update, ctx, "subscribe")
         else:
             await query.edit_message_text(t(lang, "saved"))
             await update.effective_message.reply_text(t(lang, "saved"),
@@ -1923,9 +2003,15 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             return
         project_id = int(parts[1]) or None
         with SessionLocal() as s:
+            # The chat flow asks for a title, a date and a project and stops
+            # there, so a task made here would never get a reminder at all.
+            # It gets the standard one instead; the Mini App's task sheet is
+            # where it can be changed or turned off.
             task = svc.add_task(s, ws, title,
                                 deadline=date.fromisoformat(deadline) if deadline else None,
-                                project_id=project_id)
+                                project_id=project_id,
+                                remind_before=svc.DEFAULT_REMIND_BEFORE
+                                if deadline else None)
         ctx.user_data.pop("flow", None)
         await query.edit_message_text(t(lang, "task_added", title=task.title))
         await log_event(ctx.bot, user, "⚡ TASK ADDED",
@@ -2001,30 +2087,12 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                 back,
             ]))
         elif sub == "theme":
-            rows = [[InlineKeyboardButton(name.title(), callback_data=f"theme:{name}")]
+            rows = [[InlineKeyboardButton(THEME_NAMES.get(name, name.title()),
+                                          callback_data=f"theme:{name}")]
                     for name in THEMES]
             rows.append(back)
             await query.edit_message_text(t(lang, "btn_theme"),
                                           reply_markup=InlineKeyboardMarkup(rows))
-        elif sub == "phone":
-            rows = [[InlineKeyboardButton(t(lang, "btn_phone_del"),
-                                          callback_data="set:phonedel")]] \
-                if user.phone_number else []
-            rows.append(back)
-            await query.edit_message_text(t(lang, "ask_phone"),
-                                          reply_markup=InlineKeyboardMarkup(rows))
-            await message.reply_text(
-                t(lang, "btn_phone_set"),
-                reply_markup=ReplyKeyboardMarkup(
-                    [[KeyboardButton(t(lang, "btn_phone"), request_contact=True)]],
-                    resize_keyboard=True, one_time_keyboard=True))
-        elif sub == "phonedel":
-            with SessionLocal() as s:
-                row = s.get(User, user.telegram_id)
-                row.phone_number = None
-                s.commit()
-            await query.edit_message_text(t(lang, "phone_removed"))
-            await show_settings(update, ctx)
         elif sub == "photo":
             start_flow(ctx, "photo_wait")
             rows = []
@@ -2493,6 +2561,7 @@ async def lifespan(_: FastAPI):
 
         telegram_app.add_handler(CommandHandler("start", start))
         telegram_app.add_handler(CommandHandler("home", show_home))
+        telegram_app.add_handler(CommandHandler("guide", show_guide))
         telegram_app.add_handler(MessageHandler(filters.CONTACT, on_contact))
         telegram_app.add_handler(MessageHandler(filters.PHOTO, on_photo))
         telegram_app.add_handler(CallbackQueryHandler(on_callback))
@@ -2526,7 +2595,12 @@ async def lifespan(_: FastAPI):
                           minute=f"*/{svc.REMINDER_JOB_MINUTES}",
                           args=[telegram_app.bot], id="reminders",
                           max_instances=1, misfire_grace_time=120)
-        scheduler.add_job(send_platform_stats, "cron", hour=23, minute=0,
+        # The channel post goes out in the morning, when the channel is read,
+        # rather than at 23:00 when it was written for whoever was still up.
+        # `svc.TZ` is the project clock, so 10:00 means 10:00 in Tashkent
+        # regardless of where the process happens to run.
+        scheduler.add_job(send_platform_stats, "cron",
+                          hour=STATS_POST_HOUR, minute=0,
                           args=[telegram_app.bot], id="stats",
                           misfire_grace_time=3600)
         scheduler.start()

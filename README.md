@@ -12,9 +12,9 @@ Mahsulotning asosiy sikli:
 
 | Bo'lim | Mazmuni |
 |---|---|
-| 🏠 Bosh sahifa | **Bugungi missiya** (bitta vazifa), kun/hafta/oy foizi va o'zgarishi, vazifa/odat/namoz, bugungi vazifalar, kalendar |
+| 🏠 Bosh sahifa | **Hozir** (avtomatik tanlanadi), kun/hafta/oy foizi yonma-yon, vazifa/odat/namoz, bugungi vazifalar |
 | ✅ Odatlar | Odatlar (3 kategoriya, jadval, pauza, tarix) + namoz + kundalik |
-| ⚡ Vazifalar | Qidiruv va filtr, kechikkanlar uchun tez ko'chirish, loyihalar, **Bajarilgan** arxivi |
+| ⚡ Vazifalar | **Asosiy / Ochiq / Bajarilgan**, kalendar, qidiruv va filtr, kechikkanlar uchun tez ko'chirish, loyihalar |
 | 📊 Statistika | Umumiy % + Vazifalar / Odatlar / Namoz, o'zgarish (↑↓), eng yaxshi kun, namoz tafsiloti |
 
 Pastdagi navigatsiya aynan shu to'rtta. Qolgan hamma narsa — kalendar,
@@ -29,23 +29,33 @@ uslubi × yorug'/qorong'i rejim.
 Bosh sahifa faqat to'rt blok, shu tartibda:
 
 1. salom, sana, quote, sozlamalar va rasm;
-2. **Bugungi missiya** — bitta vazifa, mavjud vazifalardan tanlanadi;
-3. **kun / hafta / oy** foizi, o'sish yoki pasayish belgisi bilan, va bitta
-   qatorda vazifa / odat / namoz;
-4. loyihalarga bo'lingan **bugungi vazifalar**, pastida **kalendar**.
+2. **Hozir** — ayni damda qilinadigan bitta ish, avtomatik tanlanadi;
+3. **kun / hafta / oy** foizi **yonma-yon**, har birida o'zgarish belgisi
+   (↑↓), pastida bitta qatorda vazifa / odat / namoz;
+4. loyihalarga bo'lingan **bugungi vazifalar**.
 
 Boshqa hamma narsa — haftaning fokusi, tug'ilgan kunlar, haftalik yakun —
 o'ziga tegishli ekranda. Maqsad: ochish bilan kerakli narsani ko'rish.
 
-## Bugungi missiya
+## Hozir
 
-"Bugun eng muhim ish nima?" savolining javobi **bitta** yoki yo'q. Uchta
-"eng muhim" ish — bu ro'yxat.
+"Ayni damda nima qilishim kerak?" savolining javobi **bitta**. Foydalanuvchi
+ekranni o'qib, o'zi tanlab o'tirmaydi — javob backend'da qat'iy tartib bilan
+hisoblanadi (`services.now_next`):
 
-Missiya mavjud vazifalardan tanlanadi, shuning uchun parallel ro'yxat
-saqlanmaydi. Boshqasini tanlash avvalgisini **almashtiradi** — chegara bitta
-bo'lganda rad javobi berish ko'chaga olib boradi. Tanlov **sanaga bog'langan**,
-shuning uchun kechagisi ertaga o'zi yo'qoladi.
+1. turish vaqti, hali hisoblanayotgan bo'lsa;
+2. foydalanuvchi o'zi tanlab qo'ygan (★) vazifa;
+3. **muddati o'tgan** ish — kechikkan muddat kelasi muddatdan ustun;
+4. bugun muddati tugaydigan ish, avval vaqti bo'yicha, keyin muhimligi;
+5. bajarilmagan odat;
+6. tushdan keyin — namoz;
+7. kechqurun — kun yakuni;
+8. bo'lmasa: bugungi muhim ishlar tugadi.
+
+Har bir javob **sababi bilan** keladi ("Muddati o'tgan — eng oldin shu"), va
+karta uni chiqaradi: foydalanuvchi o'rniga qaror qabul qiladigan interfeys
+nega aynan shuni tanlaganini aytishi kerak. Bu taklif, buyruq emas — ✎ tugmasi
+tanlovni o'zgartiradi, tanlangan vazifa esa tartibning eng tepasiga chiqadi.
 
 ## Odatlar
 
@@ -220,7 +230,8 @@ yozuvi emas: `REPORT_TICK_MINUTES` (default 2) da bir marta uyg'onadi va har
 foydalanuvchidan "vaqti keldimi?" deb so'raydi. Kuniga **bir marta**
 yuborilishini cron emas, outbox claim kafolatlaydi.
 
-Platforma statistikasi operator kanaliga **23:00** da boradi.
+Platforma statistikasi operator kanaliga har kuni **10:00** da boradi
+(`STATS_POST_HOUR`, loyiha soati bo'yicha).
 
 ## Beshta dizayn uslubi × yorug'/qorong'i
 
@@ -229,13 +240,22 @@ siyosati, tipografiyasi va animatsiya tezligi bor. Har birida **beshta yorqin
 brend rangi** (`--c1`..`--c5`) — ular grafik seriyalari va aksentlar uchun ham
 ishlatiladi.
 
-| Tema | Xarakter | Yetakchi ranglar |
-|---|---|---|
-| **Calm** *(default)* | Muvozanatli va sokin | ko'k · siyan · binafsha · amber · emerald |
-| **Titan** | Kuchli va premium | electric blue · siyan · steel · amber |
-| **Muse** | Nafis va iliq | rose · lavender · fuchsia · amber · teal |
-| **Rage** | Fokus va tezlik | qizil · orange · sariq · lime |
-| **Nexus** | Futuristik va aqlli | indigo · binafsha · siyan · fuchsia · lime |
+| Tema | Xarakter | Yetakchi rang | Vizual belgilar |
+|---|---|---|---|
+| **Ocean Glass** *(default)* | Shaffof shisha, chuqur ko'k | systemBlue | blur, yumshoq glow, radius 16 |
+| **Midnight Minimal** | Sokin, chalg'itmaydigan | systemIndigo | gradient yo'q, ingichka chiziqlar, qorong'ida to'liq qora |
+| **Aurora Glass** | Futuristik, "wow" | systemPurple | shisha + aurora gradientlar, radius 20 |
+| **Pure Bento** | Tartibli, eng tez o'qiladi | siyoh (ink) | soya yo'q, aniq bloklar, iliq qog'oz |
+| **Spatial Layered** | Qatlamli chuqurlik | systemTeal | suzuvchi kartalar, uzun yumshoq soyalar |
+
+Ranglar tasodifiy tanlanmagan: har bir yorqin rang — **Apple system color**
+(`systemBlue`, `systemIndigo`, `systemPurple`, `systemTeal`, `systemMint`…),
+kulranglar esa Apple'ning `label` / `secondaryLabel` / `separator` /
+`systemGray` shkalasidan. Yorug' fonda matn sifatida ishlatiladigan rang
+uchun Apple'ning **accessible** varianti olinadi (`#34C759` o'rniga
+`#248A3D`) — test buni tekshiradi. Shrift ham avval **SF Pro**, keyin Inter:
+iPhone'da va Telegram Desktop'da ilova atrofidagi tizim bilan bir xil
+ko'rinadi.
 
 Beshtasi ham **yorug' va qorong'i** rejimda ishlaydi. Rejim: Sozlamalar →
 Ko'rinish → `Avto / Yorug' / Qorong'i`. `Avto` Telegram'ning o'z rejimiga
@@ -553,14 +573,12 @@ Deploy'dan keyin quyidagilarni birma-bir bosib chiqing:
 
 ```
 [ ] /start uch tilda salomlashadi, keyin til so'raydi
-[ ] tartib: til -> telefon -> jins -> obuna
-[ ] telefon raqamni ulashish ishlaydi
-[ ] boshqa odamning kontaktini yuborsa qabul qilinmaydi
+[ ] tartib: til -> obuna. Telefon raqam HECH QAYERDA so'ralmaydi
 [ ] til tanlash ishlaydi (uz / en / ru)
-[ ] /start → faqat til tanlash chiqadi (uzun uch tilli matn yo'q)
 [ ] til tanlanganda o'sha tilda "Assalomu alaykum, <ism>" chiqadi
-[ ] keyin telefon so'raladi va nima uchun kerakligi tushuntiriladi
-[ ] "O'tkazib yuborish" bosilsa onboarding to'xtamaydi
+[ ] keyin darhol kanal obunasi so'raladi
+[ ] obunadan keyin emoji va misollar bilan qo'llanma xabari keladi
+[ ] /guide o'sha qo'llanmani qaytadan chiqaradi
 [ ] kanalga obuna bo'lmaganda kirish bloklanadi
 [ ] Mini App'da blok ekrani chiqadi: Kanalga kirish + Obunani tekshirish
 [ ] obuna bo'lgach "Tekshirish" bosilsa ilova qayta ishga tushmasdan davom etadi
@@ -638,8 +656,8 @@ Deploy'dan keyin quyidagilarni birma-bir bosib chiqing:
 --- Sozlamalar ---
 [ ] Saqlash tugmasi YO'Q — har o'zgarish darhol saqlanadi va toast chiqadi
 [ ] beshta tema haqiqatan boshqacha his beradi, faqat rang emas
-[ ] Pure/Sage yorug', Midnight/Aurora qorong'i — tanlov ekranida yozilgan
-[ ] Ocean telefon sozlamasiga qarab yorug'/qorong'i bo'ladi
+[ ] beshtasi ham yorug' va qorong'i rejimda ishlaydi
+[ ] `Avto` telefon/Telegram sozlamasiga qarab yorug'/qorong'i bo'ladi
 [ ] vaqt mintaqasi o'zgartirilganda "bugun" o'zgaradi
 [ ] hisobot vaqtlari va eslatma kalitlari ishlaydi
 [ ] avatar Telegram rasmidan o'zi keladi — botdan yuklash talab qilinmaydi
