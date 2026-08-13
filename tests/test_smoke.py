@@ -689,10 +689,23 @@ def test_the_mini_app_navigation_is_the_four_launch_screens():
         ["home", "habits", "tasks", "stats"]
 
 
-def test_the_privacy_line_is_one_fixed_strip():
+def test_the_privacy_line_is_said_once_on_home():
+    """One line, in the page, on the screen the user lands on.
+
+    It used to be fixed chrome: a bar welded above the tab bar on all four
+    screens, with a hairline of its own, repeating one sentence forever. The
+    promise is worth making and worth making once — it is rendered at the foot
+    of Home, and again in Settings under "About privacy". What must not come
+    back is a copy of it per screen.
+    """
     html = (ROOT / "webapp" / "index.html").read_text()
     assert html.count('class="privacy-strip"') == 1
-    assert "privacyNote" not in html, "per-page privacy cards are back"
+    assert html.count("privacyNote()") == 2, \
+        "the privacy note is defined once and rendered once, on Home"
+    assert "+ privacyNote();" in html.split("SCREENS.home")[1][:900], \
+        "the privacy note left Home"
+    rule = html.split(".privacy-strip{")[1].split("}")[0]
+    assert "position:fixed" not in rule, "the privacy line is chrome again"
     for lang, phrase in (("uz", "to'liq himoya qilingan"),
                          ("en", "fully protected"),
                          ("ru", "полностью защищены")):
@@ -3614,13 +3627,17 @@ def test_a_late_wake_up_is_regretful_not_punitive(alice):
 
 
 def test_home_carries_only_the_numbers_it_shows():
-    """Home is a glance: the day/week/month figures, the three parts, the day's
-    mission, today's tasks and the month. Nothing else earns the space."""
+    """Home is a glance: the day's mission, how today is going, today's tasks.
+
+    Four blocks. The month grid was the fifth and the tallest — forty-two
+    cells about the rest of the month on the one screen whose whole job is
+    today — and it now opens from the date in the header instead.
+    """
     html = (ROOT / "webapp" / "index.html").read_text()
-    home = html[html.index("SCREENS.home = () => {"):html.index("function headBlock")]
-    for block in ("headBlock", "missionBlock", "scoreBlock", "tasksBlock",
-                  "homeCalendar"):
+    home = html[html.index("SCREENS.home = () => {"):html.index("function privacyNote")]
+    for block in ("headBlock", "missionBlock", "scoreBlock", "tasksBlock"):
         assert block in home, f"Home no longer renders {block}"
+    assert "homeCalendar" not in html, "the month grid is back on Home"
     # The blocks that moved off it must not have come back.
     assert "top3Block" not in html and "weekBlock" not in html
     assert "focusBlock" not in html, "the week's focus belongs on Tasks"
@@ -3641,9 +3658,19 @@ def test_todays_change_is_measured_against_yesterday():
     assert "delta = value - d.overall.yesterday" in html
 
 
-def test_the_calendar_sits_on_home(alice):
+def test_the_calendar_opens_from_the_date_on_home(alice):
+    """The month is one tap from Home, behind the date it is about.
+
+    It is a sheet rather than a block, so Home's first paint no longer waits
+    for — or scrolls past — a grid nobody asked for. The date in the header is
+    where somebody looking for a month taps anyway.
+    """
     html = (ROOT / "webapp" / "index.html").read_text()
-    assert "function homeCalendar()" in html
+    assert "function calendarSheet()" in html
     assert "calendarBlock()" in html
-    # And the payload it needs is fetched with Home rather than on demand.
-    assert 'api("/api/calendar")' in html
+    assert 'data-act="calendar-open"' in html, "the date no longer opens the month"
+    assert '"calendar-open":' in html, "nothing handles opening the month"
+    # Fetched when that sheet opens, not on every paint of Home.
+    home_load = html.split('if(screen === "home")')[1][:400]
+    assert 'api("/api/calendar")' not in home_load, \
+        "Home fetches a month grid it does not show"

@@ -277,13 +277,18 @@ body{
   /* Telegram reports its own usable height; 100vh is wrong inside the
      in-app browser, so --vh is kept in sync from JS. */
   min-height:var(--vh, 100dvh);
-  padding-bottom:calc(var(--shell-b, 128px) + var(--fab-clear) + var(--s2))}
+  padding-bottom:calc(var(--shell-b, 58px) + var(--fab-clear) + var(--s2))}
 #app{padding:calc(var(--s2) + var(--safe-t, 0px)) var(--pad) var(--s2);
      max-width:640px;margin:0 auto;width:100%}
 
 /* Type scale. One family, five sizes, and no bold below 15px. */
 h1{font-size:26px;font-weight:var(--title-w);letter-spacing:-.5px;line-height:1.2;
    overflow-wrap:anywhere}
+/* Home's title is a greeting, and a greeting is the least informative thing
+   on the screen. At the screen-title size "Assalomu alaykum, Ernest" wrapped
+   to two lines and took the top fifth of the page before the day's mission —
+   the thing Home exists to show — appeared. */
+h1.greet{font-size:19px;letter-spacing:-.2px}
 h2{font-size:12px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;
    color:var(--text-3);margin:var(--s4) 0 var(--s1);
    display:flex;align-items:center;justify-content:space-between;gap:var(--s1)}
@@ -296,6 +301,12 @@ h3{font-size:17px;font-weight:600;letter-spacing:-.2px}
          line-height:1}
 .t2{color:var(--text-2)} .t3{color:var(--text-3)}
 .small{font-size:13px} .tiny{font-size:12px}
+/* The small uppercase label above a number or a title. It was written
+   inline in five places, each with its own letter-spacing; one class means
+   one look. */
+.eyebrow{font-size:11px;font-weight:600;letter-spacing:.6px;
+         text-transform:uppercase;color:var(--text-3)}
+.hero .eyebrow{color:color-mix(in srgb, var(--hero-text) 66%, transparent)}
 .num{font-variant-numeric:tabular-nums}
 .row{display:flex;align-items:center;gap:var(--s2)}
 .grow{flex:1;min-width:0}
@@ -461,8 +472,8 @@ label{display:block;font-size:12px;color:var(--text-2);margin:var(--s3) 0 var(--
 .hero .trio > div + div{border-left-color:color-mix(in srgb,
                         var(--hero-text) 24%, transparent)}
 
-.metrics{display:grid;grid-template-columns:1fr 1fr;gap:var(--s1)}
-.metric{background:var(--surface);border:var(--border-w) solid var(--border);
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:2px}
+.metric{background:var(--surface);border:0;
         border-radius:var(--radius);padding:var(--s2) var(--s3);min-width:0}
 .metric .k{font-size:11px;color:var(--text-3);text-transform:uppercase;
            letter-spacing:.4px;font-weight:550}
@@ -478,10 +489,15 @@ label{display:block;font-size:12px;color:var(--text-2);margin:var(--s3) 0 var(--
 /* ==================================================================
    Rows
    ================================================================== */
-.item{background:var(--surface);border:var(--border-w) solid var(--border);
+/* A row is carried by its own surface, not by an outline. Eight tasks used
+   to be eight outlined boxes stacked six pixels apart — sixteen horizontal
+   lines for eight facts. The fill already separates the row from the ground,
+   so the border is a second separator doing the same job, and the rows sit
+   close enough to read as one list. */
+.item{background:var(--surface);border:0;
       border-radius:var(--radius);padding:var(--s2) var(--s3);
       display:flex;align-items:center;gap:var(--s2);min-height:52px}
-.item + .item{margin-top:6px}
+.item + .item{margin-top:2px}
 .item .meta{font-size:12.5px;color:var(--text-2);margin-top:2px;display:flex;
             align-items:center;gap:6px;flex-wrap:wrap}
 .item.off{opacity:.55}
@@ -489,14 +505,15 @@ label{display:block;font-size:12px;color:var(--text-2);margin:var(--s3) 0 var(--
 .item.pressable:active{transform:scale(.995)}
 
 /* A task row's only decoration is the priority edge. */
-.trow{background:var(--surface);border:var(--border-w) solid var(--border);
-      border-left:3px solid var(--border-2);border-radius:var(--radius);
+.trow{background:var(--surface);border:0;
+      border-left:3px solid transparent;border-radius:var(--radius);
       padding:var(--s2) var(--s3);display:flex;align-items:flex-start;
       gap:var(--s2)}
-.trow + .trow{margin-top:6px}
+.trow + .trow{margin-top:2px}
+/* Only the exception is marked. "Medium" is the default every task is born
+   with, so colouring it painted an amber stripe down the whole list and left
+   the genuinely urgent one indistinguishable from the rest. */
 .trow.pri-high{border-left-color:var(--danger)}
-.trow.pri-medium{border-left-color:var(--warn)}
-.trow.pri-low{border-left-color:var(--ok)}
 .trow .tt{font-weight:550;line-height:1.35;overflow-wrap:anywhere;cursor:pointer}
 .trow .td{font-size:12.5px;color:var(--text-2);margin-top:3px;display:flex;
           align-items:center;gap:6px;flex-wrap:wrap}
@@ -582,7 +599,6 @@ nav{position:fixed;left:0;right:0;bottom:0;z-index:40;display:grid;
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
   nav{background:var(--surface)}
   .sheet-inner{background:var(--surface)}
-  .privacy-strip{background:var(--surface)}
 }
 nav button{background:0;border:0;color:var(--text-3);padding:7px 4px 8px;
            font-size:10.5px;font-weight:550;cursor:pointer;display:grid;gap:2px;
@@ -592,22 +608,20 @@ nav button.on{color:var(--primary)}
 nav button .ic{display:grid;place-items:center;height:24px}
 
 .fab{position:fixed;right:calc(var(--pad) + 2px);z-index:41;
-     bottom:calc(var(--shell-b, 128px) + var(--s3));
+     bottom:calc(var(--shell-b, 58px) + var(--s3));
      width:52px;height:52px;border-radius:50%;border:0;cursor:pointer;
      background:var(--primary-fill);color:var(--on-primary);
      box-shadow:var(--shadow-3);display:grid;place-items:center;
      transition:transform var(--motion),filter var(--motion)}
 .fab:active{transform:scale(.94);filter:brightness(.94)}
 
-.privacy-strip{position:fixed;left:0;right:0;bottom:var(--nav-h, 58px);z-index:39;
-  background:color-mix(in srgb, var(--surface) 94%, transparent);
-  backdrop-filter:saturate(130%) blur(12px);
-  -webkit-backdrop-filter:saturate(130%) blur(12px);
-  border-top:var(--border-w) solid var(--border);
-  padding:5px calc(var(--pad) + 4px);text-align:center;
-  font-size:11px;line-height:1.35;color:var(--text-3);
-  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
-  overflow:hidden}
+/* The privacy promise, once, at the foot of Home — in the page, not welded
+   above the navigation on every screen. As fixed chrome it cost a bar and a
+   second hairline above the tab bar on all four screens, forever, to repeat
+   a sentence that is read once. It is still in the app on the first screen
+   the user lands on, and again in Settings under "About privacy". */
+.privacy-strip{margin:var(--s4) 0 var(--s1);text-align:center;
+  font-size:11px;line-height:1.35;color:var(--text-3)}
 
 .sheet{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;
        align-items:flex-end;z-index:50}
@@ -637,7 +651,7 @@ details[open] > summary .chev{transform:rotate(90deg)}
 .chev{transition:transform var(--motion)}
 
 .toast{position:fixed;left:50%;transform:translateX(-50%);
-       bottom:calc(var(--shell-b, 128px) + var(--s4));
+       bottom:calc(var(--shell-b, 58px) + var(--s4));
        background:var(--text);color:var(--surface);
        padding:var(--s2) var(--s3);border-radius:var(--radius-sm);z-index:60;
        opacity:0;transition:opacity var(--motion),transform var(--motion);
@@ -682,13 +696,18 @@ details[open] > summary .chev{transform:rotate(90deg)}
         display:grid;place-items:center;font-weight:600;font-size:16px;
         color:var(--on-primary);overflow:hidden;background:var(--primary-fill)}
 .avatar img{width:100%;height:100%;object-fit:cover;display:block}
+/* An icon button is a target, not a boxed object. Outlined and filled, every
+   gear, chevron and star read as a control competing with the content beside
+   it — a list of six tasks came with six grey squares down its right edge.
+   The glyph and a 38px target are enough; the fill is kept for the one case
+   that needs to stand off a coloured surface. */
 .iconbtn{width:38px;height:38px;min-width:38px;border-radius:var(--radius-sm);
-         flex:none;display:grid;place-items:center;background:var(--surface);
-         border:var(--border-w) solid var(--border);color:var(--text-2);
+         flex:none;display:grid;place-items:center;background:none;
+         border:0;color:var(--text-3);
          position:relative;cursor:pointer;
-         transition:color var(--motion),border-color var(--motion)}
+         transition:color var(--motion),background var(--motion)}
 .iconbtn::after{content:"";position:absolute;inset:-4px}
-.iconbtn:active{color:var(--primary);border-color:var(--primary)}
+.iconbtn:active{color:var(--primary);background:var(--surface-2)}
 .iconbtn.sm{width:32px;height:32px;min-width:32px}
 .iconbtn.bare{background:none;border-color:transparent;color:var(--text-3)}
 .iconbtn[disabled]{opacity:.35;pointer-events:none}
@@ -707,7 +726,6 @@ details[open] > summary .chev{transform:rotate(90deg)}
 
 <div id="app"><div class="spin"></div></div>
 <button class="fab" id="fab" data-act="quick-add" aria-label="+"></button>
-<div class="privacy-strip" id="privacy"></div>
 <nav id="nav"></nav>
 <div class="sheet" id="sheet"><div class="sheet-inner" id="sheet-body"></div></div>
 <div class="toast" id="toast"></div>
@@ -816,8 +834,6 @@ const DICT = {
   done_tab:"Bajarilgan", open_tab:"Ochiq", reopen:"Qayta ochish",
   done_today:"Bugun", done_week:"Shu hafta", done_earlier:"Oldin",
   filter:"Filtr", search_tasks:"Vazifa qidirish",
-  filter_week:"Shu hafta",
-  filter_month:"Shu oy",
   no_tasks_yet:"Hozircha vazifa yo'q", add_first_task:"Birinchi vazifani qo'shish",
   reschedule:"Ko'chirish", task_done_toast:"Bajarildi ✓",
   /* projects */
@@ -838,6 +854,7 @@ const DICT = {
   not_today:"Bugun rejada yo'q", history:"Tarix", streak:"Ketma-ket",
   last7:"Oxirgi 7 kun", last30:"Oxirgi 30 kun", completion:"Bajarilish",
   auto_habit:"Bu odat avtomatik belgilanadi", habit_auto_prayer:"Namoz bo'limidan",
+  habit_auto_journal:"Kundalik bo'limidan",
   reorder:"Tartib", reorder_hint:"Ushlab suring yoki ↑ ↓ dan foydalaning",
   move_up:"Yuqoriga", move_down:"Pastga", finish:"Tayyor",
   no_habits_today:"Bugun rejada odat yo'q",
@@ -875,6 +892,7 @@ const DICT = {
   /* settings */
   settings:"Sozlamalar", language:"Til", gender:"Jins", theme:"Tema",
   appearance:"Ko'rinish", auto:"Avto", light:"Yorug'", dark:"Qorong'i",
+  mode:"Rejim", account:"Hisob", back:"Orqaga",
   theme_calm:"Muvozanatli va sokin",
   theme_titan:"Kuchli va premium",
   theme_muse:"Nafis va iliq",
@@ -969,8 +987,6 @@ const DICT = {
   done_tab:"Done", open_tab:"Open", reopen:"Reopen",
   done_today:"Today", done_week:"This week", done_earlier:"Earlier",
   filter:"Filter", search_tasks:"Search tasks",
-  filter_week:"This week",
-  filter_month:"This month",
   no_tasks_yet:"No tasks yet", add_first_task:"Add your first task",
   reschedule:"Move", task_done_toast:"Done ✓",
   projects:"Projects", add_project:"Project", project_name:"Project name",
@@ -989,6 +1005,7 @@ const DICT = {
   not_today:"Not scheduled today", history:"History", streak:"Streak",
   last7:"Last 7 days", last30:"Last 30 days", completion:"Completion",
   auto_habit:"This habit is marked automatically", habit_auto_prayer:"from the Prayer tab",
+  habit_auto_journal:"from the Journal tab",
   reorder:"Reorder", reorder_hint:"Drag to reorder, or use ↑ ↓",
   move_up:"Move up", move_down:"Move down", finish:"Done",
   no_habits_today:"No habits scheduled today",
@@ -1021,6 +1038,7 @@ const DICT = {
   no_data:"No data", prayer_detail:"Prayer breakdown",
   settings:"Settings", language:"Language", gender:"Gender", theme:"Theme",
   appearance:"Appearance", auto:"Auto", light:"Light", dark:"Dark",
+  mode:"Mode", account:"Account", back:"Back",
   theme_calm:"Balanced & minimal",
   theme_titan:"Strong & premium",
   theme_muse:"Elegant & warm",
@@ -1114,8 +1132,6 @@ const DICT = {
   done_tab:"Выполнено", open_tab:"Открытые", reopen:"Открыть снова",
   done_today:"Сегодня", done_week:"На этой неделе", done_earlier:"Ранее",
   filter:"Фильтр", search_tasks:"Поиск задач",
-  filter_week:"Эта неделя",
-  filter_month:"Этот месяц",
   no_tasks_yet:"Задач пока нет", add_first_task:"Добавить первую задачу",
   reschedule:"Перенести", task_done_toast:"Выполнено ✓",
   projects:"Проекты", add_project:"Проект", project_name:"Название проекта",
@@ -1134,6 +1150,7 @@ const DICT = {
   not_today:"Сегодня не запланировано", history:"История", streak:"Серия",
   last7:"Последние 7 дней", last30:"Последние 30 дней", completion:"Выполнение",
   auto_habit:"Эта привычка отмечается автоматически", habit_auto_prayer:"из раздела Намаз",
+  habit_auto_journal:"из раздела Дневник",
   reorder:"Порядок", reorder_hint:"Перетащите или используйте ↑ ↓",
   move_up:"Вверх", move_down:"Вниз", finish:"Готово",
   no_habits_today:"На сегодня привычек нет",
@@ -1166,6 +1183,7 @@ const DICT = {
   no_data:"Нет данных", prayer_detail:"Разбор намазов",
   settings:"Настройки", language:"Язык", gender:"Пол", theme:"Тема",
   appearance:"Оформление", auto:"Авто", light:"Светлое", dark:"Тёмное",
+  mode:"Режим", account:"Аккаунт", back:"Назад",
   theme_calm:"Спокойная и минимальная",
   theme_titan:"Сильная и премиальная",
   theme_muse:"Элегантная и тёплая",
@@ -1248,6 +1266,7 @@ const ICONS = {
   repeat:'<path d="M4 8h11a4 4 0 0 1 4 4M20 16H9a4 4 0 0 1-4-4"/><path d="M17 5l3 3-3 3M7 13l-3 3 3 3"/>',
   sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M5 5l1.8 1.8M17.2 17.2 19 19M5 19l1.8-1.8M17.2 6.8 19 5"/>',
   moon:'<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/>',
+  user:'<circle cx="12" cy="8" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/>',
   target:'<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/>',
   info:'<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.8v.6"/>',
   pause:'<path d="M9 5v14M15 5v14"/>',
@@ -1271,7 +1290,10 @@ const icon = (name, size = 19) =>
 /* ---------- state ---------- */
 const state = {
   screen:"home", tab:"habits", taskTab:"open",
-  statsPeriod:"week", scorePeriod:"day", summary:null, statsSeries:{overall:true, tasks:true, habits:true, prayer:false},
+  statsPeriod:"week", scorePeriod:"day", summary:null,
+  /* One line to open with. Three overlapping lines is a picture nobody reads
+     first; the legend adds the others when a comparison is actually wanted. */
+  statsSeries:{overall:true, tasks:false, habits:false, prayer:false},
   lang:"uz", appearance:"auto",
   reorderMode:false,
   taskQuery:"", taskFilter:"", doneQuery:"",
@@ -1452,20 +1474,31 @@ SCREENS.home = () => {
                       →  the rest of today's work
 
      Everything that used to live here — the top three, the week's focus,
-     the month grid, birthdays — is one tap away on the screen that owns
-     it. The point of Home is that opening it answers the question
-     without scrolling. */
+     birthdays — is one tap away on the screen that owns it. The month grid
+     went the same way: it is forty-two cells about the rest of the month on
+     a screen whose whole job is today, and it now opens from the date in the
+     header, which is where somebody looking for a month would tap anyway.
+     The point of Home is that opening it answers the question without
+     scrolling. */
   return headBlock(d)
        + missionBlock(d)
        + scoreBlock(d)
        + tasksBlock(d)
-       + homeCalendar();
+       + privacyNote();
 };
 
-/* The month, at the bottom, below the things that are about today. Loaded on
-   demand: Home's first paint never waits for a grid nobody has scrolled to. */
-function homeCalendar(){
-  return `<h2>${t("calendar")}</h2>` + calendarBlock();
+/* The privacy promise, once, at the foot of the first screen — not a fixed
+   bar above the tab bar on all four. */
+function privacyNote(){
+  return `<div class="privacy-strip">${t("privacy_line")}</div>`;
+}
+
+/* The month, in a sheet, opened from the date in the header. */
+function calendarSheet(){
+  return `<h3>${icon("calendar", 18)} ${t("calendar")}</h3>
+    <div style="margin-top:var(--s2)">${calendarBlock()}</div>
+    <button class="btn secondary" data-act="close" style="margin-top:var(--s2)">
+      ${t("close")}</button>`;
 }
 
 function headBlock(d){
@@ -1484,8 +1517,10 @@ function headBlock(d){
   let h = `
     <div class="head">
       <div class="grow">
-        <h1>${t("greet")}, ${esc(d.name)}</h1>
-        <div class="t2 small" style="margin-top:2px">${esc(d.date_label)}</div>
+        <h1 class="greet">${t("greet")}, ${esc(d.name)}</h1>
+        <div class="t2 small row" style="margin-top:2px;gap:4px;display:inline-flex;
+             cursor:pointer" data-act="calendar-open">
+          ${esc(d.date_label)} ${icon("calendar", 14)}</div>
       </div>
       <button class="iconbtn" data-act="settings"
               aria-label="${t("settings")}">${icon("settings")}</button>
@@ -1526,8 +1561,7 @@ function missionBlock(d){
   if(!pick){
     return `<div class="hero" style="margin-top:var(--s3)"
                  data-act="mission-pick">
-        <div class="t2 tiny" style="text-transform:uppercase;letter-spacing:.6px;
-             font-weight:600">${t("today_mission")}</div>
+        <div class="eyebrow">${t("today_mission")}</div>
         <div class="row" style="margin-top:var(--s1)">
           <div class="grow" style="font-size:17px;font-weight:600;opacity:.85">
             ${t("mission_add")}</div>
@@ -1538,8 +1572,7 @@ function missionBlock(d){
   const done = pick.status === "done";
   return `<div class="hero" style="margin-top:var(--s3)">
       <div class="row">
-        <div class="grow t2 tiny" style="text-transform:uppercase;
-             letter-spacing:.6px;font-weight:600">${t("today_mission")}</div>
+        <div class="grow eyebrow">${t("today_mission")}</div>
         <button class="iconbtn sm bare" data-act="mission-pick"
                 aria-label="${t("mission_change")}"
                 style="color:inherit;opacity:.7">${icon("edit", 15)}</button>
@@ -1594,7 +1627,7 @@ function scoreBlock(d){
           <div class="display num">${value}%</div>
           <div class="t3 tiny" style="margin-top:2px">${t("overall")}</div>
         </div>
-        ${delta !== null ? deltaTag(delta) : ""}
+        ${delta ? deltaTag(delta) : ""}
         <button class="iconbtn sm bare" data-act="overall-why"
                 aria-label="${t("how_calculated")}">${icon("info", 17)}</button>
       </div>
@@ -1633,7 +1666,8 @@ function tasksBlock(d){
     ${group.project
       ? `<div class="group">${icon("target", 13)} ${esc(group.project)}</div>`
       : `<div class="group">${esc(t("standalone"))}</div>`}
-    ${group.tasks.map(x => taskRow(x, {hideProject: true})).join("")}`).join("");
+    ${group.tasks.map(x => taskRow(x, {hideProject: true, hideDate: true}))
+                 .join("")}`).join("");
 }
 
 function calendarBlock(){
@@ -1747,7 +1781,12 @@ function habitRow(x, cat, wake){
   const meta = [];
   if(wakeMeta) meta.push(wakeMeta);
   else if(!x.due) meta.push(t("not_today"));
-  else if(x.protected) meta.push(t("habit_auto_prayer"));
+  // Each derived habit names the module it actually mirrors. Every one of
+  // them used to say "from the Prayer section", so the journal habit sent
+  // the reader to the wrong screen.
+  else if(x.protected)
+    meta.push(t(x.system_key === "journal" ? "habit_auto_journal"
+                                           : "habit_auto_prayer"));
   if(x.remind_at) meta.push(`${icon("bell", 12)} ${x.remind_at}`);
   if(x.schedule !== "daily" && !isWake) meta.push(scheduleLabel(x));
 
@@ -2009,9 +2048,15 @@ function weekFocusBlock(){
              ${icon("plus", 14)} ${t("add_supporting")}</span>` : ""}</h2>`;
 
   if(!primary){
-    return h + `<div class="empty">${t("add_mission")}
-      <button class="btn secondary sm" data-act="focus-add" data-slot="primary">
-        ${icon("target", 16)} ${t("add_mission")}</button></div>`;
+    // One row, not a panel: the block printed "Add a main goal" as a line of
+    // text and again on the button under it, and spent a third of the screen
+    // on a section the user has not started. Unset, it is an invitation the
+    // size of one line.
+    return h + `<div class="item pressable" data-act="focus-add"
+                     data-slot="primary" style="min-height:48px">
+        ${icon("target", 17)}
+        <div class="grow t2">${t("add_mission")}</div>
+        ${icon("plus", 16)}</div>`;
   }
 
   h += `<div class="card">
@@ -2021,8 +2066,7 @@ function weekFocusBlock(){
         <div class="grow" data-act="focus-open" data-id="${primary.id}"
              data-title="${esc(primary.title)}" data-priority="${primary.priority}"
              data-done="${primary.done ? 1 : 0}">
-          <div class="t3 tiny" style="text-transform:uppercase;letter-spacing:.5px;
-               font-weight:600">${t("mission_main")}</div>
+          <div class="eyebrow">${t("mission_main")}</div>
           <div class="wrap ${primary.done ? "strike" : ""}"
                style="font-size:16px;font-weight:600;margin-top:2px">
             ${esc(primary.title)}</div>
@@ -2052,15 +2096,17 @@ function openTab(){
   h += searchBox("task-q", state.taskQuery, t("search_tasks"), "task-search");
 
   /* Filters as chips rather than a menu: one tap to narrow, one to clear, and
-     the active one visible without opening anything. Two kinds are offered —
-     a horizon (this week, this month) and a property (overdue, undated,
-     priority) — because "what is coming up" and "what is urgent" are different
-     questions and the answer to both is a different subset of the same list. */
-  const filters = [["", t("all")], ["week", t("filter_week")],
-                   ["month", t("filter_month")], ["overdue", t("overdue")],
-                   ["undated", t("no_date")], ["high", t("high")],
-                   ["low", t("low")]];
-  h += `<div class="chips scroll" style="margin-bottom:var(--s2)">
+     the active one visible without opening anything.
+
+     Three, not seven. The list below is already grouped by horizon under its
+     own headings — "this week" and "this month" were a second, competing way
+     to say what the headings say, and a row of chips that scrolls sideways is
+     a row where the last two are never found. High and low went with them:
+     priority is visible on the row itself, and the two questions worth asking
+     of a task list are "what is late" and "what has no date at all". */
+  const filters = [["", t("all")], ["overdue", t("overdue")],
+                   ["undated", t("no_date")]];
+  h += `<div class="chips" style="margin-bottom:var(--s2)">
       ${filters.map(([id, label]) => `<div class="chip sm
         ${state.taskFilter === id ? "on" : ""}" data-act="task-filter"
         data-value="${id}">${label}</div>`).join("")}</div>`;
@@ -2068,19 +2114,14 @@ function openTab(){
   if(!d) return h + `<div class="spin"></div>`;
 
   const f = state.taskFilter;
-  const today = todayISO();
-  const horizon = days => shiftISO(today, days);
 
   /* One predicate, applied to every row, instead of a rule per section: a
      filter that behaves differently depending on which heading a task
      happens to sit under is a filter nobody can predict. */
   const keep = row => {
     if(!f) return true;
-    if(f === "high" || f === "low") return row.priority === f;
     if(f === "overdue") return row.overdue;
     if(f === "undated") return !row.deadline;
-    if(f === "week") return row.deadline && row.deadline <= horizon(7);
-    if(f === "month") return row.deadline && row.deadline <= horizon(30);
     return true;
   };
 
@@ -2142,20 +2183,25 @@ function taskRow(task, opts){
   // Under a project heading the name is already on screen; repeating it in
   // every row is noise that pushes the useful details off the line.
   if(task.project && !opts?.hideProject) meta.push(esc(task.project));
-  if(task.deadline) meta.push(`<span class="num">${isoToLabel(task.deadline)}</span>`);
+  // Same reasoning for the date under a heading that already says "today":
+  // six rows each reading "13 August" beneath "Today's tasks" is a second
+  // line of type per row that tells the reader nothing.
+  if(task.deadline && !opts?.hideDate)
+    meta.push(`<span class="num">${isoToLabel(task.deadline)}</span>`);
   if(task.due_time) meta.push(`<span class="num">${icon("clock", 12)} ${task.due_time}</span>`);
   if(task.recurrence) meta.push(icon("repeat", 12));
   if(task.remind_before !== null && task.remind_before !== undefined)
     meta.push(icon("bell", 12));
 
+  /* Three, so they sit on one line. Four wrapped onto a second row and made
+     every late task a 300px block; "this week" is the one a person reaches
+     for least and it is still in the task's own sheet. */
   const quick = task.overdue ? `
       <div class="quick">
         <div class="chip sm" data-act="task-move" data-id="${task.id}"
              data-when="today">${t("when_today")}</div>
         <div class="chip sm" data-act="task-move" data-id="${task.id}"
              data-when="tomorrow">${t("when_tomorrow")}</div>
-        <div class="chip sm" data-act="task-move" data-id="${task.id}"
-             data-when="week">${t("when_week")}</div>
         <div class="chip sm" data-act="task-move" data-id="${task.id}"
              data-when="none">${t("when_none")}</div>
       </div>` : "";
@@ -2326,49 +2372,62 @@ SCREENS.stats = () => {
           <i style="background:${k.color}"></i>${k.label}</span>`).join("")}</div>
     </div>`;
 
+  /* The period's averages, on one divided line rather than as four more
+     boxed cells. The four cells that used to sit here carried the *same*
+     four deltas as the four at the top of the screen, so half of the block
+     was a second printing of numbers already read. */
   h += `<h2>${t("average")}</h2>
-    <div class="metrics">
-      ${cell("overall", st.averages.overall, st.deltas.overall)}
-      ${cell("tasks", st.averages.tasks, st.deltas.tasks)}
-      ${cell("habits", st.averages.habits, st.deltas.habits)}
-      ${cell("prayer", st.averages.prayer, st.deltas.prayer)}
-    </div>
-    <div class="t3 tiny" style="margin-top:6px">${t("vs_prev")}</div>`;
+    <div class="card"><div class="trio" style="grid-template-columns:repeat(4,1fr)">
+      <div><div class="k">${t("overall")}</div>
+        <div class="v num">${pct(st.averages.overall)}</div></div>
+      <div><div class="k">${t("tasks")}</div>
+        <div class="v num">${pct(st.averages.tasks)}</div></div>
+      <div><div class="k">${t("habits")}</div>
+        <div class="v num">${pct(st.averages.habits)}</div></div>
+      <div><div class="k">${t("prayer")}</div>
+        <div class="v num">${pct(st.averages.prayer)}</div></div>
+    </div></div>`;
 
   if(st.best_day){
     h += `<div class="card" style="margin-top:12px"><div class="row">
-        <div class="grow"><div class="k t3 tiny"
-          style="text-transform:uppercase;letter-spacing:.6px;font-weight:750"
-          >${t("best_day")}</div>
+        <div class="grow"><div class="eyebrow">${t("best_day")}</div>
           <div style="font-weight:680;margin-top:2px">${isoToLabel(st.best_day.day)}</div>
         </div>
         <div class="num" style="font-size:20px;font-weight:740"
           >${st.best_day.overall}%</div></div></div>`;
   }
 
-  // Prayer as five separate facts, not one opaque score.
-  const pd = st.prayer_detail;
-  h += `<h2>${t("prayer_detail")}</h2>
-    <div class="metrics">
-      <div class="metric"><div class="k">${t("pr_full_days")}</div>
-        <div class="v num">${pd.full_days} / ${pd.days}</div></div>
-      <div class="metric"><div class="k">${t("pr_on_time")}</div>
-        <div class="v num">${pd.on_time_percent}%</div></div>
-      <div class="metric"><div class="k">${t("pr_jamaat")}</div>
-        <div class="v num">${pd.jamaat}</div></div>
-      <div class="metric"><div class="k">${t("pr_qaza")}</div>
-        <div class="v num">${pd.qaza}</div></div>
-      <div class="metric"><div class="k">${t("pr_missed")}</div>
-        <div class="v num">${pd.missed}</div></div>
-      <div class="metric"><div class="k">${t("pr_consistency")}</div>
-        <div class="v num">${pd.consistency}%</div></div>
-    </div>`;
+  /* Prayer is still five separate facts rather than one opaque score, but
+     six more cells at the foot of a screen that already carries eleven
+     numbers is where a page stops being read. It is one row that opens
+     them. */
+  h += `<div class="item pressable" style="margin-top:var(--s3)"
+             data-act="prayer-detail">
+      ${icon("moon", 17)}<div class="grow">${t("prayer_detail")}</div>
+      ${icon("chevron", 15)}</div>`;
 
   h += `<div class="btns">
       <button class="btn secondary" data-act="stats-download">
         ${icon("download", 16)} ${t("download")}</button></div>`;
   return h;
 };
+
+function prayerDetailSheet(pd){
+  const cellrow = (key, value) =>
+    `<div class="metric"><div class="k">${t(key)}</div>
+       <div class="v num">${value}</div></div>`;
+  return `<h3>${icon("moon", 18)} ${t("prayer_detail")}</h3>
+    <div class="metrics" style="margin-top:var(--s2)">
+      ${cellrow("pr_full_days", `${pd.full_days} / ${pd.days}`)}
+      ${cellrow("pr_on_time", pd.on_time_percent + "%")}
+      ${cellrow("pr_jamaat", pd.jamaat)}
+      ${cellrow("pr_qaza", pd.qaza)}
+      ${cellrow("pr_missed", pd.missed)}
+      ${cellrow("pr_consistency", pd.consistency + "%")}
+    </div>
+    <button class="btn secondary" data-act="close" style="margin-top:var(--s3)">
+      ${t("close")}</button>`;
+}
 
 /* ==================================================================
    Sheets
@@ -2767,36 +2826,70 @@ function freshStartSheet(p){
 
 /* ---------- settings ----------
    Every control writes the moment it is touched, so there is no Save
-   button on this sheet at all. The toast is the confirmation. */
+   button on any of these sheets. The toast is the confirmation.
+
+   Three sheets behind a short list, not one scroll. It used to be a single
+   sheet holding a language picker, a mode switch, five theme cards, a
+   timezone select, four notification switches with two time fields, a
+   profile block and five data rows — roughly forty controls in one column,
+   where finding the timezone meant scrolling past every theme in the app.
+   The split is by the question being asked: how it looks, when it speaks,
+   and what it holds. */
 function settingsSheet(){
   const me = state.me || {};
-  const prefs = me.prefs || {};
-
-  const langs = [["uz","🇺🇿 O'zbek"],["en","🇬🇧 English"],["ru","🇷🇺 Русский"]];
-
-  const sw = (key, label) => `
-    <div class="setrow">
-      <div class="grow lbl">${label}</div>
-      <div class="sw ${prefs[key] ? "on" : ""}" data-act="pref-toggle"
-           data-key="${key}" role="switch"
-           aria-checked="${prefs[key] ? "true" : "false"}"></div>
-    </div>`;
+  const row = (act, ic, label) => `
+    <div class="item pressable" style="min-height:50px" data-act="${act}">
+      ${icon(ic, 17)}<div class="grow">${label}</div>${icon("chevron", 15)}</div>`;
 
   return `
     <h3>${icon("settings", 18)} ${t("settings")}</h3>
-    <div class="t2 small">${t("member")} #${me.member_no ?? "—"}
+    <div class="t2 small" style="margin-bottom:var(--s3)">
+      ${t("member")} #${me.member_no ?? "—"}
       ${me.username ? `· @${esc(me.username)}` : ""}</div>
+
+    ${row("set-look", "sun", t("appearance"))}
+    ${row("set-notify", "bell", t("notifications"))}
+    ${row("set-account", "user", t("account"))}
+
+    <button class="btn secondary" data-act="close" style="margin-top:14px">
+      ${t("close")}</button>`;
+}
+
+/* Which of the four is on screen, so that a control which saves and
+   re-renders lands the user back where they were rather than at the top of
+   the settings list. */
+const SETTINGS_VIEWS = {
+  root: () => settingsSheet(), look: () => appearanceSheet(),
+  notify: () => notifySheet(), account: () => accountSheet(),
+};
+function openSettings(view){
+  state.settingsView = SETTINGS_VIEWS[view] ? view : "root";
+  openSheet(SETTINGS_VIEWS[state.settingsView]());
+}
+function reopenSettings(){
+  if(sheetOpen()) openSettings(state.settingsView || "root");
+}
+
+/* Language, light or dark, and the theme — everything about how it looks. */
+function appearanceSheet(){
+  const me = state.me || {};
+  const langs = [["uz","🇺🇿 O'zbek"],["en","🇬🇧 English"],["ru","🇷🇺 Русский"]];
+
+  return `
+    <h3>${icon("sun", 18)} ${t("appearance")}</h3>
 
     <label>${t("language")}</label>
     <div class="chips">${langs.map(([c, l]) =>
       `<div class="chip sm ${me.language === c ? "on" : ""}" data-act="set-lang"
         data-value="${c}">${l}</div>`).join("")}</div>
 
-    <label>${t("appearance")}</label>
+    <label>${t("mode")}</label>
     <div class="seg" style="margin-bottom:var(--s2)">
       ${[["auto", t("auto")], ["light", t("light")], ["dark", t("dark")]]
         .map(([v, l]) => `<div class="${state.appearance === v ? "on" : ""}"
           data-act="set-appearance" data-value="${v}">${l}</div>`).join("")}</div>
+
+    <label>${t("theme")}</label>
     <div class="stack">
     ${THEMES.map(th => `
       <div class="tcard ${themeOf(me.theme) === th.id ? "on" : ""}"
@@ -2809,16 +2902,29 @@ function settingsSheet(){
         ${themeOf(me.theme) === th.id ? icon("check", 17) : ""}</div>`).join("")}
     </div>
 
-    <label>${t("timezone")}</label>
-    <select id="tz-select" data-act="set-tz">
-      ${(me.timezones || []).map(z =>
-        `<option value="${z}" ${prefs.timezone === z ? "selected" : ""}>${z}</option>`).join("")}
-      ${(me.timezones || []).includes(prefs.timezone) ? ""
-        : `<option value="${esc(prefs.timezone)}" selected>${esc(prefs.timezone)}</option>`}
-    </select>
+    <button class="btn secondary" data-act="settings" style="margin-top:14px">
+      ${t("back")}</button>`;
+}
 
-    <label>${t("notifications")}</label>
+/* When the bot speaks, and from which clock. The timezone belongs here
+   rather than beside the themes: it exists because a report fires at 04:00
+   somewhere. */
+function notifySheet(){
+  const prefs = (state.me || {}).prefs || {};
+  const me = state.me || {};
+
+  const sw = (key, label) => `
     <div class="setrow">
+      <div class="grow lbl">${label}</div>
+      <div class="sw ${prefs[key] ? "on" : ""}" data-act="pref-toggle"
+           data-key="${key}" role="switch"
+           aria-checked="${prefs[key] ? "true" : "false"}"></div>
+    </div>`;
+
+  return `
+    <h3>${icon("bell", 18)} ${t("notifications")}</h3>
+
+    <div class="setrow" style="margin-top:var(--s2)">
       <div class="grow lbl">${t("morning_report")}</div>
       <input type="time" id="pref-morning" value="${prefs.morning_time || "04:00"}"
              data-act="pref-time" data-key="morning_time"
@@ -2837,8 +2943,30 @@ function settingsSheet(){
     ${sw("task_reminders", t("task_reminders"))}
     ${sw("habit_reminders", t("habit_reminders"))}
 
-    <label>${t("profile")}</label>
-    <div class="t3 tiny">${t("photo_hint")}</div>
+    <label>${t("timezone")}</label>
+    <select id="tz-select" data-act="set-tz">
+      ${(me.timezones || []).map(z =>
+        `<option value="${z}" ${prefs.timezone === z ? "selected" : ""}>${z}</option>`).join("")}
+      ${(me.timezones || []).includes(prefs.timezone) ? ""
+        : `<option value="${esc(prefs.timezone)}" selected>${esc(prefs.timezone)}</option>`}
+    </select>
+
+    <button class="btn secondary" data-act="settings" style="margin-top:14px">
+      ${t("back")}</button>`;
+}
+
+/* The profile, the data, and the two ways out. Deleting stays last and stays
+   red, with a confirmation of its own. */
+function accountSheet(){
+  const me = state.me || {};
+  const row = (act, ic, label) => `
+    <div class="item pressable" style="min-height:48px" data-act="${act}">
+      ${icon(ic, 17)}<div class="grow">${label}</div>${icon("chevron", 15)}</div>`;
+
+  return `
+    <h3>${icon("user", 18)} ${t("account")}</h3>
+
+    <div class="t3 tiny" style="margin-top:var(--s2)">${t("photo_hint")}</div>
     ${me.gender ? `<div class="setrow"><div class="grow lbl">${t("gender")}</div>
       <div class="chips">
         <div class="chip sm ${me.gender === "male" ? "on" : ""}"
@@ -2848,31 +2976,23 @@ function settingsSheet(){
       </div></div>` : ""}
 
     <label>${t("data_privacy")}</label>
-    <div class="item" style="min-height:46px" data-act="export">
-      ${icon("download", 17)}<div class="grow">${t("export_data")}</div>
-      ${icon("chevron", 15)}</div>
-    <div class="item" style="min-height:46px" data-act="privacy-info">
-      ${icon("shield", 17)}<div class="grow">${t("privacy_info")}</div>
-      ${icon("chevron", 15)}</div>
-    <div class="item" style="min-height:46px" data-act="fresh-start">
-      ${icon("repeat", 17)}<div class="grow">${t("fresh_start")}</div>
-      ${icon("chevron", 15)}</div>
-    <div class="item" style="min-height:46px" data-act="feedback">
-      ${icon("message", 17)}<div class="grow">${t("feedback")}</div>
-      ${icon("chevron", 15)}</div>
-    <div class="item" style="min-height:46px;border-color:var(--danger)"
+    ${row("export", "download", t("export_data"))}
+    ${row("privacy-info", "shield", t("privacy_info"))}
+    ${row("fresh-start", "repeat", t("fresh_start"))}
+    ${row("feedback", "message", t("feedback"))}
+    <div class="item pressable" style="min-height:48px;margin-top:var(--s2)"
          data-act="delete-account">
       <span style="color:var(--danger)">${icon("trash", 17)}</span>
       <div class="grow" style="color:var(--danger)">${t("delete_account")}</div></div>
 
-    <button class="btn secondary" data-act="close" style="margin-top:14px">
-      ${t("close")}</button>`;
+    <button class="btn secondary" data-act="settings" style="margin-top:14px">
+      ${t("back")}</button>`;
 }
 
 function privacySheet(){
   return `<h3>${icon("shield", 18)} ${t("privacy_info")}</h3>
     <div class="hint" style="margin-top:8px">${t("privacy_body")}</div>
-    <button class="btn secondary" data-act="settings" style="margin-top:16px">
+    <button class="btn secondary" data-act="set-account" style="margin-top:16px">
       ${t("close")}</button>`;
 }
 
@@ -2881,7 +3001,7 @@ function feedbackSheet(){
     <textarea id="fb-text" placeholder="${t("feedback_ph")}"></textarea>
     <button class="btn" data-act="feedback-send" style="margin-top:12px">
       ${t("save")}</button>
-    <button class="btn secondary" data-act="settings" style="margin-top:8px">
+    <button class="btn secondary" data-act="set-account" style="margin-top:8px">
       ${t("cancel")}</button>`;
 }
 
@@ -2895,7 +3015,7 @@ function deleteAccountSheet(){
            autocapitalize="characters" style="margin-top:12px" />
     <button class="btn danger" data-act="delete-account-go" style="margin-top:12px">
       ${t("delete")}</button>
-    <button class="btn secondary" data-act="settings" style="margin-top:8px">
+    <button class="btn secondary" data-act="set-account" style="margin-top:8px">
       ${t("cancel")}</button>`;
 }
 
@@ -2978,8 +3098,6 @@ function render(){
   else if(state.loading) app.innerHTML = `<div class="spin"></div>`;
   else                   app.innerHTML = (SCREENS[state.screen] || SCREENS.home)();
 
-  document.getElementById("privacy").textContent = t("privacy_line");
-
   const chromeOff = Boolean(state.blocked || state.error || state.loading);
   document.getElementById("fab").style.display = chromeOff ? "none" : "grid";
   document.getElementById("fab").innerHTML = icon("plus", 24);
@@ -2995,17 +3113,15 @@ function render(){
   syncBackButton();
 }
 
-/* The privacy strip and the navigation are both fixed, and their
-   combined height changes with the language, the font size and the safe
-   area. Measure the real nodes rather than guessing a padding that is
-   wrong on one phone. */
+/* The navigation is the only fixed thing left at the bottom, and its height
+   still changes with the language, the font size and the safe area. Measure
+   the real node rather than guessing a padding that is wrong on one phone. */
 function syncShell(){
   const nav = document.getElementById("nav");
-  const privacy = document.getElementById("privacy");
   const root = document.documentElement;
   const navH = nav.offsetHeight || 60;
   root.style.setProperty("--nav-h", navH + "px");
-  root.style.setProperty("--shell-b", (navH + (privacy.offsetHeight || 28)) + "px");
+  root.style.setProperty("--shell-b", navH + "px");
 }
 
 /* ==================================================================
@@ -3014,13 +3130,11 @@ function syncShell(){
 async function loadScreen(screen){
   try{
     if(screen === "home"){
-      // Home is one request. The week/month figures behind the score switch
-      // are fetched only if the user asks for them.
-      const [home, calendar] = await Promise.all([
-        api("/api/home"),
-        state.calendar ? Promise.resolve(state.calendar) : api("/api/calendar"),
-      ]);
-      setState({home, calendar, summary: null, scorePeriod: "day"});
+      // Home is one request, and now genuinely one: the month grid moved into
+      // a sheet, so its payload is fetched when that sheet opens rather than
+      // on every paint of a screen that no longer shows it. The week/month
+      // figures behind the score switch are likewise fetched on demand.
+      setState({home: await api("/api/home"), summary: null, scorePeriod: "day"});
     } else if(screen === "habits"){
       const [habits, prayer, journal] = await Promise.all([
         api("/api/habits"), api("/api/prayers"),
@@ -3164,7 +3278,10 @@ const A = {
   "task-tab": el => { haptic(); setState({taskTab:el.dataset.tab});
                       loadScreen("tasks"); },
   close: closeSheet,
-  settings: () => openSheet(settingsSheet()),
+  settings: () => openSettings("root"),
+  "set-look": () => { haptic(); openSettings("look"); },
+  "set-notify": () => { haptic(); openSettings("notify"); },
+  "set-account": () => { haptic(); openSettings("account"); },
 
   /* ---- quick capture: one field, five seconds ---- */
   "quick-add": () => { haptic(); openSheet(`
@@ -3207,6 +3324,14 @@ const A = {
   },
 
   /* ---- week / calendar ---- */
+  "calendar-open": async () => {
+    haptic();
+    if(!state.calendar){
+      try{ state.calendar = await api("/api/calendar"); }
+      catch(e){ return handleError(e); }
+    }
+    openSheet(calendarSheet());
+  },
   "cal-prev": () => shiftMonth(-1),
   "cal-next": () => shiftMonth(1),
   "day-open": async el => {
@@ -3659,7 +3784,7 @@ const A = {
     // same account may be read on a bright phone and a dark desktop.
     try{ localStorage.setItem("ernestos-appearance", el.dataset.value); }catch(_){}
     render();
-    if(sheetOpen()) openSheet(settingsSheet());
+    reopenSettings();
   },
   "set-tz": () => prefSave({timezone: val("tz-select")}),
   "pref-toggle": el => {
@@ -3701,6 +3826,9 @@ const A = {
 
   /* ---- statistics ---- */
   "stats-period": el => { haptic(); loadStats(el.dataset.period); },
+  "prayer-detail": () => { haptic();
+    if(state.stats?.prayer_detail)
+      openSheet(prayerDetailSheet(state.stats.prayer_detail)); },
   "series-toggle": el => { haptic();
     state.statsSeries[el.dataset.field] = !state.statsSeries[el.dataset.field];
     render(); },
@@ -3746,7 +3874,7 @@ async function settingSave(patch){
     const me = await api("/api/me");
     state.lang = me.language;
     setState({me});
-    if(sheetOpen()) openSheet(settingsSheet());
+    reopenSettings();
     toast(t("saved"));
     await loadScreen(state.screen);
   }catch(e){ handleError(e); }
@@ -3757,21 +3885,24 @@ async function prefSave(patch){
     const r = await api("/api/prefs", {method:"POST", body:patch});
     state.me = {...state.me, prefs:r.prefs};
     render();
-    if(sheetOpen()) openSheet(settingsSheet());
+    reopenSettings();
     toast(t("saved"));
     // A timezone change moves what "today" means, so the screen is refetched.
     if(patch.timezone) await loadScreen(state.screen);
   }catch(e){ handleError(e); }
 }
 
+/* The grid now lives in a sheet, and `setState` only repaints `#app` — so the
+   new month is written back into the sheet directly. */
 async function shiftMonth(delta){
   const c = state.calendar;
   if(!c) return;
   let year = c.year, month = c.month + delta;
   if(month < 1){ month = 12; year--; }
   if(month > 12){ month = 1; year++; }
-  try{ setState({calendar: await api(`/api/calendar?year=${year}&month=${month}`)}); }
-  catch(e){ handleError(e); }
+  try{ state.calendar = await api(`/api/calendar?year=${year}&month=${month}`); }
+  catch(e){ return handleError(e); }
+  if(sheetOpen()) openSheet(calendarSheet()); else render();
 }
 
 /* ---------- habit reordering ----------
