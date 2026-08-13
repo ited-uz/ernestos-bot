@@ -1,0 +1,18 @@
+# Everything needed to run the test suite, on top of the runtime dependencies.
+#
+# These were installed in the working virtualenv but declared nowhere, which
+# meant a clean checkout could not run `pytest` at all. Worse, `pytest.ini` sets
+# `asyncio_mode = auto`, and without pytest-asyncio that line is a silent no-op
+# — the async tests are collected, skipped as unrunnable, and the suite still
+# reports green.
+#
+#     pip install -r requirements-dev.txt
+
+-r requirements.txt
+
+pytest>=8.0,<10
+pytest-asyncio>=0.24,<2
+# FastAPI's TestClient is a thin wrapper over httpx.
+httpx>=0.27,<1
+# The only lint gate: unused imports and undefined names, nothing stylistic.
+pyflakes>=3.2,<4

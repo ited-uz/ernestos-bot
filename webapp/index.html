@@ -1692,9 +1692,22 @@ const esc = s => String(s ?? "").replace(/[<>&"']/g,
 function setState(patch){ Object.assign(state, patch); render(); }
 
 /* ---------- api ---------- */
+/* Every request in the app goes through here: the initData header, JSON in and
+   out, HTTP errors as thrown objects carrying `status`, and a deadline.
+
+   The deadline matters more than it looks. Without one, a request that never
+   answers — a dead tunnel, a phone that changed network mid-tap — leaves the
+   app on its spinner with nothing to tap and no way back. Fifteen seconds is
+   well past any real response and well short of the point where somebody
+   force-closes the Mini App. A timeout throws with no `status`, which is
+   exactly how `handleError` already recognises "no connection": the user gets
+   the offline message and keeps whatever they had typed. */
+const API_TIMEOUT_MS = 15000;
+
 async function api(path, options = {}){
   const res = await fetch(path, {
     ...options,
+    signal: options.signal || AbortSignal.timeout(API_TIMEOUT_MS),
     headers:{"Content-Type":"application/json",
              "X-Telegram-Init-Data": tg?.initData || "", ...(options.headers||{})},
     body: options.body ? JSON.stringify(options.body) : undefined,

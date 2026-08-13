@@ -24,10 +24,8 @@ from __future__ import annotations
 import logging
 import sys
 
-from sqlalchemy import select
-
 import db
-from db import Habit, SessionLocal, utcnow
+from db import SessionLocal
 
 log = logging.getLogger("ernestos.migrations")
 

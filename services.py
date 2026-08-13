@@ -206,18 +206,28 @@ def date_label(day: date, lang: str = "uz") -> str:
 HABIT_CATEGORIES = ["non_negotiable", "target", "bonus"]
 
 #: (name, category, system_key). A system_key marks a derived habit the user
-#: cannot tick by hand: "prayer" follows the daily prayer score and "journal"
-#: follows a fully answered journal entry.
-#: Exactly six. Journal completion is reported as its own status rather than
-#: a seventh habit, so it never moves the habit denominator or the streak.
+#: cannot tick by hand: "wakeup" follows the morning check-in, "prayer" follows
+#: the daily prayer score and "journal" follows a fully answered entry.
+#:
+#: The starting set is exactly these three, and the reason is that a new account
+#: should open on habits it cannot argue with. Getting up, praying and writing
+#: the day up are the three ErnestOS is actually about; everything else — deep
+#: work, sport, reading, podcasts — is a choice about how somebody wants to live,
+#: and seeding four of those meant handing every new user a list they never
+#: picked and would have to prune before the screen told them anything true.
+#:
+#: All three are derived, so a new workspace has nothing to tick by hand until
+#: the user adds their own. That is deliberate: the first habit in the list is
+#: theirs, not ours.
+#:
+#: This tuple is the only place defaults are defined. `seed_default_habits` is
+#: the only reader, and it runs on account creation and on an explicit wipe —
+#: never against an existing workspace, so shortening this list can never remove
+#: a habit somebody already has.
 DEFAULT_HABITS = [
-    ("Get up",    "non_negotiable", "wakeup"),
-    ("5x namoz",  "non_negotiable", "prayer"),
-    ("Kundalik",  "non_negotiable", "journal"),
-    ("Deep flow", "target",         ""),
-    ("Sport",     "target",         ""),
-    ("Podcast",   "bonus",          ""),
-    ("Read",      "bonus",          ""),
+    ("Get up",   "non_negotiable", "wakeup"),
+    ("5x namoz", "non_negotiable", "prayer"),
+    ("Kundalik", "non_negotiable", "journal"),
 ]
 
 SYSTEM_PRAYER = "prayer"
@@ -3019,7 +3029,14 @@ def mark_report_sent(s: Session, report_id: int) -> None:
 
 
 def mark_report_failed(s: Session, report_id: int, error: str) -> None:
-    """Record the failure and release the claim so a retry can pick it up."""
+    """Record the failure. The claim row stays, so today is not retried.
+
+    Deliberate: the usual reason a send fails is that the account blocked the
+    bot or no longer exists, and neither improves within the day. Retrying
+    every tick would mean hammering Telegram with the same rejection for
+    hours. `release_report` is the escape hatch for the cases that genuinely
+    should be tried again — a user row that vanished mid-pass.
+    """
     row = s.get(DailyReportLog, report_id)
     if row is not None:
         row.status = "failed"

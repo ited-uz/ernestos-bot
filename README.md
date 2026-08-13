@@ -59,11 +59,23 @@ tanlovni o'zgartiradi, tanlangan vazifa esa tartibning eng tepasiga chiqadi.
 
 ## Odatlar
 
+Yangi hisob **uchta** odat bilan ochiladi, boshqa hech narsa bilan emas:
+
 | Kategoriya | Standart odatlar |
 |---|---|
 | 🔴 Non-negotiable | **Get up** · **5x namoz** · **Kundalik** |
-| 🟡 Target | Deep flow · Sport |
-| 🟢 Bonus | Podcast · Read |
+| 🟡 Target | *(bo'sh — o'zingiz qo'shasiz)* |
+| 🟢 Bonus | *(bo'sh — o'zingiz qo'shasiz)* |
+
+Sabab: bu uchtasi — ErnestOS nima haqidaligi. Deep flow, sport, kitob yoki
+podcast — bular qanday yashash haqidagi **shaxsiy tanlov**, va ularni oldindan
+qo'shib qo'yish yangi foydalanuvchiga o'zi tanlamagan ro'yxatni berish
+demakdir. Birinchi «o'z» odatingizni siz qo'shasiz.
+
+> **Eski foydalanuvchilar uchun hech narsa o'zgarmaydi.** Agar hisobingizda
+> allaqachon Deep flow, Sport, Podcast yoki Read bo'lsa — ular tarixi bilan
+> birga joyida qoladi. Standart ro'yxat faqat **yangi** workspace yaratilganda
+> ishlatiladi.
 
 Uchtasi **avtomatik hisoblanadi** — qo'lda bosib bo'lmaydi:
 
@@ -467,9 +479,22 @@ cp .env.example .env
 | `FREE_ACTIONS` | Kanal so'ralguncha nechta amal bepul (default 20) | yo'q |
 | `WEBHOOK_URL` | Botni webhook rejimida ishlatish uchun to'liq https manzil (`.../webhook`). Bo'sh = polling | yo'q |
 | `WEBHOOK_SECRET` | Telegram qaytaradigan maxfiy token — webhook'ni himoyalaydi | `WEBHOOK_URL` bo'lsa tavsiya etiladi |
+| `STATS_POST_HOUR` | Kunlik statistika soati, loyiha soati bo'yicha (default 10) | yo'q |
+| `MAX_BODY_BYTES` | So'rov tanasining chegarasi (default 256 KB) | yo'q |
 
-`ENVIRONMENT=production` bo'lsa `DATABASE_URL` majburiy — SQLite'ga
-qaytish yo'q.
+Hammasi **bitta joyda** — `config.py` — o'qiladi. Kod ichida tarqoq
+`os.environ.get(...)` yo'q, shuning uchun «bu sozlama qayerdan o'qiladi»
+degan savolga bitta javob bor.
+
+`ENVIRONMENT=production` bo'lsa:
+
+* `DATABASE_URL` majburiy — SQLite'ga qaytish yo'q (`db.py` import paytida
+  xato beradi);
+* `BOT_TOKEN` majburiy — `config.check()` ilova ko'tarilishidan oldin xato
+  beradi.
+
+Ikkalasi ham **ataylab** shunday: yetishmayotgan sozlamani deploy'dan ikki
+soat keyin foydalanuvchi shikoyatidan bilish — eng yomon variant.
 
 ## G. Lokal ishga tushirish
 
@@ -477,6 +502,12 @@ qaytish yo'q.
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+```
+
+Testlarni ham ishlatmoqchi bo'lsangiz:
+
+```bash
+pip install -r requirements-dev.txt
 ```
 
 ## H. Bazani tayyorlash
@@ -787,31 +818,60 @@ Deploy'dan keyin quyidagilarni birma-bir bosib chiqing:
 
 ```
 ernestos/
-├── app.py              FastAPI + bot handlerlar + scheduler + admin log
+├── app.py              FastAPI ilova + bot handlerlar + API endpoint'lar
+├── config.py           barcha muhit o'zgaruvchilari — yagona joy
+├── security.py         initData imzosi, auth, HTML escape
+├── ratelimit.py        so'rov limiti (RateLimiter → InMemoryRateLimiter)
+├── scheduler.py        job'lar qachon ishlaydi (takrorlanishdan himoya)
+├── translations.py     bot matnlari — UZ / EN / RU
+├── dependencies.py     kirish siyosati: kanal, bepul urinishlar, obuna
 ├── services.py         umumiy biznes qatlami (bot va API ikkalasi ishlatadi)
 ├── db.py               SQLAlchemy modellari + engine
 ├── migrations.py       qo'lda ishga tushiriladigan ma'lumot migratsiyalari
 ├── webapp/
 │   └── index.html      Mini App (bitta fayl, tashqi kutubxona yo'q)
 ├── tests/
-│   └── test_smoke.py   323 ta test
-├── requirements.txt
+│   └── test_smoke.py
+├── .github/workflows/
+│   └── tests.yml       CI: pyflakes + pytest
+├── requirements.txt        ishlash uchun
+├── requirements-dev.txt    test uchun (pytest, pytest-asyncio, httpx, pyflakes)
 ├── Procfile
 ├── .env.example
 └── README.md
 ```
 
+Qatlamlar:
+
+```
+app.py  →  services.py  →  db.py
+   ↑
+bot handlerlar va API endpoint'lar bir xil servis funksiyalarini chaqiradi
+```
+
+Telegram bot — alohida biznes qatlami emas, `services.py` ustidagi adapter.
+Shuning uchun tugma orqali yaratilgan vazifa va Mini App orqali yaratilgan
+vazifa **aynan bir xil funksiyadan** o'tadi.
+
 Mini App ataylab bitta fayl va **hech qanday frontend framework ishlatmaydi**:
 Telegram WebView'da yuklanish tezligi eng muhim, va bu hajmda build qadamining
-foydasi yo'q. Ikonkalar inline SVG.
+foydasi yo'q. Ikonkalar inline SVG. Fayl ichida ham tartib bor: bitta `state`,
+bitta `api()` klient, bitta `DICT` (UZ/EN/RU), `SCREENS` va `A` (action) xarita,
+va barcha ranglar CSS o'zgaruvchilarida.
 
 # Testlar
 
 ```bash
-python -m pytest tests/ -q
+pip install -r requirements-dev.txt
+python -m pytest -q
 ```
 
-**323 test o'tadi.**
+Aniq test soni bu yerda yozilmaydi — u har commit'da o'zgaradi va
+eskirib qoladi. Joriy holatni yuqoridagi buyruq ko'rsatadi.
+
+CI (`.github/workflows/tests.yml`) har push va PR'da shuni ishga tushiradi,
+undan oldin `pyflakes` bilan ishlatilmagan import va aniqlanmagan nomlarni
+tekshiradi.
 
 Qamrov:
 

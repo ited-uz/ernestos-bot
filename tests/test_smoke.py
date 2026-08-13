@@ -122,7 +122,7 @@ _next_id = itertools.count(700_001)
 
 @pytest.fixture()
 def fresh(client):
-    """A caller with a workspace of its own, in the default six-habit state."""
+    """A caller with a workspace of its own, in the default three-habit state."""
     return Caller(client, {"id": next(_next_id), "first_name": "Fresh"})
 
 
@@ -201,20 +201,91 @@ def test_task_cannot_join_another_users_project(alice, bob):
 # Defaults and habits
 # --------------------------------------------------------------------------
 
-def test_new_user_gets_the_default_habits(alice):
+def test_new_user_gets_the_three_mandatory_habits(alice):
+    """Exactly three, in order, and nothing else.
+
+    A new account opens on the habits it cannot argue with. Anything about how
+    somebody wants to live — deep work, sport, reading — is theirs to add.
+    """
     names = [h["name"] for h in alice.get("/api/habits").json()["habits"]]
+    assert names == ["Get up", "5x namoz", "Kundalik"]
+
+
+@pytest.mark.parametrize("name", ["Deep flow", "Sport", "Podcast", "Read"])
+def test_a_new_user_is_not_given_a_habit_they_did_not_choose(alice, name):
+    """These four used to be seeded. They must not come back by accident."""
+    names = [h["name"] for h in alice.get("/api/habits").json()["habits"]]
+    assert name not in names
+
+
+def test_an_existing_account_keeps_the_habits_it_already_has(client):
+    """Shortening the defaults must never reach a workspace that already exists.
+
+    This is the whole risk of the change: somebody who joined last month has
+    `Deep flow`, `Sport`, `Podcast` and `Read` with months of history behind
+    them. `/start` calls `get_or_create_user` on every single visit, so if that
+    path could touch habits at all, their list would be silently pruned. It
+    cannot — seeding happens once, inside the branch that builds the workspace.
+    """
+    from sqlalchemy import select
+
+    legacy_id = next(_next_id)
+    legacy = Caller(client, {"id": legacy_id, "first_name": "Legacy"})
+    ws = _ws(legacy_id)
+
+    # Rebuild the account as it looked before this change: the three defaults
+    # plus the four that used to be seeded, one of them with history.
+    with SessionLocal() as s:
+        for position, (name, category) in enumerate(
+                [("Deep flow", "target"), ("Sport", "target"),
+                 ("Podcast", "bonus"), ("Read", "bonus")], start=4):
+            s.add(db.Habit(workspace_id=ws, name=name, category=category,
+                           position=position))
+        s.flush()
+        sport = s.scalar(select(db.Habit).where(
+            db.Habit.workspace_id == ws, db.Habit.name == "Sport"))
+        s.add(db.HabitLog(workspace_id=ws, habit_id=sport.id,
+                          day=svc.today_local(), done=True))
+        s.commit()
+
+    # What /start does, every time.
+    with SessionLocal() as s:
+        user, created = svc.get_or_create_user(s, legacy_id, first_name="Legacy")
+        s.commit()
+        assert created is False
+
+    names = [h["name"] for h in legacy.get("/api/habits").json()["habits"]]
     assert names == ["Get up", "5x namoz", "Kundalik",
                      "Deep flow", "Sport", "Podcast", "Read"]
+    assert next(h for h in legacy.get("/api/habits").json()["habits"]
+                if h["name"] == "Sport")["done"] is True
+
+
+def test_the_default_set_is_defined_in_exactly_one_place():
+    """`seed_default_habits` is the only reader, and it reads this tuple.
+
+    A second copy of the defaults is how the /start path and the wipe path end
+    up disagreeing about what a fresh workspace contains.
+    """
+    assert [n for n, _c, _k in svc.DEFAULT_HABITS] == \
+        ["Get up", "5x namoz", "Kundalik"]
+    assert all(key for _n, _c, key in svc.DEFAULT_HABITS)
 
 
 def test_habits_are_grouped_into_three_categories(alice):
+    """All three defaults are non-negotiable; the other tiers start empty.
+
+    An empty tier still has to render — the screen says "nothing here yet"
+    rather than dropping the section, so adding the first one has somewhere
+    obvious to go.
+    """
     body = alice.get("/api/habits").json()
     assert body["categories"] == ["non_negotiable", "target", "bonus"]
     grouped = body["grouped"]
     assert [h["name"] for h in grouped["non_negotiable"]] == \
         ["Get up", "5x namoz", "Kundalik"]
-    assert [h["name"] for h in grouped["target"]] == ["Deep flow", "Sport"]
-    assert [h["name"] for h in grouped["bonus"]] == ["Podcast", "Read"]
+    assert grouped["target"] == []
+    assert grouped["bonus"] == []
 
 
 def test_new_habit_lands_in_the_chosen_category(alice):
@@ -246,6 +317,8 @@ def test_protected_habit_cannot_be_deleted(alice):
 
 
 def test_normal_habit_toggles(alice):
+    """Every default is derived, so the first tickable habit is one they add."""
+    alice.post("/api/habits", json={"name": "Gym", "category": "target"})
     habits = alice.get("/api/habits").json()["habits"]
     normal = next(h for h in habits if not h["protected"])
     assert alice.post(f"/api/habits/{normal['id']}/toggle").json()["done"] is True
@@ -1736,6 +1809,57 @@ def test_users_have_separate_budgets():
     assert application.rate_limit_check(999005, "write") is None
 
 
+def test_a_spent_bucket_is_forgotten_once_its_window_has_passed():
+    """The leak this replaces: buckets were created and never removed.
+
+    Timestamps inside a bucket expired, but the bucket itself lived as long as
+    the process — and unauthenticated callers are bucketed per client host, so
+    the dictionary grew with every address that ever touched the API.
+    """
+    import ratelimit
+
+    clock = _FakeClock()
+    limiter = ratelimit.InMemoryRateLimiter({"write": (5, 60)},
+                                            sweep_every=10, clock=clock)
+    for user in range(100):
+        limiter.check(user, "write")
+    assert limiter.buckets == 100
+
+    clock.advance(61)                       # every hit is now expired
+    limiter.check(999, "write")             # any call triggers the sweep
+    assert limiter.buckets == 1
+
+
+def test_sweeping_does_not_forgive_a_caller_still_over_budget():
+    """A live bucket must survive the sweep, or the limit means nothing."""
+    import ratelimit
+
+    clock = _FakeClock()
+    limiter = ratelimit.InMemoryRateLimiter({"write": (5, 60)},
+                                            sweep_every=10, clock=clock)
+    for _ in range(5):
+        limiter.check(7, "write")
+    assert limiter.check(7, "write") is not None
+
+    clock.advance(30)                       # half the window: still spent
+    limiter.check(8, "write")               # triggers a sweep
+    assert limiter.buckets == 2
+    assert limiter.check(7, "write") is not None
+
+
+class _FakeClock:
+    """A monotonic clock the test moves by hand, so no test ever sleeps."""
+
+    def __init__(self, now: float = 1000.0):
+        self.now = now
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
 # --- 013: bounded payloads -----------------------------------------------
 
 def test_oversized_body_is_refused(alice):
@@ -1848,6 +1972,148 @@ def test_job_lock_is_granted_on_sqlite():
     """Nothing to coordinate on SQLite, so the job always runs."""
     with svc.JobLock(SessionLocal, "test-job") as lock:
         assert lock.acquired is True
+
+
+# --- 037: one bad recipient never takes the batch down -------------------
+#
+# The scheduler talks to real users unattended, which makes it the one place
+# where a silent failure is invisible until somebody notices they stopped
+# getting their reports. These are the first tests it has had.
+
+class _FakeBot:
+    """Records every send, and fails for the ids it was told to fail for."""
+
+    def __init__(self, failures: dict[int, Exception] | None = None):
+        self.sent: list[int] = []
+        self.failures = failures or {}
+
+    async def send_message(self, chat_id, text, **kwargs):
+        if chat_id in self.failures:
+            raise self.failures[chat_id]
+        self.sent.append(chat_id)
+        return True
+
+
+def _batch_of_three(monkeypatch, client) -> list[int]:
+    """Three onboarded recipients, and nobody else in the batch."""
+    ids = [next(_next_id) for _ in range(3)]
+    for telegram_id in ids:
+        Caller(client, {"id": telegram_id, "first_name": "Batch"})
+    with SessionLocal() as s:
+        recipients = [(i, svc.workspace_id_for(s, i), "uz") for i in ids]
+    monkeypatch.setattr(svc, "active_recipients", lambda s: list(recipients))
+    return ids
+
+
+async def test_a_telegram_failure_does_not_stop_the_report_batch(monkeypatch, client):
+    """A blocked user is the common case, not an exceptional one."""
+    from telegram.error import Forbidden
+
+    ids = _batch_of_three(monkeypatch, client)
+    bot = _FakeBot({ids[1]: Forbidden("bot was blocked by the user")})
+
+    await application._send_reports_locked(bot, "morning", date(2031, 3, 1))
+
+    assert bot.sent == [ids[0], ids[2]], "the users after the failure must be sent"
+
+
+async def test_a_non_telegram_error_does_not_stop_the_report_batch(monkeypatch, client):
+    """Anything at all can raise mid-batch; only that user may lose their report."""
+    ids = _batch_of_three(monkeypatch, client)
+    bot = _FakeBot({ids[0]: RuntimeError("something entirely unexpected")})
+
+    await application._send_reports_locked(bot, "evening", date(2031, 3, 2))
+
+    assert bot.sent == [ids[1], ids[2]]
+
+
+async def test_the_failing_recipient_is_recorded_and_the_others_are_sent(
+        monkeypatch, client):
+    """The outbox has to say what happened, per user, or nothing is diagnosable."""
+    from telegram.error import Forbidden
+
+    ids = _batch_of_three(monkeypatch, client)
+    day = date(2031, 3, 3)
+    bot = _FakeBot({ids[1]: Forbidden("blocked")})
+
+    await application._send_reports_locked(bot, "morning", day)
+
+    from sqlalchemy import select
+    with SessionLocal() as s:
+        rows = {}
+        for telegram_id in ids:
+            ws = svc.workspace_id_for(s, telegram_id)
+            rows[telegram_id] = s.scalar(select(db.DailyReportLog).where(
+                db.DailyReportLog.workspace_id == ws,
+                db.DailyReportLog.report_type == "morning",
+                db.DailyReportLog.report_date == day))
+    assert rows[ids[0]].status == "sent"
+    assert rows[ids[2]].status == "sent"
+    assert rows[ids[1]].status == "failed"
+    assert "blocked" in rows[ids[1]].last_error
+
+
+async def test_a_failure_before_the_claim_does_not_stop_the_batch(
+        monkeypatch, client):
+    """Deciding who is due, and claiming their slot, sit outside the send.
+
+    They can raise for exactly the same reasons the send can — and until this
+    guard existed, one unreadable row there ended the batch before anybody
+    after that recipient was even looked at.
+    """
+    ids = _batch_of_three(monkeypatch, client)
+    real_claim = svc.claim_report
+
+    def failing_claim(s, ws, report_type, report_date):
+        with SessionLocal() as inner:
+            if ws == svc.workspace_id_for(inner, ids[0]):
+                raise RuntimeError("could not reach the outbox")
+        return real_claim(s, ws, report_type, report_date)
+
+    monkeypatch.setattr(svc, "claim_report", failing_claim)
+    bot = _FakeBot()
+
+    await application._send_reports_locked(bot, "morning", date(2031, 3, 5))
+
+    assert bot.sent == [ids[1], ids[2]]
+
+
+async def test_a_second_run_of_the_same_day_sends_nothing(monkeypatch, client):
+    """Duplicate-run protection, exercised through the job rather than the claim."""
+    ids = _batch_of_three(monkeypatch, client)
+    day = date(2031, 3, 4)
+
+    first = _FakeBot()
+    await application._send_reports_locked(first, "morning", day)
+    assert first.sent == ids
+
+    second = _FakeBot()
+    await application._send_reports_locked(second, "morning", day)
+    assert second.sent == [], "every slot was already claimed"
+
+
+async def test_a_failed_recipient_does_not_stop_the_reminder_batch(
+        monkeypatch, client):
+    """The gap this closes: reminders isolated the send but not the queries.
+
+    Anything raised outside the send — a query, a mark — escaped the loop and
+    silently cancelled every recipient after it.
+    """
+    ids = _batch_of_three(monkeypatch, client)
+    seen: list[int] = []
+
+    def exploding_task_reminders(s, ws, user, **kwargs):
+        seen.append(user.telegram_id)
+        if user.telegram_id == ids[0]:
+            raise RuntimeError("the database blinked")
+        return []
+
+    monkeypatch.setattr(svc, "due_task_reminders", exploding_task_reminders)
+    monkeypatch.setattr(svc, "due_habit_reminders", lambda s, ws, user, **kw: [])
+
+    await application.send_reminders(_FakeBot())
+
+    assert seen == ids, "every recipient must still be visited"
 
 
 # --- 033: pending updates are replayed, not dropped ----------------------
@@ -2893,13 +3159,49 @@ def test_a_switched_off_report_is_never_due(alice):
     alice.post("/api/prefs", json={"evening_report": True})
 
 
+def _built_jobs():
+    """Every job the scheduler would register, without starting a bot.
+
+    Asserted against the real APScheduler triggers rather than against the
+    source text: a test that greps for a string passes the day somebody
+    reformats the call and fails the day they rename a constant, neither of
+    which is what it is trying to check.
+    """
+    import scheduler as scheduling
+
+    async def noop(*a, **kw):
+        return None
+
+    built = scheduling.build(object(), send_reports=noop, send_reminders=noop,
+                             send_platform_stats=noop)
+    # `build` deliberately does not start: wiring needs no event loop, and a
+    # scheduler that never ran needs no shutdown.
+    return {job.id: job for job in built.get_jobs()}
+
+
 def test_the_report_job_interval_is_shared_with_the_scheduler():
     """The windows and the cron entry must not be able to drift apart."""
-    source = (ROOT / "app.py").read_text()
-    assert 'minute=f"*/{svc.REMINDER_JOB_MINUTES}"' in source
-    assert 'minute=f"*/{REPORT_TICK_MINUTES}"' in source
+    jobs = _built_jobs()
+
+    def minute_of(job_id):
+        return next(str(f) for f in jobs[job_id].trigger.fields
+                    if f.name == "minute")
+
+    assert minute_of("reminders") == f"*/{svc.REMINDER_JOB_MINUTES}"
+    for report_type in ("morning", "evening"):
+        assert minute_of(report_type) == f"*/{application.REPORT_TICK_MINUTES}"
     assert svc.HABIT_REMINDER_WINDOW == timedelta(
         minutes=svc.REMINDER_JOB_MINUTES)
+
+
+def test_no_scheduled_job_may_overlap_itself():
+    """One process must not run two copies of the same job.
+
+    Between this and the advisory lock each job takes, neither a slow run nor
+    a second instance can produce a duplicate report.
+    """
+    for job_id, job in _built_jobs().items():
+        assert job.max_instances == 1, f"{job_id} may overlap itself"
 
 
 # ==========================================================================
@@ -3956,9 +4258,14 @@ def test_emptying_the_journal_unticks_the_habit(fresh):
 
 
 def test_the_journal_habit_counts_towards_the_day(fresh):
-    """It is a non-negotiable, so it belongs in the denominator."""
-    body = fresh.get("/api/home").json()
-    assert body["habits"]["total"] == 7
+    """It is a non-negotiable, so it belongs in the denominator.
+
+    Asserted against the habits actually due today rather than a fixed number,
+    so changing the starting set cannot make this test lie about what it checks.
+    """
+    due = [h for h in fresh.get("/api/habits").json()["habits"] if h["due"]]
+    assert any(h["system_key"] == "journal" for h in due)
+    assert fresh.get("/api/home").json()["habits"]["total"] == len(due)
 
 
 def test_migration_0006_restores_an_archived_journal_habit(fresh):
@@ -4345,10 +4652,12 @@ def test_the_channel_statistics_post_goes_out_in_the_morning():
     """23:00 was written for whoever was still up. The channel is read in the
     morning, so that is when the post lands."""
     assert application.STATS_POST_HOUR == 10
-    source = (ROOT / "app.py").read_text()
-    job = source[source.index("send_platform_stats, \"cron\""):][:200]
-    assert "hour=STATS_POST_HOUR" in job
-    assert "hour=23" not in job
+    stats = _built_jobs()["stats"]
+    fields = {f.name: str(f) for f in stats.trigger.fields}
+    assert fields["hour"] == str(application.STATS_POST_HOUR)
+    assert fields["minute"] == "0"
+    # The project clock, so 10:00 means 10:00 in Tashkent wherever this runs.
+    assert stats.trigger.timezone == svc.TZ
 
 
 def test_the_now_card_is_not_printed_twice(alice):
