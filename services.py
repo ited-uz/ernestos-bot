@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date, datetime, time as dtime, timedelta
+from datetime import date, datetime, time as dtime, timedelta, timezone as _utc
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select, text as sql_text
@@ -87,6 +87,45 @@ def now_local(tz: ZoneInfo | None = None) -> datetime:
     return datetime.now(tz or TZ).replace(tzinfo=None)
 
 
+# ---------------------------------------------------------------------------
+# UTC timestamps vs local days
+# ---------------------------------------------------------------------------
+#
+# Two kinds of time live in this database and they must never be compared
+# directly:
+#
+#   * `day` columns are local calendar dates — the day the user was living in;
+#   * `created_at` / `completed_at` are naive UTC instants.
+#
+# Comparing `completed_at.date()` with a local date is wrong for every user
+# whose offset crosses midnight: in Asia/Tashkent (UTC+5) everything finished
+# after 19:00 local carries yesterday's UTC date, so a task completed at 22:00
+# was filed under "earlier" instead of "today". These two helpers are the only
+# sanctioned way across the boundary.
+
+def local_date_of(moment: datetime | None, tz: ZoneInfo | None = None) -> date | None:
+    """The local calendar date a stored UTC instant fell on."""
+    if moment is None:
+        return None
+    return moment.replace(tzinfo=_utc.utc).astimezone(tz or TZ).date()
+
+
+def utc_window(first: date, last: date | None = None,
+               tz: ZoneInfo | None = None) -> tuple[datetime, datetime]:
+    """The half-open UTC range [start, end) covering local days first..last.
+
+    Used for counting rows by the day the user experienced, while still letting
+    the database do the filtering.
+    """
+    zone = tz or TZ
+    last = last or first
+    start = datetime.combine(first, dtime(0, 0)).replace(tzinfo=zone)
+    end = (datetime.combine(last, dtime(0, 0)).replace(tzinfo=zone)
+           + timedelta(days=1))
+    return (start.astimezone(_utc.utc).replace(tzinfo=None),
+            end.astimezone(_utc.utc).replace(tzinfo=None))
+
+
 def week_start(d: date) -> date:
     """Monday of the given date's week."""
     return d - timedelta(days=d.weekday())
@@ -140,6 +179,7 @@ HABIT_CATEGORIES = ["non_negotiable", "target", "bonus"]
 DEFAULT_HABITS = [
     ("Get up",    "non_negotiable", "wakeup"),
     ("5x namoz",  "non_negotiable", "prayer"),
+    ("Kundalik",  "non_negotiable", "journal"),
     ("Deep flow", "target",         ""),
     ("Sport",     "target",         ""),
     ("Podcast",   "bonus",          ""),
@@ -147,7 +187,10 @@ DEFAULT_HABITS = [
 ]
 
 SYSTEM_PRAYER = "prayer"
-SYSTEM_JOURNAL = "journal"      # legacy: archived by migration 0001
+#: The journal is a non-negotiable habit again, and it completes only when all
+#: five questions are answered — a partial entry is saved and kept, but it does
+#: not tick the habit. Migration 0001 archived this habit; 0006 brings it back.
+SYSTEM_JOURNAL = "journal"
 SYSTEM_WAKEUP = "wakeup"
 
 #: Default rise time, used until the user picks their own.
@@ -1112,8 +1155,10 @@ def reschedule_task(s: Session, ws: int, task_id: int, when: str, *,
     return task
 
 
-#: At most three. A list of five "most important" tasks is a list of five tasks.
-MAX_TOP3 = 3
+#: Exactly one. "The most important thing today" is singular by definition, and
+#: a list of three of them is a list. The column stays `focus_day`, so the pick
+#: expires on its own overnight rather than needing to be cleared.
+MAX_TOP3 = 1
 
 
 def set_top3(s: Session, ws: int, task_id: int, picked: bool,
@@ -1131,7 +1176,13 @@ def set_top3(s: Session, ws: int, task_id: int, picked: bool,
         Task.workspace_id == ws, Task.archived_at.is_(None),
         Task.focus_day == day, Task.id != task_id)).all()
     if len(current) >= MAX_TOP3:
-        raise ValueError("top3 full")
+        # With a limit of one, refusing would be a dead end: the user asked for
+        # *this* task to be the day's, so the previous one steps aside.
+        if MAX_TOP3 == 1:
+            for previous in current:
+                previous.focus_day = None
+        else:
+            raise ValueError("top3 full")
 
     task.focus_day = day
     # Picking a task for today is also a statement that it is due today.
@@ -1293,7 +1344,7 @@ def completed_tasks(s: Session, ws: int, limit: int = 200, *, search: str = "",
         if needle and needle not in (task.title or "").lower():
             continue
         row = _task_dict(s, ws, task, today)
-        when = task.completed_at.date() if task.completed_at else None
+        when = local_date_of(task.completed_at, tz)
         if when == today:
             today_group.append(row)
         elif when is not None and when >= monday:
@@ -1586,7 +1637,36 @@ def save_journal(s: Session, ws: int, *, answers: dict | None = None,
         row.mood = mood[:20] if mood in MOODS else ""
 
     s.commit()
+    sync_journal_habit(s, ws, day)
     return row
+
+
+def sync_journal_habit(s: Session, ws: int, day: date) -> bool:
+    """Tick the protected `Kundalik` habit only on a fully answered day.
+
+    Derived exactly like the prayer habit, and for the same reason: the habit is
+    a mirror of the module, never a separate thing the user can tick by hand.
+    Three answers out of five is a saved journal entry and an unfinished habit —
+    both statements are true at once, and neither one overrides the other.
+    """
+    habit = s.scalar(select(Habit).where(
+        Habit.workspace_id == ws, Habit.system_key == SYSTEM_JOURNAL,
+        Habit.archived_at.is_(None)))
+    if habit is None:
+        return False
+
+    entry = get_journal(s, ws, day)
+    done = bool(entry and entry["complete"])
+
+    row = s.scalar(select(HabitLog).where(
+        HabitLog.workspace_id == ws, HabitLog.habit_id == habit.id,
+        HabitLog.day == day))
+    if row is None:
+        s.add(HabitLog(workspace_id=ws, habit_id=habit.id, day=day, done=done))
+    else:
+        row.done = done
+    s.commit()
+    return done
 
 
 def list_journal(s: Session, ws: int, limit: int = 60) -> list[dict]:
@@ -1608,14 +1688,14 @@ def list_journal(s: Session, ws: int, limit: int = 60) -> list[dict]:
 
 
 def delete_journal(s: Session, ws: int, day: date) -> None:
-    """Remove a day's entry. Journal completion is derived, so nothing else
-    needs updating."""
+    """Remove a day's entry, and untick the habit it was driving."""
     row = s.scalar(select(JournalEntry).where(
         JournalEntry.workspace_id == ws, JournalEntry.day == day))
     if row is None:
         raise NotFound("journal")
     s.delete(row)
     s.commit()
+    sync_journal_habit(s, ws, day)
 
 
 # ---------------------------------------------------------------------------
@@ -2096,6 +2176,56 @@ def stats(s: Session, ws: int, period: str = "week", *,
     }
 
 
+#: The windows the summary compares: today, the last 7 days, the last 30.
+SUMMARY_WINDOWS = {"day": 1, "week": 7, "month": 30}
+
+
+def summary(s: Session, ws: int, *, gender: str | None = None,
+            tz: ZoneInfo | None = None) -> dict:
+    """Today, this week and this month as directly comparable numbers.
+
+    One percentage on its own is not information. Three windows in the same
+    units are: today against the week says whether today is going well, and the
+    week against the month says whether the direction is holding. Each window
+    also carries its change against the previous window of the same length, so
+    "74%" is never the whole story.
+    """
+    today = today_local(tz)
+    out = {"today": overall_state(s, ws, today), "windows": {}}
+
+    for name, days in SUMMARY_WINDOWS.items():
+        end = today
+        start = today - timedelta(days=days - 1)
+        current = _range_average(s, ws, start, end)
+        previous = _range_average(s, ws, start - timedelta(days=days),
+                                  start - timedelta(days=1))
+        out["windows"][name] = {
+            **current,
+            "days": days,
+            "delta": current["overall"] - previous["overall"],
+            "previous": previous["overall"],
+        }
+
+    prayer = prayer_state(s, ws, today, gender)
+    habits_done, habits_total = habit_progress(s, ws, today)
+    tasks_done, tasks_total = today_task_progress(s, ws, today)
+    components = out["today"]["components"]
+
+    out["today"] = {
+        "overall": out["today"]["value"],
+        "trend": out["today"]["trend"],
+        "tasks": components["tasks"], "habits": components["habits"],
+        "prayer": components["prayer"],
+        "tasks_done": tasks_done, "tasks_total": tasks_total,
+        "habits_done": habits_done, "habits_total": habits_total,
+        "prayer_performed": prayer["performed"],
+        "prayer_required": PRAYER_REQUIRED,
+        "prayer_score": prayer["score"], "prayer_max": PRAYER_MAX_SCORE,
+        "streak": habit_streak(s, ws, tz=tz),
+    }
+    return out
+
+
 def stats_csv(s: Session, ws: int, period: str = "month", *,
               gender: str | None = None, tz: ZoneInfo | None = None) -> str:
     """The statistics view as CSV, for the download button.
@@ -2258,10 +2388,10 @@ def weekly_review(s: Session, ws: int, user: User,
     start = week_start(when or today)
     end = start + timedelta(days=6)
 
+    week_from, week_to = utc_window(start, end, tz)
     done = s.scalar(select(func.count(Task.id)).where(
         Task.workspace_id == ws, Task.status == "done",
-        func.date(Task.completed_at) >= start,
-        func.date(Task.completed_at) <= end)) or 0
+        Task.completed_at >= week_from, Task.completed_at < week_to)) or 0
     missed = s.scalar(select(func.count(Task.id)).where(
         Task.workspace_id == ws, Task.archived_at.is_(None),
         Task.status == "waiting", Task.deadline < today)) or 0
@@ -2662,9 +2792,10 @@ def morning_data(s: Session, ws: int, user: User) -> dict:
 
     y_done, y_total = habit_progress(s, ws, yesterday)
     y_prayer = prayer_state(s, ws, yesterday, user.gender)
+    y_from, y_to = utc_window(yesterday, tz=tz)
     y_completed = s.scalar(select(func.count(Task.id)).where(
         Task.workspace_id == ws, Task.status == "done",
-        func.date(Task.completed_at) == yesterday)) or 0
+        Task.completed_at >= y_from, Task.completed_at < y_to)) or 0
     y_missed = s.scalar(select(func.count(Task.id)).where(
         Task.workspace_id == ws, Task.archived_at.is_(None),
         Task.status == "waiting", Task.deadline == yesterday)) or 0
@@ -2673,14 +2804,24 @@ def morning_data(s: Session, ws: int, user: User) -> dict:
     focus = list_focus(s, ws, tz=tz)
     top3 = top3_tasks(s, ws, today, tz=tz)
 
+    # Yesterday as one comparable number, from the same function every other
+    # surface uses, plus the components behind it.
+    y_components = overall_components(s, ws, yesterday)
+    y_available = [v for v in y_components.values() if v is not None]
+    y_overall = round(sum(y_available) / len(y_available)) if y_available else 0
+
     return {
         "yesterday": {
             "date": yesterday.isoformat(),
+            "overall": y_overall,
+            "measured": bool(y_available),
+            "components": y_components,
             "habits_done": y_done, "habits_total": y_total,
             "prayer_score": y_prayer["score"],
             "prayer_performed": y_prayer["performed"],
+            "prayer_required": PRAYER_REQUIRED,
             "tasks_completed": y_completed, "tasks_missed": y_missed,
-            "journal": bool(get_journal(s, ws, yesterday)),
+            "journal": journal_done(s, ws, yesterday, tz=tz),
         },
         "today": {
             "date": today.isoformat(),
@@ -2702,9 +2843,10 @@ def evening_data(s: Session, ws: int, user: User) -> dict:
     done, total = habit_progress(s, ws, today)
     prayer = prayer_state(s, ws, today, user.gender)
 
+    day_from, day_to = utc_window(today, tz=tz)
     completed = s.scalar(select(func.count(Task.id)).where(
         Task.workspace_id == ws, Task.status == "done",
-        func.date(Task.completed_at) == today)) or 0
+        Task.completed_at >= day_from, Task.completed_at < day_to)) or 0
 
     remaining = s.scalars(select(Task).where(
         Task.workspace_id == ws, Task.archived_at.is_(None),
@@ -2733,7 +2875,10 @@ def evening_data(s: Session, ws: int, user: User) -> dict:
         "tasks_overdue": [t.title for t in overdue],
         "focus": focus,
         "focus_done": sum(1 for f in focus if f["done"]),
-        "journal": bool(get_journal(s, ws, today)),
+        # Complete, not merely started: the `Kundalik` habit uses the same
+        # rule, and a report that says "written" beside an unticked habit is
+        # the app disagreeing with itself.
+        "journal": journal_done(s, ws, today, tz=tz),
     }
 
 
@@ -2757,7 +2902,9 @@ def active_recipients(s: Session) -> list[tuple[int, int, str]]:
 # things in three files.
 
 DEFAULT_MORNING_TIME = dtime(4, 0)
-DEFAULT_EVENING_TIME = dtime(21, 0)
+#: 21:30 rather than 21:00: the day's last habits and prayers are usually still
+#: being entered on the hour, and a summary that arrives mid-entry is wrong.
+DEFAULT_EVENING_TIME = dtime(21, 30)
 
 #: How long after its configured time a report may still go out. Past this the
 #: day has moved on, and a morning summary at noon is noise rather than a
@@ -2918,16 +3065,21 @@ def platform_stats(s: Session) -> dict:
         select(User.gender, func.count(User.telegram_id)).group_by(User.gender)).all())
 
     latest = s.scalar(select(func.max(User.member_no))) or 0
+    day_from, day_to = utc_window(today)
     return {
         "total": total,
         "latest_member_no": latest,
         "onboarded": onboarded,
         "subscribed": subscribed,
         "blocked": max(onboarded - subscribed, 0),
-        "dau": count(User, func.date(User.last_active_at) == today),
+        # "Today" is the operator's day, in the platform's own zone, and the
+        # timestamps are UTC — so the window is converted rather than compared.
+        "dau": count(User, User.last_active_at >= day_from,
+                     User.last_active_at < day_to),
         "wau": count(User, User.last_active_at >= week_ago),
         "mau": count(User, User.last_active_at >= month_ago),
-        "new_today": count(User, func.date(User.created_at) == today),
+        "new_today": count(User, User.created_at >= day_from,
+                           User.created_at < day_to),
         "new_week": count(User, User.created_at >= week_ago),
         "tasks_created": count(Task, Task.created_at >= week_ago),
         "tasks_done": count(Task, Task.status == "done",

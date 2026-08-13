@@ -16,7 +16,7 @@ import os
 import sys
 import tempfile
 import time
-from datetime import date, datetime, time as dtime, timedelta
+from datetime import date, datetime, time as dtime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
@@ -201,7 +201,7 @@ def test_task_cannot_join_another_users_project(alice, bob):
 
 def test_new_user_gets_the_default_habits(alice):
     names = [h["name"] for h in alice.get("/api/habits").json()["habits"]]
-    assert names == ["Get up", "5x namoz",
+    assert names == ["Get up", "5x namoz", "Kundalik",
                      "Deep flow", "Sport", "Podcast", "Read"]
 
 
@@ -210,7 +210,7 @@ def test_habits_are_grouped_into_three_categories(alice):
     assert body["categories"] == ["non_negotiable", "target", "bonus"]
     grouped = body["grouped"]
     assert [h["name"] for h in grouped["non_negotiable"]] == \
-        ["Get up", "5x namoz"]
+        ["Get up", "5x namoz", "Kundalik"]
     assert [h["name"] for h in grouped["target"]] == ["Deep flow", "Sport"]
     assert [h["name"] for h in grouped["bonus"]] == ["Podcast", "Read"]
 
@@ -227,8 +227,8 @@ def test_unknown_category_falls_back_to_target(alice):
     assert "Stretching" in [h["name"] for h in grouped["target"]]
 
 
-def test_default_theme_is_ocean(alice):
-    assert alice.get("/api/me").json()["theme"] == "ocean"
+def test_default_theme_is_calm(alice):
+    assert alice.get("/api/me").json()["theme"] == "calm"
 
 
 def test_protected_habit_cannot_be_toggled(alice):
@@ -250,10 +250,10 @@ def test_normal_habit_toggles(alice):
 
 
 def test_the_derived_habits_are_protected(alice):
-    """Get up and 5x namoz are computed, never ticked by hand."""
+    """All three are computed from their module, never ticked by hand."""
     habits = alice.get("/api/habits").json()["habits"]
     derived = {h["name"] for h in habits if h["protected"]}
-    assert derived == {"Get up", "5x namoz"}
+    assert derived == {"Get up", "5x namoz", "Kundalik"}
 
 
 # --------------------------------------------------------------------------
@@ -614,18 +614,20 @@ def _menu_labels(lang: str) -> list[str]:
 
 
 @pytest.mark.parametrize("lang", ["uz", "en", "ru"])
-def test_the_menu_is_exactly_seven_entries(lang):
+def test_the_menu_is_the_wake_button_then_the_six_destinations(lang):
+    """Turdim sits alone at the top: it is the first thing touched in the
+    morning and the only action that expires."""
     labels = _menu_labels(lang)
-    assert len(labels) == 7
+    assert len(labels) == 8
     assert labels == [application.t(lang, key) for key in (
+        "menu_wake",
         "menu_home", "menu_habits", "menu_tasks", "menu_stats",
         "menu_settings", "menu_feedback", "menu_app")]
 
 
 @pytest.mark.parametrize("lang", ["uz", "en", "ru"])
-def test_the_menu_has_no_goals_and_no_standing_wake_button(lang):
+def test_the_menu_has_no_goals(lang):
     labels = _menu_labels(lang)
-    assert application.t(lang, "menu_wake") not in labels
     for word in ("maqsad", "goal", "цел"):
         assert not any(word in label.lower() for label in labels)
 
@@ -651,9 +653,23 @@ def test_wake_up_is_offered_on_the_habits_screen_while_it_can_be_recorded():
     assert application.t("uz", "menu_wake") in _habit_buttons(done=False)
 
 
-def test_wake_up_disappears_once_it_is_recorded():
-    """A button that can only tell you 'already done' is not worth a tap."""
+def test_wake_up_disappears_from_the_habits_screen_once_recorded():
+    """On that screen it would only be able to say "already done". The keyboard
+    button stays regardless, because that one is the morning entry point."""
     assert application.t("uz", "menu_wake") not in _habit_buttons(done=True)
+    assert application.t("uz", "menu_wake") in _menu_labels("uz")
+
+
+def test_a_late_wake_up_is_answered_with_a_joke_not_a_verdict():
+    """The habit still only completes on time; the wording is what changed."""
+    late = application.wake_reply(
+        {"done": False, "now": "08:20", "target": "05:00"}, "uz")
+    assert "08:20" in late
+    for scolding in ("hisoblanmadi", "kech bo'ldi", "failed"):
+        assert scolding not in late.lower()
+    on_time = application.wake_reply(
+        {"done": True, "now": "04:53", "target": "05:00"}, "uz")
+    assert "04:53" in on_time
 
 
 def test_goals_are_unreachable_from_either_surface():
@@ -677,25 +693,36 @@ def test_the_privacy_line_is_one_fixed_strip():
     html = (ROOT / "webapp" / "index.html").read_text()
     assert html.count('class="privacy-strip"') == 1
     assert "privacyNote" not in html, "per-page privacy cards are back"
-    for lang, phrase in (("uz", "boshqa foydalanuvchilardan alohida saqlanadi"),
-                         ("en", "stored separately from every other user"),
-                         ("ru", "хранятся отдельно от других пользователей")):
+    for lang, phrase in (("uz", "to'liq himoya qilingan"),
+                         ("en", "fully protected"),
+                         ("ru", "полностью защищены")):
         assert phrase in html, f"{lang} privacy line missing"
         assert phrase in application.t(lang, "privacy_line")
 
 
-def test_the_privacy_line_promises_only_isolation(alice):
-    """No absolute promise anywhere, in either surface.
+def test_the_privacy_line_is_identical_in_both_surfaces():
+    """The bot and the Mini App must not word the same promise differently.
 
-    "Your data and privacy are fully protected" is a claim nobody can keep: an
-    administrator can read the database. What is actually true and worth saying
-    is that one user cannot reach another's rows — which the isolation tests
-    above prove.
+    The copy itself is a product decision, made deliberately and reaffirmed. The
+    isolation it refers to is what the workspace tests above actually prove; the
+    technical caveat — an administrator can reach the database for maintenance —
+    is documented in the README's security section rather than in this line.
     """
+    html = (ROOT / "webapp" / "index.html").read_text()
+    for lang in ("uz", "en", "ru"):
+        line = application.t(lang, "privacy_line").replace("🔒", "").strip()
+        assert line.replace("'", "'") in html or line in html, \
+            f"{lang}: the bot and the Mini App disagree on the privacy line"
+
+
+def test_no_unimplemented_security_claim_is_made():
+    """Wording is a product call; claiming a mechanism that does not exist is
+    not. Nothing anywhere may promise encryption ErnestOS does not perform."""
     text = ((ROOT / "webapp" / "index.html").read_text()
             + (ROOT / "app.py").read_text()).lower()
-    for claim in ("fully protected", "to'liq himoyalangan", "полностью защищены"):
-        assert claim not in text, f"absolute privacy promise: {claim!r}"
+    for claim in ("end-to-end", "e2e encrypt", "shifrlangan", "зашифрован",
+                  "hatto admin", "даже админ"):
+        assert claim not in text, f"unimplemented security claim: {claim!r}"
 
 
 def test_the_privacy_claim_stays_within_what_is_implemented():
@@ -805,80 +832,99 @@ def _set_theme(telegram_id: int, value: str) -> None:
 def test_every_offered_theme_is_one_the_mini_app_styles():
     """The picker and the stylesheet must not be able to disagree."""
     styled = (ROOT / "webapp" / "index.html").read_text()
-    assert application.THEMES == ["ocean", "pure", "midnight", "sage", "aurora"]
+    assert application.THEMES == ["calm", "titan", "muse", "rage", "nexus"]
     for name in application.THEMES:
-        assert f'"{name}"' in styled, f"{name} is offered but never styled"
-    # And each one appears in the picker's own list, not only in the CSS.
+        assert f'[data-theme="{name}"]' in styled or name == "calm", \
+            f"{name} is offered but never styled"
     picker = styled[styled.index("const THEMES = ["):styled.index("const THEME_NAMES")]
     assert [line.split('id:"')[1].split('"')[0]
             for line in picker.splitlines() if 'id:"' in line] == application.THEMES
 
 
-def test_every_theme_declares_the_same_five_colours():
-    """A theme's colour decision is exactly five names, every time.
+def _theme_block(styled: str, name: str) -> str:
+    import re
+    if name == "calm":
+        return re.search(r":root\{(.*?)\n\}", styled, re.S).group(1)
+    return re.search(r'\[data-theme="%s"\]\s*\{(.*?)\n\}' % name,
+                     styled, re.S).group(1)
 
-    `ocean` lives in `:root` alongside the derived tokens, so it is checked by
-    the presence of its five names rather than by counting a block.
-    """
+
+#: Every token a component is allowed to reference. A theme that leaves one of
+#: these unset inherits Calm's, which is a bug the eye finds slowly.
+SEMANTIC_TOKENS = [
+    "--bg", "--surface", "--surface-2",
+    "--text", "--text-2", "--text-3",
+    "--primary", "--primary-2", "--on-primary",
+    "--accent", "--accent-2",
+    "--border", "--border-2",
+    "--ok", "--warn", "--danger",
+]
+
+
+@pytest.mark.parametrize("name", ["calm", "titan", "muse", "rage", "nexus"])
+def test_every_theme_defines_the_whole_semantic_palette(name):
+    """One vocabulary, redefined five times — never a component-level colour."""
     import re
 
     styled = (ROOT / "webapp" / "index.html").read_text()
-    expected = ["--c-accent", "--c-bg", "--c-flow", "--c-signal", "--c-surface"]
-
-    def declared(block: str) -> list[str]:
-        """Only the five being *set*.
-
-        A theme block now also mentions them inside its structural tokens —
-        `--btn-bg:var(--c-accent)` — so a bare name search would count a
-        reference as a sixth colour.
-        """
-        return sorted(set(re.findall(r"(--c-[a-z]+)\s*:", block)))
-
-    for name in ("pure", "midnight", "sage", "aurora"):
-        block = re.search(r'\[data-theme="%s"\]\s*\{(.*?)\n\}' % name,
-                          styled, re.S).group(1)
-        assert declared(block) == expected, name
-    root = re.search(r":root\{(.*?)\n\}", styled, re.S).group(1)
-    assert declared(root) == expected, "ocean"
+    block = _theme_block(styled, name)
+    declared = set(re.findall(r"(--[a-z0-9-]+)\s*:", block))
+    missing = [token for token in SEMANTIC_TOKENS if token not in declared]
+    assert not missing, f"{name} does not define {missing}"
 
 
-def test_a_theme_is_more_than_a_palette():
+def test_components_never_hard_code_a_colour():
+    """The whole point of the token layer: theming must not need a component
+    rewrite. Below the theme blocks, no rule may name a literal colour."""
+    import re
+
+    styled = (ROOT / "webapp" / "index.html").read_text()
+    css = styled[styled.index("<style>"):styled.index("</style>")]
+    components = css[css.index("   Base\n"):]
+    literals = re.findall(r":\s*(#[0-9a-fA-F]{3,8})\b", components)
+    # White and black are allowed inside rgba()/shadow definitions only, which
+    # the pattern above does not match.
+    assert not literals, f"hard-coded colours in components: {set(literals)}"
+
+
+@pytest.mark.parametrize("name", ["titan", "muse", "rage", "nexus"])
+def test_a_theme_is_more_than_a_palette(name):
     """Each theme also sets structure, or it is only a hue swap.
 
-    The point of the five is that they feel different, not that they are
-    different colours: radius, shadow, gradient policy and type weight are what
-    carry that, so every theme block has to make those decisions too.
+    The five are supposed to feel different, not merely be different colours:
+    radius, shadow depth, gradient policy and type weight are what carry that.
+    """
+    styled = (ROOT / "webapp" / "index.html").read_text()
+    block = _theme_block(styled, name)
+    structural = [token for token in
+                  ("--radius:", "--shadow-2:", "--hero-fill:",
+                   "--title-w:", "--display-w:")
+                  if token in block]
+    assert len(structural) >= 4, f"{name} only changes colour: {structural}"
+
+
+def test_each_theme_owns_its_ground():
+    """Every theme commits to its own light or dark background.
+
+    There is no separate appearance switch any more: a theme whose ground can
+    be flipped underneath it is two half-designs rather than one.
     """
     import re
 
     styled = (ROOT / "webapp" / "index.html").read_text()
-    for name in ("pure", "midnight", "sage", "aurora"):
-        block = re.search(r'\[data-theme="%s"\]\s*\{(.*?)\}' % name,
-                          styled, re.S).group(1)
-        structural = [token for token in ("--r:", "--shadow:", "--glow:",
-                                         "--h1-weight:", "--lift:")
-                      if token in block]
-        assert len(structural) >= 4, f"{name} only changes colour: {structural}"
-
-
-def test_a_theme_that_commits_to_light_or_dark_says_so():
-    """pure and sage are light by design; midnight and aurora are dark.
-
-    A "warm, calm, low-contrast" theme rendered near-black is not that theme, so
-    those four ignore the phone's setting — and the picker has to declare which,
-    or the appearance control silently does nothing.
-    """
-    styled = (ROOT / "webapp" / "index.html").read_text()
-    picker = styled[styled.index("const THEMES = ["):styled.index("const THEME_NAMES")]
-    modes = dict(re.findall(r'id:"(\w+)".*?mode:"(\w+)"', picker)) \
-        if (re := __import__("re")) else {}
-    assert modes == {"ocean": "both", "pure": "light", "midnight": "dark",
-                     "sage": "light", "aurora": "dark"}
+    grounds = {}
+    for name in application.THEMES:
+        block = _theme_block(styled, name)
+        grounds[name] = re.search(r"--bg:\s*(#[0-9A-Fa-f]+)", block).group(1).lower()
+    assert len(set(grounds.values())) == 5, grounds
+    # And nothing re-derives the ground from the operating system.
+    assert "prefers-color-scheme" not in styled
+    assert "data-scheme" not in styled
 
 
 def test_a_retired_theme_reads_as_the_default(alice):
     _set_theme(ALICE["id"], "pink")
-    assert alice.get("/api/me").json()["theme"] == "ocean"
+    assert alice.get("/api/me").json()["theme"] == "calm"
 
 
 def test_the_migration_moves_a_retired_theme_to_its_closest_survivor(alice):
@@ -977,17 +1023,34 @@ def test_bot_home_uses_the_language_of_the_reader(alice):
 def test_bot_statistics_reports_the_same_overall_as_home(alice):
     with SessionLocal() as s:
         ws = svc.workspace_id_for(s, ALICE["id"])
-        data = svc.stats(s, ws, "week")
+        data = svc.summary(s, ws)
     text = application.render_stats(data, "uz")
     assert f"{data['today']['overall']}%" in text
     assert alice.get("/api/home").json()["overall"]["value"] == data["today"]["overall"]
+
+
+def test_bot_statistics_compares_today_with_the_week_and_the_month(alice):
+    """One percentage is not information; three comparable ones are."""
+    with SessionLocal() as s:
+        data = svc.summary(s, svc.workspace_id_for(s, ALICE["id"]))
+    assert set(data["windows"]) == {"day", "week", "month"}
+    for name, window in data["windows"].items():
+        for key in ("overall", "tasks", "habits", "prayer", "delta", "previous"):
+            assert key in window, f"{name} window is missing {key}"
+        assert window["delta"] == window["overall"] - window["previous"]
+
+    text = application.render_stats(data, "uz")
+    for label in ("st_today", "st_week", "st_month"):
+        assert application.t("uz", label) in text
+    assert f"{data['windows']['week']['overall']}%" in text
+    assert f"{data['windows']['month']['overall']}%" in text
 
 
 def test_statistics_shows_a_dash_for_a_component_with_nothing_due(alice):
     _clear_tasks(ALICE["id"])
     with SessionLocal() as s:
         ws = svc.workspace_id_for(s, ALICE["id"])
-        data = svc.stats(s, ws, "week")
+        data = svc.summary(s, ws)
     assert "—" in application.render_stats(data, "uz")
 
 
@@ -1940,14 +2003,22 @@ def test_gender_is_not_an_onboarding_step():
     assert "ask_gender_why" in html, "the prayer screen must explain why it asks"
 
 
-def test_the_phone_step_can_be_skipped():
-    """Skip is offered in every language, so the step cannot strand anyone."""
-    source = (ROOT / "app.py").read_text()
-    assert 'if step == "phone":' in source
-    assert 't(code, "btn_skip") for code in ("uz", "en", "ru")' in source
+def test_the_phone_step_is_required_and_explains_itself():
+    """The number is what account recovery is keyed on, so there is no Skip.
+
+    It is also the one field the user cannot type: only Telegram's own contact
+    button proves the number belongs to the sender.
+    """
     for lang in ("uz", "en", "ru"):
-        assert application.t(lang, "btn_skip")
+        keyboard = application.phone_keyboard(lang)
+        buttons = [b for row in keyboard.keyboard for b in row]
+        assert len(buttons) == 1
+        assert buttons[0].request_contact is True
+        assert application.t(lang, "btn_skip") not in [
+            getattr(b, "text", b) for b in buttons]
+        # And the prompt says why it is being asked.
         assert application.t(lang, "phone_why")
+    assert "tiklab beramiz" in application.t("uz", "phone_why")
 
 
 # ==========================================================================
@@ -2324,15 +2395,21 @@ def _clear_top3(telegram_id: int) -> None:
         s.commit()
 
 
-def test_three_can_be_picked_and_a_fourth_cannot(alice):
+def test_the_day_has_exactly_one_mission(alice):
+    """"The most important thing today" is singular by definition."""
     _clear_top3(ALICE["id"])
-    ids = [alice.post("/api/tasks", json={"title": f"T{n}"}).json()["id"]
-           for n in range(4)]
-    for task_id in ids[:3]:
-        assert alice.post(f"/api/tasks/{task_id}/top3",
-                          json={"picked": True}).status_code == 200
-    r = alice.post(f"/api/tasks/{ids[3]}/top3", json={"picked": True})
-    assert r.status_code == 409 and r.json()["detail"] == "top3_full"
+    assert svc.MAX_TOP3 == 1
+    first = alice.post("/api/tasks", json={"title": "First"}).json()["id"]
+    second = alice.post("/api/tasks", json={"title": "Second"}).json()["id"]
+
+    alice.post(f"/api/tasks/{first}/top3", json={"picked": True})
+    assert [x["id"] for x in alice.get("/api/home").json()["top3"]] == [first]
+
+    # Choosing another replaces it rather than being refused: with a limit of
+    # one, a rejection would be a dead end.
+    assert alice.post(f"/api/tasks/{second}/top3",
+                      json={"picked": True}).status_code == 200
+    assert [x["id"] for x in alice.get("/api/home").json()["top3"]] == [second]
 
 
 def test_unpicking_frees_a_slot(alice):
@@ -2440,11 +2517,11 @@ def test_the_wake_up_boundary_follows_the_users_timezone(fresh):
 # Notification preferences and per-user report times
 # ==========================================================================
 
-def test_report_defaults_are_on_at_four_and_nine(alice):
+def test_report_defaults_are_on_at_four_and_half_past_nine(alice):
     with SessionLocal() as s:
         prefs = svc.prefs_for(s.get(User, ALICE["id"]))
     assert prefs["morning_report"] is True and prefs["morning_time"] == "04:00"
-    assert prefs["evening_report"] is True and prefs["evening_time"] == "21:00"
+    assert prefs["evening_report"] is True and prefs["evening_time"] == "21:30"
 
 
 def test_a_report_is_due_only_inside_its_window(alice):
@@ -3007,41 +3084,42 @@ def test_the_older_theme_migration_cannot_undo_the_newer_one(alice):
 
 
 def test_every_theme_rename_target_is_a_theme_that_exists():
-    for target in migrations.THEME_RENAMES.values():
+    """The last mapping in the chain has to land on something real."""
+    for target in migrations.THEME_REDESIGN.values():
         assert target in application.THEMES, target
+    # And every name an earlier migration can produce is handled by the last.
+    for target in migrations.THEME_RENAMES.values():
+        assert target in migrations.THEME_REDESIGN, \
+            f"0005 lands on {target}, which 0007 does not map"
+    for target in migrations.RETIRED_THEMES.values():
+        assert target in migrations.THEME_REDESIGN, \
+            f"0003 lands on {target}, which 0007 does not map"
 
 
-# ==========================================================================
-# The API surface — no route shadows another, nothing is unreachable
-# ==========================================================================
+@pytest.mark.parametrize("old,new", [
+    ("ocean", "calm"), ("pure", "calm"), ("midnight", "titan"),
+    ("sage", "muse"), ("aurora", "nexus"), ("cobalt", "calm"),
+    ("slate", "titan"), ("blossom", "muse"),
+])
+def test_the_redesign_moves_a_theme_to_its_closest_survivor(alice, old, new):
+    _set_theme(ALICE["id"], old)
+    migrations.m0007_redesign_themes()
+    with SessionLocal() as s:
+        assert s.get(User, ALICE["id"]).theme == new
 
-def test_a_literal_route_is_never_shadowed_by_a_parameter():
-    """The bug this guards: declaring PATCH /api/habits/{habit_id} above
-    /api/habits/reorder made "reorder" parse as an id and answer 422.
 
-    FastAPI matches in declaration order, so a literal segment has to be
-    declared before the `{param}` route that could swallow it.
-    """
-    from collections import defaultdict
+def test_the_redesign_is_safe_to_run_twice(alice):
+    _set_theme(ALICE["id"], "ocean")
+    migrations.m0007_redesign_themes()
+    assert migrations.m0007_redesign_themes()["total"] == 0
+    with SessionLocal() as s:
+        assert s.get(User, ALICE["id"]).theme == "calm"
 
-    seen: dict[tuple[str, int], list] = defaultdict(list)
-    for index, route in enumerate(application.app.routes):
-        for method in getattr(route, "methods", ()) or ():
-            parts = route.path.strip("/").split("/")
-            seen[(method, len(parts))].append((index, parts))
 
-    for (method, _), routes in seen.items():
-        for index, parts in routes:
-            for other_index, other in routes:
-                if other_index >= index:
-                    continue
-                # `other` is declared first; would it swallow this path?
-                if all(o.startswith("{") or o == p
-                       for o, p in zip(other, parts)) and other != parts:
-                    assert not any(o.startswith("{") and not p.startswith("{")
-                                   for o, p in zip(other, parts)), (
-                        f"{method} /{'/'.join(parts)} is shadowed by "
-                        f"/{'/'.join(other)} declared above it")
+def test_nobody_is_migrated_into_execution_mode():
+    """Rage has no predecessor. Putting somebody in it uninvited is a decision
+    on their behalf, not a migration."""
+    assert "rage" not in migrations.THEME_REDESIGN.values()
 
 
 def test_every_backend_capability_is_reachable_from_the_mini_app():
@@ -3177,44 +3255,38 @@ def test_the_privacy_body_is_written_in_every_language():
         assert "privacy_body" in blocks[lang]
 
 
-def test_the_light_overlay_does_not_leak_into_the_other_themes():
-    """Reproduces a cascade bug: `:root[data-scheme="light"]` is an element plus
-    an attribute, so it outranked the single-attribute `[data-theme=...]`
-    blocks. Unscoped, it handed Pure and Sage ocean's cool white and the two
-    light themes rendered identically — a palette swap, which is the one thing
-    the five themes are not supposed to be.
+def test_no_appearance_overlay_can_outrank_a_theme():
+    """A previous build had `:root[data-scheme="light"]` — an element plus an
+    attribute — outranking the single-attribute theme blocks, which handed two
+    themes somebody else's surfaces. The overlay is gone entirely now.
     """
     styled = (ROOT / "webapp" / "index.html").read_text()
-    assert ':root[data-theme="ocean"][data-scheme="light"]{' in styled
-    assert ':root[data-scheme="light"]{' not in styled, \
-        "the light overlay is unscoped again and outranks every theme block"
+    assert "data-scheme" not in styled
+    assert "data-appearance" not in styled
 
 
-def test_each_theme_declares_its_own_background():
-    """Two themes sharing a background are one theme with two names."""
+def test_each_theme_declares_its_own_primary():
+    """Two themes sharing a brand colour are one theme with two names."""
     import re
 
     styled = (ROOT / "webapp" / "index.html").read_text()
-    backgrounds = {}
-    root = re.search(r":root\{(.*?)\n\}", styled, re.S).group(1)
-    backgrounds["ocean"] = re.search(r"--c-bg:\s*(#[0-9a-f]+)", root).group(1)
-    for name in ("pure", "midnight", "sage", "aurora"):
-        block = re.search(r'\[data-theme="%s"\]\s*\{(.*?)\n\}' % name,
-                          styled, re.S).group(1)
-        backgrounds[name] = re.search(r"--c-bg:\s*(#[0-9a-f]+)", block).group(1)
-    assert len(set(backgrounds.values())) == 5, backgrounds
+    primaries = {}
+    for name in application.THEMES:
+        block = _theme_block(styled, name)
+        primaries[name] = re.search(r"--primary:\s*(#[0-9A-Fa-f]+)",
+                                    block).group(1).lower()
+    assert len(set(primaries.values())) == 5, primaries
 
 
-def test_the_lead_card_control_is_visible_on_the_accent():
-    """The one-tap complete on Home is the app's most-used control.
+def test_the_brand_surface_control_is_visible_on_it():
+    """The one-tap complete on Home sits on the brand-painted surface.
 
-    It was invisible for a while: the inline `border-color:currentColor`
-    resolved to the tick's own colour, which is transparent until ticked, so the
-    circle on the accent-painted card had no border at all.
+    It was invisible once: an inline `border-color:currentColor` resolved to
+    the tick's own colour, which is transparent until ticked.
     """
     styled = (ROOT / "webapp" / "index.html").read_text()
     assert "border-color:currentColor" not in styled
-    assert ".lead .check{border-color:color-mix(in srgb, var(--hero-fg)" in styled
+    assert ".hero .check{border-color:color-mix(in srgb, var(--hero-text)" in styled
 
 
 def test_page_content_clears_the_floating_button():
@@ -3236,3 +3308,153 @@ def test_a_prayer_write_refreshes_the_derived_habit():
     block = html[html.index("/* ---- prayer ----"):html.index("/* ---- journal ---- */")]
     assert block.count("refreshHabits()") >= 3, \
         "every prayer write must refresh the habit list"
+
+
+# ==========================================================================
+# The journal is a non-negotiable habit again
+# ==========================================================================
+
+def test_the_journal_habit_completes_only_on_a_full_entry(fresh):
+    """Three answers is a saved entry and an unfinished habit, both at once."""
+    def journal_habit():
+        return next(h for h in fresh.get("/api/habits").json()["habits"]
+                    if h["system_key"] == "journal")
+
+    assert journal_habit()["done"] is False
+
+    fresh.post("/api/journal", json={"answers": {"wins": "a", "gratitude": "b"}})
+    assert journal_habit()["done"] is False, "a partial entry must not tick it"
+
+    answers = {q: "written" for q in svc.JOURNAL_KEYS}
+    body = fresh.post("/api/journal", json={"answers": answers}).json()
+    assert body["complete"] is True
+    assert journal_habit()["done"] is True
+
+
+def test_the_journal_habit_cannot_be_ticked_by_hand(fresh):
+    habit = next(h for h in fresh.get("/api/habits").json()["habits"]
+                 if h["system_key"] == "journal")
+    assert habit["protected"] is True
+    assert fresh.post(f"/api/habits/{habit['id']}/toggle").status_code == 400
+
+
+def test_emptying_the_journal_unticks_the_habit(fresh):
+    answers = {q: "written" for q in svc.JOURNAL_KEYS}
+    fresh.post("/api/journal", json={"answers": answers})
+    day = svc.today_local().isoformat()
+    fresh.delete(f"/api/journal/{day}")
+    habit = next(h for h in fresh.get("/api/habits").json()["habits"]
+                 if h["system_key"] == "journal")
+    assert habit["done"] is False
+
+
+def test_the_journal_habit_counts_towards_the_day(fresh):
+    """It is a non-negotiable, so it belongs in the denominator."""
+    body = fresh.get("/api/home").json()
+    assert body["habits"]["total"] == 7
+
+
+def test_migration_0006_restores_an_archived_journal_habit(fresh):
+    """Reverses 0001 without losing the logs that habit already had."""
+    from sqlalchemy import func, select
+
+    ws = _ws(fresh.user["id"])
+    answers = {q: "written" for q in svc.JOURNAL_KEYS}
+    fresh.post("/api/journal", json={"answers": answers})
+
+    with SessionLocal() as s:
+        habit = s.scalar(select(db.Habit).where(
+            db.Habit.workspace_id == ws, db.Habit.system_key == "journal"))
+        habit_id = habit.id
+        logs_before = s.scalar(select(func.count(db.HabitLog.id)).where(
+            db.HabitLog.habit_id == habit_id))
+
+    # Put the workspace back into the post-0001 state. Archived directly
+    # rather than by calling 0001, which is now a no-op precisely so that it
+    # cannot undo 0006 on a replay.
+    with SessionLocal() as s:
+        s.get(db.Habit, habit_id).archived_at = db.utcnow()
+        s.commit()
+        assert s.get(db.Habit, habit_id).archived_at is not None
+    assert not any(h["system_key"] == "journal"
+                   for h in fresh.get("/api/habits").json()["habits"])
+
+    result = migrations.m0006_restore_journal_habit()
+    assert result["unarchived"] >= 1
+
+    with SessionLocal() as s:
+        row = s.get(db.Habit, habit_id)
+        assert row.archived_at is None
+        assert row.name == "Kundalik" and row.is_protected is True
+        # The same habit row, so every log it had is still attached to it.
+        assert s.scalar(select(func.count(db.HabitLog.id)).where(
+            db.HabitLog.habit_id == habit_id)) >= logs_before
+
+
+def test_migration_0006_is_safe_to_run_twice(fresh):
+    migrations.m0006_restore_journal_habit()
+    again = migrations.m0006_restore_journal_habit()
+    assert again["unarchived"] == 0 and again["created"] == 0
+
+
+# ==========================================================================
+# UTC timestamps vs local days
+# ==========================================================================
+
+def test_a_local_day_maps_to_the_right_utc_window():
+    """Asia/Tashkent is UTC+5, so its day starts at 19:00 UTC the day before."""
+    start, end = svc.utc_window(date(2026, 8, 12), tz=svc.TZ)
+    assert start == datetime(2026, 8, 11, 19, 0)
+    assert end == datetime(2026, 8, 12, 19, 0)
+
+
+def test_a_utc_timestamp_reads_back_as_the_local_day_it_happened_on():
+    # 21:00 in Tashkent on the 12th is 16:00 UTC on the 12th.
+    assert svc.local_date_of(datetime(2026, 8, 12, 16, 0), svc.TZ) == date(2026, 8, 12)
+    # 01:00 in Tashkent on the 13th is 20:00 UTC on the 12th — still the 13th
+    # as far as the user is concerned.
+    assert svc.local_date_of(datetime(2026, 8, 12, 20, 0), svc.TZ) == date(2026, 8, 13)
+    assert svc.local_date_of(None, svc.TZ) is None
+
+
+def test_a_task_finished_late_in_the_evening_is_filed_under_today(fresh):
+    """The bug this guards: `completed_at` is UTC and the bucket is a local
+    date, so between 19:00 and midnight in Tashkent everything completed today
+    was filed under "earlier" — the Done archive looked empty all evening.
+    """
+    task_id = fresh.post("/api/tasks", json={"title": "Late night"}).json()["id"]
+    fresh.patch(f"/api/tasks/{task_id}", json={"status": "done"})
+
+    ws = _ws(fresh.user["id"])
+    today = svc.today_local()
+    with SessionLocal() as s:
+        # 23:30 local, whatever that is in UTC.
+        local_late = datetime.combine(today, dtime(23, 30)).replace(tzinfo=svc.TZ)
+        s.get(db.Task, task_id).completed_at = \
+            local_late.astimezone(timezone.utc).replace(tzinfo=None)
+        s.commit()
+        groups = svc.completed_tasks(s, ws, tz=svc.TZ)
+
+    assert task_id in [x["id"] for x in groups["today"]]
+    assert task_id not in [x["id"] for x in groups["earlier"]]
+
+
+def test_migration_0001_can_no_longer_undo_0006(fresh):
+    """The two used to fight: 0001 archived the journal habit and 0006 brought
+    it back, so replaying the chain left the outcome depending on order."""
+    migrations.m0006_restore_journal_habit()
+    result = migrations.m0001_retire_summary_habit()
+    assert result["archived"] == 0
+    assert any(h["system_key"] == "journal"
+               for h in fresh.get("/api/habits").json()["habits"])
+
+
+def test_the_whole_migration_chain_is_idempotent(fresh):
+    """Running every migration twice must change nothing the second time."""
+    migrations.run()
+    second = {r["migration"]: r for r in migrations.run()}
+    assert second["0004_recompute_prayer_completion"]["habit_logs_changed"] == 0
+    assert second["0005_rename_themes"]["total"] == 0
+    assert second["0006_restore_journal_habit"]["unarchived"] == 0
+    assert second["0006_restore_journal_habit"]["created"] == 0
+    assert second["0007_redesign_themes"]["total"] == 0

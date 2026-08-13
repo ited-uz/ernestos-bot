@@ -90,11 +90,10 @@ T: dict[str, dict[str, str]] = {
         "pick_lang_multi": ("ErnestOS\n\n🇺🇿 Tilni tanlang\n"
                             "🇬🇧 Choose your language\n🇷🇺 Выберите язык"),
         "hello_named": "Assalomu alaykum, {name}!",
-        "phone_why": ("Telefon raqamingizni ulashing.\n\n"
-                      "Telegram akkauntingizni yo'qotsangiz yoki qurilmani "
-                      "almashtirsangiz, raqam orqali ma'lumotlaringizni "
-                      "tiklab beramiz. Raqam faqat shu uchun ishlatiladi va "
-                      "hech kimga ko'rsatilmaydi."),
+        "phone_why": ("📱 Telefon raqamingizni ulashing.\n\n"
+                      "Agar accountingiz yo'qolib qolsa, ma'lumotlaringizni "
+                      "shu raqam orqali tiklab beramiz.\n\n"
+                      "Pastdagi tugmani bosing."),
         "welcome_in": "Xush kelibsiz, {name}! ErnestOS ishga tushdi.",
         "remind_task": "⏰ {title}",
         "remind_task_at": "⏰ {title} — {time}",
@@ -104,7 +103,7 @@ T: dict[str, dict[str, str]] = {
         "menu_wake": "☀️ Turdim",
         "wake_ok": "Xayrli tong! Turdingiz ✓ ({now})",
         "wake_ok_at": "✓ {now} da turdingiz",
-        "wake_late_soft": "{now} — bugungi targetdan kechroq ({target})",
+        "wake_late_soft": "{now} 😴 Quyosh sizdan {target} da xafa bo'lib ketdi. Ertaga o'zib ketamiz!",
         "wake_late": "Kech bo'ldi — {deadline} gacha yozish kerak edi. Bugun hisoblanmadi.",
         "wake_time_btn": "⏰ Uyg'onish vaqti",
         "ask_wake_time": "Soatni yozing (masalan 05:00):",
@@ -159,8 +158,12 @@ T: dict[str, dict[str, str]] = {
         "now_prayer": "Namozni kiriting",
         "now_journal": "Kun yakuni",
         "now_clear": "Bugungi muhim ishlar tugadi",
-        "privacy_line": "🔒 Ma'lumotlaringiz boshqa foydalanuvchilardan alohida saqlanadi",
+        "privacy_line": "🔒 Ma'lumotlaringiz to'liq himoya qilingan.",
         "stats_title": "📊 Statistika",
+        "st_today": "📅 Bugun",
+        "st_week": "📆 Oxirgi 7 kun",
+        "st_month": "🗓 Oxirgi 30 kun",
+        "tasks_undated": "📥 Muddatsiz",
         "st_overall": "Umumiy", "st_tasks": "Vazifalar", "st_habits": "Odatlar",
         "st_prayer": "Namoz", "st_streak": "Ketma-ket",
         "home_habits": "✅ Odatlar", "home_tasks": "⚡ Bugungi vazifalar",
@@ -211,11 +214,22 @@ T: dict[str, dict[str, str]] = {
         "open_app": "Mini App'da to'liq ko'rish:",
         "morning_title": "🌅 Bugun — {date}",
         "yesterday_title": "🌙 Kechagi kun — {date}",
-        "evening_title": "🌙 21:00 ErnestOS hisoboti",
+        "evening_title": "🌙 Kun yakuni",
         "r_habits": "✅ Odatlar", "r_prayer": "🕌 Namoz", "r_tasks": "⚡ Vazifalar",
         "r_completed": "bajarildi", "r_remaining": "qoldi",
         "r_journal": "📓 Kundalik", "r_yes": "yozilgan", "r_no": "yozilmagan",
         "r_unfinished": "❗ Tugallanmagan:",
+        "r_yesterday": "Kecha",
+        "r_mission": "Haftaning asosiy maqsadi",
+        "r_today_plan": "Bugun rejadagi ishlar",
+        "r_overdue_hint": "Ularni bugunga ko'chirish 10 sekund oladi — Vazifalar bo'limida.",
+        "r_start_now": "Eng kichigidan boshlang. Birinchi ishni tanlang va 25 daqiqa bering.",
+        "coach_high": "Kecha {pct}% — bu tasodif emas, tizim ishlayapti. Bugun ham shu darajani ushlab turing.",
+        "coach_mid": "Kecha {pct}%. Yarmi bajarildi, ya'ni qiyin qismi allaqachon ortda. Bugun bittasini ko'proq yopsangiz — yetadi.",
+        "coach_low": "Kecha {pct}%. Bu kun haqida, siz haqingizda emas. Bugun faqat bitta ishni tanlang va uni tugatib qo'ying — qolgani o'zi ketadi.",
+        "coach_blank": "Kecha hech narsa belgilanmagan. Muhim emas — bugun bitta ish va bitta odat yetarli. Boshlash uchun ko'p narsa kerak emas.",
+        "r_evening_close": "Ertaga bulardan bittasini birinchi qilib yoping.",
+        "r_evening_clear": "✅ Hammasi yopildi. Shu holatni ushlab turing — dam olishga haqlisiz.",
         "r_focus": "🎯 Haftalik maqsadlar",
         "days_short": "kun",
     },
@@ -223,10 +237,9 @@ T: dict[str, dict[str, str]] = {
         "pick_lang_multi": ("ErnestOS\n\n🇺🇿 Tilni tanlang\n"
                             "🇬🇧 Choose your language\n🇷🇺 Выберите язык"),
         "hello_named": "Hello, {name}!",
-        "phone_why": ("Please share your phone number.\n\n"
-                      "If you ever lose your Telegram account or change phones, "
-                      "we use the number to restore your data. It is used for "
-                      "nothing else and is never shown to anyone."),
+        "phone_why": ("📱 Please share your phone number.\n\n"
+                      "If you ever lose your account, this is how we restore "
+                      "your data.\n\nTap the button below."),
         "welcome_in": "Welcome, {name}! ErnestOS is running.",
         "remind_task": "⏰ {title}",
         "remind_task_at": "⏰ {title} — {time}",
@@ -236,7 +249,7 @@ T: dict[str, dict[str, str]] = {
         "menu_wake": "☀️ I'm up",
         "wake_ok": "Good morning! You are up ✓ ({now})",
         "wake_ok_at": "✓ up at {now}",
-        "wake_late_soft": "{now} — later than today's target ({target})",
+        "wake_late_soft": "{now} 😴 The sun gave up waiting at {target}. Tomorrow we beat it!",
         "wake_late": "Too late — the cut-off was {deadline}. It does not count today.",
         "wake_time_btn": "⏰ Wake-up time",
         "ask_wake_time": "Enter the time (e.g. 05:00):",
@@ -291,8 +304,12 @@ T: dict[str, dict[str, str]] = {
         "now_prayer": "Log your prayers",
         "now_journal": "Close the day",
         "now_clear": "Today's important work is done",
-        "privacy_line": "🔒 Your data is stored separately from every other user",
+        "privacy_line": "🔒 Your data is fully protected.",
         "stats_title": "📊 Statistics",
+        "st_today": "📅 Today",
+        "st_week": "📆 Last 7 days",
+        "st_month": "🗓 Last 30 days",
+        "tasks_undated": "📥 No deadline",
         "st_overall": "Overall", "st_tasks": "Tasks", "st_habits": "Habits",
         "st_prayer": "Prayer", "st_streak": "Streak",
         "home_habits": "✅ Habits", "home_tasks": "⚡ Today's tasks",
@@ -343,11 +360,22 @@ T: dict[str, dict[str, str]] = {
         "open_app": "See everything in the Mini App:",
         "morning_title": "🌅 Today — {date}",
         "yesterday_title": "🌙 Yesterday — {date}",
-        "evening_title": "🌙 21:00 ErnestOS report",
+        "evening_title": "🌙 End of day",
         "r_habits": "✅ Habits", "r_prayer": "🕌 Prayer", "r_tasks": "⚡ Tasks",
         "r_completed": "completed", "r_remaining": "remaining",
         "r_journal": "📓 Journal", "r_yes": "written", "r_no": "not written",
         "r_unfinished": "❗ Still unfinished:",
+        "r_yesterday": "Yesterday",
+        "r_mission": "This week's mission",
+        "r_today_plan": "On today's plan",
+        "r_overdue_hint": "Moving them to today takes ten seconds — see Tasks.",
+        "r_start_now": "Start with the smallest one. Pick the first task and give it 25 minutes.",
+        "coach_high": "Yesterday {pct}% — that is not luck, that is the system working. Hold the same line today.",
+        "coach_mid": "Yesterday {pct}%. Half of it is done, which means the hard part is already behind you. One more today is enough.",
+        "coach_low": "Yesterday {pct}%. That is a fact about the day, not about you. Today pick one task and finish it — the rest follows.",
+        "coach_blank": "Nothing was logged yesterday. That is fine — one task and one habit today is enough. Starting does not require much.",
+        "r_evening_close": "Tomorrow, close one of these first.",
+        "r_evening_clear": "✅ Everything is closed. Hold this — you have earned the rest.",
         "r_focus": "🎯 Weekly missions",
         "days_short": "days",
     },
@@ -355,10 +383,9 @@ T: dict[str, dict[str, str]] = {
         "pick_lang_multi": ("ErnestOS\n\n🇺🇿 Tilni tanlang\n"
                             "🇬🇧 Choose your language\n🇷🇺 Выберите язык"),
         "hello_named": "Здравствуйте, {name}!",
-        "phone_why": ("Поделитесь номером телефона.\n\n"
-                      "Если вы потеряете аккаунт Telegram или смените телефон, "
-                      "мы восстановим ваши данные по номеру. Он используется "
-                      "только для этого и никому не показывается."),
+        "phone_why": ("📱 Поделитесь номером телефона.\n\n"
+                      "Если вы потеряете аккаунт, мы восстановим ваши данные "
+                      "по этому номеру.\n\nНажмите кнопку ниже."),
         "welcome_in": "Добро пожаловать, {name}! ErnestOS запущен.",
         "remind_task": "⏰ {title}",
         "remind_task_at": "⏰ {title} — {time}",
@@ -368,7 +395,7 @@ T: dict[str, dict[str, str]] = {
         "menu_wake": "☀️ Я встал",
         "wake_ok": "Доброе утро! Вы встали ✓ ({now})",
         "wake_ok_at": "✓ встали в {now}",
-        "wake_late_soft": "{now} — позже сегодняшней цели ({target})",
+        "wake_late_soft": "{now} 😴 Солнце ждало вас до {target} и обиделось. Завтра обгоним!",
         "wake_late": "Поздно — крайний срок был {deadline}. Сегодня не засчитано.",
         "wake_time_btn": "⏰ Время подъёма",
         "ask_wake_time": "Введите время (например 05:00):",
@@ -423,8 +450,12 @@ T: dict[str, dict[str, str]] = {
         "now_prayer": "Отметьте намазы",
         "now_journal": "Итоги дня",
         "now_clear": "Важные дела на сегодня закрыты",
-        "privacy_line": "🔒 Ваши данные хранятся отдельно от других пользователей",
+        "privacy_line": "🔒 Ваши данные полностью защищены.",
         "stats_title": "📊 Статистика",
+        "st_today": "📅 Сегодня",
+        "st_week": "📆 Последние 7 дней",
+        "st_month": "🗓 Последние 30 дней",
+        "tasks_undated": "📥 Без срока",
         "st_overall": "Общий результат", "st_tasks": "Задачи",
         "st_habits": "Привычки", "st_prayer": "Намаз", "st_streak": "Серия",
         "home_habits": "✅ Привычки", "home_tasks": "⚡ Задачи на сегодня",
@@ -475,11 +506,22 @@ T: dict[str, dict[str, str]] = {
         "open_app": "Полностью — в Mini App:",
         "morning_title": "🌅 Сегодня — {date}",
         "yesterday_title": "🌙 Вчера — {date}",
-        "evening_title": "🌙 21:00 отчёт ErnestOS",
+        "evening_title": "🌙 Итоги дня",
         "r_habits": "✅ Привычки", "r_prayer": "🕌 Намаз", "r_tasks": "⚡ Задачи",
         "r_completed": "выполнено", "r_remaining": "осталось",
         "r_journal": "📓 Дневник", "r_yes": "заполнен", "r_no": "не заполнен",
         "r_unfinished": "❗ Не завершено:",
+        "r_yesterday": "Вчера",
+        "r_mission": "Главная цель недели",
+        "r_today_plan": "В плане на сегодня",
+        "r_overdue_hint": "Перенести их на сегодня — десять секунд, в разделе Задачи.",
+        "r_start_now": "Начните с самого маленького. Выберите первую задачу и дайте ей 25 минут.",
+        "coach_high": "Вчера {pct}% — это не случайность, это работает система. Удержите тот же уровень сегодня.",
+        "coach_mid": "Вчера {pct}%. Половина сделана, значит трудная часть уже позади. Сегодня достаточно закрыть на одну больше.",
+        "coach_low": "Вчера {pct}%. Это факт о дне, а не о вас. Сегодня выберите одну задачу и доведите её до конца — остальное подтянется.",
+        "coach_blank": "Вчера ничего не отмечено. Это нормально — сегодня хватит одной задачи и одной привычки. Чтобы начать, много не нужно.",
+        "r_evening_close": "Завтра закройте одну из них первой.",
+        "r_evening_clear": "✅ Всё закрыто. Удержите это — отдых заслужен.",
         "r_focus": "🎯 Цели недели",
         "days_short": "дн.",
     },
@@ -682,14 +724,18 @@ async def guard(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> tuple[User, i
 # ---------------------------------------------------------------------------
 
 def main_menu(lang: str) -> ReplyKeyboardMarkup:
-    """The seven entries of the persistent menu, in a fixed order.
+    """The persistent menu, in a fixed order.
 
     Home, Habits, Tasks and Statistics are the four screens the Mini App also
-    has, so a feature found in one surface is findable in the other. "Turdim"
-    is not among them: it is a once-a-day action, not a destination, and it
-    still works as a typed message and from the Habits screen.
+    has, so a feature found in one surface is findable in the other.
+
+    "Turdim" sits at the top on its own row. It is the first thing a person
+    touches in the morning and the one action that expires — telling someone to
+    type it, or to go two screens in to find it, is how a wake-up habit stops
+    being recorded.
     """
     rows = [
+        [t(lang, "menu_wake")],
         [t(lang, "menu_home"), t(lang, "menu_habits")],
         [t(lang, "menu_tasks"), t(lang, "menu_stats")],
         [t(lang, "menu_settings"), t(lang, "menu_feedback")],
@@ -751,15 +797,16 @@ ONBOARDING_STEPS = ["language", "phone", "subscribe", "done"]
 
 
 def phone_keyboard(lang: str) -> ReplyKeyboardMarkup:
-    """Share-contact and Skip, side by side.
+    """One button: share the contact.
 
     Telegram will only hand over a number through its own contact button, so
-    this has to be a reply keyboard rather than an inline one.
+    this has to be a reply keyboard rather than an inline one. There is no Skip:
+    the number is what account recovery is keyed on, and an account that cannot
+    be recovered is the one support problem with no answer.
     """
     return ReplyKeyboardMarkup(
-        [[KeyboardButton(t(lang, "btn_phone"), request_contact=True)],
-         [KeyboardButton(t(lang, "btn_skip"))]],
-        resize_keyboard=True, one_time_keyboard=True)
+        [[KeyboardButton(t(lang, "btn_phone"), request_contact=True)]],
+        resize_keyboard=True, one_time_keyboard=False)
 
 
 async def resume_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
@@ -924,54 +971,55 @@ def render_now(now: dict, lang: str) -> str:
 
 
 def render_home(data: dict, lang: str) -> str:
-    """Home in one screenful: what now, today's mission, today's work.
+    """Home in one screenful: the mission, today's work, today's numbers.
 
-    The first thing under the date is a single action, because that is the
-    question someone opens the app with at 6am. Everything that used to sit here
-    — goals, projects, birthdays, the overdue wall — answered a question they
-    were not asking; those live on their own screens.
+    Deliberately short. Everything that used to sit here — goals, projects,
+    birthdays, the overdue wall — answered a question the user was not asking at
+    6am, and each line of it pushed the answer further down the message.
     """
     name = (data.get("name") or "").strip()
     title = t(lang, "home_title", name=esc(name)) if name \
         else t(lang, "home_title_plain")
     lines = [f"<b>{title}</b>", f"📅 {data['date_label']}"]
 
-    now = data.get("now")
-    if now:
-        lines.append(f"\n<b>{t(lang, 'home_now')}</b>")
-        lines.append(render_now(now, lang))
-
     mission = data.get("mission")
     lines.append(f"\n<b>{t(lang, 'home_mission')}</b>")
     lines.append(esc(mission["title"]) if mission else t(lang, "none"))
 
-    top3 = data.get("top3") or []
-    if top3:
-        lines.append(f"\n<b>{t(lang, 'home_top3')}</b>")
-        for task in top3:
-            mark = "✅" if task["status"] == "done" else "▫️"
-            lines.append(f"{mark} {esc(task['title'])}")
-
     lines.append(f"\n<b>{t(lang, 'home_today')}</b>")
     rows = [task for group in data["tasks_today"] for task in group["tasks"]]
     if rows:
-        for task in rows[:6]:
+        for task in rows[:8]:
             when = f" · {task['due_time']}" if task.get("due_time") else ""
             lines.append(f"— {esc(task['title'])}{when}")
-    elif not top3:
+    else:
         lines.append(t(lang, "none"))
 
+    # One status line: habits, prayers, streak. Then the one number.
     habits, prayer, overall = data["habits"], data["prayer"], data["overall"]
-    lines.append(f"\n✅ 🕌 🔥 {habits['done']}/{habits['total']} · "
-                 f"{prayer['performed']}/{prayer['required']} · {data['streak']}")
+    lines.append(f"\n✅  {habits['done']}/{habits['total']} ·"
+                 f"🕌 {prayer['performed']}/{prayer['required']} · 🔥{data['streak']}")
     lines.append(f"📊 {TREND_MARK.get(overall['trend'], '▪️')} {overall['value']}%")
 
     lines.append(f"\n{t(lang, 'privacy_line')}")
     return "\n".join(lines)
 
 
+def _bar(percent: int, width: int = 10) -> str:
+    """A ten-cell text bar. Two numbers side by side are hard to compare at a
+    glance in a chat message; two bars are not."""
+    filled = max(0, min(width, round((percent or 0) / 100 * width)))
+    return "▰" * filled + "▱" * (width - filled)
+
+
 def render_stats(data: dict, lang: str) -> str:
-    """The four percentages, from the same backend numbers Home shows."""
+    """Today, this week and this month, side by side and comparable.
+
+    A single percentage says nothing on its own. The point of this screen is the
+    comparison: whether today is better than the week, and the week better than
+    the month. Each row therefore carries its own overall number, and the three
+    are printed in the same units so the eye can do the arithmetic.
+    """
     today = data["today"]
     dash = "—"
 
@@ -980,21 +1028,40 @@ def render_stats(data: dict, lang: str) -> str:
         # would claim the user failed at something they were never asked to do.
         return f"{value}%" if value is not None else dash
 
-    lines = [
-        f"<b>{t(lang, 'stats_title')}</b>",
-        "",
-        f"<b>{t(lang, 'st_overall')}: {today['overall']}% "
-        f"{TREND_MARK.get(today['trend'], '▪️')}</b>",
-        f"{t(lang, 'st_tasks')}: {pct(today['tasks'])}",
-        f"{t(lang, 'st_habits')}: {pct(today['habits'])}",
-        f"{t(lang, 'st_prayer')}: {pct(today['prayer'])} "
-        f"({today['prayer_score']}/{today['prayer_max']})",
-        "",
-        f"🔥 {t(lang, 'st_streak')}: {today['streak']}",
-        "",
-        t(lang, "privacy_line"),
-    ]
+    lines = [f"<b>{t(lang, 'stats_title')}</b>", ""]
+
+    # Today, in full: the overall number and what it is made of.
+    lines.append(f"<b>{t(lang, 'st_today')}</b>")
+    lines.append(f"{_bar(today['overall'])}  <b>{today['overall']}%</b> "
+                 f"{TREND_MARK.get(today['trend'], '▪️')}")
+    lines.append(f"{t(lang, 'st_tasks')}: {pct(today['tasks'])} · "
+                 f"{t(lang, 'st_habits')}: {pct(today['habits'])} · "
+                 f"{t(lang, 'st_prayer')}: {today['prayer_performed']}/"
+                 f"{today['prayer_required']}")
+
+    # Then the two longer windows, each with its own overall.
+    for key, label in (("week", "st_week"), ("month", "st_month")):
+        window = data["windows"][key]
+        lines.append("")
+        lines.append(f"<b>{t(lang, label)}</b>")
+        lines.append(f"{_bar(window['overall'])}  <b>{window['overall']}%</b> "
+                     f"{_delta(window['delta'])}")
+        lines.append(f"{t(lang, 'st_tasks')}: {window['tasks']}% · "
+                     f"{t(lang, 'st_habits')}: {window['habits']}% · "
+                     f"{t(lang, 'st_prayer')}: {window['prayer']}%")
+
+    lines.append("")
+    lines.append(f"🔥 {t(lang, 'st_streak')}: {today['streak']}")
+    lines.append("")
+    lines.append(t(lang, "privacy_line"))
     return "\n".join(lines)
+
+
+def _delta(value: int) -> str:
+    """A signed change against the previous window of the same length."""
+    if not value:
+        return "▪️"
+    return f"{'🔺' if value > 0 else '🔻'}{abs(value)}%"
 
 
 async def show_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1003,7 +1070,7 @@ async def show_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         return
     user, ws = got
     with SessionLocal() as s:
-        data = svc.stats(s, ws, "week")
+        data = svc.summary(s, ws, gender=user.gender, tz=svc.user_tz(user))
     message = update.effective_message
     if message:
         await message.reply_text(render_stats(data, user.language),
@@ -1134,32 +1201,87 @@ async def show_habits(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 # Tasks
 # ---------------------------------------------------------------------------
 
+#: Priority as a colour, first thing on the line, so the eye sorts the list
+#: before it starts reading it.
+PRIORITY_MARK = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+
+
+def short_date(iso: str | None, lang: str) -> str:
+    """`12-avgust` — the way a person says a date, not `2026-08-12`.
+
+    An ISO string in a chat message is four numbers the reader has to parse. The
+    year is dropped: everything on this screen is inside the next week.
+    """
+    if not iso:
+        return ""
+    try:
+        day = date.fromisoformat(iso)
+    except ValueError:
+        return iso
+    month = svc.MONTHS.get(lang, svc.MONTHS["uz"])[day.month - 1]
+    if lang == "en":
+        return f"{month} {day.day}"
+    return f"{day.day}-{month}"
+
+
+def _task_lines(tasks: list[dict], lang: str, start: int = 1) -> list[str]:
+    """Numbered rows: colour, number, title, then the details underneath."""
+    lines = []
+    for number, task in enumerate(tasks, start=start):
+        mark = PRIORITY_MARK.get(task["priority"], "▫️")
+        lines.append(f"{mark} <b>{number}.</b> {esc(task['title'])}")
+        meta = []
+        if task.get("deadline"):
+            meta.append(short_date(task["deadline"], lang))
+        if task.get("due_time"):
+            meta.append(task["due_time"])
+        if task.get("recurrence"):
+            meta.append("🔁")
+        if meta:
+            lines.append(f"     └ {' · '.join(meta)}")
+    return lines
+
+
 def render_tasks(data: dict, lang: str) -> str:
-    marks = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+    """The next seven days, grouped by project.
+
+    The old version printed every task as two dense lines with a folder icon and
+    an ISO date, and thirty of those is a wall nobody reads. Grouping by project
+    removes the repeated folder name, numbering gives the eye somewhere to land,
+    and the colour comes first so the list is sorted before it is read.
+    """
     lines = []
 
     if data["overdue"]:
         lines.append(f"<b>{t(lang, 'tasks_overdue')}</b>")
-        for task in data["overdue"]:
-            project = esc(task["project"]) if task["project"] else t(lang, "standalone")
-            lines.append(f"{marks.get(task['priority'], '▫️')} {esc(task['title'])}\n"
-                         f"   📁 {project} · 📅 {task['deadline']}")
+        lines += _task_lines(data["overdue"], lang)
         lines.append("")
 
     lines.append(f"<b>{t(lang, 'tasks_title')}</b>")
-    upcoming = data["upcoming"]
-    if upcoming:
-        for task in upcoming:
-            project = esc(task["project"]) if task["project"] else t(lang, "standalone")
-            lines.append(f"{marks.get(task['priority'], '▫️')} {esc(task['title'])}\n"
-                         f"   📁 {project} · 📅 {task['deadline']}")
+
+    # Group the coming week under the project each task belongs to.
+    groups: dict[str | None, list[dict]] = {}
+    for task in data["upcoming"]:
+        groups.setdefault(task["project"], []).append(task)
+
+    if groups:
+        named = sorted((k for k in groups if k), key=lambda x: x.lower())
+        for project in named:
+            lines.append("")
+            lines.append(f"📁 <b>{esc(project)}</b>")
+            lines += _task_lines(groups[project], lang)
+        if None in groups:
+            lines.append("")
+            # The label already carries its own icon.
+            lines.append(f"<b>{t(lang, 'standalone')}</b>")
+            lines += _task_lines(groups[None], lang)
     else:
         lines.append(t(lang, "none"))
 
     if data["undated"]:
         lines.append("")
-        for task in data["undated"][:5]:
-            lines.append(f"▫️ {task['title']}")
+        lines.append(f"<b>{t(lang, 'tasks_undated')}</b>")
+        lines += _task_lines(data["undated"][:6], lang)
 
     return "\n".join(lines)
 
@@ -1287,21 +1409,21 @@ async def show_project(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 # Settings
 # ---------------------------------------------------------------------------
 
-#: Five themes, in the Mini App picker's order. Each is a distinct visual
-#: system — its own radius, shadow, gradient use, density and typography scale,
-#: not the same screen in a different hue:
+#: Five themes, in the Mini App picker's order. Each is a complete visual
+#: system — its own colour, radius, shadow depth, gradient policy, type weight
+#: and motion timing — not the same screen in a different hue:
 #:
-#:   ocean     royal blue on neutral, restrained. The default.
-#:   pure      paper white, charcoal text, hairlines, no gradients.
-#:   midnight  graphite and near-black with one electric accent.
-#:   sage      warm white and muted green, soft edges, low contrast.
-#:   aurora    dark neutral with a controlled violet-to-rose gradient.
+#:   calm    Balanced & minimal. Light, blue, deliberate. The default.
+#:   titan   Strong & premium. Obsidian, steel, high contrast.
+#:   muse    Elegant & warm. Ivory, dusty rose, softest geometry.
+#:   rage    Focus & performance. Carbon black, red as emphasis only.
+#:   nexus   Futuristic & intelligent. Deep ink, indigo to cyan.
 #:
-#: Names that shipped before them are mapped forward by migration 0005; a row
-#: still holding an unknown value reads as the default rather than being
-#: rejected, so no account can end up with no theme at all.
-THEMES = ["ocean", "pure", "midnight", "sage", "aurora"]
-DEFAULT_THEME = "ocean"
+#: Every earlier name is mapped forward by migration 0007; an unknown value
+#: reads as the default rather than being rejected, so no account can end up
+#: with no theme at all.
+THEMES = ["calm", "titan", "muse", "rage", "nexus"]
+DEFAULT_THEME = "calm"
 
 
 def theme_of(name: str | None) -> str:
@@ -1360,19 +1482,10 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         step = user.onboarding_step
 
     if not onboarded:
-        # The only typed answer onboarding accepts is Skip, on the phone step.
-        # Anything else is re-prompted rather than silently swallowed, so a user
-        # who types "hello" is not left staring at nothing.
-        if step == "phone":
-            if text in {t(code, "btn_skip") for code in ("uz", "en", "ru")}:
-                with SessionLocal() as s:
-                    row = s.get(User, tg_user.id)
-                    row.onboarding_step = "subscribe"
-                    s.commit()
-                await message.reply_text(t(lang, "phone_skipped"),
-                                         reply_markup=ReplyKeyboardRemove())
-                await resume_onboarding(update, ctx, "subscribe")
-                return
+        # Onboarding accepts no typed answers: the phone step needs Telegram's
+        # own contact button, and a typed number cannot be verified as the
+        # sender's. Anything typed re-prompts rather than being swallowed, so a
+        # user who types "salom" is never left staring at nothing.
         await resume_onboarding(update, ctx, step)
         return
 
@@ -1988,60 +2101,115 @@ async def on_error(update: object, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 # Scheduled reports
 # ---------------------------------------------------------------------------
 
-def render_morning(data: dict, lang: str) -> str:
-    y, today = data["yesterday"], data["today"]
-    lines = [f"<b>{t(lang, 'yesterday_title', date=y['date'])}</b>",
-             f"{t(lang, 'r_habits')}: {y['habits_done']}/{y['habits_total']}",
-             f"{t(lang, 'r_prayer')}: {y['prayer_score']}/5",
-             f"{t(lang, 'r_tasks')}: {y['tasks_completed']} {t(lang, 'r_completed')}"]
-    if y["tasks_missed"]:
-        lines.append(f"❌ {y['tasks_missed']} {t(lang, 'r_remaining')}")
-    lines.append(f"{t(lang, 'r_journal')}: "
-                 f"{t(lang, 'r_yes') if y['journal'] else t(lang, 'r_no')}")
+#: Yesterday's score decides which of four things is worth saying this morning.
+#: Bands, not randomness: the same day always gets the same message, so the bot
+#: never sounds like it is generating encouragement at you. Each one names a
+#: fact and then asks for one concrete thing — that is the part that moves
+#: someone out of bed, not an exclamation mark.
+def morning_note(lang: str, overall: int, measured: bool) -> str:
+    if not measured:
+        return t(lang, "coach_blank")
+    if overall >= 80:
+        return t(lang, "coach_high", pct=overall)
+    if overall >= 50:
+        return t(lang, "coach_mid", pct=overall)
+    return t(lang, "coach_low", pct=overall)
 
-    lines.append(f"\n<b>{t(lang, 'morning_title', date=today['date'])}</b>")
+
+def render_morning(data: dict, lang: str) -> str:
+    """04:00 — yesterday in one number, then today in one decision.
+
+    Order matters: the number is small and factual, the ask is concrete and
+    immediate. A report that opens with a list of yesterday's failures gets
+    closed before the plan is read.
+    """
+    y, today = data["yesterday"], data["today"]
+
+    lines = [f"<b>{t(lang, 'morning_title', date=short_date(today['date'], lang))}</b>",
+             ""]
+
+    # Yesterday: one line, one percentage, no autopsy.
+    lines.append(f"{t(lang, 'r_yesterday')}: <b>{y['overall']}%</b>  "
+                 f"{_bar(y['overall'], 8)}")
+    lines.append(f"<i>{t(lang, 'r_habits')} {y['habits_done']}/{y['habits_total']} · "
+                 f"{t(lang, 'r_prayer')} {y['prayer_performed']}/{y['prayer_required']} · "
+                 f"{t(lang, 'r_tasks')} {y['tasks_completed']}</i>")
+    lines.append("")
+    lines.append(morning_note(lang, y["overall"], y["measured"]))
+
+    # Today: the mission first, because it is the one decision already made.
+    focus = today["focus"]
+    primary = next((f for f in focus if f["slot"] == 1), focus[0] if focus else None)
+    if primary:
+        lines.append("")
+        lines.append(f"🎯 <b>{t(lang, 'r_mission')}</b>")
+        lines.append(esc(primary["title"]))
 
     if today["tasks"]:
-        lines.append(f"\n{t(lang, 'r_tasks')}")
-        for task in today["tasks"][:8]:
-            lines.append(f"• {esc(task['title'])}")
+        lines.append("")
+        lines.append(f"⚡ <b>{t(lang, 'r_today_plan')}</b>")
+        lines += _task_lines(today["tasks"][:6], lang)
     if today["overdue"]:
-        lines.append(f"\n{t(lang, 'home_overdue')}")
-        for task in today["overdue"][:5]:
-            lines.append(f"• {esc(task['title'])} ({task['deadline']})")
-    if today["focus"]:
-        lines.append(f"\n{t(lang, 'r_focus')}")
-        for i, f in enumerate(today["focus"], start=1):
-            lines.append(f"{i}. {'✅ ' if f['done'] else ''}{esc(f['title'])}")
+        lines.append("")
+        lines.append(f"{t(lang, 'home_overdue')}: {len(today['overdue'])}")
+        lines.append(f"<i>{t(lang, 'r_overdue_hint')}</i>")
     if today["birthdays"]:
-        lines.append(f"\n{t(lang, 'home_bday')}")
+        lines.append("")
         for b in today["birthdays"]:
-            when = "🎉" if b["days_left"] == 0 else f"{b['days_left']} {t(lang, 'days_short')}"
-            lines.append(f"• {esc(b['person_name'])} — {when}")
+            when = "🎉" if b["days_left"] == 0 \
+                else f"{b['days_left']} {t(lang, 'days_short')}"
+            lines.append(f"🎂 {esc(b['person_name'])} — {when}")
 
+    lines.append("")
+    lines.append(t(lang, "r_start_now"))
     return "\n".join(lines)
 
 
 def render_evening(data: dict, lang: str) -> str:
-    overall = data["overall"]
-    lines = [f"<b>{t(lang, 'evening_title')}</b>",
-             f"📊 {t(lang, 'st_overall')}: {overall['value']}% "
-             f"{TREND_MARK.get(overall['trend'], '▪️')}",
-             f"{t(lang, 'r_habits')}: {data['habits_done']}/{data['habits_total']}",
-             f"{t(lang, 'r_prayer')}: {data['prayer_score']}/5",
-             f"{t(lang, 'r_tasks')}: {data['tasks_completed']} {t(lang, 'r_completed')}, "
-             f"{len(data['tasks_remaining'])} {t(lang, 'r_remaining')}"]
+    """21:30 — the day's statistics, closed out.
 
-    if data["focus"]:
-        lines.append(f"{t(lang, 'r_focus')}: {data['focus_done']}/{len(data['focus'])}")
+    The whole day as one number with its parts drawn as bars, then what is still
+    open. Listed at the end rather than the start: at half past nine the useful
+    framing is "here is where the day landed", not a fresh to-do list.
+    """
+    overall = data["overall"]
+    lines = [f"<b>{t(lang, 'evening_title')}</b>", ""]
+
+    lines.append(f"📊 <b>{overall['value']}%</b> "
+                 f"{TREND_MARK.get(overall['trend'], '▪️')}  {_bar(overall['value'])}")
+    lines.append("")
+
+    def row(label: str, done, total, percent) -> str:
+        return (f"{label}  {_bar(percent if percent is not None else 0, 6)}  "
+                f"{done}/{total}")
+
+    components = overall.get("components", {})
+    lines.append(row(t(lang, "r_habits"), data["habits_done"],
+                     data["habits_total"], components.get("habits")))
+    lines.append(row(t(lang, "r_prayer"), data["prayer_performed"],
+                     data["prayer_required"], components.get("prayer")))
+    lines.append(row(t(lang, "r_tasks"), data["tasks_completed"],
+                     data["tasks_completed"] + len(data["tasks_remaining"]),
+                     components.get("tasks")))
     lines.append(f"{t(lang, 'r_journal')}: "
                  f"{t(lang, 'r_yes') if data['journal'] else t(lang, 'r_no')}")
 
-    unfinished = data["tasks_remaining"] + data["tasks_overdue"] + data["habits_remaining"]
+    if data["focus"]:
+        lines.append(f"{t(lang, 'r_focus')}: "
+                     f"{data['focus_done']}/{len(data['focus'])}")
+
+    unfinished = (data["tasks_remaining"] + data["tasks_overdue"]
+                  + data["habits_remaining"])
     if unfinished:
-        lines.append(f"\n{t(lang, 'r_unfinished')}")
+        lines.append("")
+        lines.append(f"{t(lang, 'r_unfinished')}")
         for item in unfinished[:8]:
             lines.append(f"• {esc(item)}")
+        lines.append("")
+        lines.append(f"<i>{t(lang, 'r_evening_close')}</i>")
+    else:
+        lines.append("")
+        lines.append(t(lang, "r_evening_clear"))
 
     return "\n".join(lines)
 
@@ -3251,6 +3419,18 @@ def api_stats(period: str = "week", init=Header(default=None, alias="X-Telegram-
     with SessionLocal() as s:
         return svc.stats(s, ws, period, gender=user.gender,
                          tz=svc.user_tz(user))
+
+
+@app.get("/api/summary")
+def api_summary(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Today, the last 7 days and the last 30, in the same units.
+
+    What Home's percentage switch reads, and what the bot's Statistics message
+    is built from — one function, so the two can never disagree.
+    """
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        return svc.summary(s, ws, gender=user.gender, tz=svc.user_tz(user))
 
 
 @app.get("/api/overall")

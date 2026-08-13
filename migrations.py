@@ -33,26 +33,20 @@ log = logging.getLogger("ernestos.migrations")
 
 
 def m0001_retire_summary_habit() -> dict:
-    """Stop counting the journal as a habit (requirement 07).
+    """Superseded by `0006`. Kept as a no-op so the numbering stays honest.
 
-    Early workspaces were seeded with a seventh habit, `Summary`, driven by
-    journal completion. Journal completion is a status, so leaving it in the
-    habit list inflates both the denominator and the streak.
+    This migration used to archive the journal habit, on the reasoning that a
+    journal is a status rather than a habit. That product decision was reversed:
+    writing the day up is one of the non-negotiables again, and `0006` restores
+    the habit and backfills it from the journal entries.
 
-    The habit is archived rather than deleted: its HabitLog rows stay on disk,
-    JournalEntry history is untouched, and archiving is exactly what excludes
-    it from `habit_progress`, which counts only `archived_at IS NULL`.
+    It must not run any more. Left as a live step it would re-archive the habit
+    every time the chain was replayed, immediately undoing `0006` — the two
+    would fight, and which one won would depend on the order they happened to
+    be invoked in.
     """
-    archived = 0
-    with SessionLocal() as s:
-        rows = s.scalars(select(Habit).where(
-            Habit.system_key == "journal",
-            Habit.archived_at.is_(None))).all()
-        for habit in rows:
-            habit.archived_at = utcnow()
-            archived += 1
-        s.commit()
-    return {"migration": "0001_retire_summary_habit", "archived": archived}
+    return {"migration": "0001_retire_summary_habit",
+            "status": "superseded by 0006", "archived": 0}
 
 
 #: Where migration 0002 parks the goals table. Keeping the name in one place
@@ -290,12 +284,122 @@ def m0005_rename_themes() -> dict:
             "total": sum(moved.values())}
 
 
+def m0006_restore_journal_habit() -> dict:
+    """Bring the journal back as a non-negotiable habit, and backfill it.
+
+    This deliberately reverses migration `0001`. The reasoning there was that a
+    journal is a status rather than a habit, and that counting it inflated the
+    denominator. The product decision has changed: writing the day up *is* one
+    of the non-negotiables, and it completes only when all five questions are
+    answered — so it behaves exactly like the prayer habit, mirroring its module
+    instead of being tickable by hand.
+
+    For each workspace this un-archives the old habit if one exists (keeping
+    every log it already had), creates it if not, and then recomputes its logs
+    from the JournalEntry rows, which are never modified.
+    """
+    from sqlalchemy import func, select as sql_select
+
+    from db import Habit, JournalEntry, Workspace
+    import services as svc
+
+    restored = created = backfilled = 0
+
+    with SessionLocal() as s:
+        for ws_id in s.scalars(sql_select(Workspace.id)).all():
+            habit = s.scalar(sql_select(Habit).where(
+                Habit.workspace_id == ws_id,
+                Habit.system_key == svc.SYSTEM_JOURNAL))
+
+            if habit is None:
+                # Slot it in after the other non-negotiables rather than at the
+                # end, so the three derived habits stay together.
+                top = s.scalar(sql_select(func.max(Habit.position)).where(
+                    Habit.workspace_id == ws_id)) or 0
+                habit = Habit(workspace_id=ws_id, name="Kundalik",
+                              category="non_negotiable", position=top + 1,
+                              is_protected=True,
+                              system_key=svc.SYSTEM_JOURNAL)
+                s.add(habit)
+                created += 1
+            elif habit.archived_at is not None:
+                habit.archived_at = None
+                # An older build called it "Summary"; the product calls it
+                # Kundalik now, and the name of a derived habit is the contract.
+                habit.name = "Kundalik"
+                habit.category = "non_negotiable"
+                habit.is_protected = True
+                restored += 1
+            s.commit()
+
+            # Backfill from what the user actually wrote.
+            for day in s.scalars(sql_select(JournalEntry.day).where(
+                    JournalEntry.workspace_id == ws_id)).all():
+                if svc.sync_journal_habit(s, ws_id, day):
+                    backfilled += 1
+
+    return {"migration": "0006_restore_journal_habit",
+            "unarchived": restored, "created": created,
+            "days_marked_done": backfilled}
+
+
+#: The redesign replaced the five themes with five complete visual systems, so
+#: the names changed with them. Mapped by intent, not by hue: whoever chose the
+#: restrained dark one still lands on a restrained dark one.
+THEME_REDESIGN = {
+    # The set 0005 produced.
+    "ocean": "calm",        # the default blue -> the new default blue
+    "pure": "calm",         # paper and charcoal -> the light, minimal one
+    "midnight": "titan",    # graphite and steel -> obsidian and steel
+    "sage": "muse",         # warm, soft, low contrast -> warm and elegant
+    "aurora": "nexus",      # violet gradient -> indigo to cyan
+    # Anything that never ran 0005 lands correctly in one step.
+    "cobalt": "calm",
+    "slate": "titan",
+    "oxford": "calm",
+    "blossom": "muse",
+    "obsidian": "titan",
+    "emerald": "muse",
+    "rose": "muse",
+    "pink": "muse",
+}
+
+
+def m0007_redesign_themes() -> dict:
+    """Move every account onto the redesigned theme set.
+
+    A row holding an old name is not broken — the app reads anything unknown as
+    the default — but the stored value and the Settings screen would disagree
+    until the user picked something, so it is rewritten once here.
+
+    Nobody is moved onto `rage`: it has no predecessor, and assigning a theme
+    called "execution mode" to someone who never asked for it is not a
+    migration, it is a decision on their behalf.
+    """
+    from sqlalchemy import update
+
+    from db import User
+
+    moved: dict[str, int] = {}
+    with SessionLocal() as s:
+        for old, new in THEME_REDESIGN.items():
+            count = s.execute(
+                update(User).where(User.theme == old).values(theme=new)).rowcount
+            if count:
+                moved[f"{old}→{new}"] = count
+        s.commit()
+    return {"migration": "0007_redesign_themes", "moved": moved,
+            "total": sum(moved.values())}
+
+
 MIGRATIONS = {
     "0001": m0001_retire_summary_habit,
     "0002": m0002_retire_goals,
     "0003": m0003_retire_themes,
     "0004": m0004_recompute_prayer_completion,
     "0005": m0005_rename_themes,
+    "0006": m0006_restore_journal_habit,
+    "0007": m0007_redesign_themes,
 }
 
 
