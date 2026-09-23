@@ -23,7 +23,7 @@ from urllib.parse import quote
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import text as sql_text
+from sqlalchemy import select, text as sql_text
 from sqlalchemy.exc import DBAPIError, OperationalError
 from telegram import (
     InlineKeyboardButton, InlineKeyboardMarkup, InputFile,
@@ -2590,12 +2590,118 @@ scheduler = None
 #: The screens reachable by command as well as by keyboard button. `/start`,
 #: `/home` and `/guide` are registered separately because they are also the
 #: entry points, and must work before onboarding finishes.
+async def send_report_now(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                          report_type: str) -> None:
+    """Build and send one report to whoever asked, right now.
+
+    The scheduled path decides *whether* to send; this decides nothing. It is
+    the same data and the same renderer, reached without the clock, the
+    recipient query, the job lock or the outbox — so when the daily report is
+    not arriving, this separates "the report cannot be built or delivered"
+    from "the schedule never reached this account". It is also simply worth
+    having: wanting today's summary before bedtime is a reasonable thing.
+    """
+    got = await guard(update, ctx)
+    if not got:
+        return
+    user, ws = got
+    lang = user.language
+    message = update.effective_message
+    try:
+        with SessionLocal() as s:
+            row = s.get(User, user.telegram_id)
+            data = (svc.morning_data(s, ws, row) if report_type == "morning"
+                    else svc.evening_data(s, ws, row))
+        text = (render_morning(data, lang) if report_type == "morning"
+                else render_evening(data, lang))
+        await message.reply_text(text, parse_mode=ParseMode.HTML,
+                                 reply_markup=webapp_button(lang))
+    except Exception:
+        # The reason goes to the log, never to the user — but they still need
+        # to be told it failed rather than watching nothing happen.
+        log.exception("manual %s report for %s failed",
+                      report_type, user.telegram_id)
+        await message.reply_text(t(lang, "error"))
+
+
+async def show_report_health(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Why this account is or is not getting its daily reports.
+
+    The same facts `/health/reports` exposes, for one account, delivered in the
+    chat — because the person who notices that reports stopped is the person
+    holding a phone, not a terminal with the database password in it. Nothing
+    here is a secret from the account it describes.
+    """
+    got = await guard(update, ctx)
+    if not got:
+        return
+    user, ws = got
+    lang = user.language
+    message = update.effective_message
+
+    with SessionLocal() as s:
+        row = s.get(User, user.telegram_id)
+        recipients = {r[0] for r in svc.active_recipients(s)}
+        tz = svc.user_tz(row)
+        now = svc.now_local(tz)
+        prefs = svc.prefs_for(row)
+        today = svc.today_local(tz)
+        from db import DailyReportLog
+        logs = s.scalars(select(DailyReportLog).where(
+            DailyReportLog.workspace_id == ws,
+            DailyReportLog.report_date == today)).all()
+
+    def mark(value: bool) -> str:
+        return "✅" if value else "❌"
+
+    is_recipient = user.telegram_id in recipients
+    lines = [
+        "<b>🩺 Hisobot tekshiruvi</b>", "",
+        f"{mark(bool(scheduler and scheduler.running))} Scheduler ishlayapti",
+        f"{mark(is_recipient)} Siz qabul qiluvchilar ro'yxatidasiz",
+        f"{mark(bool(row.onboarded))} Onboarding tugagan",
+        "",
+        f"🕐 Sizning vaqtingiz: <b>{now:%H:%M}</b> ({esc(prefs['timezone'])})",
+        f"🌅 Ertalabki: {mark(prefs['morning_report'])} {prefs['morning_time']}"
+        f" — hozir navbatda: {mark(svc.report_is_due(row, 'morning', now))}",
+        f"🌙 Kechqurungi: {mark(prefs['evening_report'])} {prefs['evening_time']}"
+        f" — hozir navbatda: {mark(svc.report_is_due(row, 'evening', now))}",
+    ]
+
+    if not is_recipient:
+        lines += ["", "<b>⚠️ Siz ro'yxatda yo'qsiz — sabab shu.</b>",
+                  f"Obuna: {mark(bool(row.is_subscribed))} · "
+                  f"harakatlar: {row.actions_count or 0}"]
+
+    refusals = sum(svc.LOCK_REFUSALS.values())
+    if refusals:
+        lines += ["", f"⚠️ Job lock {refusals} marta rad etilgan"]
+
+    lines += ["", f"<b>Bugungi yozuvlar</b> ({today})"]
+    if not logs:
+        lines.append("<i>Hali hech narsa yozilmagan — hali navbat kelmagan "
+                     "yoki job umuman ishlamayapti.</i>")
+    for entry in logs:
+        line = f"• {entry.report_type}: <b>{entry.status}</b> ({entry.attempts})"
+        if entry.last_error:
+            line += f"\n   <i>{esc(entry.last_error[:120])}</i>"
+        lines.append(line)
+
+    await message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+
+
 BOT_COMMANDS = [
     ("tasks", lambda u, c: show_tasks(u, c)),
     ("habits", lambda u, c: show_habits(u, c)),
     ("stats", lambda u, c: show_stats(u, c)),
     ("settings", lambda u, c: show_settings(u, c)),
     ("invite", lambda u, c: show_invite(u, c)),
+    # Ask for today's report without waiting for its hour, and find out why
+    # the scheduled one did not arrive. Both exist because "the reports
+    # stopped" was previously answerable only from the server.
+    ("hisobot", lambda u, c: send_report_now(u, c, "evening")),
+    ("ertalabki", lambda u, c: send_report_now(u, c, "morning")),
+    ("tekshir", lambda u, c: show_report_health(u, c)),
 ]
 
 
@@ -2964,7 +3070,7 @@ def health_reports(key: str = "", limit: int = 20):
     if not BOT_TOKEN or not _hmac.compare_digest(key, BOT_TOKEN):
         raise HTTPException(status_code=404, detail="not_found")
 
-    from sqlalchemy import func, select
+    from sqlalchemy import func
 
     from db import DailyReportLog
 

@@ -4644,6 +4644,22 @@ DEFAULT_EVENING_TIME = dtime(21, 30)
 #: day has moved on, and a morning summary at noon is noise rather than a
 #: report — a user who onboards at 15:00 must not be sent one immediately.
 REPORT_WINDOW = timedelta(minutes=90)
+
+#: How long after its moment a *missed* report may still be delivered.
+#:
+#: The 90-minute window above assumes the process is alive at the moment the
+#: report is owed. On a platform that sleeps an idle service or cycles its
+#: containers, the 05:00 report is exactly the one nothing is awake for: the
+#: user is asleep, no request comes in, and by the time anything runs again the
+#: window has closed and that day's report is gone — permanently, and with no
+#: trace. Habit reminders never showed this because people set them for hours
+#: they are awake, which is also when the service is being used.
+#:
+#: So a report that was never sent stays owed. Six hours is long enough to
+#: cover a night of downtime and short enough that "this morning's summary"
+#: still means this morning. `claim_report` remains the once-a-day guarantee,
+#: so a wider window cannot produce a second copy.
+REPORT_CATCHUP = timedelta(hours=6)
 #: The same idea for task reminders: a phone that was off does not get an alert
 #: about a meeting that started two hours ago. A task reminder is marked sent
 #: the moment it goes out, so a generous window cannot produce a duplicate.
@@ -4713,7 +4729,18 @@ def report_is_due(user: User, report_type: str, now: datetime) -> bool:
         target = user.evening_time or DEFAULT_EVENING_TIME
 
     scheduled = datetime.combine(now.date(), target)
-    return scheduled <= now <= scheduled + REPORT_WINDOW
+    if now < scheduled:
+        return False
+
+    # Never past the end of the user's own day: a report belongs to the day it
+    # describes, and tomorrow's tick will be claiming tomorrow's slot.
+    end_of_day = datetime.combine(now.date(), dtime(23, 59, 59))
+    limit = min(scheduled + REPORT_CATCHUP, end_of_day)
+    # Past the limit the day has moved on, and this is also what stops an
+    # account registered at 15:00 from being greeted with a summary of a
+    # morning it was not there for: 15:00 is long past 05:00 plus the
+    # catch-up.
+    return now <= limit
 
 
 def due_task_reminders(s: Session, ws: int, user: User,

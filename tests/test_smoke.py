@@ -6683,3 +6683,197 @@ def test_the_report_diagnostic_explains_one_user(client, monkeypatch):
     assert row["morning"]["at"] == "05:00"
     assert row["evening"]["at"] == "19:25"
     assert row["timezone"] == "Asia/Tashkent"
+
+
+# ---------------------------------------------------------------------------
+# Asking the bot itself
+# ---------------------------------------------------------------------------
+#
+# The person who notices that reports stopped is holding a phone, not a shell
+# with the database password in it. These two commands are the whole diagnosis
+# and the manual send, reachable from the chat.
+
+class _DiagReplies:
+    """Stands in for a Telegram message, recording what was sent back."""
+
+    def __init__(self, user_id: int):
+        self.sent: list[str] = []
+        self.from_user = type("U", (), {
+            "id": user_id, "first_name": "Diag", "last_name": "",
+            "username": "diag", "language_code": "uz"})()
+
+    async def reply_text(self, text, **kwargs):
+        self.sent.append(text)
+        return True
+
+
+class _DiagUpdate:
+    def __init__(self, user_id: int):
+        self.message = _DiagReplies(user_id)
+        self.effective_message = self.message
+        self.effective_user = self.message.from_user
+        self.effective_chat = type("C", (), {"id": user_id, "type": "private"})()
+        self.callback_query = None
+
+
+class _DiagCtx:
+    def __init__(self):
+        self.user_data: dict = {}
+        self.bot = None
+        self.args: list[str] = []
+
+
+async def _diag_user(client) -> int:
+    telegram_id = next(_next_id)
+    Caller(client, {"id": telegram_id, "first_name": "Diag"})
+    return telegram_id
+
+
+async def test_the_bot_can_send_todays_report_on_demand(client):
+    """`/hisobot` must produce the real report, not a stub."""
+    telegram_id = await _diag_user(client)
+    update, ctx = _DiagUpdate(telegram_id), _DiagCtx()
+
+    await application.send_report_now(update, ctx, "evening")
+
+    assert update.message.sent, "the command must answer"
+    body = update.message.sent[-1]
+    assert "<b>" in body, "it must be the rendered report"
+    assert body != _generic_error(), "it must not be the generic error"
+
+
+def _generic_error() -> str:
+    return application.t("uz", "error")
+
+
+async def test_on_demand_morning_report_also_works(client):
+    telegram_id = await _diag_user(client)
+    update, ctx = _DiagUpdate(telegram_id), _DiagCtx()
+    await application.send_report_now(update, ctx, "morning")
+    assert update.message.sent and update.message.sent[-1] != _generic_error()
+
+
+async def test_the_bot_explains_why_reports_are_missing(client):
+    """`/tekshir` has to answer the question without a terminal."""
+    telegram_id = await _diag_user(client)
+    with SessionLocal() as s:
+        user = s.get(User, telegram_id)
+        user.timezone = "Asia/Tashkent"
+        user.morning_time, user.evening_time = dtime(5, 0), dtime(19, 25)
+        s.commit()
+
+    update, ctx = _DiagUpdate(telegram_id), _DiagCtx()
+    await application.show_report_health(update, ctx)
+
+    assert update.message.sent, "the command must answer"
+    body = update.message.sent[-1]
+    for expected in ("Hisobot tekshiruvi", "05:00", "19:25", "Asia/Tashkent"):
+        assert expected in body, f"{expected!r} missing from:\n{body}"
+
+
+async def test_the_diagnosis_names_the_reason_when_gated(client, monkeypatch):
+    """Being excluded from the recipient query is the invisible failure."""
+    telegram_id = await _diag_user(client)
+    monkeypatch.setattr(svc, "active_recipients", lambda s: [])
+
+    update, ctx = _DiagUpdate(telegram_id), _DiagCtx()
+    await application.show_report_health(update, ctx)
+
+    body = update.message.sent[-1]
+    assert "ro'yxatda yo'qsiz" in body, (
+        f"an excluded user must be told that is the reason:\n{body}")
+
+
+# ---------------------------------------------------------------------------
+# A report the process slept through
+# ---------------------------------------------------------------------------
+#
+# The symptom that led here: habit reminders arrived every day and the 05:00
+# report never did. Both run on the same scheduler, through the same lock and
+# the same recipient query — so the difference was not any of those. It was the
+# hour. Reminders are set for times people are awake, which is also when the
+# service is being used; 05:00 is the one moment nothing is touching it, and a
+# platform that sleeps an idle container or cycles it overnight was simply not
+# running during the only 90 minutes that report was allowed to go out.
+
+def _sleeper(telegram_id: int) -> User:
+    with SessionLocal() as s:
+        user = s.get(User, telegram_id)
+        user.timezone = "Asia/Tashkent"
+        user.morning_time = dtime(5, 0)
+        user.morning_report = True
+        # An established account, so the new-account guard does not apply.
+        user.created_at = db.utcnow() - timedelta(days=30)
+        s.commit()
+        s.expunge(user)
+        return user
+
+
+def test_a_report_missed_overnight_still_goes_out_in_the_morning(client):
+    """The process was asleep at 05:00. The report is still owed at 08:00."""
+    telegram_id = next(_next_id)
+    Caller(client, {"id": telegram_id, "first_name": "Slept"})
+    user = _sleeper(telegram_id)
+    day = date(2031, 10, 1)
+
+    at_five = datetime.combine(day, dtime(5, 0))
+    assert svc.report_is_due(user, "morning", at_five), "on time"
+
+    at_eight = datetime.combine(day, dtime(8, 0))
+    assert svc.report_is_due(user, "morning", at_eight), (
+        "a report nothing was awake to send must still be owed when the "
+        "process comes back")
+
+
+def test_the_catch_up_does_not_deliver_a_morning_report_at_night(client):
+    """"This morning's summary" has to still mean this morning."""
+    telegram_id = next(_next_id)
+    Caller(client, {"id": telegram_id, "first_name": "Late"})
+    user = _sleeper(telegram_id)
+    day = date(2031, 10, 2)
+
+    assert not svc.report_is_due(user, "morning",
+                                 datetime.combine(day, dtime(12, 0)))
+    assert not svc.report_is_due(user, "morning",
+                                 datetime.combine(day, dtime(23, 30)))
+    # And never before its hour.
+    assert not svc.report_is_due(user, "morning",
+                                 datetime.combine(day, dtime(4, 30)))
+
+
+def test_the_catch_up_never_crosses_midnight(client):
+    """An evening report late enough to land on the next local day is dropped.
+
+    Otherwise the catch-up would claim tomorrow's slot with today's summary.
+    """
+    telegram_id = next(_next_id)
+    Caller(client, {"id": telegram_id, "first_name": "Midnight"})
+    with SessionLocal() as s:
+        user = s.get(User, telegram_id)
+        user.timezone = "Asia/Tashkent"
+        user.evening_time = dtime(22, 0)
+        user.evening_report = True
+        user.created_at = db.utcnow() - timedelta(days=30)
+        s.commit()
+        s.expunge(user)
+
+    day = date(2031, 10, 3)
+    assert svc.report_is_due(user, "evening", datetime.combine(day, dtime(23, 0)))
+    assert not svc.report_is_due(user, "evening",
+                                 datetime.combine(day, dtime(23, 59, 59)) + timedelta(seconds=1))
+
+
+def test_an_account_registered_long_after_its_hour_gets_nothing(client):
+    """Registering at 15:00 must not trigger that morning's report.
+
+    The catch-up limit is what enforces this, rather than a separate rule
+    about new accounts: 15:00 is hours past 05:00 plus the catch-up, so the
+    report is simply no longer owed to anybody.
+    """
+    telegram_id = next(_next_id)
+    Caller(client, {"id": telegram_id, "first_name": "Newcomer"})
+    user = _sleeper(telegram_id)
+    day = date(2031, 10, 4)
+
+    assert not svc.report_is_due(user, "morning",
+                                 datetime.combine(day, dtime(15, 0)))
