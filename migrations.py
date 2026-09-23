@@ -523,10 +523,33 @@ def m0010_daily_report_unique() -> dict:
     if not inspector.has_table(table):
         return {"migration": "0010_daily_report_unique", "status": "no table"}
 
-    have = {c["name"] for c in inspector.get_unique_constraints(table)}
-    have |= {i["name"] for i in inspector.get_indexes(table) if i.get("unique")}
-    if index_name in have:
-        return {"migration": "0010_daily_report_unique", "status": "already present"}
+    # The columns matter, not the name. A database carrying an older
+    # `uq_daily_report` on (workspace_id, report_type) — no date — looks
+    # correct to a check that only reads names, and is catastrophic in
+    # practice: the first report a user ever receives occupies their only
+    # slot, and every day afterwards `claim_report` is refused and skips them
+    # in silence. That is indistinguishable, from the outside, from the
+    # feature being switched off.
+    wanted = ["workspace_id", "report_type", "report_date"]
+
+    def columns_of(entry: dict) -> list:
+        return sorted(entry.get("column_names") or entry.get("columns") or [])
+
+    found = [
+        *({"name": c["name"], "cols": columns_of(c)}
+          for c in inspector.get_unique_constraints(table)),
+        *({"name": i["name"], "cols": columns_of(i)}
+          for i in inspector.get_indexes(table) if i.get("unique")),
+    ]
+    correct = [f for f in found if f["cols"] == sorted(wanted)]
+    if correct:
+        return {"migration": "0010_daily_report_unique",
+                "status": "already present", "constraint": correct[0]["name"]}
+
+    # Anything named like ours but covering the wrong columns has to go, or
+    # the new index cannot do its job beside it.
+    stale = [f for f in found
+             if f["name"] and set(f["cols"]) < set(wanted) and "report" in f["name"]]
 
     removed = 0
     with db.engine.begin() as conn:
@@ -547,12 +570,26 @@ def m0010_daily_report_unique() -> dict:
             """), {"ws": ws, "kind": kind, "day": day, "winner": winner})
             removed += result.rowcount or 0
 
+        for entry in stale:
+            try:
+                conn.execute(text(f"DROP INDEX {entry['name']}"))
+            except Exception:
+                # A table CONSTRAINT rather than a bare index; SQLite cannot
+                # drop those in place, and on PostgreSQL this is the spelling.
+                try:
+                    conn.execute(text(
+                        f"ALTER TABLE {table} DROP CONSTRAINT {entry['name']}"))
+                except Exception:
+                    log.warning("could not drop stale constraint %s — drop it "
+                                "by hand before rerunning", entry["name"])
+
         conn.execute(text(
             f"CREATE UNIQUE INDEX {index_name} ON {table} "
             "(workspace_id, report_type, report_date)"))
 
     return {"migration": "0010_daily_report_unique", "status": "created",
-            "duplicates_removed": removed}
+            "duplicates_removed": removed,
+            "stale_constraints_dropped": [e["name"] for e in stale]}
 
 
 MIGRATIONS = {

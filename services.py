@@ -4290,6 +4290,12 @@ def already_sent(s: Session, ws: int, report_type: str, report_date: date) -> bo
         DailyReportLog.report_date == report_date)) is not None
 
 
+#: Claims refused by the database for a reason that is not a peer worker.
+#: Read back by `/health/reports` and `/tekshir`, because the symptom of this
+#: is silence and silence is what made it hard to find.
+CLAIM_ANOMALIES: dict = {}
+
+
 #: How many times one report may be attempted in a day before it is given up
 #: on. Three, because the errors worth retrying — a rate limit, a 500, a
 #: dropped connection — clear within minutes, and the ones that are not worth
@@ -4325,6 +4331,21 @@ def claim_report(s: Session, ws: int, report_type: str,
         DailyReportLog.report_type == report_type,
         DailyReportLog.report_date == report_date))
     if existing is None:
+        # The insert was rejected, yet nothing occupies this slot. That is not
+        # a peer winning the race — it means the table is carrying a
+        # constraint this code does not know about, most likely a unique index
+        # from an older schema on the wrong columns (workspace and type, with
+        # no date), under which exactly one report per user is ever allowed to
+        # exist and every day after the first is refused. Silently returning
+        # None here, as this used to, makes that indistinguishable from a
+        # normal skip and hides it for ever.
+        log.error(
+            "claim_report for workspace=%s type=%s date=%s was rejected but "
+            "no row holds that slot — daily_report_logs almost certainly has "
+            "a stale unique constraint. Run: python migrations.py 0010",
+            ws, report_type, report_date)
+        CLAIM_ANOMALIES["count"] = CLAIM_ANOMALIES.get("count", 0) + 1
+        CLAIM_ANOMALIES["last"] = f"{report_type} {report_date} ws={ws}"
         return None
     if existing.status == "retry" and (existing.attempts or 0) < REPORT_MAX_ATTEMPTS:
         existing.status = "claimed"

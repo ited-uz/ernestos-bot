@@ -2364,6 +2364,8 @@ async def send_reports(bot, report_type: str) -> None:
 
 
 async def _send_reports_locked(bot, report_type: str, report_date) -> None:
+    from db import DailyReportLog
+
     # Before anything else, take back the slots a dead process is sitting on.
     # A claim that was never resolved blocks that user's report for the whole
     # day, and nothing else in the system would ever clear it.
@@ -2382,7 +2384,13 @@ async def _send_reports_locked(bot, report_type: str, report_date) -> None:
     with SessionLocal() as s:
         recipients = svc.active_recipients(s)
 
-    sent = failed = skipped = 0
+    # Counted apart, because "not due or already claimed" was one number
+    # covering two completely different situations: everybody's hour simply
+    # has not come round yet, which is the normal state for most of the day,
+    # and the outbox refusing every claim, which means nobody will ever be
+    # sent anything. From the log those looked identical.
+    sent = failed = not_due = taken = 0
+    taken_states: dict[str, int] = {}
     for telegram_id, ws, lang in recipients:
         # Deciding whether this user is due, and claiming their slot, is as
         # capable of raising as the send is — an unreadable row or a dropped
@@ -2399,7 +2407,7 @@ async def _send_reports_locked(bot, report_type: str, report_date) -> None:
                 due = (report_date is not None
                        or svc.report_is_due(user, report_type, svc.now_local(tz)))
             if not due:
-                skipped += 1
+                not_due += 1
                 continue
 
             # Claim before building anything: the insert is the lock, so a
@@ -2413,7 +2421,17 @@ async def _send_reports_locked(bot, report_type: str, report_date) -> None:
             continue
 
         if report_id is None:
-            skipped += 1
+            # Due, but the slot would not open. Record what is actually in it,
+            # because "sent" here means the user already has it and anything
+            # else means they are being skipped for a reason worth seeing.
+            taken += 1
+            with SessionLocal() as s:
+                held = s.scalar(select(DailyReportLog.status).where(
+                    DailyReportLog.workspace_id == ws,
+                    DailyReportLog.report_type == report_type,
+                    DailyReportLog.report_date == when))
+            state = held or "no row (constraint?)"
+            taken_states[state] = taken_states.get(state, 0) + 1
             continue
 
         try:
@@ -2472,8 +2490,18 @@ async def _send_reports_locked(bot, report_type: str, report_date) -> None:
 
         await asyncio.sleep(0.05)  # stay inside Telegram's rate limit
 
-    log.info("%s report: %s sent, %s failed, %s not due or already claimed",
-             report_type, sent, failed, skipped)
+    detail = (" · ".join(f"{state}={n}" for state, n in sorted(taken_states.items()))
+              or "none")
+    log.info("%s report: %s sent, %s failed, %s not due yet, %s already "
+             "in the outbox (%s)",
+             report_type, sent, failed, not_due, taken, detail)
+    # Every recipient due right now was refused the outbox and none of them
+    # has it: that is not a busy day, it is the feature being off.
+    if taken and not sent and not taken_states.get("sent"):
+        log.warning("%s report: %s user(s) were due and none could be claimed "
+                    "— outbox states: %s. Check /health/reports, and if this "
+                    "says 'no row' run: python migrations.py 0010",
+                    report_type, taken, detail)
 
 
 async def send_reminders(bot) -> None:
@@ -2676,6 +2704,14 @@ async def show_report_health(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
     refusals = sum(svc.LOCK_REFUSALS.values())
     if refusals:
         lines += ["", f"⚠️ Job lock {refusals} marta rad etilgan"]
+
+    # A claim the database refused while leaving the slot empty means the
+    # table's unique constraint is not the one this code expects, and every
+    # report after the first is being dropped. Worth shouting about.
+    if svc.CLAIM_ANOMALIES.get("count"):
+        lines += ["", "<b>🚨 Bazada eski constraint bor.</b>",
+                  f"Rad etilgan claim: {svc.CLAIM_ANOMALIES['count']}",
+                  "Serverda ishga tushiring: <code>python migrations.py 0010</code>"]
 
     lines += ["", f"<b>Bugungi yozuvlar</b> ({today})"]
     if not logs:
@@ -3080,6 +3116,9 @@ def health_reports(key: str = "", limit: int = 20):
         # A job repeatedly refused its lock is the one failure that is
         # otherwise completely silent.
         "lock_refusals": dict(svc.LOCK_REFUSALS),
+        # Non-zero means daily_report_logs carries a unique constraint this
+        # code does not expect; migration 0010 repairs it.
+        "claim_anomalies": dict(svc.CLAIM_ANOMALIES),
         "report_tick_minutes": config.REPORT_TICK_MINUTES,
         "server_time_utc": db.utcnow().isoformat(timespec="seconds"),
         "required_channel": bool(deps.REQUIRED_CHANNEL_ID),
