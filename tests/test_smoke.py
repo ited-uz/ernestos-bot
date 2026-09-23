@@ -6552,3 +6552,134 @@ def test_the_mini_app_is_given_a_token_only_when_there_is_a_photo(alice):
     assert "avatar_token" in body
     if not body["has_photo"]:
         assert body["avatar_token"] is None
+
+
+# ---------------------------------------------------------------------------
+# The two ways a report could go silent for ever
+# ---------------------------------------------------------------------------
+
+def test_the_job_lock_is_transaction_scoped():
+    """A connection-scoped lock can be returned to the pool still held.
+
+    `pg_advisory_unlock` was an explicit statement on the way out, so any
+    failure before it handed the connection back to the pool with the lock
+    still on it — and every later tick, asking on some other connection, was
+    refused and skipped the batch silently. The transaction-scoped variant is
+    released by PostgreSQL itself, so there is no statement that can be missed.
+    """
+    import inspect as _inspect
+
+    source = _inspect.getsource(svc.JobLock)
+    assert "pg_try_advisory_xact_lock" in source
+    assert "pg_advisory_unlock" not in source, (
+        "an explicit unlock is exactly the statement that can fail to run")
+
+
+def test_repeated_lock_refusals_are_escalated(monkeypatch):
+    """One refusal is a peer working. Twenty minutes of them is a stuck lock."""
+    svc.LOCK_REFUSALS.clear()
+    warnings = []
+    monkeypatch.setattr(svc.log, "warning",
+                        lambda msg, *a, **k: warnings.append(msg % a if a else msg))
+
+    class _Refusing:
+        def __init__(self): self.bind = type("b", (), {"dialect": type("d", (), {"name": "postgresql"})()})()
+        def scalar(self, *a, **k): return False
+        def rollback(self): pass
+        def close(self): pass
+
+    for _ in range(svc.LOCK_REFUSAL_ALARM):
+        with svc.JobLock(lambda: _Refusing(), "report:morning") as lock:
+            assert lock.acquired is False
+
+    assert warnings, "a lock refused for twenty minutes must not stay at INFO"
+    assert "refused its lock" in warnings[-1]
+    svc.LOCK_REFUSALS.clear()
+
+
+async def test_a_rate_limited_send_is_retried_not_written_off(monkeypatch, client):
+    """A 429 says nothing about the account, so it must not cost the day."""
+    from telegram.error import TimedOut
+
+    telegram_id, ws = _solo_recipient(client, monkeypatch, morning_time=dtime(5, 0))
+    day = date(2031, 9, 1)
+
+    bot = _FakeBot({telegram_id: TimedOut()})
+    await application._send_reports_locked(bot, "morning", day)
+
+    with SessionLocal() as s:
+        row = s.scalar(select(db.DailyReportLog).where(
+            db.DailyReportLog.workspace_id == ws,
+            db.DailyReportLog.report_date == day))
+        assert row.status == "retry", f"expected a retryable row, got {row.status}"
+
+    # The next tick takes it over and delivers.
+    bot = _FakeBot()
+    await application._send_reports_locked(bot, "morning", day)
+    assert bot.sent == [telegram_id], "the retry must actually deliver"
+
+
+async def test_a_blocked_user_is_not_retried(monkeypatch, client):
+    """The counterpart: being blocked will not improve before tomorrow."""
+    from telegram.error import Forbidden
+
+    telegram_id, ws = _solo_recipient(client, monkeypatch, morning_time=dtime(5, 0))
+    day = date(2031, 9, 2)
+
+    bot = _FakeBot({telegram_id: Forbidden("bot was blocked by the user")})
+    await application._send_reports_locked(bot, "morning", day)
+
+    with SessionLocal() as s:
+        row = s.scalar(select(db.DailyReportLog).where(
+            db.DailyReportLog.workspace_id == ws,
+            db.DailyReportLog.report_date == day))
+        assert row.status == "failed"
+
+    bot = _FakeBot()
+    await application._send_reports_locked(bot, "morning", day)
+    assert bot.sent == [], "a blocked account must not be retried all day"
+
+
+async def test_retries_are_bounded(monkeypatch, client):
+    """Retrying for ever is its own failure mode."""
+    from telegram.error import TimedOut
+
+    telegram_id, ws = _solo_recipient(client, monkeypatch, morning_time=dtime(5, 0))
+    day = date(2031, 9, 3)
+
+    for _ in range(svc.REPORT_MAX_ATTEMPTS + 2):
+        await application._send_reports_locked(
+            _FakeBot({telegram_id: TimedOut()}), "morning", day)
+
+    with SessionLocal() as s:
+        row = s.scalar(select(db.DailyReportLog).where(
+            db.DailyReportLog.workspace_id == ws,
+            db.DailyReportLog.report_date == day))
+        assert row.status == "failed"
+        assert row.attempts <= svc.REPORT_MAX_ATTEMPTS
+
+
+def test_the_report_diagnostic_needs_the_bot_token(client):
+    assert client.get("/health/reports").status_code == 404
+    assert client.get("/health/reports?key=nope").status_code == 404
+
+
+def test_the_report_diagnostic_explains_one_user(client, monkeypatch):
+    """It has to answer "why did this account get nothing" on its own."""
+    telegram_id = next(_next_id)
+    Caller(client, {"id": telegram_id, "first_name": "Diag"})
+    with SessionLocal() as s:
+        user = s.get(User, telegram_id)
+        user.timezone = "Asia/Tashkent"
+        user.morning_time, user.evening_time = dtime(5, 0), dtime(19, 25)
+        s.commit()
+
+    body = client.get(f"/health/reports?key={TOKEN}&limit=200").json()
+    assert "scheduler_running" in body and "lock_refusals" in body
+    mine = [r for r in body["reports"] if r["telegram_id"] == telegram_id]
+    assert mine, "an onboarded account must appear in the diagnostic"
+    row = mine[0]
+    assert row["is_recipient"] is True
+    assert row["morning"]["at"] == "05:00"
+    assert row["evening"]["at"] == "19:25"
+    assert row["timezone"] == "Asia/Tashkent"

@@ -30,7 +30,7 @@ from telegram import (
     ReplyKeyboardMarkup, Update, WebAppInfo,
 )
 from telegram.constants import ParseMode
-from telegram.error import TelegramError
+from telegram.error import BadRequest, Forbidden, TelegramError
 from telegram.ext import (
     Application, CallbackQueryHandler, ChatMemberHandler, CommandHandler,
     ContextTypes, MessageHandler, filters,
@@ -2434,10 +2434,16 @@ async def _send_reports_locked(bot, report_type: str, report_date) -> None:
             sent += 1
 
         except TelegramError as e:
-            # Blocked bot or deleted account: record and continue.
-            log.warning("%s report to %s failed: %s", report_type, telegram_id, e)
+            # Two very different things arrive as TelegramError, and filing
+            # them the same way is what turned a single rate-limited second
+            # into a lost report. `Forbidden` means the account blocked the
+            # bot or is gone — nothing to retry. A timeout, a 429 or a 5xx
+            # says nothing about the account and clears in seconds.
+            permanent = isinstance(e, (Forbidden, BadRequest))
+            log.warning("%s report to %s failed (%s): %s", report_type,
+                        telegram_id, "permanent" if permanent else "will retry", e)
             with SessionLocal() as s:
-                svc.mark_report_failed(s, report_id, str(e))
+                svc.mark_report_failed(s, report_id, str(e), permanent=permanent)
             failed += 1
 
         except (OperationalError, DBAPIError):
@@ -2935,6 +2941,88 @@ def _date(value: str | None) -> date | None:
 def health_live():
     """Liveness: the process is up. Says nothing about dependencies."""
     return {"ok": True}
+
+
+@app.get("/health/reports")
+def health_reports(key: str = "", limit: int = 20):
+    """Why a given user did or did not get their report, in one request.
+
+    Every previous answer to "the reports are not arriving" needed the
+    database, the deploy log and somebody who knew which three things to
+    correlate. This does the correlating: for each onboarded account it says
+    whether the scheduler would pick them up, whether their moment has passed
+    in *their* zone, and what today's outbox row says. A blank `reports` list
+    with a non-zero `onboarded` count is the recipient query excluding
+    everybody; a `due` of false all day is a clock or a preference; a row
+    stuck in `claimed` is a worker that died.
+
+    Guarded by the bot token because it names accounts. Not a general admin
+    surface — it answers exactly one question.
+    """
+    import hmac as _hmac
+
+    if not BOT_TOKEN or not _hmac.compare_digest(key, BOT_TOKEN):
+        raise HTTPException(status_code=404, detail="not_found")
+
+    from sqlalchemy import func, select
+
+    from db import DailyReportLog
+
+    out: dict = {
+        "scheduler_running": bool(scheduler and scheduler.running),
+        "jobs": sorted(j.id for j in scheduler.get_jobs()) if scheduler else [],
+        # A job repeatedly refused its lock is the one failure that is
+        # otherwise completely silent.
+        "lock_refusals": dict(svc.LOCK_REFUSALS),
+        "report_tick_minutes": config.REPORT_TICK_MINUTES,
+        "server_time_utc": db.utcnow().isoformat(timespec="seconds"),
+        "required_channel": bool(deps.REQUIRED_CHANNEL_ID),
+        "free_actions": deps.FREE_ACTIONS,
+    }
+
+    with SessionLocal() as s:
+        recipients = {r[0] for r in svc.active_recipients(s)}
+        users = s.scalars(select(User).where(User.onboarded.is_(True))
+                          .order_by(User.telegram_id).limit(limit)).all()
+        out["onboarded"] = s.scalar(select(func.count()).select_from(User)
+                                    .where(User.onboarded.is_(True))) or 0
+        out["recipients"] = len(recipients)
+
+        rows = []
+        for user in users:
+            tz = svc.user_tz(user)
+            now = svc.now_local(tz)
+            prefs = svc.prefs_for(user)
+            ws = svc.workspace_id_for(s, user.telegram_id)
+            today = svc.today_local(tz)
+            logs = s.scalars(select(DailyReportLog).where(
+                DailyReportLog.workspace_id == ws,
+                DailyReportLog.report_date == today)).all() if ws else []
+            rows.append({
+                "telegram_id": user.telegram_id,
+                "is_recipient": user.telegram_id in recipients,
+                # When they are not, this is almost always why.
+                "is_subscribed": bool(user.is_subscribed),
+                "actions_count": user.actions_count or 0,
+                "timezone": prefs["timezone"],
+                "their_local_time": now.strftime("%Y-%m-%d %H:%M"),
+                "morning": {
+                    "enabled": prefs["morning_report"],
+                    "at": prefs["morning_time"],
+                    "due_now": svc.report_is_due(user, "morning", now),
+                },
+                "evening": {
+                    "enabled": prefs["evening_report"],
+                    "at": prefs["evening_time"],
+                    "due_now": svc.report_is_due(user, "evening", now),
+                },
+                "today": [{"type": r.report_type, "status": r.status,
+                           "attempts": r.attempts,
+                           "error": (r.last_error or "")[:120]} for r in logs],
+            })
+        out["reports"] = rows
+
+    return out
 
 
 @app.get("/health/ready")

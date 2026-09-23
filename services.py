@@ -4290,22 +4290,48 @@ def already_sent(s: Session, ws: int, report_type: str, report_date: date) -> bo
         DailyReportLog.report_date == report_date)) is not None
 
 
+#: How many times one report may be attempted in a day before it is given up
+#: on. Three, because the errors worth retrying — a rate limit, a 500, a
+#: dropped connection — clear within minutes, and the ones that are not worth
+#: retrying are marked permanent explicitly rather than by exhausting this.
+REPORT_MAX_ATTEMPTS = 3
+
+
 def claim_report(s: Session, ws: int, report_type: str,
                  report_date: date) -> int | None:
     """Try to own this report. Returns the outbox id, or None if someone else won.
 
     The INSERT is the lock: the unique constraint means exactly one worker can
     succeed, so two schedulers cannot both send (audit 036).
+
+    A row left in `retry` is taken over rather than refused. Without that, one
+    momentary failure — Telegram rate-limiting us, a connection dropped
+    mid-send — cost the user their report for the rest of the day, because the
+    row that recorded the failure was also the row that blocked every later
+    attempt. `sent` and `failed` are still final, so this cannot resend a
+    report that went out or hammer an account that has blocked the bot.
     """
     row = DailyReportLog(workspace_id=ws, report_type=report_type,
                          report_date=report_date, status="claimed")
     s.add(row)
     try:
         s.commit()
+        return row.id
     except IntegrityError:
         s.rollback()
+
+    existing = s.scalar(select(DailyReportLog).where(
+        DailyReportLog.workspace_id == ws,
+        DailyReportLog.report_type == report_type,
+        DailyReportLog.report_date == report_date))
+    if existing is None:
         return None
-    return row.id
+    if existing.status == "retry" and (existing.attempts or 0) < REPORT_MAX_ATTEMPTS:
+        existing.status = "claimed"
+        existing.claimed_at = utcnow()
+        s.commit()
+        return existing.id
+    return None
 
 
 def mark_report_sent(s: Session, report_id: int) -> None:
@@ -4317,21 +4343,29 @@ def mark_report_sent(s: Session, report_id: int) -> None:
         s.commit()
 
 
-def mark_report_failed(s: Session, report_id: int, error: str) -> None:
-    """Record the failure. The claim row stays, so today is not retried.
+def mark_report_failed(s: Session, report_id: int, error: str, *,
+                       permanent: bool = True) -> None:
+    """Record the failure, and decide whether today is over for this report.
 
-    Deliberate: the usual reason a send fails is that the account blocked the
-    bot or no longer exists, and neither improves within the day. Retrying
-    every tick would mean hammering Telegram with the same rejection for
-    hours. `release_report` is the escape hatch for the cases that genuinely
-    should be tried again — a user row that vanished mid-pass.
+    `permanent=True` is the usual case and the old behaviour: the account
+    blocked the bot or no longer exists, neither improves within the day, and
+    retrying every tick would mean hammering Telegram with the same rejection
+    for hours.
+
+    `permanent=False` is for the failures that say nothing about the account —
+    a rate limit, a 500, a timeout. Those used to be filed as permanent too,
+    so a single unlucky second cost the user their whole report. The row is
+    parked in `retry` instead and the next tick picks it up, up to
+    `REPORT_MAX_ATTEMPTS`.
     """
     row = s.get(DailyReportLog, report_id)
-    if row is not None:
-        row.status = "failed"
-        row.attempts += 1
-        row.last_error = str(error)[:200]
-        s.commit()
+    if row is None:
+        return
+    row.attempts = (row.attempts or 0) + 1
+    row.last_error = str(error)[:200]
+    exhausted = row.attempts >= REPORT_MAX_ATTEMPTS
+    row.status = "failed" if (permanent or exhausted) else "retry"
+    s.commit()
 
 
 def release_report(s: Session, report_id: int) -> None:
@@ -4368,7 +4402,7 @@ def reclaim_stale_claims(s: Session, report_date: date) -> int:
     cutoff = utcnow() - timedelta(minutes=STALE_CLAIM_MINUTES)
     rows = s.scalars(select(DailyReportLog).where(
         DailyReportLog.report_date == report_date,
-        DailyReportLog.status == "claimed",
+        DailyReportLog.status.in_(("claimed", "retry")),
         DailyReportLog.claimed_at < cutoff)).all()
     for row in rows:
         s.delete(row)
@@ -4835,12 +4869,39 @@ def _lock_key(name: str) -> int:
     return zlib.crc32(name.encode()) - 2**31
 
 
+#: How many consecutive ticks may be refused the lock before that is treated
+#: as a stuck lock rather than a busy peer. At a two-minute tick this is about
+#: twenty minutes, which no healthy report batch comes close to.
+LOCK_REFUSAL_ALARM = 10
+
+#: Per-job count of consecutive refusals, for the warning above and for
+#: `/health/ready` to read back.
+LOCK_REFUSALS: dict[str, int] = {}
+
+
 class JobLock:
     """Hold a PostgreSQL advisory lock for the duration of one job run.
 
-    Two instances of the app would otherwise both fire the 04:00 job. The
-    loser exits quietly instead of sending a second copy (audit 032).
-    On SQLite there is nothing to coordinate, so the lock is always granted.
+    Two instances of the app would otherwise both fire the same job. The loser
+    exits quietly instead of sending a second copy (audit 032). On SQLite there
+    is nothing to coordinate, so the lock is always granted.
+
+    The lock is **transaction**-scoped, and that is the whole point.
+    `pg_try_advisory_lock` — what this used to call — is scoped to the
+    *connection*, and a connection is a pooled resource that this class does
+    not own. Releasing it was an explicit statement in `__exit__`, so any
+    failure on the way out (the unlock itself, or the commit after it) fell
+    through to `finally: close()` and handed the connection back to the pool
+    **still holding the lock**. Nothing afterwards knew to release it: every
+    later tick asked on some other connection, got False, and skipped the batch
+    without sending anything — for every user, silently, until the process
+    happened to restart. A single failed unlock could switch reports off for
+    days.
+
+    `pg_try_advisory_xact_lock` cannot leak that way, because PostgreSQL
+    releases it when the transaction ends, however it ends — commit, rollback,
+    a dropped connection or a killed process. The job body runs inside that
+    open transaction, which is already how this worked.
     """
 
     def __init__(self, session_factory, name: str):
@@ -4853,21 +4914,36 @@ class JobLock:
         self._session = self._factory()
         if self._session.bind.dialect.name != "postgresql":
             self.acquired = True
+            LOCK_REFUSALS[self._name] = 0
             return self
         self.acquired = bool(self._session.scalar(
-            sql_text("SELECT pg_try_advisory_lock(:k)"), {"k": _lock_key(self._name)}))
-        if not self.acquired:
-            log.info("job %s already running elsewhere — skipping", self._name)
+            sql_text("SELECT pg_try_advisory_xact_lock(:k)"),
+            {"k": _lock_key(self._name)}))
+        if self.acquired:
+            LOCK_REFUSALS[self._name] = 0
+        else:
+            refusals = LOCK_REFUSALS.get(self._name, 0) + 1
+            LOCK_REFUSALS[self._name] = refusals
+            # One refusal is a peer instance doing the work, which is the
+            # feature. Twenty minutes of them is not, and used to be invisible.
+            if refusals >= LOCK_REFUSAL_ALARM:
+                log.warning(
+                    "job %s has been refused its lock %s times in a row — "
+                    "either a second instance is stuck mid-run, or a lock was "
+                    "leaked by a process that died", self._name, refusals)
+            else:
+                log.info("job %s already running elsewhere — skipping", self._name)
         return self
 
     def __exit__(self, *exc) -> None:
         if self._session is None:
             return
+        # Ending the transaction is what releases the lock, so this needs no
+        # unlock statement and cannot fail to run one.
         try:
-            if self.acquired and self._session.bind.dialect.name == "postgresql":
-                self._session.execute(
-                    sql_text("SELECT pg_advisory_unlock(:k)"),
-                    {"k": _lock_key(self._name)})
-                self._session.commit()
+            self._session.rollback()
+        except Exception:
+            log.exception("job %s could not close its lock transaction cleanly",
+                          self._name)
         finally:
             self._session.close()
