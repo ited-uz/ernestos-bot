@@ -2054,7 +2054,7 @@ function headBlock(d){
   const avatar = tgPhoto
     ? `<img src="${esc(tgPhoto)}" alt="" />`
     : state.me?.has_photo
-      ? `<img src="/api/avatar?tgdata=${encodeURIComponent(tg?.initData || "")}" alt="" />`
+      ? `<img src="/api/avatar?token=${encodeURIComponent(state.me?.avatar_token || "")}" alt="" />`
       : esc(initial);
 
   let h = `

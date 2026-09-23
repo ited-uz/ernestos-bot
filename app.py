@@ -23,6 +23,8 @@ from urllib.parse import quote
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import text as sql_text
+from sqlalchemy.exc import DBAPIError, OperationalError
 from telegram import (
     InlineKeyboardButton, InlineKeyboardMarkup, InputFile,
     ReplyKeyboardMarkup, Update, WebAppInfo,
@@ -673,7 +675,11 @@ async def on_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     tg_user = update.effective_user
     if message is None or not message.photo or tg_user is None:
         return
-    if (ctx.user_data.get("flow") or {}).get("name") != "photo_wait":
+    # `current_flow` rather than a raw dictionary read, because only it honours
+    # the TTL. Without it a "send me a photo" prompt opened yesterday was still
+    # armed today, and the next picture the user sent for any reason at all
+    # silently became their avatar.
+    if current_flow(ctx, "photo_wait") is None:
         return
 
     file_id = message.photo[-1].file_id          # highest resolution
@@ -1528,7 +1534,10 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             except ValueError:
                 await message.reply_text(t(lang, "ask_custom_days"))
                 return
-            deadline = svc.today_local() + timedelta(days=days)
+            # The user's own calendar, not the project default: "in 3 days"
+            # typed at 23:00 in London meant three days from Tashkent's
+            # tomorrow, so the task landed a day early.
+            deadline = svc.today_local(svc.user_tz(user)) + timedelta(days=days)
             await ask_task_project(update, ctx, flow["title"], deadline)
 
         elif name == "project_add":
@@ -1865,7 +1874,7 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             start_flow(ctx, "task_custom_days", title=title)
             await query.edit_message_text(t(lang, "ask_custom_days"))
             return
-        deadline = svc.today_local() + timedelta(days=int(parts[1]))
+        deadline = svc.today_local(svc.user_tz(user)) + timedelta(days=int(parts[1]))
         await query.edit_message_text(f"📅 {deadline.isoformat()}")
         await ask_task_project(update, ctx, title, deadline)
 
@@ -2173,8 +2182,13 @@ def render_evening(data: dict, lang: str) -> str:
     lines.append("")
 
     def row(label: str, done, total, percent) -> str:
-        return (f"{label}  {_bar(percent if percent is not None else 0, 6)}  "
-                f"{done}/{total}")
+        # `overall_components` returns None for a category with nothing in it,
+        # and drops it from the weighting rather than scoring it nought. An
+        # empty bar here said the opposite — that the user scored 0% — about a
+        # day that simply had no tasks on it.
+        if percent is None:
+            return f"{label}  —  {done}/{total}"
+        return f"{label}  {_bar(percent, 6)}  {done}/{total}"
 
     components = overall.get("components", {})
     lines.append(row(t(lang, "r_tasks"), data["tasks_completed"],
@@ -2350,6 +2364,21 @@ async def send_reports(bot, report_type: str) -> None:
 
 
 async def _send_reports_locked(bot, report_type: str, report_date) -> None:
+    # Before anything else, take back the slots a dead process is sitting on.
+    # A claim that was never resolved blocks that user's report for the whole
+    # day, and nothing else in the system would ever clear it.
+    try:
+        with SessionLocal() as s:
+            recovered = svc.reclaim_stale_claims(
+                s, report_date or svc.today_local())
+        if recovered:
+            log.warning("recovered %s stale report claim(s) before the %s batch",
+                        recovered, report_type)
+    except Exception:
+        # Recovery is an optimisation, not a precondition: if it fails the
+        # batch should still run for everybody whose slot is free.
+        log.exception("could not reclaim stale %s report claims", report_type)
+
     with SessionLocal() as s:
         recipients = svc.active_recipients(s)
 
@@ -2409,6 +2438,20 @@ async def _send_reports_locked(bot, report_type: str, report_date) -> None:
             log.warning("%s report to %s failed: %s", report_type, telegram_id, e)
             with SessionLocal() as s:
                 svc.mark_report_failed(s, report_id, str(e))
+            failed += 1
+
+        except (OperationalError, DBAPIError):
+            # The database wobbled — a dropped connection, a failover, a
+            # restart. That says nothing about this user, so marking the day
+            # failed would throw away a report over a problem that is already
+            # gone. Release the claim and let the next tick have it.
+            log.exception("%s report for %s hit a database error — releasing "
+                          "the claim for the next tick", report_type, telegram_id)
+            try:
+                with SessionLocal() as s:
+                    svc.release_report(s, report_id)
+            except Exception:
+                log.exception("could not release claim %s", report_id)
             failed += 1
 
         except Exception as e:
@@ -2474,6 +2517,9 @@ async def _send_user_reminders(bot, telegram_id: int, ws: int, lang: str) -> int
         user = s.get(User, telegram_id)
         if user is None:
             return 0
+        # Read the zone while the row is still attached: everything below runs
+        # after this session has closed.
+        user_zone = svc.user_tz(user)
         tasks = svc.due_task_reminders(s, ws, user)
         habits = svc.due_habit_reminders(s, ws, user)
 
@@ -2501,6 +2547,10 @@ async def _send_user_reminders(bot, telegram_id: int, ws: int, lang: str) -> int
             await bot.send_message(
                 telegram_id, t(lang, "remind_habit", name=esc(habit["name"])),
                 parse_mode=ParseMode.HTML)
+            # Marked only once Telegram accepted it, exactly as task reminders
+            # are, so a failure is retried rather than silently swallowed.
+            with SessionLocal() as s:
+                svc.mark_habit_reminder_sent(s, ws, habit["id"], tz=user_zone)
             sent += 1
         except TelegramError as e:
             log.warning("habit reminder to %s failed: %s", telegram_id, e)
@@ -2519,6 +2569,8 @@ async def _send_user_reminders(bot, telegram_id: int, ws: int, lang: str) -> int
 
 verify_init_data = security.verify_init_data
 auth = security.auth
+issue_avatar_token = security.issue_avatar_token
+verify_avatar_token = security.verify_avatar_token
 
 
 # ---------------------------------------------------------------------------
@@ -2549,6 +2601,22 @@ async def lifespan(_: FastAPI):
 
     db.init_db()
     log.info("database ready: %s", db.engine.url.render_as_string(hide_password=True))
+
+    # Advisory locks are held by a *connection*, and a process that is killed
+    # mid-job leaves its lock behind until the database notices the connection
+    # is gone — which, behind a pooler, can be a long time. Until then every
+    # report tick finds the job "already running elsewhere" and returns without
+    # sending anything. This releases only what this brand-new connection
+    # holds, which is nothing, plus whatever the pooler handed back to us; it
+    # cannot disturb another live instance's locks.
+    if db.engine.dialect.name == "postgresql":
+        try:
+            with SessionLocal() as s:
+                s.execute(sql_text("SELECT pg_advisory_unlock_all()"))
+                s.commit()
+            log.info("released any advisory locks left by a previous process")
+        except Exception:
+            log.exception("could not release stale advisory locks")
     # Print where each stream goes, so "stats landed in the log channel" is
     # diagnosable from the deploy log instead of guesswork.
     log.info("channels — events:%s feedback:%s stats:%s",
@@ -2672,7 +2740,10 @@ async def guard_requests(request: Request, call_next):
             key = 0
     if not key:
         host = request.client.host if request.client else "unknown"
-        key = -(abs(hash(host)) % 10_000_000)
+        # Offset by one: `hash(host) % 10_000_000 == 0` would produce key 0,
+        # which is the sentinel for "no identified user" a few lines above, so
+        # one unlucky address would share a bucket with that branch.
+        key = -(1 + abs(hash(host)) % 9_999_999)
 
     bucket = _rate_class(request)
     retry_after = rate_limit_check(key, bucket) if RATE_LIMIT_ENABLED else None
@@ -2874,7 +2945,7 @@ def health_ready():
     answers 200 while the database is unreachable is worse than one that
     admits it (audit 087).
     """
-    from sqlalchemy import inspect, text as sql_text
+    from sqlalchemy import inspect
 
     checks: dict[str, str] = {}
     ok = True
@@ -2933,15 +3004,32 @@ def health_ready():
                 # nothing went out. Almost always the bot not being an admin of
                 # the channel; the application log carries the Telegram error.
                 checks["stats"] = "overdue — check the bot is an admin there"
+            # How many people should have had a report today, against how many
+            # actually did. "sent 0" on its own is ambiguous — nobody was due
+            # yet, or delivery is broken — and the denominator is what tells
+            # the two apart without opening the database.
+            expected = s.scalar(select(func.count()).select_from(User)
+                                .where(User.onboarded.is_(True))) or 0
             for kind in ("morning", "evening"):
                 rows = s.execute(select(DailyReportLog.status, func.count())
                                  .where(DailyReportLog.report_date == today,
                                         DailyReportLog.report_type == kind)
                                  .group_by(DailyReportLog.status)).all()
                 counts = {status: n for status, n in rows}
+                resolved = sum(counts.values())
                 checks[f"{kind}_today"] = (
                     f"sent {counts.get('sent', 0)} · failed {counts.get('failed', 0)}"
-                    f" · claimed {counts.get('claimed', 0)}")
+                    f" · claimed {counts.get('claimed', 0)}"
+                    f" · of {expected} onboarded")
+                # A row still `claimed` is a worker that never finished. The
+                # next tick reclaims it once it is older than the cutoff; this
+                # is only here so the state is visible while it lasts.
+                if counts.get("claimed"):
+                    checks[f"{kind}_stuck"] = (
+                        f"{counts['claimed']} claim(s) unresolved — "
+                        f"reclaimed after {svc.STALE_CLAIM_MINUTES} min")
+                if expected and resolved == 0:
+                    checks[f"{kind}_note"] = "nobody due yet today"
     except Exception as e:
         checks["stats"] = f"error: {type(e).__name__}"
 
@@ -2958,6 +3046,11 @@ def api_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
             "language": user.language, "gender": user.gender,
             "theme": theme_of(user.theme), "quote": user.quote,
             "has_photo": bool(user.photo_file_id),
+            # Minted per request: the Mini App puts this in the avatar's
+            # `src` instead of its initData, so nothing long-lived reaches a
+            # URL. Only useful to the user it names, and only for minutes.
+            "avatar_token": (issue_avatar_token(user.telegram_id)
+                             if user.photo_file_id else None),
             "has_phone": bool(user.phone_number),
             "prefs": svc.prefs_for(user),
             "timezones": svc.TIMEZONES,
@@ -3839,15 +3932,25 @@ def api_birthday_delete(birthday_id: int, init=Header(default=None, alias="X-Tel
 
 
 @app.get("/api/avatar")
-async def api_avatar(tgdata: str | None = None,
+async def api_avatar(token: str | None = None, tgdata: str | None = None,
                      init=Header(default=None, alias="X-Telegram-Init-Data")):
     """Stream the user's profile photo.
 
-    A browser `<img src=...>` cannot attach a header, so the same signed
-    initData may arrive as `?tgdata=` instead (audit 061). It is the identical
-    credential — signature and freshness are checked the same way.
+    A browser `<img src=...>` cannot attach a header, so the credential has to
+    travel in the URL — and a URL is logged, kept in history and leaked in a
+    Referer. `?token=` is what the Mini App now sends: signed the same way, but
+    naming one user and expiring in minutes rather than a day (`/api/me`
+    issues it). `?tgdata=` stays accepted so that a page still open from
+    before this change keeps working; it can be dropped once they have all
+    reloaded.
     """
-    user, _ = auth(init or tgdata)
+    if token:
+        with SessionLocal() as s:
+            user = s.get(User, verify_avatar_token(token))
+        if user is None:
+            raise HTTPException(status_code=401, detail="unauthorized")
+    else:
+        user, _ = auth(init or tgdata)
     if not user.photo_file_id or telegram_app is None:
         raise HTTPException(status_code=404, detail="no_photo")
     try:

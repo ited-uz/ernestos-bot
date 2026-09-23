@@ -259,6 +259,12 @@ DEFAULT_WAKE_TIME = dtime(5, 0)
 WAKE_GRACE = timedelta(hours=1)
 
 
+#: How many times to re-read the maximum member number before giving up. Each
+#: retry costs one query and only happens when two accounts are created in the
+#: same instant, so a handful is plenty.
+MEMBER_NO_ATTEMPTS = 5
+
+
 def get_or_create_user(s: Session, telegram_id: int, *, first_name: str = "",
                        last_name: str = "", username: str = "") -> tuple[User, bool]:
     """Return (user, created). Creating a user also builds their workspace."""
@@ -275,12 +281,28 @@ def get_or_create_user(s: Session, telegram_id: int, *, first_name: str = "",
 
     # Sequential join number: max()+1 rather than a count, so deleting a user
     # never hands their number to somebody else.
-    next_no = (s.scalar(select(func.max(User.member_no))) or 0) + 1
-    user = User(telegram_id=telegram_id, member_no=next_no,
-                first_name=first_name or "", last_name=last_name or "",
-                username=username or "")
-    s.add(user)
-    s.flush()
+    #
+    # Two people tapping /start in the same second both read the same max and
+    # both write it, and the number is not an internal detail — it is shown to
+    # the user as "you are member #42" and logged to the admin channel. The
+    # column is unique, so the loser of the race now fails loudly on flush and
+    # simply reads the new maximum and tries again, inside a SAVEPOINT so the
+    # retry cannot damage whatever transaction the caller is running.
+    for _ in range(MEMBER_NO_ATTEMPTS):
+        next_no = (s.scalar(select(func.max(User.member_no))) or 0) + 1
+        user = User(telegram_id=telegram_id, member_no=next_no,
+                    first_name=first_name or "", last_name=last_name or "",
+                    username=username or "")
+        s.add(user)
+        try:
+            with s.begin_nested():
+                s.flush()
+            break
+        except IntegrityError:
+            s.expunge(user)
+    else:
+        raise RuntimeError(
+            f"could not allocate a member number after {MEMBER_NO_ATTEMPTS} tries")
 
     workspace = Workspace(user_id=telegram_id)
     s.add(workspace)
@@ -798,6 +820,12 @@ def habit_percent(s: Session, ws: int, day: date) -> int:
                      for t in tiers.values() if t["due"]) / live * 100)
 
 
+#: How far back a streak is counted. Longer than any grid the UI offers, so
+#: the streak is a property of the habit rather than of the view you happen to
+#: be looking at, and bounded so the walk always terminates.
+STREAK_HORIZON = 400
+
+
 def habit_history(s: Session, ws: int, habit_id: int, *, days: int = 30,
                   tz: ZoneInfo | None = None) -> dict:
     """One habit's own record: its streak, its grid and its completion rate.
@@ -828,17 +856,23 @@ def habit_history(s: Session, ws: int, habit_id: int, *, days: int = 30,
 
     # The streak counts backwards over scheduled days only, and today does not
     # break it while the day is still going.
+    #
+    # Its own window, independent of the grid's. The streak used to walk the
+    # same `done_days` the grid was built from, so it could never report more
+    # than `days` — a 90-day run of a habit shown on the default 30-day grid
+    # read as 30, and the number went *down* when the user narrowed the view.
+    streak_start = today - timedelta(days=STREAK_HORIZON)
+    streak_done = set(s.scalars(select(HabitLog.day).where(
+        HabitLog.workspace_id == ws, HabitLog.habit_id == habit_id,
+        HabitLog.done.is_(True), HabitLog.day >= streak_start)).all())
+
     streak, cursor, guard = 0, today, 0
-    if habit_is_due(habit, today) and today not in done_days:
+    if habit_is_due(habit, today) and today not in streak_done:
         cursor = today - timedelta(days=1)
-    while guard < 400:
+    while guard < STREAK_HORIZON:
         guard += 1
         if habit_is_due(habit, cursor):
-            if cursor not in done_days and cursor >= start:
-                break
-            if cursor < start:
-                # Beyond the window we no longer have the logs loaded; stop
-                # rather than guess.
+            if cursor not in streak_done:
                 break
             streak += 1
         cursor -= timedelta(days=1)
@@ -1202,8 +1236,17 @@ def clean_recurrence(value: str | None) -> str:
     return ""
 
 
-def next_occurrence(recurrence: str | None, after: date) -> date | None:
-    """The next date a recurring task is due, strictly after `after`."""
+def next_occurrence(recurrence: str | None, after: date, *,
+                    anchor_day: int | None = None) -> date | None:
+    """The next date a recurring task is due, strictly after `after`.
+
+    `anchor_day` is the day of the month the user originally picked, and it
+    only matters for the monthly rule. Without it the clamp below is lossy:
+    the 31st becomes the 28th in February, and because the next month is then
+    computed from *that*, the task stays on the 28th for ever. Passing the
+    anchor lets each month clamp from the original choice instead of from the
+    previous clamp, so a 31st task reads 31 / 28 / 31 / 30 as a person expects.
+    """
     rule = clean_recurrence(recurrence)
     if not rule:
         return None
@@ -1217,7 +1260,7 @@ def next_occurrence(recurrence: str | None, after: date) -> date | None:
         # raising, and a monthly task never silently stops recurring.
         last = (date(year + (month == 12), (month % 12) + 1, 1)
                 - timedelta(days=1)).day
-        return date(year, month, min(after.day, last))
+        return date(year, month, min(anchor_day or after.day, last))
 
     wanted = [0, 1, 2, 3, 4] if rule == "weekdays" else \
         [int(x) for x in rule[len(SCHEDULE_PREFIX_DAYS):].split(",")]
@@ -1289,14 +1332,17 @@ def _spawn_next_occurrence(s: Session, ws: int, task: Task,
         return None
 
     base = task.deadline or today_local(tz)
-    nxt = next_occurrence(rule, base)
+    # Remember the day the user picked the first time a monthly task recurs,
+    # so later clamps measure from their choice rather than from each other.
+    anchor = task.anchor_day or (base.day if rule == "monthly" else None)
+    nxt = next_occurrence(rule, base, anchor_day=anchor)
     if nxt is None:
         return None
     # Never fall behind: after a long gap, the next copy is the next date from
     # today rather than a run of overdue clones.
     today = today_local(tz)
     while nxt < today:
-        following = next_occurrence(rule, nxt)
+        following = next_occurrence(rule, nxt, anchor_day=anchor)
         if following is None or following == nxt:
             break
         nxt = following
@@ -1311,7 +1357,7 @@ def _spawn_next_occurrence(s: Session, ws: int, task: Task,
     clone = Task(workspace_id=ws, title=task.title, description=task.description,
                  project_id=task.project_id, deadline=nxt, due_time=task.due_time,
                  remind_before=task.remind_before, recurrence=rule,
-                 priority=task.priority)
+                 anchor_day=anchor, priority=task.priority)
     s.add(clone)
     s.flush()
     return clone
@@ -2155,7 +2201,8 @@ OVERALL_WEIGHTS = {"tasks": 0.40, "habits": 0.25, "focus": 0.20, "prayer": 0.15}
 TASK_PRIORITY_WEIGHTS = {"high": 3, "medium": 2, "low": 1}
 
 
-def today_task_progress(s: Session, ws: int, day: date | None = None) -> tuple[int, int]:
+def today_task_progress(s: Session, ws: int, day: date | None = None, *,
+                        tz: ZoneInfo | None = None) -> tuple[int, int]:
     """(completed, total) tasks that belong to this day.
 
     Only tasks actually scheduled for the day count. Folding in the whole
@@ -2165,7 +2212,7 @@ def today_task_progress(s: Session, ws: int, day: date | None = None) -> tuple[i
     Plain counts, for the places that print "3 / 5". The score itself uses
     `today_task_score`, which weighs each task by its priority.
     """
-    day = day or today_local()
+    day = day or today_local(tz)
     total = s.scalar(select(func.count(Task.id)).where(
         Task.workspace_id == ws, Task.archived_at.is_(None),
         Task.deadline == day)) or 0
@@ -2175,9 +2222,10 @@ def today_task_progress(s: Session, ws: int, day: date | None = None) -> tuple[i
     return done, total
 
 
-def today_task_score(s: Session, ws: int, day: date | None = None) -> tuple[int, int]:
+def today_task_score(s: Session, ws: int, day: date | None = None, *,
+                     tz: ZoneInfo | None = None) -> tuple[int, int]:
     """(earned, available) task points for the day, weighted by priority."""
-    day = day or today_local()
+    day = day or today_local(tz)
     rows = s.execute(select(Task.priority, Task.status).where(
         Task.workspace_id == ws, Task.archived_at.is_(None),
         Task.deadline == day)).all()
@@ -2201,7 +2249,8 @@ def focus_progress(s: Session, ws: int, day: date | None = None, *,
     return sum(1 for r in rows if r["done"]), len(rows)
 
 
-def overall_components(s: Session, ws: int, day: date | None = None) -> dict:
+def overall_components(s: Session, ws: int, day: date | None = None, *,
+                       tz: ZoneInfo | None = None) -> dict:
     """Each component's percentage, or None when it has no denominator today.
 
     A category with nothing in it is *absent*, not zero. Counting an empty
@@ -2210,15 +2259,15 @@ def overall_components(s: Session, ws: int, day: date | None = None) -> dict:
     safe to state as fixed numbers, because an unused category is removed from
     the calculation rather than scored at nought.
     """
-    day = day or today_local()
+    day = day or today_local(tz)
 
     habits_done, habits_total = habit_progress(s, ws, day)
-    tasks_earned, tasks_available = today_task_score(s, ws, day)
+    tasks_earned, tasks_available = today_task_score(s, ws, day, tz=tz)
     # Weighted across the three tiers, not a flat count of ticks. The counts
     # above are still what "4/6" on screen means; this is what the score is
     # built from, and they are different questions on purpose.
     habits_scored = habit_percent(s, ws, day)
-    focus_done, focus_total = focus_progress(s, ws, day)
+    focus_done, focus_total = focus_progress(s, ws, day, tz=tz)
     prayer_row = s.scalar(select(PrayerDay).where(
         PrayerDay.workspace_id == ws, PrayerDay.day == day))
     prayer_habit = s.scalar(select(Habit.id).where(
@@ -2643,8 +2692,15 @@ def break_state(s: Session, ws: int, user: User, *,
     Someone who has been away for a week should be met with one decision, not
     a backlog and a broken streak.
     """
-    today = today_local(tz or user_tz(user))
-    last_seen = (user.last_active_at.date() if user.last_active_at else today)
+    zone = tz or user_tz(user)
+    today = today_local(zone)
+    # `last_active_at` is a UTC instant and `today` is a local calendar date,
+    # so `.date()` on the raw column compares two different kinds of time. In
+    # Tashkent anything after 19:00 local still carries yesterday's UTC date,
+    # which made a user who was active last night read as a day away and
+    # triggered the "welcome back" prompt on somebody who never left.
+    last_seen = (local_date_of(user.last_active_at, zone)
+                 if user.last_active_at else today)
     away = (today - last_seen).days
 
     overdue = s.scalar(select(func.count(Task.id)).where(
@@ -3074,6 +3130,15 @@ def wipe_workspace(s: Session, telegram_id: int) -> bool:
         return False
     for model in WORKSPACE_TABLES:
         s.execute(sql_delete(model).where(model.workspace_id == ws))
+
+    # Level, XP, streaks, daily scores and achievements hang off `user_id`,
+    # not `workspace_id`, so the loop above never reaches them. Without this a
+    # "wipe everything" left the user at level 9 with a 200-day streak over an
+    # empty workspace — every number on the progress screen describing work
+    # that no longer exists, and a leaderboard position to match.
+    for model in (XPEvent, DailyScore, UserAchievement, UserProgress):
+        s.execute(sql_delete(model).where(model.user_id == telegram_id))
+
     s.commit()
     # A workspace with no habits is not a clean slate, it is a dead one.
     seed_default_habits(s, ws)
@@ -3211,15 +3276,23 @@ def get_or_create_referral_code(s: Session, user_id: int) -> str:
         row = s.get(ReferralCode, user_id)
         if row is not None:
             return row.code
-        s.add(ReferralCode(user_id=user_id,
-                           code=secrets.token_urlsafe(REFERRAL_CODE_BYTES)))
+        row = ReferralCode(user_id=user_id,
+                           code=secrets.token_urlsafe(REFERRAL_CODE_BYTES))
+        s.add(row)
         try:
-            s.commit()
+            # A SAVEPOINT, not a bare commit: this is usually called partway
+            # through registration, in the caller's transaction, alongside the
+            # freshly written user and workspace rows. `s.rollback()` on a
+            # clash would throw all of that away and leave the caller looking
+            # at objects the database no longer has. Only the insert is undone.
+            with s.begin_nested():
+                s.flush()
         except IntegrityError:
             # Either this user was given a code by a concurrent request, or the
             # random code collided. Both are answered by looking again.
-            s.rollback()
+            s.expunge(row)
             continue
+        s.commit()
         return s.get(ReferralCode, user_id).code
     raise RuntimeError("could not allocate a referral code")
 
@@ -3673,9 +3746,14 @@ def sync_day_xp(s: Session, user_id: int, ws: int, day: date) -> int:
                      .join(HabitLog, HabitLog.habit_id == Habit.id)
                      .where(HabitLog.workspace_id == ws, HabitLog.day == day,
                             HabitLog.done.is_(True))).all()
-    SYSTEM_XP = {SYSTEM_WAKEUP: ("ritual_wake", "ritual"),
-                 SYSTEM_PRAYER: ("ritual_prayer", "ritual"),
-                 SYSTEM_JOURNAL: ("ritual_journal", "ritual")}
+    # One `event_type` per ritual, not one shared "ritual" label. They used to
+    # share it, and `early_riser` — which counts days the user woke up on time
+    # — counted prayer and journal days too, so anyone praying and writing
+    # daily earned a thirty-day award in ten. Migration 0009 relabels the rows
+    # already written under the shared name.
+    SYSTEM_XP = {SYSTEM_WAKEUP: ("ritual_wake", "wake"),
+                 SYSTEM_PRAYER: ("ritual_prayer", "prayer"),
+                 SYSTEM_JOURNAL: ("ritual_journal", "journal")}
     for habit_id, system_key in rows:
         value_key, event_type = SYSTEM_XP.get(system_key, ("habit", "task"))
         granted += award_xp(s, user_id, f"habit:{habit_id}:{day}", event_type,
@@ -3947,7 +4025,7 @@ def _achievement_values(s: Session, user_id: int,
     wake_xp = int(s.scalar(select(func.count()).select_from(XPEvent).where(
         XPEvent.user_id == user_id,
         XPEvent.event_key.like("habit:%"),
-        XPEvent.event_type == "ritual")) or 0)
+        XPEvent.event_type == "wake")) or 0)
     return {
         "scored_days": progress.scored_days or 0,
         "perfect_days": progress.perfect_days or 0,
@@ -4262,6 +4340,41 @@ def release_report(s: Session, report_id: int) -> None:
     if row is not None:
         s.delete(row)
         s.commit()
+
+
+#: How long a row may sit in `claimed` before the next tick treats it as
+#: abandoned. Generous on purpose: a claim is only ever held for as long as it
+#: takes to render one report and hand it to Telegram, so anything still
+#: `claimed` half an hour later belongs to a process that is gone.
+STALE_CLAIM_MINUTES = 30
+
+
+def reclaim_stale_claims(s: Session, report_date: date) -> int:
+    """Free claims whose worker died, and return how many were freed.
+
+    `claim_report` writes `claimed` and the sender marks it `sent` or `failed`
+    afterwards. Between those two writes the process can disappear — a deploy,
+    an OOM kill, a platform restart — and the row is then the worst of both
+    worlds: it satisfies the unique constraint, so no later tick can claim that
+    slot, and nothing ever sends it. That user's report for that day is lost,
+    silently, with no way back. Repeat the deploy each morning and the feature
+    is simply off for them.
+
+    Deleting the row is safe because the once-a-day guarantee never lived in
+    the row's *existence* — it lives in its status. A row that reached `sent`
+    or `failed` is a decision and is left alone; only `claimed` is ambiguous,
+    and only after it is too old to belong to a live sender.
+    """
+    cutoff = utcnow() - timedelta(minutes=STALE_CLAIM_MINUTES)
+    rows = s.scalars(select(DailyReportLog).where(
+        DailyReportLog.report_date == report_date,
+        DailyReportLog.status == "claimed",
+        DailyReportLog.claimed_at < cutoff)).all()
+    for row in rows:
+        s.delete(row)
+    if rows:
+        s.commit()
+    return len(rows)
 
 
 def claim_job_run(s: Session, job_name: str, run_date: date) -> bool:
@@ -4618,15 +4731,42 @@ def due_habit_reminders(s: Session, ws: int, user: User,
     now = now or now_local(tz)
     today = now.date()
 
+    already = set(s.scalars(select(HabitLog.habit_id).where(
+        HabitLog.workspace_id == ws, HabitLog.day == today,
+        HabitLog.reminder_sent_at.is_not(None))).all())
+
     out = []
     for habit in list_habits(s, ws, today, tz=tz):
         if not habit["due"] or habit["done"] or not habit["remind_at"]:
+            continue
+        if habit["id"] in already:
             continue
         hour, minute = (int(x) for x in habit["remind_at"].split(":"))
         fire = datetime.combine(today, dtime(hour, minute))
         if fire <= now < fire + HABIT_REMINDER_WINDOW:
             out.append(habit)
     return out
+
+
+def mark_habit_reminder_sent(s: Session, ws: int, habit_id: int,
+                             day: date | None = None,
+                             tz: ZoneInfo | None = None) -> None:
+    """Record that today's nudge for this habit has gone out.
+
+    Writes the day's log row if it does not exist yet, with `done=False`: the
+    row means "this habit has a state today", and being reminded is part of
+    that state. `toggle_habit` updates the same row rather than adding another,
+    because (habit_id, day) is unique.
+    """
+    day = day or today_local(tz)
+    row = s.scalar(select(HabitLog).where(
+        HabitLog.workspace_id == ws, HabitLog.habit_id == habit_id,
+        HabitLog.day == day))
+    if row is None:
+        row = HabitLog(workspace_id=ws, habit_id=habit_id, day=day, done=False)
+        s.add(row)
+    row.reminder_sent_at = utcnow()
+    s.commit()
 
 
 # ---------------------------------------------------------------------------

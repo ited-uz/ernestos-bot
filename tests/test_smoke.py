@@ -37,6 +37,8 @@ os.environ.update({
 })
 
 import app as application  # noqa: E402
+import config  # noqa: E402
+import security  # noqa: E402
 import db  # noqa: E402
 import migrations  # noqa: E402
 import dependencies as deps  # noqa: E402
@@ -6190,3 +6192,363 @@ def test_deleting_an_account_takes_its_progression_with_it():
             left = s.scalar(select(func.count()).select_from(model)
                             .where(model.user_id == uid))
             assert left == 0, f"{model.__tablename__} kept orphan rows"
+
+
+# ---------------------------------------------------------------------------
+# Report delivery — the whole path, on the schedule production actually runs
+# ---------------------------------------------------------------------------
+#
+# Every report test above hands `_send_reports_locked` an explicit date, which
+# is the one argument production never passes. That short-circuits the due
+# check entirely, so the tests that looked like they covered delivery were
+# really only covering rendering and the outbox. These drive the path the
+# scheduler drives: `report_date=None`, the user's own clock, the real data
+# and the real renderer.
+
+def _solo_recipient(client, monkeypatch, **fields):
+    """One onboarded user, alone in the batch, with `fields` applied."""
+    telegram_id = next(_next_id)
+    Caller(client, {"id": telegram_id, "first_name": "Tick"})
+    with SessionLocal() as s:
+        user = s.get(User, telegram_id)
+        for key, value in fields.items():
+            setattr(user, key, value)
+        s.commit()
+        ws = svc.workspace_id_for(s, telegram_id)
+    monkeypatch.setattr(svc, "active_recipients",
+                        lambda s: [(telegram_id, ws, "uz")])
+    return telegram_id, ws
+
+
+async def test_a_report_goes_out_on_the_real_scheduler_path(monkeypatch, client):
+    """report_date=None — the only form the scheduler ever calls."""
+    tz = svc.TZ
+    now = svc.now_local(tz)
+    telegram_id, _ = _solo_recipient(
+        client, monkeypatch,
+        morning_time=(now - timedelta(minutes=1)).time().replace(
+            second=0, microsecond=0))
+
+    bot = _FakeBot()
+    await application._send_reports_locked(bot, "morning", None)
+
+    assert bot.sent == [telegram_id], (
+        "a user whose morning time has just passed must receive the report "
+        "when the job runs the way the scheduler runs it")
+
+
+async def test_a_report_is_sent_once_over_a_whole_day_of_ticks(monkeypatch, client):
+    """Ticking every two minutes for a day must produce exactly one report.
+
+    This is the property the frequent tick exists to provide, and the one a
+    duplicate would break. Twelve hours of ticks, one message.
+    """
+    telegram_id, _ = _solo_recipient(client, monkeypatch,
+                                morning_time=dtime(5, 0))
+    bot = _FakeBot()
+    day = date(2031, 5, 4)
+    moment = datetime.combine(day, dtime(0, 0))
+
+    monkeypatch.setattr(svc, "now_local", lambda tz=None: moment)
+    monkeypatch.setattr(svc, "today_local", lambda tz=None: moment.date())
+    for _ in range(360):                      # 12 hours at two-minute ticks
+        await application._send_reports_locked(bot, "morning", None)
+        moment += timedelta(minutes=2)
+
+    assert bot.sent == [telegram_id], f"expected exactly one report, got {bot.sent}"
+
+
+async def test_a_dead_workers_claim_is_reclaimed_and_retried(monkeypatch, client):
+    """A claim nobody resolved must not cost the user their day.
+
+    A process killed between `claim_report` and `mark_report_sent` leaves a
+    row that blocks the slot for ever: it satisfies the unique constraint, so
+    no later tick can claim it, and nothing sends it.
+    """
+    telegram_id, ws = _solo_recipient(client, monkeypatch, morning_time=dtime(5, 0))
+    day = date(2031, 5, 5)
+
+    with SessionLocal() as s:
+        claim_id = svc.claim_report(s, ws, "morning", day)
+        assert claim_id is not None
+        # Backdate it, as a process that died half an hour ago would leave it.
+        row = s.get(db.DailyReportLog, claim_id)
+        row.claimed_at = db.utcnow() - timedelta(
+            minutes=svc.STALE_CLAIM_MINUTES + 5)
+        s.commit()
+        assert svc.claim_report(s, ws, "morning", day) is None, "slot is blocked"
+
+    with SessionLocal() as s:
+        assert svc.reclaim_stale_claims(s, day) == 1
+        assert svc.claim_report(s, ws, "morning", day) is not None, (
+            "the freed slot must be claimable again")
+
+
+async def test_a_fresh_claim_is_never_reclaimed(client):
+    """Recovery must not steal a slot from a worker that is still sending."""
+    telegram_id = next(_next_id)
+    Caller(client, {"id": telegram_id, "first_name": "Live"})
+    day = date(2031, 5, 6)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, telegram_id)
+        assert svc.claim_report(s, ws, "morning", day) is not None
+        assert svc.reclaim_stale_claims(s, day) == 0, (
+            "a claim taken seconds ago belongs to a live sender")
+
+
+async def test_a_database_error_releases_the_claim_instead_of_burning_the_day(
+        monkeypatch, client):
+    """A wobbling database must not cost the user their report for the day."""
+    from sqlalchemy.exc import OperationalError
+
+    telegram_id, ws = _solo_recipient(client, monkeypatch, morning_time=dtime(5, 0))
+    day = date(2031, 5, 7)
+
+    bot = _FakeBot({telegram_id: OperationalError("SELECT 1", {}, Exception("gone"))})
+    await application._send_reports_locked(bot, "morning", day)
+
+    with SessionLocal() as s:
+        assert svc.claim_report(s, ws, "morning", day) is not None, (
+            "a transient database failure must leave the slot free to retry")
+
+
+async def test_a_telegram_failure_does_burn_the_day(monkeypatch, client):
+    """The counterpart: a blocked bot will not improve within the day."""
+    from telegram.error import Forbidden
+
+    telegram_id, ws = _solo_recipient(client, monkeypatch, morning_time=dtime(5, 0))
+    day = date(2031, 5, 8)
+
+    bot = _FakeBot({telegram_id: Forbidden("bot was blocked by the user")})
+    await application._send_reports_locked(bot, "morning", day)
+
+    with SessionLocal() as s:
+        assert svc.claim_report(s, ws, "morning", day) is None, (
+            "a permanent failure must stay claimed, not be retried every tick")
+
+
+def test_a_report_job_survives_a_process_that_restarts_all_day():
+    """The trigger must not depend on the process being alive at one instant.
+
+    This is the bug that switched reports off in production. A `cron(hour=4)`
+    job on an in-memory jobstore recomputes its next fire time at every boot,
+    always to the next 04:00 *after now* — so a process that restarts more
+    often than once a day pushes the job forward for ever and it never runs.
+    A frequent tick has no such instant to miss.
+    """
+    from apscheduler.triggers.cron import CronTrigger
+
+    def fired_days(trigger, alive_hours: int) -> int:
+        fired = 0
+        for offset in range(30):
+            boot = (datetime(2031, 6, 1, 9, 0, tzinfo=svc.TZ)
+                    + timedelta(days=offset))
+            following = trigger.get_next_fire_time(None, boot)
+            if following is not None and following < boot + timedelta(hours=alive_hours):
+                fired += 1
+        return fired
+
+    fixed_hour = CronTrigger(hour=4, minute=0, timezone=svc.TZ)
+    every_tick = CronTrigger(minute=f"*/{config.REPORT_TICK_MINUTES}",
+                             timezone=svc.TZ)
+
+    assert fired_days(fixed_hour, alive_hours=6) == 0, (
+        "sanity check: this is the failure mode being guarded against")
+    assert fired_days(every_tick, alive_hours=6) == 30, (
+        "the report tick must fire regardless of when the process restarts")
+
+
+# ---------------------------------------------------------------------------
+# The logic bugs that survived because nothing asked about them
+# ---------------------------------------------------------------------------
+
+def test_wiping_a_workspace_also_clears_the_progression():
+    """"Erase everything I wrote" has to include the numbers built from it.
+
+    XP, scores, achievements and progress hang off `user_id` rather than
+    `workspace_id`, so the workspace-scoped wipe never reached them and left
+    the user at their old level with a streak over an empty workspace.
+    """
+    telegram_id = next(_next_id)
+    _onboard(telegram_id)
+    day = date(2031, 7, 1)
+    with SessionLocal() as s:
+        svc.award_xp(s, telegram_id, f"test:{telegram_id}", "task", 10, day)
+        svc.refresh_progress(s, telegram_id)
+        s.commit()
+        assert s.scalar(select(func.count()).select_from(db.XPEvent)
+                        .where(db.XPEvent.user_id == telegram_id)) > 0
+
+    with SessionLocal() as s:
+        assert svc.wipe_workspace(s, telegram_id) is True
+
+    with SessionLocal() as s:
+        for model in (db.XPEvent, db.DailyScore, db.UserAchievement):
+            left = s.scalar(select(func.count()).select_from(model)
+                            .where(model.user_id == telegram_id))
+            assert left == 0, f"{model.__tablename__} survived the wipe"
+        progress = s.get(db.UserProgress, telegram_id)
+        assert progress is None or (progress.total_xp or 0) == 0
+        # The account itself, and its habits, must still be there.
+        assert s.get(User, telegram_id) is not None
+        ws = svc.workspace_id_for(s, telegram_id)
+        assert s.scalar(select(func.count()).select_from(db.Habit)
+                        .where(db.Habit.workspace_id == ws)) > 0
+
+
+def test_each_ritual_earns_its_own_kind_of_xp():
+    """Waking, praying and journalling must not all read as "woke up early".
+
+    `early_riser` counts wake days by `event_type`. While all three rituals
+    wrote the same label, praying and journalling counted towards it too and
+    the thirty-day award arrived in about ten.
+    """
+    telegram_id = next(_next_id)
+    _onboard(telegram_id)
+    day = date(2031, 7, 2)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, telegram_id)
+        habits = {h.system_key: h.id for h in s.scalars(
+            select(db.Habit).where(db.Habit.workspace_id == ws)).all()}
+        for key in (svc.SYSTEM_WAKEUP, svc.SYSTEM_PRAYER, svc.SYSTEM_JOURNAL):
+            assert key in habits, f"missing system habit {key}"
+            s.add(db.HabitLog(workspace_id=ws, habit_id=habits[key],
+                              day=day, done=True))
+        s.commit()
+        svc.sync_day_xp(s, telegram_id, ws, day)
+        s.commit()
+
+        types = {t for (t,) in s.execute(
+            select(db.XPEvent.event_type)
+            .where(db.XPEvent.user_id == telegram_id,
+                   db.XPEvent.event_date == day)).all()}
+
+    assert {"wake", "prayer", "journal"} <= types, (
+        f"each ritual needs its own event_type, got {types}")
+    assert "ritual" not in types, "the shared label must be gone"
+
+
+def test_two_accounts_created_at_once_get_different_member_numbers():
+    """The number is shown to the user, so two people cannot share one."""
+    ids = [next(_next_id) for _ in range(6)]
+    numbers = []
+    for telegram_id in ids:
+        with SessionLocal() as s:
+            user, created = svc.get_or_create_user(s, telegram_id)
+            assert created
+            numbers.append(user.member_no)
+    assert len(set(numbers)) == len(numbers), f"duplicate member_no: {numbers}"
+    assert all(n > 0 for n in numbers)
+
+
+def test_a_monthly_task_set_for_the_31st_returns_to_the_31st():
+    """February must borrow the date, not keep it.
+
+    Clamping the 31st to the 28th is right for February; computing March from
+    that clamp is not, and it left the task on the 28th for ever.
+    """
+    run, cursor = [], date(2031, 1, 31)
+    for _ in range(4):
+        cursor = svc.next_occurrence("monthly", cursor, anchor_day=31)
+        run.append(cursor)
+
+    assert run == [date(2031, 2, 28), date(2031, 3, 31),
+                   date(2031, 4, 30), date(2031, 5, 31)], run
+
+
+def test_a_habit_reminder_is_not_repeated_by_a_second_tick(client):
+    """The job window is not a substitute for recording what was sent."""
+    telegram_id = next(_next_id)
+    Caller(client, {"id": telegram_id, "first_name": "Nudge"})
+    with SessionLocal() as s:
+        user = s.get(User, telegram_id)
+        user.habit_reminders = True
+        ws = svc.workspace_id_for(s, telegram_id)
+        habit = s.scalars(select(db.Habit).where(
+            db.Habit.workspace_id == ws)).first()
+        tz = svc.user_tz(user)
+        now = svc.now_local(tz)
+        habit.remind_at = now.time().replace(second=0, microsecond=0)
+        habit.schedule = svc.SCHEDULE_DAILY
+        habit.paused_at = None
+        habit_id = habit.id
+        s.commit()
+
+    with SessionLocal() as s:
+        user = s.get(User, telegram_id)
+        due = svc.due_habit_reminders(s, ws, user, now=now)
+        assert any(h["id"] == habit_id for h in due), "the first tick must nudge"
+        svc.mark_habit_reminder_sent(s, ws, habit_id, tz=svc.user_tz(user))
+
+    with SessionLocal() as s:
+        user = s.get(User, telegram_id)
+        again = svc.due_habit_reminders(s, ws, user, now=now)
+        assert not any(h["id"] == habit_id for h in again), (
+            "a habit already nudged today must not be nudged again")
+
+
+def test_being_active_late_at_night_is_not_a_day_away():
+    """`last_active_at` is UTC; "today" is the user's calendar.
+
+    In Tashkent everything after 19:00 local carries yesterday's UTC date, so
+    comparing the raw column with a local date told a user who was using the
+    app an hour ago that they had been away, and offered them a fresh start.
+    """
+    telegram_id = next(_next_id)
+    _onboard(telegram_id)
+    tz = svc.TZ
+    local_now = datetime.now(tz)
+    with SessionLocal() as s:
+        user = s.get(User, telegram_id)
+        # 22:00 local today, stored the way the app stores it: naive UTC.
+        local_evening = datetime.combine(local_now.date(), dtime(22, 0))
+        user.last_active_at = (local_evening.replace(tzinfo=tz)
+                               .astimezone(timezone.utc).replace(tzinfo=None))
+        s.commit()
+        state = svc.break_state(s, svc.workspace_id_for(s, telegram_id),
+                                user, tz=tz)
+
+    assert state["days_away"] == 0, (
+        f"active this evening, reported {state['days_away']} days away")
+    assert state["suggest_reset"] is False
+
+
+# ---------------------------------------------------------------------------
+# Avatar tokens — a credential in a URL, scoped down to what the URL needs
+# ---------------------------------------------------------------------------
+
+def test_an_avatar_token_round_trips():
+    token = application.issue_avatar_token(ALICE["id"])
+    assert application.verify_avatar_token(token) == ALICE["id"]
+
+
+def test_an_avatar_token_expires():
+    from fastapi import HTTPException
+
+    past = time.time() - security.AVATAR_TOKEN_TTL - 60
+    token = application.issue_avatar_token(ALICE["id"], now=past)
+    with pytest.raises(HTTPException) as caught:
+        application.verify_avatar_token(token)
+    assert caught.value.status_code == 401
+
+
+def test_a_tampered_avatar_token_is_refused():
+    from fastapi import HTTPException
+
+    user_id, expires, _ = application.issue_avatar_token(ALICE["id"]).rsplit(":", 2)
+    forged = f"{user_id}:{expires}:{'0' * 64}"
+    with pytest.raises(HTTPException):
+        application.verify_avatar_token(forged)
+
+    # And a token may not be re-pointed at somebody else's picture.
+    real = application.issue_avatar_token(ALICE["id"])
+    _, expires, signature = real.rsplit(":", 2)
+    with pytest.raises(HTTPException):
+        application.verify_avatar_token(f"{BOB['id']}:{expires}:{signature}")
+
+
+def test_the_mini_app_is_given_a_token_only_when_there_is_a_photo(alice):
+    body = alice.get("/api/me").json()
+    assert "avatar_token" in body
+    if not body["has_photo"]:
+        assert body["avatar_token"] is None

@@ -451,6 +451,110 @@ def m0008_named_theme_systems() -> dict:
             "total": sum(moved.values())}
 
 
+def m0009_split_ritual_event_type() -> dict:
+    """Relabel the shared `ritual` XP events as wake / prayer / journal.
+
+    Waking, praying and journalling all wrote `event_type="ritual"`, and the
+    `early_riser` achievement counts wake days by reading that column — so a
+    user who prayed and wrote daily earned a thirty-day award in about ten.
+    The events themselves were always correct and none are deleted: only the
+    label was wrong, and it is recoverable because `event_key` carries the
+    habit id (`habit:<id>:<day>`) that says which ritual each row was for.
+
+    Idempotent: rows already carrying a specific type no longer match.
+    """
+    from sqlalchemy import select as sql_select
+
+    from db import Habit, XPEvent
+
+    key_to_type = {"wakeup": "wake", "prayer": "prayer", "journal": "journal"}
+    retyped = {"wake": 0, "prayer": 0, "journal": 0}
+    skipped = 0
+
+    with SessionLocal() as s:
+        habit_type = {h.id: key_to_type.get(h.system_key or "")
+                      for h in s.scalars(sql_select(Habit)).all()}
+        rows = s.scalars(sql_select(XPEvent)
+                         .where(XPEvent.event_type == "ritual")).all()
+        for event in rows:
+            parts = (event.event_key or "").split(":")
+            if len(parts) < 3 or parts[0] != "habit":
+                skipped += 1
+                continue
+            try:
+                habit_id = int(parts[1])
+            except ValueError:
+                skipped += 1
+                continue
+            new_type = habit_type.get(habit_id)
+            if not new_type:
+                # The habit was archived and purged, so which ritual this was
+                # can no longer be known. Leaving it as "ritual" is the honest
+                # outcome: it counts towards nothing rather than the wrong one.
+                skipped += 1
+                continue
+            event.event_type = new_type
+            retyped[new_type] += 1
+        s.commit()
+
+    return {"migration": "0009_split_ritual_event_type",
+            "retyped": retyped, "total": sum(retyped.values()),
+            "left_as_ritual": skipped}
+
+
+def m0010_daily_report_unique() -> dict:
+    """Add the once-a-day report constraint to databases created without it.
+
+    `daily_report_logs` relies on UNIQUE(workspace_id, report_type,
+    report_date) as its lock — `claim_report` inserts and treats the resulting
+    IntegrityError as "somebody else already has this one". `create_all` only
+    ever creates whole tables, so a database whose table predates the
+    constraint never got it, and on that database the insert always succeeds:
+    every tick claims a fresh row and sends the same report again.
+
+    Duplicate rows are collapsed before the index is built, keeping whichever
+    row actually reached `sent`. Idempotent, and safe to run twice.
+    """
+    from sqlalchemy import inspect, text
+
+    table = "daily_report_logs"
+    index_name = "uq_daily_report"
+    inspector = inspect(db.engine)
+    if not inspector.has_table(table):
+        return {"migration": "0010_daily_report_unique", "status": "no table"}
+
+    have = {c["name"] for c in inspector.get_unique_constraints(table)}
+    have |= {i["name"] for i in inspector.get_indexes(table) if i.get("unique")}
+    if index_name in have:
+        return {"migration": "0010_daily_report_unique", "status": "already present"}
+
+    removed = 0
+    with db.engine.begin() as conn:
+        # Keep the best row per slot: a 'sent' row beats anything else, and
+        # ties go to the lowest id. Everything else in that slot is redundant.
+        keep = conn.execute(text(f"""
+            SELECT MIN(CASE WHEN status = 'sent' THEN id END),
+                   MIN(id), workspace_id, report_type, report_date
+            FROM {table}
+            GROUP BY workspace_id, report_type, report_date
+        """)).all()
+        for sent_id, any_id, ws, kind, day in keep:
+            winner = sent_id or any_id
+            result = conn.execute(text(f"""
+                DELETE FROM {table}
+                WHERE workspace_id = :ws AND report_type = :kind
+                  AND report_date = :day AND id <> :winner
+            """), {"ws": ws, "kind": kind, "day": day, "winner": winner})
+            removed += result.rowcount or 0
+
+        conn.execute(text(
+            f"CREATE UNIQUE INDEX {index_name} ON {table} "
+            "(workspace_id, report_type, report_date)"))
+
+    return {"migration": "0010_daily_report_unique", "status": "created",
+            "duplicates_removed": removed}
+
+
 MIGRATIONS = {
     "0001": m0001_retire_summary_habit,
     "0002": m0002_retire_goals,
@@ -460,6 +564,8 @@ MIGRATIONS = {
     "0006": m0006_restore_journal_habit,
     "0007": m0007_redesign_themes,
     "0008": m0008_named_theme_systems,
+    "0009": m0009_split_ritual_event_type,
+    "0010": m0010_daily_report_unique,
 }
 
 

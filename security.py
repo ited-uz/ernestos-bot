@@ -155,3 +155,55 @@ def auth(init_data: str | None, *, require_onboarded: bool = True) -> tuple[User
             raise HTTPException(status_code=409, detail="onboarding_required")
 
         return user, ws
+
+
+# ---------------------------------------------------------------------------
+# Short-lived image tokens
+# ---------------------------------------------------------------------------
+#
+# A browser cannot put a header on `<img src=...>`, so the avatar endpoint has
+# always accepted the same signed initData as a query parameter instead. That
+# works, but it puts a credential good for a full day into a URL — and URLs
+# are written to the server's access log, kept in history, and handed to any
+# third party in a Referer. These two functions are the same idea scoped down
+# to the one thing the URL actually needs to authorise: this user's own image,
+# for the next few minutes.
+
+#: How long an image token stays valid. Long enough to render a page and retry
+#: once, far too short to be worth lifting out of a log.
+AVATAR_TOKEN_TTL = 300
+
+
+def issue_avatar_token(user_id: int, *, now: float | None = None) -> str:
+    """A signed `<user_id>:<expires>:<signature>` for use in an image URL."""
+    expires = int((now if now is not None else datetime.now().timestamp())
+                  + AVATAR_TOKEN_TTL)
+    payload = f"{user_id}:{expires}"
+    signature = hmac.new(config.BOT_TOKEN.encode(), payload.encode(),
+                         hashlib.sha256).hexdigest()
+    return f"{payload}:{signature}"
+
+
+def verify_avatar_token(token: str, *, now: float | None = None) -> int:
+    """The user id a token vouches for, or 401.
+
+    Signed with the bot token, like initData, so a forged one is no easier to
+    make. Unlike initData it names exactly one user and expires in minutes.
+    """
+    try:
+        user_id_raw, expires_raw, signature = str(token).rsplit(":", 2)
+        payload = f"{user_id_raw}:{expires_raw}"
+        expected = hmac.new(config.BOT_TOKEN.encode(), payload.encode(),
+                            hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected, signature):
+            raise ValueError("bad signature")
+        moment = now if now is not None else datetime.now().timestamp()
+        if int(expires_raw) < moment:
+            raise ValueError("expired")
+        return int(user_id_raw)
+    except HTTPException:
+        raise
+    except Exception as error:
+        # The reason goes to the log, never to the caller.
+        log.info("avatar token rejected: %s", error)
+        raise HTTPException(status_code=401, detail="unauthorized")

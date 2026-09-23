@@ -81,7 +81,10 @@ class User(Base):
     telegram_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     #: Sequential join number — "you are ErnestOS user #42". Assigned once at
     #: registration and never reused, so it stays stable if someone is deleted.
-    member_no: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    #: Unique so that two accounts created in the same instant cannot be
+    #: handed the same number; `get_or_create_user` retries on the clash.
+    member_no: Mapped[int] = mapped_column(
+        Integer, default=0, index=True, unique=True)
     first_name: Mapped[str] = mapped_column(String(200), default="")
     last_name: Mapped[str] = mapped_column(String(200), default="")
     username: Mapped[str] = mapped_column(String(200), default="")
@@ -198,6 +201,12 @@ class HabitLog(Base):
     #: back as "✓ 04:53" — "recorded" tells the user nothing they did not
     #: already know. Nullable: rows written before the column have no time.
     logged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    #: When today's reminder for this habit was sent. Task reminders have had
+    #: `Task.reminder_sent_at` all along; habits had nothing, so "did we
+    #: already nudge them?" was answered by the width of the job window alone,
+    #: and any late or doubled tick asked twice.
+    reminder_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True)
 
     __table_args__ = (UniqueConstraint("habit_id", "day", name="uq_habit_day"),)
 
@@ -286,6 +295,12 @@ class Task(Base):
     #: Completing a recurring task creates the next occurrence; the recurrence
     #: itself is never consumed by ticking it once.
     recurrence: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    #: For a monthly recurrence, the day of the month the user actually chose.
+    #: Needed because the deadline is clamped to the length of each month: a
+    #: task set for the 31st becomes the 28th in February, and without this the
+    #: 28th is what every later month inherits, so the task silently walks
+    #: backwards and never returns to the 31st.
+    anchor_day: Mapped[int | None] = mapped_column(Integer, nullable=True)
     #: The day on which the user picked this task as one of their top three.
     #: A date rather than a flag, so yesterday's choice does not linger.
     focus_day: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
