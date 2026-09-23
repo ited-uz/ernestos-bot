@@ -808,10 +808,14 @@ def _repair_report_outbox_key() -> str | None:
     if any(e["cols"] == wanted for e in unique_entries):
         return None
 
-    # Too strict: a unique key over part of the real key rejects rows that
-    # differ only in the columns it leaves out — which is every later day.
+    # The outbox has exactly one legitimate unique key, so anything else that
+    # is unique on this table is wrong and has to go. Matching only on "a
+    # subset of the right columns" was too narrow: a key over some *other*
+    # combination rejects rows just as effectively, and would have been left
+    # in place while the repair reported success.
     stale = [e for e in unique_entries
-             if e["name"] and e["cols"] and set(e["cols"]) < set(wanted)]
+             if e["name"] and e["cols"] and e["cols"] != wanted
+             and e["cols"] != ["id"]]
 
     dropped, removed = [], 0
     with engine.begin() as conn:
@@ -849,7 +853,7 @@ def _repair_report_outbox_key() -> str | None:
               for c in after.get_unique_constraints(table)),
             *({"name": i["name"], "cols": cols(i)}
               for i in after.get_indexes(table) if i.get("unique")),
-        ) if e["cols"] and set(e["cols"]) < set(wanted)
+        ) if e["cols"] and e["cols"] != wanted and e["cols"] != ["id"]
     ]
     if still_wrong:
         log.error("the stale unique key(s) %s are still on %s — daily reports "
