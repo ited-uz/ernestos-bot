@@ -6877,3 +6877,116 @@ def test_an_account_registered_long_after_its_hour_gets_nothing(client):
 
     assert not svc.report_is_due(user, "morning",
                                  datetime.combine(day, dtime(15, 0)))
+
+
+# ---------------------------------------------------------------------------
+# The outbox key that switched the reports off
+# ---------------------------------------------------------------------------
+#
+# Found in production, from its own logs: every claim rejected, no row holding
+# the slot. `daily_report_logs` was carrying a unique key from an older schema
+# — (workspace_id, report_type), with no date — so the first report a user was
+# ever sent filled their only slot and every day after it was refused. The job
+# logs looked healthy the whole time.
+
+def _break_the_outbox_key(engine) -> None:
+    """Recreate the outbox the way the affected database had it."""
+    from sqlalchemy import text
+
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE daily_report_logs"))
+        conn.execute(text("""
+            CREATE TABLE daily_report_logs (
+                id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                workspace_id INTEGER NOT NULL,
+                report_type VARCHAR(10) NOT NULL,
+                report_date DATE NOT NULL,
+                status VARCHAR(10), attempts INTEGER,
+                last_error VARCHAR(200),
+                claimed_at DATETIME, sent_at DATETIME,
+                CONSTRAINT uq_daily_report UNIQUE (workspace_id, report_type))
+        """))
+
+
+def test_a_stale_outbox_key_blocks_every_later_day(client):
+    """The bug itself, so the repair below is not testing a straw man."""
+    telegram_id = next(_next_id)
+    Caller(client, {"id": telegram_id, "first_name": "Blocked"})
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, telegram_id)
+
+    _break_the_outbox_key(db.engine)
+    try:
+        day = date(2031, 11, 1)
+        with SessionLocal() as s:
+            assert svc.claim_report(s, ws, "morning", day) is not None
+        with SessionLocal() as s:
+            assert svc.claim_report(s, ws, "morning", day + timedelta(days=1)) is None, (
+                "this is the failure: a different day is refused")
+        assert svc.CLAIM_ANOMALIES.get("count"), (
+            "a refusal with nothing holding the slot must be recorded, not "
+            "silently counted as a normal skip")
+    finally:
+        svc.CLAIM_ANOMALIES.clear()
+        db.init_db()
+
+
+def test_starting_up_repairs_a_stale_outbox_key(client):
+    """The repair has to happen on boot: the affected deploys have no shell."""
+    telegram_id = next(_next_id)
+    Caller(client, {"id": telegram_id, "first_name": "Repaired"})
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, telegram_id)
+
+    _break_the_outbox_key(db.engine)
+    svc.CLAIM_ANOMALIES.clear()
+
+    db.init_db()                       # what a restart does
+
+    try:
+        # Consecutive days must now each get their own slot.
+        first = date(2031, 11, 10)
+        ids = []
+        for offset in range(3):
+            with SessionLocal() as s:
+                ids.append(svc.claim_report(s, ws, "morning",
+                                            first + timedelta(days=offset)))
+        assert all(i is not None for i in ids), f"still blocked: {ids}"
+
+        # And the once-a-day guarantee must survive the repair.
+        with SessionLocal() as s:
+            assert svc.claim_report(s, ws, "morning", first) is None
+    finally:
+        svc.CLAIM_ANOMALIES.clear()
+
+
+def test_the_repair_keeps_the_rows_it_finds(client):
+    """A schema fix must not throw away what was already delivered."""
+    telegram_id = next(_next_id)
+    Caller(client, {"id": telegram_id, "first_name": "History"})
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, telegram_id)
+
+    _break_the_outbox_key(db.engine)
+    with SessionLocal() as s:
+        s.add(db.DailyReportLog(workspace_id=ws, report_type="morning",
+                                report_date=date(2031, 11, 20), status="sent",
+                                attempts=1, claimed_at=db.utcnow()))
+        s.commit()
+
+    db.init_db()
+
+    with SessionLocal() as s:
+        kept = s.scalar(select(db.DailyReportLog).where(
+            db.DailyReportLog.workspace_id == ws,
+            db.DailyReportLog.report_date == date(2031, 11, 20)))
+        assert kept is not None and kept.status == "sent", (
+            "a report already delivered must survive the repair")
+
+
+def test_the_repair_is_idempotent(client):
+    """It runs on every boot, so running it again must change nothing."""
+    before = db._repair_report_outbox_key()
+    again = db._repair_report_outbox_key()
+    assert before is None and again is None, (
+        "a healthy outbox key must be left alone")

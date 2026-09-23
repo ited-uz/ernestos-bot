@@ -765,16 +765,197 @@ def _add_missing_columns() -> list[str]:
     return added
 
 
+#: The outbox's unique key. `claim_report` inserts a row and reads the
+#: resulting IntegrityError as "somebody already has this one", so this exact
+#: combination is the once-a-day guarantee.
+REPORT_OUTBOX_KEY = ("workspace_id", "report_type", "report_date")
+
+
+def _repair_report_outbox_key() -> str | None:
+    """Make `daily_report_logs` carry the right unique key, and only that one.
+
+    `create_all` builds constraints only when it creates the whole table, so a
+    database whose outbox predates the current key keeps the old one for ever.
+    When the old key is a *subset* of the right one — (workspace, type), with
+    no date — the effect is not a subtle inconsistency: the first report a user
+    is ever sent fills their only slot, and from the next day on every claim is
+    refused, every tick skips them, and nothing is ever delivered again. No
+    error reaches the user and the job logs look healthy.
+
+    This runs at boot rather than as a numbered migration because the
+    application cannot do its job without it, and the people running it deploy
+    by uploading a build and have no shell to run a migration from. It is
+    idempotent: with the right key already in place it inspects and returns.
+    """
+    from sqlalchemy import inspect, text
+
+    table = "daily_report_logs"
+    inspector = inspect(engine)
+    if not inspector.has_table(table):
+        return None
+
+    wanted = sorted(REPORT_OUTBOX_KEY)
+
+    def cols(entry: dict) -> list:
+        return sorted(entry.get("column_names") or entry.get("columns") or [])
+
+    unique_entries = [
+        *({"name": c["name"], "cols": cols(c)}
+          for c in inspector.get_unique_constraints(table)),
+        *({"name": i["name"], "cols": cols(i)}
+          for i in inspector.get_indexes(table) if i.get("unique")),
+    ]
+    if any(e["cols"] == wanted for e in unique_entries):
+        return None
+
+    # Too strict: a unique key over part of the real key rejects rows that
+    # differ only in the columns it leaves out — which is every later day.
+    stale = [e for e in unique_entries
+             if e["name"] and e["cols"] and set(e["cols"]) < set(wanted)]
+
+    dropped, removed = [], 0
+    with engine.begin() as conn:
+        for entry in stale:
+            for statement in (
+                    f"ALTER TABLE {table} DROP CONSTRAINT {entry['name']}",
+                    f"DROP INDEX {entry['name']}"):
+                try:
+                    conn.execute(text(statement))
+                    dropped.append(entry["name"])
+                    break
+                except Exception:
+                    continue
+
+        removed = _collapse_outbox_duplicates(conn, table)
+
+        # Only claim to have fixed it if the bad key is really gone. SQLite
+        # cannot drop a constraint written into CREATE TABLE, so on that
+        # backend the loop above does nothing and the table has to be rebuilt.
+        if len(dropped) < len(stale):
+            _rebuild_report_outbox(conn, table)
+            dropped = [e["name"] for e in stale]
+            note = " (table rebuilt)"
+        else:
+            conn.execute(text(
+                f"CREATE UNIQUE INDEX uq_daily_report ON {table} "
+                f"({', '.join(REPORT_OUTBOX_KEY)})"))
+            note = ""
+
+    # Say what is true now, not what was attempted.
+    after = inspect(engine)
+    still_wrong = [
+        e["name"] for e in (
+            *({"name": c["name"], "cols": cols(c)}
+              for c in after.get_unique_constraints(table)),
+            *({"name": i["name"], "cols": cols(i)}
+              for i in after.get_indexes(table) if i.get("unique")),
+        ) if e["cols"] and set(e["cols"]) < set(wanted)
+    ]
+    if still_wrong:
+        log.error("the stale unique key(s) %s are still on %s — daily reports "
+                  "will keep being skipped until they are dropped by hand",
+                  still_wrong, table)
+        return None
+
+    return (f"rebuilt the report outbox key{note} — dropped {dropped}, "
+            f"removed {removed} duplicate row(s)")
+
+
+def _collapse_outbox_duplicates(conn, table: str) -> int:
+    """Leave one row per slot, because a unique key cannot be built over two.
+
+    Duplicates are what the missing key allowed in the first place. The row
+    that was actually sent wins, so collapsing can never turn a delivered
+    report back into an undelivered one; otherwise the earliest wins.
+    """
+    from sqlalchemy import text
+
+    removed = 0
+    groups = conn.execute(text(f"""
+        SELECT MIN(CASE WHEN status = 'sent' THEN id END), MIN(id),
+               workspace_id, report_type, report_date
+        FROM {table}
+        GROUP BY workspace_id, report_type, report_date
+        HAVING COUNT(*) > 1
+    """)).all()
+    for sent_id, any_id, ws, kind, day in groups:
+        result = conn.execute(text(f"""
+            DELETE FROM {table}
+            WHERE workspace_id = :ws AND report_type = :kind
+              AND report_date = :day AND id <> :keep
+        """), {"ws": ws, "kind": kind, "day": day, "keep": sent_id or any_id})
+        removed += result.rowcount or 0
+    return removed
+
+
+#: The outbox as SQLite wants it spelled. Only SQLite needs this: PostgreSQL
+#: drops a constraint in place, so it never reaches the rebuild.
+_SQLITE_OUTBOX_DDL = """
+CREATE TABLE {name} (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    workspace_id INTEGER NOT NULL REFERENCES workspaces (id) ON DELETE CASCADE,
+    report_type VARCHAR(10) NOT NULL,
+    report_date DATE NOT NULL,
+    status VARCHAR(10),
+    attempts INTEGER,
+    last_error VARCHAR(200),
+    claimed_at DATETIME,
+    sent_at DATETIME
+)
+"""
+
+
+def _rebuild_report_outbox(conn, table: str) -> None:
+    """Recreate the outbox with the right key, carrying every row across.
+
+    SQLite has no `DROP CONSTRAINT`, so a unique key written into CREATE TABLE
+    can only be removed by rebuilding the table. Copy, swap, keep the history.
+    Written as explicit DDL rather than reflected from the model, because
+    reflecting it into a fresh MetaData cannot resolve the foreign key to
+    `workspaces` and fails.
+    """
+    from sqlalchemy import text
+
+    if engine.dialect.name != "sqlite":
+        raise RuntimeError(
+            f"cannot rebuild {table} on {engine.dialect.name} — the stale "
+            "unique key must be dropped with ALTER TABLE DROP CONSTRAINT")
+
+    columns = ", ".join(c.name for c in DailyReportLog.__table__.columns)
+    staging = f"{table}__rebuild"
+
+    conn.execute(text(f"DROP TABLE IF EXISTS {staging}"))
+    conn.execute(text(_SQLITE_OUTBOX_DDL.format(name=staging)))
+    conn.execute(text(
+        f"INSERT INTO {staging} ({columns}) SELECT {columns} FROM {table}"))
+    conn.execute(text(f"DROP TABLE {table}"))
+    conn.execute(text(f"ALTER TABLE {staging} RENAME TO {table}"))
+    conn.execute(text(
+        f"CREATE UNIQUE INDEX uq_daily_report ON {table} "
+        f"({', '.join(REPORT_OUTBOX_KEY)})"))
+    conn.execute(text(
+        f"CREATE INDEX ix_daily_report_logs_workspace_id ON {table} (workspace_id)"))
+    conn.execute(text(
+        f"CREATE INDEX ix_daily_report_logs_report_date ON {table} (report_date)"))
+
+
 def init_db() -> None:
     """Create missing tables, then add any missing columns to existing ones.
 
-    Purely additive, so it is safe to run on every boot against a live
-    database: no table is dropped, no column is removed or retyped.
+    Purely additive with one deliberate exception, `_repair_report_outbox_key`,
+    which replaces a unique key that silently switches the daily reports off.
+    No table is dropped, no column is removed or retyped.
     """
     Base.metadata.create_all(engine)
     added = _add_missing_columns()
     if added:
         log.info("schema updated — added columns: %s", ", ".join(added))
+    try:
+        repaired = _repair_report_outbox_key()
+        if repaired:
+            log.warning("schema repair — %s", repaired)
+    except Exception:
+        log.exception("could not repair the report outbox unique key")
 
 
 def drop_all() -> None:
