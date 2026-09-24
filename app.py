@@ -3740,6 +3740,7 @@ class TeamTaskIn(BaseModel):
 class TeamHabitIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     schedule: str | None = None
+    category: str = "non_negotiable"
 
 
 @app.get("/api/teams")
@@ -3761,6 +3762,8 @@ def api_teams(init=Header(default=None, alias="X-Telegram-Init-Data")):
                 "summary": svc.team_day_summary(s, team.id, tz=tz),
                 "tasks": svc.list_team_tasks(s, user.telegram_id, team.id, tz=tz),
                 "habits": svc.list_team_habits(s, user.telegram_id, team.id, tz=tz),
+                "stats": svc.team_stats(s, user.telegram_id, team.id,
+                                        period="week", tz=tz),
             })
     return {"teams": out, "max_members": svc.MAX_TEAM_MEMBERS}
 
@@ -3800,6 +3803,21 @@ def api_team_leave(team_id: int,
         if not svc.leave_team(s, user.telegram_id, team_id):
             raise HTTPException(status_code=404, detail="not_found")
     return {"ok": True}
+
+
+@app.get("/api/teams/{team_id}/stats")
+def api_team_stats(team_id: int, period: str = "week",
+                   init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """How the team has done over a period, one line per member."""
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        try:
+            return svc.team_stats(s, user.telegram_id, team_id,
+                                  period=period if period in
+                                  ("week", "month", "year") else "week",
+                                  tz=svc.user_tz(user))
+        except PermissionError:
+            raise HTTPException(status_code=404, detail="not_found")
 
 
 @app.post("/api/teams/{team_id}/tasks")
@@ -3855,7 +3873,8 @@ def api_team_habit_add(team_id: int, body: TeamHabitIn,
     with SessionLocal() as s:
         try:
             return svc.add_team_habit(s, user.telegram_id, team_id, body.name,
-                                      schedule=body.schedule)
+                                      schedule=body.schedule,
+                                      category=body.category)
         except PermissionError:
             raise HTTPException(status_code=404, detail="not_found")
         except ValueError as e:
@@ -3886,6 +3905,8 @@ def api_team_habit_archive(habit_id: int,
             ok = svc.archive_team_habit(s, user.telegram_id, habit_id)
         except PermissionError:
             raise HTTPException(status_code=404, detail="not_found")
+        except ValueError:
+            raise HTTPException(status_code=422, detail="protected")
     if not ok:
         raise HTTPException(status_code=404, detail="not_found")
     return {"ok": True}

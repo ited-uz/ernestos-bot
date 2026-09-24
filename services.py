@@ -746,6 +746,63 @@ def mark_wakeup(s: Session, ws: int, now: datetime | None = None, *,
             "now": now.strftime("%H:%M")}
 
 
+def workspace_owner(s: Session, ws: int) -> int | None:
+    """Whose workspace this is. The bridge between workspace-scoped scoring
+    and team membership, which is keyed on the person rather than the box."""
+    return s.scalar(select(Workspace.user_id).where(Workspace.id == ws))
+
+
+def due_team_habits(s: Session, ws: int, day: date) -> list[tuple]:
+    """(habit, done) for every team habit this workspace's owner owes today.
+
+    Shared work counts in the personal day. That is a product decision, and a
+    deliberate reversal of an earlier one: the two numbers were kept apart so
+    a quiet team evening could not drag down a day you had personally
+    finished. In practice that split the thing it was meant to protect — a
+    couple doing the programme together were reading two percentages and
+    trusting neither. One number, and the shared half of the day is simply
+    part of the day.
+    """
+    owner = workspace_owner(s, ws)
+    if owner is None:
+        return []
+    rows: list[tuple] = []
+    for team in teams_for(s, owner):
+        habits = [h for h in s.scalars(select(TeamHabit).where(
+            TeamHabit.team_id == team.id,
+            TeamHabit.archived_at.is_(None))).all()
+            if team_habit_is_due(h, day)]
+        if not habits:
+            continue
+        done_ids = set(s.scalars(select(TeamHabitLog.habit_id).where(
+            TeamHabitLog.user_id == owner, TeamHabitLog.day == day,
+            TeamHabitLog.done.is_(True),
+            TeamHabitLog.habit_id.in_([h.id for h in habits]))).all())
+        for habit in habits:
+            rows.append((habit, habit.id in done_ids))
+    return rows
+
+
+def due_team_tasks(s: Session, ws: int, day: date) -> list[tuple]:
+    """(priority, done) for every team task of this owner's due on `day`."""
+    owner = workspace_owner(s, ws)
+    if owner is None:
+        return []
+    rows: list[tuple] = []
+    for team in teams_for(s, owner):
+        tasks = s.scalars(select(TeamTask).where(
+            TeamTask.team_id == team.id, TeamTask.archived_at.is_(None),
+            TeamTask.deadline == day)).all()
+        if not tasks:
+            continue
+        done_ids = set(s.scalars(select(TeamTaskDone.task_id).where(
+            TeamTaskDone.user_id == owner,
+            TeamTaskDone.task_id.in_([t.id for t in tasks]))).all())
+        for task in tasks:
+            rows.append((task.priority, task.id in done_ids))
+    return rows
+
+
 def habit_progress(s: Session, ws: int, day: date) -> tuple[int, int]:
     """(completed, total) habits that were actually expected on that day.
 
@@ -755,14 +812,16 @@ def habit_progress(s: Session, ws: int, day: date) -> tuple[int, int]:
     kind of false failure that makes people close the app.
     """
     habits = [h for h in _active_habits(s, ws) if habit_is_due(h, day)]
-    if not habits:
+    shared = due_team_habits(s, ws, day)
+    if not habits and not shared:
         return 0, 0
 
     due_ids = {h.id for h in habits}
     done_ids = set(s.scalars(select(HabitLog.habit_id).where(
         HabitLog.workspace_id == ws, HabitLog.day == day,
-        HabitLog.done.is_(True))).all())
-    return len(due_ids & done_ids), len(due_ids)
+        HabitLog.done.is_(True))).all()) if habits else set()
+    return (len(due_ids & done_ids) + sum(1 for _, done in shared if done),
+            len(due_ids) + len(shared))
 
 
 def habit_tier_progress(s: Session, ws: int, day: date) -> dict[str, dict]:
@@ -783,11 +842,17 @@ def habit_tier_progress(s: Session, ws: int, day: date) -> dict[str, dict]:
     done_ids = set(s.scalars(select(HabitLog.habit_id).where(
         HabitLog.workspace_id == ws, HabitLog.day == day,
         HabitLog.done.is_(True))).all()) if habits else set()
+    # Shared habits sit in the same tiers as personal ones, so a day made of
+    # both is scored by one rule rather than two stitched together.
+    shared = due_team_habits(s, ws, day)
 
     tiers: dict[str, dict] = {}
     for name in HABIT_CATEGORIES:
         due = [h for h in habits if h.category == name]
         done = sum(1 for h in due if h.id in done_ids)
+        shared_due = [(h, ok) for h, ok in shared if h.category == name]
+        due = due + [h for h, _ in shared_due]
+        done += sum(1 for _, ok in shared_due if ok)
         tiers[name] = {
             "done": done,
             "due": len(due),
@@ -2220,21 +2285,25 @@ def today_task_progress(s: Session, ws: int, day: date | None = None, *,
     done = s.scalar(select(func.count(Task.id)).where(
         Task.workspace_id == ws, Task.archived_at.is_(None),
         Task.deadline == day, Task.status == "done")) or 0
-    return done, total
+    shared = due_team_tasks(s, ws, day)
+    return done + sum(1 for _, ok in shared if ok), total + len(shared)
 
 
 def today_task_score(s: Session, ws: int, day: date | None = None, *,
                      tz: ZoneInfo | None = None) -> tuple[int, int]:
     """(earned, available) task points for the day, weighted by priority."""
     day = day or today_local(tz)
-    rows = s.execute(select(Task.priority, Task.status).where(
-        Task.workspace_id == ws, Task.archived_at.is_(None),
-        Task.deadline == day)).all()
+    rows = [(priority, status == "done") for priority, status in s.execute(
+        select(Task.priority, Task.status).where(
+            Task.workspace_id == ws, Task.archived_at.is_(None),
+            Task.deadline == day)).all()]
+    # Shared tasks are weighed by the same priorities, in the same total.
+    rows += due_team_tasks(s, ws, day)
     earned = available = 0
-    for priority, status in rows:
+    for priority, done in rows:
         weight = TASK_PRIORITY_WEIGHTS.get(priority, 2)
         available += weight
-        if status == "done":
+        if done:
             earned += weight
     return earned, available
 
@@ -5102,8 +5171,40 @@ def create_team(s: Session, user_id: int, name: str) -> Team:
         raise RuntimeError("could not allocate a team code")
 
     s.add(TeamMember(team_id=team.id, user_id=user_id, role="owner"))
+    seed_team_rituals(s, team.id, user_id)
     s.commit()
     return team
+
+
+#: What every team starts with, and it is the personal set on purpose. A shared
+#: space that could only hold "tasks we both agreed on" would be a to-do list
+#: with two names on it; the point of doing this with somebody is that the
+#: whole programme is shared — you both get up, you both pray, you both write
+#: the day down — and each of you ticks your own.
+DEFAULT_TEAM_HABITS = DEFAULT_HABITS
+
+
+def seed_team_rituals(s: Session, team_id: int, created_by: int) -> int:
+    """Put the ritual habits into a team. Idempotent; returns how many it added.
+
+    Protected, like their personal counterparts: these are the spine of the
+    programme, and a team where one member can delete "namoz" for both of them
+    is not a shared commitment.
+    """
+    existing = {h.system_key for h in s.scalars(select(TeamHabit).where(
+        TeamHabit.team_id == team_id,
+        TeamHabit.system_key != "")).all()}
+    added = 0
+    for position, (name, category, key) in enumerate(DEFAULT_TEAM_HABITS, start=1):
+        if key in existing:
+            continue
+        s.add(TeamHabit(team_id=team_id, name=name, category=category,
+                        system_key=key, is_protected=True, position=position,
+                        schedule=SCHEDULE_DAILY, created_by=created_by))
+        added += 1
+    if added:
+        s.flush()
+    return added
 
 
 def teams_for(s: Session, user_id: int) -> list[Team]:
@@ -5354,20 +5455,23 @@ def archive_team_task(s: Session, user_id: int, task_id: int) -> bool:
 # --- Team habits ------------------------------------------------------------
 
 def add_team_habit(s: Session, user_id: int, team_id: int, name: str, *,
-                   schedule: str | None = None) -> dict:
+                   schedule: str | None = None,
+                   category: str = "non_negotiable") -> dict:
     """A habit the team keeps together."""
     _require_team(s, user_id, team_id)
     name = name.strip()[:120]
     if not name:
         raise ValueError("empty_name")
+    if category not in HABIT_CATEGORIES:
+        category = "non_negotiable"
     position = (s.scalar(select(func.max(TeamHabit.position))
                          .where(TeamHabit.team_id == team_id)) or 0) + 1
     habit = TeamHabit(team_id=team_id, name=name,
-                      schedule=clean_schedule(schedule),
+                      schedule=clean_schedule(schedule), category=category,
                       position=position, created_by=user_id)
     s.add(habit)
     s.commit()
-    return {"id": habit.id, "name": habit.name,
+    return {"id": habit.id, "name": habit.name, "category": habit.category,
             "schedule": habit.schedule, "done": False, "done_by": []}
 
 
@@ -5399,6 +5503,11 @@ def list_team_habits(s: Session, user_id: int, team_id: int, *,
         done_by = done_map.get(habit.id, set())
         out.append({"id": habit.id, "name": habit.name,
                     "schedule": clean_schedule(habit.schedule),
+                    "category": habit.category,
+                    "system_key": habit.system_key or "",
+                    # The screen hides delete for these rather than offering a
+                    # button that is always refused.
+                    "protected": bool(habit.is_protected),
                     "done": user_id in done_by,
                     "done_by": sorted(done_by),
                     "done_count": len(done_by)})
@@ -5445,6 +5554,10 @@ def archive_team_habit(s: Session, user_id: int, habit_id: int) -> bool:
     if habit is None or habit.archived_at is not None:
         return False
     _require_team(s, user_id, habit.team_id)
+    if habit.is_protected:
+        # One member deleting "namoz" for both of them is not a decision
+        # either of them made together.
+        raise ValueError("protected")
     habit.archived_at = utcnow()
     s.commit()
     return True
@@ -5571,3 +5684,115 @@ def team_items_for_day(s: Session, user_id: int, day: date | None = None, *,
                            "team_id": team.id, "team_name": team.name})
     return {"tasks": tasks, "habits": habits,
             "teams": [{"id": t.id, "name": t.name} for t in teams_for(s, user_id)]}
+
+
+# --- Team statistics --------------------------------------------------------
+
+def team_stats(s: Session, user_id: int, team_id: int, *, period: str = "week",
+               tz: ZoneInfo | None = None) -> dict:
+    """A team's record over a period, per member and side by side.
+
+    The comparison is the feature. A personal chart answers "am I keeping
+    this up"; a shared one answers "are we", and the only honest way to show
+    that is both lines, not an average that hides one person having carried
+    the week. Deliberately not framed as a competition — no winner, no
+    ranking — because the people using this are on the same side.
+    """
+    _require_team(s, user_id, team_id)
+    days = {"week": 7, "month": 30, "year": 365}.get(period, 7)
+    today = today_local(tz)
+    start = today - timedelta(days=days - 1)
+
+    members = team_members(s, team_id)
+    ids = [m["user_id"] for m in members]
+
+    tasks = s.scalars(select(TeamTask).where(
+        TeamTask.team_id == team_id, TeamTask.archived_at.is_(None),
+        TeamTask.deadline.is_not(None),
+        TeamTask.deadline >= start, TeamTask.deadline <= today)).all()
+    task_done = {}
+    for task_id, member_id in s.execute(
+            select(TeamTaskDone.task_id, TeamTaskDone.user_id)
+            .where(TeamTaskDone.task_id.in_([t.id for t in tasks] or [0]))).all():
+        task_done.setdefault(task_id, set()).add(member_id)
+
+    habits = s.scalars(select(TeamHabit).where(
+        TeamHabit.team_id == team_id, TeamHabit.archived_at.is_(None))).all()
+    habit_done: dict[tuple, set] = {}
+    for habit_id, member_id, day in s.execute(
+            select(TeamHabitLog.habit_id, TeamHabitLog.user_id, TeamHabitLog.day)
+            .where(TeamHabitLog.day >= start, TeamHabitLog.day <= today,
+                   TeamHabitLog.done.is_(True),
+                   TeamHabitLog.habit_id.in_([h.id for h in habits] or [0]))).all():
+        habit_done.setdefault((habit_id, day), set()).add(member_id)
+
+    series, totals = [], {uid: {"done": 0, "total": 0} for uid in ids}
+    for offset in range(days):
+        day = start + timedelta(days=offset)
+        owed = ([t for t in tasks if t.deadline == day]
+                + [h for h in habits if team_habit_is_due(h, day)])
+        point = {"date": day.isoformat(), "label": day.strftime("%d.%m")}
+        for uid in ids:
+            got = 0
+            for item in owed:
+                if isinstance(item, TeamTask):
+                    got += uid in task_done.get(item.id, ())
+                else:
+                    got += uid in habit_done.get((item.id, day), ())
+            point[str(uid)] = round(got / len(owed) * 100) if owed else None
+            totals[uid]["done"] += got
+            totals[uid]["total"] += len(owed)
+        series.append(point)
+
+    people = []
+    for member in members:
+        uid = member["user_id"]
+        done, total = totals[uid]["done"], totals[uid]["total"]
+        people.append({
+            "user_id": uid, "name": member["name"],
+            "done": done, "total": total,
+            "percent": round(done / total * 100) if total else None,
+            "streak": team_streak(s, team_id, uid, today, tz=tz),
+        })
+
+    return {"team_id": team_id, "period": period, "days": days,
+            "from": start.isoformat(), "to": today.isoformat(),
+            "series": series, "members": people,
+            # One number for the pair: what the two of you managed between
+            # you, out of everything the two of you owed.
+            "together": (round(sum(p["done"] for p in people)
+                               / sum(p["total"] for p in people) * 100)
+                         if any(p["total"] for p in people) else None)}
+
+
+def team_streak(s: Session, team_id: int, member_id: int, today: date, *,
+                tz: ZoneInfo | None = None, horizon: int = 400) -> int:
+    """Consecutive days this member cleared everything the team owed.
+
+    Today does not break it while it is still running, the same rule a
+    personal streak follows: a day is only a miss once it is over.
+    """
+    habits = s.scalars(select(TeamHabit).where(
+        TeamHabit.team_id == team_id, TeamHabit.archived_at.is_(None))).all()
+    if not habits:
+        return 0
+    start = today - timedelta(days=horizon)
+    done = {}
+    for habit_id, day in s.execute(
+            select(TeamHabitLog.habit_id, TeamHabitLog.day)
+            .where(TeamHabitLog.user_id == member_id, TeamHabitLog.day >= start,
+                   TeamHabitLog.done.is_(True))).all():
+        done.setdefault(day, set()).add(habit_id)
+
+    streak, cursor = 0, today
+    for _ in range(horizon):
+        owed = {h.id for h in habits if team_habit_is_due(h, cursor)}
+        if owed:
+            if not owed <= done.get(cursor, set()):
+                if cursor == today:
+                    cursor -= timedelta(days=1)
+                    continue
+                break
+            streak += 1
+        cursor -= timedelta(days=1)
+    return streak

@@ -1021,6 +1021,7 @@ const DICT = {
   team_tasks:"Umumiy vazifalar", team_habits:"Umumiy odatlar",
   team_nothing:"Hali umumiy ish yo'q. Birinchisini qo'shing.",
   team_you:"siz", team_today:"Bugun",
+  team_week:"Shu hafta", team_together:"Birgalikda",
   dest_where:"Qayerga qo'shilsin", dest_personal:"Shaxsiy",
   team_badge:"jamoa",
   privacy_line:"Ma'lumotlaringiz boshqa foydalanuvchilardan ajratilgan va xavfsiz saqlanadi. 🔒",
@@ -1281,6 +1282,7 @@ const DICT = {
   team_tasks:"Shared tasks", team_habits:"Shared habits",
   team_nothing:"Nothing shared yet. Add the first thing.",
   team_you:"you", team_today:"Today",
+  team_week:"This week", team_together:"Together",
   dest_where:"Where does this go", dest_personal:"Personal",
   team_badge:"team",
   privacy_line:"Your data is kept separate from other users' and stored securely. 🔒",
@@ -1527,6 +1529,7 @@ const DICT = {
   team_tasks:"Общие задачи", team_habits:"Общие привычки",
   team_nothing:"Общих дел пока нет. Добавьте первое.",
   team_you:"вы", team_today:"Сегодня",
+  team_week:"На этой неделе", team_together:"Вместе",
   dest_where:"Куда добавить", dest_personal:"Личное",
   team_badge:"команда",
   privacy_line:"Ваши данные отделены от данных других пользователей и хранятся безопасно. 🔒",
@@ -2410,6 +2413,41 @@ const TREND_ICON = {up:"↑", down:"↓", flat:""};
    other side's state as a small marker on the right, because that is the
    thing they opened the screen to see. Showing both as identical checkboxes
    would invite tapping the one that is not yours. */
+/* The team's week, as two lines rather than one average.
+
+   An average would say "you are at 60%" and hide that one of you did all of
+   it. Both bars, both names, both streaks — the useful question for two
+   people keeping the same programme is not how the pair scores, it is
+   whether either of you is drifting. Framed as a record and never as a
+   ranking: there is no winner here and the design should not imply one. */
+function teamStatsBlock(stats){
+  if(!stats?.members?.length) return "";
+  const rows = stats.members.map(m => {
+    const name = m.user_id === state.me?.telegram_id ? t("team_you") : esc(m.name);
+    const pct = m.percent === null || m.percent === undefined ? 0 : m.percent;
+    return `<div style="margin:10px 0 0">
+        <div class="row" style="padding:0 0 4px">
+          <div class="grow"><b>${name}</b></div>
+          ${m.streak ? `<div class="muted sm">🔥 ${m.streak}</div>` : ""}
+          <div style="width:64px;text-align:right">
+            <b>${m.percent === null ? "—" : pct + "%"}</b></div>
+        </div>
+        <div class="bar"><i style="width:${pct}%"></i></div>
+        <div class="muted sm">${m.done}/${m.total}</div>
+      </div>`;
+  }).join("");
+
+  return `<div class="card">
+      <div class="card-t">${t("team_week")}</div>
+      ${rows}
+      ${stats.together === null || stats.together === undefined ? "" : `
+        <div class="row" style="margin-top:12px;border-top:var(--border-w) solid var(--border);padding-top:10px">
+          <div class="grow">${t("team_together")}</div>
+          <b>${stats.together}%</b>
+        </div>`}
+    </div>`;
+}
+
 SCREENS.team = () => {
   const teams = state.team?.teams || [];
   if(!teams.length) return `
@@ -2443,8 +2481,8 @@ SCREENS.team = () => {
         ${others(x.done_by || []).length
           ? `<div class="muted sm">✓ ${others(x.done_by)}</div>` : ""}
       </div>
-      <button class="ghost" data-act="team-remove"
-              data-kind="${kind}" data-id="${x.id}">✕</button>
+      ${x.protected ? "" : `<button class="ghost" data-act="team-remove"
+              data-kind="${kind}" data-id="${x.id}">✕</button>`}
     </div>`;
 
   const scoreboard = (active.summary?.members || []).map(m => {
@@ -2470,6 +2508,8 @@ SCREENS.team = () => {
       <div class="card-t">${t("team_today")}</div>
       ${scoreboard || `<div class="muted">${t("team_nothing")}</div>`}
     </div>
+
+    ${teamStatsBlock(active.stats)}
 
     <div class="card">
       <div class="card-t">${t("team_tasks")}</div>

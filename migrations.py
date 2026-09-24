@@ -592,6 +592,33 @@ def m0010_daily_report_unique() -> dict:
             "stale_constraints_dropped": [e["name"] for e in stale]}
 
 
+def m0011_seed_team_rituals() -> dict:
+    """Give every existing team the ritual habits new ones are born with.
+
+    Teams created before the shared programme existed hold only whatever the
+    members typed in. Waking, prayer and the journal are the spine of the day
+    on the personal side, and a team without them is a to-do list rather than
+    a shared programme — so they are added, protected, in the same three
+    tiers. Idempotent: a team that already has them is skipped.
+    """
+    from sqlalchemy import select as sql_select
+
+    import services as svc
+    from db import Team
+
+    seeded, teams = 0, 0
+    with SessionLocal() as s:
+        for team in s.scalars(sql_select(Team)
+                              .where(Team.archived_at.is_(None))).all():
+            added = svc.seed_team_rituals(s, team.id, team.owner_id)
+            if added:
+                teams += 1
+                seeded += added
+        s.commit()
+    return {"migration": "0011_seed_team_rituals",
+            "teams_updated": teams, "habits_added": seeded}
+
+
 MIGRATIONS = {
     "0001": m0001_retire_summary_habit,
     "0002": m0002_retire_goals,
@@ -603,6 +630,7 @@ MIGRATIONS = {
     "0008": m0008_named_theme_systems,
     "0009": m0009_split_ritual_event_type,
     "0010": m0010_daily_report_unique,
+    "0011": m0011_seed_team_rituals,
 }
 
 

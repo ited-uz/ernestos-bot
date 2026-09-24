@@ -820,6 +820,14 @@ class TeamHabit(Base):
     name: Mapped[str] = mapped_column(String(120))
     schedule: Mapped[str | None] = mapped_column(String(24), nullable=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
+    #: Same three tiers a personal habit has, because a team habit is scored
+    #: in the same arithmetic. Defaults to the top tier: something two people
+    #: agreed to do is harder to drop than something one person told themselves.
+    category: Mapped[str] = mapped_column(String(16), default="non_negotiable")
+    #: Set for the rituals every team is seeded with — waking, prayer, the
+    #: journal — so they can be recognised, kept, and never deleted by accident.
+    system_key: Mapped[str] = mapped_column(String(16), default="")
+    is_protected: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by: Mapped[int] = mapped_column(BigInteger, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

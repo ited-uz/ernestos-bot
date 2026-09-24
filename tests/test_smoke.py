@@ -7201,12 +7201,16 @@ def test_a_shared_habit_is_ticked_per_person_per_day(client):
         habit = svc.add_team_habit(s, two, team_id, "30 daqiqa o'qish")
         svc.toggle_team_habit(s, two, habit["id"])
 
-        assert svc.list_team_habits(s, two, team_id)[0]["done"] is True
-        assert svc.list_team_habits(s, one, team_id)[0]["done"] is False
+        def row(uid, day=None):
+            rows = svc.list_team_habits(s, uid, team_id, day=day)
+            return next(x for x in rows if x["id"] == habit["id"])
+
+        assert row(two)["done"] is True
+        assert row(one)["done"] is False
 
         # Yesterday is a different day, and untouched.
         yesterday = svc.today_local() - timedelta(days=1)
-        assert svc.list_team_habits(s, two, team_id, day=yesterday)[0]["done"] is False
+        assert row(two, yesterday)["done"] is False
 
 
 def test_a_stranger_cannot_reach_a_team(client):
@@ -7283,19 +7287,44 @@ def test_the_day_summary_reports_each_member_separately(client):
 
         summary = svc.team_day_summary(s, team_id)
 
+    # Two tasks plus the three rituals every team is seeded with.
+    rituals = len(svc.DEFAULT_TEAM_HABITS)
+    total = 2 + rituals
     by_id = {m["user_id"]: m for m in summary["members"]}
-    assert by_id[one]["done"] == 1 and by_id[one]["total"] == 2
-    assert by_id[two]["done"] == 0 and by_id[two]["total"] == 2
-    assert by_id[one]["percent"] == 50 and by_id[two]["percent"] == 0
+    assert by_id[one]["done"] == 1 and by_id[one]["total"] == total
+    assert by_id[two]["done"] == 0 and by_id[two]["total"] == total
+    assert by_id[one]["percent"] == round(1 / total * 100)
+    assert by_id[two]["percent"] == 0
 
 
-def test_an_empty_team_day_is_unmeasured_not_zero(client):
+def test_a_new_team_starts_with_the_rituals(client):
+    """The shared space is the whole programme, not only a to-do list.
+
+    Waking, prayer and the journal are seeded into every team, exactly as
+    they are into every workspace, because the point of doing this with
+    somebody is that you are both keeping the same day — not that you agreed
+    on two errands.
+    """
     one, two, team_id = _pair(client)
     with SessionLocal() as s:
+        habits = svc.list_team_habits(s, one, team_id)
         summary = svc.team_day_summary(s, team_id)
-    assert summary["total"] == 0
-    assert all(m["percent"] is None for m in summary["members"]), (
-        "a day the team set nothing is not a day they failed")
+
+    keys = {h["id"]: h for h in habits}
+    assert len(habits) == len(svc.DEFAULT_TEAM_HABITS), habits
+    assert summary["total"] == len(svc.DEFAULT_TEAM_HABITS)
+    # Nothing ticked yet, so the day is measured and at nought — which is
+    # different from unmeasured, and correct: these are owed today.
+    assert all(m["percent"] == 0 for m in summary["members"])
+
+
+def test_the_seeded_rituals_cannot_be_deleted(client):
+    """One member removing "namoz" for both of them is not a shared decision."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        ritual = svc.list_team_habits(s, one, team_id)[0]
+        with pytest.raises(ValueError):
+            svc.archive_team_habit(s, two, ritual["id"])
 
 
 def test_the_team_api_keeps_each_side_separate(client):
@@ -7357,12 +7386,21 @@ def test_the_team_message_names_who_did_what(client):
     assert "Ernest" in theirs
 
 
-def test_a_team_with_nothing_on_today_sends_nothing(client):
-    """An empty summary twice a day is how a notification gets muted."""
+def test_the_team_message_lists_the_shared_rituals(client):
+    """A team always has the day's rituals on it, so it always has something
+    to say. The "say nothing" branch still exists for a team whose every item
+    has been archived, which the rituals themselves cannot be."""
     one, two, team_id = _pair(client)
     with SessionLocal() as s:
         summary = svc.team_day_summary(s, team_id)
-    assert application.render_team(summary, "uz", one, evening=False) is None
+    text = application.render_team(summary, "uz", one, evening=False)
+    assert text and "5x namoz" in text
+
+
+def test_a_summary_with_no_items_at_all_sends_nothing(client):
+    """The guard itself, driven directly."""
+    assert application.render_team({"total": 0}, "uz", 1, evening=False) is None
+    assert application.render_team({}, "uz", 1, evening=True) is None
 
 
 async def test_team_summaries_ride_along_with_the_daily_reports(
@@ -7383,17 +7421,17 @@ async def test_team_summaries_ride_along_with_the_daily_reports(
         f"expected the daily report and one team summary, got {bot.sent}")
 
 
-async def test_a_quiet_team_adds_no_second_message(monkeypatch, client):
-    """With nothing shared today, the daily report arrives on its own."""
-    one, two, team_id = _pair(client)
+async def test_a_user_with_no_team_gets_one_message(monkeypatch, client):
+    """Somebody working alone is not sent an empty team summary."""
+    solo = _named(client, next(_next_id), "Yolg'iz")
     with SessionLocal() as s:
-        ws = svc.workspace_id_for(s, one)
-    monkeypatch.setattr(svc, "active_recipients", lambda s: [(one, ws, "uz")])
+        ws = svc.workspace_id_for(s, solo)
+    monkeypatch.setattr(svc, "active_recipients", lambda s: [(solo, ws, "uz")])
 
     bot = _FakeBot()
     await application._send_reports_locked(bot, "evening", date(2032, 1, 6))
 
-    assert bot.sent.count(one) == 1, f"one message only, got {bot.sent}"
+    assert bot.sent.count(solo) == 1, f"one message only, got {bot.sent}"
 
 
 async def test_a_failed_team_summary_never_unsends_the_report(
@@ -7445,7 +7483,10 @@ def test_shared_work_appears_on_the_personal_screens(client):
     habits = caller.get("/api/habits").json()
 
     assert [x["title"] for x in tasks["team_tasks"]] == ["Umumiy ish"]
-    assert [x["name"] for x in habits["team_habits"]] == ["Umumiy odat"]
+    # The rituals every team is seeded with, plus the one just added.
+    names = [x["name"] for x in habits["team_habits"]]
+    assert "Umumiy odat" in names
+    assert "5x namoz" in names and len(names) == len(svc.DEFAULT_TEAM_HABITS) + 1
     # Named, so the screen can say whose work it is.
     assert tasks["team_tasks"][0]["team_name"] == "Ernest va Gulyora"
     assert {x["id"] for x in tasks["teams"]} == {team_id}
@@ -7464,26 +7505,47 @@ def test_shared_work_is_kept_out_of_the_personal_lists(client):
     assert "Umumiy ish" not in personal
 
 
-def test_a_shared_task_never_moves_the_personal_score(client):
-    """The two numbers have to stay honest about different things."""
+def test_shared_work_counts_in_the_personal_score(client):
+    """One number for the day, and the shared half is part of it.
+
+    This reverses an earlier decision. The two were kept apart so that a quiet
+    team evening could not drag down a day somebody had personally finished —
+    but two people doing the programme together ended up reading two
+    percentages and trusting neither. A shared task is work you owe today, so
+    it is in the day, and finishing it moves the day.
+    """
     one, two, team_id = _pair(client)
     with SessionLocal() as s:
         ws = svc.workspace_id_for(s, one)
         tz = svc.user_tz(s.get(User, one))
         today = svc.today_local(tz)
-        before = svc.overall_components(s, ws, today, tz=tz)
 
         task = svc.add_team_task(s, one, team_id, "Umumiy ish", deadline=today)
-        svc.add_team_habit(s, one, team_id, "Umumiy odat")
-        after_adding = svc.overall_components(s, ws, today, tz=tz)
+        before = svc.overall_components(s, ws, today, tz=tz)
+        assert before["tasks"] is not None, (
+            "a shared task due today gives the day a task denominator")
 
         svc.toggle_team_task(s, one, task["id"])
-        after_doing = svc.overall_components(s, ws, today, tz=tz)
+        after = svc.overall_components(s, ws, today, tz=tz)
 
-    assert before == after_adding, (
-        "adding shared work must not change what the personal day is out of")
-    assert before == after_doing, (
-        "doing shared work must not move the personal percentage")
+    assert after["tasks"] > before["tasks"], (
+        f"finishing shared work must raise the day: {before} -> {after}")
+
+
+def test_one_persons_share_is_the_one_that_counts_for_them(client):
+    """Your partner finishing their half does not finish yours."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        ws_one = svc.workspace_id_for(s, one)
+        tz = svc.user_tz(s.get(User, one))
+        today = svc.today_local(tz)
+        task = svc.add_team_task(s, one, team_id, "Umumiy ish", deadline=today)
+
+        svc.toggle_team_task(s, two, task["id"])          # she does it
+        mine = svc.overall_components(s, ws_one, today, tz=tz)
+
+    assert mine["tasks"] == 0, (
+        "the other member's tick must not score this member's day")
 
 
 def test_the_team_score_counts_only_shared_work(client):
@@ -7495,7 +7557,7 @@ def test_the_team_score_counts_only_shared_work(client):
         svc.add_task(s, ws, "Shaxsiy ish", deadline=today)
         s.commit()
         summary = svc.team_day_summary(s, team_id)
-    assert summary["total"] == 0, (
+    assert summary["tasks"] == [], (
         f"a personal task leaked into the team's day: {summary['tasks']}")
 
 
@@ -7519,3 +7581,106 @@ def test_a_user_with_no_team_gets_empty_blocks(client):
     caller = Caller(client, {"id": solo, "first_name": "Yolg'iz"})
     tasks = caller.get("/api/tasks").json()
     assert tasks["team_tasks"] == [] and tasks["teams"] == []
+
+
+# ---------------------------------------------------------------------------
+# One day, one number — and the team's own record
+# ---------------------------------------------------------------------------
+
+def test_the_team_rituals_move_the_personal_day(client):
+    """Waking, prayer and the journal are shared work that scores."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, one)
+        tz = svc.user_tz(s.get(User, one))
+        today = svc.today_local(tz)
+
+        before = svc.weighted_overall(svc.overall_components(s, ws, today, tz=tz))
+        for habit in svc.list_team_habits(s, one, team_id):
+            svc.toggle_team_habit(s, one, habit["id"])
+        after = svc.weighted_overall(svc.overall_components(s, ws, today, tz=tz))
+
+    assert after > before, (
+        f"keeping the shared rituals must raise the day: {before} -> {after}")
+
+
+def test_a_shared_habit_counts_at_the_top_tier(client):
+    """A promise made to somebody else is not a bonus item."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        added = svc.add_team_habit(s, one, team_id, "Birga yugurish")
+    assert added["category"] == "non_negotiable"
+
+
+def test_the_team_has_its_own_record(client):
+    """Both lines, not an average that hides who carried the week."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        today = svc.today_local()
+        task = svc.add_team_task(s, one, team_id, "Matritsalar", deadline=today)
+        svc.toggle_team_task(s, one, task["id"])
+        stats = svc.team_stats(s, one, team_id, period="week")
+
+    assert len(stats["series"]) == 7
+    by_id = {m["user_id"]: m for m in stats["members"]}
+    assert by_id[one]["done"] == 1 and by_id[two]["done"] == 0
+    assert by_id[one]["percent"] > by_id[two]["percent"]
+    assert stats["together"] is not None
+    # Today's point carries a number for each member, keyed by their id.
+    assert str(one) in stats["series"][-1] and str(two) in stats["series"][-1]
+
+
+def test_the_team_record_is_refused_to_a_stranger(client):
+    one, two, team_id = _pair(client)
+    outsider = _named(client, next(_next_id), "Begona")
+    with SessionLocal() as s:
+        with pytest.raises(PermissionError):
+            svc.team_stats(s, outsider, team_id)
+
+    stranger = Caller(client, {"id": outsider, "first_name": "Begona"})
+    assert stranger.get(f"/api/teams/{team_id}/stats").status_code == 404
+
+
+def test_a_team_streak_needs_the_whole_day(client):
+    """Half the rituals is not a day kept."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        today = svc.today_local()
+        habits = svc.list_team_habits(s, one, team_id)
+        svc.toggle_team_habit(s, one, habits[0]["id"])
+        assert svc.team_streak(s, team_id, one, today) == 0, "partial is not a day"
+
+        for habit in habits[1:]:
+            svc.toggle_team_habit(s, one, habit["id"])
+        assert svc.team_streak(s, team_id, one, today) == 1
+
+
+def test_the_team_stats_api_answers_for_a_member(client):
+    one, two, team_id = _pair(client)
+    caller = Caller(client, {"id": one, "first_name": "Ernest"})
+    body = caller.get(f"/api/teams/{team_id}/stats?period=month").json()
+    assert body["days"] == 30 and len(body["series"]) == 30
+    assert {m["user_id"] for m in body["members"]} == {one, two}
+
+
+def test_a_protected_ritual_is_refused_by_the_api(client):
+    one, two, team_id = _pair(client)
+    caller = Caller(client, {"id": one, "first_name": "Ernest"})
+    ritual = caller.get("/api/teams").json()["teams"][0]["habits"][0]
+    assert caller.delete(f"/api/teams/habits/{ritual['id']}").status_code == 422
+
+
+def test_the_screen_is_told_which_habits_are_protected(client):
+    """So it can hide a delete button that would only ever be refused."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        rows = svc.list_team_habits(s, one, team_id)
+    seeded = [r for r in rows if r["system_key"]]
+    assert seeded and all(r["protected"] for r in seeded)
+    assert all(r["category"] == "non_negotiable" for r in seeded)
+
+    with SessionLocal() as s:
+        added = svc.add_team_habit(s, one, team_id, "Birga yugurish")
+        rows = svc.list_team_habits(s, one, team_id)
+    mine = next(r for r in rows if r["id"] == added["id"])
+    assert mine["protected"] is False, "what a member added, a member may remove"
