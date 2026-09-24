@@ -616,6 +616,16 @@ label{display:block;font-size:12px;color:var(--text-2);margin:var(--s3) 0 var(--
 .metric.wide{grid-column:1 / -1;display:flex;align-items:center;
              justify-content:space-between;gap:var(--s2)}
 .metric.wide .v{margin-top:0}
+/* Score bands. One place, so the colour a number is shown in and the
+   meaning behind it cannot drift apart. Mirrors services.SCORE_BANDS. */
+/* "good" borrows the theme's own primary rather than a literal blue, so the
+   bands stay inside the token layer and a theme change carries them along. */
+.band-great{color:var(--ok)} .band-good{color:var(--primary)}
+.band-fair{color:var(--warn)} .band-low{color:var(--danger)}
+.band-none{color:var(--text-3)}
+.bar i.band-great{background:var(--ok)}
+.bar i.band-good{background:var(--primary)}
+.bar i.band-fair{background:var(--warn)} .bar i.band-low{background:var(--danger)}
 .delta{font-size:12.5px;font-weight:600}
 .delta.up{color:var(--ok)} .delta.down{color:var(--danger)}
 .delta.flat{color:var(--text-3)}
@@ -1025,6 +1035,7 @@ const DICT = {
   src_personal:"Shaxsiy",
   team_results:"Natijalar", team_p_day:"Bugun", team_p_week:"Hafta", team_p_month:"Oy",
   team_waiting_on:"Kimda qoldi", team_all_clear:"Bugungi hamma ish bajarildi 🎉",
+  team_left_today:"Bugun qolgani",
   team_no_projects:"Umumiy loyiha yo'q", team_add_project:"Umumiy loyiha",
   team_project_ph:"Loyiha nomi", team_open:"Ochish",
   dest_where:"Qayerga qo'shilsin", dest_personal:"Shaxsiy",
@@ -1291,6 +1302,7 @@ const DICT = {
   src_personal:"Personal",
   team_results:"Results", team_p_day:"Today", team_p_week:"Week", team_p_month:"Month",
   team_waiting_on:"Waiting on", team_all_clear:"Everything for today is done 🎉",
+  team_left_today:"Left today",
   team_no_projects:"No shared projects", team_add_project:"Shared project",
   team_project_ph:"Project name", team_open:"Open",
   dest_where:"Where does this go", dest_personal:"Personal",
@@ -1543,6 +1555,7 @@ const DICT = {
   src_personal:"Личное",
   team_results:"Результаты", team_p_day:"Сегодня", team_p_week:"Неделя", team_p_month:"Месяц",
   team_waiting_on:"За кем", team_all_clear:"Всё на сегодня сделано 🎉",
+  team_left_today:"Осталось сегодня",
   team_no_projects:"Общих проектов нет", team_add_project:"Общий проект",
   team_project_ph:"Название проекта", team_open:"Открыть",
   dest_where:"Куда добавить", dest_personal:"Личное",
@@ -2421,154 +2434,52 @@ function calendarBlock(){
 const TREND_ICON = {up:"↑", down:"↓", flat:""};
 
 /* ---------- Habits / Prayer / Journal ---------- */
-/* Jamoa — the shared screen.
+/* ---------- Jamoa ----------
 
-   Two people, one list, two sets of ticks. Every row shows the reader's own
-   checkbox on the left, because that is the only one they can move, and the
-   other side's state as a small marker on the right, because that is the
-   thing they opened the screen to see. Showing both as identical checkboxes
-   would invite tapping the one that is not yours. */
-/* The team's week, as two lines rather than one average.
+   A report about two people, and it has to read like one. The earlier
+   version stacked every number in a grid and lost the point somewhere in the
+   middle of it; this reads top to bottom in the order the question is
+   actually asked: who is in this, what is left today, how each of you is
+   doing, and only then the periods.
 
-   An average would say "you are at 60%" and hide that one of you did all of
-   it. Both bars, both names, both streaks — the useful question for two
-   people keeping the same programme is not how the pair scores, it is
-   whether either of you is drifting. Framed as a record and never as a
-   ranking: there is no winner here and the design should not imply one. */
-function teamStatsBlock(stats){
-  if(!stats?.members?.length) return "";
-  const rows = stats.members.map(m => {
-    const name = m.user_id === state.me?.telegram_id ? t("team_you") : esc(m.name);
-    const pct = m.percent === null || m.percent === undefined ? 0 : m.percent;
-    return `<div style="margin:10px 0 0">
-        <div class="row" style="padding:0 0 4px">
-          <div class="grow"><b>${name}</b></div>
-          ${m.streak ? `<div class="muted sm">🔥 ${m.streak}</div>` : ""}
-          <div style="width:64px;text-align:right">
-            <b>${m.percent === null ? "—" : pct + "%"}</b></div>
-        </div>
-        <div class="bar"><i style="width:${pct}%"></i></div>
-        <div class="muted sm">${m.done}/${m.total}</div>
-      </div>`;
-  }).join("");
+   Names, never "you". "Siz 2/9" is a form field; "Ernest 2/9" beside
+   "Gulyora 3/9" is two people, which is what this screen is about. */
 
-  return `<div class="card">
-      <div class="card-t">${t("team_week")}</div>
-      ${rows}
-      ${stats.together === null || stats.together === undefined ? "" : `
-        <div class="row" style="margin-top:12px;border-top:var(--border-w) solid var(--border);padding-top:10px">
-          <div class="grow">${t("team_together")}</div>
-          <b>${stats.together}%</b>
-        </div>`}
-    </div>`;
+/* Which colour a percentage is shown in. Mirrors `services.score_band`. */
+function bandOf(percent){
+  if(percent === null || percent === undefined) return "none";
+  if(percent >= 85) return "great";
+  if(percent >= 65) return "good";
+  if(percent >= 40) return "fair";
+  return "low";
 }
 
-/* Day, week and month side by side.
-
-   The Team screen is a report rather than a worklist: the personal screens
-   already say what to do next, and two people open this one to find out
-   where they stand. Three periods at once, because "today was bad" and "the
-   month is fine" are both true and only useful together. */
-/* A change, coloured and signed. Green up, red down, grey for no change —
-   and nothing at all when there is no previous period to compare with,
-   because a team's first week has no "last week" and "+100%" would be a
-   flattering lie. */
-function deltaTag(delta){
+/* A change, coloured and signed. Nothing at all when there is no previous
+   period to compare with — a first week has no "last week", and "+100%"
+   would be a flattering lie. */
+function teamDelta(delta){
   if(delta === null || delta === undefined) return "";
   const tone = delta > 0 ? "up" : delta < 0 ? "down" : "flat";
   const sign = delta > 0 ? "▲ +" : delta < 0 ? "▼ −" : "= ";
   return `<span class="delta ${tone}">${sign}${Math.abs(delta)}%</span>`;
 }
 
-/* Day, week and month, one card per period rather than a grid.
-
-   The grid put three periods and two people into one table, and at phone
-   width every cell became a two-line stack of numbers nobody could scan. A
-   card per period reads top to bottom: the headline, then each of you with
-   a bar and the change since the period before. */
-function periodBlock(board){
-  if(!board?.periods) return "";
-  const labels = {day: t("team_p_day"), week: t("team_p_week"),
-                  month: t("team_p_month")};
-
-  return Object.entries(labels).map(([key, label]) => {
-    const rows = board.periods[key] || [];
-    const together = rows.reduce((a, r) => [a[0] + r.done, a[1] + r.total], [0, 0]);
-    const pair = together[1] ? Math.round(together[0] / together[1] * 100) : null;
-
-    return `<div class="card">
-      <div class="row" style="padding:0 0 8px">
-        <div class="card-t grow" style="margin:0">${label}</div>
-        <b style="font-size:19px">${pair === null ? "—" : pair + "%"}</b>
+/* One person's line: name, bar, percentage, and how it moved. */
+function memberLine(row, opts){
+  const pct = row.percent === null || row.percent === undefined ? 0 : row.percent;
+  const band = bandOf(row.percent);
+  return `<div style="margin-top:${opts?.tight ? 8 : 12}px">
+      <div class="row" style="padding:0 0 4px">
+        <div class="grow"><b>${esc(row.name)}</b></div>
+        ${teamDelta(row.delta)}
+        <div style="width:52px;text-align:right">
+          <b class="band-${band}">${
+            row.percent === null || row.percent === undefined
+              ? "—" : row.percent + "%"}</b></div>
       </div>
-      ${rows.map(r => {
-        const name = r.is_you ? t("team_you") : esc(r.name);
-        const pct = r.percent === null ? 0 : r.percent;
-        return `<div style="margin-top:8px">
-            <div class="row" style="padding:0 0 3px">
-              <div class="grow">${name}</div>
-              ${deltaTag(r.delta)}
-              <div style="width:48px;text-align:right">
-                <b>${r.percent === null ? "—" : r.percent + "%"}</b></div>
-            </div>
-            <div class="bar"><i style="width:${pct}%"></i></div>
-            <div class="muted sm">${r.done}/${r.total}</div>
-          </div>`;
-      }).join("")}
-    </div>`;
-  }).join("");
-}
-
-/* What is still open today, and who it is waiting on.
-
-   A percentage tells you how the day went; this tells you what to do about
-   it while there is still time. Names on each row, because "one of us has
-   not done it" is not actionable and "you have not done it" is. */
-function openWorkBlock(board){
-  if(!board) return "";
-  const nameOf = id => {
-    const m = (board.members || []).find(x => x.user_id === id);
-    return id === state.me?.telegram_id ? t("team_you") : esc(m?.name || "?");
-  };
-
-  const open = (board.open || []).map(x => `
-    <div class="row">
-      <div class="grow">${esc(x.title)}
-        <div class="muted sm">${t("team_waiting_on")}: ${
-          x.missing.map(nameOf).join(", ")}</div></div>
-      <div class="muted sm">${x.kind === "task" ? "⚡" : "✅"}</div>
-    </div>`).join("");
-
-  const done = (board.done || []).map(x => `
-    <div class="row">
-      <div class="grow done">${esc(x.title)}</div>
-      <div class="muted sm">✔️</div>
-    </div>`).join("");
-
-  return `<div class="card">
-      <div class="card-t">${t("team_today")} · ${board.done_count}/${
-        board.done_count + board.open_count}</div>
-      ${open || `<div class="muted">${t("team_all_clear")}</div>`}
-      ${done ? `<div style="margin-top:10px;opacity:.6">${done}</div>` : ""}
-    </div>`;
-}
-
-/* The team's shelves. Same object a personal project is, so the row reads
-   the same way — name, progress, a bar. */
-function teamProjectsBlock(team){
-  const projects = team?.projects || [];
-  return `<div class="card">
-      <div class="card-t">${t("projects")}</div>
-      ${projects.map(p => `
-        <div class="row" data-act="team-project-open" data-id="${p.id}">
-          <div class="grow"><b>${esc(p.name)}</b>
-            <div class="muted sm">${p.tasks_done}/${p.tasks_total}</div>
-            <div class="bar" style="margin-top:4px"><i style="width:${p.percent}%"></i></div>
-          </div>
-          <div style="width:44px;text-align:right"><b>${p.percent}%</b></div>
-        </div>`).join("") || `<div class="muted">${t("team_no_projects")}</div>`}
-      <button class="btn secondary" data-act="team-project-new"
-              style="margin-top:10px">+ ${t("team_add_project")}</button>
+      <div class="bar"><i class="band-${band}" style="width:${pct}%"></i></div>
+      ${opts?.hideCount ? "" :
+        `<div class="muted sm">${row.done}/${row.total}</div>`}
     </div>`;
 }
 
@@ -2583,59 +2494,105 @@ SCREENS.team = () => {
       <button class="btn" data-act="team-new">${t("team_new")}</button>
     </div>`;
 
-  const active = teams.find(x => x.id === state.teamId) || teams[0];
+  const team = teams.find(x => x.id === state.teamId) || teams[0];
+  const board = team.board || {};
   const tabs = teams.length > 1 ? `
     <div class="tabs">${teams.map(x => `
-      <div class="tab ${x.id === active.id ? "on" : ""}"
+      <div class="tab ${x.id === team.id ? "on" : ""}"
            data-act="team-pick" data-id="${x.id}">${esc(x.name)}</div>`).join("")}
     </div>` : "";
 
-  /* Who ticked it, other than the reader. A name, not an avatar: two people
-     who know each other do not need a colour key. */
-  const others = ids => (active.members || [])
-    .filter(m => !m.is_you && ids.includes(m.user_id))
-    .map(m => esc(m.name)).join(", ");
+  const nameOf = id => {
+    const m = (board.members || []).find(x => x.user_id === id);
+    return esc(m?.name || "?");
+  };
 
-  const row = (x, kind, label) => `
-    <div class="row">
-      <div class="check ${x.done ? "on" : ""}" data-act="team-toggle"
-           data-kind="${kind}" data-id="${x.id}"></div>
-      <div class="grow">
-        <div class="${x.done ? "done" : ""}">${esc(label)}</div>
-        ${others(x.done_by || []).length
-          ? `<div class="muted sm">✓ ${others(x.done_by)}</div>` : ""}
+  /* Today, as a headline. The pair's own number first, because that is what
+     the two of you did between you, then each of you underneath. */
+  const todayRows = board.periods?.day || [];
+  const pairDone = todayRows.reduce((n, r) => n + r.done, 0);
+  const pairTotal = todayRows.reduce((n, r) => n + r.total, 0);
+  const pairPct = pairTotal ? Math.round(pairDone / pairTotal * 100) : null;
+
+  const head = `<div class="card">
+      <div class="row" style="padding:0 0 10px">
+        <div class="grow">
+          <div class="card-t" style="margin:0">${t("team_today")}</div>
+          <div class="muted sm">${pairDone}/${pairTotal}</div>
+        </div>
+        <b class="band-${bandOf(pairPct)}" style="font-size:30px">${
+          pairPct === null ? "—" : pairPct + "%"}</b>
       </div>
-      ${x.protected ? "" : `<button class="ghost" data-act="team-remove"
-              data-kind="${kind}" data-id="${x.id}">✕</button>`}
+      ${todayRows.map(r => memberLine(r, {tight:true})).join("")}
     </div>`;
 
-  const scoreboard = (active.summary?.members || []).map(m => {
-    const name = m.user_id === state.me?.telegram_id ? t("team_you") : esc(m.name);
-    const pct = m.percent === null || m.percent === undefined ? "—" : m.percent + "%";
+  /* What is still open, and whose name is on it. A percentage says how the
+     day went; this says what to do about it while there is still time. */
+  const open = (board.open || []).map(x => `
+    <div class="row">
+      <span class="itile sm">${x.kind === "task" ? "⚡" : "✅"}</span>
+      <div class="grow">${esc(x.title)}
+        <div class="muted sm">${x.missing.map(nameOf).join(" · ")}</div></div>
+    </div>`).join("");
+  const done = (board.done || []).map(x => `
+    <div class="row" style="opacity:.55">
+      <span class="itile sm">✔️</span>
+      <div class="grow done">${esc(x.title)}</div>
+    </div>`).join("");
+
+  const work = `<div class="card">
+      <div class="row" style="padding:0 0 6px">
+        <div class="card-t grow" style="margin:0">${t("team_left_today")}</div>
+        <span class="muted sm">${board.open_count || 0}</span>
+      </div>
+      ${open || `<div class="muted">${t("team_all_clear")}</div>`}
+      ${done}
+    </div>`;
+
+  /* The periods, last, and one line each. They are the slowest-moving thing
+     on the screen and the least use in the moment, so they sit under the
+     work rather than above it. */
+  const periods = ["day", "week", "month"].map(key => {
+    const rows = board.periods?.[key] || [];
+    const gotDone = rows.reduce((n, r) => n + r.done, 0);
+    const gotTotal = rows.reduce((n, r) => n + r.total, 0);
+    const pct = gotTotal ? Math.round(gotDone / gotTotal * 100) : null;
+    const delta = rows.length
+      ? rows.map(r => r.delta).filter(d => d !== null && d !== undefined) : [];
+    const avg = delta.length
+      ? Math.round(delta.reduce((a, b) => a + b, 0) / delta.length) : null;
+    const label = {day: t("team_p_day"), week: t("team_p_week"),
+                   month: t("team_p_month")}[key];
     return `<div class="row">
-        <div class="grow"><b>${name}</b></div>
-        <div class="muted">${m.done}/${m.total}</div>
-        <div style="width:54px;text-align:right"><b>${pct}</b></div>
+        <div class="grow">${label}</div>
+        <div class="muted sm" style="width:58px;text-align:right">${
+          gotDone}/${gotTotal}</div>
+        ${teamDelta(avg)}
+        <div style="width:50px;text-align:right">
+          <b class="band-${bandOf(pct)}">${pct === null ? "—" : pct + "%"}</b></div>
       </div>`;
   }).join("");
 
   return `
     <div class="head">
-      <div class="grow"><h1>${esc(active.name)}</h1>
-        <div class="muted sm">${(active.members || [])
+      <div class="grow"><h1>${esc(team.name)}</h1>
+        <div class="muted sm">${(team.members || [])
           .map(m => esc(m.name)).join(" · ")}</div></div>
-      <button class="ghost" data-act="team-menu" data-id="${active.id}">⋯</button>
+      <button class="ghost" data-act="team-menu" data-id="${team.id}">⋯</button>
     </div>
     ${tabs}
+    ${head}
+    ${work}
+    ${teamProjectsBlock(team)}
 
-    ${periodBlock(active.board)}
-    ${openWorkBlock(active.board)}
-    ${teamStatsBlock(active.stats)}
-    ${teamProjectsBlock(active)}
+    <div class="card">
+      <div class="card-t">${t("team_results")}</div>
+      ${periods}
+    </div>
 
     <div class="card">
       <div class="card-t">${t("team_tasks")}</div>
-      ${(active.tasks || []).map(x => row(x, "task", x.title)).join("")
+      ${(team.tasks || []).map(x => sharedRow(x, "task", x.title, board)).join("")
         || `<div class="muted">${t("team_nothing")}</div>`}
       <button class="btn secondary" data-act="team-add" data-kind="task"
               style="margin-top:10px">+ ${t("team_add_task")}</button>
@@ -2643,12 +2600,58 @@ SCREENS.team = () => {
 
     <div class="card">
       <div class="card-t">${t("team_habits")}</div>
-      ${(active.habits || []).map(x => row(x, "habit", x.name)).join("")
+      ${(team.habits || []).map(x => sharedRow(x, "habit", x.name, board)).join("")
         || `<div class="muted">${t("team_nothing")}</div>`}
       <button class="btn secondary" data-act="team-add" data-kind="habit"
               style="margin-top:10px">+ ${t("team_add_habit")}</button>
     </div>`;
 };
+
+/* One shared item: your own box on the left — the only tick you can move —
+   and everybody else's state named on the right. */
+/* The team's shelves. Same object a personal project is, so the row reads
+   the same way — name, progress, a coloured bar. */
+function teamProjectsBlock(team){
+  const projects = team?.projects || [];
+  return `<div class="card">
+      <div class="card-t">${t("projects")}</div>
+      ${projects.map(p => `
+        <div class="row" data-act="team-project-open" data-id="${p.id}">
+          <div class="grow"><b>${esc(p.name)}</b>
+            <div class="muted sm">${p.tasks_done}/${p.tasks_total}</div>
+            <div class="bar" style="margin-top:4px">
+              <i class="band-${bandOf(p.percent)}" style="width:${p.percent}%"></i></div>
+          </div>
+          <div style="width:48px;text-align:right">
+            <b class="band-${bandOf(p.percent)}">${p.percent}%</b></div>
+        </div>`).join("") || `<div class="muted">${t("team_no_projects")}</div>`}
+      <button class="btn secondary" data-act="team-project-new"
+              style="margin-top:10px">+ ${t("team_add_project")}</button>
+    </div>`;
+}
+
+function sharedRow(x, kind, label, board){
+  const others = (board?.members || [])
+    .filter(m => m.user_id !== state.me?.telegram_id);
+  const marks = others.map(m => {
+    const got = (x.done_by || []).includes(m.user_id);
+    return `<span class="${got ? "band-great" : "muted"}" style="font-size:12px">${
+      got ? "✓" : "○"} ${esc(m.name)}</span>`;
+  }).join(" ");
+
+  return `<div class="row">
+      <div class="check ${x.done ? "on" : ""}" data-act="team-toggle"
+           data-kind="${kind}" data-id="${x.id}"></div>
+      <div class="grow" data-act="${kind === "task" ? "team-task-open"
+                                                    : "team-habit-open"}"
+           data-id="${x.id}">
+        <div class="${x.done ? "done" : ""}">${esc(label)}</div>
+        ${marks ? `<div class="muted sm">${marks}</div>` : ""}
+      </div>
+      ${x.protected ? "" : `<button class="ghost" data-act="team-remove"
+              data-kind="${kind}" data-id="${x.id}">✕</button>`}
+    </div>`;
+}
 
 SCREENS.habits = () => {
   const tabs = [["habits","habits"],["prayer","prayer"],["journal","journal"]];
@@ -3593,7 +3596,7 @@ SCREENS.stats = () => {
       </div>
       <div class="k ellipsis">${label}</div>
       <div class="v num">${value}</div>
-      <div class="sub num">${deltaTag(delta)}</div>
+      <div class="sub num">${teamDelta(delta)}</div>
       ${bar(percent)}
     </div>`;
 
@@ -3697,12 +3700,15 @@ function teamStatsOnStats(){
       `<span class="act" data-act="nav" data-screen="team">${
         t("team_open")} ${icon("chevron", 13)}</span>`)
       + `<div class="card">${rows.map(r => {
-          const name = r.is_you ? t("team_you") : esc(r.name);
+          // Names, not "you" — this screen is about two specific people and
+          // "Ernest 2/9 · Gulyora 3/9" reads as two of them, which is the
+          // whole point of putting them side by side.
+          const name = esc(r.name);
           const pct = r.percent === null ? 0 : r.percent;
           return `<div style="margin-top:6px">
               <div class="row" style="padding:0 0 3px">
                 <div class="grow">${name}</div>
-                ${deltaTag(r.delta)}
+                ${teamDelta(r.delta)}
                 <div style="width:48px;text-align:right"><b>${
                   r.percent === null ? "—" : r.percent + "%"}</b></div>
               </div>
@@ -3822,11 +3828,7 @@ function taskSheet(task, presetProject){
     <input id="task-title" placeholder="${t("task_name")}"
            value="${esc(f.title || "")}" />
 
-    ${editing
-      ? (shared ? `<div class="hint">👥 ${esc(
-          (state.team?.teams || []).find(x => x.id === (f.team_id || task?.team_id))
-            ?.name || "")}</div>` : "")
-      : destPicker()}
+    ${editing ? taskOwnerPicker(f, task, shared) : destPicker()}
 
     <div class="chips" style="margin-top:10px">
       ${chips.map(([id, label]) => `<div class="chip sm
@@ -3922,6 +3924,47 @@ function formDeadline(){
   if(f.when === "none") return null;
   if(f.when === "pick") return f.deadline || null;
   return f.deadline ?? null;
+}
+
+/* Move a task between your own list and a team's, from the task itself.
+
+   Changing your mind about where something belongs is ordinary — "finish the
+   maths" starts private and becomes something the two of you are doing.
+   Recreating it by hand loses the deadline, the reminder and the repeat, so
+   nobody does it and the task sits in the wrong place instead. */
+/* Move a whole shelf, and everything on it, between private and shared.
+   The tasks travel with it: a project that arrived somewhere empty would be
+   a folder rather than a move. */
+function projectOwnerPicker(p){
+  const teams = state.teams || [];
+  if(!teams.length || !p?.id) return "";
+  const shared = p.source === "team" || Boolean(p.team_id);
+  const current = shared ? "team:" + p.team_id : "personal";
+  const chip = (value, label) => `<div class="chip sm ${current === value ? "on" : ""}"
+      data-act="project-move" data-id="${p.id}"
+      data-from="${shared ? "team" : "personal"}"
+      data-value="${value}">${label}</div>`;
+  return `<label>${t("dest_where")}</label>
+    <div class="chips">
+      ${chip("personal", t("src_personal"))}
+      ${teams.map(x => chip("team:" + x.id, esc(x.name))).join("")}
+    </div>`;
+}
+
+function taskOwnerPicker(f, task, shared){
+  const teams = state.teams || [];
+  if(!teams.length) return "";
+  const id = f.id || task?.id;
+  const current = shared ? "team:" + (f.team_id || task?.team_id) : "personal";
+  const chip = (value, label) => `<div class="chip sm ${current === value ? "on" : ""}"
+      data-act="task-move" data-id="${id}"
+      data-from="${shared ? "team" : "personal"}"
+      data-value="${value}">${label}</div>`;
+  return `<label>${t("dest_where")}</label>
+    <div class="chips">
+      ${chip("personal", t("src_personal"))}
+      ${teams.map(x => chip("team:" + x.id, esc(x.name))).join("")}
+    </div>`;
 }
 
 function taskBody(){
@@ -5761,6 +5804,26 @@ const A = {
   },
 
   "team-task-open": el => { haptic(); openTeamTaskSheet(el.dataset.id); },
+
+  "task-move": el => {
+    const to = el.dataset.value, from = el.dataset.from, id = el.dataset.id;
+    if((from === "team" && to.startsWith("team:")) ||
+       (from === "personal" && to === "personal")) return;
+    haptic();
+    const path = from === "team"
+      ? `/api/teams/tasks/${id}/move` : `/api/tasks/${id}/move`;
+    save(() => api(path, {method:"POST", body:{to}}), state.screen,
+         false, t("saved"));
+  },
+
+  "project-move": el => {
+    const to = el.dataset.value, from = el.dataset.from, id = el.dataset.id;
+    if((from === "team" && to.startsWith("team:")) ||
+       (from === "personal" && to === "personal")) return;
+    haptic();
+    save(() => api(`/api/projects/${id}/move`, {method:"POST", body:{to}}),
+         state.screen, false, t("saved"));
+  },
   "task-delete-go": el => {
     const path = state.form?.source === "team"
       ? `/api/teams/tasks/${el.dataset.id}` : `/api/tasks/${el.dataset.id}`;
@@ -5812,6 +5875,7 @@ const A = {
       <textarea id="project-desc">${esc(p.description || "")}</textarea>
       <label>${t("deadline")}</label>
       <input type="date" id="project-deadline" value="${p.deadline || ""}" />
+      ${projectOwnerPicker(p)}
       <button class="btn" data-act="project-update" data-id="${el.dataset.id}"
               style="margin-top:16px">${t("save")}</button>
       <button class="btn secondary" data-act="close" style="margin-top:8px">

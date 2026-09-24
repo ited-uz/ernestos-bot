@@ -2253,14 +2253,14 @@ def render_team(summary: dict, lang: str, viewer_id: int, *,
     lines = [title, ""]
 
     def who(ids: list[int]) -> str:
-        """Names of the people who ticked it, with the reader called "you"."""
-        names = []
-        for member in summary["members"]:
-            if member["user_id"] in ids:
-                names.append(t(lang, "team_you")
-                             if member["user_id"] == viewer_id
-                             else esc(member["name"]))
-        return ", ".join(names)
+        """Names of the people who ticked it. Names, never "you".
+
+        A message about two people that calls one of them "you" reads as a
+        form; naming both reads as the two of them, which is what a shared
+        report is for.
+        """
+        return ", ".join(esc(m["name"]) for m in summary["members"]
+                         if m["user_id"] in ids)
 
     if summary["tasks"]:
         lines.append(f"<b>{t(lang, 'team_tasks')}</b>")
@@ -2289,8 +2289,7 @@ def render_team(summary: dict, lang: str, viewer_id: int, *,
     # Each person's own share, side by side. This is the part that makes a
     # shared list worth having over two private ones.
     for member in summary["members"]:
-        name = (t(lang, "team_you") if member["user_id"] == viewer_id
-                else esc(member["name"]))
+        name = esc(member["name"])
         percent = member["percent"]
         bar = _bar(percent if percent is not None else 0, 6)
         lines.append(f"{bar}  <b>{name}</b> · {member['done']}/{member['total']}"
@@ -3899,6 +3898,81 @@ def api_team_leave(team_id: int,
 class MoveHabitIn(BaseModel):
     #: "personal", or "team:<id>". The same vocabulary the add sheet uses.
     to: str = Field(min_length=1, max_length=24)
+
+
+@app.post("/api/tasks/{task_id}/move")
+async def api_task_move(task_id: int, body: MoveHabitIn,
+                        init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Move a private task into a team."""
+    user, _ = auth(init)
+    if not body.to.startswith("team:"):
+        raise HTTPException(status_code=422, detail="bad_destination")
+    team_id = int(body.to.split(":", 1)[1] or 0)
+    with SessionLocal() as s:
+        try:
+            moved = svc.move_task(s, user.telegram_id, task_id=task_id,
+                                  to_team=team_id)
+        except PermissionError:
+            raise HTTPException(status_code=404, detail="not_found")
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        team = svc.team_for(s, user.telegram_id, team_id)
+        name = team.name if team else ""
+    await notify_teammates(team_id, user.telegram_id, "team_ev_task_add",
+                           moved["title"], name)
+    return moved
+
+
+@app.post("/api/teams/tasks/{task_id}/move")
+async def api_team_task_move(task_id: int, body: MoveHabitIn,
+                             init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Take a shared task back into a private list."""
+    user, _ = auth(init)
+    if body.to != "personal":
+        raise HTTPException(status_code=422, detail="bad_destination")
+    with SessionLocal() as s:
+        from db import TeamTask
+        row = s.get(TeamTask, task_id)
+        team_id, label = (row.team_id, row.title) if row else (None, "")
+        try:
+            moved = svc.move_task(s, user.telegram_id, team_task_id=task_id)
+        except PermissionError:
+            raise HTTPException(status_code=404, detail="not_found")
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        team = (svc.team_for(s, user.telegram_id, team_id)
+                if team_id is not None else None)
+        name = team.name if team else ""
+    if team_id is not None:
+        await notify_teammates(team_id, user.telegram_id, "team_ev_task_del",
+                               label, name)
+    return moved
+
+
+@app.post("/api/projects/{project_id}/move")
+async def api_project_move(project_id: int, body: MoveHabitIn,
+                           init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Move a project, and everything filed on it, between private and shared."""
+    user, _ = auth(init)
+    to_team = (int(body.to.split(":", 1)[1] or 0)
+               if body.to.startswith("team:") else None)
+    if to_team is None and body.to != "personal":
+        raise HTTPException(status_code=422, detail="bad_destination")
+    with SessionLocal() as s:
+        try:
+            moved = svc.move_project(s, user.telegram_id, project_id, to_team)
+        except PermissionError:
+            raise HTTPException(status_code=404, detail="not_found")
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        team_id = to_team if to_team is not None else None
+        team = (svc.team_for(s, user.telegram_id, team_id)
+                if team_id is not None else None)
+        name = team.name if team else ""
+    if team_id is not None:
+        await notify_teammates(team_id, user.telegram_id,
+                               "team_ev_project_add", moved["name"], name)
+    return moved
 
 
 @app.get("/api/teams/habits/{habit_id}/history")

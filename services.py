@@ -821,7 +821,8 @@ def due_team_tasks(s: Session, ws: int, day: date) -> list[tuple]:
     return rows
 
 
-def habit_progress(s: Session, ws: int, day: date) -> tuple[int, int]:
+def habit_progress(s: Session, ws: int, day: date, *,
+                   include_team: bool = True) -> tuple[int, int]:
     """(completed, total) habits that were actually expected on that day.
 
     A habit scheduled for Monday/Wednesday/Friday is not counted on a Tuesday,
@@ -830,7 +831,7 @@ def habit_progress(s: Session, ws: int, day: date) -> tuple[int, int]:
     kind of false failure that makes people close the app.
     """
     habits = [h for h in _active_habits(s, ws) if habit_is_due(h, day)]
-    shared = due_team_habits(s, ws, day)
+    shared = due_team_habits(s, ws, day) if include_team else []
     if not habits and not shared:
         return 0, 0
 
@@ -842,7 +843,8 @@ def habit_progress(s: Session, ws: int, day: date) -> tuple[int, int]:
             len(due_ids) + len(shared))
 
 
-def habit_tier_progress(s: Session, ws: int, day: date) -> dict[str, dict]:
+def habit_tier_progress(s: Session, ws: int, day: date, *,
+                        include_team: bool = True) -> dict[str, dict]:
     """Per-tier completion for one day: done, due, percent and applied weight.
 
     Only tiers that actually have a habit due that day get a weight. This is
@@ -862,7 +864,7 @@ def habit_tier_progress(s: Session, ws: int, day: date) -> dict[str, dict]:
         HabitLog.done.is_(True))).all()) if habits else set()
     # Shared habits sit in the same tiers as personal ones, so a day made of
     # both is scored by one rule rather than two stitched together.
-    shared = due_team_habits(s, ws, day)
+    shared = due_team_habits(s, ws, day) if include_team else []
 
     tiers: dict[str, dict] = {}
     for name in HABIT_CATEGORIES:
@@ -888,7 +890,8 @@ def habit_tier_progress(s: Session, ws: int, day: date) -> dict[str, dict]:
     return tiers
 
 
-def habit_percent(s: Session, ws: int, day: date) -> int:
+def habit_percent(s: Session, ws: int, day: date, *,
+                  include_team: bool = True) -> int:
     """The day's habit score, 0–100, with the three tiers weighted.
 
     Replaces a flat done/total. Under the old arithmetic a user with three
@@ -896,7 +899,7 @@ def habit_percent(s: Session, ws: int, day: date) -> int:
     tick the seven optional ones and read 70% — which is not a description of
     that day. Now the mandatory half of the score is missing and it reads 30%.
     """
-    tiers = habit_tier_progress(s, ws, day)
+    tiers = habit_tier_progress(s, ws, day, include_team=include_team)
     live = sum(t["weight"] for t in tiers.values() if t["due"])
     if not live:
         return 0
@@ -2312,7 +2315,8 @@ def today_task_progress(s: Session, ws: int, day: date | None = None, *,
 
 
 def today_task_score(s: Session, ws: int, day: date | None = None, *,
-                     tz: ZoneInfo | None = None) -> tuple[int, int]:
+                     tz: ZoneInfo | None = None,
+                     include_team: bool = True) -> tuple[int, int]:
     """(earned, available) task points for the day, weighted by priority."""
     day = day or today_local(tz)
     rows = [(priority, status == "done") for priority, status in s.execute(
@@ -2320,7 +2324,8 @@ def today_task_score(s: Session, ws: int, day: date | None = None, *,
             Task.workspace_id == ws, Task.archived_at.is_(None),
             Task.deadline == day)).all()]
     # Shared tasks are weighed by the same priorities, in the same total.
-    rows += due_team_tasks(s, ws, day)
+    if include_team:
+        rows += due_team_tasks(s, ws, day)
     earned = available = 0
     for priority, done in rows:
         weight = TASK_PRIORITY_WEIGHTS.get(priority, 2)
@@ -2342,7 +2347,8 @@ def focus_progress(s: Session, ws: int, day: date | None = None, *,
 
 
 def overall_components(s: Session, ws: int, day: date | None = None, *,
-                       tz: ZoneInfo | None = None) -> dict:
+                       tz: ZoneInfo | None = None,
+                       include_team: bool = True) -> dict:
     """Each component's percentage, or None when it has no denominator today.
 
     A category with nothing in it is *absent*, not zero. Counting an empty
@@ -2353,12 +2359,14 @@ def overall_components(s: Session, ws: int, day: date | None = None, *,
     """
     day = day or today_local(tz)
 
-    habits_done, habits_total = habit_progress(s, ws, day)
-    tasks_earned, tasks_available = today_task_score(s, ws, day, tz=tz)
+    habits_done, habits_total = habit_progress(s, ws, day,
+                                               include_team=include_team)
+    tasks_earned, tasks_available = today_task_score(
+        s, ws, day, tz=tz, include_team=include_team)
     # Weighted across the three tiers, not a flat count of ticks. The counts
     # above are still what "4/6" on screen means; this is what the score is
     # built from, and they are different questions on purpose.
-    habits_scored = habit_percent(s, ws, day)
+    habits_scored = habit_percent(s, ws, day, include_team=include_team)
     focus_done, focus_total = focus_progress(s, ws, day, tz=tz)
     prayer_row = s.scalar(select(PrayerDay).where(
         PrayerDay.workspace_id == ws, PrayerDay.day == day))
@@ -2400,8 +2408,8 @@ def weighted_overall(components: dict) -> int:
 
 
 def overall_percent(s: Session, ws: int, day: date | None = None) -> int:
-    """The weighted score for a day."""
-    return weighted_overall(overall_components(s, ws, day))
+    """The weighted score for a day — private and shared, averaged."""
+    return day_score(s, ws, day)["value"]
 
 
 def overall_state(s: Session, ws: int, day: date | None = None) -> dict:
@@ -2426,7 +2434,11 @@ def overall_state(s: Session, ws: int, day: date | None = None) -> dict:
     else:
         trend = "up" if value > previous else "down"
 
-    return {"value": value, "trend": trend, "yesterday": previous,
+    # The split the screens draw: private, shared, and the average of the two.
+    split = day_score(s, ws, day, tz=None)
+    return {"value": split["value"], "trend": trend, "yesterday": previous,
+            "personal": split["personal"], "team": split["team"],
+            "band": split["band"],
             "components": today_components}
 
 
@@ -6375,3 +6387,200 @@ def team_task_for(s: Session, user_id: int, task_id: int) -> dict | None:
                 "done_by_names": [m["name"] for m in team_members(s, team.id)
                                   if m["user_id"] in row["done_by"]]})
     return row
+
+
+def move_task(s: Session, user_id: int, *, task_id: int | None = None,
+              team_task_id: int | None = None,
+              to_team: int | None = None) -> dict:
+    """Move a task between a private list and a shared one.
+
+    Changing your mind about where something belongs is ordinary — "finish
+    the maths" starts private and becomes something the two of you are doing,
+    or the other way round. Recreating it by hand loses the deadline, the
+    reminder, the repeat and the history, so nobody does it and the task just
+    sits in the wrong place.
+
+    A shared task carries no project across, and a private one drops its own:
+    a project is a shelf inside one container, and the shelf does not move.
+    """
+    ws = workspace_id_for(s, user_id)
+
+    if task_id is not None:
+        if to_team is None:
+            raise ValueError("no_destination")
+        task = s.get(Task, task_id)
+        if task is None or task.workspace_id != ws or task.archived_at is not None:
+            raise ValueError("unknown_task")
+        _require_team(s, user_id, to_team)
+
+        moved = TeamTask(team_id=to_team, title=task.title,
+                         description=task.description or "",
+                         deadline=task.deadline, due_time=task.due_time,
+                         remind_before=task.remind_before,
+                         recurrence=task.recurrence, anchor_day=task.anchor_day,
+                         priority=task.priority, created_by=user_id)
+        s.add(moved)
+        s.flush()
+        if task.status == "done":
+            s.add(TeamTaskDone(task_id=moved.id, user_id=user_id, done=True,
+                               day=local_date_of(task.completed_at)
+                               or today_local(), done_at=task.completed_at
+                               or utcnow()))
+        task.archived_at = utcnow()
+        s.commit()
+        return team_task_row(s, moved, user_id)
+
+    if team_task_id is None:
+        raise ValueError("nothing_to_move")
+
+    shared = s.get(TeamTask, team_task_id)
+    if shared is None or shared.archived_at is not None:
+        raise ValueError("unknown_task")
+    _require_team(s, user_id, shared.team_id)
+
+    mine = s.scalar(select(TeamTaskDone).where(
+        TeamTaskDone.task_id == shared.id, TeamTaskDone.user_id == user_id))
+    task = Task(workspace_id=ws, title=shared.title,
+                description=shared.description or "",
+                deadline=shared.deadline, due_time=shared.due_time,
+                remind_before=shared.remind_before,
+                recurrence=shared.recurrence, anchor_day=shared.anchor_day,
+                priority=shared.priority,
+                status="done" if (mine and mine.done) else "waiting",
+                completed_at=(mine.done_at if mine and mine.done else None))
+    s.add(task)
+    shared.archived_at = utcnow()
+    s.commit()
+    return {"id": task.id, "title": task.title, "source": "personal"}
+
+
+def move_project(s: Session, user_id: int, project_id: int,
+                 to_team: int | None) -> dict:
+    """Move a project, and the tasks filed on it, between private and shared.
+
+    The shelf and everything on it travel together — a project that arrived
+    somewhere empty would be a folder, not a move.
+    """
+    ws = workspace_id_for(s, user_id)
+    project = s.get(Project, project_id)
+    if project is None or project.archived_at is not None:
+        raise ValueError("unknown_project")
+
+    if to_team is not None:
+        if project.team_id is not None:
+            raise ValueError("already_shared")
+        if project.workspace_id != ws:
+            raise ValueError("unknown_project")
+        _require_team(s, user_id, to_team)
+
+        tasks = s.scalars(select(Task).where(
+            Task.project_id == project.id, Task.archived_at.is_(None))).all()
+        project.team_id = to_team
+        s.flush()
+        for task in tasks:
+            moved = TeamTask(team_id=to_team, title=task.title,
+                             description=task.description or "",
+                             project_id=project.id, deadline=task.deadline,
+                             due_time=task.due_time,
+                             remind_before=task.remind_before,
+                             recurrence=task.recurrence,
+                             anchor_day=task.anchor_day,
+                             priority=task.priority, created_by=user_id)
+            s.add(moved)
+            s.flush()
+            if task.status == "done":
+                s.add(TeamTaskDone(task_id=moved.id, user_id=user_id,
+                                   done=True, day=today_local(),
+                                   done_at=task.completed_at or utcnow()))
+            task.archived_at = utcnow()
+        s.commit()
+        return {"id": project.id, "name": project.name, "source": "team",
+                "team_id": to_team, "moved_tasks": len(tasks)}
+
+    # Shared -> private. Only for a project that is shared, and it takes it
+    # away from the other member, so the caller announces it.
+    if project.team_id is None:
+        raise ValueError("already_private")
+    _require_team(s, user_id, project.team_id)
+
+    shared_tasks = s.scalars(select(TeamTask).where(
+        TeamTask.project_id == project.id,
+        TeamTask.archived_at.is_(None))).all()
+    done_ids = set(s.scalars(select(TeamTaskDone.task_id).where(
+        TeamTaskDone.user_id == user_id, TeamTaskDone.done.is_(True),
+        TeamTaskDone.task_id.in_([t.id for t in shared_tasks] or [0]))).all())
+
+    project.team_id = None
+    project.workspace_id = ws
+    s.flush()
+    for shared in shared_tasks:
+        s.add(Task(workspace_id=ws, title=shared.title,
+                   description=shared.description or "",
+                   project_id=project.id, deadline=shared.deadline,
+                   due_time=shared.due_time,
+                   remind_before=shared.remind_before,
+                   recurrence=shared.recurrence, anchor_day=shared.anchor_day,
+                   priority=shared.priority,
+                   status="done" if shared.id in done_ids else "waiting",
+                   completed_at=utcnow() if shared.id in done_ids else None))
+        shared.archived_at = utcnow()
+    s.commit()
+    return {"id": project.id, "name": project.name, "source": "personal",
+            "moved_tasks": len(shared_tasks)}
+
+
+# --- The day as two halves, and one number ---------------------------------
+
+#: Where a percentage stops being one thing and starts being another. Used for
+#: the colour a number is shown in, so the bands are stated once here rather
+#: than guessed at in three places in the browser.
+SCORE_BANDS = ((85, "great"), (65, "good"), (40, "fair"), (0, "low"))
+
+
+def score_band(percent: int | None) -> str:
+    """"great" / "good" / "fair" / "low", or "none" when unmeasured."""
+    if percent is None:
+        return "none"
+    for floor, name in SCORE_BANDS:
+        if percent >= floor:
+            return name
+    return "low"
+
+
+def day_score(s: Session, ws: int, day: date | None = None, *,
+              tz: ZoneInfo | None = None) -> dict:
+    """The day as its two halves and the one number they make.
+
+    Private work and shared work are scored apart and then averaged, rather
+    than poured into one pool. The pool version let whichever side happened to
+    have more items decide the whole day: a week with twelve private tasks and
+    one shared habit read as a private score with a rounding error attached,
+    which is not what somebody keeping a programme with another person means
+    by "how did we do".
+
+    Averaging two percentages gives each half the same say regardless of how
+    many rows it holds. When one half is empty there is nothing to average and
+    the other half simply is the day.
+    """
+    day = day or today_local(tz)
+    personal_parts = overall_components(s, ws, day, tz=tz, include_team=False)
+    personal = (weighted_overall(personal_parts)
+                if any(v is not None for v in personal_parts.values()) else None)
+
+    owner = workspace_owner(s, ws)
+    shared_items = (due_team_habits(s, ws, day) + due_team_tasks(s, ws, day)
+                    if owner else [])
+    if shared_items:
+        done = sum(1 for _, ok in shared_items if ok)
+        team = round(done / len(shared_items) * 100)
+    else:
+        team = None
+
+    present = [x for x in (personal, team) if x is not None]
+    value = round(sum(present) / len(present)) if present else EMPTY_OVERALL
+
+    return {"value": value, "personal": personal, "team": team,
+            "band": score_band(value if present else None),
+            "components": personal_parts,
+            "team_items": len(shared_items),
+            "team_done": sum(1 for _, ok in shared_items if ok)}

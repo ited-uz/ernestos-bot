@@ -7375,15 +7375,17 @@ def test_the_team_message_names_who_did_what(client):
         svc.toggle_team_task(s, one, task["id"])
         summary = svc.team_day_summary(s, team_id)
 
-    # Read by the person who did it...
+    # Both people are named, including the reader. A report about two people
+    # that calls one of them "you" reads as a form rather than as the two of
+    # them, and the names are the thing that makes it scannable.
     mine = application.render_team(summary, "uz", one, evening=True)
     assert "Matritsalar" in mine and "Kitob o'qish" in mine
-    assert application.t("uz", "team_you") in mine, "the reader is 'you'"
-    assert "Gulyora" in mine, "and the other person is named"
+    assert "Ernest" in mine and "Gulyora" in mine
+    assert application.t("uz", "team_you") not in mine
 
-    # ...and by the one who did not. Same facts, different point of view.
+    # And it reads the same from the other side — same facts, same names.
     theirs = application.render_team(summary, "uz", two, evening=True)
-    assert "Ernest" in theirs
+    assert "Ernest" in theirs and "Gulyora" in theirs
 
 
 def test_the_team_message_lists_the_shared_rituals(client):
@@ -8080,3 +8082,164 @@ def test_a_stranger_cannot_read_or_edit_a_shared_task(client):
     assert stranger.get(f"/api/teams/tasks/{task['id']}").status_code == 404
     assert stranger.patch(f"/api/teams/tasks/{task['id']}",
                           {"title": "Buzildi"}).status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Changing your mind about where something lives
+# ---------------------------------------------------------------------------
+
+def test_a_task_moves_into_a_team_with_everything_on_it(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, one)
+        task = svc.add_task(s, ws, "Matematikani bitirish",
+                            deadline=date(2032, 6, 1), priority="high",
+                            due_time=dtime(18, 0), remind_before=30,
+                            recurrence="weekly")
+        s.commit()
+        moved = svc.move_task(s, one, task_id=task.id, to_team=team_id)
+
+    assert moved["title"] == "Matematikani bitirish"
+    assert moved["deadline"] == "2032-06-01" and moved["priority"] == "high"
+    assert moved["due_time"] == "18:00" and moved["remind_before"] == 30
+    assert moved["recurrence"] == "weekly"
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, one)
+        titles = [x["title"] for x in svc.list_tasks(s, ws)["upcoming"]]
+    assert "Matematikani bitirish" not in titles
+
+
+def test_a_shared_task_moves_back_and_keeps_your_own_tick(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        shared = svc.add_team_task(s, one, team_id, "Matematikani bitirish",
+                                   deadline=svc.today_local())
+        svc.toggle_team_task(s, one, shared["id"])
+        moved = svc.move_task(s, one, team_task_id=shared["id"])
+        ws = svc.workspace_id_for(s, one)
+        row = s.get(db.Task, moved["id"])
+    assert moved["source"] == "personal"
+    assert row.status == "done", "a finished task does not come back unfinished"
+
+
+def test_a_project_moves_and_takes_its_tasks(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, one)
+        project = svc.add_project(s, ws, "Universitet")
+        svc.add_task(s, ws, "Matritsalar", project_id=project.id,
+                     deadline=svc.today_local())
+        svc.add_task(s, ws, "Integral", project_id=project.id,
+                     deadline=svc.today_local())
+        s.commit()
+
+        moved = svc.move_project(s, one, project.id, team_id)
+        assert moved["source"] == "team" and moved["moved_tasks"] == 2
+
+        shared = svc.list_team_projects(s, one, team_id)
+        assert [p["name"] for p in shared] == ["Universitet"]
+        assert shared[0]["tasks_total"] == 2
+        # And it is gone from the private shelf list.
+        assert all(p["name"] != "Universitet" for p in svc.list_projects(s, ws))
+
+
+def test_a_shared_project_moves_back_to_private(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, one)
+        project = svc.add_team_project(s, one, team_id, "Universitet")
+        task = svc.add_team_task(s, one, team_id, "Matritsalar",
+                                 deadline=svc.today_local(),
+                                 project_id=project["id"])
+        svc.toggle_team_task(s, one, task["id"])
+
+        moved = svc.move_project(s, one, project["id"], None)
+        assert moved["source"] == "personal" and moved["moved_tasks"] == 1
+        names = [p["name"] for p in svc.list_projects(s, ws)]
+        assert "Universitet" in names
+        assert svc.list_team_projects(s, one, team_id) == []
+
+
+def test_the_move_endpoints_refuse_a_stranger(client):
+    one, two, team_id = _pair(client)
+    outsider = _named(client, next(_next_id), "Begona")
+    stranger = Caller(client, {"id": outsider, "first_name": "Begona"})
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, outsider)
+        task = svc.add_task(s, ws, "O'zimniki")
+        s.commit()
+        task_id = task.id
+
+    # Their own task, but not their team.
+    assert stranger.post(f"/api/tasks/{task_id}/move",
+                         {"to": f"team:{team_id}"}).status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# One number, from two halves
+# ---------------------------------------------------------------------------
+
+def test_the_day_is_the_average_of_the_two_halves(client):
+    """Each half has the same say, however many rows it happens to hold."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, one)
+        tz = svc.user_tz(s.get(User, one))
+        today = svc.today_local(tz)
+
+        before = svc.day_score(s, ws, today, tz=tz)
+        assert before["personal"] is not None
+        assert before["team"] == 0, "the seeded rituals are owed and undone"
+
+        for habit in svc.list_team_habits(s, one, team_id):
+            svc.toggle_team_habit(s, one, habit["id"])
+        after = svc.day_score(s, ws, today, tz=tz)
+
+    assert after["team"] == 100
+    assert after["personal"] == before["personal"], "the private half is untouched"
+    assert after["value"] == round((after["personal"] + 100) / 2), (
+        f"the day is the average of the two: {after}")
+
+
+def test_a_person_with_no_team_is_scored_on_their_own_half(client):
+    solo = _named(client, next(_next_id), "Yolg'iz")
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, solo)
+        score = svc.day_score(s, ws)
+    assert score["team"] is None
+    assert score["value"] == score["personal"], (
+        "with nothing to average against, the private half is the day")
+
+
+def test_a_score_gets_a_colour_band():
+    assert svc.score_band(95) == "great"
+    assert svc.score_band(70) == "good"
+    assert svc.score_band(50) == "fair"
+    assert svc.score_band(10) == "low"
+    assert svc.score_band(None) == "none"
+
+
+def test_the_bands_in_the_browser_match_the_ones_on_the_server():
+    """Two copies of the same thresholds is how they drift apart."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    block = html[html.index("function bandOf("):]
+    block = block[:block.index("}")]
+    for floor, name in svc.SCORE_BANDS:
+        if floor:
+            assert f">= {floor}" in block, f"{name} band missing from bandOf()"
+
+
+def test_every_key_the_team_screen_uses_is_defined():
+    """A missing key renders as its own name, which only shows in production."""
+    import re
+
+    html = (ROOT / "webapp" / "index.html").read_text()
+    screen = html[html.index("/* ---------- Jamoa ----------"):
+                  html.index("SCREENS.habits = () => {")]
+    used = set(re.findall(r'\bt\("([a-z_0-9]+)"', screen))
+    uz = html[html.index(" uz:{"):html.index(" en:{")]
+    # Keys sit several to a line, so anchor on the separator rather than on
+    # the start of the line.
+    defined = set(re.findall(r"(?:^|[,{])\s*([a-z_0-9]+)\s*:", uz, re.M))
+    missing = sorted(used - defined)
+    assert not missing, f"the team screen uses undefined keys: {missing}"
