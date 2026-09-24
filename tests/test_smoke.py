@@ -3401,7 +3401,7 @@ def test_the_wake_up_boundary_follows_the_users_timezone(fresh):
 # Notification preferences and per-user report times
 # ==========================================================================
 
-def test_report_defaults_are_on_at_five_and_half_past_nine(alice):
+def test_report_defaults_are_on_at_five_and_nine(alice):
     """05:00, not 04:00, and the difference is the whole point.
 
     The old default was a literal left over from when the scheduler ran on the
@@ -3410,12 +3410,14 @@ def test_report_defaults_are_on_at_five_and_half_past_nine(alice):
     reports went out on time, every day, to people who were asleep.
 
     05:00 matches the product's own wake target, so the report arrives as the
-    day is meant to start rather than an hour before it.
+    day is meant to start rather than an hour before it. The evening report is
+    on the hour at 21:00: a round time people recognise as "the end of the
+    day", and far enough before sleep that acting on it is still possible.
     """
     with SessionLocal() as s:
         prefs = svc.prefs_for(s.get(User, ALICE["id"]))
     assert prefs["morning_report"] is True and prefs["morning_time"] == "05:00"
-    assert prefs["evening_report"] is True and prefs["evening_time"] == "21:30"
+    assert prefs["evening_report"] is True and prefs["evening_time"] == "21:00"
 
 
 def test_a_report_is_due_only_inside_its_window(alice):
@@ -6908,24 +6910,37 @@ def _break_the_outbox_key(engine) -> None:
         """))
 
 
-def test_a_stale_outbox_key_blocks_every_later_day(client):
-    """The bug itself, so the repair below is not testing a straw man."""
+def test_a_stale_outbox_key_is_detected_and_worked_around(client):
+    """The outbox is unusable, and the report still has to go out.
+
+    The unique key is wrong, so the insert is refused for every day after the
+    first and no row can be written at all. Rather than go quiet, the claim
+    falls through to `job_runs`, which carries the same kind of key on a table
+    this bug does not touch — one claim per day, no duplicates, on a database
+    whose schema is still broken.
+    """
     telegram_id = next(_next_id)
     Caller(client, {"id": telegram_id, "first_name": "Blocked"})
     with SessionLocal() as s:
         ws = svc.workspace_id_for(s, telegram_id)
 
     _break_the_outbox_key(db.engine)
+    svc.CLAIM_ANOMALIES.clear()
     try:
-        day = date(2031, 11, 1)
+        first, second = date(2031, 11, 1), date(2031, 11, 2)
         with SessionLocal() as s:
-            assert svc.claim_report(s, ws, "morning", day) is not None
+            assert svc.claim_report(s, ws, "morning", first) is not None
+        # The day the broken key would have refused outright.
         with SessionLocal() as s:
-            assert svc.claim_report(s, ws, "morning", day + timedelta(days=1)) is None, (
-                "this is the failure: a different day is refused")
+            claimed = svc.claim_report(s, ws, "morning", second)
+        assert claimed == svc.FALLBACK_CLAIM, (
+            "a day the outbox cannot record must still be claimable")
+        # ...and still exactly once.
+        with SessionLocal() as s:
+            assert svc.claim_report(s, ws, "morning", second) is None, (
+                "the fallback must not let the same day be claimed twice")
         assert svc.CLAIM_ANOMALIES.get("count"), (
-            "a refusal with nothing holding the slot must be recorded, not "
-            "silently counted as a normal skip")
+            "working around it must not hide that the schema is wrong")
     finally:
         svc.CLAIM_ANOMALIES.clear()
         db.init_db()
@@ -6990,3 +7005,109 @@ def test_the_repair_is_idempotent(client):
     again = db._repair_report_outbox_key()
     assert before is None and again is None, (
         "a healthy outbox key must be left alone")
+
+
+# ---------------------------------------------------------------------------
+# What the two daily reports actually say
+# ---------------------------------------------------------------------------
+#
+# Morning: good morning, how yesterday went, what today asks for.
+# Evening: the day as one number against yesterday's, then what was done and
+# what was not. The number on its own is not the point — the comparison and
+# the two lists are.
+
+def test_the_evening_report_states_the_change_from_yesterday():
+    """An arrow hides the size, which is the part worth knowing."""
+    payload = _evening_payload()
+    payload["overall"] = {"value": 78, "trend": "up", "yesterday": 60,
+                          "components": {"tasks": 75}}
+    text = application.render_evening(payload, "uz")
+    assert "+18%" in text, f"the size of the change must be stated:\n{text}"
+
+    payload["overall"] = {"value": 40, "trend": "down", "yesterday": 65,
+                          "components": {"tasks": 40}}
+    assert "−25%" in application.render_evening(payload, "uz")
+
+    payload["overall"] = {"value": 50, "trend": "flat", "yesterday": 50,
+                          "components": {"tasks": 50}}
+    text = application.render_evening(payload, "uz")
+    assert "+" not in text.split("📊")[1].split("\n")[1], "no change is not a rise"
+
+
+def test_the_evening_report_invents_no_comparison():
+    """A day with nothing measured is not a 78% improvement."""
+    payload = _evening_payload()
+    payload["overall"] = {"value": 78, "trend": "flat", "yesterday": None,
+                          "components": {"tasks": 75}}
+    text = application.render_evening(payload, "uz")
+    assert "+78%" not in text
+    assert application.t("uz", "r_vs_yesterday_none") in text
+
+
+def test_the_evening_report_shows_both_what_was_and_was_not_done():
+    payload = _evening_payload()
+    text = application.render_evening(payload, "uz")
+    assert application.t("uz", "r_done_title") in text
+    assert application.t("uz", "r_missed_title") in text
+    # The leftovers are named, and counted.
+    assert "Call the accountant" in text
+    # One task left plus one habit left: the count is what is actually open.
+    left = (len(payload["tasks_remaining"]) + len(payload["tasks_overdue"])
+            + len(payload["habits_remaining"]))
+    assert f"{application.t('uz', 'r_missed_title')}</b> · {left}" in text
+
+
+def test_a_day_with_nothing_left_over_says_so():
+    payload = _evening_payload()
+    payload["tasks_remaining"] = []
+    payload["tasks_overdue"] = []
+    payload["habits_remaining"] = []
+    text = application.render_evening(payload, "uz")
+    assert application.t("uz", "r_nothing_missed") in text
+
+
+def test_a_day_with_nothing_done_is_not_dressed_up():
+    payload = _evening_payload()
+    payload.update(tasks_completed=0, habits_done=0, prayer_performed=0,
+                   journal=False)
+    text = application.render_evening(payload, "uz")
+    assert application.t("uz", "r_nothing_done") in text
+
+
+def test_the_morning_report_carries_yesterday_and_today(client):
+    """Built from the real data, not a fixture, so the payload keys are real."""
+    telegram_id = next(_next_id)
+    Caller(client, {"id": telegram_id, "first_name": "Ernest"})
+    with SessionLocal() as s:
+        user = s.get(User, telegram_id)
+        # The fixture registers through initData, which does not write the
+        # profile name; the report greets by the stored one.
+        user.first_name = "Ernest"
+        ws = svc.workspace_id_for(s, telegram_id)
+        tz = svc.user_tz(user)
+        svc.add_task(s, ws, "Bugungi ish", deadline=svc.today_local(tz))
+        s.commit()
+        data = svc.morning_data(s, ws, user)
+        text = application.render_morning(data, "uz")
+
+    assert application.t("uz", "r_good_morning", name="Ernest") in text
+    assert application.t("uz", "r_yesterday") in text, "yesterday's result"
+    assert "Bugungi ish" in text, "today's work"
+
+
+def test_both_reports_render_in_every_language(client):
+    """A missing key in one language would only show up in production."""
+    telegram_id = next(_next_id)
+    Caller(client, {"id": telegram_id, "first_name": "Ernest"})
+    with SessionLocal() as s:
+        user = s.get(User, telegram_id)
+        ws = svc.workspace_id_for(s, telegram_id)
+        morning = svc.morning_data(s, ws, user)
+        evening = svc.evening_data(s, ws, user)
+
+    for lang in ("uz", "ru", "en"):
+        for render, payload in ((application.render_morning, morning),
+                                (application.render_evening, evening)):
+            text = render(payload, lang)
+            assert text and "{" not in text, (
+                f"{render.__name__} in {lang} left a placeholder unfilled:\n{text}")

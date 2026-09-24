@@ -2164,6 +2164,25 @@ def render_morning(data: dict, lang: str) -> str:
     return "\n".join(lines)
 
 
+def _versus_yesterday(overall: dict, lang: str) -> str:
+    """Today against yesterday, as a sentence.
+
+    An arrow tells you the direction and hides the size, which is the part
+    worth knowing: "up" covers both a point and twenty. When yesterday had
+    nothing to measure there is no comparison to make, and inventing one —
+    "+63%" against a day the user never used — would be flattering nonsense.
+    """
+    previous = overall.get("yesterday")
+    if previous is None:
+        return t(lang, "r_vs_yesterday_none")
+    delta = overall["value"] - previous
+    if delta > 0:
+        return t(lang, "r_vs_yesterday_up", delta=delta)
+    if delta < 0:
+        return t(lang, "r_vs_yesterday_down", delta=abs(delta))
+    return t(lang, "r_vs_yesterday_same")
+
+
 def render_evening(data: dict, lang: str) -> str:
     """The last thing read that day: how it went, then good night.
 
@@ -2179,6 +2198,10 @@ def render_evening(data: dict, lang: str) -> str:
 
     lines.append(f"📊 <b>{overall['value']}%</b> "
                  f"{TREND_MARK.get(overall['trend'], '▪️')}  {_bar(overall['value'])}")
+    # The number on its own says nothing about whether the day went well. What
+    # makes it readable is the one it is being compared with, stated rather
+    # than implied by an arrow.
+    lines.append(f"<i>{_versus_yesterday(overall, lang)}</i>")
     lines.append("")
 
     def row(label: str, done, total, percent) -> str:
@@ -2205,11 +2228,34 @@ def render_evening(data: dict, lang: str) -> str:
         lines.append(f"{t(lang, 'r_focus')}: "
                      f"{data['focus_done']}/{len(data['focus'])}")
 
+    # What actually happened today, both halves of it. The report used to list
+    # only what was left over, which reads as a reprimand at nine in the
+    # evening and leaves out the part worth reading: the things that got done.
+    done_count = (data["tasks_completed"] + data["habits_done"]
+                  + data["prayer_performed"] + (1 if data["journal"] else 0))
+    lines.append("")
+    lines.append(f"<b>{t(lang, 'r_done_title')}</b> · {done_count}")
+    if done_count:
+        done_bits = []
+        if data["tasks_completed"]:
+            done_bits.append(f"{t(lang, 'r_tasks')} {data['tasks_completed']}")
+        if data["habits_done"]:
+            done_bits.append(f"{t(lang, 'r_habits')} {data['habits_done']}"
+                             f"/{data['habits_total']}")
+        if data["prayer_performed"]:
+            done_bits.append(f"{t(lang, 'r_prayer')} {data['prayer_performed']}"
+                             f"/{data['prayer_required']}")
+        if data["journal"]:
+            done_bits.append(t(lang, "r_journal"))
+        lines.append("<i>" + " · ".join(done_bits) + "</i>")
+    else:
+        lines.append(f"<i>{t(lang, 'r_nothing_done')}</i>")
+
     unfinished = (data["tasks_remaining"] + data["tasks_overdue"]
                   + data["habits_remaining"])
+    lines.append("")
+    lines.append(f"<b>{t(lang, 'r_missed_title')}</b> · {len(unfinished)}")
     if unfinished:
-        lines.append("")
-        lines.append(f"{t(lang, 'r_unfinished')}")
         for item in unfinished[:8]:
             lines.append(f"• {esc(item)}")
         if len(unfinished) > 8:
@@ -2217,6 +2263,7 @@ def render_evening(data: dict, lang: str) -> str:
         lines.append("")
         lines.append(f"<i>{t(lang, 'r_evening_close')}</i>")
     else:
+        lines.append(f"<i>{t(lang, 'r_nothing_missed')}</i>")
         lines.append("")
         lines.append(t(lang, "r_evening_clear"))
 
@@ -2438,7 +2485,8 @@ async def _send_reports_locked(bot, report_type: str, report_date) -> None:
             with SessionLocal() as s:
                 user = s.get(User, telegram_id)
                 if user is None:
-                    svc.release_report(s, report_id)
+                    svc.release_report(s, report_id, ws=ws,
+                                       report_type=report_type, report_date=when)
                     continue
                 data = (svc.morning_data(s, ws, user) if report_type == "morning"
                         else svc.evening_data(s, ws, user))
@@ -2473,7 +2521,8 @@ async def _send_reports_locked(bot, report_type: str, report_date) -> None:
                           "the claim for the next tick", report_type, telegram_id)
             try:
                 with SessionLocal() as s:
-                    svc.release_report(s, report_id)
+                    svc.release_report(s, report_id, ws=ws,
+                                       report_type=report_type, report_date=when)
             except Exception:
                 log.exception("could not release claim %s", report_id)
             failed += 1

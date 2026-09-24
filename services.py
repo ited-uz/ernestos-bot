@@ -4290,6 +4290,17 @@ def already_sent(s: Session, ws: int, report_type: str, report_date: date) -> bo
         DailyReportLog.report_date == report_date)) is not None
 
 
+#: Returned by `claim_report` when the outbox itself could not be written but
+#: the day was claimed another way. Negative so it can never collide with a
+#: real row id, and so `s.get(DailyReportLog, id)` simply finds nothing.
+FALLBACK_CLAIM = -1
+
+
+def _fallback_claim_name(ws: int, report_type: str) -> str:
+    """The `job_runs` key standing in for one workspace's outbox row."""
+    return f"rep:{ws}:{report_type}"
+
+
 #: Claims refused by the database for a reason that is not a peer worker.
 #: Read back by `/health/reports` and `/tekshir`, because the symptom of this
 #: is silence and silence is what made it hard to find.
@@ -4351,11 +4362,22 @@ def claim_report(s: Session, ws: int, report_type: str,
             log.error(
                 "claim_report was rejected for %s %s although no row holds "
                 "the slot — daily_report_logs has a unique constraint this "
-                "code does not expect, so no report can be written for any "
-                "account. Restart the app: the schema is repaired at startup. "
-                "(first seen on workspace=%s; further occurrences today are "
-                "counted, not logged)",
+                "code does not expect. Falling back to job_runs for the "
+                "once-a-day guarantee so reports still go out; restart the "
+                "app to repair the schema properly. (first seen on "
+                "workspace=%s; further occurrences today are counted, not "
+                "logged)",
                 report_type, report_date, ws)
+
+        # The outbox is unusable, but "once a day" does not have to live in
+        # that particular table. `job_runs` carries the same kind of unique
+        # key, is written by a different feature and is not affected — so the
+        # report can still be claimed exactly once and still be delivered.
+        # A degraded mode on purpose: it keeps the product working on a
+        # database whose schema is wrong, instead of going silent and waiting
+        # for somebody to notice.
+        if claim_job_run(s, _fallback_claim_name(ws, report_type), report_date):
+            return FALLBACK_CLAIM
         return None
     if existing.status == "retry" and (existing.attempts or 0) < REPORT_MAX_ATTEMPTS:
         existing.status = "claimed"
@@ -4399,8 +4421,18 @@ def mark_report_failed(s: Session, report_id: int, error: str, *,
     s.commit()
 
 
-def release_report(s: Session, report_id: int) -> None:
-    """Drop a claim entirely, so the next run may try again from scratch."""
+def release_report(s: Session, report_id: int, *, ws: int | None = None,
+                   report_type: str | None = None,
+                   report_date: date | None = None) -> None:
+    """Drop a claim entirely, so the next run may try again from scratch.
+
+    The workspace and date are only needed for a claim taken through the
+    `job_runs` fallback, which has no outbox row to delete.
+    """
+    if report_id == FALLBACK_CLAIM:
+        if ws is not None and report_type and report_date:
+            release_job_run(s, _fallback_claim_name(ws, report_type), report_date)
+        return
     row = s.get(DailyReportLog, report_id)
     if row is not None:
         s.delete(row)
@@ -4669,7 +4701,7 @@ def active_recipients(s: Session) -> list[tuple[int, int, str]]:
 DEFAULT_MORNING_TIME = dtime(5, 0)
 #: 21:30 rather than 21:00: the day's last habits and prayers are usually still
 #: being entered on the hour, and a summary that arrives mid-entry is wrong.
-DEFAULT_EVENING_TIME = dtime(21, 30)
+DEFAULT_EVENING_TIME = dtime(21, 0)
 
 #: How long after its configured time a report may still go out. Past this the
 #: day has moved on, and a morning summary at noon is noise rather than a
