@@ -4339,13 +4339,23 @@ def claim_report(s: Session, ws: int, report_type: str,
         # exist and every day after the first is refused. Silently returning
         # None here, as this used to, makes that indistinguishable from a
         # normal skip and hides it for ever.
-        log.error(
-            "claim_report for workspace=%s type=%s date=%s was rejected but "
-            "no row holds that slot — daily_report_logs almost certainly has "
-            "a stale unique constraint. Run: python migrations.py 0010",
-            ws, report_type, report_date)
         CLAIM_ANOMALIES["count"] = CLAIM_ANOMALIES.get("count", 0) + 1
         CLAIM_ANOMALIES["last"] = f"{report_type} {report_date} ws={ws}"
+        # Once per report per day, not once per user per tick. Every account
+        # hits this within the same second, and at a two-minute tick that was
+        # thousands of identical lines a night — which buries the one line
+        # that matters and costs real money in log retention.
+        seen = f"{report_type}:{report_date}"
+        if CLAIM_ANOMALIES.get("reported") != seen:
+            CLAIM_ANOMALIES["reported"] = seen
+            log.error(
+                "claim_report was rejected for %s %s although no row holds "
+                "the slot — daily_report_logs has a unique constraint this "
+                "code does not expect, so no report can be written for any "
+                "account. Restart the app: the schema is repaired at startup. "
+                "(first seen on workspace=%s; further occurrences today are "
+                "counted, not logged)",
+                report_type, report_date, ws)
         return None
     if existing.status == "retry" and (existing.attempts or 0) < REPORT_MAX_ATTEMPTS:
         existing.status = "claimed"
