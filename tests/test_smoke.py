@@ -7684,3 +7684,132 @@ def test_the_screen_is_told_which_habits_are_protected(client):
         rows = svc.list_team_habits(s, one, team_id)
     mine = next(r for r in rows if r["id"] == added["id"])
     assert mine["protected"] is False, "what a member added, a member may remove"
+
+
+# ---------------------------------------------------------------------------
+# Parity — a shared item is not a weaker kind of item
+# ---------------------------------------------------------------------------
+
+def test_a_shared_habit_takes_every_setting_a_private_one_does(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        habit = svc.add_team_habit(
+            s, one, team_id, "Birga yugurish", schedule="weekdays",
+            category="target", target_time=dtime(6, 30), remind_at=dtime(6, 0))
+    assert habit["schedule"] == "weekdays"
+    assert habit["category"] == "target"
+    assert habit["target_time"] == "06:30"
+    assert habit["remind_at"] == "06:00"
+
+
+def test_a_shared_task_takes_every_setting_a_private_one_does(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        task = svc.add_team_task(
+            s, one, team_id, "Hisobot", deadline=date(2032, 3, 31),
+            due_time=dtime(18, 0), remind_before=30, recurrence="monthly",
+            priority="high")
+    assert task["due_time"] == "18:00"
+    assert task["remind_before"] == 30
+    assert task["recurrence"] == "monthly"
+    assert task["priority"] == "high"
+
+
+def test_a_shared_habit_sits_in_its_own_tier(client):
+    """"Asosiy bo'lsa asosiyda tursin" — grouped with its peers, not apart."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, one)
+        svc.add_team_habit(s, one, team_id, "Birga yugurish", category="target")
+        grouped = svc.habits_by_category(s, ws)
+
+    names = {tier: [h["name"] for h in rows] for tier, rows in grouped.items()}
+    assert "Birga yugurish" in names["target"]
+    assert "5x namoz" in names["non_negotiable"], "the rituals sit at the top tier"
+    # Every row says where it came from, personal ones included.
+    for rows in grouped.values():
+        for row in rows:
+            assert row["source"] in ("personal", "team")
+            if row["source"] == "team":
+                assert row["team_name"]
+
+
+def test_a_paused_shared_habit_is_not_owed(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        habit = svc.add_team_habit(s, one, team_id, "Birga yugurish")
+        svc.edit_team_habit(s, one, habit["id"], paused=True)
+        rows = svc.list_team_habits(s, one, team_id)
+    assert all(r["id"] != habit["id"] for r in rows)
+
+
+def test_a_shared_ritual_cannot_be_renamed_by_one_member(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        ritual = svc.list_team_habits(s, one, team_id)[0]
+        with pytest.raises(ValueError):
+            svc.edit_team_habit(s, two, ritual["id"], name="Boshqa nom")
+
+
+def test_shared_reminders_are_per_member(client):
+    """One of you being told must never silence the other."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        for uid in (one, two):
+            user = s.get(User, uid)
+            user.habit_reminders = True
+            user.timezone = "Asia/Tashkent"
+        s.commit()
+        now = svc.now_local(svc.TZ)
+        habit = svc.add_team_habit(
+            s, one, team_id, "Birga yugurish",
+            remind_at=now.time().replace(second=0, microsecond=0))
+
+        def due(uid):
+            return [x["id"] for x in svc.due_team_habit_reminders(
+                s, uid, s.get(User, uid), now=now)]
+
+        assert habit["id"] in due(one) and habit["id"] in due(two)
+
+        svc.mark_team_habit_reminded(s, one, habit["id"])
+        assert habit["id"] not in due(one), "already told"
+        assert habit["id"] in due(two), "the other member is still owed it"
+
+
+def test_a_finished_shared_task_is_not_reminded(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        user = s.get(User, one)
+        user.task_reminders = True
+        s.commit()
+        now = svc.now_local(svc.user_tz(user))
+        task = svc.add_team_task(
+            s, one, team_id, "Hisobot", deadline=now.date(),
+            due_time=now.time().replace(second=0, microsecond=0),
+            remind_before=0)
+        assert any(x["id"] == task["id"] for x in
+                   svc.due_team_task_reminders(s, one, user, now=now))
+
+        svc.toggle_team_task(s, one, task["id"])
+        assert not any(x["id"] == task["id"] for x in
+                       svc.due_team_task_reminders(s, one, user, now=now))
+
+
+def test_unticking_a_shared_task_keeps_it_unticked(client):
+    """The row is now state, not a bare completion — flipping must still work."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        task = svc.add_team_task(s, one, team_id, "Hisobot",
+                                 deadline=svc.today_local())
+        assert svc.toggle_team_task(s, one, task["id"]) is True
+        assert svc.toggle_team_task(s, one, task["id"]) is False
+        rows = svc.list_team_tasks(s, one, team_id)
+        mine = next(r for r in rows if r["id"] == task["id"])
+    assert mine["done"] is False and mine["done_count"] == 0
+
+
+def test_the_other_member_is_told_who_to_tell(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        assert svc.teammates_of(s, team_id, one) == [two]
+        assert svc.teammates_of(s, team_id, two) == [one]

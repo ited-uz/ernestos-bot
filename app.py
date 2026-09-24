@@ -2809,6 +2809,41 @@ async def _send_user_reminders(bot, telegram_id: int, ws: int, lang: str) -> int
             # not this one's problem, and neither is anybody else's.
             log.warning("task reminder to %s failed: %s", telegram_id, e)
 
+    # Shared work is reminded on the same pass and marked per member, so the
+    # two of you are each told once, in your own zone.
+    with SessionLocal() as s:
+        user = s.get(User, telegram_id)
+        team_tasks = svc.due_team_task_reminders(s, telegram_id, user) if user else []
+        team_habits = svc.due_team_habit_reminders(s, telegram_id, user) if user else []
+
+    for item in team_tasks:
+        try:
+            body = (t(lang, "remind_task_at", title=esc(item["title"]),
+                      time=item["due_time"]) if item["due_time"]
+                    else t(lang, "remind_task", title=esc(item["title"])))
+            await bot.send_message(
+                telegram_id, f"{body}\n<i>👥 {esc(item['team_name'])}</i>",
+                parse_mode=ParseMode.HTML, reply_markup=webapp_button(lang))
+            with SessionLocal() as s:
+                svc.mark_team_task_reminded(s, telegram_id, item["id"])
+            sent += 1
+        except TelegramError as e:
+            log.warning("team task reminder to %s failed: %s", telegram_id, e)
+
+    for item in team_habits:
+        try:
+            await bot.send_message(
+                telegram_id,
+                t(lang, "remind_habit", name=esc(item["name"]))
+                + f"\n<i>👥 {esc(item['team_name'])}</i>",
+                parse_mode=ParseMode.HTML)
+            with SessionLocal() as s:
+                svc.mark_team_habit_reminded(s, telegram_id, item["id"],
+                                             tz=user_zone)
+            sent += 1
+        except TelegramError as e:
+            log.warning("team habit reminder to %s failed: %s", telegram_id, e)
+
     for habit in habits:
         try:
             await bot.send_message(
@@ -3735,12 +3770,62 @@ class TeamTaskIn(BaseModel):
     deadline: date | None = None
     priority: str = "medium"
     description: str = Field(default="", max_length=2000)
+    due_time: str | None = Field(default=None, max_length=5)
+    remind_before: int | None = None
+    recurrence: str | None = Field(default=None, max_length=24)
 
 
 class TeamHabitIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     schedule: str | None = None
     category: str = "non_negotiable"
+    target_time: str | None = Field(default=None, max_length=5)
+    remind_at: str | None = Field(default=None, max_length=5)
+
+
+async def notify_teammates(team_id: int, actor_id: int, key: str,
+                           what: str, team_name: str) -> int:
+    """Tell the rest of the team what just changed. Returns how many heard.
+
+    A shared list that changes silently is a shared list people stop
+    trusting: the other person opens the app and something is different, with
+    no idea who did it or when. Every structural change — added, removed,
+    renamed — is announced to everybody except whoever made it. Ticking your
+    own share is *not* announced: that would be two notifications a day each,
+    which is how a couple mutes the bot.
+
+    Never raises. This runs after the change is already committed, and a
+    notification that could not be delivered is not a reason to fail the
+    request that caused it.
+    """
+    if telegram_app is None:
+        return 0
+    told = 0
+    try:
+        with SessionLocal() as s:
+            others = svc.teammates_of(s, team_id, actor_id)
+            actor = s.get(User, actor_id)
+            actor_name = (actor.first_name or "").strip() if actor else ""
+            langs = {uid: (s.get(User, uid).language if s.get(User, uid) else "uz")
+                     for uid in others}
+    except Exception:
+        log.exception("could not work out who to tell about team %s", team_id)
+        return 0
+
+    for uid in others:
+        lang = langs.get(uid) or "uz"
+        try:
+            await telegram_app.bot.send_message(
+                uid,
+                t(lang, key, who=esc(actor_name or "?"), what=esc(what))
+                + "\n" + t(lang, "team_ev_in", name=esc(team_name)),
+                parse_mode=ParseMode.HTML)
+            told += 1
+        except TelegramError as e:
+            log.info("could not tell %s about a team change: %s", uid, e)
+        except Exception:
+            log.exception("telling %s about a team change errored", uid)
+    return told
 
 
 @app.get("/api/teams")
@@ -3782,8 +3867,8 @@ def api_team_create(body: TeamIn,
 
 
 @app.patch("/api/teams/{team_id}")
-def api_team_rename(team_id: int, body: TeamIn,
-                    init=Header(default=None, alias="X-Telegram-Init-Data")):
+async def api_team_rename(team_id: int, body: TeamIn,
+                          init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, _ = auth(init)
     with SessionLocal() as s:
         try:
@@ -3792,7 +3877,10 @@ def api_team_rename(team_id: int, body: TeamIn,
             raise HTTPException(status_code=404, detail="not_found")
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
-        return {"id": team.id, "name": team.name}
+        out = {"id": team.id, "name": team.name}
+    await notify_teammates(team_id, user.telegram_id, "team_ev_renamed",
+                           out["name"], out["name"])
+    return out
 
 
 @app.delete("/api/teams/{team_id}")
@@ -3821,19 +3909,25 @@ def api_team_stats(team_id: int, period: str = "week",
 
 
 @app.post("/api/teams/{team_id}/tasks")
-def api_team_task_add(team_id: int, body: TeamTaskIn,
-                      init=Header(default=None, alias="X-Telegram-Init-Data")):
+async def api_team_task_add(team_id: int, body: TeamTaskIn,
+                            init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, _ = auth(init)
     with SessionLocal() as s:
         try:
-            return svc.add_team_task(s, user.telegram_id, team_id, body.title,
-                                     deadline=body.deadline,
-                                     priority=body.priority,
-                                     description=body.description)
+            created = svc.add_team_task(
+                s, user.telegram_id, team_id, body.title,
+                deadline=body.deadline, priority=body.priority,
+                description=body.description, due_time=_time(body.due_time),
+                remind_before=body.remind_before, recurrence=body.recurrence)
         except PermissionError:
             raise HTTPException(status_code=404, detail="not_found")
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
+        team = svc.team_for(s, user.telegram_id, team_id)
+        name = team.name if team else ""
+    await notify_teammates(team_id, user.telegram_id, "team_ev_task_add",
+                           created["title"], name)
+    return created
 
 
 @app.post("/api/teams/tasks/{task_id}/toggle")
@@ -3853,32 +3947,48 @@ def api_team_task_toggle(task_id: int,
 
 
 @app.delete("/api/teams/tasks/{task_id}")
-def api_team_task_archive(task_id: int,
-                          init=Header(default=None, alias="X-Telegram-Init-Data")):
+async def api_team_task_archive(task_id: int,
+                                init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, _ = auth(init)
     with SessionLocal() as s:
+        from db import TeamTask
+        row = s.get(TeamTask, task_id)
+        title = row.title if row else ""
+        team_id = row.team_id if row else None
         try:
             ok = svc.archive_team_task(s, user.telegram_id, task_id)
         except PermissionError:
             raise HTTPException(status_code=404, detail="not_found")
+        team = (svc.team_for(s, user.telegram_id, team_id)
+                if team_id is not None else None)
+        name = team.name if team else ""
     if not ok:
         raise HTTPException(status_code=404, detail="not_found")
+    await notify_teammates(team_id, user.telegram_id, "team_ev_task_del",
+                           title, name)
     return {"ok": True}
 
 
 @app.post("/api/teams/{team_id}/habits")
-def api_team_habit_add(team_id: int, body: TeamHabitIn,
-                       init=Header(default=None, alias="X-Telegram-Init-Data")):
+async def api_team_habit_add(team_id: int, body: TeamHabitIn,
+                             init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, _ = auth(init)
     with SessionLocal() as s:
         try:
-            return svc.add_team_habit(s, user.telegram_id, team_id, body.name,
-                                      schedule=body.schedule,
-                                      category=body.category)
+            created = svc.add_team_habit(
+                s, user.telegram_id, team_id, body.name,
+                schedule=body.schedule, category=body.category,
+                target_time=_time(body.target_time),
+                remind_at=_time(body.remind_at))
         except PermissionError:
             raise HTTPException(status_code=404, detail="not_found")
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
+        team = svc.team_for(s, user.telegram_id, team_id)
+        name = team.name if team else ""
+    await notify_teammates(team_id, user.telegram_id, "team_ev_habit_add",
+                           created["name"], name)
+    return created
 
 
 @app.post("/api/teams/habits/{habit_id}/toggle")
@@ -3897,18 +4007,27 @@ def api_team_habit_toggle(habit_id: int,
 
 
 @app.delete("/api/teams/habits/{habit_id}")
-def api_team_habit_archive(habit_id: int,
-                           init=Header(default=None, alias="X-Telegram-Init-Data")):
+async def api_team_habit_archive(habit_id: int,
+                                 init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, _ = auth(init)
     with SessionLocal() as s:
+        from db import TeamHabit
+        row = s.get(TeamHabit, habit_id)
+        label = row.name if row else ""
+        team_id = row.team_id if row else None
         try:
             ok = svc.archive_team_habit(s, user.telegram_id, habit_id)
         except PermissionError:
             raise HTTPException(status_code=404, detail="not_found")
         except ValueError:
             raise HTTPException(status_code=422, detail="protected")
+        team = (svc.team_for(s, user.telegram_id, team_id)
+                if team_id is not None else None)
+        name = team.name if team else ""
     if not ok:
         raise HTTPException(status_code=404, detail="not_found")
+    await notify_teammates(team_id, user.telegram_id, "team_ev_habit_del",
+                           label, name)
     return {"ok": True}
 
 

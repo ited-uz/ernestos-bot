@@ -1022,6 +1022,7 @@ const DICT = {
   team_nothing:"Hali umumiy ish yo'q. Birinchisini qo'shing.",
   team_you:"siz", team_today:"Bugun",
   team_week:"Shu hafta", team_together:"Birgalikda",
+  src_personal:"Shaxsiy",
   dest_where:"Qayerga qo'shilsin", dest_personal:"Shaxsiy",
   team_badge:"jamoa",
   privacy_line:"Ma'lumotlaringiz boshqa foydalanuvchilardan ajratilgan va xavfsiz saqlanadi. 🔒",
@@ -1283,6 +1284,7 @@ const DICT = {
   team_nothing:"Nothing shared yet. Add the first thing.",
   team_you:"you", team_today:"Today",
   team_week:"This week", team_together:"Together",
+  src_personal:"Personal",
   dest_where:"Where does this go", dest_personal:"Personal",
   team_badge:"team",
   privacy_line:"Your data is kept separate from other users' and stored securely. 🔒",
@@ -1530,6 +1532,7 @@ const DICT = {
   team_nothing:"Общих дел пока нет. Добавьте первое.",
   team_you:"вы", team_today:"Сегодня",
   team_week:"На этой неделе", team_together:"Вместе",
+  src_personal:"Личное",
   dest_where:"Куда добавить", dest_personal:"Личное",
   team_badge:"команда",
   privacy_line:"Ваши данные отделены от данных других пользователей и хранятся безопасно. 🔒",
@@ -2537,7 +2540,8 @@ SCREENS.habits = () => {
     </div>`;
   if(state.tab === "prayer") return h + prayerTab();
   if(state.tab === "journal") return h + journalTab();
-  return h + habitsTab() + teamBlock(state.habits?.team_habits, "habit");
+  // Shared habits are inside the tier groups now, not appended underneath.
+  return h + habitsTab();
 };
 
 const TIERS = {non_negotiable:"t1", target:"t2", bonus:"t3"};
@@ -2555,7 +2559,11 @@ function habitsTab(){
   /* Today's habits and the streak, in one block at the top: the count is the
      thing being worked on and the streak is why it is worth working on, so
      they belong to each other rather than to two separate cards. */
-  const due = data.habits.filter(x => x.due);
+  /* Every habit owed today, personal and shared, because that is what the
+     percentage underneath is built from. Counting only the private ones made
+     the card disagree with the score on Home. */
+  const everything = Object.values(data.grouped || {}).flat();
+  const due = (everything.length ? everything : data.habits).filter(x => x.due);
   const done = due.filter(x => x.done).length;
   /* Two different questions, and the card answers both rather than picking
      one. "4/6" is how many habits are ticked — a count, and the only honest
@@ -2637,7 +2645,10 @@ function habitRow(x, cat, wake){
           ${icon("play", 15)} ${t("resume")}</button></div>`;
   }
 
-  const isWake = x.system_key === "wakeup";
+  // Only the personal wake-up owns the "Turdim" button: it writes the
+  // workspace's wake log, and offering it on a shared row would tick the
+  // wrong thing.
+  const isWake = x.system_key === "wakeup" && x.source !== "team";
   // A wake-up that has not happened yet gets the button; once it has, the
   // row shows the time it actually happened.
   const wakeBtn = isWake && wake && !wake.logged
@@ -2649,12 +2660,22 @@ function habitRow(x, cat, wake){
     : isWake && x.target_time ? `${t("wake_target")} ${x.target_time}` : "";
 
   const meta = [];
+  /* Where this habit lives, on every row rather than only the shared ones.
+     Labelling just one kind makes the other look like the default and the
+     shared one like an exception, which is the opposite of the point: they
+     are the same kind of commitment and they score the same. */
+  meta.push(x.source === "team" ? `👥 ${esc(x.team_name || "")}`
+                                : t("src_personal"));
   if(wakeMeta) meta.push(wakeMeta);
   else if(!x.due) meta.push(t("not_today"));
   // Each derived habit names the module it actually mirrors. Every one of
   // them used to say "from the Prayer section", so the journal habit sent
   // the reader to the wrong screen.
-  else if(x.protected)
+  // `protected` means two different things. On a personal habit it means
+  // "derived" — the prayer and journal modules tick it, so the row explains
+  // where it comes from and its box is locked. On a shared one it only means
+  // "cannot be deleted": both members tick it by hand, like any other.
+  else if(x.protected && x.source !== "team")
     meta.push(t(x.system_key === "journal" ? "habit_auto_journal"
                                            : "habit_auto_prayer"));
   if(x.remind_at) meta.push(`${icon("bell", 12)} ${x.remind_at}`);
@@ -2662,20 +2683,29 @@ function habitRow(x, cat, wake){
 
   const box = !x.due
     ? `<div class="check lock" aria-hidden="true"></div>`
-    : x.protected
-      ? `<div class="check ${x.done ? "on" : ""} lock"
-             data-act="auto-habit">${x.done ? icon("check", 14) : ""}</div>`
-      : `<div class="check ${x.done ? "on" : ""}" data-act="habit-toggle"
-             data-id="${x.id}">${icon("check", 14)}</div>`;
+    : x.source === "team"
+      // Shared rituals are ticked by hand by each member — there is no
+      // shared prayer module ticking them, so they are never locked.
+      ? `<div class="check ${x.done ? "on" : ""}" data-act="team-toggle"
+             data-kind="habit" data-id="${x.id}">${icon("check", 14)}</div>`
+      : x.protected
+        ? `<div class="check ${x.done ? "on" : ""} lock"
+               data-act="auto-habit">${x.done ? icon("check", 14) : ""}</div>`
+        : `<div class="check ${x.done ? "on" : ""}" data-act="habit-toggle"
+               data-id="${x.id}">${icon("check", 14)}</div>`;
 
+  const shared = x.source === "team";
   return `<div class="item ${TIERS[cat]} ${x.due ? "" : "off"}">
       ${box}
-      <div class="grow" data-act="habit-open" data-id="${x.id}">
+      <div class="grow" ${shared ? `data-act="nav" data-screen="team"`
+                                 : `data-act="habit-open" data-id="${x.id}"`}>
         <div class="ellipsis">${esc(x.name)}</div>
         ${meta.length ? `<div class="meta">${meta.join(" · ")}</div>` : ""}
       </div>
-      ${wakeBtn || `<button class="iconbtn sm plain" data-act="habit-open"
-          data-id="${x.id}" aria-label="${t("edit")}">${icon("chevron", 16)}</button>`}
+      ${wakeBtn || `<button class="iconbtn sm plain"
+          ${shared ? `data-act="nav" data-screen="team"`
+                   : `data-act="habit-open" data-id="${x.id}"`}
+          aria-label="${t("edit")}">${icon("chevron", 16)}</button>`}
     </div>`;
 }
 
@@ -2921,11 +2951,11 @@ SCREENS.tasks = () => {
     </div>`;
 
   if(state.taskTab === "done") return h + doneTab();
-  const sharedTasks = state.taskTab === "main"
-    ? teamBlock(state.tasks?.team_tasks, "task") : "";
+
   if(state.taskTab === "open") return h + openTab();
   if(state.taskTab === "projects") return h + projectsTab();
-  return h + mainTab() + sharedTasks;
+  // Shared tasks are inside the day's list now, not appended underneath.
+  return h + mainTab();
 };
 
 /* A section heading that carries a hue, so the screen reads as a few
@@ -2946,13 +2976,25 @@ function mainTab(){
   let h = weekFocusBlock();
   if(!d) return h + `<div class="spin"></div>`;
 
-  const all = [...d.overdue, ...d.upcoming, ...d.undated, ...(d.later || [])];
   const today = todayISO();
+  /* Shared tasks are in the day's own lists, not a block below them: they
+     are owed today and they score today, so a reader looking at "due today"
+     has to be looking at all of it. Marked, not separated — `taskRow` says
+     which team each one came from. Personal tasks carry an `overdue` flag
+     from the API; shared ones are compared here, since the shared block is
+     built from a flat list. */
+  const sharedAll = (d.team_tasks || []).map(x => ({
+    ...x, source: "team",
+    overdue: Boolean(x.deadline && x.deadline < today && !x.done),
+  }));
+  const all = [...d.overdue, ...d.upcoming, ...d.undated, ...(d.later || []),
+               ...sharedAll];
   const pinned = all.filter(x => x.top3);
-  const seen = new Set(pinned.map(x => x.id));
-  const late = all.filter(x => x.overdue && !seen.has(x.id));
-  late.forEach(x => seen.add(x.id));
-  const now = all.filter(x => x.deadline === today && !seen.has(x.id));
+  const seen = new Set(pinned.map(x => x.id + ":" + (x.source || "personal")));
+  const key = x => x.id + ":" + (x.source || "personal");
+  const late = all.filter(x => x.overdue && !seen.has(key(x)));
+  late.forEach(x => seen.add(key(x)));
+  const now = all.filter(x => x.deadline === today && !seen.has(key(x)));
 
   const section = (tone, ic, label, rows, opts) => rows.length
     ? sectionHead(tone, ic, label) + rows.map(x => taskRow(x, opts)).join("") : "";
@@ -3148,7 +3190,11 @@ function doneRow(task){
    this row calls the user late; the actions are what a person actually
    needs at that moment. */
 function taskRow(task, opts){
+  const shared = task.source === "team";
   const meta = [];
+  // Where it lives, on every row. See `habitRow` for why both kinds are
+  // labelled rather than only the shared one.
+  meta.push(shared ? `👥 ${esc(task.team_name || "")}` : t("src_personal"));
   // Under a project heading the name is already on screen; repeating it in
   // every row is noise that pushes the useful details off the line.
   if(task.project && !opts?.hideProject) meta.push(esc(task.project));
@@ -3176,17 +3222,23 @@ function taskRow(task, opts){
       </div>` : "";
 
   return `<div class="trow pri-${task.priority}">
-      <div class="check" data-act="task-done" data-id="${task.id}"
+      <div class="check ${shared && task.done ? "on" : ""}"
+           ${shared ? `data-act="team-toggle" data-kind="task"`
+                    : `data-act="task-done"`} data-id="${task.id}"
            aria-label="${t("now_done")}">${icon("check", 14)}</div>
       <div class="grow">
-        <div class="tt wrap" data-act="task-open" data-id="${task.id}">
+        <div class="tt wrap" ${shared ? `data-act="nav" data-screen="team"`
+                                      : `data-act="task-open" data-id="${task.id}"`}>
           ${esc(task.title)}</div>
         ${meta.length ? `<div class="td">${meta.join(" · ")}</div>` : ""}
-        ${quick}
+        ${shared ? "" : quick}
       </div>
-      <button class="iconbtn sm plain" data-act="task-top3" data-id="${task.id}"
+      ${shared
+        ? `<button class="iconbtn sm plain" data-act="nav" data-screen="team"
+                   aria-label="${t("team")}">${icon("chevron", 16)}</button>`
+        : `<button class="iconbtn sm plain" data-act="task-top3" data-id="${task.id}"
               aria-label="${task.top3 ? t("top3_unpick") : t("top3_pick")}"
-              >${task.top3 ? "★" : "☆"}</button>
+              >${task.top3 ? "★" : "☆"}</button>`}
     </div>`;
 }
 

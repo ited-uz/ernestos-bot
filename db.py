@@ -780,6 +780,10 @@ class TeamTask(Base):
     title: Mapped[str] = mapped_column(String(300))
     description: Mapped[str] = mapped_column(Text, default="")
     deadline: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    due_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    remind_before: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    recurrence: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    anchor_day: Mapped[int | None] = mapped_column(Integer, nullable=True)
     priority: Mapped[str] = mapped_column(String(6), default="medium")
     created_by: Mapped[int] = mapped_column(BigInteger, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -787,10 +791,16 @@ class TeamTask(Base):
 
 
 class TeamTaskDone(Base):
-    """One member's completion of one team task.
+    """One member's state on one team task: whether they finished it, and
+    whether they have been reminded.
 
     Separate from the task so that "done" is a per-person fact. A couple
     revising the same chapter are not finished when one of them is.
+
+    The row used to mean "done" by existing at all. It now carries a flag,
+    because a member can be reminded about a task they have not finished and
+    there has to be somewhere to record that. Rows written under the old
+    meaning are all completions, which is why `done` defaults to true.
     """
 
     __tablename__ = "team_task_done"
@@ -799,6 +809,9 @@ class TeamTaskDone(Base):
     task_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("team_tasks.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    done: Mapped[bool] = mapped_column(Boolean, default=True)
+    reminder_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True)
     done_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     #: The local day it was ticked, so the reports can count it against the
     #: day the person actually lived rather than a UTC instant.
@@ -828,6 +841,13 @@ class TeamHabit(Base):
     #: journal — so they can be recognised, kept, and never deleted by accident.
     system_key: Mapped[str] = mapped_column(String(16), default="")
     is_protected: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: The hour it is meant to happen, and the hour to say so — the same two
+    #: settings a personal habit has. A shared habit that cannot be scheduled
+    #: or reminded is a weaker thing than a private one, which is backwards:
+    #: the whole reason to put a habit in a team is that it matters more.
+    target_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    remind_at: Mapped[time | None] = mapped_column(Time, nullable=True)
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_by: Mapped[int] = mapped_column(BigInteger, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -845,6 +865,10 @@ class TeamHabitLog(Base):
     day: Mapped[date] = mapped_column(Date, index=True)
     done: Mapped[bool] = mapped_column(Boolean, default=False)
     logged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    #: Per member, because two people in different time zones are reminded at
+    #: different moments and one being told must not silence the other.
+    reminder_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True)
 
     __table_args__ = (
         UniqueConstraint("habit_id", "user_id", "day", name="uq_team_habit_day"),

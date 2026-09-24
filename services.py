@@ -514,11 +514,29 @@ def list_habits(s: Session, ws: int, day: date | None = None, *,
 
 
 def habits_by_category(s: Session, ws: int, day: date | None = None, *,
-                       tz: ZoneInfo | None = None) -> dict:
-    """Habits grouped into the three tiers, preserving display order."""
+                       tz: ZoneInfo | None = None,
+                       include_team: bool = True) -> dict:
+    """Habits grouped into the three tiers, preserving display order.
+
+    Shared habits are in these groups, not in a block of their own. They are
+    scored in the same arithmetic and owed on the same day, so putting them
+    somewhere else would be the screen disagreeing with the number underneath
+    it — and "which of these actually counts?" is the question that makes
+    somebody stop trusting both. Each row says where it came from instead.
+    """
     grouped: dict[str, list[dict]] = {c: [] for c in HABIT_CATEGORIES}
     for habit in list_habits(s, ws, day, tz=tz):
-        grouped.setdefault(habit["category"], []).append(habit)
+        grouped.setdefault(habit["category"], []).append(
+            {**habit, "source": "personal", "team_id": None, "team_name": None})
+
+    if include_team:
+        owner = workspace_owner(s, ws)
+        today = day or today_local(tz)
+        for team in (teams_for(s, owner) if owner else []):
+            for habit in list_team_habits(s, owner, team.id, day=today, tz=tz):
+                grouped.setdefault(habit["category"], []).append(
+                    {**habit, "source": "team",
+                     "team_id": team.id, "team_name": team.name})
     return grouped
 
 
@@ -796,7 +814,7 @@ def due_team_tasks(s: Session, ws: int, day: date) -> list[tuple]:
         if not tasks:
             continue
         done_ids = set(s.scalars(select(TeamTaskDone.task_id).where(
-            TeamTaskDone.user_id == owner,
+            TeamTaskDone.user_id == owner, TeamTaskDone.done.is_(True),
             TeamTaskDone.task_id.in_([t.id for t in tasks]))).all())
         for task in tasks:
             rows.append((task.priority, task.id in done_ids))
@@ -5361,18 +5379,30 @@ def team_invite_link(team: Team, bot_username: str) -> str | None:
 
 def add_team_task(s: Session, user_id: int, team_id: int, title: str, *,
                   deadline: date | None = None, priority: str = "medium",
-                  description: str = "") -> dict:
-    """Put a task in front of the whole team."""
+                  description: str = "", due_time: dtime | None = None,
+                  remind_before: int | None = None,
+                  recurrence: str | None = None) -> dict:
+    """Put a task in front of the whole team.
+
+    Takes everything a personal task takes. A shared task that could not
+    carry a time or a reminder would be the weaker of the two kinds, which is
+    backwards: the reason to put something in a team is that it matters more.
+    """
     _require_team(s, user_id, team_id)
     title = title.strip()[:300]
     if not title:
         raise ValueError("empty_title")
     if priority not in PRIORITIES:
         priority = "medium"
+    rule = clean_recurrence(recurrence)
     task = TeamTask(team_id=team_id, title=title,
                     description=(description or "").strip()[:2000],
-                    deadline=deadline, priority=priority,
-                    created_by=user_id)
+                    deadline=deadline, due_time=due_time,
+                    remind_before=clean_remind_before(remind_before),
+                    recurrence=rule or None,
+                    anchor_day=(deadline.day if rule == "monthly" and deadline
+                                else None),
+                    priority=priority, created_by=user_id)
     s.add(task)
     s.commit()
     return team_task_row(s, task, user_id)
@@ -5380,13 +5410,17 @@ def add_team_task(s: Session, user_id: int, team_id: int, title: str, *,
 
 def team_task_row(s: Session, task: TeamTask, viewer_id: int) -> dict:
     """One task, plus who has finished it — including the person looking."""
-    done_rows = s.execute(select(TeamTaskDone.user_id, TeamTaskDone.day)
-                          .where(TeamTaskDone.task_id == task.id)).all()
-    done_by = {uid for uid, _ in done_rows}
+    done_by = {uid for uid, in s.execute(
+        select(TeamTaskDone.user_id).where(
+            TeamTaskDone.task_id == task.id,
+            TeamTaskDone.done.is_(True))).all()}
     return {
         "id": task.id, "team_id": task.team_id, "title": task.title,
         "description": task.description or "",
         "deadline": task.deadline.isoformat() if task.deadline else None,
+        "due_time": task.due_time.strftime("%H:%M") if task.due_time else None,
+        "remind_before": task.remind_before,
+        "recurrence": task.recurrence,
         "priority": task.priority, "created_by": task.created_by,
         "done": viewer_id in done_by,
         "done_by": sorted(done_by),
@@ -5426,10 +5460,15 @@ def toggle_team_task(s: Session, user_id: int, task_id: int, *,
     row = s.scalar(select(TeamTaskDone).where(
         TeamTaskDone.task_id == task_id, TeamTaskDone.user_id == user_id))
     if row is not None:
-        s.delete(row)
+        # Flipped, not deleted: the row also remembers whether this member has
+        # been reminded, and unticking a task is not a reason to forget that.
+        row.done = not row.done
+        row.done_at = utcnow()
+        row.day = day or today_local(tz)
         s.commit()
-        return False
-    s.add(TeamTaskDone(task_id=task_id, user_id=user_id,
+        return bool(row.done)
+
+    s.add(TeamTaskDone(task_id=task_id, user_id=user_id, done=True,
                        day=day or today_local(tz), done_at=utcnow()))
     try:
         with s.begin_nested():
@@ -5456,8 +5495,10 @@ def archive_team_task(s: Session, user_id: int, task_id: int) -> bool:
 
 def add_team_habit(s: Session, user_id: int, team_id: int, name: str, *,
                    schedule: str | None = None,
-                   category: str = "non_negotiable") -> dict:
-    """A habit the team keeps together."""
+                   category: str = "non_negotiable",
+                   target_time: dtime | None = None,
+                   remind_at: dtime | None = None) -> dict:
+    """A habit the team keeps together, with the same settings a private one has."""
     _require_team(s, user_id, team_id)
     name = name.strip()[:120]
     if not name:
@@ -5468,11 +5509,56 @@ def add_team_habit(s: Session, user_id: int, team_id: int, name: str, *,
                          .where(TeamHabit.team_id == team_id)) or 0) + 1
     habit = TeamHabit(team_id=team_id, name=name,
                       schedule=clean_schedule(schedule), category=category,
+                      target_time=target_time, remind_at=remind_at,
                       position=position, created_by=user_id)
     s.add(habit)
     s.commit()
+    return team_habit_row(habit, user_id, set())
+
+
+def team_habit_row(habit: TeamHabit, viewer_id: int, done_by: set) -> dict:
+    """One team habit, shaped exactly like a personal one on the wire."""
     return {"id": habit.id, "name": habit.name, "category": habit.category,
-            "schedule": habit.schedule, "done": False, "done_by": []}
+            "schedule": clean_schedule(habit.schedule),
+            "target_time": (habit.target_time.strftime("%H:%M")
+                            if habit.target_time else None),
+            "remind_at": (habit.remind_at.strftime("%H:%M")
+                          if habit.remind_at else None),
+            "system_key": habit.system_key or "",
+            "protected": bool(habit.is_protected),
+            "paused": habit.paused_at is not None,
+            # `list_team_habits` only ever returns habits that are owed
+            # today, so the flag the screens read is true by construction.
+            # Without it every shared row rendered as "not today", greyed out.
+            "due": True,
+            "done": viewer_id in done_by,
+            "done_by": sorted(done_by), "done_count": len(done_by)}
+
+
+def edit_team_habit(s: Session, user_id: int, habit_id: int, **fields) -> dict:
+    """Change a shared habit. Either member may; the rituals keep their name."""
+    habit = s.get(TeamHabit, habit_id)
+    if habit is None or habit.archived_at is not None:
+        raise ValueError("unknown_habit")
+    _require_team(s, user_id, habit.team_id)
+
+    if "name" in fields and fields["name"]:
+        if habit.is_protected:
+            # Renaming "5x namoz" out from under the other person is not a
+            # decision one of them makes alone.
+            raise ValueError("protected")
+        habit.name = str(fields["name"]).strip()[:120]
+    if fields.get("category") in HABIT_CATEGORIES:
+        habit.category = fields["category"]
+    if "schedule" in fields:
+        habit.schedule = clean_schedule(fields["schedule"])
+    for key in ("target_time", "remind_at"):
+        if key in fields:
+            setattr(habit, key, fields[key])
+    if "paused" in fields:
+        habit.paused_at = utcnow() if fields["paused"] else None
+    s.commit()
+    return team_habit_row(habit, user_id, set())
 
 
 def list_team_habits(s: Session, user_id: int, team_id: int, *,
@@ -5496,26 +5582,19 @@ def list_team_habits(s: Session, user_id: int, team_id: int, *,
     for habit_id, member_id in logs:
         done_map.setdefault(habit_id, set()).add(member_id)
 
-    out = []
-    for habit in habits:
-        if not team_habit_is_due(habit, today):
-            continue
-        done_by = done_map.get(habit.id, set())
-        out.append({"id": habit.id, "name": habit.name,
-                    "schedule": clean_schedule(habit.schedule),
-                    "category": habit.category,
-                    "system_key": habit.system_key or "",
-                    # The screen hides delete for these rather than offering a
-                    # button that is always refused.
-                    "protected": bool(habit.is_protected),
-                    "done": user_id in done_by,
-                    "done_by": sorted(done_by),
-                    "done_count": len(done_by)})
-    return out
+    return [team_habit_row(h, user_id, done_map.get(h.id, set()))
+            for h in habits if team_habit_is_due(h, today)]
 
 
 def team_habit_is_due(habit: TeamHabit, day: date) -> bool:
-    """Whether the team expects this habit on that day."""
+    """Whether the team expects this habit on that day.
+
+    A paused habit is never due — the same rule a personal one follows, and
+    the same reason: a Tuesday score must not drop for a session nobody
+    planned.
+    """
+    if habit.paused_at is not None:
+        return False
     return day.weekday() in schedule_days(habit.schedule)
 
 
@@ -5591,7 +5670,8 @@ def team_day_summary(s: Session, team_id: int, day: date | None = None, *,
     ).all()
     task_ids = [t.id for t in tasks]
     done_rows = s.execute(select(TeamTaskDone.task_id, TeamTaskDone.user_id)
-                          .where(TeamTaskDone.task_id.in_(task_ids or [0]))).all()
+                          .where(TeamTaskDone.done.is_(True),
+                                 TeamTaskDone.task_id.in_(task_ids or [0]))).all()
     task_done: dict[int, set[int]] = {}
     for task_id, member_id in done_rows:
         task_done.setdefault(task_id, set()).add(member_id)
@@ -5713,7 +5793,8 @@ def team_stats(s: Session, user_id: int, team_id: int, *, period: str = "week",
     task_done = {}
     for task_id, member_id in s.execute(
             select(TeamTaskDone.task_id, TeamTaskDone.user_id)
-            .where(TeamTaskDone.task_id.in_([t.id for t in tasks] or [0]))).all():
+            .where(TeamTaskDone.done.is_(True),
+                   TeamTaskDone.task_id.in_([t.id for t in tasks] or [0]))).all():
         task_done.setdefault(task_id, set()).add(member_id)
 
     habits = s.scalars(select(TeamHabit).where(
@@ -5796,3 +5877,109 @@ def team_streak(s: Session, team_id: int, member_id: int, today: date, *,
             streak += 1
         cursor -= timedelta(days=1)
     return streak
+
+
+# --- Team reminders ---------------------------------------------------------
+#
+# Shared work is reminded exactly as private work is, and per member: two
+# people in different zones owe the same habit at different moments, and one
+# of them being told must never silence the other. That is why the marker
+# lives on the per-member row rather than on the item.
+
+def due_team_task_reminders(s: Session, user_id: int, user: User,
+                            now: datetime | None = None) -> list[dict]:
+    """Team tasks whose reminder is due for this member and not yet sent."""
+    if not prefs_for(user)["task_reminders"]:
+        return []
+    tz = user_tz(user)
+    now = now or now_local(tz)
+    today = now.date()
+
+    out = []
+    for team in teams_for(s, user_id):
+        tasks = s.scalars(select(TeamTask).where(
+            TeamTask.team_id == team.id, TeamTask.archived_at.is_(None),
+            TeamTask.deadline == today,
+            TeamTask.remind_before.is_not(None))).all()
+        if not tasks:
+            continue
+        state = {row.task_id: row for row in s.scalars(select(TeamTaskDone).where(
+            TeamTaskDone.user_id == user_id,
+            TeamTaskDone.task_id.in_([t.id for t in tasks]))).all()}
+        for task in tasks:
+            mine = state.get(task.id)
+            if mine is not None and (mine.done or mine.reminder_sent_at):
+                continue
+            target = datetime.combine(today, task.due_time or dtime(9, 0))
+            fire = target - timedelta(minutes=task.remind_before or 0)
+            if fire <= now < fire + REMINDER_WINDOW:
+                out.append({"id": task.id, "title": task.title,
+                            "team_name": team.name,
+                            "due_time": (task.due_time.strftime("%H:%M")
+                                         if task.due_time else None)})
+    return out
+
+
+def mark_team_task_reminded(s: Session, user_id: int, task_id: int) -> None:
+    """Record that this member has been told, so the next tick stays quiet."""
+    row = s.scalar(select(TeamTaskDone).where(
+        TeamTaskDone.task_id == task_id, TeamTaskDone.user_id == user_id))
+    if row is None:
+        row = TeamTaskDone(task_id=task_id, user_id=user_id, done=False,
+                           day=today_local(), done_at=utcnow())
+        s.add(row)
+    row.reminder_sent_at = utcnow()
+    s.commit()
+
+
+def due_team_habit_reminders(s: Session, user_id: int, user: User,
+                             now: datetime | None = None) -> list[dict]:
+    """Team habits this member should be nudged about right now."""
+    if not prefs_for(user)["habit_reminders"]:
+        return []
+    tz = user_tz(user)
+    now = now or now_local(tz)
+    today = now.date()
+
+    out = []
+    for team in teams_for(s, user_id):
+        habits = [h for h in s.scalars(select(TeamHabit).where(
+            TeamHabit.team_id == team.id,
+            TeamHabit.archived_at.is_(None),
+            TeamHabit.remind_at.is_not(None))).all()
+            if team_habit_is_due(h, today)]
+        if not habits:
+            continue
+        logs = {row.habit_id: row for row in s.scalars(select(TeamHabitLog).where(
+            TeamHabitLog.user_id == user_id, TeamHabitLog.day == today,
+            TeamHabitLog.habit_id.in_([h.id for h in habits]))).all()}
+        for habit in habits:
+            mine = logs.get(habit.id)
+            if mine is not None and (mine.done or mine.reminder_sent_at):
+                continue
+            fire = datetime.combine(today, habit.remind_at)
+            if fire <= now < fire + HABIT_REMINDER_WINDOW:
+                out.append({"id": habit.id, "name": habit.name,
+                            "team_name": team.name})
+    return out
+
+
+def mark_team_habit_reminded(s: Session, user_id: int, habit_id: int,
+                             day: date | None = None,
+                             tz: ZoneInfo | None = None) -> None:
+    day = day or today_local(tz)
+    row = s.scalar(select(TeamHabitLog).where(
+        TeamHabitLog.habit_id == habit_id, TeamHabitLog.user_id == user_id,
+        TeamHabitLog.day == day))
+    if row is None:
+        row = TeamHabitLog(habit_id=habit_id, user_id=user_id, day=day,
+                           done=False)
+        s.add(row)
+    row.reminder_sent_at = utcnow()
+    s.commit()
+
+
+def teammates_of(s: Session, team_id: int, except_user: int) -> list[int]:
+    """Everybody in the team but one — who to tell when something changes."""
+    return [m["user_id"] for m in team_members(s, team_id)
+            if m["user_id"] != except_user]
