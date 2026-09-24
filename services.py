@@ -5540,3 +5540,34 @@ def team_summaries_for(s: Session, user_id: int, day: date | None = None, *,
     """
     return [team_day_summary(s, team.id, day, tz=tz)
             for team in teams_for(s, user_id)]
+
+
+def team_items_for_day(s: Session, user_id: int, day: date | None = None, *,
+                       tz: ZoneInfo | None = None) -> dict:
+    """Every team task and habit this user has today, across all their teams.
+
+    Returned as its own block rather than mixed into the workspace lists, and
+    that separation is the whole design. The personal screens *show* shared
+    work — a plan that hides half of what you owe today is not a plan — but
+    the personal score is built from `workspace_id` alone and never sees these
+    rows. So the two numbers stay honest: your own percentage measures what
+    you set yourself, and the team's measures what the two of you set
+    together. Merging them would mean a quiet evening for the team dragging
+    down a day you personally finished, and neither number would mean
+    anything afterwards.
+
+    Each row carries the team it came from, so the surface showing it can say
+    whose work it is without a second lookup.
+    """
+    today = day or today_local(tz)
+    tasks: list[dict] = []
+    habits: list[dict] = []
+    for team in teams_for(s, user_id):
+        for row in list_team_tasks(s, user_id, team.id, day=today, tz=tz):
+            tasks.append({**row, "source": "team",
+                          "team_id": team.id, "team_name": team.name})
+        for row in list_team_habits(s, user_id, team.id, day=today, tz=tz):
+            habits.append({**row, "source": "team",
+                           "team_id": team.id, "team_name": team.name})
+    return {"tasks": tasks, "habits": habits,
+            "teams": [{"id": t.id, "name": t.name} for t in teams_for(s, user_id)]}

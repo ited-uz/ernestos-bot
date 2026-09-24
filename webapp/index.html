@@ -1021,6 +1021,8 @@ const DICT = {
   team_tasks:"Umumiy vazifalar", team_habits:"Umumiy odatlar",
   team_nothing:"Hali umumiy ish yo'q. Birinchisini qo'shing.",
   team_you:"siz", team_today:"Bugun",
+  dest_where:"Qayerga qo'shilsin", dest_personal:"Shaxsiy",
+  team_badge:"jamoa",
   privacy_line:"Ma'lumotlaringiz boshqa foydalanuvchilardan ajratilgan va xavfsiz saqlanadi. 🔒",
   /* common */
   save:"Saqlash", cancel:"Bekor qilish", close:"Yopish", delete:"O'chirish",
@@ -1279,6 +1281,8 @@ const DICT = {
   team_tasks:"Shared tasks", team_habits:"Shared habits",
   team_nothing:"Nothing shared yet. Add the first thing.",
   team_you:"you", team_today:"Today",
+  dest_where:"Where does this go", dest_personal:"Personal",
+  team_badge:"team",
   privacy_line:"Your data is kept separate from other users' and stored securely. 🔒",
   save:"Save", cancel:"Cancel", close:"Close", delete:"Delete",
   edit:"Edit", saved:"Saved", deleted:"Deleted", undo:"Undo",
@@ -1523,6 +1527,8 @@ const DICT = {
   team_tasks:"Общие задачи", team_habits:"Общие привычки",
   team_nothing:"Общих дел пока нет. Добавьте первое.",
   team_you:"вы", team_today:"Сегодня",
+  dest_where:"Куда добавить", dest_personal:"Личное",
+  team_badge:"команда",
   privacy_line:"Ваши данные отделены от данных других пользователей и хранятся безопасно. 🔒",
   save:"Сохранить", cancel:"Отмена", close:"Закрыть", delete:"Удалить",
   edit:"Изменить", saved:"Сохранено", deleted:"Удалено", undo:"Вернуть",
@@ -2491,7 +2497,7 @@ SCREENS.habits = () => {
     </div>`;
   if(state.tab === "prayer") return h + prayerTab();
   if(state.tab === "journal") return h + journalTab();
-  return h + habitsTab();
+  return h + habitsTab() + teamBlock(state.habits?.team_habits, "habit");
 };
 
 const TIERS = {non_negotiable:"t1", target:"t2", bonus:"t3"};
@@ -2875,9 +2881,11 @@ SCREENS.tasks = () => {
     </div>`;
 
   if(state.taskTab === "done") return h + doneTab();
+  const sharedTasks = state.taskTab === "main"
+    ? teamBlock(state.tasks?.team_tasks, "task") : "";
   if(state.taskTab === "open") return h + openTab();
   if(state.taskTab === "projects") return h + projectsTab();
-  return h + mainTab();
+  return h + mainTab() + sharedTasks;
 };
 
 /* A section heading that carries a hue, so the screen reads as a few
@@ -3468,6 +3476,62 @@ function prayerDetailSheet(pd){
    sheet without losing what was typed. */
 state.form = {};
 
+/* Where a new item goes: your own list, or one of your teams.
+
+   Rendered as chips rather than a dropdown because the choice is the point —
+   a select hides the current value behind a tap, and "did that go to the
+   shared list or mine?" is exactly the question this is meant to stop
+   somebody asking afterwards. Hidden entirely when there is no team, so a
+   solo user never sees a decision they do not have. */
+/* Shared work, shown inside a personal screen.
+
+   It appears here because a day's plan that leaves out half of what you owe
+   is not a plan — but under its own heading, with the team's name on it, so
+   it is never mistaken for your own list. The score beside it on the same
+   screen is built from the personal list alone; that is the point of keeping
+   these rows visually apart rather than interleaved. */
+function teamBlock(rows, kind){
+  if(!rows?.length) return "";
+  const byTeam = {};
+  for(const row of rows) (byTeam[row.team_name] ||= []).push(row);
+
+  return Object.entries(byTeam).map(([name, items]) => `
+    <div class="card">
+      <div class="card-t">${icon("users", 14)} ${esc(name)}</div>
+      ${items.map(x => `
+        <div class="row">
+          <div class="check ${x.done ? "on" : ""}" data-act="team-toggle"
+               data-kind="${kind}" data-id="${x.id}"></div>
+          <div class="grow">
+            <div class="${x.done ? "done" : ""}">${esc(x.title || x.name)}</div>
+            ${x.done_count > (x.done ? 1 : 0)
+              ? `<div class="muted sm">✓ ${x.done_count}</div>` : ""}
+          </div>
+        </div>`).join("")}
+    </div>`).join("");
+}
+
+function destPicker(){
+  const teams = state.teams || state.team?.teams || [];
+  if(!teams.length) return "";
+  const current = state.dest || "personal";
+  const chip = (value, label) => `<div class="chip sm ${current === value ? "on" : ""}"
+      data-act="dest-pick" data-value="${value}">${label}</div>`;
+  return `<label>${t("dest_where")}</label>
+    <div class="chips">
+      ${chip("personal", t("dest_personal"))}
+      ${teams.map(x => chip("team:" + x.id, esc(x.name))).join("")}
+    </div>`;
+}
+
+/* The chosen destination, as the two things every caller needs: whether it is
+   a team, and which one. */
+function destOf(){
+  const value = state.dest || "personal";
+  return value.startsWith("team:")
+    ? {team: true, id: Number(value.slice(5))} : {team: false, id: null};
+}
+
 function taskSheet(task, presetProject){
   const editing = Boolean(task?.id);
   const f = state.form;
@@ -3483,6 +3547,8 @@ function taskSheet(task, presetProject){
     <h3>${icon("list", 18)} ${editing ? t("edit") : t("add_task")}</h3>
     <input id="task-title" placeholder="${t("task_name")}"
            value="${esc(f.title || "")}" />
+
+    ${editing ? "" : destPicker()}
 
     <div class="chips" style="margin-top:10px">
       ${chips.map(([id, label]) => `<div class="chip sm
@@ -4601,14 +4667,16 @@ async function loadScreen(screen){
       ]);
       setState({home, summary, progress});
     } else if(screen === "team"){
-      setState({team: await api("/api/teams")});
+      const team = await api("/api/teams");
+      setState({team, teams: (team.teams || []).map(x => ({id:x.id, name:x.name}))});
     } else if(screen === "habits"){
       const [habits, prayer, journal] = await Promise.all([
         api("/api/habits"), api("/api/prayers"),
         api("/api/journal?day=" + todayISO()),
       ]);
       setState({habits, prayer, journal: journal.entry,
-                journalQuestions: journal.questions});
+                journalQuestions: journal.questions,
+                teams: habits.teams || state.teams});
     } else if(screen === "tasks"){
       const query = state.taskQuery ? "&q=" + encodeURIComponent(state.taskQuery) : "";
       /* The month is part of this screen now rather than a sheet opened from
@@ -4620,7 +4688,8 @@ async function loadScreen(screen){
         api("/api/focus"),
         state.calendar ? Promise.resolve(state.calendar) : api("/api/calendar"),
       ]);
-      setState({tasks, projects: projects.projects, focus: focus.week, calendar});
+      setState({tasks, projects: projects.projects, focus: focus.week, calendar,
+                teams: tasks.teams || state.teams});
       if(state.taskTab === "done"){
         const q = state.doneQuery ? "?q=" + encodeURIComponent(state.doneQuery) : "";
         setState({tasksDone: (await api("/api/tasks/done" + q)).groups});
@@ -4763,9 +4832,21 @@ const A = {
   "set-account": () => { haptic(); openSettings("account"); },
 
   /* ---- quick capture: one field, five seconds ---- */
+  /* Picking a destination re-renders the open sheet rather than the screen
+     behind it, so the chips light up without the sheet closing. */
+  "dest-pick": el => {
+    haptic();
+    state.dest = el.dataset.value;
+    const sheet = document.querySelector(".sheet-inner");
+    if(!sheet) return;
+    for(const chip of sheet.querySelectorAll('[data-act="dest-pick"]'))
+      chip.classList.toggle("on", chip.dataset.value === state.dest);
+  },
+
   "quick-add": () => { haptic(); openSheet(`
     <h3>${icon("plus", 18)} ${t("quick_add")}</h3>
     <input id="quick-title" placeholder="${t("quick_ph")}" autofocus />
+    ${destPicker()}
     <button class="btn" data-act="quick-save" style="margin-top:12px">
       ${t("save")}</button>
     <button class="btn secondary" data-act="close" style="margin-top:8px">
@@ -4774,6 +4855,11 @@ const A = {
   "quick-save": () => {
     const title = trimmed("quick-title");
     if(!title) return;
+    const dest = destOf();
+    if(dest.team)
+      return save(() => api(`/api/teams/${dest.id}/tasks`,
+        {method:"POST", body:{title, deadline: todayISO()}}), state.screen,
+        false, t("inbox_saved"));
     save(() => api("/api/quick", {method:"POST", body:{title}}),
          state.screen, false, t("inbox_saved"), {body:{title}});
   },
@@ -4876,14 +4962,24 @@ const A = {
     const id = Number(el.dataset.id);
     const kind = el.dataset.kind;
     optimistic(() => {
-      const team = (state.team?.teams || []).find(x => x.id === (state.teamId || x.id));
-      const list = kind === "task" ? team?.tasks : team?.habits;
-      const row = (list || []).find(x => x.id === id);
-      if(row){
-        row.done = !row.done;
-        row.done_count = (row.done_count || 0) + (row.done ? 1 : -1);
-      }
-    }, () => api(`/api/teams/${kind}s/${id}/toggle`, {method:"POST"}), "team");
+      /* The same row can be on screen in two places — the Team tab and the
+         shared block inside Tasks or Habits — so patch every copy rather
+         than the one the tap happened to come from. */
+      const lists = [];
+      for(const team of (state.team?.teams || []))
+        lists.push(kind === "task" ? team.tasks : team.habits);
+      lists.push(kind === "task" ? state.tasks?.team_tasks
+                                 : state.habits?.team_habits);
+      let flipped = null;
+      for(const list of lists)
+        for(const row of (list || []))
+          if(row.id === id){
+            if(flipped === null) flipped = !row.done;
+            row.done = flipped;
+            row.done_count = (row.done_count || 0) + (flipped ? 1 : -1);
+          }
+    }, () => api(`/api/teams/${kind}s/${id}/toggle`, {method:"POST"}),
+       state.screen === "team" ? "team" : state.screen);
   },
 
   "team-add": el => {
@@ -4995,6 +5091,7 @@ const A = {
   "habit-add": () => openSheet(`
     <h3>${icon("plus", 18)} ${t("add_habit")}</h3>
     <input id="habit-name" placeholder="${t("habit_name")}" />
+    ${destPicker()}
     <label>${t("category")}</label>
     <select id="habit-cat">
       <option value="non_negotiable">${t("non_negotiable")}</option>
@@ -5011,6 +5108,12 @@ const A = {
   "habit-save": () => {
     const name = trimmed("habit-name");
     if(!name) return;
+    const dest = destOf();
+    if(dest.team)
+      // A shared habit has no category: tiers weigh a personal day, and the
+      // team's number is a plain count of what the two of you agreed to do.
+      return save(() => api(`/api/teams/${dest.id}/habits`, {method:"POST",
+        body:{name, schedule: val("habit-sched")}}), "habits");
     save(() => api("/api/habits", {method:"POST", body:{
       name, category: val("habit-cat"), schedule: val("habit-sched"),
     }}), "habits");
@@ -5227,6 +5330,14 @@ const A = {
   "task-save": el => {
     const body = taskBody();
     if(!body.title) return;
+    const dest = destOf();
+    if(dest.team)
+      // A shared task carries no project: projects are a shelf inside one
+      // person's workspace, and a team task does not live on anybody's.
+      return save(() => api(`/api/teams/${dest.id}/tasks`, {method:"POST",
+        body:{title: body.title, deadline: body.deadline,
+              priority: body.priority, description: body.description || ""}}),
+        state.screen, false, t("saved"));
     if(el.dataset.project && !body.project_id)
       body.project_id = Number(el.dataset.project);
     save(() => api("/api/tasks", {method:"POST", body}),
@@ -5728,6 +5839,14 @@ async function boot(){
       return;
     }
     setState({me, loading:false, blocked:null, error:null});
+    /* The destination picker appears on every add sheet, including the one
+       behind the FAB on Home, so the team list has to be known before the
+       first tap rather than after the Tasks screen has been visited. One
+       small request, and a failure leaves the picker hidden rather than the
+       app broken. */
+    try{ state.teams = (await api("/api/teams")).teams
+           .map(x => ({id:x.id, name:x.name})); }
+    catch(_){ state.teams = []; }
     await loadScreen("home");
     if(Object.keys(loadDraft()).length) toast(t("draft_restored"));
   }catch(e){

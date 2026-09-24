@@ -7427,3 +7427,95 @@ async def test_a_failed_team_summary_never_unsends_the_report(
     assert row is not None and row.status == "sent", (
         "a team summary that could not be delivered must not mark the "
         "personal report failed — it already went out")
+
+
+# ---------------------------------------------------------------------------
+# Shared work on a personal screen — shown together, scored apart
+# ---------------------------------------------------------------------------
+
+def test_shared_work_appears_on_the_personal_screens(client):
+    """A day's plan that hides half of what you owe is not a plan."""
+    one, two, team_id = _pair(client)
+    caller = Caller(client, {"id": one, "first_name": "Ernest"})
+    with SessionLocal() as s:
+        svc.add_team_task(s, one, team_id, "Umumiy ish", deadline=svc.today_local())
+        svc.add_team_habit(s, one, team_id, "Umumiy odat")
+
+    tasks = caller.get("/api/tasks").json()
+    habits = caller.get("/api/habits").json()
+
+    assert [x["title"] for x in tasks["team_tasks"]] == ["Umumiy ish"]
+    assert [x["name"] for x in habits["team_habits"]] == ["Umumiy odat"]
+    # Named, so the screen can say whose work it is.
+    assert tasks["team_tasks"][0]["team_name"] == "Ernest va Gulyora"
+    assert {x["id"] for x in tasks["teams"]} == {team_id}
+
+
+def test_shared_work_is_kept_out_of_the_personal_lists(client):
+    """Shown alongside, never mixed in — the scored list stays workspace-only."""
+    one, two, team_id = _pair(client)
+    caller = Caller(client, {"id": one, "first_name": "Ernest"})
+    with SessionLocal() as s:
+        svc.add_team_task(s, one, team_id, "Umumiy ish", deadline=svc.today_local())
+
+    tasks = caller.get("/api/tasks").json()
+    personal = [x["title"] for group in ("overdue", "upcoming", "undated", "later")
+                for x in tasks.get(group) or []]
+    assert "Umumiy ish" not in personal
+
+
+def test_a_shared_task_never_moves_the_personal_score(client):
+    """The two numbers have to stay honest about different things."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, one)
+        tz = svc.user_tz(s.get(User, one))
+        today = svc.today_local(tz)
+        before = svc.overall_components(s, ws, today, tz=tz)
+
+        task = svc.add_team_task(s, one, team_id, "Umumiy ish", deadline=today)
+        svc.add_team_habit(s, one, team_id, "Umumiy odat")
+        after_adding = svc.overall_components(s, ws, today, tz=tz)
+
+        svc.toggle_team_task(s, one, task["id"])
+        after_doing = svc.overall_components(s, ws, today, tz=tz)
+
+    assert before == after_adding, (
+        "adding shared work must not change what the personal day is out of")
+    assert before == after_doing, (
+        "doing shared work must not move the personal percentage")
+
+
+def test_the_team_score_counts_only_shared_work(client):
+    """And the mirror image: a personal task is not the team's business."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, one)
+        today = svc.today_local()
+        svc.add_task(s, ws, "Shaxsiy ish", deadline=today)
+        s.commit()
+        summary = svc.team_day_summary(s, team_id)
+    assert summary["total"] == 0, (
+        f"a personal task leaked into the team's day: {summary['tasks']}")
+
+
+def test_shared_work_is_listed_per_viewer(client):
+    """Each side's block carries their own ticks, not a shared one."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        task = svc.add_team_task(s, one, team_id, "Umumiy ish",
+                                 deadline=svc.today_local())
+        svc.toggle_team_task(s, one, task["id"])
+        mine = svc.team_items_for_day(s, one)
+        theirs = svc.team_items_for_day(s, two)
+    assert mine["tasks"][0]["done"] is True
+    assert theirs["tasks"][0]["done"] is False
+    assert mine["tasks"][0]["done_count"] == theirs["tasks"][0]["done_count"] == 1
+
+
+def test_a_user_with_no_team_gets_empty_blocks(client):
+    """The picker and the blocks must simply not appear for a solo user."""
+    solo = _named(client, next(_next_id), "Yolg'iz")
+    caller = Caller(client, {"id": solo, "first_name": "Yolg'iz"})
+    tasks = caller.get("/api/tasks").json()
+    assert tasks["team_tasks"] == [] and tasks["teams"] == []

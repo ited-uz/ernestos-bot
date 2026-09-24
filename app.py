@@ -64,6 +64,11 @@ log = logging.getLogger("ernestos")
 config.check()
 
 BOT_TOKEN = config.BOT_TOKEN
+#: The bot's public @name, used to build every invite link. Configured by the
+#: operator, and — because a missing one silently produces a screen with no
+#: link on it and no explanation — filled in from Telegram itself at startup
+#: when it was left unset. `get_me()` knows the answer; requiring somebody to
+#: type it into an environment variable is a step that can only be got wrong.
 BOT_USERNAME = config.BOT_USERNAME
 ENVIRONMENT = config.ENVIRONMENT
 WEBAPP_URL = config.WEBAPP_URL
@@ -3089,7 +3094,7 @@ BOT_COMMANDS = [
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     """Start the database, the Telegram bot and the scheduler together."""
-    global telegram_app, scheduler
+    global telegram_app, scheduler, BOT_USERNAME
 
     db.init_db()
     log.info("database ready: %s", db.engine.url.render_as_string(hide_password=True))
@@ -3160,6 +3165,18 @@ async def lifespan(_: FastAPI):
                 # (audit 033). Handlers are idempotent, so replaying is safer.
                 drop_pending_updates=False)
             log.info("telegram bot polling")
+
+        if not BOT_USERNAME:
+            try:
+                me = await telegram_app.bot.get_me()
+                if me.username:
+                    BOT_USERNAME = me.username
+                    log.info("bot username resolved from Telegram: @%s",
+                             BOT_USERNAME)
+            except Exception:
+                log.exception("could not ask Telegram for the bot username — "
+                              "invite links will be unavailable until "
+                              "BOT_USERNAME is set")
 
         # When the jobs run, and the duplicate-run guarantees, live in
         # `scheduler`. What each job *says* stays here, next to the renderers.
@@ -3945,9 +3962,13 @@ def api_habits(day: str | None = None, init=Header(default=None, alias="X-Telegr
     tz = svc.user_tz(user)
     with SessionLocal() as s:
         target = _date(day)
+        shared = svc.team_items_for_day(s, user.telegram_id, target, tz=tz)
         return {"habits": svc.list_habits(s, ws, target, tz=tz),
                 "grouped": svc.habits_by_category(s, ws, target, tz=tz),
                 "categories": svc.HABIT_CATEGORIES,
+                # Shared work, shown on this screen and scored on its own.
+                "team_habits": shared["habits"],
+                "teams": shared["teams"],
                 # Per-tier completion and the weight each tier actually carries
                 # today. Sent from here rather than recomputed in the browser:
                 # the weighting is the score's own arithmetic, and a second
@@ -4133,10 +4154,18 @@ def api_tasks(days: int = 7, q: str = "", project_id: int | None = None,
               init=Header(default=None, alias="X-Telegram-Init-Data")):
     """Open tasks, optionally narrowed by text, project or priority."""
     user, ws = auth(init)
+    tz = svc.user_tz(user)
     with SessionLocal() as s:
-        return svc.list_tasks(s, ws, horizon_days=max(0, min(days, 365)),
-                              search=q[:100], project_id=project_id,
-                              priority=priority, tz=svc.user_tz(user))
+        out = svc.list_tasks(s, ws, horizon_days=max(0, min(days, 365)),
+                             search=q[:100], project_id=project_id,
+                             priority=priority, tz=tz)
+        # Shared work belongs on this screen too — a day's plan that leaves
+        # out half of what you owe is not a plan — but under its own key, so
+        # nothing that scores the personal day can pick it up by accident.
+        shared = svc.team_items_for_day(s, user.telegram_id, tz=tz)
+        out["team_tasks"] = shared["tasks"]
+        out["teams"] = shared["teams"]
+        return out
 
 
 @app.post("/api/tasks")
