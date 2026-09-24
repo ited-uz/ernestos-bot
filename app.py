@@ -420,6 +420,10 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if created:
             svc.claim_referral(s, tg_user.id, payload,
                                source="bot", newly_created=True)
+    team_code = svc.parse_team_payload(payload)
+
+    with SessionLocal() as s:
+        user = s.get(User, tg_user.id)
         lang, step, onboarded = user.language, user.onboarding_step, user.onboarded
         snapshot = user
 
@@ -427,6 +431,15 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         await log_event(ctx.bot, snapshot, f"🆕 NEW ERNESTOS USER #{snapshot.member_no}",
                         f"Language: {lang}\nRegistered: "
                         f"{datetime.now(svc.TZ):%Y-%m-%d %H:%M}")
+
+    # A team invite is acted on once the account exists, for a new user and an
+    # existing one alike: the link is how somebody is added, and refusing it
+    # because they happened to already have an account would be baffling.
+    if team_code:
+        await accept_team_invite(update, ctx, team_code)
+        if onboarded:
+            await show_teams(update, ctx)
+            return
 
     if onboarded:
         await message.reply_text(t(lang, "hello_named", name=tg_user.first_name or ""),
@@ -1526,6 +1539,41 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                 [InlineKeyboardButton(t(lang, "cancel"), callback_data="flow:cancel")],
             ]))
 
+        elif name == "team_name":
+            try:
+                with SessionLocal() as s:
+                    team = svc.create_team(s, user.telegram_id, text)
+                    link = svc.team_invite_link(team, BOT_USERNAME)
+                    team_name = team.name
+            except ValueError as e:
+                key = ("team_name_empty" if str(e) == "empty_name"
+                       else "team_too_many")
+                await message.reply_text(t(lang, key))
+                return
+            ctx.user_data.pop("flow", None)
+            body = t(lang, "team_created", name=esc(team_name))
+            if link:
+                body += f"\n\n{link}"
+            await message.reply_text(body, parse_mode=ParseMode.HTML,
+                                     disable_web_page_preview=True)
+
+        elif name == "team_rename":
+            try:
+                with SessionLocal() as s:
+                    team = svc.rename_team(s, user.telegram_id,
+                                           int(flow["team_id"]), text)
+                    new_name = team.name
+            except ValueError:
+                await message.reply_text(t(lang, "team_name_empty"))
+                return
+            except PermissionError:
+                await message.reply_text(t(lang, "error"))
+                ctx.user_data.pop("flow", None)
+                return
+            ctx.user_data.pop("flow", None)
+            await message.reply_text(t(lang, "team_renamed", name=esc(new_name)),
+                                     parse_mode=ParseMode.HTML)
+
         elif name == "task_custom_days":
             try:
                 days = int(text)
@@ -1864,6 +1912,21 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         elif sub == "noop":
             pass
 
+    elif action == "team":
+        what = parts[1] if len(parts) > 1 else ""
+        if what == "new":
+            start_flow(ctx, "team_name")
+            await query.edit_message_text(t(lang, "team_ask_name"))
+            return
+        if what == "invite" and len(parts) > 2:
+            await send_team_invite(update, ctx, int(parts[2]))
+            return
+        if what == "rename" and len(parts) > 2:
+            start_flow(ctx, "team_rename", team_id=int(parts[2]))
+            await query.edit_message_text(t(lang, "team_ask_rename"))
+            return
+        await query.answer()
+
     elif action == "taskday":
         flow = current_flow(ctx, "task_days") or {}
         title = flow.get("title")
@@ -2164,6 +2227,78 @@ def render_morning(data: dict, lang: str) -> str:
     return "\n".join(lines)
 
 
+def render_team(summary: dict, lang: str, viewer_id: int, *,
+                evening: bool) -> str | None:
+    """One team's day, as its own message.
+
+    A separate message rather than a section appended to the personal report,
+    because the two answer different questions and are read in different
+    moods. The personal report is about you; this is about the two of you, and
+    burying it under a list of your own unfinished tasks is how a shared goal
+    quietly stops being looked at.
+
+    Returns None when the team has set itself nothing for today — an empty
+    message every morning is the fastest way to teach somebody to ignore one.
+    """
+    if not summary or not summary.get("total"):
+        return None
+
+    title = t(lang, "team_evening_title" if evening else "team_morning_title",
+              name=esc(summary["name"]))
+    lines = [title, ""]
+
+    def who(ids: list[int]) -> str:
+        """Names of the people who ticked it, with the reader called "you"."""
+        names = []
+        for member in summary["members"]:
+            if member["user_id"] in ids:
+                names.append(t(lang, "team_you")
+                             if member["user_id"] == viewer_id
+                             else esc(member["name"]))
+        return ", ".join(names)
+
+    if summary["tasks"]:
+        lines.append(f"<b>{t(lang, 'team_tasks')}</b>")
+        for task in summary["tasks"][:8]:
+            mark = "✅" if task["done_count"] == len(summary["member_ids"]) else (
+                "◻️" if not task["done_count"] else "🔸")
+            row = f"{mark} {esc(task['title'])}"
+            if task["done_by"]:
+                row += f"  <i>— {who(task['done_by'])}</i>"
+            lines.append(row)
+        if len(summary["tasks"]) > 8:
+            lines.append(f"<i>+{len(summary['tasks']) - 8}</i>")
+        lines.append("")
+
+    if summary["habits"]:
+        lines.append(f"<b>{t(lang, 'team_habits')}</b>")
+        for habit in summary["habits"][:8]:
+            mark = "✅" if habit["done_count"] == len(summary["member_ids"]) else (
+                "◻️" if not habit["done_count"] else "🔸")
+            row = f"{mark} {esc(habit['name'])}"
+            if habit["done_by"]:
+                row += f"  <i>— {who(habit['done_by'])}</i>"
+            lines.append(row)
+        lines.append("")
+
+    # Each person's own share, side by side. This is the part that makes a
+    # shared list worth having over two private ones.
+    for member in summary["members"]:
+        name = (t(lang, "team_you") if member["user_id"] == viewer_id
+                else esc(member["name"]))
+        percent = member["percent"]
+        bar = _bar(percent if percent is not None else 0, 6)
+        lines.append(f"{bar}  <b>{name}</b> · {member['done']}/{member['total']}"
+                     + (f" · {percent}%" if percent is not None else ""))
+
+    if evening and all(m["done"] == m["total"] and m["total"]
+                       for m in summary["members"]):
+        lines.append("")
+        lines.append(f"<b>{t(lang, 'team_all_done')}</b>")
+
+    return "\n".join(lines)
+
+
 def _versus_yesterday(overall: dict, lang: str) -> str:
     """Today against yesterday, as a sentence.
 
@@ -2386,6 +2521,44 @@ async def _post_platform_stats(bot, st: dict) -> None:
     ), chat_id=STATS_CHANNEL_ID, reraise=True)
 
 
+async def _send_team_summaries(bot, telegram_id: int, lang: str,
+                               report_type: str) -> int:
+    """Send this user one message per team they are in. Returns how many.
+
+    Quiet by design: a team with nothing set for today produces no message at
+    all, so somebody who joined a team months ago and stopped using it is not
+    sent an empty summary twice a day for ever.
+    """
+    evening = report_type == "evening"
+    sent = 0
+    try:
+        with SessionLocal() as s:
+            user = s.get(User, telegram_id)
+            if user is None:
+                return 0
+            summaries = svc.team_summaries_for(s, telegram_id,
+                                               tz=svc.user_tz(user))
+    except Exception:
+        log.exception("could not build team summaries for %s", telegram_id)
+        return 0
+
+    for summary in summaries:
+        text = render_team(summary, lang, telegram_id, evening=evening)
+        if not text:
+            continue
+        try:
+            await bot.send_message(telegram_id, text,
+                                   parse_mode=ParseMode.HTML,
+                                   reply_markup=webapp_button(lang))
+            sent += 1
+            await asyncio.sleep(0.05)
+        except TelegramError as e:
+            log.warning("team summary to %s failed: %s", telegram_id, e)
+        except Exception:
+            log.exception("team summary to %s errored", telegram_id)
+    return sent
+
+
 async def send_reports(bot, report_type: str) -> None:
     """Deliver one report to every user whose chosen time has just arrived.
 
@@ -2498,6 +2671,12 @@ async def _send_reports_locked(bot, report_type: str, report_date) -> None:
             with SessionLocal() as s:
                 svc.mark_report_sent(s, report_id)
             sent += 1
+
+            # Each shared space gets its own message, after the personal one.
+            # Failing to send a team summary must not undo a report that has
+            # already gone out and been marked sent, so this is guarded
+            # separately and never touches the outbox.
+            await _send_team_summaries(bot, telegram_id, lang, report_type)
 
         except TelegramError as e:
             # Two very different things arrive as TelegramError, and filing
@@ -2667,6 +2846,121 @@ scheduler = None
 #: The screens reachable by command as well as by keyboard button. `/start`,
 #: `/home` and `/guide` are registered separately because they are also the
 #: entry points, and must work before onboarding finishes.
+async def show_teams(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """The team screen: what you share, and with whom."""
+    got = await guard(update, ctx)
+    if not got:
+        return
+    user, _ = got
+    lang = user.language
+    message = update.effective_message
+
+    with SessionLocal() as s:
+        teams = svc.teams_for(s, user.telegram_id)
+        summaries = [(team, svc.team_day_summary(s, team.id,
+                                                 tz=svc.user_tz(user)),
+                      svc.team_members(s, team.id)) for team in teams]
+
+    if not teams:
+        await message.reply_text(
+            t(lang, "team_none"), parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
+                t(lang, "team_create_btn"), callback_data="team:new")]]))
+        return
+
+    lines = [t(lang, "team_list_title"), ""]
+    rows = []
+    for team, summary, members in summaries:
+        who = ", ".join(esc(m["name"]) for m in members)
+        lines.append(f"<b>{esc(team.name)}</b>")
+        lines.append(f"<i>{who}</i>")
+        for member in summary.get("members", []):
+            percent = member["percent"]
+            lines.append(f"   {member['done']}/{member['total']} · "
+                         f"{esc(member['name'])}"
+                         + (f" · {percent}%" if percent is not None else ""))
+        lines.append("")
+        rows.append([InlineKeyboardButton(f"🔗 {team.name[:18]}",
+                                          callback_data=f"team:invite:{team.id}"),
+                     InlineKeyboardButton(t(lang, "team_rename_btn"),
+                                          callback_data=f"team:rename:{team.id}")])
+    rows.append([InlineKeyboardButton(t(lang, "team_create_btn"),
+                                      callback_data="team:new")])
+
+    await message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML,
+                             reply_markup=InlineKeyboardMarkup(rows))
+
+
+async def send_team_invite(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                           team_id: int) -> None:
+    """Hand the user the link that adds somebody to this team."""
+    got = await guard(update, ctx)
+    if not got:
+        return
+    user, _ = got
+    lang = user.language
+    message = update.effective_message
+
+    with SessionLocal() as s:
+        team = svc.team_for(s, user.telegram_id, team_id)
+        if team is None:
+            await message.reply_text(t(lang, "error"))
+            return
+        link = svc.team_invite_link(team, BOT_USERNAME)
+        name = team.name
+
+    if not link:
+        # Without a configured @name there is no link to give, and inventing
+        # one would produce something that silently does not work.
+        await message.reply_text(t(lang, "ref_not_configured"))
+        return
+    await message.reply_text(
+        t(lang, "team_created", name=esc(name)) + f"\n\n{link}",
+        parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+
+
+async def accept_team_invite(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                             code: str) -> bool:
+    """Join the team an invite link points at. True when it was handled.
+
+    Called from `/start`, where the payload arrives. Returns False for a
+    payload that is not a team invite so the caller can carry on with normal
+    onboarding.
+    """
+    tg_user = update.effective_user
+    message = update.effective_message
+    if tg_user is None or message is None:
+        return False
+
+    with SessionLocal() as s:
+        user = s.get(User, tg_user.id)
+        lang = user.language if user else "uz"
+        team, outcome = svc.join_team(s, tg_user.id, code)
+        name = esc(team.name) if team else ""
+        members = svc.team_members(s, team.id) if team else []
+        joiner = (tg_user.first_name or "").strip() or str(tg_user.id)
+
+    key = {"joined": "team_joined", "already": "team_already",
+           "full": "team_full", "unknown": "team_unknown"}[outcome]
+    await message.reply_text(t(lang, key, name=name),
+                             parse_mode=ParseMode.HTML)
+
+    # Tell the people already in it, so joining is visible from both sides.
+    if outcome == "joined":
+        for member in members:
+            if member["user_id"] == tg_user.id:
+                continue
+            try:
+                await ctx.bot.send_message(
+                    member["user_id"],
+                    t(lang, "team_member_joined", who=esc(joiner), name=name),
+                    parse_mode=ParseMode.HTML)
+            except TelegramError as e:
+                log.info("could not tell %s about a new member: %s",
+                         member["user_id"], e)
+    return True
+
+
 async def send_report_now(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                           report_type: str) -> None:
     """Build and send one report to whoever asked, right now.
@@ -2787,6 +3081,7 @@ BOT_COMMANDS = [
     ("hisobot", lambda u, c: send_report_now(u, c, "evening")),
     ("ertalabki", lambda u, c: send_report_now(u, c, "morning")),
     ("tekshir", lambda u, c: show_report_health(u, c)),
+    ("jamoa", lambda u, c: show_teams(u, c)),
 ]
 
 
@@ -3404,6 +3699,179 @@ def api_prefs_save(body: PrefsIn,
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
     return {"ok": True, "prefs": prefs}
+
+
+# ---------------------------------------------------------------------------
+# Teams
+# ---------------------------------------------------------------------------
+#
+# Every endpoint takes the acting user from the signed initData and passes it
+# to the service, which refuses anything they are not a member of. No team id
+# from a request body is ever trusted on its own.
+
+class TeamIn(BaseModel):
+    name: str = Field(min_length=1, max_length=svc.TEAM_NAME_MAX)
+
+
+class TeamTaskIn(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    deadline: date | None = None
+    priority: str = "medium"
+    description: str = Field(default="", max_length=2000)
+
+
+class TeamHabitIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    schedule: str | None = None
+
+
+@app.get("/api/teams")
+def api_teams(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Every team this account is in, each with today's state for both sides."""
+    user, _ = auth(init)
+    tz = svc.user_tz(user)
+    with SessionLocal() as s:
+        out = []
+        for team in svc.teams_for(s, user.telegram_id):
+            out.append({
+                "id": team.id, "name": team.name,
+                "is_owner": team.owner_id == user.telegram_id,
+                "invite_link": svc.team_invite_link(team, BOT_USERNAME),
+                "members": [
+                    {**m, "is_you": m["user_id"] == user.telegram_id,
+                     "joined_at": m["joined_at"].isoformat()}
+                    for m in svc.team_members(s, team.id)],
+                "summary": svc.team_day_summary(s, team.id, tz=tz),
+                "tasks": svc.list_team_tasks(s, user.telegram_id, team.id, tz=tz),
+                "habits": svc.list_team_habits(s, user.telegram_id, team.id, tz=tz),
+            })
+    return {"teams": out, "max_members": svc.MAX_TEAM_MEMBERS}
+
+
+@app.post("/api/teams")
+def api_team_create(body: TeamIn,
+                    init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        try:
+            team = svc.create_team(s, user.telegram_id, body.name)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        return {"id": team.id, "name": team.name,
+                "invite_link": svc.team_invite_link(team, BOT_USERNAME)}
+
+
+@app.patch("/api/teams/{team_id}")
+def api_team_rename(team_id: int, body: TeamIn,
+                    init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        try:
+            team = svc.rename_team(s, user.telegram_id, team_id, body.name)
+        except PermissionError:
+            raise HTTPException(status_code=404, detail="not_found")
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        return {"id": team.id, "name": team.name}
+
+
+@app.delete("/api/teams/{team_id}")
+def api_team_leave(team_id: int,
+                   init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        if not svc.leave_team(s, user.telegram_id, team_id):
+            raise HTTPException(status_code=404, detail="not_found")
+    return {"ok": True}
+
+
+@app.post("/api/teams/{team_id}/tasks")
+def api_team_task_add(team_id: int, body: TeamTaskIn,
+                      init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        try:
+            return svc.add_team_task(s, user.telegram_id, team_id, body.title,
+                                     deadline=body.deadline,
+                                     priority=body.priority,
+                                     description=body.description)
+        except PermissionError:
+            raise HTTPException(status_code=404, detail="not_found")
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.post("/api/teams/tasks/{task_id}/toggle")
+def api_team_task_toggle(task_id: int,
+                         init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Tick a shared task for whoever is asking, and only them."""
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        try:
+            done = svc.toggle_team_task(s, user.telegram_id, task_id,
+                                        tz=svc.user_tz(user))
+        except PermissionError:
+            raise HTTPException(status_code=404, detail="not_found")
+        except ValueError:
+            raise HTTPException(status_code=404, detail="not_found")
+    return {"done": done}
+
+
+@app.delete("/api/teams/tasks/{task_id}")
+def api_team_task_archive(task_id: int,
+                          init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        try:
+            ok = svc.archive_team_task(s, user.telegram_id, task_id)
+        except PermissionError:
+            raise HTTPException(status_code=404, detail="not_found")
+    if not ok:
+        raise HTTPException(status_code=404, detail="not_found")
+    return {"ok": True}
+
+
+@app.post("/api/teams/{team_id}/habits")
+def api_team_habit_add(team_id: int, body: TeamHabitIn,
+                       init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        try:
+            return svc.add_team_habit(s, user.telegram_id, team_id, body.name,
+                                      schedule=body.schedule)
+        except PermissionError:
+            raise HTTPException(status_code=404, detail="not_found")
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.post("/api/teams/habits/{habit_id}/toggle")
+def api_team_habit_toggle(habit_id: int,
+                          init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        try:
+            done = svc.toggle_team_habit(s, user.telegram_id, habit_id,
+                                         tz=svc.user_tz(user))
+        except PermissionError:
+            raise HTTPException(status_code=404, detail="not_found")
+        except ValueError:
+            raise HTTPException(status_code=404, detail="not_found")
+    return {"done": done}
+
+
+@app.delete("/api/teams/habits/{habit_id}")
+def api_team_habit_archive(habit_id: int,
+                           init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        try:
+            ok = svc.archive_team_habit(s, user.telegram_id, habit_id)
+        except PermissionError:
+            raise HTTPException(status_code=404, detail="not_found")
+    if not ok:
+        raise HTTPException(status_code=404, detail="not_found")
+    return {"ok": True}
 
 
 @app.post("/webhook", include_in_schema=False)

@@ -995,12 +995,18 @@ def test_goals_are_unreachable_from_either_surface():
         assert term not in html, f"index.html still exposes {term!r}"
 
 
-def test_the_mini_app_navigation_is_the_four_launch_screens():
+def test_the_mini_app_navigation_is_the_five_launch_screens():
+    """Home, the two things you do, the shared list, and the numbers.
+
+    Team sits between Tasks and Statistics deliberately: it is work, not a
+    report, and putting it after the numbers would file a shared goal as
+    something you review rather than something you do.
+    """
     html = (ROOT / "webapp" / "index.html").read_text()
     nav = html[html.index("const NAV = ["):html.index("const NAV_OF")]
     assert [line.split('id:"')[1].split('"')[0]
             for line in nav.splitlines() if 'id:"' in line] == \
-        ["home", "habits", "tasks", "stats"]
+        ["home", "habits", "tasks", "team", "stats"]
 
 
 def test_the_privacy_line_is_said_once_on_home():
@@ -7111,3 +7117,313 @@ def test_both_reports_render_in_every_language(client):
             text = render(payload, lang)
             assert text and "{" not in text, (
                 f"{render.__name__} in {lang} left a placeholder unfilled:\n{text}")
+
+
+# ---------------------------------------------------------------------------
+# Teams — a shared list where the effort stays separate
+# ---------------------------------------------------------------------------
+#
+# The product this is for is two people working towards the same thing. That
+# makes two properties load-bearing, and they pull in opposite directions:
+# both of them must see the same item, and neither of them may tick it for the
+# other. Everything below is one of those two, or the membership boundary that
+# keeps a team from becoming a way to read somebody's private workspace.
+
+def _named(client, telegram_id: int, name: str) -> int:
+    """An onboarded account with a profile name, as a real one has.
+
+    The fixture registers through initData, which does not write the Telegram
+    profile; the bot does, on every `/start`. Team screens show people by
+    name, so the tests need one.
+    """
+    Caller(client, {"id": telegram_id, "first_name": name})
+    with SessionLocal() as s:
+        s.get(User, telegram_id).first_name = name
+        s.commit()
+    return telegram_id
+
+
+def _pair(client) -> tuple[int, int, int]:
+    """Two onboarded accounts and a team the first one owns."""
+    one = _named(client, next(_next_id), "Ernest")
+    two = _named(client, next(_next_id), "Gulyora")
+    with SessionLocal() as s:
+        team = svc.create_team(s, one, "Ernest va Gulyora")
+        svc.join_team(s, two, team.code)
+        return one, two, team.id
+
+
+def test_an_invite_link_adds_the_person_who_opens_it(client):
+    one = _named(client, next(_next_id), "Ernest")
+    two = _named(client, next(_next_id), "Gulyora")
+    with SessionLocal() as s:
+        team = svc.create_team(s, one, "Ernest va Gulyora")
+        code = svc.parse_team_payload(f"team_{team.code}")
+        assert code == team.code
+
+        assert svc.join_team(s, two, code)[1] == "joined"
+        assert svc.join_team(s, two, code)[1] == "already", "twice is not two"
+        assert svc.join_team(s, two, "nonsense")[1] == "unknown"
+
+        names = {m["name"] for m in svc.team_members(s, team.id)}
+    assert names == {"Ernest", "Gulyora"}
+
+
+def test_a_shared_task_is_ticked_per_person(client):
+    """The heart of it: one task, two independent completions."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        task = svc.add_team_task(s, one, team_id, "Matritsalar mavzusi")
+
+        # Both see it, neither has done it.
+        for uid in (one, two):
+            row = svc.list_team_tasks(s, uid, team_id)[0]
+            assert row["title"] == "Matritsalar mavzusi"
+            assert row["done"] is False
+
+        svc.toggle_team_task(s, one, task["id"])
+
+        mine = svc.list_team_tasks(s, one, team_id)[0]
+        theirs = svc.list_team_tasks(s, two, team_id)[0]
+        assert mine["done"] is True, "the person who ticked it has done it"
+        assert theirs["done"] is False, (
+            "ticking your own share must not tick anybody else's")
+        assert mine["done_count"] == theirs["done_count"] == 1, (
+            "both sides see the same progress")
+
+        svc.toggle_team_task(s, two, task["id"])
+        assert svc.list_team_tasks(s, two, team_id)[0]["done_count"] == 2
+
+
+def test_a_shared_habit_is_ticked_per_person_per_day(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        habit = svc.add_team_habit(s, two, team_id, "30 daqiqa o'qish")
+        svc.toggle_team_habit(s, two, habit["id"])
+
+        assert svc.list_team_habits(s, two, team_id)[0]["done"] is True
+        assert svc.list_team_habits(s, one, team_id)[0]["done"] is False
+
+        # Yesterday is a different day, and untouched.
+        yesterday = svc.today_local() - timedelta(days=1)
+        assert svc.list_team_habits(s, two, team_id, day=yesterday)[0]["done"] is False
+
+
+def test_a_stranger_cannot_reach_a_team(client):
+    """Membership is the only key, and it is checked on every call."""
+    one, two, team_id = _pair(client)
+    outsider = next(_next_id)
+    Caller(client, {"id": outsider, "first_name": "Begona"})
+
+    with SessionLocal() as s:
+        task = svc.add_team_task(s, one, team_id, "Ichki ish")
+
+        assert svc.team_for(s, outsider, team_id) is None
+        for call in (
+            lambda: svc.list_team_tasks(s, outsider, team_id),
+            lambda: svc.list_team_habits(s, outsider, team_id),
+            lambda: svc.add_team_task(s, outsider, team_id, "Yomon"),
+            lambda: svc.add_team_habit(s, outsider, team_id, "Yomon"),
+            lambda: svc.toggle_team_task(s, outsider, task["id"]),
+            lambda: svc.archive_team_task(s, outsider, task["id"]),
+        ):
+            with pytest.raises(PermissionError):
+                call()
+
+
+def test_a_team_never_exposes_a_private_workspace(client):
+    """Joining a team must not make anybody's own lists visible."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        ws_one = svc.workspace_id_for(s, one)
+        svc.add_task(s, ws_one, "Shaxsiy ish — hech kim ko'rmasin")
+        s.commit()
+
+        shared = [t["title"] for t in svc.list_team_tasks(s, two, team_id)]
+        summary = svc.team_day_summary(s, team_id)
+    assert "Shaxsiy ish — hech kim ko'rmasin" not in shared
+    assert all("Shaxsiy" not in t["title"] for t in summary["tasks"])
+
+
+def test_either_member_can_rename_the_team(client):
+    """A shared space belongs to the people in it, not only its creator."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        svc.rename_team(s, two, team_id, "Biz ikkimiz")
+        assert svc.team_for(s, one, team_id).name == "Biz ikkimiz"
+        with pytest.raises(ValueError):
+            svc.rename_team(s, one, team_id, "   ")
+
+
+def test_the_owner_leaving_hands_the_team_over(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        assert svc.leave_team(s, one, team_id) is True
+        team = svc.team_for(s, two, team_id)
+        assert team is not None and team.owner_id == two, (
+            "the remaining member keeps the team")
+        assert svc.team_for(s, one, team_id) is None
+
+
+def test_the_last_member_out_archives_the_team(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        svc.leave_team(s, one, team_id)
+        svc.leave_team(s, two, team_id)
+        assert svc.teams_for(s, two) == []
+
+
+def test_the_day_summary_reports_each_member_separately(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        a = svc.add_team_task(s, one, team_id, "Birinchi",
+                              deadline=svc.today_local())
+        svc.add_team_task(s, one, team_id, "Ikkinchi", deadline=svc.today_local())
+        svc.toggle_team_task(s, one, a["id"])
+
+        summary = svc.team_day_summary(s, team_id)
+
+    by_id = {m["user_id"]: m for m in summary["members"]}
+    assert by_id[one]["done"] == 1 and by_id[one]["total"] == 2
+    assert by_id[two]["done"] == 0 and by_id[two]["total"] == 2
+    assert by_id[one]["percent"] == 50 and by_id[two]["percent"] == 0
+
+
+def test_an_empty_team_day_is_unmeasured_not_zero(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        summary = svc.team_day_summary(s, team_id)
+    assert summary["total"] == 0
+    assert all(m["percent"] is None for m in summary["members"]), (
+        "a day the team set nothing is not a day they failed")
+
+
+def test_the_team_api_keeps_each_side_separate(client):
+    """The Mini App must get the same per-person answer the services give."""
+    one = _named(client, next(_next_id), "Ernest")
+    two = _named(client, next(_next_id), "Gulyora")
+    a = Caller(client, {"id": one, "first_name": "Ernest"})
+    b = Caller(client, {"id": two, "first_name": "Gulyora"})
+
+    made = a.post("/api/teams", {"name": "Ernest va Gulyora"})
+    assert made.status_code == 200, made.text
+    team_id = made.json()["id"]
+    with SessionLocal() as s:
+        svc.join_team(s, two, svc.team_for(s, one, team_id).code)
+
+    created = a.post(f"/api/teams/{team_id}/tasks", {"title": "Matritsalar"})
+    assert created.status_code == 200, created.text
+    task_id = created.json()["id"]
+
+    assert a.post(f"/api/teams/tasks/{task_id}/toggle").json()["done"] is True
+
+    mine = a.get("/api/teams").json()["teams"][0]["tasks"][0]
+    theirs = b.get("/api/teams").json()["teams"][0]["tasks"][0]
+    assert mine["done"] is True and theirs["done"] is False
+    assert mine["done_count"] == theirs["done_count"] == 1
+
+
+def test_the_team_api_refuses_a_team_you_are_not_in(client):
+    one, two, team_id = _pair(client)
+    outsider = _named(client, next(_next_id), "Begona")
+    stranger = Caller(client, {"id": outsider, "first_name": "Begona"})
+
+    assert stranger.get("/api/teams").json()["teams"] == []
+    assert stranger.post(f"/api/teams/{team_id}/tasks",
+                         {"title": "Yomon"}).status_code == 404
+    assert stranger.patch(f"/api/teams/{team_id}",
+                          {"name": "O'zimniki"}).status_code == 404
+    assert stranger.delete(f"/api/teams/{team_id}").status_code == 404
+
+
+def test_the_team_message_names_who_did_what(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        task = svc.add_team_task(s, one, team_id, "Matritsalar",
+                                 deadline=svc.today_local())
+        svc.add_team_task(s, one, team_id, "Kitob o'qish",
+                          deadline=svc.today_local())
+        svc.toggle_team_task(s, one, task["id"])
+        summary = svc.team_day_summary(s, team_id)
+
+    # Read by the person who did it...
+    mine = application.render_team(summary, "uz", one, evening=True)
+    assert "Matritsalar" in mine and "Kitob o'qish" in mine
+    assert application.t("uz", "team_you") in mine, "the reader is 'you'"
+    assert "Gulyora" in mine, "and the other person is named"
+
+    # ...and by the one who did not. Same facts, different point of view.
+    theirs = application.render_team(summary, "uz", two, evening=True)
+    assert "Ernest" in theirs
+
+
+def test_a_team_with_nothing_on_today_sends_nothing(client):
+    """An empty summary twice a day is how a notification gets muted."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        summary = svc.team_day_summary(s, team_id)
+    assert application.render_team(summary, "uz", one, evening=False) is None
+
+
+async def test_team_summaries_ride_along_with_the_daily_reports(
+        monkeypatch, client):
+    """The team message is its own message, sent after the personal one."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        task = svc.add_team_task(s, one, team_id, "Matritsalar",
+                                 deadline=svc.today_local())
+        svc.toggle_team_task(s, one, task["id"])
+        ws = svc.workspace_id_for(s, one)
+    monkeypatch.setattr(svc, "active_recipients", lambda s: [(one, ws, "uz")])
+
+    bot = _FakeBot()
+    await application._send_reports_locked(bot, "morning", date(2032, 1, 5))
+
+    assert bot.sent.count(one) == 2, (
+        f"expected the daily report and one team summary, got {bot.sent}")
+
+
+async def test_a_quiet_team_adds_no_second_message(monkeypatch, client):
+    """With nothing shared today, the daily report arrives on its own."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, one)
+    monkeypatch.setattr(svc, "active_recipients", lambda s: [(one, ws, "uz")])
+
+    bot = _FakeBot()
+    await application._send_reports_locked(bot, "evening", date(2032, 1, 6))
+
+    assert bot.sent.count(one) == 1, f"one message only, got {bot.sent}"
+
+
+async def test_a_failed_team_summary_never_unsends_the_report(
+        monkeypatch, client):
+    """The report is marked sent before the team message is attempted."""
+    from telegram.error import Forbidden
+
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        task = svc.add_team_task(s, one, team_id, "Matritsalar",
+                                 deadline=svc.today_local())
+        svc.toggle_team_task(s, one, task["id"])
+        ws = svc.workspace_id_for(s, one)
+    monkeypatch.setattr(svc, "active_recipients", lambda s: [(one, ws, "uz")])
+
+    class _FailsSecond(_FakeBot):
+        async def send_message(self, chat_id, text, **kwargs):
+            self.sent.append(chat_id)
+            if len(self.sent) > 1:
+                raise Forbidden("blocked")
+            return True
+
+    day = date(2032, 1, 7)
+    bot = _FailsSecond()
+    await application._send_reports_locked(bot, "morning", day)
+
+    with SessionLocal() as s:
+        row = s.scalar(select(db.DailyReportLog).where(
+            db.DailyReportLog.workspace_id == ws,
+            db.DailyReportLog.report_date == day))
+    assert row is not None and row.status == "sent", (
+        "a team summary that could not be delivered must not mark the "
+        "personal report failed — it already went out")

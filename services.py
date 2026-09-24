@@ -29,7 +29,8 @@ from sqlalchemy.orm import Session
 from db import (
     Birthday, DailyReportLog, DailyScore, Feedback, Habit, HabitLog, JobRun,
     JournalEntry, PrayerDay, PrayerLog, Project, Referral, ReferralCode,
-    Task, User, UserAchievement, UserProgress, WeeklyFocus, WeeklyReview,
+    Task, Team, TeamHabit, TeamHabitLog, TeamMember, TeamTask, TeamTaskDone,
+    User, UserAchievement, UserProgress, WeeklyFocus, WeeklyReview,
     Workspace, XPEvent, utcnow,
 )
 
@@ -5037,3 +5038,505 @@ class JobLock:
                           self._name)
         finally:
             self._session.close()
+
+
+# ---------------------------------------------------------------------------
+# Teams — shared goals, separate effort
+# ---------------------------------------------------------------------------
+#
+# Everything above this line is scoped to one workspace and belongs to one
+# person. A team is the one place that is not, and the rules it follows are
+# deliberately narrow:
+#
+#   * **Membership is the only key.** Every function here takes the acting
+#     user and refuses anything they are not a member of. There is no team
+#     equivalent of "workspace_id came from the request body".
+#   * **The item is shared, the tick is not.** Either member may add, edit or
+#     archive a task; neither can tick it for the other. That is what lets a
+#     report say what each of them actually did.
+#   * **Nothing leaks into private space.** No query in this section touches
+#     `workspace_id`, and no workspace query touches a team table, so joining
+#     a team reveals nothing about anyone's own lists.
+
+#: A shared space is for people working together, not an audience. Small
+#: enough that the reports stay readable and nobody has to scroll a roster.
+#: A product decision rather than a deployment knob, so it is a constant here
+#: instead of an environment variable — settings live in `config`.
+MAX_TEAM_MEMBERS = 8
+#: How many teams one account may belong to, so a single user cannot be
+#: dragged into an unbounded number of daily summaries.
+MAX_TEAMS_PER_USER = 5
+#: Bytes of randomness in an invite code.
+TEAM_CODE_BYTES = 9
+#: The longest a team name may be. Long enough for "Ernest va Gulyora", short
+#: enough to sit on one line of a report.
+TEAM_NAME_MAX = 60
+
+
+def clean_team_name(name: str | None) -> str:
+    """A usable team name, or the empty string when there is none."""
+    return " ".join(str(name or "").split())[:TEAM_NAME_MAX].strip()
+
+
+def create_team(s: Session, user_id: int, name: str) -> Team:
+    """Start a team, with its creator as the first member and its owner."""
+    name = clean_team_name(name)
+    if not name:
+        raise ValueError("empty_name")
+    if len(teams_for(s, user_id)) >= MAX_TEAMS_PER_USER:
+        raise ValueError("too_many_teams")
+
+    for _ in range(5):
+        team = Team(name=name, owner_id=user_id,
+                    code=secrets.token_urlsafe(TEAM_CODE_BYTES))
+        s.add(team)
+        try:
+            # A SAVEPOINT, so a collided code cannot roll back whatever the
+            # caller was already doing.
+            with s.begin_nested():
+                s.flush()
+            break
+        except IntegrityError:
+            s.expunge(team)
+    else:
+        raise RuntimeError("could not allocate a team code")
+
+    s.add(TeamMember(team_id=team.id, user_id=user_id, role="owner"))
+    s.commit()
+    return team
+
+
+def teams_for(s: Session, user_id: int) -> list[Team]:
+    """Every live team this user belongs to, oldest first."""
+    return list(s.scalars(
+        select(Team)
+        .join(TeamMember, TeamMember.team_id == Team.id)
+        .where(TeamMember.user_id == user_id, Team.archived_at.is_(None))
+        .order_by(Team.created_at)
+    ).all())
+
+
+def team_for(s: Session, user_id: int, team_id: int) -> Team | None:
+    """The team, only if this user is in it. The single access check."""
+    return s.scalar(
+        select(Team)
+        .join(TeamMember, TeamMember.team_id == Team.id)
+        .where(Team.id == team_id, Team.archived_at.is_(None),
+               TeamMember.user_id == user_id)
+    )
+
+
+def _require_team(s: Session, user_id: int, team_id: int) -> Team:
+    team = team_for(s, user_id, team_id)
+    if team is None:
+        raise PermissionError("not_a_member")
+    return team
+
+
+def team_members(s: Session, team_id: int) -> list[dict]:
+    """Who is in the team, with the name each of them is shown under."""
+    rows = s.execute(
+        select(TeamMember, User)
+        .join(User, User.telegram_id == TeamMember.user_id)
+        .where(TeamMember.team_id == team_id)
+        .order_by(TeamMember.joined_at)
+    ).all()
+    out = []
+    for member, user in rows:
+        name = (user.first_name or "").strip() or (user.username or "").strip()
+        out.append({"user_id": member.user_id, "role": member.role,
+                    "name": name or f"#{user.member_no}",
+                    "joined_at": member.joined_at})
+    return out
+
+
+def parse_team_payload(payload: str | None) -> str | None:
+    """`team_<code>` -> `<code>`, or None for anything else.
+
+    Total, like `parse_referral_payload`: every other start parameter, and
+    every malformed one, simply is not a team invite.
+    """
+    value = (payload or "").strip()
+    if not value.startswith("team_"):
+        return None
+    code = value[len("team_"):].strip()
+    return code or None
+
+
+def join_team(s: Session, user_id: int, code: str) -> tuple[Team | None, str]:
+    """Accept an invite. Returns (team, outcome).
+
+    Outcomes: "joined", "already", "full", "unknown". Never raises on a bad
+    code — a stale or mistyped link is an ordinary thing for a user to have,
+    not an error for the caller to handle.
+    """
+    code = (code or "").strip()
+    if not code:
+        return None, "unknown"
+    team = s.scalar(select(Team).where(Team.code == code,
+                                       Team.archived_at.is_(None)))
+    if team is None:
+        return None, "unknown"
+
+    existing = s.scalar(select(TeamMember).where(
+        TeamMember.team_id == team.id, TeamMember.user_id == user_id))
+    if existing is not None:
+        return team, "already"
+
+    count = s.scalar(select(func.count()).select_from(TeamMember)
+                     .where(TeamMember.team_id == team.id)) or 0
+    if count >= MAX_TEAM_MEMBERS:
+        return team, "full"
+    if len(teams_for(s, user_id)) >= MAX_TEAMS_PER_USER:
+        return team, "full"
+
+    s.add(TeamMember(team_id=team.id, user_id=user_id, role="member"))
+    try:
+        with s.begin_nested():
+            s.flush()
+    except IntegrityError:
+        # Two taps on the same link in the same second.
+        s.rollback()
+        return team, "already"
+    s.commit()
+    return team, "joined"
+
+
+def rename_team(s: Session, user_id: int, team_id: int, name: str) -> Team:
+    """Rename a team. Any member may do it.
+
+    Deliberately not owner-only: a shared space belongs to the people in it,
+    and for the two-person case this is built around, "ask him to rename it"
+    is friction with no safety behind it.
+    """
+    team = _require_team(s, user_id, team_id)
+    cleaned = clean_team_name(name)
+    if not cleaned:
+        raise ValueError("empty_name")
+    team.name = cleaned
+    s.commit()
+    return team
+
+
+def leave_team(s: Session, user_id: int, team_id: int) -> bool:
+    """Leave a team. The last member out archives it.
+
+    The owner leaving hands ownership to the longest-standing member rather
+    than dissolving the team under everybody else — the person who set it up
+    is not necessarily the person who keeps using it.
+    """
+    team = team_for(s, user_id, team_id)
+    if team is None:
+        return False
+    row = s.scalar(select(TeamMember).where(
+        TeamMember.team_id == team_id, TeamMember.user_id == user_id))
+    if row is None:
+        return False
+    s.delete(row)
+    s.flush()
+
+    remaining = team_members(s, team_id)
+    if not remaining:
+        team.archived_at = utcnow()
+    elif team.owner_id == user_id:
+        team.owner_id = remaining[0]["user_id"]
+        heir = s.scalar(select(TeamMember).where(
+            TeamMember.team_id == team_id,
+            TeamMember.user_id == remaining[0]["user_id"]))
+        if heir is not None:
+            heir.role = "owner"
+    s.commit()
+    return True
+
+
+def team_invite_link(team: Team, bot_username: str) -> str | None:
+    """The link to hand to somebody, or None when the bot has no @name."""
+    if not bot_username:
+        return None
+    return f"https://t.me/{bot_username}?start=team_{team.code}"
+
+
+# --- Team tasks -------------------------------------------------------------
+
+def add_team_task(s: Session, user_id: int, team_id: int, title: str, *,
+                  deadline: date | None = None, priority: str = "medium",
+                  description: str = "") -> dict:
+    """Put a task in front of the whole team."""
+    _require_team(s, user_id, team_id)
+    title = title.strip()[:300]
+    if not title:
+        raise ValueError("empty_title")
+    if priority not in PRIORITIES:
+        priority = "medium"
+    task = TeamTask(team_id=team_id, title=title,
+                    description=(description or "").strip()[:2000],
+                    deadline=deadline, priority=priority,
+                    created_by=user_id)
+    s.add(task)
+    s.commit()
+    return team_task_row(s, task, user_id)
+
+
+def team_task_row(s: Session, task: TeamTask, viewer_id: int) -> dict:
+    """One task, plus who has finished it — including the person looking."""
+    done_rows = s.execute(select(TeamTaskDone.user_id, TeamTaskDone.day)
+                          .where(TeamTaskDone.task_id == task.id)).all()
+    done_by = {uid for uid, _ in done_rows}
+    return {
+        "id": task.id, "team_id": task.team_id, "title": task.title,
+        "description": task.description or "",
+        "deadline": task.deadline.isoformat() if task.deadline else None,
+        "priority": task.priority, "created_by": task.created_by,
+        "done": viewer_id in done_by,
+        "done_by": sorted(done_by),
+        "done_count": len(done_by),
+    }
+
+
+def list_team_tasks(s: Session, user_id: int, team_id: int, *,
+                    day: date | None = None, horizon_days: int = 7,
+                    tz: ZoneInfo | None = None) -> list[dict]:
+    """The team's open tasks, each carrying this viewer's own done state."""
+    _require_team(s, user_id, team_id)
+    today = day or today_local(tz)
+    limit = today + timedelta(days=horizon_days)
+    tasks = s.scalars(
+        select(TeamTask)
+        .where(TeamTask.team_id == team_id, TeamTask.archived_at.is_(None),
+               or_(TeamTask.deadline.is_(None), TeamTask.deadline <= limit))
+        .order_by(TeamTask.deadline.is_(None), TeamTask.deadline, TeamTask.id)
+    ).all()
+    return [team_task_row(s, t, user_id) for t in tasks]
+
+
+def toggle_team_task(s: Session, user_id: int, task_id: int, *,
+                     day: date | None = None,
+                     tz: ZoneInfo | None = None) -> bool:
+    """Tick or untick a team task **for the person asking**, and only them.
+
+    There is no argument for whose completion to write, and that is the point:
+    a member can record their own share and nobody else's.
+    """
+    task = s.get(TeamTask, task_id)
+    if task is None or task.archived_at is not None:
+        raise ValueError("unknown_task")
+    _require_team(s, user_id, task.team_id)
+
+    row = s.scalar(select(TeamTaskDone).where(
+        TeamTaskDone.task_id == task_id, TeamTaskDone.user_id == user_id))
+    if row is not None:
+        s.delete(row)
+        s.commit()
+        return False
+    s.add(TeamTaskDone(task_id=task_id, user_id=user_id,
+                       day=day or today_local(tz), done_at=utcnow()))
+    try:
+        with s.begin_nested():
+            s.flush()
+    except IntegrityError:
+        s.rollback()
+        return True
+    s.commit()
+    return True
+
+
+def archive_team_task(s: Session, user_id: int, task_id: int) -> bool:
+    """Take a task off the team's list. Either member may."""
+    task = s.get(TeamTask, task_id)
+    if task is None or task.archived_at is not None:
+        return False
+    _require_team(s, user_id, task.team_id)
+    task.archived_at = utcnow()
+    s.commit()
+    return True
+
+
+# --- Team habits ------------------------------------------------------------
+
+def add_team_habit(s: Session, user_id: int, team_id: int, name: str, *,
+                   schedule: str | None = None) -> dict:
+    """A habit the team keeps together."""
+    _require_team(s, user_id, team_id)
+    name = name.strip()[:120]
+    if not name:
+        raise ValueError("empty_name")
+    position = (s.scalar(select(func.max(TeamHabit.position))
+                         .where(TeamHabit.team_id == team_id)) or 0) + 1
+    habit = TeamHabit(team_id=team_id, name=name,
+                      schedule=clean_schedule(schedule),
+                      position=position, created_by=user_id)
+    s.add(habit)
+    s.commit()
+    return {"id": habit.id, "name": habit.name,
+            "schedule": habit.schedule, "done": False, "done_by": []}
+
+
+def list_team_habits(s: Session, user_id: int, team_id: int, *,
+                     day: date | None = None,
+                     tz: ZoneInfo | None = None) -> list[dict]:
+    """Today's team habits, each with this viewer's own tick and everyone's."""
+    _require_team(s, user_id, team_id)
+    today = day or today_local(tz)
+    habits = s.scalars(
+        select(TeamHabit)
+        .where(TeamHabit.team_id == team_id, TeamHabit.archived_at.is_(None))
+        .order_by(TeamHabit.position, TeamHabit.id)
+    ).all()
+
+    logs = s.execute(
+        select(TeamHabitLog.habit_id, TeamHabitLog.user_id)
+        .where(TeamHabitLog.day == today, TeamHabitLog.done.is_(True),
+               TeamHabitLog.habit_id.in_([h.id for h in habits] or [0]))
+    ).all()
+    done_map: dict[int, set[int]] = {}
+    for habit_id, member_id in logs:
+        done_map.setdefault(habit_id, set()).add(member_id)
+
+    out = []
+    for habit in habits:
+        if not team_habit_is_due(habit, today):
+            continue
+        done_by = done_map.get(habit.id, set())
+        out.append({"id": habit.id, "name": habit.name,
+                    "schedule": clean_schedule(habit.schedule),
+                    "done": user_id in done_by,
+                    "done_by": sorted(done_by),
+                    "done_count": len(done_by)})
+    return out
+
+
+def team_habit_is_due(habit: TeamHabit, day: date) -> bool:
+    """Whether the team expects this habit on that day."""
+    return day.weekday() in schedule_days(habit.schedule)
+
+
+def toggle_team_habit(s: Session, user_id: int, habit_id: int, *,
+                      day: date | None = None,
+                      tz: ZoneInfo | None = None) -> bool:
+    """Tick today's team habit for the person asking, and only them."""
+    habit = s.get(TeamHabit, habit_id)
+    if habit is None or habit.archived_at is not None:
+        raise ValueError("unknown_habit")
+    _require_team(s, user_id, habit.team_id)
+    today = day or today_local(tz)
+
+    row = s.scalar(select(TeamHabitLog).where(
+        TeamHabitLog.habit_id == habit_id, TeamHabitLog.user_id == user_id,
+        TeamHabitLog.day == today))
+    if row is None:
+        row = TeamHabitLog(habit_id=habit_id, user_id=user_id, day=today,
+                           done=True, logged_at=utcnow())
+        s.add(row)
+        try:
+            with s.begin_nested():
+                s.flush()
+        except IntegrityError:
+            s.rollback()
+            return True
+    else:
+        row.done = not row.done
+        row.logged_at = utcnow() if row.done else None
+    s.commit()
+    return bool(row.done)
+
+
+def archive_team_habit(s: Session, user_id: int, habit_id: int) -> bool:
+    habit = s.get(TeamHabit, habit_id)
+    if habit is None or habit.archived_at is not None:
+        return False
+    _require_team(s, user_id, habit.team_id)
+    habit.archived_at = utcnow()
+    s.commit()
+    return True
+
+
+# --- What the team did today ------------------------------------------------
+
+def team_day_summary(s: Session, team_id: int, day: date | None = None, *,
+                     tz: ZoneInfo | None = None) -> dict:
+    """One day of a team, per member.
+
+    The shape the reports need: what the team set itself, and how far each
+    person got with their own half of it. Deliberately per-member rather than
+    one combined number — "we are at 60%" hides which of you is carrying it,
+    and the whole reason two people share a list is to see each other's
+    progress.
+    """
+    today = day or today_local(tz)
+    team = s.get(Team, team_id)
+    if team is None:
+        return {}
+
+    members = team_members(s, team_id)
+    ids = [m["user_id"] for m in members]
+
+    tasks = s.scalars(
+        select(TeamTask)
+        .where(TeamTask.team_id == team_id, TeamTask.archived_at.is_(None),
+               or_(TeamTask.deadline.is_(None), TeamTask.deadline <= today))
+        .order_by(TeamTask.deadline.is_(None), TeamTask.deadline, TeamTask.id)
+    ).all()
+    task_ids = [t.id for t in tasks]
+    done_rows = s.execute(select(TeamTaskDone.task_id, TeamTaskDone.user_id)
+                          .where(TeamTaskDone.task_id.in_(task_ids or [0]))).all()
+    task_done: dict[int, set[int]] = {}
+    for task_id, member_id in done_rows:
+        task_done.setdefault(task_id, set()).add(member_id)
+
+    habits = [h for h in s.scalars(
+        select(TeamHabit)
+        .where(TeamHabit.team_id == team_id, TeamHabit.archived_at.is_(None))
+        .order_by(TeamHabit.position, TeamHabit.id)).all()
+        if team_habit_is_due(h, today)]
+    habit_ids = [h.id for h in habits]
+    habit_rows = s.execute(
+        select(TeamHabitLog.habit_id, TeamHabitLog.user_id)
+        .where(TeamHabitLog.day == today, TeamHabitLog.done.is_(True),
+               TeamHabitLog.habit_id.in_(habit_ids or [0]))).all()
+    habit_done: dict[int, set[int]] = {}
+    for habit_id, member_id in habit_rows:
+        habit_done.setdefault(habit_id, set()).add(member_id)
+
+    total = len(tasks) + len(habits)
+    people = []
+    for member in members:
+        uid = member["user_id"]
+        tasks_done = sum(1 for t in tasks if uid in task_done.get(t.id, ()))
+        habits_done = sum(1 for h in habits if uid in habit_done.get(h.id, ()))
+        got = tasks_done + habits_done
+        people.append({
+            "user_id": uid, "name": member["name"],
+            "tasks_done": tasks_done, "tasks_total": len(tasks),
+            "habits_done": habits_done, "habits_total": len(habits),
+            "done": got, "total": total,
+            # None rather than 0 when the team set itself nothing: an empty
+            # day is unmeasured, not a failure, exactly as it is personally.
+            "percent": round(got / total * 100) if total else None,
+        })
+
+    return {
+        "team_id": team_id, "name": team.name, "date": today.isoformat(),
+        "members": people, "member_ids": ids,
+        "tasks": [{"id": t.id, "title": t.title, "priority": t.priority,
+                   "deadline": t.deadline.isoformat() if t.deadline else None,
+                   "done_by": sorted(task_done.get(t.id, ())),
+                   "done_count": len(task_done.get(t.id, ()))}
+                  for t in tasks],
+        "habits": [{"id": h.id, "name": h.name,
+                    "done_by": sorted(habit_done.get(h.id, ())),
+                    "done_count": len(habit_done.get(h.id, ()))}
+                   for h in habits],
+        "total": total,
+    }
+
+
+def team_summaries_for(s: Session, user_id: int, day: date | None = None, *,
+                       tz: ZoneInfo | None = None) -> list[dict]:
+    """Every team this user is in, summarised for their own day.
+
+    The day is the *reader's* local day: two people in different zones each
+    get the summary of the day they are living in, which is the same rule the
+    personal reports follow.
+    """
+    return [team_day_summary(s, team.id, day, tz=tz)
+            for team in teams_for(s, user_id)]

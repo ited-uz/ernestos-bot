@@ -818,7 +818,10 @@ label{display:block;font-size:12px;color:var(--text-2);margin:var(--s3) 0 var(--
    Chrome
    ================================================================== */
 nav{position:fixed;left:0;right:0;bottom:0;z-index:40;display:grid;
-    grid-template-columns:repeat(4,1fr);
+    /* One column per tab, however many there are. It was a hard 4;
+       adding Team made the fifth wrap onto a second row and doubled
+       the height of the bar on a phone. */
+    grid-auto-flow:column;grid-auto-columns:1fr;
     background:color-mix(in srgb, var(--surface) 88%, transparent);
     backdrop-filter:saturate(140%) blur(18px);
     -webkit-backdrop-filter:saturate(140%) blur(18px);
@@ -828,8 +831,9 @@ nav{position:fixed;left:0;right:0;bottom:0;z-index:40;display:grid;
   nav{background:var(--surface)}
   .sheet-inner{background:var(--surface)}
 }
-nav button{background:0;border:0;color:var(--text-3);padding:7px 4px 8px;
-           font-size:10.5px;font-weight:550;cursor:pointer;display:grid;gap:2px;
+nav button{background:0;border:0;color:var(--text-3);padding:7px 2px 8px;
+           font-size:10px;font-weight:550;cursor:pointer;display:grid;gap:2px;
+           min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
            justify-items:center;min-height:52px;
            transition:color var(--motion)}
 nav button.on{color:var(--primary)}
@@ -1004,6 +1008,19 @@ const DICT = {
  uz:{
   /* chrome */
   home:"Bosh sahifa", habits:"Odatlar", tasks:"Vazifalar", stats:"Statistika",
+  team:"Jamoa",
+  team_empty_title:"Sherigingiz bilan birga",
+  team_empty:"Jamoa — bitta umumiy ro'yxat. Vazifa ikkovingizga ko'rinadi, lekin har biringiz o'zingiznikini belgilaysiz.",
+  team_new:"Jamoa yaratish", team_name_ph:"Masalan: Ernest va Gulyora",
+  team_invite:"Taklif havolasi", team_invite_hint:"Havolani sherigingizga yuboring",
+  team_copy:"Nusxa olish", team_copied:"Nusxa olindi",
+  team_rename:"Nomini o'zgartirish", team_leave:"Jamoani tark etish",
+  team_leave_sure:"Jamoani tark etasizmi?",
+  team_add_task:"Umumiy vazifa", team_add_habit:"Umumiy odat",
+  team_task_ph:"Nima qilamiz?", team_habit_ph:"Har kuni nima qilamiz?",
+  team_tasks:"Umumiy vazifalar", team_habits:"Umumiy odatlar",
+  team_nothing:"Hali umumiy ish yo'q. Birinchisini qo'shing.",
+  team_you:"siz", team_today:"Bugun",
   privacy_line:"Ma'lumotlaringiz boshqa foydalanuvchilardan ajratilgan va xavfsiz saqlanadi. 🔒",
   /* common */
   save:"Saqlash", cancel:"Bekor qilish", close:"Yopish", delete:"O'chirish",
@@ -1249,6 +1266,19 @@ const DICT = {
  },
  en:{
   home:"Home", habits:"Habits", tasks:"Tasks", stats:"Statistics",
+  team:"Team",
+  team_empty_title:"Together with your partner",
+  team_empty:"A team is one shared list. Both of you see the work; each of you ticks your own.",
+  team_new:"New team", team_name_ph:"e.g. Ernest and Gulyora",
+  team_invite:"Invite link", team_invite_hint:"Send this link to your partner",
+  team_copy:"Copy", team_copied:"Copied",
+  team_rename:"Rename", team_leave:"Leave team",
+  team_leave_sure:"Leave this team?",
+  team_add_task:"Shared task", team_add_habit:"Shared habit",
+  team_task_ph:"What are we doing?", team_habit_ph:"What do we do daily?",
+  team_tasks:"Shared tasks", team_habits:"Shared habits",
+  team_nothing:"Nothing shared yet. Add the first thing.",
+  team_you:"you", team_today:"Today",
   privacy_line:"Your data is kept separate from other users' and stored securely. 🔒",
   save:"Save", cancel:"Cancel", close:"Close", delete:"Delete",
   edit:"Edit", saved:"Saved", deleted:"Deleted", undo:"Undo",
@@ -1480,6 +1510,19 @@ const DICT = {
  },
  ru:{
   home:"Главная", habits:"Привычки", tasks:"Задачи", stats:"Статистика",
+  team:"Команда",
+  team_empty_title:"Вместе с партнёром",
+  team_empty:"Команда — это общий список. Дело видно обоим, но каждый отмечает своё.",
+  team_new:"Новая команда", team_name_ph:"Например: Эрнест и Гулёра",
+  team_invite:"Ссылка-приглашение", team_invite_hint:"Отправьте ссылку партнёру",
+  team_copy:"Копировать", team_copied:"Скопировано",
+  team_rename:"Переименовать", team_leave:"Покинуть команду",
+  team_leave_sure:"Покинуть команду?",
+  team_add_task:"Общая задача", team_add_habit:"Общая привычка",
+  team_task_ph:"Что делаем?", team_habit_ph:"Что делаем каждый день?",
+  team_tasks:"Общие задачи", team_habits:"Общие привычки",
+  team_nothing:"Общих дел пока нет. Добавьте первое.",
+  team_you:"вы", team_today:"Сегодня",
   privacy_line:"Ваши данные отделены от данных других пользователей и хранятся безопасно. 🔒",
   save:"Сохранить", cancel:"Отмена", close:"Закрыть", delete:"Удалить",
   edit:"Изменить", saved:"Сохранено", deleted:"Удалено", undo:"Вернуть",
@@ -1750,6 +1793,11 @@ const ICONS = {
   check:'<path d="M4.5 12.5 9 17 19.5 6.5"/>',
   list:'<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
   chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  /* Two people, one slightly behind the other. Drawn as a head and shoulders
+     twice rather than a crowd: the team this is for is a pair, and at 21px
+     three figures collapse into a blob. */
+  users:'<circle cx="9" cy="8" r="3.2"/><path d="M3 19.2c0-3 2.7-4.8 6-4.8s6 1.8 6 4.8"/>'
+        + '<path d="M16.2 5.3a3.2 3.2 0 0 1 0 5.4"/><path d="M17.4 14.8c2.1.6 3.6 2.2 3.6 4.4"/>',
   /* A cog, not six spokes around a dot. The old glyph drew three pairs of
      detached strokes with nothing to attach them to, which at 19px read as
      a smudge rather than as settings: a ring, eight rounded teeth on the
@@ -2349,6 +2397,91 @@ function calendarBlock(){
 const TREND_ICON = {up:"↑", down:"↓", flat:""};
 
 /* ---------- Habits / Prayer / Journal ---------- */
+/* Jamoa — the shared screen.
+
+   Two people, one list, two sets of ticks. Every row shows the reader's own
+   checkbox on the left, because that is the only one they can move, and the
+   other side's state as a small marker on the right, because that is the
+   thing they opened the screen to see. Showing both as identical checkboxes
+   would invite tapping the one that is not yours. */
+SCREENS.team = () => {
+  const teams = state.team?.teams || [];
+  if(!teams.length) return `
+    <div class="head"><div class="grow"><h1>${t("team")}</h1></div></div>
+    <div class="card" style="text-align:center;padding:28px 18px">
+      <div style="font-size:30px">👥</div>
+      <h3 style="margin:8px 0 6px">${t("team_empty_title")}</h3>
+      <p class="muted" style="margin:0 0 16px">${t("team_empty")}</p>
+      <button class="btn" data-act="team-new">${t("team_new")}</button>
+    </div>`;
+
+  const active = teams.find(x => x.id === state.teamId) || teams[0];
+  const tabs = teams.length > 1 ? `
+    <div class="tabs">${teams.map(x => `
+      <div class="tab ${x.id === active.id ? "on" : ""}"
+           data-act="team-pick" data-id="${x.id}">${esc(x.name)}</div>`).join("")}
+    </div>` : "";
+
+  /* Who ticked it, other than the reader. A name, not an avatar: two people
+     who know each other do not need a colour key. */
+  const others = ids => (active.members || [])
+    .filter(m => !m.is_you && ids.includes(m.user_id))
+    .map(m => esc(m.name)).join(", ");
+
+  const row = (x, kind, label) => `
+    <div class="row">
+      <div class="check ${x.done ? "on" : ""}" data-act="team-toggle"
+           data-kind="${kind}" data-id="${x.id}"></div>
+      <div class="grow">
+        <div class="${x.done ? "done" : ""}">${esc(label)}</div>
+        ${others(x.done_by || []).length
+          ? `<div class="muted sm">✓ ${others(x.done_by)}</div>` : ""}
+      </div>
+      <button class="ghost" data-act="team-remove"
+              data-kind="${kind}" data-id="${x.id}">✕</button>
+    </div>`;
+
+  const scoreboard = (active.summary?.members || []).map(m => {
+    const name = m.user_id === state.me?.telegram_id ? t("team_you") : esc(m.name);
+    const pct = m.percent === null || m.percent === undefined ? "—" : m.percent + "%";
+    return `<div class="row">
+        <div class="grow"><b>${name}</b></div>
+        <div class="muted">${m.done}/${m.total}</div>
+        <div style="width:54px;text-align:right"><b>${pct}</b></div>
+      </div>`;
+  }).join("");
+
+  return `
+    <div class="head">
+      <div class="grow"><h1>${esc(active.name)}</h1>
+        <div class="muted sm">${(active.members || [])
+          .map(m => esc(m.name)).join(" · ")}</div></div>
+      <button class="ghost" data-act="team-menu" data-id="${active.id}">⋯</button>
+    </div>
+    ${tabs}
+
+    <div class="card">
+      <div class="card-t">${t("team_today")}</div>
+      ${scoreboard || `<div class="muted">${t("team_nothing")}</div>`}
+    </div>
+
+    <div class="card">
+      <div class="card-t">${t("team_tasks")}</div>
+      ${(active.tasks || []).map(x => row(x, "task", x.title)).join("")
+        || `<div class="muted">${t("team_nothing")}</div>`}
+      <button class="btn secondary" data-act="team-add" data-kind="task"
+              style="margin-top:10px">+ ${t("team_add_task")}</button>
+    </div>
+
+    <div class="card">
+      <div class="card-t">${t("team_habits")}</div>
+      ${(active.habits || []).map(x => row(x, "habit", x.name)).join("")
+        || `<div class="muted">${t("team_nothing")}</div>`}
+      <button class="btn secondary" data-act="team-add" data-kind="habit"
+              style="margin-top:10px">+ ${t("team_add_habit")}</button>
+    </div>`;
+};
+
 SCREENS.habits = () => {
   const tabs = [["habits","habits"],["prayer","prayer"],["journal","journal"]];
   let h = `<h1>${t(state.tab)}</h1>
@@ -4359,6 +4492,7 @@ const NAV = [
   {id:"home",   icon:"home",     key:"home"},
   {id:"habits", icon:"check",    key:"habits"},
   {id:"tasks",  icon:"list",     key:"tasks"},
+  {id:"team",   icon:"users",    key:"team"},
   {id:"stats",  icon:"chart",    key:"stats"},
 ];
 //: A project opens from Tasks, so the Tasks tab stays lit while inside one.
@@ -4466,6 +4600,8 @@ async function loadScreen(screen){
         api("/api/home"), api("/api/summary"), api("/api/progress/me"),
       ]);
       setState({home, summary, progress});
+    } else if(screen === "team"){
+      setState({team: await api("/api/teams")});
     } else if(screen === "habits"){
       const [habits, prayer, journal] = await Promise.all([
         api("/api/habits"), api("/api/prayers"),
@@ -4496,6 +4632,13 @@ async function loadScreen(screen){
       if(id) setState({project: await api(`/api/projects/${id}/tasks`)});
     }
   }catch(e){ handleError(e); }
+}
+
+/* The team the screen is currently showing. Several places need it and none
+   of them should re-derive the "first one when nothing is picked" rule. */
+function teamCurrent(){
+  const teams = state.team?.teams || [];
+  return teams.find(x => x.id === state.teamId) || teams[0] || null;
 }
 
 /* Re-reads the habit list without touching the rest of the screen. Used after
@@ -4707,6 +4850,125 @@ const A = {
       ${t("cancel")}</button>`),
   "quote-save": () => save(() => api("/api/settings",
     {method:"POST", body:{quote: val("quote-text")}}), "home"),
+
+  /* ---- team ---- */
+  /* Every action here is scoped to the acting user by the server; the client
+     never sends "who". A tap on a row moves that person's own tick and
+     nobody else's, which is the whole point of the screen. */
+  "team-pick": el => setState({teamId: Number(el.dataset.id)}),
+
+  "team-new": () => openSheet(`
+    <h3>${t("team_new")}</h3>
+    <input id="team-name" placeholder="${t("team_name_ph")}" maxlength="60">
+    <button class="btn" data-act="team-create" style="margin-top:12px">
+      ${t("save")}</button>
+    <button class="btn secondary" data-act="close" style="margin-top:8px">
+      ${t("cancel")}</button>`),
+
+  "team-create": () => {
+    const name = val("team-name");
+    if(!name.trim()) return;
+    save(() => api("/api/teams", {method:"POST", body:{name}}), "team");
+  },
+
+  "team-toggle": el => {
+    haptic();
+    const id = Number(el.dataset.id);
+    const kind = el.dataset.kind;
+    optimistic(() => {
+      const team = (state.team?.teams || []).find(x => x.id === (state.teamId || x.id));
+      const list = kind === "task" ? team?.tasks : team?.habits;
+      const row = (list || []).find(x => x.id === id);
+      if(row){
+        row.done = !row.done;
+        row.done_count = (row.done_count || 0) + (row.done ? 1 : -1);
+      }
+    }, () => api(`/api/teams/${kind}s/${id}/toggle`, {method:"POST"}), "team");
+  },
+
+  "team-add": el => {
+    const kind = el.dataset.kind;
+    openSheet(`
+      <h3>${t(kind === "task" ? "team_add_task" : "team_add_habit")}</h3>
+      <input id="team-item" maxlength="300"
+        placeholder="${t(kind === "task" ? "team_task_ph" : "team_habit_ph")}">
+      <button class="btn" data-act="team-item-save" data-kind="${kind}"
+              style="margin-top:12px">${t("save")}</button>
+      <button class="btn secondary" data-act="close" style="margin-top:8px">
+        ${t("cancel")}</button>`);
+  },
+
+  "team-item-save": el => {
+    const text = val("team-item");
+    if(!text.trim()) return;
+    const kind = el.dataset.kind;
+    const team = teamCurrent();
+    if(!team) return;
+    const body = kind === "task"
+      ? {title:text, deadline: todayISO()} : {name:text};
+    save(() => api(`/api/teams/${team.id}/${kind}s`, {method:"POST", body}), "team");
+  },
+
+  "team-remove": el => {
+    haptic();
+    const kind = el.dataset.kind;
+    save(() => api(`/api/teams/${kind}s/${el.dataset.id}`, {method:"DELETE"}),
+         "team");
+  },
+
+  "team-menu": el => {
+    const team = teamCurrent();
+    if(!team) return;
+    openSheet(`
+      <h3>${esc(team.name)}</h3>
+      ${team.invite_link ? `
+        <p class="muted" style="margin:0 0 6px">${t("team_invite_hint")}</p>
+        <input id="team-link" readonly value="${esc(team.invite_link)}">
+        <button class="btn" data-act="team-copy" style="margin-top:10px">
+          ${t("team_copy")}</button>` : ""}
+      <button class="btn secondary" data-act="team-rename" style="margin-top:10px">
+        ${t("team_rename")}</button>
+      <button class="btn secondary" data-act="team-leave" style="margin-top:8px">
+        ${t("team_leave")}</button>
+      <button class="btn secondary" data-act="close" style="margin-top:8px">
+        ${t("cancel")}</button>`);
+  },
+
+  "team-copy": () => {
+    const node = document.getElementById("team-link");
+    if(!node) return;
+    /* `navigator.clipboard` is not available in every Telegram webview, so
+       fall back to the selection API rather than failing silently. */
+    try{ navigator.clipboard.writeText(node.value); }
+    catch(_){ node.select(); try{ document.execCommand("copy"); }catch(__){} }
+    toast(t("team_copied"));
+  },
+
+  "team-rename": () => {
+    const team = teamCurrent();
+    if(!team) return;
+    openSheet(`
+      <h3>${t("team_rename")}</h3>
+      <input id="team-name" maxlength="60" value="${esc(team.name)}">
+      <button class="btn" data-act="team-rename-save" style="margin-top:12px">
+        ${t("save")}</button>
+      <button class="btn secondary" data-act="close" style="margin-top:8px">
+        ${t("cancel")}</button>`);
+  },
+
+  "team-rename-save": () => {
+    const team = teamCurrent();
+    const name = val("team-name");
+    if(!team || !name.trim()) return;
+    save(() => api(`/api/teams/${team.id}`, {method:"PATCH", body:{name}}), "team");
+  },
+
+  "team-leave": () => {
+    const team = teamCurrent();
+    if(!team || !confirm(t("team_leave_sure"))) return;
+    save(() => api(`/api/teams/${team.id}`, {method:"DELETE"}), "team");
+    setState({teamId:null});
+  },
 
   /* ---- habits ---- */
   "habit-toggle": el => {

@@ -715,6 +715,135 @@ class JobRun(Base):
 
 
 # ---------------------------------------------------------------------------
+# Teams
+# ---------------------------------------------------------------------------
+#
+# A team is a second container, standing beside a workspace rather than inside
+# one. That shape is forced by what a shared goal actually is: two people
+# working on *the same* thing and each doing their own share of it. A task
+# copied into both workspaces would be two tasks that drift apart; a task in
+# one shared workspace could only be ticked once, by whoever got there first,
+# and the other person's effort would be invisible.
+#
+# So the definition is shared and the doing is not. `TeamTask` and `TeamHabit`
+# hold what the item *is* — one row, one title, one deadline, edited by either
+# member. `TeamTaskDone` and `TeamHabitLog` hold who has done it, one row per
+# member, which is what lets the reports say "you did four of six, she did
+# five" instead of collapsing the two of you into one number.
+#
+# Nothing here touches `workspace_id`, and no team row is ever mixed into a
+# workspace query: a person's private lists stay exactly as private as they
+# were before they joined anything.
+
+class Team(Base):
+    """A shared space two or more people work in."""
+
+    __tablename__ = "teams"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(80), default="")
+    owner_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), index=True)
+    #: The invite token, carried in `t.me/<bot>?start=team_<code>`. Random
+    #: rather than the id, so a link cannot be guessed from a team number.
+    code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class TeamMember(Base):
+    """One person's membership of one team."""
+
+    __tablename__ = "team_members"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    team_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("teams.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(10), default="member")  # owner|member
+    joined_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("team_id", "user_id", name="uq_team_member"),
+    )
+
+
+class TeamTask(Base):
+    """A task the whole team is working on. One row, however many members."""
+
+    __tablename__ = "team_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    team_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("teams.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text, default="")
+    deadline: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    priority: Mapped[str] = mapped_column(String(6), default="medium")
+    created_by: Mapped[int] = mapped_column(BigInteger, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class TeamTaskDone(Base):
+    """One member's completion of one team task.
+
+    Separate from the task so that "done" is a per-person fact. A couple
+    revising the same chapter are not finished when one of them is.
+    """
+
+    __tablename__ = "team_task_done"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("team_tasks.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    done_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    #: The local day it was ticked, so the reports can count it against the
+    #: day the person actually lived rather than a UTC instant.
+    day: Mapped[date] = mapped_column(Date, index=True)
+
+    __table_args__ = (
+        UniqueConstraint("task_id", "user_id", name="uq_team_task_done"),
+    )
+
+
+class TeamHabit(Base):
+    """A habit the team keeps together, each member ticking their own."""
+
+    __tablename__ = "team_habits"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    team_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("teams.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    schedule: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[int] = mapped_column(BigInteger, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class TeamHabitLog(Base):
+    """One member, one team habit, one day."""
+
+    __tablename__ = "team_habit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    habit_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("team_habits.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    day: Mapped[date] = mapped_column(Date, index=True)
+    done: Mapped[bool] = mapped_column(Boolean, default=False)
+    logged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("habit_id", "user_id", "day", name="uq_team_habit_day"),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Schema creation
 # ---------------------------------------------------------------------------
 
