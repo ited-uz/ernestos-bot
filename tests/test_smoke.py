@@ -7967,3 +7967,116 @@ def test_the_scoreboard_moves_an_item_to_done_when_both_have_it(client):
     # The seeded rituals are still owed, so "open" is not empty — only the
     # task has moved across.
     assert "Matritsalar" not in [x["title"] for x in board["open"]]
+
+
+# ---------------------------------------------------------------------------
+# The numbers have to be about days that happened
+# ---------------------------------------------------------------------------
+
+def test_a_period_counts_only_days_the_work_existed(client):
+    """A team made today has not missed a month.
+
+    The month denominator used to include every day before the team was
+    created, so a pair who started yesterday read "1% · 2/154" and reasonably
+    concluded the number was broken.
+    """
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        today = svc.today_local()
+        task = svc.add_team_task(s, one, team_id, "Matritsalar", deadline=today)
+        svc.toggle_team_task(s, one, task["id"])
+        board = svc.team_scoreboard(s, one, team_id)
+
+    mine = {p: next(r for r in board["periods"][p] if r["is_you"])
+            for p in ("day", "week", "month")}
+    assert mine["day"]["total"] == mine["week"]["total"] == mine["month"]["total"], (
+        f"nothing existed before today: {mine}")
+    assert mine["day"]["percent"] == mine["month"]["percent"]
+
+
+def test_a_first_period_has_no_change_to_report(client):
+    """No previous week means no delta, not +100%."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        board = svc.team_scoreboard(s, one, team_id)
+    for rows in board["periods"].values():
+        for row in rows:
+            assert row["delta"] is None, (
+                "a period with nothing before it cannot report a change")
+
+
+def test_a_change_is_reported_once_there_is_a_yesterday(client):
+    """With a day behind it, today reports the direction and the size."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        today = svc.today_local()
+        yesterday = today - timedelta(days=1)
+        # Backdate the team and its rituals so yesterday counts.
+        team = svc.team_for(s, one, team_id)
+        team.created_at = db.utcnow() - timedelta(days=5)
+        for habit in s.scalars(select(db.TeamHabit).where(
+                db.TeamHabit.team_id == team_id)).all():
+            habit.created_at = db.utcnow() - timedelta(days=5)
+        s.commit()
+
+        # Nothing yesterday, everything today.
+        for habit in svc.list_team_habits(s, one, team_id):
+            svc.toggle_team_habit(s, one, habit["id"])
+        board = svc.team_scoreboard(s, one, team_id)
+
+    day = next(r for r in board["periods"]["day"] if r["is_you"])
+    assert day["percent"] == 100
+    assert day["previous"] == 0
+    assert day["delta"] == 100, f"a real rise must be reported: {day}"
+
+
+def test_a_shared_task_can_be_edited_like_a_private_one(client):
+    """Deadline, time, priority, repeat, project — all of it."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        project = svc.add_team_project(s, one, team_id, "Universitet")
+        task = svc.add_team_task(s, one, team_id, "Matritsalar")
+        updated = svc.edit_team_task(
+            s, one, task["id"], title="Matritsalar — 2-qism",
+            deadline=date(2032, 5, 20), due_time=dtime(17, 30),
+            remind_before=15, recurrence="weekly", priority="high",
+            project_id=project["id"])
+
+    assert updated["title"] == "Matritsalar — 2-qism"
+    assert updated["deadline"] == "2032-05-20"
+    assert updated["due_time"] == "17:30"
+    assert updated["remind_before"] == 15
+    assert updated["recurrence"] == "weekly"
+    assert updated["priority"] == "high"
+    assert updated["project"] == "Universitet"
+
+
+def test_the_shared_task_endpoint_answers_like_the_private_one(client):
+    one, two, team_id = _pair(client)
+    caller = Caller(client, {"id": one, "first_name": "Ernest"})
+    with SessionLocal() as s:
+        task = svc.add_team_task(s, one, team_id, "Matritsalar",
+                                 deadline=svc.today_local())
+
+    got = caller.get(f"/api/teams/tasks/{task['id']}").json()
+    for key in ("title", "deadline", "due_time", "remind_before",
+                "recurrence", "priority", "project_id", "done"):
+        assert key in got, f"{key} missing — the task sheet needs it"
+    assert got["source"] == "team" and got["team_name"]
+
+    patched = caller.patch(f"/api/teams/tasks/{task['id']}",
+                           {"title": "Yangi nom", "priority": "high"})
+    assert patched.status_code == 200
+    assert patched.json()["title"] == "Yangi nom"
+
+
+def test_a_stranger_cannot_read_or_edit_a_shared_task(client):
+    one, two, team_id = _pair(client)
+    outsider = _named(client, next(_next_id), "Begona")
+    stranger = Caller(client, {"id": outsider, "first_name": "Begona"})
+    with SessionLocal() as s:
+        task = svc.add_team_task(s, one, team_id, "Matritsalar")
+
+    assert stranger.get(f"/api/teams/tasks/{task['id']}").status_code == 404
+    assert stranger.patch(f"/api/teams/tasks/{task['id']}",
+                          {"title": "Buzildi"}).status_code == 404

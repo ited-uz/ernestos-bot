@@ -5660,6 +5660,20 @@ def archive_team_habit(s: Session, user_id: int, habit_id: int) -> bool:
 
 # --- What the team did today ------------------------------------------------
 
+def _existed_on(created_at: datetime | None, day: date,
+                tz: ZoneInfo | None = None) -> bool:
+    """Whether something had been created by the end of that local day.
+
+    The denominator of any backwards-looking number depends on this. An item
+    added today was not owed last Tuesday, and counting it as missed then is
+    the difference between a statistic and a discouragement.
+    """
+    if created_at is None:
+        return True
+    born = local_date_of(created_at, tz)
+    return born is None or born <= day
+
+
 def team_day_summary(s: Session, team_id: int, day: date | None = None, *,
                      tz: ZoneInfo | None = None) -> dict:
     """One day of a team, per member.
@@ -5678,12 +5692,16 @@ def team_day_summary(s: Session, team_id: int, day: date | None = None, *,
     members = team_members(s, team_id)
     ids = [m["user_id"] for m in members]
 
-    tasks = s.scalars(
+    # Only what existed on the day being counted. Without this the month
+    # denominator included every day *before* the team was made — a pair who
+    # started yesterday read "1% · 2/154" and reasonably concluded the number
+    # was broken. A day you were not there for is not a day you missed.
+    tasks = [t for t in s.scalars(
         select(TeamTask)
         .where(TeamTask.team_id == team_id, TeamTask.archived_at.is_(None),
                or_(TeamTask.deadline.is_(None), TeamTask.deadline <= today))
         .order_by(TeamTask.deadline.is_(None), TeamTask.deadline, TeamTask.id)
-    ).all()
+    ).all() if _existed_on(t.created_at, today, tz)]
     task_ids = [t.id for t in tasks]
     done_rows = s.execute(select(TeamTaskDone.task_id, TeamTaskDone.user_id)
                           .where(TeamTaskDone.done.is_(True),
@@ -5696,7 +5714,7 @@ def team_day_summary(s: Session, team_id: int, day: date | None = None, *,
         select(TeamHabit)
         .where(TeamHabit.team_id == team_id, TeamHabit.archived_at.is_(None))
         .order_by(TeamHabit.position, TeamHabit.id)).all()
-        if team_habit_is_due(h, today)]
+        if team_habit_is_due(h, today) and _existed_on(h.created_at, today, tz)]
     habit_ids = [h.id for h in habits]
     habit_rows = s.execute(
         select(TeamHabitLog.habit_id, TeamHabitLog.user_id)
@@ -5806,6 +5824,7 @@ def team_stats(s: Session, user_id: int, team_id: int, *, period: str = "week",
         TeamTask.team_id == team_id, TeamTask.archived_at.is_(None),
         TeamTask.deadline.is_not(None),
         TeamTask.deadline >= start, TeamTask.deadline <= today)).all()
+    habit_born = {}
     task_done = {}
     for task_id, member_id in s.execute(
             select(TeamTaskDone.task_id, TeamTaskDone.user_id)
@@ -5826,8 +5845,10 @@ def team_stats(s: Session, user_id: int, team_id: int, *, period: str = "week",
     series, totals = [], {uid: {"done": 0, "total": 0} for uid in ids}
     for offset in range(days):
         day = start + timedelta(days=offset)
-        owed = ([t for t in tasks if t.deadline == day]
-                + [h for h in habits if team_habit_is_due(h, day)])
+        owed = ([t for t in tasks
+                 if t.deadline == day and _existed_on(t.created_at, day, tz)]
+                + [h for h in habits if team_habit_is_due(h, day)
+                   and _existed_on(h.created_at, day, tz)])
         point = {"date": day.isoformat(), "label": day.strftime("%d.%m")}
         for uid in ids:
             got = 0
@@ -6243,25 +6264,47 @@ def team_scoreboard(s: Session, user_id: int, team_id: int, *,
     today = today_local(tz)
     members = team_members(s, team_id)
 
-    periods = {}
-    for label, days in (("day", 1), ("week", 7), ("month", 30)):
-        start = today - timedelta(days=days - 1)
+    def window(first: date, last: date) -> dict:
+        """Each member's done/total over an inclusive range of local days."""
         totals = {m["user_id"]: [0, 0] for m in members}
-        cursor = start
-        while cursor <= today:
-            summary = team_day_summary(s, team_id, cursor, tz=tz)
-            for row in summary["members"]:
+        cursor = first
+        while cursor <= last:
+            for row in team_day_summary(s, team_id, cursor, tz=tz)["members"]:
                 totals[row["user_id"]][0] += row["done"]
                 totals[row["user_id"]][1] += row["total"]
             cursor += timedelta(days=1)
-        periods[label] = [
-            {"user_id": m["user_id"], "name": m["name"],
-             "is_you": m["user_id"] == user_id,
-             "done": totals[m["user_id"]][0], "total": totals[m["user_id"]][1],
-             "percent": (round(totals[m["user_id"]][0]
-                               / totals[m["user_id"]][1] * 100)
-                         if totals[m["user_id"]][1] else None)}
-            for m in members]
+        return totals
+
+    periods = {}
+    for label, days in (("day", 1), ("week", 7), ("month", 30)):
+        start = today - timedelta(days=days - 1)
+        totals = window(start, today)
+        # The same length again, immediately before, so the number can be read
+        # as a direction rather than only a level. A percentage on its own
+        # says how today went; the change says whether things are going the
+        # way you want, which is the question two people actually have.
+        before = window(start - timedelta(days=days), start - timedelta(days=1))
+
+        rows = []
+        for m in members:
+            uid = m["user_id"]
+            done, total = totals[uid]
+            percent = round(done / total * 100) if total else None
+            was_done, was_total = before[uid]
+            previous = round(was_done / was_total * 100) if was_total else None
+            rows.append({
+                "user_id": uid, "name": m["name"],
+                "is_you": uid == user_id,
+                "done": done, "total": total, "percent": percent,
+                "previous": previous,
+                # None when there is nothing to compare with — a team's first
+                # week has no "last week", and inventing +100% would be a lie
+                # that flatters.
+                "delta": (percent - previous
+                          if percent is not None and previous is not None
+                          else None),
+            })
+        periods[label] = rows
 
     # Today, item by item: the bit that turns a percentage into something you
     # can act on before the day is over.
@@ -6280,3 +6323,55 @@ def team_scoreboard(s: Session, user_id: int, team_id: int, *,
             "members": members, "periods": periods,
             "open": open_items, "done": done_items,
             "open_count": len(open_items), "done_count": len(done_items)}
+
+
+def edit_team_task(s: Session, user_id: int, task_id: int, **fields) -> dict:
+    """Change a shared task. Either member may, and everything is editable.
+
+    The same field set a private task takes. A shared task that could be
+    given a deadline but never moved, or a priority but never a time, would
+    be the second-class kind — and the ones that matter most are exactly the
+    ones people put in a team.
+    """
+    task = s.get(TeamTask, task_id)
+    if task is None or task.archived_at is not None:
+        raise ValueError("unknown_task")
+    _require_team(s, user_id, task.team_id)
+
+    if "title" in fields and fields["title"]:
+        task.title = str(fields["title"]).strip()[:300]
+    if "description" in fields:
+        task.description = (fields["description"] or "").strip()[:2000]
+    if "deadline" in fields:
+        task.deadline = fields["deadline"]
+    if "due_time" in fields:
+        task.due_time = fields["due_time"]
+    if "remind_before" in fields:
+        task.remind_before = clean_remind_before(fields["remind_before"])
+    if "recurrence" in fields:
+        rule = clean_recurrence(fields["recurrence"])
+        task.recurrence = rule or None
+        if rule == "monthly" and task.deadline and not task.anchor_day:
+            task.anchor_day = task.deadline.day
+    if fields.get("priority") in PRIORITIES:
+        task.priority = fields["priority"]
+    if "project_id" in fields:
+        task.project_id = _team_project_or_none(s, task.team_id,
+                                                fields["project_id"])
+    s.commit()
+    return team_task_row(s, task, user_id)
+
+
+def team_task_for(s: Session, user_id: int, task_id: int) -> dict | None:
+    """One shared task, if this person is in the team that owns it."""
+    task = s.get(TeamTask, task_id)
+    if task is None or task.archived_at is not None:
+        return None
+    team = team_for(s, user_id, task.team_id)
+    if team is None:
+        return None
+    row = team_task_row(s, task, user_id)
+    row.update({"source": "team", "team_id": team.id, "team_name": team.name,
+                "done_by_names": [m["name"] for m in team_members(s, team.id)
+                                  if m["user_id"] in row["done_by"]]})
+    return row

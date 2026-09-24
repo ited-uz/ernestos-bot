@@ -4080,6 +4080,37 @@ async def api_team_task_add(team_id: int, body: TeamTaskIn,
     return created
 
 
+@app.get("/api/teams/tasks/{task_id}")
+def api_team_task_get(task_id: int,
+                      init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """One shared task, shaped like a private one so the same sheet opens it."""
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        row = svc.team_task_for(s, user.telegram_id, task_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="not_found")
+    return row
+
+
+@app.patch("/api/teams/tasks/{task_id}")
+async def api_team_task_edit(task_id: int, body: TeamTaskIn,
+                             init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        try:
+            updated = svc.edit_team_task(
+                s, user.telegram_id, task_id, title=body.title,
+                description=body.description, deadline=body.deadline,
+                due_time=_time(body.due_time), remind_before=body.remind_before,
+                recurrence=body.recurrence, priority=body.priority,
+                project_id=body.project_id)
+        except PermissionError:
+            raise HTTPException(status_code=404, detail="not_found")
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    return updated
+
+
 @app.post("/api/teams/tasks/{task_id}/toggle")
 def api_team_task_toggle(task_id: int,
                          init=Header(default=None, alias="X-Telegram-Init-Data")):
