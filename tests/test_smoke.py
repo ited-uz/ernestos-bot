@@ -7813,3 +7813,157 @@ def test_the_other_member_is_told_who_to_tell(client):
     with SessionLocal() as s:
         assert svc.teammates_of(s, team_id, one) == [two]
         assert svc.teammates_of(s, team_id, two) == [one]
+
+
+# ---------------------------------------------------------------------------
+# A shared item opens like a private one, and can move between the two
+# ---------------------------------------------------------------------------
+
+def test_a_shared_habit_has_the_same_history_shape(client):
+    """The sheet that draws a private habit has to draw a shared one."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, one)
+        personal = svc.add_habit(s, ws, "Shaxsiy odat")
+        s.commit()
+        mine = svc.habit_history(s, ws, personal.id)
+
+        shared_id = svc.add_team_habit(s, one, team_id, "Umumiy odat")["id"]
+        svc.toggle_team_habit(s, one, shared_id)
+        ours = svc.team_habit_history(s, one, shared_id)
+
+    for key in ("streak", "grid", "last7_done", "last7_due",
+                "last30_done", "last30_due", "percent", "schedule",
+                "category", "days", "paused", "target_time", "remind_at"):
+        assert key in ours, f"{key} missing from the shared history"
+        assert key in mine
+    assert ours["team_name"] == "Ernest va Gulyora"
+
+
+def test_a_shared_history_shows_the_other_member(client):
+    """The reason to keep a habit with somebody is to see how they are doing."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        habit = svc.add_team_habit(s, one, team_id, "Umumiy odat")
+        svc.toggle_team_habit(s, two, habit["id"])
+        seen = svc.team_habit_history(s, one, habit["id"])
+
+    by_id = {m["user_id"]: m for m in seen["members"]}
+    assert by_id[one]["is_you"] is True and by_id[one]["done_today"] is False
+    assert by_id[two]["is_you"] is False and by_id[two]["done_today"] is True
+    # `percent` is the thirty-day rate, so one day of a fresh habit is a few
+    # per cent — what matters is that hers moved and his did not.
+    assert by_id[two]["percent"] > by_id[one]["percent"] == 0
+    assert by_id[two]["last30_done"] == 1
+
+
+def test_a_habit_moves_into_a_team_and_keeps_its_days(client):
+    """Losing the streak is why nobody would ever move one."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, one)
+        habit = svc.add_habit(s, ws, "Yugurish")
+        s.commit()
+        today = svc.today_local()
+        for offset in range(3):
+            s.add(db.HabitLog(workspace_id=ws, habit_id=habit.id,
+                              day=today - timedelta(days=offset), done=True))
+        s.commit()
+
+        moved = svc.move_habit(s, one, habit_id=habit.id, to_team=team_id)
+        history = svc.team_habit_history(s, one, moved["id"])
+
+    assert history["name"] == "Yugurish"
+    assert history["streak"] >= 3, f"the run came with it: {history['streak']}"
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, one)
+        assert all(h["name"] != "Yugurish"
+                   for h in svc.list_habits(s, ws)), "and left the private list"
+
+
+def test_a_shared_habit_moves_back_to_private(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        shared = svc.add_team_habit(s, one, team_id, "Yugurish")
+        svc.toggle_team_habit(s, one, shared["id"])
+        moved = svc.move_habit(s, one, team_habit_id=shared["id"])
+        ws = svc.workspace_id_for(s, one)
+        names = [h["name"] for h in svc.list_habits(s, ws)]
+        still_shared = [h["name"] for h in svc.list_team_habits(s, one, team_id)]
+    assert moved["source"] == "personal"
+    assert "Yugurish" in names and "Yugurish" not in still_shared
+
+
+def test_a_seeded_ritual_cannot_be_moved(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        ritual = svc.list_team_habits(s, one, team_id)[0]
+        with pytest.raises(ValueError):
+            svc.move_habit(s, one, team_habit_id=ritual["id"])
+
+
+# ---------------------------------------------------------------------------
+# Shared projects, and the report the Team screen is built from
+# ---------------------------------------------------------------------------
+
+def test_a_shared_task_files_onto_a_shared_project(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        project = svc.add_team_project(s, one, team_id, "Universitet")
+        task = svc.add_team_task(s, one, team_id, "Matritsalar",
+                                 deadline=svc.today_local(),
+                                 project_id=project["id"])
+        assert task["project"] == "Universitet"
+
+        listed = svc.list_team_projects(s, one, team_id)
+        assert listed[0]["tasks_total"] == 1 and listed[0]["tasks_done"] == 0
+
+        svc.toggle_team_task(s, one, task["id"])
+        assert svc.list_team_projects(s, one, team_id)[0]["tasks_done"] == 1
+
+
+def test_a_shared_project_stays_out_of_the_private_list(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        svc.add_team_project(s, one, team_id, "Universitet")
+        ws = svc.workspace_id_for(s, one)
+        assert all(p["name"] != "Universitet" for p in svc.list_projects(s, ws))
+
+
+def test_a_task_cannot_be_filed_on_another_teams_shelf(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        other = svc.create_team(s, one, "Boshqa jamoa")
+        theirs = svc.add_team_project(s, one, other.id, "Ularniki")
+        with pytest.raises(ValueError):
+            svc.add_team_task(s, one, team_id, "Yomon",
+                              project_id=theirs["id"])
+
+
+def test_the_scoreboard_says_who_each_item_is_waiting_on(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        task = svc.add_team_task(s, one, team_id, "Matritsalar",
+                                 deadline=svc.today_local())
+        svc.toggle_team_task(s, one, task["id"])
+        board = svc.team_scoreboard(s, one, team_id)
+
+    waiting = {x["title"]: x["missing"] for x in board["open"]}
+    assert waiting["Matritsalar"] == [two], "one of them still owes it"
+    assert set(board["periods"]) == {"day", "week", "month"}
+    for rows in board["periods"].values():
+        assert {r["user_id"] for r in rows} == {one, two}
+
+
+def test_the_scoreboard_moves_an_item_to_done_when_both_have_it(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        task = svc.add_team_task(s, one, team_id, "Matritsalar",
+                                 deadline=svc.today_local())
+        svc.toggle_team_task(s, one, task["id"])
+        svc.toggle_team_task(s, two, task["id"])
+        board = svc.team_scoreboard(s, one, team_id)
+    assert "Matritsalar" in [x["title"] for x in board["done"]]
+    # The seeded rituals are still owed, so "open" is not empty — only the
+    # task has moved across.
+    assert "Matritsalar" not in [x["title"] for x in board["open"]]

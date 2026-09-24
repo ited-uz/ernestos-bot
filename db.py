@@ -259,6 +259,15 @@ class Project(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     workspace_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    #: Set when the project belongs to a team rather than to one person.
+    #: `workspace_id` still records who created it — the column is not
+    #: nullable and making it so on a live SQLite file is not something the
+    #: additive schema pass can do — but every query that lists private
+    #: projects filters `team_id IS NULL`, so a shared project never appears
+    #: in somebody's own list.
+    team_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("teams.id", ondelete="CASCADE"),
+        nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default="")
     deadline: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -779,6 +788,9 @@ class TeamTask(Base):
         Integer, ForeignKey("teams.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String(300))
     description: Mapped[str] = mapped_column(Text, default="")
+    project_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("projects.id", ondelete="SET NULL"),
+        nullable=True, index=True)
     deadline: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     due_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     remind_before: Mapped[int | None] = mapped_column(Integer, nullable=True)

@@ -1023,6 +1023,10 @@ const DICT = {
   team_you:"siz", team_today:"Bugun",
   team_week:"Shu hafta", team_together:"Birgalikda",
   src_personal:"Shaxsiy",
+  team_results:"Natijalar", team_p_day:"Bugun", team_p_week:"Hafta", team_p_month:"Oy",
+  team_waiting_on:"Kimda qoldi", team_all_clear:"Bugungi hamma ish bajarildi 🎉",
+  team_no_projects:"Umumiy loyiha yo'q", team_add_project:"Umumiy loyiha",
+  team_project_ph:"Loyiha nomi",
   dest_where:"Qayerga qo'shilsin", dest_personal:"Shaxsiy",
   team_badge:"jamoa",
   privacy_line:"Ma'lumotlaringiz boshqa foydalanuvchilardan ajratilgan va xavfsiz saqlanadi. 🔒",
@@ -1285,6 +1289,10 @@ const DICT = {
   team_you:"you", team_today:"Today",
   team_week:"This week", team_together:"Together",
   src_personal:"Personal",
+  team_results:"Results", team_p_day:"Today", team_p_week:"Week", team_p_month:"Month",
+  team_waiting_on:"Waiting on", team_all_clear:"Everything for today is done 🎉",
+  team_no_projects:"No shared projects", team_add_project:"Shared project",
+  team_project_ph:"Project name",
   dest_where:"Where does this go", dest_personal:"Personal",
   team_badge:"team",
   privacy_line:"Your data is kept separate from other users' and stored securely. 🔒",
@@ -1533,6 +1541,10 @@ const DICT = {
   team_you:"вы", team_today:"Сегодня",
   team_week:"На этой неделе", team_together:"Вместе",
   src_personal:"Личное",
+  team_results:"Результаты", team_p_day:"Сегодня", team_p_week:"Неделя", team_p_month:"Месяц",
+  team_waiting_on:"За кем", team_all_clear:"Всё на сегодня сделано 🎉",
+  team_no_projects:"Общих проектов нет", team_add_project:"Общий проект",
+  team_project_ph:"Название проекта",
   dest_where:"Куда добавить", dest_personal:"Личное",
   team_badge:"команда",
   privacy_line:"Ваши данные отделены от данных других пользователей и хранятся безопасно. 🔒",
@@ -2451,6 +2463,91 @@ function teamStatsBlock(stats){
     </div>`;
 }
 
+/* Day, week and month side by side.
+
+   The Team screen is a report rather than a worklist: the personal screens
+   already say what to do next, and two people open this one to find out
+   where they stand. Three periods at once, because "today was bad" and "the
+   month is fine" are both true and only useful together. */
+function periodBlock(board){
+  if(!board?.periods) return "";
+  const labels = {day: t("team_p_day"), week: t("team_p_week"),
+                  month: t("team_p_month")};
+  const cols = (board.members || []).map(m =>
+    m.user_id === state.me?.telegram_id ? t("team_you") : esc(m.name));
+
+  const rows = Object.entries(labels).map(([key, label]) => {
+    const line = (board.periods[key] || []).map(p => `
+      <div style="flex:1;text-align:right">
+        <b>${p.percent === null ? "—" : p.percent + "%"}</b>
+        <div class="muted sm">${p.done}/${p.total}</div>
+      </div>`).join("");
+    return `<div class="row"><div class="grow">${label}</div>${line}</div>`;
+  }).join("");
+
+  return `<div class="card">
+      <div class="card-t">${t("team_results")}</div>
+      <div class="row muted sm">
+        <div class="grow"></div>
+        ${cols.map(c => `<div style="flex:1;text-align:right">${c}</div>`).join("")}
+      </div>
+      ${rows}
+    </div>`;
+}
+
+/* What is still open today, and who it is waiting on.
+
+   A percentage tells you how the day went; this tells you what to do about
+   it while there is still time. Names on each row, because "one of us has
+   not done it" is not actionable and "you have not done it" is. */
+function openWorkBlock(board){
+  if(!board) return "";
+  const nameOf = id => {
+    const m = (board.members || []).find(x => x.user_id === id);
+    return id === state.me?.telegram_id ? t("team_you") : esc(m?.name || "?");
+  };
+
+  const open = (board.open || []).map(x => `
+    <div class="row">
+      <div class="grow">${esc(x.title)}
+        <div class="muted sm">${t("team_waiting_on")}: ${
+          x.missing.map(nameOf).join(", ")}</div></div>
+      <div class="muted sm">${x.kind === "task" ? "⚡" : "✅"}</div>
+    </div>`).join("");
+
+  const done = (board.done || []).map(x => `
+    <div class="row">
+      <div class="grow done">${esc(x.title)}</div>
+      <div class="muted sm">✔️</div>
+    </div>`).join("");
+
+  return `<div class="card">
+      <div class="card-t">${t("team_today")} · ${board.done_count}/${
+        board.done_count + board.open_count}</div>
+      ${open || `<div class="muted">${t("team_all_clear")}</div>`}
+      ${done ? `<div style="margin-top:10px;opacity:.6">${done}</div>` : ""}
+    </div>`;
+}
+
+/* The team's shelves. Same object a personal project is, so the row reads
+   the same way — name, progress, a bar. */
+function teamProjectsBlock(team){
+  const projects = team?.projects || [];
+  return `<div class="card">
+      <div class="card-t">${t("projects")}</div>
+      ${projects.map(p => `
+        <div class="row" data-act="team-project-open" data-id="${p.id}">
+          <div class="grow"><b>${esc(p.name)}</b>
+            <div class="muted sm">${p.tasks_done}/${p.tasks_total}</div>
+            <div class="bar" style="margin-top:4px"><i style="width:${p.percent}%"></i></div>
+          </div>
+          <div style="width:44px;text-align:right"><b>${p.percent}%</b></div>
+        </div>`).join("") || `<div class="muted">${t("team_no_projects")}</div>`}
+      <button class="btn secondary" data-act="team-project-new"
+              style="margin-top:10px">+ ${t("team_add_project")}</button>
+    </div>`;
+}
+
 SCREENS.team = () => {
   const teams = state.team?.teams || [];
   if(!teams.length) return `
@@ -2507,12 +2604,10 @@ SCREENS.team = () => {
     </div>
     ${tabs}
 
-    <div class="card">
-      <div class="card-t">${t("team_today")}</div>
-      ${scoreboard || `<div class="muted">${t("team_nothing")}</div>`}
-    </div>
-
+    ${periodBlock(active.board)}
+    ${openWorkBlock(active.board)}
     ${teamStatsBlock(active.stats)}
+    ${teamProjectsBlock(active)}
 
     <div class="card">
       <div class="card-t">${t("team_tasks")}</div>
@@ -2695,16 +2790,18 @@ function habitRow(x, cat, wake){
                data-id="${x.id}">${icon("check", 14)}</div>`;
 
   const shared = x.source === "team";
+  // A shared habit opens its own sheet, exactly as a private one does.
+  // Sending the reader to the Team tab instead answered a question they had
+  // not asked and lost the one they had: how is this habit going.
+  const open = shared ? `data-act="team-habit-open" data-id="${x.id}"`
+                      : `data-act="habit-open" data-id="${x.id}"`;
   return `<div class="item ${TIERS[cat]} ${x.due ? "" : "off"}">
       ${box}
-      <div class="grow" ${shared ? `data-act="nav" data-screen="team"`
-                                 : `data-act="habit-open" data-id="${x.id}"`}>
+      <div class="grow" ${open}>
         <div class="ellipsis">${esc(x.name)}</div>
         ${meta.length ? `<div class="meta">${meta.join(" · ")}</div>` : ""}
       </div>
-      ${wakeBtn || `<button class="iconbtn sm plain"
-          ${shared ? `data-act="nav" data-screen="team"`
-                   : `data-act="habit-open" data-id="${x.id}"`}
+      ${wakeBtn || `<button class="iconbtn sm plain" ${open}
           aria-label="${t("edit")}">${icon("chevron", 16)}</button>`}
     </div>`;
 }
@@ -3256,6 +3353,26 @@ function taskRow(task, opts){
    deadline and its state. */
 function projectsTab(){
   const list = state.projects || [];
+  /* Shared shelves belong on this screen too — it is where somebody comes to
+     ask "where has this got to", and half the answer living on another tab
+     is how a project gets forgotten. Under their own heading with the team's
+     name, because filing is exactly the place the distinction matters. */
+  const shared = (state.teams || []).map(team => ({
+    team,
+    projects: ((state.team?.teams || []).find(x => x.id === team.id)
+               ?.projects) || [],
+  })).filter(x => x.projects.length);
+
+  const sharedBlock = shared.map(({team, projects}) =>
+    sectionHead("tone-3", "users", esc(team.name))
+    + projects.map(p => `
+        <div class="prow" data-act="team-project-open" data-id="${p.id}">
+          <div class="grow"><b>${esc(p.name)}</b>
+            <div class="muted sm">${p.tasks_done}/${p.tasks_total}</div>
+            <div class="bar" style="margin-top:4px"><i style="width:${p.percent}%"></i></div>
+          </div>
+          <div style="width:44px;text-align:right"><b>${p.percent}%</b></div>
+        </div>`).join("")).join("");
 
   let h = sectionHead("tone-2", "folder", t("projects"),
     `<span class="act" data-act="project-add">${icon("plus", 14)}
@@ -3265,7 +3382,8 @@ function projectsTab(){
     return h + `<div class="empty">${t("no_projects")}
       <button class="btn secondary sm" data-act="project-add"
               style="margin:12px auto 0;display:flex">
-        ${icon("plus", 16)} ${t("add_first_project")}</button></div>`;
+        ${icon("plus", 16)} ${t("add_first_project")}</button></div>`
+      + sharedBlock;
 
   const live = list.filter(p => p.status !== "done" && !p.archived);
   const open = list.reduce((n, p) => n + p.tasks_open, 0);
@@ -3328,7 +3446,7 @@ function projectsTab(){
         ${done || p.archived
           ? `<div class="tag" style="margin-top:var(--s2)">${state_tag}</div>` : ""}
       </div>`;
-  }).join("");
+  }).join("") + sharedBlock;
 }
 
 /* ---------- one project and the work inside it ---------- */
@@ -3824,6 +3942,9 @@ function habitSheet(h){
     <div class="hgrid" style="margin-top:10px">${grid.map(g =>
       `<i class="${g.done ? "done" : g.due ? "due" : ""}" title="${g.day}"></i>`).join("")}</div>
 
+    ${partnerRecords(h)}
+    ${ownerPicker(h)}
+
     ${h.protected ? "" : `
       <div class="btns">
         <button class="btn secondary" data-act="habit-pause" data-id="${h.id}"
@@ -3833,10 +3954,54 @@ function habitSheet(h){
         ${h.name !== undefined ? `<button class="btn secondary"
           data-act="habit-name-save" data-id="${h.id}">${t("save")}</button>` : ""}
       </div>
-      <button class="btn danger" data-act="habit-delete-confirm" data-id="${h.id}"
+      <button class="btn danger"
+              data-act="${h.source === "team" ? "team-habit-delete" : "habit-delete-confirm"}"
+              data-id="${h.id}"
               style="margin-top:8px">${icon("trash", 15)} ${t("delete")}</button>`}
     <button class="btn secondary" data-act="close" style="margin-top:8px">
       ${t("close")}</button>`;
+}
+
+/* How everybody else in the team is getting on with this habit.
+
+   The reason to keep a habit with somebody is to see how they are doing with
+   it; a shared habit that showed only your own grid would be a private habit
+   wearing a label. Shown as the same three numbers the reader sees about
+   themselves, so the two are comparable at a glance rather than by arithmetic. */
+function partnerRecords(h){
+  const others = (h.members || []).filter(m => !m.is_you);
+  if(!others.length) return "";
+  return `<label>👥 ${esc(h.team_name || "")}</label>
+    ${others.map(m => `
+      <div class="row">
+        <div class="grow"><b>${esc(m.name)}</b>
+          <div class="muted sm">${m.last30_done}/${m.last30_due} · ${m.percent}%
+            ${m.streak ? ` · 🔥 ${m.streak}` : ""}</div>
+        </div>
+        <div class="${m.done_today ? "check on" : "check"}"
+             style="pointer-events:none">${m.done_today ? icon("check", 14) : ""}</div>
+      </div>`).join("")}`;
+}
+
+/* Move a habit between your own list and a team's.
+
+   Shown on every editable habit, because "where does this live" is a setting
+   like any other and burying it would mean recreating the habit by hand to
+   change it — which loses the streak, which is usually the whole reason it is
+   worth sharing. The logs travel with it. */
+function ownerPicker(h){
+  const teams = state.teams || [];
+  if(h.protected || !teams.length) return "";
+  const current = h.source === "team" ? "team:" + h.team_id : "personal";
+  const chip = (value, label) => `<div class="chip sm ${current === value ? "on" : ""}"
+      data-act="habit-move" data-id="${h.id}"
+      data-from="${h.source === "team" ? "team" : "personal"}"
+      data-value="${value}">${label}</div>`;
+  return `<label>${t("dest_where")}</label>
+    <div class="chips">
+      ${chip("personal", t("src_personal"))}
+      ${teams.map(x => chip("team:" + x.id, esc(x.name))).join("")}
+    </div>`;
 }
 
 /* ---------- mission sheet ----------
@@ -4782,6 +4947,12 @@ async function loadScreen(screen){
       ]);
       setState({tasks, projects: projects.projects, focus: focus.week, calendar,
                 teams: tasks.teams || state.teams});
+      /* The Projects tab lists shared shelves beside private ones, so the
+         team payload has to be here too. Fetched once and reused, and a
+         failure only costs the shared block rather than the screen. */
+      if((tasks.teams || []).length && !state.team){
+        try{ state.team = await api("/api/teams"); }catch(_){}
+      }
       if(state.taskTab === "done"){
         const q = state.doneQuery ? "?q=" + encodeURIComponent(state.doneQuery) : "";
         setState({tasksDone: (await api("/api/tasks/done" + q)).groups});
@@ -5033,6 +5204,74 @@ const A = {
   /* Every action here is scoped to the acting user by the server; the client
      never sends "who". A tap on a row moves that person's own tick and
      nobody else's, which is the whole point of the screen. */
+  "team-project-new": () => {
+    const team = teamCurrent();
+    if(!team) return;
+    openSheet(`
+      <h3>${t("team_add_project")}</h3>
+      <input id="team-project" maxlength="200"
+             placeholder="${t("team_project_ph")}">
+      <button class="btn" data-act="team-project-save" style="margin-top:12px">
+        ${t("save")}</button>
+      <button class="btn secondary" data-act="close" style="margin-top:8px">
+        ${t("cancel")}</button>`);
+  },
+
+  "team-project-save": () => {
+    const team = teamCurrent();
+    const name = val("team-project");
+    if(!team || !name.trim()) return;
+    save(() => api(`/api/teams/${team.id}/projects`,
+                   {method:"POST", body:{name}}), "team");
+  },
+
+  "team-project-open": async el => {
+    haptic();
+    try{
+      const d = await api(`/api/teams/projects/${el.dataset.id}/tasks`);
+      openSheet(`
+        <h3>📁 ${esc(d.project.name)}</h3>
+        ${d.tasks.map(x => `
+          <div class="row">
+            <div class="check ${x.done ? "on" : ""}" data-act="team-toggle"
+                 data-kind="task" data-id="${x.id}"></div>
+            <div class="grow ${x.done ? "done" : ""}">${esc(x.title)}</div>
+          </div>`).join("") || `<div class="muted">${t("team_nothing")}</div>`}
+        <button class="btn secondary" data-act="close" style="margin-top:12px">
+          ${t("close")}</button>`);
+    }catch(e){ handleError(e); }
+  },
+
+  "team-habit-open": async el => {
+    haptic();
+    try{
+      openSheet(habitSheet(
+        await api(`/api/teams/habits/${el.dataset.id}/history`)));
+    }catch(e){ handleError(e); }
+  },
+
+  "team-habit-delete": el => {
+    haptic();
+    save(() => api(`/api/teams/habits/${el.dataset.id}`, {method:"DELETE"}),
+         state.screen, false, t("deleted"));
+  },
+
+  /* Moving a habit between your own list and a team's. The two directions
+     are different endpoints because they are different acts: one shares
+     something, the other takes it away from somebody. */
+  "habit-move": el => {
+    const to = el.dataset.value;
+    const from = el.dataset.from;
+    const id = el.dataset.id;
+    if((from === "team" && to.startsWith("team:")) ||
+       (from === "personal" && to === "personal")) return;  // already there
+    haptic();
+    const path = from === "team"
+      ? `/api/teams/habits/${id}/move` : `/api/habits/${id}/move`;
+    save(() => api(path, {method:"POST", body:{to}}), state.screen,
+         false, t("saved"));
+  },
+
   "team-pick": el => setState({teamId: Number(el.dataset.id)}),
 
   "team-new": () => openSheet(`
@@ -5093,7 +5332,9 @@ const A = {
     const team = teamCurrent();
     if(!team) return;
     const body = kind === "task"
-      ? {title:text, deadline: todayISO()} : {name:text};
+      ? {title:text, deadline: todayISO(),
+         project_id: state.teamProjectId || null}
+      : {name:text};
     save(() => api(`/api/teams/${team.id}/${kind}s`, {method:"POST", body}), "team");
   },
 

@@ -1187,7 +1187,11 @@ def list_projects(s: Session, ws: int, *, status: str = "",
     ones put away. A finished project keeps its tasks and its history — the only
     way to lose either is to delete it, which the UI asks about first.
     """
-    stmt = select(Project).where(Project.workspace_id == ws)
+    # `team_id IS NULL` is what keeps a shared project out of a private list:
+    # the row still carries the creator's workspace, because that column is
+    # not nullable, but it belongs to the team.
+    stmt = select(Project).where(Project.workspace_id == ws,
+                                 Project.team_id.is_(None))
     if not include_archived:
         stmt = stmt.where(Project.archived_at.is_(None))
     if status in PROJECT_STATUSES:
@@ -5381,7 +5385,8 @@ def add_team_task(s: Session, user_id: int, team_id: int, title: str, *,
                   deadline: date | None = None, priority: str = "medium",
                   description: str = "", due_time: dtime | None = None,
                   remind_before: int | None = None,
-                  recurrence: str | None = None) -> dict:
+                  recurrence: str | None = None,
+                  project_id: int | None = None) -> dict:
     """Put a task in front of the whole team.
 
     Takes everything a personal task takes. A shared task that could not
@@ -5395,7 +5400,8 @@ def add_team_task(s: Session, user_id: int, team_id: int, title: str, *,
     if priority not in PRIORITIES:
         priority = "medium"
     rule = clean_recurrence(recurrence)
-    task = TeamTask(team_id=team_id, title=title,
+    project = _team_project_or_none(s, team_id, project_id)
+    task = TeamTask(team_id=team_id, title=title, project_id=project,
                     description=(description or "").strip()[:2000],
                     deadline=deadline, due_time=due_time,
                     remind_before=clean_remind_before(remind_before),
@@ -5422,6 +5428,10 @@ def team_task_row(s: Session, task: TeamTask, viewer_id: int) -> dict:
         "remind_before": task.remind_before,
         "recurrence": task.recurrence,
         "priority": task.priority, "created_by": task.created_by,
+        "project_id": task.project_id,
+        "project": (s.scalar(select(Project.name)
+                             .where(Project.id == task.project_id))
+                    if task.project_id else None),
         "done": viewer_id in done_by,
         "done_by": sorted(done_by),
         "done_count": len(done_by),
@@ -5430,17 +5440,23 @@ def team_task_row(s: Session, task: TeamTask, viewer_id: int) -> dict:
 
 def list_team_tasks(s: Session, user_id: int, team_id: int, *,
                     day: date | None = None, horizon_days: int = 7,
+                    project_id: int | None = None,
                     tz: ZoneInfo | None = None) -> list[dict]:
     """The team's open tasks, each carrying this viewer's own done state."""
     _require_team(s, user_id, team_id)
     today = day or today_local(tz)
     limit = today + timedelta(days=horizon_days)
-    tasks = s.scalars(
-        select(TeamTask)
-        .where(TeamTask.team_id == team_id, TeamTask.archived_at.is_(None),
-               or_(TeamTask.deadline.is_(None), TeamTask.deadline <= limit))
-        .order_by(TeamTask.deadline.is_(None), TeamTask.deadline, TeamTask.id)
-    ).all()
+    stmt = select(TeamTask).where(TeamTask.team_id == team_id,
+                                  TeamTask.archived_at.is_(None))
+    if project_id is not None:
+        # Filing is the question here, not the calendar: a project's tasks are
+        # all of them, not only the ones due this week.
+        stmt = stmt.where(TeamTask.project_id == project_id)
+    else:
+        stmt = stmt.where(or_(TeamTask.deadline.is_(None),
+                              TeamTask.deadline <= limit))
+    tasks = s.scalars(stmt.order_by(
+        TeamTask.deadline.is_(None), TeamTask.deadline, TeamTask.id)).all()
     return [team_task_row(s, t, user_id) for t in tasks]
 
 
@@ -5983,3 +5999,284 @@ def teammates_of(s: Session, team_id: int, except_user: int) -> list[int]:
     """Everybody in the team but one — who to tell when something changes."""
     return [m["user_id"] for m in team_members(s, team_id)
             if m["user_id"] != except_user]
+
+
+def team_habit_history(s: Session, user_id: int, habit_id: int, *,
+                       days: int = 30, tz: ZoneInfo | None = None) -> dict:
+    """A shared habit's record — the reader's own, and everybody else's.
+
+    Deliberately the same shape a personal habit's history has, key for key,
+    so the sheet that draws one can draw the other without a second layout.
+    The one addition is `members`: the whole reason to keep a habit with
+    somebody is to see how they are getting on with it, and a shared habit
+    that only showed your own grid would be a private habit with a label.
+    """
+    habit = s.get(TeamHabit, habit_id)
+    if habit is None or habit.archived_at is not None:
+        raise ValueError("unknown_habit")
+    team = _require_team(s, user_id, habit.team_id)
+
+    today = today_local(tz)
+    start = today - timedelta(days=days - 1)
+    horizon_start = today - timedelta(days=STREAK_HORIZON)
+
+    rows = s.execute(select(TeamHabitLog.user_id, TeamHabitLog.day).where(
+        TeamHabitLog.habit_id == habit_id, TeamHabitLog.done.is_(True),
+        TeamHabitLog.day >= horizon_start)).all()
+    by_member: dict[int, set] = {}
+    for member_id, day in rows:
+        by_member.setdefault(member_id, set()).add(day)
+
+    def record(member_id: int) -> dict:
+        done_days = by_member.get(member_id, set())
+        grid, due_count, done_count = [], 0, 0
+        for offset in range(days):
+            day = start + timedelta(days=offset)
+            due = team_habit_is_due(habit, day)
+            done = day in done_days
+            if due:
+                due_count += 1
+                done_count += int(done)
+            grid.append({"day": day.isoformat(), "due": due, "done": done})
+
+        last7 = [g for g in grid[-7:] if g["due"]]
+
+        streak, cursor, guard = 0, today, 0
+        if team_habit_is_due(habit, today) and today not in done_days:
+            cursor = today - timedelta(days=1)
+        while guard < STREAK_HORIZON:
+            guard += 1
+            if team_habit_is_due(habit, cursor):
+                if cursor not in done_days:
+                    break
+                streak += 1
+            cursor -= timedelta(days=1)
+
+        return {
+            "streak": streak, "grid": grid,
+            "last7_done": sum(1 for g in last7 if g["done"]),
+            "last7_due": len(last7),
+            "last30_done": done_count, "last30_due": due_count,
+            "percent": round(done_count / due_count * 100) if due_count else 0,
+            "done_today": today in done_days,
+        }
+
+    mine = record(user_id)
+    members = [{**m, "is_you": m["user_id"] == user_id,
+                **record(m["user_id"])}
+               for m in team_members(s, habit.team_id)]
+
+    return {
+        "id": habit.id, "name": habit.name, "category": habit.category,
+        "schedule": clean_schedule(habit.schedule),
+        "days": schedule_days(habit.schedule),
+        "paused": habit.paused_at is not None,
+        "protected": bool(habit.is_protected),
+        "system_key": habit.system_key or "",
+        "target_time": (habit.target_time.strftime("%H:%M")
+                        if habit.target_time else None),
+        "remind_at": (habit.remind_at.strftime("%H:%M")
+                      if habit.remind_at else None),
+        "source": "team", "team_id": team.id, "team_name": team.name,
+        **mine,
+        "members": members,
+    }
+
+
+def move_habit(s: Session, user_id: int, *, habit_id: int | None = None,
+               team_habit_id: int | None = None,
+               to_team: int | None = None) -> dict:
+    """Move a habit between a private list and a shared one, keeping its days.
+
+    The logs come with it. A habit moved from "mine" to "ours" that lost its
+    streak would be a habit nobody moves, and the streak is usually the reason
+    somebody wants it shared in the first place.
+
+    Moving a shared habit into a private list removes it from the other
+    member, which is a real decision rather than a tidy-up — the caller is
+    expected to announce it.
+    """
+    owner_ws = workspace_id_for(s, user_id)
+
+    if habit_id is not None:
+        if to_team is None:
+            raise ValueError("no_destination")
+        habit = _owned_habit(s, owner_ws, habit_id)
+        if habit.is_protected:
+            # The derived rituals are written by the prayer and journal
+            # modules; moving one would leave those writing to nothing.
+            raise ValueError("protected")
+        _require_team(s, user_id, to_team)
+
+        position = (s.scalar(select(func.max(TeamHabit.position))
+                             .where(TeamHabit.team_id == to_team)) or 0) + 1
+        moved = TeamHabit(team_id=to_team, name=habit.name,
+                          category=habit.category, schedule=habit.schedule,
+                          target_time=habit.target_time,
+                          remind_at=habit.remind_at, position=position,
+                          created_by=user_id)
+        s.add(moved)
+        s.flush()
+        for log in s.scalars(select(HabitLog).where(
+                HabitLog.habit_id == habit.id)).all():
+            s.add(TeamHabitLog(habit_id=moved.id, user_id=user_id,
+                               day=log.day, done=log.done,
+                               logged_at=log.logged_at))
+        habit.archived_at = utcnow()
+        s.commit()
+        return team_habit_row(moved, user_id, set())
+
+    if team_habit_id is None:
+        raise ValueError("nothing_to_move")
+
+    shared = s.get(TeamHabit, team_habit_id)
+    if shared is None or shared.archived_at is not None:
+        raise ValueError("unknown_habit")
+    _require_team(s, user_id, shared.team_id)
+    if shared.is_protected:
+        raise ValueError("protected")
+
+    top = s.scalar(select(func.max(Habit.position))
+                   .where(Habit.workspace_id == owner_ws)) or 0
+    habit = Habit(workspace_id=owner_ws, name=shared.name,
+                  category=shared.category, schedule=shared.schedule,
+                  target_time=shared.target_time, remind_at=shared.remind_at,
+                  position=top + 1)
+    s.add(habit)
+    s.flush()
+    for log in s.scalars(select(TeamHabitLog).where(
+            TeamHabitLog.habit_id == shared.id,
+            TeamHabitLog.user_id == user_id)).all():
+        s.add(HabitLog(workspace_id=owner_ws, habit_id=habit.id, day=log.day,
+                       done=log.done, logged_at=log.logged_at))
+    shared.archived_at = utcnow()
+    s.commit()
+    return {"id": habit.id, "name": habit.name, "source": "personal"}
+
+
+# --- Team projects ----------------------------------------------------------
+
+def list_team_projects(s: Session, user_id: int, team_id: int, *,
+                       include_archived: bool = False) -> list[dict]:
+    """The team's own shelves, with how far each has got.
+
+    The same object a personal project is — one table, one set of rules — so
+    a shared task can be filed exactly as a private one is, and the screen
+    that draws a project does not need to know which kind it is looking at.
+    """
+    _require_team(s, user_id, team_id)
+    stmt = select(Project).where(Project.team_id == team_id)
+    if not include_archived:
+        stmt = stmt.where(Project.archived_at.is_(None))
+
+    out = []
+    for project in s.scalars(stmt.order_by(Project.status,
+                                           Project.created_at)).all():
+        total = s.scalar(select(func.count(TeamTask.id)).where(
+            TeamTask.project_id == project.id,
+            TeamTask.archived_at.is_(None))) or 0
+        done = s.scalar(select(func.count(func.distinct(TeamTask.id)))
+                        .select_from(TeamTask)
+                        .join(TeamTaskDone, TeamTaskDone.task_id == TeamTask.id)
+                        .where(TeamTask.project_id == project.id,
+                               TeamTask.archived_at.is_(None),
+                               TeamTaskDone.user_id == user_id,
+                               TeamTaskDone.done.is_(True))) or 0
+        out.append({
+            "id": project.id, "name": project.name,
+            "description": project.description or "",
+            "deadline": project.deadline.isoformat() if project.deadline else None,
+            "status": project.status, "team_id": team_id,
+            "source": "team",
+            "tasks_total": total, "tasks_done": done,
+            "percent": round(done / total * 100) if total else 0,
+        })
+    return out
+
+
+def add_team_project(s: Session, user_id: int, team_id: int, name: str, *,
+                     description: str = "",
+                     deadline: date | None = None) -> dict:
+    """Open a shelf the whole team files onto."""
+    _require_team(s, user_id, team_id)
+    name = name.strip()[:200]
+    if not name:
+        raise ValueError("empty_name")
+    project = Project(workspace_id=workspace_id_for(s, user_id),
+                      team_id=team_id, name=name,
+                      description=(description or "").strip()[:2000],
+                      deadline=deadline)
+    s.add(project)
+    s.commit()
+    return {"id": project.id, "name": project.name, "team_id": team_id,
+            "source": "team", "status": project.status,
+            "tasks_total": 0, "tasks_done": 0, "percent": 0}
+
+
+def _team_project_or_none(s: Session, team_id: int,
+                          project_id: int | None) -> int | None:
+    """A project id, but only if it is this team's. Otherwise nothing.
+
+    The same rule a personal task follows about its own workspace: filing a
+    task onto somebody else's shelf is not a thing the API should make
+    possible by passing a number.
+    """
+    if project_id is None:
+        return None
+    project = s.get(Project, project_id)
+    if project is None or project.team_id != team_id:
+        raise ValueError("unknown_project")
+    return project.id
+
+
+def team_scoreboard(s: Session, user_id: int, team_id: int, *,
+                    tz: ZoneInfo | None = None) -> dict:
+    """Day, week and month at once, plus what is still open and who did what.
+
+    The Team screen answers a different question from the personal one. A
+    person opens their own screen to decide what to do next; two people open
+    the shared one to find out where they stand — so this is a report, not a
+    worklist: three periods side by side, and for today an explicit list of
+    what each of you has and has not done.
+    """
+    _require_team(s, user_id, team_id)
+    today = today_local(tz)
+    members = team_members(s, team_id)
+
+    periods = {}
+    for label, days in (("day", 1), ("week", 7), ("month", 30)):
+        start = today - timedelta(days=days - 1)
+        totals = {m["user_id"]: [0, 0] for m in members}
+        cursor = start
+        while cursor <= today:
+            summary = team_day_summary(s, team_id, cursor, tz=tz)
+            for row in summary["members"]:
+                totals[row["user_id"]][0] += row["done"]
+                totals[row["user_id"]][1] += row["total"]
+            cursor += timedelta(days=1)
+        periods[label] = [
+            {"user_id": m["user_id"], "name": m["name"],
+             "is_you": m["user_id"] == user_id,
+             "done": totals[m["user_id"]][0], "total": totals[m["user_id"]][1],
+             "percent": (round(totals[m["user_id"]][0]
+                               / totals[m["user_id"]][1] * 100)
+                         if totals[m["user_id"]][1] else None)}
+            for m in members]
+
+    # Today, item by item: the bit that turns a percentage into something you
+    # can act on before the day is over.
+    todays = team_day_summary(s, team_id, today, tz=tz)
+    open_items, done_items = [], []
+    for kind, rows in (("task", todays["tasks"]), ("habit", todays["habits"])):
+        for row in rows:
+            entry = {"kind": kind, "id": row["id"],
+                     "title": row.get("title") or row.get("name"),
+                     "done_by": row["done_by"],
+                     "missing": [m["user_id"] for m in members
+                                 if m["user_id"] not in row["done_by"]]}
+            (done_items if not entry["missing"] else open_items).append(entry)
+
+    return {"team_id": team_id, "date": today.isoformat(),
+            "members": members, "periods": periods,
+            "open": open_items, "done": done_items,
+            "open_count": len(open_items), "done_count": len(done_items)}

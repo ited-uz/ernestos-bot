@@ -3773,6 +3773,7 @@ class TeamTaskIn(BaseModel):
     due_time: str | None = Field(default=None, max_length=5)
     remind_before: int | None = None
     recurrence: str | None = Field(default=None, max_length=24)
+    project_id: int | None = None
 
 
 class TeamHabitIn(BaseModel):
@@ -3849,6 +3850,8 @@ def api_teams(init=Header(default=None, alias="X-Telegram-Init-Data")):
                 "habits": svc.list_team_habits(s, user.telegram_id, team.id, tz=tz),
                 "stats": svc.team_stats(s, user.telegram_id, team.id,
                                         period="week", tz=tz),
+                "projects": svc.list_team_projects(s, user.telegram_id, team.id),
+                "board": svc.team_scoreboard(s, user.telegram_id, team.id, tz=tz),
             })
     return {"teams": out, "max_members": svc.MAX_TEAM_MEMBERS}
 
@@ -3893,6 +3896,152 @@ def api_team_leave(team_id: int,
     return {"ok": True}
 
 
+class MoveHabitIn(BaseModel):
+    #: "personal", or "team:<id>". The same vocabulary the add sheet uses.
+    to: str = Field(min_length=1, max_length=24)
+
+
+@app.get("/api/teams/habits/{habit_id}/history")
+def api_team_habit_history(habit_id: int,
+                           init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """A shared habit's record, shaped exactly like a private one's."""
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        try:
+            return svc.team_habit_history(s, user.telegram_id, habit_id,
+                                          tz=svc.user_tz(user))
+        except PermissionError:
+            raise HTTPException(status_code=404, detail="not_found")
+        except ValueError:
+            raise HTTPException(status_code=404, detail="not_found")
+
+
+@app.post("/api/habits/{habit_id}/move")
+async def api_habit_move(habit_id: int, body: MoveHabitIn,
+                         init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Move a private habit into a team."""
+    user, _ = auth(init)
+    if not body.to.startswith("team:"):
+        raise HTTPException(status_code=422, detail="bad_destination")
+    team_id = int(body.to.split(":", 1)[1] or 0)
+    with SessionLocal() as s:
+        try:
+            moved = svc.move_habit(s, user.telegram_id, habit_id=habit_id,
+                                   to_team=team_id)
+        except PermissionError:
+            raise HTTPException(status_code=404, detail="not_found")
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        team = svc.team_for(s, user.telegram_id, team_id)
+        name = team.name if team else ""
+    await notify_teammates(team_id, user.telegram_id, "team_ev_habit_add",
+                           moved["name"], name)
+    return moved
+
+
+@app.post("/api/teams/habits/{habit_id}/move")
+async def api_team_habit_move(habit_id: int, body: MoveHabitIn,
+                              init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Take a shared habit back into a private list.
+
+    This removes it from the other member too, so they are told.
+    """
+    user, _ = auth(init)
+    if body.to != "personal":
+        raise HTTPException(status_code=422, detail="bad_destination")
+    with SessionLocal() as s:
+        from db import TeamHabit
+        row = s.get(TeamHabit, habit_id)
+        team_id = row.team_id if row else None
+        label = row.name if row else ""
+        try:
+            moved = svc.move_habit(s, user.telegram_id,
+                                   team_habit_id=habit_id, to_team=None)
+        except PermissionError:
+            raise HTTPException(status_code=404, detail="not_found")
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        team = (svc.team_for(s, user.telegram_id, team_id)
+                if team_id is not None else None)
+        name = team.name if team else ""
+    if team_id is not None:
+        await notify_teammates(team_id, user.telegram_id, "team_ev_habit_del",
+                               label, name)
+    return moved
+
+
+class TeamProjectIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=2000)
+    deadline: date | None = None
+
+
+@app.get("/api/teams/{team_id}/projects")
+def api_team_projects(team_id: int,
+                      init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        try:
+            return {"projects": svc.list_team_projects(s, user.telegram_id,
+                                                       team_id)}
+        except PermissionError:
+            raise HTTPException(status_code=404, detail="not_found")
+
+
+@app.post("/api/teams/{team_id}/projects")
+async def api_team_project_add(team_id: int, body: TeamProjectIn,
+                               init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        try:
+            made = svc.add_team_project(s, user.telegram_id, team_id, body.name,
+                                        description=body.description,
+                                        deadline=body.deadline)
+        except PermissionError:
+            raise HTTPException(status_code=404, detail="not_found")
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        team = svc.team_for(s, user.telegram_id, team_id)
+        name = team.name if team else ""
+    await notify_teammates(team_id, user.telegram_id, "team_ev_project_add",
+                           made["name"], name)
+    return made
+
+
+@app.get("/api/teams/projects/{project_id}/tasks")
+def api_team_project_tasks(project_id: int,
+                           init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Everything filed on one shared shelf."""
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        from db import Project
+        project = s.get(Project, project_id)
+        if project is None or project.team_id is None:
+            raise HTTPException(status_code=404, detail="not_found")
+        try:
+            rows = svc.list_team_tasks(s, user.telegram_id, project.team_id,
+                                       project_id=project_id,
+                                       tz=svc.user_tz(user))
+        except PermissionError:
+            raise HTTPException(status_code=404, detail="not_found")
+        return {"project": {"id": project.id, "name": project.name,
+                            "team_id": project.team_id, "source": "team"},
+                "tasks": rows}
+
+
+@app.get("/api/teams/{team_id}/scoreboard")
+def api_team_scoreboard(team_id: int,
+                        init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Day, week and month, and today's open and finished items."""
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        try:
+            return svc.team_scoreboard(s, user.telegram_id, team_id,
+                                       tz=svc.user_tz(user))
+        except PermissionError:
+            raise HTTPException(status_code=404, detail="not_found")
+
+
 @app.get("/api/teams/{team_id}/stats")
 def api_team_stats(team_id: int, period: str = "week",
                    init=Header(default=None, alias="X-Telegram-Init-Data")):
@@ -3918,7 +4067,8 @@ async def api_team_task_add(team_id: int, body: TeamTaskIn,
                 s, user.telegram_id, team_id, body.title,
                 deadline=body.deadline, priority=body.priority,
                 description=body.description, due_time=_time(body.due_time),
-                remind_before=body.remind_before, recurrence=body.recurrence)
+                remind_before=body.remind_before, recurrence=body.recurrence,
+                project_id=body.project_id)
         except PermissionError:
             raise HTTPException(status_code=404, detail="not_found")
         except ValueError as e:
