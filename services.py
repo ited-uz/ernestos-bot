@@ -27,10 +27,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from db import (
-    Birthday, DailyReportLog, DailyScore, Feedback, Habit, HabitLog, JobRun,
-    JournalEntry, PrayerDay, PrayerLog, Project, Referral, ReferralCode,
+    Birthday, Countdown, DailyReportLog, DailyScore, Feedback, Habit, HabitLog,
+    JobRun, JournalEntry, PrayerDay, PrayerLog, Project, Referral, ReferralCode,
     Task, Team, TeamHabit, TeamHabitLog, TeamMember, TeamTask, TeamTaskDone,
-    User, UserAchievement, UserProgress, WeeklyFocus, WeeklyReview,
+    TimerRun, User, UserAchievement, UserProgress, WeeklyFocus, WeeklyReview,
     Workspace, XPEvent, utcnow,
 )
 
@@ -469,7 +469,8 @@ def habit_is_due(habit: Habit, day: date) -> bool:
     return day.weekday() in schedule_days(habit.schedule)
 
 
-def _habit_dict(habit: Habit, day: date, done: bool) -> dict:
+def _habit_dict(habit: Habit, day: date, done: bool,
+                run: dict | None = None) -> dict:
     return {
         "id": habit.id, "name": habit.name, "category": habit.category,
         "protected": habit.is_protected, "system_key": habit.system_key,
@@ -480,6 +481,11 @@ def _habit_dict(habit: Habit, day: date, done: bool) -> dict:
         "paused": habit.paused_at is not None,
         "due": habit_is_due(habit, day),
         "done": done,
+        # The countdown this habit is done by, if any: the minutes it runs
+        # for, how that was decided, and today's run while one is open.
+        **_timer_fields(habit.timer_minutes, habit.name,
+                        protected=habit.is_protected),
+        "timer": run,
     }
 
 
@@ -502,6 +508,9 @@ def list_habits(s: Session, ws: int, day: date | None = None, *,
     if not habits:
         return []
 
+    # A timer whose time ran out while nobody was looking has already done
+    # its habit; the list must say so rather than wait for the next job tick.
+    settle_timers(s, ws)
     done_ids = set(s.scalars(
         select(HabitLog.habit_id).where(
             HabitLog.workspace_id == ws,
@@ -509,8 +518,9 @@ def list_habits(s: Session, ws: int, day: date | None = None, *,
             HabitLog.done.is_(True),
         )
     ).all())
+    runs = open_timer_runs(s, ws, "habit", day=day)
 
-    return [_habit_dict(h, day, h.id in done_ids) for h in habits]
+    return [_habit_dict(h, day, h.id in done_ids, runs.get(h.id)) for h in habits]
 
 
 def habits_by_category(s: Session, ws: int, day: date | None = None, *,
@@ -541,7 +551,8 @@ def habits_by_category(s: Session, ws: int, day: date | None = None, *,
 
 
 def add_habit(s: Session, ws: int, name: str, category: str = "target", *,
-              schedule: str | None = None, remind_at: dtime | None = None) -> Habit:
+              schedule: str | None = None, remind_at: dtime | None = None,
+              timer_minutes: int | None = None) -> Habit:
     name = name.strip()[:120]
     if not name:
         raise ValueError("empty habit name")
@@ -549,7 +560,8 @@ def add_habit(s: Session, ws: int, name: str, category: str = "target", *,
         category = "target"
     top = s.scalar(select(func.max(Habit.position)).where(Habit.workspace_id == ws)) or 0
     habit = Habit(workspace_id=ws, name=name, category=category, position=top + 1,
-                  schedule=clean_schedule(schedule), remind_at=remind_at)
+                  schedule=clean_schedule(schedule), remind_at=remind_at,
+                  timer_minutes=clean_timer_minutes(timer_minutes))
     s.add(habit)
     s.commit()
     return habit
@@ -589,6 +601,8 @@ def update_habit(s: Session, ws: int, habit_id: int, **fields) -> Habit:
         habit.remind_at = fields["remind_at"]
     if "target_time" in fields and fields["target_time"] is not None:
         habit.target_time = fields["target_time"]
+    if "timer_minutes" in fields and not habit.is_protected:
+        _apply_timer_setting(s, ws, "habit", habit, fields["timer_minutes"])
     s.commit()
     return habit
 
@@ -659,6 +673,11 @@ def toggle_habit(s: Session, ws: int, habit_id: int,
     day = day or today_local(tz)
     row = s.scalar(select(HabitLog).where(
         HabitLog.workspace_id == ws, HabitLog.habit_id == habit_id, HabitLog.day == day))
+    # A habit with a timer is done by the timer, not by the box: "5h deep
+    # flow" ticked by hand after twenty minutes is the thing the timer is
+    # there to stop. Unticking stays free.
+    if not (row and row.done) and timer_blocks(s, ws, "habit", habit, day):
+        raise ValueError("timer_required")
     if row is None:
         row = HabitLog(workspace_id=ws, habit_id=habit_id, day=day, done=True,
                        logged_at=now_local(tz))
@@ -972,6 +991,9 @@ def habit_history(s: Session, ws: int, habit_id: int, *, days: int = 30,
         "protected": habit.is_protected, "system_key": habit.system_key,
         "target_time": habit.target_time.strftime("%H:%M") if habit.target_time else None,
         "remind_at": habit.remind_at.strftime("%H:%M") if habit.remind_at else None,
+        **_timer_fields(habit.timer_minutes, habit.name,
+                        protected=habit.is_protected),
+        "timer": open_timer_runs(s, ws, "habit", day=today).get(habit.id),
         "streak": streak,
         "grid": grid,
         "last7_done": sum(1 for g in last7 if g["done"]), "last7_due": len(last7),
@@ -1269,7 +1291,8 @@ def project_tasks(s: Session, ws: int, project_id: int, *,
     rows.sort(key=lambda x: (x.status == "done",
                              _PRIORITY_RANK.get(x.priority, 1),
                              x.deadline or date.max, x.id))
-    return [_task_dict(s, ws, task, today) for task in rows]
+    runs = open_timer_runs(s, ws, "task")
+    return [_task_dict(s, ws, task, today, runs) for task in rows]
 
 
 def delete_project(s: Session, ws: int, project_id: int) -> str:
@@ -1378,7 +1401,8 @@ def add_task(s: Session, ws: int, title: str, *, deadline: date | None = None,
              project_id: int | None = None, priority: str = "medium",
              description: str = "", due_time: dtime | None = None,
              remind_before: int | None = None,
-             recurrence: str | None = None) -> Task:
+             recurrence: str | None = None,
+             timer_minutes: int | None = None) -> Task:
     title = title.strip()[:300]
     if not title:
         raise ValueError("empty task title")
@@ -1395,7 +1419,8 @@ def add_task(s: Session, ws: int, title: str, *, deadline: date | None = None,
                 description=description.strip()[:4000],
                 due_time=due_time,
                 remind_before=clean_remind_before(remind_before),
-                recurrence=clean_recurrence(recurrence))
+                recurrence=clean_recurrence(recurrence),
+                timer_minutes=clean_timer_minutes(timer_minutes))
     s.add(task)
     s.commit()
     return task
@@ -1448,7 +1473,8 @@ def _spawn_next_occurrence(s: Session, ws: int, task: Task,
     clone = Task(workspace_id=ws, title=task.title, description=task.description,
                  project_id=task.project_id, deadline=nxt, due_time=task.due_time,
                  remind_before=task.remind_before, recurrence=rule,
-                 anchor_day=anchor, priority=task.priority)
+                 anchor_day=anchor, priority=task.priority,
+                 timer_minutes=task.timer_minutes)
     s.add(clone)
     s.flush()
     return clone
@@ -1458,6 +1484,8 @@ def complete_task(s: Session, ws: int, task_id: int, *,
                   tz: ZoneInfo | None = None) -> Task:
     task = _owned_task(s, ws, task_id)
     already_done = task.status == "done"
+    if not already_done and timer_blocks(s, ws, "task", task):
+        raise ValueError("timer_required")
     task.status = "done"
     task.completed_at = utcnow()
     if not already_done:
@@ -1547,7 +1575,8 @@ def top3_tasks(s: Session, ws: int, day: date | None = None, *,
     rows = s.scalars(select(Task).where(
         Task.workspace_id == ws, Task.archived_at.is_(None),
         Task.focus_day == day).order_by(Task.id)).all()
-    return [_task_dict(s, ws, task, day) for task in rows]
+    runs = open_timer_runs(s, ws, "task")
+    return [_task_dict(s, ws, task, day, runs) for task in rows]
 
 
 def delete_task(s: Session, ws: int, task_id: int) -> str:
@@ -1585,8 +1614,13 @@ def update_task(s: Session, ws: int, task_id: int, **fields) -> Task:
             task.project_id = project.id
         else:
             task.project_id = None
+    if "timer_minutes" in fields:
+        _apply_timer_setting(s, ws, "task", task, fields["timer_minutes"])
     if "status" in fields and fields["status"] in ("waiting", "done"):
         was_done = task.status == "done"
+        if (fields["status"] == "done" and not was_done
+                and timer_blocks(s, ws, "task", task)):
+            raise ValueError("timer_required")
         task.status = fields["status"]
         task.completed_at = utcnow() if fields["status"] == "done" else None
         if fields["status"] == "done" and not was_done:
@@ -1595,7 +1629,8 @@ def update_task(s: Session, ws: int, task_id: int, **fields) -> Task:
     return task
 
 
-def _task_dict(s: Session, ws: int, task: Task, today: date) -> dict:
+def _task_dict(s: Session, ws: int, task: Task, today: date,
+               runs: dict | None = None) -> dict:
     project_name = None
     if task.project_id:
         project = s.get(Project, task.project_id)
@@ -1613,6 +1648,8 @@ def _task_dict(s: Session, ws: int, task: Task, today: date) -> dict:
         "days_left": days_left,
         "overdue": bool(task.deadline and task.deadline < today and task.status != "done"),
         "project_id": task.project_id, "project": project_name,
+        **_timer_fields(task.timer_minutes, task.title),
+        "timer": (runs or {}).get(task.id),
     }
 
 
@@ -1637,6 +1674,8 @@ def list_tasks(s: Session, ws: int, *, horizon_days: int = 7,
     limit = today + timedelta(days=horizon_days)
     needle = search.strip().lower()[:100]
 
+    settle_timers(s, ws)
+    runs = open_timer_runs(s, ws, "task")
     stmt = select(Task).where(Task.workspace_id == ws, Task.archived_at.is_(None))
     if not include_done:
         stmt = stmt.where(Task.status == "waiting")
@@ -1652,7 +1691,7 @@ def list_tasks(s: Session, ws: int, *, horizon_days: int = 7,
         if needle and needle not in (task.title or "").lower() \
                 and needle not in (task.description or "").lower():
             continue
-        row = _task_dict(s, ws, task, today)
+        row = _task_dict(s, ws, task, today, runs)
         if task.deadline is None:
             undated.append(row)
         elif task.deadline < today and task.status != "done":
@@ -1704,7 +1743,8 @@ def tasks_due_today(s: Session, ws: int, *, tz: ZoneInfo | None = None) -> list[
     tasks = s.scalars(select(Task).where(
         Task.workspace_id == ws, Task.archived_at.is_(None),
         Task.status == "waiting", Task.deadline == today)).all()
-    return _sort_open([_task_dict(s, ws, t, today) for t in tasks])
+    runs = open_timer_runs(s, ws, "task")
+    return _sort_open([_task_dict(s, ws, t, today, runs) for t in tasks])
 
 
 def today_tasks_by_project(s: Session, ws: int, *, tz: ZoneInfo | None = None,
@@ -2933,7 +2973,11 @@ def _now_task(task: dict, reason: str) -> dict:
             "action": "task", "meta": task["due_time"] or "",
             "reason": reason, "priority": task["priority"],
             "due_time": task["due_time"], "deadline": task["deadline"],
-            "project": task["project"]}
+            "project": task["project"],
+            # A task done by its timer is finished by starting the timer, so
+            # the card has to know which kind of tap it is offering.
+            "timer_minutes": task.get("timer_minutes"),
+            "timer": task.get("timer")}
 
 
 def now_next(s: Session, ws: int, user: User, *,
@@ -2989,7 +3033,9 @@ def now_next(s: Session, ws: int, user: User, *,
         if habit["due"] and not habit["done"] and not habit["protected"]:
             return {"kind": "habit", "title": habit["name"], "id": habit["id"],
                     "action": "habit", "meta": habit["target_time"] or "",
-                    "reason": "habit"}
+                    "reason": "habit",
+                    "timer_minutes": habit.get("timer_minutes"),
+                    "timer": habit.get("timer")}
 
     prayer = prayer_state(s, ws, today, user.gender)
     if not prayer["complete"] and prayer["performed"] < PRAYER_REQUIRED \
@@ -3088,6 +3134,8 @@ def home(s: Session, ws: int, user: User) -> dict:
         "journal_answered": journal["answered"] if journal else 0,
         "journal_total": len(JOURNAL_KEYS),
         "birthdays": list_birthdays(s, ws, within_days=7, tz=tz),
+        "countdowns": list_countdowns(s, ws, tz=tz, include_past=False),
+        "active_timer": active_timer(s, ws),
         "week": week_strip(s, ws, tz=tz),
         "break": break_state(s, ws, user, tz=tz),
     }
@@ -3143,6 +3191,7 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
             yield {"name": h.name, "category": h.category,
                    "schedule": clean_schedule(h.schedule),
                    "target_time": h.target_time.strftime("%H:%M") if h.target_time else None,
+                   "timer_minutes": h.timer_minutes,
                    "paused": h.paused_at is not None,
                    "archived": h.archived_at is not None,
                    "created": h.created_at.isoformat() if h.created_at else None}
@@ -3179,9 +3228,16 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
              "deadline": t.deadline.isoformat() if t.deadline else None,
              "due_time": t.due_time.strftime("%H:%M") if t.due_time else None,
              "recurrence": clean_recurrence(t.recurrence),
+             "timer_minutes": t.timer_minutes,
              "completed_at": t.completed_at.isoformat() if t.completed_at else None,
              "archived": t.archived_at is not None}
             for t in s.scalars(select(Task).where(Task.workspace_id == ws)).all()],
+        "countdowns": [
+            {"title": c.title, "date": c.target_date.isoformat(),
+             "archived": c.archived_at is not None}
+            for c in s.scalars(select(Countdown)
+                               .where(Countdown.workspace_id == ws)
+                               .order_by(Countdown.target_date)).all()],
         "weekly_focus": [
             {"week_start": f.week_start.isoformat(), "slot": f.slot,
              "title": f.title, "priority": f.priority, "done": f.done}
@@ -3209,9 +3265,9 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
 #: list, so adding a model without adding it here is the one way a deletion
 #: could leave someone's rows behind — which is why the list is explicit rather
 #: than left to the database.
-WORKSPACE_TABLES = [HabitLog, Habit, PrayerLog, PrayerDay, Task, Project,
-                    WeeklyFocus, WeeklyReview, JournalEntry, Birthday,
-                    Feedback, DailyReportLog]
+WORKSPACE_TABLES = [TimerRun, HabitLog, Habit, PrayerLog, PrayerDay, Task,
+                    Project, WeeklyFocus, WeeklyReview, JournalEntry, Birthday,
+                    Countdown, Feedback, DailyReportLog]
 
 
 def wipe_workspace(s: Session, telegram_id: int) -> bool:
@@ -4672,6 +4728,8 @@ def morning_data(s: Session, ws: int, user: User) -> dict:
             "focus": focus,
             "focus_done": sum(1 for f in focus if f["done"]),
             "birthdays": [b for b in list_birthdays(s, ws, within_days=1, tz=tz)],
+            # Every date being counted down to, read out every morning.
+            "countdowns": list_countdowns(s, ws, tz=tz, include_past=False),
             # Today's habits: the ones still to do, and how many are due at
             # all — a morning report that lists the day's work has to include
             # the part of it that repeats.
@@ -4726,6 +4784,8 @@ def evening_data(s: Session, ws: int, user: User) -> dict:
         # rule, and a report that says "written" beside an unticked habit is
         # the app disagreeing with itself.
         "journal": journal_done(s, ws, today, tz=tz),
+        # And once more at night: tomorrow is one day closer to each of them.
+        "countdowns": list_countdowns(s, ws, tz=tz, include_past=False),
     }
 
 
@@ -6584,3 +6644,702 @@ def day_score(s: Session, ws: int, day: date | None = None, *,
             "components": personal_parts,
             "team_items": len(shared_items),
             "team_done": sum(1 for _, ok in shared_items if ok)}
+
+
+# ---------------------------------------------------------------------------
+# Timers — a habit or a task that is done by the clock, not by a tap
+# ---------------------------------------------------------------------------
+#
+# "5h deep flow" is a promise about five hours, and a checkbox cannot tell five
+# hours from five minutes. So an item can carry a timer: while it does, the
+# only way to finish it is to let the timer run out, and the moment it does the
+# item is ticked for you — in the bot, in the Mini App, and in the score.
+#
+# The timer is read from the name when nobody set one ("5h", "45 min",
+# "1 soat 30 daqiqa"), can be set to any length on any item ("Sport" → 1h),
+# and can be switched off on any item, including one whose name says "5h".
+
+#: Longest timer accepted. A day is already more than any one sitting.
+TIMER_MAX_MINUTES = 24 * 60
+#: The lengths both surfaces offer as one tap, in minutes.
+TIMER_PRESETS = [15, 25, 30, 45, 60, 90, 120, 180, 240, 300]
+TIMER_KINDS = ("habit", "task")
+#: A run still counting, as opposed to one that has ended either way.
+TIMER_OPEN = ("running", "paused")
+
+_HOUR_UNITS = ("h", "hr", "hrs", "hour", "hours", "soat", "soatlik",
+               "ч", "час", "часа", "часов")
+_MINUTE_UNITS = ("m", "min", "mins", "minut", "minute", "minutes", "minutlik",
+                 "daq", "daqiqa", "daqiqalik",
+                 "мин", "минут", "минута", "минуты")
+#: Longest spelling first, so "minutes" is not read as "m" plus leftovers.
+_DURATION_RE = re.compile(
+    r"(?<![\w.,])(\d{1,4}(?:[.,]\d{1,2})?)\s*("
+    + "|".join(sorted(_HOUR_UNITS + _MINUTE_UNITS, key=len, reverse=True))
+    + r")(?!\w)", re.IGNORECASE)
+#: "1h30m" is two amounts written together; a space makes it two words.
+_LETTER_THEN_DIGIT = re.compile(r"(?<=[^\W\d_])(?=\d)")
+
+
+def parse_duration_minutes(text: str | None) -> int | None:
+    """The length of time a name talks about, in minutes, or None.
+
+    Only an explicit unit counts: "5h", "45 min", "1,5 soat", "2 soatlik",
+    "1h30m", "30 минут". A bare number never does — "5x namoz", "Read 20
+    pages" and "10k qadam" are counts, not durations.
+    """
+    if not text:
+        return None
+    spaced = _LETTER_THEN_DIGIT.sub(" ", str(text))
+    total = 0.0
+    for number, unit in _DURATION_RE.findall(spaced):
+        value = float(number.replace(",", "."))
+        # "100m", "400m" and "1500m" are running distances, not sittings. A
+        # bare "m" is minutes only below the shortest of them.
+        if unit.lower() == "m" and value >= 100:
+            continue
+        total += value * 60 if unit.lower() in _HOUR_UNITS else value
+    minutes = int(round(total))
+    if minutes < 1:
+        return None
+    return min(minutes, TIMER_MAX_MINUTES)
+
+
+def clean_timer_minutes(value) -> int | None:
+    """A timer setting as stored: None (read the name), 0 (off), or minutes."""
+    if value is None:
+        return None
+    try:
+        minutes = int(value)
+    except (TypeError, ValueError):
+        return None
+    if minutes <= 0:
+        return 0
+    return min(minutes, TIMER_MAX_MINUTES)
+
+
+def timer_minutes_for(configured: int | None, name: str | None, *,
+                      protected: bool = False) -> int | None:
+    """How long the timer on an item actually runs, or None when it has none.
+
+    The derived habits never have one: Get up, namoz and the journal are
+    ticked by their own modules, and a clock in front of them would be a
+    second rule for the same box.
+    """
+    if protected:
+        return None
+    if configured is None:
+        return parse_duration_minutes(name)
+    if configured <= 0:
+        return None
+    return min(configured, TIMER_MAX_MINUTES)
+
+
+def _timer_fields(configured: int | None, name: str | None, *,
+                  protected: bool = False) -> dict:
+    """The timer half of a habit or task row, identical on both kinds."""
+    return {
+        "timer_minutes": timer_minutes_for(configured, name, protected=protected),
+        # auto: read from the name · on: set by hand · off: switched off
+        "timer_mode": ("auto" if configured is None
+                       else "off" if configured <= 0 else "on"),
+    }
+
+
+def _workspace_tz(s: Session, ws: int) -> ZoneInfo:
+    owner = workspace_owner(s, ws)
+    return user_tz(s.get(User, owner)) if owner else TZ
+
+
+def _timer_item(s: Session, ws: int, kind: str, item_id: int):
+    """(row, minutes, title) for the item a timer belongs to."""
+    if kind == "habit":
+        habit = _owned_habit(s, ws, item_id)
+        if habit.archived_at is not None:
+            raise NotFound("habit")
+        return habit, timer_minutes_for(habit.timer_minutes, habit.name,
+                                        protected=habit.is_protected), habit.name
+    if kind == "task":
+        task = _owned_task(s, ws, item_id)
+        if task.archived_at is not None:
+            raise NotFound("task")
+        return task, timer_minutes_for(task.timer_minutes, task.title), task.title
+    raise ValueError("unknown_kind")
+
+
+def _run_remaining(run: TimerRun, now: datetime | None = None) -> int:
+    """Seconds left on a run. Paused runs keep what they had."""
+    spent = run.elapsed_sec or 0
+    if run.status == "running" and run.started_at is not None:
+        spent += max(0, int(((now or utcnow()) - run.started_at).total_seconds()))
+    return max(0, (run.duration_sec or 0) - spent)
+
+
+def timer_run_dict(run: TimerRun, now: datetime | None = None,
+                   tz: ZoneInfo | None = None) -> dict:
+    """One run as both surfaces draw it.
+
+    `remaining_sec` rather than an end time is what the Mini App counts down
+    from: it is measured on the server, so a phone whose clock is three minutes
+    out still shows the right number.
+    """
+    now = now or utcnow()
+    remaining = _run_remaining(run, now) if run.status in TIMER_OPEN else 0
+    ends = None
+    if run.status == "running":
+        ends = (now + timedelta(seconds=remaining)).replace(
+            tzinfo=_utc.utc).astimezone(tz or TZ).strftime("%H:%M")
+    return {"id": run.id, "kind": run.kind, "item_id": run.item_id,
+            "title": run.title, "status": run.status,
+            "duration_sec": run.duration_sec, "remaining_sec": remaining,
+            "elapsed_sec": max(0, run.duration_sec - remaining),
+            "ends_at": ends, "day": run.day.isoformat()}
+
+
+def _open_run(s: Session, ws: int, kind: str, item_id: int,
+              day: date | None = None) -> TimerRun | None:
+    """The run still counting for this item, if there is one.
+
+    A habit's run belongs to its day: yesterday's paused "deep flow" is not
+    today's, and is closed rather than resumed into the wrong day.
+    """
+    run = s.scalar(select(TimerRun).where(
+        TimerRun.workspace_id == ws, TimerRun.kind == kind,
+        TimerRun.item_id == item_id, TimerRun.status.in_(TIMER_OPEN))
+        .order_by(TimerRun.id.desc()).limit(1))
+    if run is not None and kind == "habit" and day is not None and run.day != day:
+        run.status = "cancelled"
+        run.started_at = None
+        s.flush()
+        return None
+    return run
+
+
+def open_timer_runs(s: Session, ws: int, kind: str, *,
+                    day: date | None = None) -> dict[int, dict]:
+    """{item_id: run} for every run of this kind still counting."""
+    stmt = select(TimerRun).where(
+        TimerRun.workspace_id == ws, TimerRun.kind == kind,
+        TimerRun.status.in_(TIMER_OPEN))
+    if day is not None:
+        stmt = stmt.where(TimerRun.day == day)
+    now = utcnow()
+    tz = _workspace_tz(s, ws)
+    out: dict[int, dict] = {}
+    for run in s.scalars(stmt.order_by(TimerRun.id)).all():
+        out[run.item_id] = timer_run_dict(run, now, tz)
+    return out
+
+
+def _complete_by_timer(s: Session, run: TimerRun, moment: datetime) -> None:
+    """Tick the item a finished run belongs to — the timer's whole purpose.
+
+    Writes the completion directly rather than through `toggle_habit` or
+    `complete_task`, because those are the doors that refuse a timed item;
+    this is the one path that is allowed through them.
+    """
+    ws = run.workspace_id
+    tz = _workspace_tz(s, ws)
+    if run.kind == "habit":
+        habit = s.get(Habit, run.item_id)
+        if habit is None or habit.workspace_id != ws or habit.archived_at is not None:
+            return
+        row = s.scalar(select(HabitLog).where(
+            HabitLog.workspace_id == ws, HabitLog.habit_id == habit.id,
+            HabitLog.day == run.day))
+        at = moment.replace(tzinfo=_utc.utc).astimezone(tz).replace(tzinfo=None)
+        if row is None:
+            s.add(HabitLog(workspace_id=ws, habit_id=habit.id, day=run.day,
+                           done=True, logged_at=at))
+        elif not row.done:
+            row.done = True
+            row.logged_at = at
+    elif run.kind == "task":
+        task = s.get(Task, run.item_id)
+        if (task is None or task.workspace_id != ws
+                or task.archived_at is not None or task.status == "done"):
+            return
+        task.status = "done"
+        task.completed_at = moment
+        _spawn_next_occurrence(s, ws, task, tz)
+
+
+def settle_timers(s: Session, ws: int | None = None,
+                  now: datetime | None = None) -> list[int]:
+    """Finish every running timer whose time is up. Returns their ids.
+
+    Called by the scheduled job for everybody and by every read of one
+    workspace's habits or tasks, so a timer that ran out while the phone was
+    in a pocket is already done the moment anything is opened.
+
+    The status change is a conditional UPDATE: of two workers that notice the
+    same run at once, exactly one wins and ticks the item.
+    """
+    from sqlalchemy import update as sql_update
+
+    now = now or utcnow()
+    stmt = select(TimerRun).where(TimerRun.status == "running")
+    if ws is not None:
+        stmt = stmt.where(TimerRun.workspace_id == ws)
+    finished: list[int] = []
+    cancelled = False
+    for run in s.scalars(stmt).all():
+        if _run_remaining(run, now) > 0:
+            continue
+        if _run_is_stale(s, run, date.min):
+            # Nothing left to tick, so nothing to announce either.
+            run.status, run.started_at = "cancelled", None
+            cancelled = True
+            continue
+        # The moment it actually reached zero, not the moment it was noticed.
+        moment = (run.started_at or now) + timedelta(
+            seconds=max(0, run.duration_sec - (run.elapsed_sec or 0)))
+        moment = min(moment, now)
+        won = s.execute(sql_update(TimerRun).where(
+            TimerRun.id == run.id, TimerRun.status == "running").values(
+            status="finished", finished_at=moment, started_at=None,
+            elapsed_sec=run.duration_sec)).rowcount
+        if not won:
+            continue
+        s.refresh(run)
+        _complete_by_timer(s, run, moment)
+        finished.append(run.id)
+    if finished or cancelled:
+        s.commit()
+    return finished
+
+
+def timer_blocks(s: Session, ws: int, kind: str, item, day: date | None = None) -> bool:
+    """Whether a timer stands between this item and being ticked by hand.
+
+    True while the item has a timer and no run of it has finished — for a
+    habit, no run *that day*. Once the clock has done its part, unticking and
+    re-ticking by hand is the user's business.
+    """
+    if kind == "habit":
+        minutes = timer_minutes_for(item.timer_minutes, item.name,
+                                    protected=item.is_protected)
+    else:
+        minutes = timer_minutes_for(item.timer_minutes, item.title)
+    if not minutes:
+        return False
+    stmt = select(TimerRun.id).where(
+        TimerRun.workspace_id == ws, TimerRun.kind == kind,
+        TimerRun.item_id == item.id, TimerRun.status == "finished")
+    if kind == "habit" and day is not None:
+        stmt = stmt.where(TimerRun.day == day)
+    return s.scalar(stmt.limit(1)) is None
+
+
+def _pause_run(run: TimerRun, now: datetime) -> None:
+    if run.status == "running" and run.started_at is not None:
+        run.elapsed_sec = min(run.duration_sec, (run.elapsed_sec or 0) + max(
+            0, int((now - run.started_at).total_seconds())))
+    run.started_at = None
+    run.status = "paused"
+
+
+def start_timer(s: Session, ws: int, kind: str, item_id: int, *,
+                tz: ZoneInfo | None = None,
+                now: datetime | None = None) -> dict:
+    """Start (or resume) the timer on one item.
+
+    One clock at a time: whatever else was running is paused, not lost. Deep
+    work and a workout do not happen at once, and two timers quietly counting
+    in parallel would tick both.
+    """
+    now = now or utcnow()
+    tz = tz or _workspace_tz(s, ws)
+    settle_timers(s, ws, now)
+    item, minutes, title = _timer_item(s, ws, kind, item_id)
+    if not minutes:
+        raise ValueError("timer_off")
+    today = today_local(tz)
+    if kind == "habit":
+        if item.paused_at is not None:
+            raise ValueError("paused")
+        if s.scalar(select(HabitLog.id).where(
+                HabitLog.workspace_id == ws, HabitLog.habit_id == item.id,
+                HabitLog.day == today, HabitLog.done.is_(True))):
+            raise ValueError("already_done")
+    elif item.status == "done":
+        raise ValueError("already_done")
+
+    for other in s.scalars(select(TimerRun).where(
+            TimerRun.workspace_id == ws, TimerRun.status == "running")).all():
+        if not (other.kind == kind and other.item_id == item.id):
+            _pause_run(other, now)
+
+    run = _open_run(s, ws, kind, item.id, today if kind == "habit" else None)
+    if run is None:
+        run = TimerRun(workspace_id=ws, kind=kind, item_id=item.id,
+                       day=today, title=(title or "")[:300],
+                       duration_sec=minutes * 60, elapsed_sec=0,
+                       started_at=now, status="running")
+        s.add(run)
+    elif run.status == "paused":
+        run.started_at = now
+        run.status = "running"
+    s.commit()
+    return timer_run_dict(run, now, tz)
+
+
+def _owned_run(s: Session, ws: int, run_id: int) -> TimerRun:
+    run = s.get(TimerRun, run_id)
+    if run is None or run.workspace_id != ws:
+        raise NotFound("timer")
+    return run
+
+
+def pause_timer(s: Session, ws: int, run_id: int, *,
+                now: datetime | None = None) -> dict:
+    now = now or utcnow()
+    settle_timers(s, ws, now)
+    run = _owned_run(s, ws, run_id)
+    if run.status == "running":
+        _pause_run(run, now)
+        s.commit()
+    return timer_run_dict(run, now, _workspace_tz(s, ws))
+
+
+def resume_timer(s: Session, ws: int, run_id: int, *,
+                 now: datetime | None = None) -> dict:
+    run = _owned_run(s, ws, run_id)
+    if run.status != "paused":
+        return timer_run_dict(run, now, _workspace_tz(s, ws))
+    return start_timer(s, ws, run.kind, run.item_id, now=now)
+
+
+def stop_timer(s: Session, ws: int, run_id: int, *,
+               now: datetime | None = None) -> dict:
+    """Give up on a run. Nothing is ticked; the item waits for another go."""
+    now = now or utcnow()
+    settle_timers(s, ws, now)
+    run = _owned_run(s, ws, run_id)
+    if run.status in TIMER_OPEN:
+        _pause_run(run, now)
+        run.status = "cancelled"
+        s.commit()
+    return timer_run_dict(run, now, _workspace_tz(s, ws))
+
+
+def timer_for(s: Session, ws: int, kind: str, item_id: int, *,
+              tz: ZoneInfo | None = None) -> dict:
+    """Everything the timer screen needs about one item."""
+    tz = tz or _workspace_tz(s, ws)
+    settle_timers(s, ws)
+    item, minutes, title = _timer_item(s, ws, kind, item_id)
+    today = today_local(tz)
+    run = _open_run(s, ws, kind, item.id, today if kind == "habit" else None)
+    if kind == "habit":
+        done = bool(s.scalar(select(HabitLog.id).where(
+            HabitLog.workspace_id == ws, HabitLog.habit_id == item.id,
+            HabitLog.day == today, HabitLog.done.is_(True))))
+        configured, protected = item.timer_minutes, item.is_protected
+    else:
+        done = item.status == "done"
+        configured, protected = item.timer_minutes, False
+    s.commit()
+    return {"kind": kind, "id": item.id, "title": title, "done": done,
+            "protected": protected,
+            **_timer_fields(configured, title, protected=protected),
+            "parsed_minutes": parse_duration_minutes(title),
+            "run": timer_run_dict(run, tz=tz) if run else None,
+            "presets": TIMER_PRESETS}
+
+
+def _apply_timer_setting(s: Session, ws: int, kind: str, item, value) -> None:
+    """Change how long an item's timer runs, or switch it off.
+
+    A run already counting follows the change: a shorter timer finishes
+    sooner, and switching the timer off abandons the run rather than leaving
+    a clock ticking towards an item that no longer waits for it.
+    """
+    item.timer_minutes = clean_timer_minutes(value)
+    name = item.name if kind == "habit" else item.title
+    minutes = timer_minutes_for(item.timer_minutes, name,
+                                protected=getattr(item, "is_protected", False))
+    for run in s.scalars(select(TimerRun).where(
+            TimerRun.workspace_id == ws, TimerRun.kind == kind,
+            TimerRun.item_id == item.id,
+            TimerRun.status.in_(TIMER_OPEN))).all():
+        if minutes:
+            run.duration_sec = minutes * 60
+        else:
+            _pause_run(run, utcnow())
+            run.status = "cancelled"
+
+
+def set_item_timer(s: Session, ws: int, kind: str, item_id: int,
+                   value) -> dict:
+    """Set a timer from either surface. `None` goes back to reading the name."""
+    item, _, _ = _timer_item(s, ws, kind, item_id)
+    if kind == "habit" and item.is_protected:
+        raise ValueError("protected")
+    _apply_timer_setting(s, ws, kind, item, value)
+    s.commit()
+    return timer_for(s, ws, kind, item_id)
+
+
+def _run_is_stale(s: Session, run: TimerRun, today: date) -> bool:
+    """A run that can no longer finish anything.
+
+    Its item was deleted, finished some other way, or moved into a team; or
+    it is a habit's run paused on a day that is over — yesterday's half-done
+    deep work is not today's, and resuming it would tick the wrong day.
+    """
+    if run.kind == "habit":
+        item = s.get(Habit, run.item_id)
+        if item is None or item.archived_at is not None \
+                or item.workspace_id != run.workspace_id:
+            return True
+        return run.status == "paused" and run.day < today
+    item = s.get(Task, run.item_id)
+    return (item is None or item.archived_at is not None
+            or item.workspace_id != run.workspace_id or item.status == "done")
+
+
+def active_timer(s: Session, ws: int) -> dict | None:
+    """The timer to show on every screen: the running one, else a paused one.
+
+    Runs that can no longer finish anything are closed on the way, so the
+    banner never offers a clock for something that is gone.
+    """
+    settle_timers(s, ws)
+    tz = _workspace_tz(s, ws)
+    today = today_local(tz)
+    runs = []
+    for run in s.scalars(select(TimerRun).where(
+            TimerRun.workspace_id == ws, TimerRun.status.in_(TIMER_OPEN))
+            .order_by(TimerRun.id.desc())).all():
+        if _run_is_stale(s, run, today):
+            run.status, run.started_at = "cancelled", None
+        else:
+            runs.append(run)
+    s.commit()
+    if not runs:
+        return None
+    run = next((r for r in runs if r.status == "running"), runs[0])
+    return timer_run_dict(run, tz=tz)
+
+
+def claim_timer_notice(s: Session, run_id: int) -> bool:
+    """Take the right to announce that this run finished. True exactly once."""
+    from sqlalchemy import update as sql_update
+
+    won = s.execute(sql_update(TimerRun).where(
+        TimerRun.id == run_id, TimerRun.status == "finished",
+        TimerRun.notified_at.is_(None)).values(notified_at=utcnow())).rowcount
+    s.commit()
+    return bool(won)
+
+
+def release_timer_notice(s: Session, run_id: int) -> None:
+    """Give a claimed announcement back, after a send that may succeed later."""
+    run = s.get(TimerRun, run_id)
+    if run is not None:
+        run.notified_at = None
+        s.commit()
+
+
+def unannounced_timers(s: Session, limit: int = 200) -> list[TimerRun]:
+    """Finished runs nobody has been told about yet."""
+    return list(s.scalars(select(TimerRun).where(
+        TimerRun.status == "finished", TimerRun.notified_at.is_(None))
+        .order_by(TimerRun.id).limit(limit)).all())
+
+
+def live_timer_messages(s: Session) -> list[TimerRun]:
+    """Running timers that have a bot message to keep counting down."""
+    return list(s.scalars(select(TimerRun).where(
+        TimerRun.status == "running", TimerRun.message_id.is_not(None))).all())
+
+
+def attach_timer_message(s: Session, ws: int, run_id: int, chat_id: int,
+                         message_id: int) -> None:
+    """Remember which bot message shows this run, so it can be kept current."""
+    run = _owned_run(s, ws, run_id)
+    run.chat_id, run.message_id = chat_id, message_id
+    s.commit()
+
+
+# ---------------------------------------------------------------------------
+# Countdowns — how many days until a date that matters
+# ---------------------------------------------------------------------------
+
+#: Enough for every exam, trip and launch somebody is actually watching. A
+#: report that reads out forty dates every morning has stopped being read.
+MAX_COUNTDOWNS = 20
+#: How far ahead a countdown may point. Ten years is a plan; more is a typo.
+COUNTDOWN_MAX_DAYS = 3650
+
+#: A month is recognised by how its name starts, in any of the three
+#: languages, so "dekabr", "December", "декабря" and "dek" are all twelve.
+_MONTH_PREFIXES = {
+    1: ("yan", "jan", "янв"), 2: ("fev", "feb", "фев"), 3: ("mar", "мар"),
+    4: ("apr", "апр"), 5: ("may", "май", "мая"), 6: ("iyun", "jun", "июн"),
+    7: ("iyul", "jul", "июл"), 8: ("avg", "aug", "авг"),
+    9: ("sen", "sep", "сен"), 10: ("okt", "oct", "окт"),
+    11: ("noy", "nov", "ноя"), 12: ("dek", "dec", "дек"),
+}
+_RELATIVE_WORDS = {
+    "bugun": 0, "today": 0, "сегодня": 0,
+    "ertaga": 1, "tomorrow": 1, "завтра": 1,
+    "indinga": 2, "послезавтра": 2,
+}
+_DAY_UNITS = ("kundan", "kun", "days", "day", "дней", "дня", "день", "дн")
+_WEEK_UNITS = ("haftadan", "hafta", "weeks", "week", "недели", "недель",
+               "неделя", "неделю", "нед")
+_MONTH_UNITS = ("oydan", "oy", "months", "month", "месяца", "месяцев",
+                "месяц", "мес")
+
+
+def _month_of(word: str) -> int | None:
+    word = word.lower().strip(".,'’`")
+    for month, prefixes in _MONTH_PREFIXES.items():
+        if any(word.startswith(p) for p in prefixes):
+            return month
+    return None
+
+
+def _safe_date(year: int, month: int, day: int) -> date | None:
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
+
+
+def _add_months(day: date, months: int) -> date:
+    month = day.month - 1 + months
+    year, month = day.year + month // 12, month % 12 + 1
+    import calendar
+    return date(year, month, min(day.day, calendar.monthrange(year, month)[1]))
+
+
+def parse_countdown_date(text: str | None, today: date) -> date | None:
+    """A date typed the way people type dates, or None.
+
+    2026-12-31 · 31.12.2026 · 31/12/26 · 31.12 · 31 dekabr · December 31 ·
+    31 декабря · 45 kun · 3 hafta · 2 oy · ertaga. A day and month without a
+    year is the next time that date comes round, so "1.01" in December means
+    the coming January rather than the one that has passed.
+    """
+    raw = (text or "").strip().lower()
+    if not raw:
+        return None
+    if raw in _RELATIVE_WORDS:
+        return today + timedelta(days=_RELATIVE_WORDS[raw])
+
+    m = re.fullmatch(r"(\d{1,4})\s*([^\d\s]+)(?:\s+(?:dan\s+)?(?:keyin|later|спустя))?", raw)
+    if m:
+        n, unit = int(m.group(1)), m.group(2).strip(".")
+        if unit.startswith(_DAY_UNITS) and n <= 3650:
+            return today + timedelta(days=n)
+        if unit.startswith(_WEEK_UNITS) and n <= 520:
+            return today + timedelta(weeks=n)
+        if unit.startswith(_MONTH_UNITS) and n <= 120:
+            return _add_months(today, n)
+    m = re.fullmatch(r"(?:через|in)\s+(\d{1,4})\s*([^\d\s]+)", raw)
+    if m:
+        return parse_countdown_date(f"{m.group(1)} {m.group(2)}", today)
+
+    m = re.fullmatch(r"(\d{4})[-./](\d{1,2})[-./](\d{1,2})", raw)
+    if m:
+        return _safe_date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    m = re.fullmatch(r"(\d{1,2})[-./](\d{1,2})[-./](\d{2}|\d{4})", raw)
+    if m:
+        year = int(m.group(3))
+        year += 2000 if year < 100 else 0
+        return _safe_date(year, int(m.group(2)), int(m.group(1)))
+
+    def upcoming(month: int, day: int, year: str | None) -> date | None:
+        if year:
+            return _safe_date(int(year), month, day)
+        found = _safe_date(today.year, month, day)
+        if found is not None and found < today:
+            found = _safe_date(today.year + 1, month, day)
+        return found
+
+    m = re.fullmatch(r"(\d{1,2})[-./](\d{1,2})", raw)
+    if m:
+        return upcoming(int(m.group(2)), int(m.group(1)), None)
+    m = re.fullmatch(r"(\d{1,2})[-\s]*([^\d\s,]+),?\s*(\d{4})?(?:\s*(?:yil|г\.?|year))?", raw)
+    if m and _month_of(m.group(2)):
+        return upcoming(_month_of(m.group(2)), int(m.group(1)), m.group(3))
+    m = re.fullmatch(r"([^\d\s,]+)\s+(\d{1,2}),?\s*(\d{4})?", raw)
+    if m and _month_of(m.group(1)):
+        return upcoming(_month_of(m.group(1)), int(m.group(2)), m.group(3))
+    return None
+
+
+def _countdown_dict(row: Countdown, today: date) -> dict:
+    return {"id": row.id, "title": row.title,
+            "date": row.target_date.isoformat(),
+            "days_left": (row.target_date - today).days}
+
+
+def list_countdowns(s: Session, ws: int, *, tz: ZoneInfo | None = None,
+                    include_past: bool = True) -> list[dict]:
+    """Every countdown, soonest first, each with the days left to it.
+
+    The reports pass `include_past=False`: a date that has gone by has
+    nothing left to count, and "−3 days" read out every morning is noise.
+    The list itself keeps them, so they can be seen and cleared.
+    """
+    today = today_local(tz)
+    rows = s.scalars(select(Countdown).where(
+        Countdown.workspace_id == ws, Countdown.archived_at.is_(None))
+        .order_by(Countdown.target_date, Countdown.id)).all()
+    out = [_countdown_dict(r, today) for r in rows]
+    if not include_past:
+        out = [c for c in out if c["days_left"] >= 0]
+    return out
+
+
+def add_countdown(s: Session, ws: int, title: str, target: date, *,
+                  tz: ZoneInfo | None = None) -> dict:
+    title = (title or "").strip()[:200]
+    if not title:
+        raise ValueError("empty_title")
+    today = today_local(tz)
+    if target < today:
+        raise ValueError("past_date")
+    if (target - today).days > COUNTDOWN_MAX_DAYS:
+        raise ValueError("too_far")
+    count = s.scalar(select(func.count(Countdown.id)).where(
+        Countdown.workspace_id == ws, Countdown.archived_at.is_(None))) or 0
+    if count >= MAX_COUNTDOWNS:
+        raise ValueError("too_many")
+    row = Countdown(workspace_id=ws, title=title, target_date=target)
+    s.add(row)
+    s.commit()
+    return _countdown_dict(row, today)
+
+
+def update_countdown(s: Session, ws: int, countdown_id: int, *,
+                     title: str | None = None, target: date | None = None,
+                     tz: ZoneInfo | None = None) -> dict:
+    row = s.get(Countdown, countdown_id)
+    if row is None or row.workspace_id != ws or row.archived_at is not None:
+        raise NotFound("countdown")
+    today = today_local(tz)
+    if title is not None:
+        title = title.strip()[:200]
+        if not title:
+            raise ValueError("empty_title")
+        row.title = title
+    if target is not None:
+        if target < today:
+            raise ValueError("past_date")
+        row.target_date = target
+    s.commit()
+    return _countdown_dict(row, today)
+
+
+def delete_countdown(s: Session, ws: int, countdown_id: int) -> str:
+    row = s.get(Countdown, countdown_id)
+    if row is None or row.workspace_id != ws or row.archived_at is not None:
+        raise NotFound("countdown")
+    row.archived_at = utcnow()
+    s.commit()
+    return row.title

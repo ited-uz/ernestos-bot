@@ -111,6 +111,9 @@ class Caller:
     def patch(self, url, json=None):
         return self.c.patch(url, headers=self.h, json=json)
 
+    def put(self, url, json=None):
+        return self.c.put(url, headers=self.h, json=json)
+
     def delete(self, url):
         return self.c.delete(url, headers=self.h)
 
@@ -1480,9 +1483,14 @@ def _task_buttons(**kwargs) -> list[str]:
 
 
 def test_an_empty_workspace_offers_only_the_two_add_buttons():
+    """Plus the countdowns, which are a screen of their own with their own
+    Add — never a chooser with nothing in it. The timer list, which would be
+    one, stays hidden until there is a task to put a timer on."""
     labels = _task_buttons(projects=[], open_tasks=0, editable=0)
     assert labels == [application.t("uz", "btn_add_task"),
-                      application.t("uz", "btn_add_project")]
+                      application.t("uz", "btn_add_project"),
+                      application.t("uz", "btn_countdown")]
+    assert application.t("uz", "btn_timers") not in labels
 
 
 def test_the_done_and_edit_buttons_appear_once_there_are_tasks():
@@ -8243,3 +8251,454 @@ def test_every_key_the_team_screen_uses_is_defined():
     defined = set(re.findall(r"(?:^|[,{])\s*([a-z_0-9]+)\s*:", uz, re.M))
     missing = sorted(used - defined)
     assert not missing, f"the team screen uses undefined keys: {missing}"
+
+
+# ==========================================================================
+# Timers — a habit or task done by the clock, not by a tap
+# ==========================================================================
+
+@pytest.mark.parametrize("text,minutes", [
+    ("5h deep flow", 300), ("Deep flow 5 soat", 300), ("1h30m run", 90),
+    ("Sport 45 min", 45), ("1,5 soat kitob", 90), ("2 soatlik o'qish", 120),
+    ("Чтение 30 минут", 30), ("Работа 2 часа", 120),
+    ("5x namoz", None), ("Read 20 pages", None), ("10k qadam", None),
+    ("Get up", None), ("Kundalik", None), ("100m sprint", None),
+])
+def test_a_timer_is_read_from_the_name_only_when_it_names_a_length(text, minutes):
+    assert svc.parse_duration_minutes(text) == minutes
+
+
+def _timed_habit(caller, name: str) -> int:
+    return caller.post("/api/habits", json={"name": name,
+                                            "category": "target"}).json()["id"]
+
+
+def _age_run(run_id: int, seconds: int) -> None:
+    """Pretend a running timer started `seconds` earlier than it did."""
+    with SessionLocal() as s:
+        run = s.get(db.TimerRun, run_id)
+        run.started_at = run.started_at - timedelta(seconds=seconds)
+        s.commit()
+
+
+def _habit_row(caller, habit_id: int) -> dict:
+    return next(h for h in caller.get("/api/habits").json()["habits"]
+                if h["id"] == habit_id)
+
+
+def test_a_habit_named_5h_cannot_be_ticked_by_hand(fresh):
+    habit_id = _timed_habit(fresh, "5h deep flow")
+    row = _habit_row(fresh, habit_id)
+    assert row["timer_minutes"] == 300 and row["timer_mode"] == "auto"
+
+    r = fresh.post(f"/api/habits/{habit_id}/toggle")
+    assert r.status_code == 409 and r.json()["detail"] == "timer_required"
+    assert _habit_row(fresh, habit_id)["done"] is False
+
+
+def test_the_habit_is_ticked_when_its_timer_runs_out(fresh):
+    habit_id = _timed_habit(fresh, "Deep flow 2h")
+    started = fresh.post(f"/api/timers/habit/{habit_id}/start").json()
+    run = started["run"]
+    assert run["status"] == "running" and run["duration_sec"] == 7200
+
+    _age_run(run["id"], 7200 + 5)
+    row = _habit_row(fresh, habit_id)
+    assert row["done"] is True, "reading the list must finish an expired timer"
+    assert row["timer"] is None
+
+    # Once the clock has done its part, unticking by hand is allowed.
+    assert fresh.post(f"/api/habits/{habit_id}/toggle").json()["done"] is False
+
+
+def test_a_paused_timer_keeps_what_it_had_left(fresh):
+    habit_id = _timed_habit(fresh, "Kitob 1 soat")
+    run = fresh.post(f"/api/timers/habit/{habit_id}/start").json()["run"]
+    _age_run(run["id"], 600)
+    paused = fresh.post(f"/api/timers/runs/{run['id']}/pause").json()["run"]
+    assert paused["status"] == "paused"
+    assert 2990 <= paused["remaining_sec"] <= 3000
+
+    # Time passing while paused costs nothing.
+    with SessionLocal() as s:
+        row = s.get(db.TimerRun, run["id"])
+        row.created_at = row.created_at - timedelta(hours=3)
+        s.commit()
+    again = fresh.get(f"/api/timers/habit/{habit_id}").json()["run"]
+    assert again["remaining_sec"] == paused["remaining_sec"]
+    assert _habit_row(fresh, habit_id)["done"] is False
+
+
+def test_only_one_timer_runs_at_a_time(fresh):
+    first = _timed_habit(fresh, "Deep flow 3h")
+    second = _timed_habit(fresh, "Sport 45 min")
+    a = fresh.post(f"/api/timers/habit/{first}/start").json()["run"]
+    fresh.post(f"/api/timers/habit/{second}/start")
+
+    assert fresh.get(f"/api/timers/habit/{first}").json()["run"]["status"] == "paused"
+    active = fresh.get("/api/timers/active").json()["timer"]
+    assert active["item_id"] == second and active["status"] == "running"
+    assert a["id"] != active["id"]
+
+
+def test_a_timer_can_be_switched_off_and_the_box_works_again(fresh):
+    habit_id = _timed_habit(fresh, "5h deep flow")
+    body = fresh.put(f"/api/timers/habit/{habit_id}", json={"minutes": 0}).json()
+    assert body["timer_minutes"] is None and body["timer_mode"] == "off"
+    assert fresh.post(f"/api/habits/{habit_id}/toggle").json()["done"] is True
+
+    # And back to reading the name.
+    body = fresh.put(f"/api/timers/habit/{habit_id}", json={"minutes": None}).json()
+    assert body["timer_minutes"] == 300 and body["timer_mode"] == "auto"
+
+
+def test_any_habit_can_be_given_a_timer(fresh):
+    habit_id = _timed_habit(fresh, "Sport")
+    assert _habit_row(fresh, habit_id)["timer_minutes"] is None
+    fresh.put(f"/api/timers/habit/{habit_id}", json={"minutes": 60})
+    assert _habit_row(fresh, habit_id)["timer_mode"] == "on"
+    assert fresh.post(f"/api/habits/{habit_id}/toggle").status_code == 409
+
+
+def test_the_derived_habits_never_carry_a_timer(fresh):
+    wake = next(h for h in fresh.get("/api/habits").json()["habits"]
+                if h["system_key"] == "wakeup")
+    assert wake["timer_minutes"] is None
+    r = fresh.put(f"/api/timers/habit/{wake['id']}", json={"minutes": 30})
+    assert r.status_code == 409
+
+
+def test_stopping_a_timer_ticks_nothing(fresh):
+    habit_id = _timed_habit(fresh, "Deep flow 1h")
+    run = fresh.post(f"/api/timers/habit/{habit_id}/start").json()["run"]
+    _age_run(run["id"], 1200)
+    stopped = fresh.post(f"/api/timers/runs/{run['id']}/stop").json()
+    assert stopped["run"] is None and stopped["done"] is False
+    with SessionLocal() as s:
+        assert run["id"] not in svc.settle_timers(s)
+    assert _habit_row(fresh, habit_id)["done"] is False
+    assert fresh.get(f"/api/timers/habit/{habit_id}").json()["run"] is None
+
+
+def test_a_timed_task_is_completed_by_its_timer(fresh):
+    today = svc.today_local().isoformat()
+    task_id = fresh.post("/api/tasks", json={
+        "title": "Hisobot 2h", "deadline": today,
+        "recurrence": "daily"}).json()["id"]
+    r = fresh.patch(f"/api/tasks/{task_id}", json={"status": "done"})
+    assert r.status_code == 409 and r.json()["detail"] == "timer_required"
+
+    run = fresh.post(f"/api/timers/task/{task_id}/start").json()["run"]
+    _age_run(run["id"], 7300)
+    with SessionLocal() as s:
+        svc.settle_timers(s)
+        task = s.get(db.Task, task_id)
+        assert task.status == "done"
+        # The next occurrence of a recurring task keeps its timer.
+        clone = s.scalar(select(db.Task).where(
+            db.Task.workspace_id == task.workspace_id,
+            db.Task.title == "Hisobot 2h", db.Task.status == "waiting"))
+        assert clone is not None
+        assert svc.timer_minutes_for(clone.timer_minutes, clone.title) == 120
+
+
+def test_a_task_timer_can_be_set_from_the_task_form(fresh):
+    task_id = fresh.post("/api/tasks", json={"title": "Maqola",
+                                             "timer_minutes": 25}).json()["id"]
+    row = next(x for x in fresh.get("/api/tasks?days=365").json()["undated"]
+               if x["id"] == task_id)
+    assert row["timer_minutes"] == 25 and row["timer_mode"] == "on"
+    fresh.patch(f"/api/tasks/{task_id}", json={"timer_minutes": 0})
+    assert fresh.patch(f"/api/tasks/{task_id}",
+                       json={"status": "done"}).status_code == 200
+
+
+def test_somebody_elses_timer_is_out_of_reach(alice, bob):
+    habit_id = _timed_habit(alice, "Deep flow 2h")
+    run = alice.post(f"/api/timers/habit/{habit_id}/start").json()["run"]
+    assert bob.get(f"/api/timers/habit/{habit_id}").status_code == 404
+    assert bob.post(f"/api/timers/habit/{habit_id}/start").status_code == 404
+    assert bob.post(f"/api/timers/runs/{run['id']}/stop").status_code == 404
+    alice.post(f"/api/timers/runs/{run['id']}/stop")
+
+
+class _TimerBot(_FakeBot):
+    def __init__(self):
+        super().__init__()
+        self.texts: list[str] = []
+
+    async def send_message(self, chat_id, text, **kwargs):
+        self.texts.append(text)
+        return await super().send_message(chat_id, text, **kwargs)
+
+    async def edit_message_text(self, *a, **kw):
+        return True
+
+
+async def test_a_finished_timer_is_announced_exactly_once(fresh):
+    habit_id = _timed_habit(fresh, "Deep flow 30 min")
+    run = fresh.post(f"/api/timers/habit/{habit_id}/start").json()["run"]
+    _age_run(run["id"], 1900)
+
+    bot = _TimerBot()
+    await application.tick_timers(bot)
+    await application.tick_timers(bot)
+    mine = [x for x in bot.texts if "Deep flow 30 min" in x]
+    assert len(mine) == 1
+    assert application.t("uz", "timer_finished_habit",
+                         title="Deep flow 30 min", dur="30 daq") in mine[0]
+    assert _habit_row(fresh, habit_id)["done"] is True
+
+
+def test_the_bot_opens_the_timer_instead_of_ticking_a_timed_habit():
+    grouped = {"non_negotiable": [], "bonus": [], "target": [
+        {"id": 7, "name": "5h deep flow", "protected": False, "done": False,
+         "timer_minutes": 300, "timer": None},
+        {"id": 8, "name": "Suv", "protected": False, "done": False}]}
+    markup = application.habits_keyboard(grouped, "uz")
+    data = {b.text: b.callback_data for row in markup.inline_keyboard for b in row}
+    assert data["5h deep flow · ⏱ 5 soat"] == "tmr:open:h:7"
+    assert data["⬜ Suv"] == "habit:toggle:8"
+    assert application.t("uz", "btn_timers") in data
+
+
+def test_every_timer_button_fits_telegrams_callback_limit():
+    info = {"kind": "habit", "id": 2_147_483_647, "title": "x" * 300,
+            "timer_minutes": 1440, "timer_mode": "auto", "parsed_minutes": 1440,
+            "presets": svc.TIMER_PRESETS, "done": False, "protected": False,
+            "run": {"id": 2_147_483_647, "status": "running",
+                    "remaining_sec": 60, "elapsed_sec": 10, "duration_sec": 70,
+                    "ends_at": "12:00"}}
+    for markup in (application.timer_keyboard(info, "ru"),
+                   application.timer_pick_keyboard(info, "ru")):
+        for row in markup.inline_keyboard:
+            for button in row:
+                assert len(button.callback_data.encode()) <= 64, button.callback_data
+
+
+@pytest.mark.parametrize("lang", ["uz", "en", "ru"])
+def test_the_timer_screen_reads_in_every_language(lang):
+    base = {"kind": "habit", "id": 1, "title": "Deep flow", "timer_minutes": 90,
+            "timer_mode": "auto", "done": False, "protected": False}
+    idle = application.render_timer({**base, "run": None}, lang)
+    assert application.fmt_minutes(90, lang) in idle
+    running = application.render_timer({**base, "run": {
+        "id": 3, "status": "running", "remaining_sec": 1800,
+        "elapsed_sec": 3600, "duration_sec": 5400, "ends_at": "15:30"}}, lang)
+    assert "15:30" in running and "67%" in running
+    assert "{" not in idle + running
+
+
+# ==========================================================================
+# Countdowns — days left until a date, every morning and evening
+# ==========================================================================
+
+@pytest.mark.parametrize("text,expected", [
+    ("2026-12-31", date(2026, 12, 31)), ("31.12.2026", date(2026, 12, 31)),
+    ("31/12/26", date(2026, 12, 31)), ("15.11", date(2026, 11, 15)),
+    ("1.01", date(2027, 1, 1)), ("15 dekabr", date(2026, 12, 15)),
+    ("December 15, 2026", date(2026, 12, 15)), ("15 декабря", date(2026, 12, 15)),
+    ("30 kun", date(2026, 10, 27)), ("3 hafta", date(2026, 10, 18)),
+    ("ertaga", date(2026, 9, 28)), ("hello", None), ("31.02.2027", None),
+])
+def test_a_countdown_date_is_read_the_way_people_type_it(text, expected):
+    assert svc.parse_countdown_date(text, date(2026, 9, 27)) == expected
+
+
+def test_countdowns_are_listed_soonest_first_with_the_days_left(fresh):
+    today = svc.today_local()
+    far = fresh.post("/api/countdowns", json={
+        "title": "IELTS", "date": (today + timedelta(days=49)).isoformat()}).json()
+    near = fresh.post("/api/countdowns", json={"title": "Safar",
+                                               "date": "ertaga"}).json()
+    assert far["days_left"] == 49 and near["days_left"] == 1
+    listed = fresh.get("/api/countdowns").json()["countdowns"]
+    assert [x["title"] for x in listed] == ["Safar", "IELTS"]
+
+    assert fresh.post("/api/countdowns", json={
+        "title": "Kecha", "date": (today - timedelta(days=1)).isoformat()
+    }).status_code == 422
+    fresh.delete(f"/api/countdowns/{near['id']}")
+    assert [x["title"] for x in
+            fresh.get("/api/countdowns").json()["countdowns"]] == ["IELTS"]
+
+
+def test_both_reports_count_down(fresh):
+    today = svc.today_local()
+    fresh.post("/api/countdowns", json={
+        "title": "IELTS imtihoni", "date": (today + timedelta(days=12)).isoformat()})
+    with SessionLocal() as s:
+        user = s.get(User, fresh.user["id"])
+        ws = svc.workspace_id_for(s, user.telegram_id)
+        morning = application.render_morning(svc.morning_data(s, ws, user), "uz")
+        evening = application.render_evening(svc.evening_data(s, ws, user), "uz")
+    left = application.t("uz", "cd_days_left", n=12)
+    for text in (morning, evening):
+        assert "IELTS imtihoni" in text and left in text
+    # The good-night line stays the last thing said.
+    assert evening.rstrip().endswith(f"{application.t('uz', 'r_good_night')}</b>")
+
+
+@pytest.mark.parametrize("days,key", [(0, "cd_today"), (1, "cd_tomorrow"),
+                                      (-2, "cd_passed")])
+def test_a_countdown_never_says_zero_or_one_days(days, key):
+    item = {"title": "X", "date": "2026-10-01", "days_left": days}
+    assert application.countdown_left(item, "en") == application.t("en", key)
+
+
+# ==========================================================================
+# Shared (team) work in the bot
+# ==========================================================================
+
+def _team_of_two(a_id: int, b_id: int) -> int:
+    with SessionLocal() as s:
+        team = svc.create_team(s, a_id, "Juftlik")
+        svc.join_team(s, b_id, team.code)
+        return team.id
+
+
+def test_a_shared_habit_is_ticked_through_the_team_in_the_bot(client):
+    a, b = next(_next_id), next(_next_id)
+    Caller(client, {"id": a, "first_name": "A"})
+    Caller(client, {"id": b, "first_name": "B"})
+    team_id = _team_of_two(a, b)
+    with SessionLocal() as s:
+        habit = svc.add_team_habit(s, a, team_id, "Birga yugurish")
+        grouped = svc.habits_by_category(s, svc.workspace_id_for(s, b))
+
+    markup = application.habits_keyboard(grouped, "uz")
+    data = {b_.text: b_.callback_data for row in markup.inline_keyboard for b_ in row}
+    assert data["⬜ 👥 Birga yugurish"] == f"thabit:toggle:{habit['id']}", \
+        "a shared habit must not be routed to the personal toggle"
+
+
+def test_the_bot_task_list_shows_shared_tasks(client):
+    a, b = next(_next_id), next(_next_id)
+    Caller(client, {"id": a, "first_name": "A"})
+    Caller(client, {"id": b, "first_name": "B"})
+    team_id = _team_of_two(a, b)
+    with SessionLocal() as s:
+        svc.add_team_task(s, a, team_id, "Umumiy hisobot",
+                          deadline=svc.today_local())
+        ws = svc.workspace_id_for(s, b)
+        data = svc.list_tasks(s, ws, horizon_days=7)
+        data["team_tasks"] = svc.team_items_for_day(s, b)["tasks"]
+    text = application.render_tasks(data, "uz")
+    assert application.t("uz", "tasks_team") in text
+    assert "Umumiy hisobot" in text and "Juftlik" in text
+    labels = [btn.text for row in application.tasks_keyboard(
+        "uz", projects=[], open_tasks=0, editable=0,
+        team_tasks=1).inline_keyboard for btn in row]
+    assert application.t("uz", "btn_team_tasks") in labels
+
+
+# --- the bot's own timer and countdown flows, end to end ------------------
+
+class _CbQuery:
+    """Enough of a Telegram callback query for the router."""
+
+    def __init__(self, data: str):
+        self.data = data
+        self.edits: list[str] = []
+        self.message = type("M", (), {"chat": type("C", (), {"id": 4242})(),
+                                      "chat_id": 4242, "message_id": 77})()
+
+    async def answer(self, *a, **kw):
+        return True
+
+    async def edit_message_text(self, text, **kw):
+        self.edits.append(text)
+        return self.message
+
+    async def edit_message_reply_markup(self, **kw):
+        return True
+
+
+class _CbUpdate(_Update):
+    def __init__(self, telegram_id: int, data: str):
+        super().__init__(telegram_id)
+        self.callback_query = _CbQuery(data)
+
+
+def _bot_user_with_habit(name: str) -> tuple[int, int, int]:
+    uid = next(_next_id)
+    _onboard(uid)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        habit = svc.add_habit(s, ws, name, "target")
+        return uid, ws, habit.id
+
+
+async def test_tapping_a_timed_habit_in_the_bot_opens_its_timer():
+    uid, ws, habit_id = _bot_user_with_habit("5h deep flow")
+    update = _CbUpdate(uid, f"habit:toggle:{habit_id}")
+    await application.on_callback(update, _Ctx())
+
+    shown = update.callback_query.edits[-1]
+    assert application.t("uz", "timer_title", title="5h deep flow") in shown
+    with SessionLocal() as s:
+        assert not any(h["done"] for h in svc.list_habits(s, ws)
+                       if h["id"] == habit_id), "the box must not tick by hand"
+
+
+async def test_starting_a_timer_in_the_bot_keeps_its_message_counting():
+    uid, ws, habit_id = _bot_user_with_habit("Sport 45 min")
+    update = _CbUpdate(uid, f"tmr:go:h:{habit_id}")
+    await application.on_callback(update, _Ctx())
+
+    assert application.t("uz", "timer_running",
+                         left=application.fmt_left(45 * 60, "uz")) \
+        in update.callback_query.edits[-1]
+    with SessionLocal() as s:
+        run = s.scalar(select(db.TimerRun).where(db.TimerRun.workspace_id == ws))
+        assert run.status == "running"
+        assert (run.chat_id, run.message_id) == (4242, 77)
+
+
+async def test_switching_a_timer_off_in_the_bot_frees_the_box():
+    uid, ws, habit_id = _bot_user_with_habit("5h deep flow")
+    await application.on_callback(_CbUpdate(uid, f"tmr:set:h:{habit_id}:0"), _Ctx())
+    await application.on_callback(_CbUpdate(uid, f"habit:toggle:{habit_id}"), _Ctx())
+    with SessionLocal() as s:
+        assert next(h for h in svc.list_habits(s, ws) if h["id"] == habit_id)["done"]
+
+
+async def test_a_countdown_is_added_by_two_typed_answers():
+    uid = next(_next_id)
+    _onboard(uid)
+    ctx = _Ctx()
+    update = _Update(uid)
+    application.start_flow(ctx, "cd_title")
+    await application.handle_flow(update, ctx, ctx.user_data["flow"], "IELTS")
+    await application.handle_flow(update, ctx, ctx.user_data["flow"], "hello?")
+    assert ctx.user_data.get("flow", {}).get("name") == "cd_date", \
+        "an unreadable date keeps the question open"
+    await application.handle_flow(update, ctx, ctx.user_data["flow"], "30 kun")
+
+    with SessionLocal() as s:
+        items = svc.list_countdowns(s, svc.workspace_id_for(s, uid))
+    assert [(x["title"], x["days_left"]) for x in items] == [("IELTS", 30)]
+    assert "flow" not in ctx.user_data
+    assert any("IELTS" in r for r in update.effective_message.replies)
+
+
+def test_a_deleted_items_timer_does_not_linger(fresh):
+    habit_id = _timed_habit(fresh, "Deep flow 2h")
+    fresh.post(f"/api/timers/habit/{habit_id}/start")
+    assert fresh.get("/api/timers/active").json()["timer"] is not None
+    fresh.delete(f"/api/habits/{habit_id}")
+    assert fresh.get("/api/timers/active").json()["timer"] is None
+
+
+def test_yesterdays_paused_habit_timer_is_not_todays(fresh):
+    habit_id = _timed_habit(fresh, "Kitob 1 soat")
+    run = fresh.post(f"/api/timers/habit/{habit_id}/start").json()["run"]
+    fresh.post(f"/api/timers/runs/{run['id']}/pause")
+    with SessionLocal() as s:
+        row = s.get(db.TimerRun, run["id"])
+        row.day = row.day - timedelta(days=1)
+        s.commit()
+    assert fresh.get("/api/timers/active").json()["timer"] is None
+    # Starting today begins a fresh hour rather than resuming yesterday's.
+    again = fresh.post(f"/api/timers/habit/{habit_id}/start").json()["run"]
+    assert again["id"] != run["id"] and again["remaining_sec"] == 3600

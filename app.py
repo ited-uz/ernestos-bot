@@ -657,7 +657,8 @@ SETUP_MAX_HABITS = 3
 #: Callback actions that change the day, and therefore spend a free action.
 #: `set` and `theme` are settings, not use — the same reasoning as
 #: `UNCOUNTED_PATHS` on the API side.
-COUNTED_CALLBACKS = {"habit", "task", "taskday", "taskproj", "project", "habitcat"}
+COUNTED_CALLBACKS = {"habit", "task", "taskday", "taskproj", "project", "habitcat",
+                     "thabit", "ttask"}
 
 
 async def on_contact(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -868,10 +869,19 @@ def render_home(data: dict, lang: str) -> str:
 
     lines.append(f"\n<b>{t(lang, 'home_today')}</b>")
     rows = [task for group in data["tasks_today"] for task in group["tasks"]]
-    if rows:
+    # Shared work due today is today's work too; marked 👥 so it is clear
+    # whose list it came from, and ticked per person.
+    shared = data.get("team_today") or []
+    if rows or shared:
         for task in rows[:8]:
             when = f" · {task['due_time']}" if task.get("due_time") else ""
-            lines.append(f"— {esc(task['title'])}{when}")
+            badge = _timer_badge(task, lang)
+            lines.append(f"— {esc(task['title'])}{when}"
+                         + (f" · {badge}" if badge else ""))
+        for task in shared[:6]:
+            mark = "✅" if task.get("done") else "—"
+            lines.append(f"{mark} 👥 {esc(task['title'])}"
+                         f" <i>({esc(task.get('team_name') or '')})</i>")
     else:
         lines.append(t(lang, "none"))
 
@@ -881,8 +891,43 @@ def render_home(data: dict, lang: str) -> str:
                  f"🕌 {prayer['performed']}/{prayer['required']} · 🔥{data['streak']}")
     lines.append(f"📊 {TREND_MARK.get(overall['trend'], '▪️')} {overall['value']}%")
 
+    # The dates being counted down to, nearest first — three at most, the
+    # full list is one tap away.
+    countdowns = data.get("countdowns") or []
+    if countdowns:
+        lines.append("")
+        for item in countdowns[:3]:
+            lines.append(countdown_line(item, lang))
+
     lines.append(f"\n{t(lang, 'privacy_line')}")
     return "\n".join(lines)
+
+
+def countdown_left(item: dict, lang: str) -> str:
+    """`49 kun qoldi`, `ertaga!`, `bugun! 🎉` — never "0 days" or "1 days"."""
+    days = item["days_left"]
+    if days < 0:
+        return t(lang, "cd_passed")
+    if days == 0:
+        return t(lang, "cd_today")
+    if days == 1:
+        return t(lang, "cd_tomorrow")
+    return t(lang, "cd_days_left", n=days)
+
+
+def countdown_line(item: dict, lang: str) -> str:
+    return (f"⏳ {esc(item['title'])} — {countdown_left(item, lang)}"
+            f" <i>· {short_date(item['date'], lang)}</i>")
+
+
+def home_keyboard(lang: str) -> InlineKeyboardMarkup:
+    """Home's two ways onward: the countdowns, and the full app."""
+    rows = [[InlineKeyboardButton(t(lang, "btn_countdown"),
+                                  callback_data="cd:list")]]
+    if WEBAPP_URL:
+        rows.append([InlineKeyboardButton(
+            t(lang, "menu_app"), web_app=WebAppInfo(url=WEBAPP_URL))])
+    return InlineKeyboardMarkup(rows)
 
 
 def _bar(percent: int, width: int = 10) -> str:
@@ -995,11 +1040,16 @@ async def show_home(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     user, ws = got
     with SessionLocal() as s:
         data = svc.home(s, ws, s.get(User, user.telegram_id))
+        today = data["date"]
+        data["team_today"] = [
+            x for x in svc.team_items_for_day(
+                s, user.telegram_id, tz=svc.user_tz(user))["tasks"]
+            if x.get("deadline") == today]
     message = update.effective_message
     if message:
         await message.reply_text(render_home(data, user.language),
                                  parse_mode=ParseMode.HTML,
-                                 reply_markup=webapp_button(user.language))
+                                 reply_markup=home_keyboard(user.language))
 
 
 # ---------------------------------------------------------------------------
@@ -1010,8 +1060,47 @@ CATEGORY_KEYS = {"non_negotiable": "cat_non_negotiable",
                  "target": "cat_target", "bonus": "cat_bonus"}
 
 
+def fmt_minutes(minutes: int | None, lang: str) -> str:
+    """`5 soat`, `45 daq`, `1 soat 30 daq` — a length the way it is said."""
+    minutes = int(minutes or 0)
+    hours, rest = divmod(minutes, 60)
+    if hours and rest:
+        return t(lang, "dur_hm", h=hours, m=rest)
+    if hours:
+        return t(lang, "dur_h", h=hours)
+    return t(lang, "dur_m", m=rest)
+
+
+def fmt_left(seconds: int, lang: str) -> str:
+    """What is left on a timer, rounded up to the minute.
+
+    Minutes rather than seconds, because the bot's message is refreshed on a
+    tick and a seconds figure would sit frozen between refreshes, looking
+    broken. The Mini App, which can redraw every second, shows the seconds.
+    """
+    return fmt_minutes(max(1, -(-int(seconds or 0) // 60)), lang)
+
+
+def _timer_badge(item: dict, lang: str) -> str:
+    """The short timer note on a row: `⏱ 5 soat`, or the live state."""
+    run = item.get("timer")
+    if run and run.get("status") == "running":
+        return f"▶️ {fmt_left(run['remaining_sec'], lang)}"
+    if run and run.get("status") == "paused":
+        return f"⏸ {fmt_left(run['remaining_sec'], lang)}"
+    if item.get("timer_minutes"):
+        return f"⏱ {fmt_minutes(item['timer_minutes'], lang)}"
+    return ""
+
+
 def habits_keyboard(grouped: dict, lang: str) -> InlineKeyboardMarkup:
-    """One section per tier, so the three categories stay visible at a glance."""
+    """One section per tier, so the three categories stay visible at a glance.
+
+    Shared habits sit in their tier beside private ones, marked 👥, and tick
+    through the team's own toggle — each member ticks only their own share.
+    A habit with a timer opens its timer instead of ticking: it is done by the
+    clock running out, not by the box.
+    """
     rows = []
     for category in svc.HABIT_CATEGORIES:
         habits = grouped.get(category, [])
@@ -1020,6 +1109,12 @@ def habits_keyboard(grouped: dict, lang: str) -> InlineKeyboardMarkup:
         rows.append([InlineKeyboardButton(t(lang, CATEGORY_KEYS[category]),
                                           callback_data="habit:noop")])
         for h in habits:
+            if h.get("source") == "team":
+                mark = "✅" if h.get("done") else "⬜"
+                rows.append([InlineKeyboardButton(
+                    f"{mark} 👥 {h['name']}",
+                    callback_data=f"thabit:toggle:{h['id']}")])
+                continue
             if h.get("paused"):
                 # A paused habit is shown, greyed by its label, with resume as
                 # the only thing it can do. Hiding it would mean it can never
@@ -1032,6 +1127,11 @@ def habits_keyboard(grouped: dict, lang: str) -> InlineKeyboardMarkup:
                 # never looks like something the user skipped.
                 rows.append([InlineKeyboardButton(
                     f"·  {h['name']}", callback_data="habit:noop")])
+                continue
+            if h.get("timer_minutes") and not h["done"]:
+                rows.append([InlineKeyboardButton(
+                    f"{h['name']} · {_timer_badge(h, lang)}",
+                    callback_data=f"tmr:open:h:{h['id']}")])
                 continue
             mark = "✅" if h["done"] else "⬜"
             lock = " 🔒" if h["protected"] else ""
@@ -1051,6 +1151,8 @@ def habits_keyboard(grouped: dict, lang: str) -> InlineKeyboardMarkup:
         InlineKeyboardButton(t(lang, "btn_add_habit"), callback_data="habit:add"),
         InlineKeyboardButton(t(lang, "btn_del_habit"), callback_data="habit:dellist"),
     ])
+    rows.append([InlineKeyboardButton(t(lang, "btn_timers"),
+                                      callback_data="tmr:list:h")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -1117,6 +1219,9 @@ def _task_lines(tasks: list[dict], lang: str, start: int = 1) -> list[str]:
             meta.append(task["due_time"])
         if task.get("recurrence"):
             meta.append("🔁")
+        badge = _timer_badge(task, lang)
+        if badge:
+            meta.append(badge)
         if meta:
             lines.append(f"     └ {' · '.join(meta)}")
     return lines
@@ -1163,11 +1268,29 @@ def render_tasks(data: dict, lang: str) -> str:
         lines.append(f"<b>{t(lang, 'tasks_undated')}</b>")
         lines += _task_lines(data["undated"][:6], lang)
 
+    # Shared work, per team. The tick is the reader's own share: a task the
+    # partner finished and you have not is still open for you.
+    team_tasks = data.get("team_tasks") or []
+    if team_tasks:
+        lines.append("")
+        lines.append(f"<b>{t(lang, 'tasks_team')}</b>")
+        by_team: dict[str, list[dict]] = {}
+        for task in team_tasks:
+            by_team.setdefault(task.get("team_name") or "", []).append(task)
+        for name, rows in by_team.items():
+            lines.append(f"<i>{esc(name)}</i>")
+            for task in rows[:8]:
+                mark = "✅" if task.get("done") else "⬜"
+                when = (f" · {short_date(task['deadline'], lang)}"
+                        if task.get("deadline") else "")
+                lines.append(f"{mark} {esc(task['title'])}{when}")
+
     return "\n".join(lines)
 
 
 def tasks_keyboard(lang: str, *, projects: list[dict],
-                   open_tasks: int, editable: int) -> InlineKeyboardMarkup:
+                   open_tasks: int, editable: int,
+                   team_tasks: int = 0) -> InlineKeyboardMarkup:
     """Only buttons that lead somewhere.
 
     A "Bajarildi" button on an empty task list opens a chooser with nothing in
@@ -1206,6 +1329,19 @@ def tasks_keyboard(lang: str, *, projects: list[dict],
     if delete_row:
         rows.append(delete_row)
 
+    if team_tasks:
+        rows.append([InlineKeyboardButton(t(lang, "btn_team_tasks"),
+                                          callback_data="ttask:list")])
+    # The timer list needs something to put a timer on; the countdowns are
+    # a screen of their own and always have somewhere to go.
+    extra = []
+    if open_tasks:
+        extra.append(InlineKeyboardButton(t(lang, "btn_timers"),
+                                          callback_data="tmr:list:t"))
+    extra.append(InlineKeyboardButton(t(lang, "btn_countdown"),
+                                      callback_data="cd:list"))
+    rows.append(extra)
+
     return InlineKeyboardMarkup(rows)
 
 
@@ -1221,13 +1357,16 @@ async def show_tasks(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         return
     user, ws = got
     with SessionLocal() as s:
-        data = svc.list_tasks(s, ws, horizon_days=7)
+        data = svc.list_tasks(s, ws, horizon_days=7, tz=svc.user_tz(user))
         projects = svc.list_projects(s, ws)
         open_tasks = len(_all_open_tasks(s, ws))
+        data["team_tasks"] = svc.team_items_for_day(
+            s, user.telegram_id, tz=svc.user_tz(user))["tasks"]
 
     text = render_tasks(data, user.language)
     markup = tasks_keyboard(user.language, projects=projects,
-                            open_tasks=open_tasks, editable=open_tasks)
+                            open_tasks=open_tasks, editable=open_tasks,
+                            team_tasks=len(data["team_tasks"]))
     if edit and update.callback_query:
         await update.callback_query.edit_message_text(
             text, parse_mode=ParseMode.HTML, reply_markup=markup)
@@ -1283,6 +1422,382 @@ async def show_project(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         await update.callback_query.edit_message_text(
             render_project(project, tasks, lang),
             parse_mode=ParseMode.HTML, reply_markup=markup)
+
+
+# ---------------------------------------------------------------------------
+# Timers — habits and tasks done by the clock
+# ---------------------------------------------------------------------------
+#
+# Callback data is `tmr:<verb>:<h|t>:<id>` for an item and `tmr:<verb>:<run>`
+# for a run. The kind is a single letter because Telegram allows 64 bytes of
+# callback data and a habit id plus a minute count has to fit behind it.
+
+KIND_OF_CODE = {"h": "habit", "t": "task"}
+CODE_OF_KIND = {"habit": "h", "task": "t"}
+
+
+def _timer_percent(run: dict) -> int:
+    if not run.get("duration_sec"):
+        return 0
+    return max(0, min(100, round(run["elapsed_sec"] / run["duration_sec"] * 100)))
+
+
+def render_timer(info: dict, lang: str) -> str:
+    """One item's timer: how long it is, and where the clock is now."""
+    lines = [t(lang, "timer_title", title=esc(info["title"]))]
+    run = info.get("run")
+    counting = bool(run and run["status"] in ("running", "paused"))
+    minutes = info.get("timer_minutes")
+
+    if info.get("done") and not counting:
+        lines += ["", t(lang, "timer_done_today" if info["kind"] == "habit"
+                        else "timer_done_task")]
+        if minutes:
+            lines.append(t(lang, "timer_len", dur=fmt_minutes(minutes, lang)))
+        return "\n".join(lines)
+    if not minutes:
+        lines += ["", t(lang, "timer_off_text")]
+        return "\n".join(lines)
+
+    length = t(lang, "timer_len", dur=fmt_minutes(minutes, lang))
+    if info.get("timer_mode") == "auto":
+        length += " " + t(lang, "timer_mode_auto")
+    lines += ["", length]
+
+    if counting:
+        percent = _timer_percent(run)
+        key = "timer_running" if run["status"] == "running" else "timer_paused"
+        lines += ["", t(lang, key, left=fmt_left(run["remaining_sec"], lang)),
+                  f"{_bar(percent)}  {percent}%"]
+        if run["status"] == "running" and run.get("ends_at"):
+            lines.append(t(lang, "timer_ends", time=run["ends_at"]))
+    else:
+        lines += ["", t(lang, "timer_rule_habit" if info["kind"] == "habit"
+                        else "timer_rule_task")]
+    return "\n".join(lines)
+
+
+def timer_keyboard(info: dict, lang: str) -> InlineKeyboardMarkup:
+    """Only the buttons that make sense in the state the clock is in."""
+    code, item = CODE_OF_KIND[info["kind"]], info["id"]
+    run = info.get("run")
+    minutes = info.get("timer_minutes")
+    rows = []
+    if run and run["status"] == "running":
+        rows.append([InlineKeyboardButton(t(lang, "btn_timer_pause"),
+                                          callback_data=f"tmr:pause:{run['id']}"),
+                     InlineKeyboardButton(t(lang, "btn_timer_stop"),
+                                          callback_data=f"tmr:stop:{run['id']}")])
+        rows.append([InlineKeyboardButton(t(lang, "btn_timer_refresh"),
+                                          callback_data=f"tmr:open:{code}:{item}")])
+    elif run and run["status"] == "paused":
+        rows.append([InlineKeyboardButton(t(lang, "btn_timer_resume"),
+                                          callback_data=f"tmr:resume:{run['id']}"),
+                     InlineKeyboardButton(t(lang, "btn_timer_stop"),
+                                          callback_data=f"tmr:stop:{run['id']}")])
+    else:
+        if minutes and not info.get("done"):
+            rows.append([InlineKeyboardButton(
+                t(lang, "btn_timer_start", dur=fmt_minutes(minutes, lang)),
+                callback_data=f"tmr:go:{code}:{item}")])
+        if not info.get("protected"):
+            rows.append([InlineKeyboardButton(
+                t(lang, "btn_timer_change" if minutes else "btn_timer_set"),
+                callback_data=f"tmr:dur:{code}:{item}")])
+        if minutes and not info.get("protected"):
+            rows.append([InlineKeyboardButton(
+                t(lang, "btn_timer_off"), callback_data=f"tmr:set:{code}:{item}:0")])
+        if not minutes and not info.get("done") and not info.get("protected"):
+            # With the timer off it is an ordinary item again, and the
+            # ordinary way to finish it is one tap away.
+            rows.append([InlineKeyboardButton(
+                t(lang, "btn_tick"),
+                callback_data=(f"habit:toggle:{item}" if code == "h"
+                               else f"task:done:{item}"))])
+    rows.append([InlineKeyboardButton(t(lang, "back"),
+                                      callback_data=f"tmr:back:{code}")])
+    return InlineKeyboardMarkup(rows)
+
+
+def timer_pick_keyboard(info: dict, lang: str) -> InlineKeyboardMarkup:
+    """The lengths on offer, three to a row, plus typed, from-the-name and off."""
+    code, item = CODE_OF_KIND[info["kind"]], info["id"]
+    presets = [InlineKeyboardButton(
+        fmt_minutes(m, lang), callback_data=f"tmr:set:{code}:{item}:{m}")
+        for m in info.get("presets") or svc.TIMER_PRESETS]
+    rows = [presets[i:i + 3] for i in range(0, len(presets), 3)]
+    rows.append([InlineKeyboardButton(t(lang, "btn_timer_custom"),
+                                      callback_data=f"tmr:custom:{code}:{item}")])
+    if info.get("parsed_minutes") and info.get("timer_mode") != "auto":
+        rows.append([InlineKeyboardButton(
+            t(lang, "btn_timer_auto", dur=fmt_minutes(info["parsed_minutes"], lang)),
+            callback_data=f"tmr:set:{code}:{item}:a")])
+    if info.get("timer_minutes"):
+        rows.append([InlineKeyboardButton(
+            t(lang, "btn_timer_off"), callback_data=f"tmr:set:{code}:{item}:0")])
+    rows.append([InlineKeyboardButton(t(lang, "back"),
+                                      callback_data=f"tmr:open:{code}:{item}")])
+    return InlineKeyboardMarkup(rows)
+
+
+async def _show(update: Update, text: str, markup, *, edit: bool):
+    """Edit the message the button was on, or send a new one. Returns it."""
+    query = update.callback_query
+    if edit and query is not None:
+        try:
+            return await query.edit_message_text(
+                text, parse_mode=ParseMode.HTML, reply_markup=markup)
+        except BadRequest as e:
+            # Refreshing a timer whose minute has not changed yet.
+            if "not modified" not in str(e).lower():
+                raise
+            return query.message
+    message = update.effective_message
+    if message is None:
+        return None
+    return await message.reply_text(text, parse_mode=ParseMode.HTML,
+                                    reply_markup=markup)
+
+
+async def show_timer(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                     user: User, ws: int, kind: str, item_id: int, *,
+                     edit: bool = True) -> None:
+    """One item's timer screen. A running timer's message keeps counting."""
+    lang = user.language
+    with SessionLocal() as s:
+        info = svc.timer_for(s, ws, kind, item_id, tz=svc.user_tz(user))
+    sent = await _show(update, render_timer(info, lang),
+                       timer_keyboard(info, lang), edit=edit)
+    run = info.get("run")
+    chat_id = getattr(getattr(sent, "chat", None), "id", None) \
+        or getattr(sent, "chat_id", None)
+    message_id = getattr(sent, "message_id", None)
+    if run and run["status"] == "running" and chat_id and message_id:
+        with SessionLocal() as s:
+            svc.attach_timer_message(s, ws, run["id"], chat_id, message_id)
+
+
+async def show_timer_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                          user: User, ws: int, kind: str, *,
+                          edit: bool = True) -> None:
+    """Every habit (or open task) and its timer, to pick one to set."""
+    lang = user.language
+    code = CODE_OF_KIND[kind]
+    with SessionLocal() as s:
+        if kind == "habit":
+            items = [(h["id"], h["name"], h) for h in svc.list_habits(
+                s, ws, tz=svc.user_tz(user))
+                if not h["protected"] and not h["paused"]]
+        else:
+            items = [(x["id"], x["title"], x) for x in _all_open_tasks(s, ws)][:20]
+    rows = [[InlineKeyboardButton(
+        f"{name[:36]} · {_timer_badge(row, lang) or '—'}",
+        callback_data=f"tmr:open:{code}:{item_id}")] for item_id, name, row in items]
+    rows.append([InlineKeyboardButton(t(lang, "back"),
+                                      callback_data=f"tmr:back:{code}")])
+    text = t(lang, "timer_list_habits" if kind == "habit" else "timer_list_tasks")
+    if not items:
+        text += "\n\n" + t(lang, "empty")
+    await _show(update, text, InlineKeyboardMarkup(rows), edit=edit)
+
+
+async def show_active_timer(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """`/timer`: the clock that is running now, or the list to start one."""
+    got = await guard(update, ctx)
+    if got is None:
+        return
+    user, ws = got
+    with SessionLocal() as s:
+        run = svc.active_timer(s, ws)
+    if run:
+        await show_timer(update, ctx, user, ws, run["kind"], run["item_id"],
+                         edit=False)
+        return
+    message = update.effective_message
+    if message:
+        await message.reply_text(t(user.language, "timer_none_active"))
+    await show_timer_list(update, ctx, user, ws, "habit", edit=False)
+
+
+async def _notice(update: Update, text: str) -> None:
+    """Tell the user why a button did nothing.
+
+    An alert when Telegram still accepts one for this tap; the router has
+    usually answered the query already, and a second answer is refused, so
+    the fallback is a plain message rather than silence.
+    """
+    query = update.callback_query
+    try:
+        await query.answer(text, show_alert=True)
+    except TelegramError:
+        if update.effective_message:
+            await update.effective_message.reply_text(text)
+
+
+TIMER_REFUSALS = {"already_done": "timer_already_done",
+                  "paused": "timer_is_paused",
+                  "timer_required": "timer_required"}
+
+
+async def route_timer(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                      parts: list[str], user: User, ws: int, lang: str) -> None:
+    query = update.callback_query
+    sub = parts[1] if len(parts) > 1 else ""
+    tz = svc.user_tz(user)
+
+    if sub == "list":
+        await show_timer_list(update, ctx, user, ws,
+                              KIND_OF_CODE.get(parts[2], "habit"))
+        return
+    if sub == "back":
+        if parts[2] == "t":
+            await show_tasks(update, ctx, edit=True)
+        else:
+            await show_habits(update, ctx, edit=True)
+        return
+
+    if sub in ("pause", "resume", "stop"):
+        action = {"pause": svc.pause_timer, "resume": svc.resume_timer,
+                  "stop": svc.stop_timer}[sub]
+        try:
+            with SessionLocal() as s:
+                run = action(s, ws, int(parts[2]))
+        except ValueError as e:
+            await _notice(update, t(lang, TIMER_REFUSALS.get(str(e), "error")))
+            return
+        await show_timer(update, ctx, user, ws, run["kind"], run["item_id"])
+        return
+
+    kind = KIND_OF_CODE.get(parts[2] if len(parts) > 2 else "")
+    if kind is None:
+        return
+    item_id = int(parts[3])
+
+    if sub == "open":
+        await show_timer(update, ctx, user, ws, kind, item_id)
+    elif sub == "go":
+        try:
+            with SessionLocal() as s:
+                svc.start_timer(s, ws, kind, item_id, tz=tz)
+        except ValueError as e:
+            await _notice(update, t(lang, TIMER_REFUSALS.get(str(e), "error")))
+        await show_timer(update, ctx, user, ws, kind, item_id)
+    elif sub == "dur":
+        with SessionLocal() as s:
+            info = svc.timer_for(s, ws, kind, item_id, tz=tz)
+        await _show(update, t(lang, "timer_pick", title=esc(info["title"])),
+                    timer_pick_keyboard(info, lang), edit=True)
+    elif sub == "set":
+        value = None if parts[4] == "a" else int(parts[4])
+        with SessionLocal() as s:
+            svc.set_item_timer(s, ws, kind, item_id, value)
+        await show_timer(update, ctx, user, ws, kind, item_id)
+    elif sub == "custom":
+        start_flow(ctx, "timer_custom", kind=kind, item=item_id)
+        await query.edit_message_text(t(lang, "timer_ask_custom"),
+                                      parse_mode=ParseMode.HTML,
+                                      reply_markup=cancel_keyboard(lang))
+
+
+def _typed_minutes(text: str) -> int | None:
+    """A length typed by hand: `1h 30m`, `45 min`, or a bare number of minutes."""
+    minutes = svc.parse_duration_minutes(text)
+    if minutes is None and text.strip().isdigit():
+        minutes = int(text.strip())
+    if not minutes or minutes > svc.TIMER_MAX_MINUTES:
+        return None
+    return minutes
+
+
+# ---------------------------------------------------------------------------
+# Countdowns
+# ---------------------------------------------------------------------------
+
+def render_countdowns(items: list[dict], lang: str) -> str:
+    lines = [t(lang, "cd_title"), ""]
+    if not items:
+        lines.append(t(lang, "cd_empty"))
+    for item in items:
+        lines.append(countdown_line(item, lang))
+    return "\n".join(lines)
+
+
+def countdowns_keyboard(items: list[dict], lang: str) -> InlineKeyboardMarkup:
+    row = [InlineKeyboardButton(t(lang, "btn_cd_add"), callback_data="cd:add")]
+    if items:
+        row.append(InlineKeyboardButton(t(lang, "btn_cd_del"),
+                                        callback_data="cd:dellist"))
+    return InlineKeyboardMarkup([row])
+
+
+async def show_countdowns(update: Update, ctx: ContextTypes.DEFAULT_TYPE, *,
+                          edit: bool = False) -> None:
+    got = await guard(update, ctx)
+    if got is None:
+        return
+    user, ws = got
+    with SessionLocal() as s:
+        items = svc.list_countdowns(s, ws, tz=svc.user_tz(user))
+    await _show(update, render_countdowns(items, user.language),
+                countdowns_keyboard(items, user.language), edit=edit)
+
+
+async def route_countdown(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                          parts: list[str], user: User, ws: int,
+                          lang: str) -> None:
+    query = update.callback_query
+    sub = parts[1] if len(parts) > 1 else ""
+    if sub == "list":
+        await show_countdowns(update, ctx)
+    elif sub == "back":
+        await show_countdowns(update, ctx, edit=True)
+    elif sub == "add":
+        start_flow(ctx, "cd_title")
+        await update.effective_message.reply_text(
+            t(lang, "cd_ask_title"), parse_mode=ParseMode.HTML,
+            reply_markup=cancel_keyboard(lang))
+    elif sub == "dellist":
+        with SessionLocal() as s:
+            items = svc.list_countdowns(s, ws, tz=svc.user_tz(user))
+        if not items:
+            await _notice(update, t(lang, "empty"))
+            return
+        rows = [[InlineKeyboardButton(f"🗑 {item['title'][:40]}",
+                                      callback_data=f"cd:del:{item['id']}")]
+                for item in items]
+        rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="cd:back")])
+        await query.edit_message_text(t(lang, "cd_choose_delete"),
+                                      reply_markup=InlineKeyboardMarkup(rows))
+    elif sub == "del":
+        with SessionLocal() as s:
+            svc.delete_countdown(s, ws, int(parts[2]))
+        await show_countdowns(update, ctx, edit=True)
+
+
+# ---------------------------------------------------------------------------
+# Shared (team) tasks in the chat
+# ---------------------------------------------------------------------------
+
+async def show_team_tasks(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                          user: User, *, edit: bool = True) -> None:
+    """Every shared task, with the reader's own tick. Tapping flips it.
+
+    Only your share is ever written — the same rule the Mini App follows — so
+    a task your partner has finished still reads ⬜ here until you finish it.
+    """
+    lang = user.language
+    with SessionLocal() as s:
+        tasks = svc.team_items_for_day(s, user.telegram_id,
+                                       tz=svc.user_tz(user))["tasks"]
+    rows = [[InlineKeyboardButton(
+        f"{'✅' if x.get('done') else '⬜'} {x['title'][:34]}"
+        f" · {(x.get('team_name') or '')[:14]}",
+        callback_data=f"ttask:toggle:{x['id']}")] for x in tasks[:20]]
+    rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="task:back")])
+    text = t(lang, "team_tasks_pick") + "\n<i>" + t(lang, "team_mark_hint") + "</i>"
+    if not tasks:
+        text += "\n\n" + t(lang, "empty")
+    await _show(update, text, InlineKeyboardMarkup(rows), edit=edit)
 
 
 # ---------------------------------------------------------------------------
@@ -1611,6 +2126,52 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                             f"Project: {esc(name_after)}")
             await show_tasks(update, ctx)
 
+        elif name == "timer_custom":
+            minutes = _typed_minutes(text)
+            if minutes is None:
+                await message.reply_text(t(lang, "timer_bad_custom"),
+                                         parse_mode=ParseMode.HTML)
+                return
+            with SessionLocal() as s:
+                svc.set_item_timer(s, ws, flow["kind"], int(flow["item"]), minutes)
+            ctx.user_data.pop("flow", None)
+            await show_timer(update, ctx, user, ws, flow["kind"],
+                             int(flow["item"]), edit=False)
+
+        elif name == "cd_title":
+            start_flow(ctx, "cd_date", title=text[:200])
+            await message.reply_text(t(lang, "cd_ask_date", title=esc(text[:200])),
+                                     parse_mode=ParseMode.HTML,
+                                     reply_markup=cancel_keyboard(lang))
+
+        elif name == "cd_date":
+            tz = svc.user_tz(user)
+            target = svc.parse_countdown_date(text, svc.today_local(tz))
+            if target is None:
+                await message.reply_text(t(lang, "cd_bad_date"),
+                                         parse_mode=ParseMode.HTML)
+                return
+            try:
+                with SessionLocal() as s:
+                    item = svc.add_countdown(s, ws, flow["title"], target, tz=tz)
+            except ValueError as e:
+                reason = str(e)
+                if reason in ("past_date", "too_far"):
+                    # A typo in the year, most likely — keep the flow open.
+                    await message.reply_text(t(lang, "cd_past" if reason == "past_date"
+                                               else "cd_too_far"))
+                    return
+                ctx.user_data.pop("flow", None)
+                await message.reply_text(t(lang, "cd_too_many" if reason == "too_many"
+                                           else "error"))
+                return
+            ctx.user_data.pop("flow", None)
+            await message.reply_text(
+                t(lang, "cd_added", title=esc(item["title"]),
+                  left=countdown_left(item, lang)),
+                parse_mode=ParseMode.HTML)
+            await show_countdowns(update, ctx)
+
         elif name == "feedback":
             with SessionLocal() as s:
                 row = svc.save_feedback(s, ws, user.telegram_id, text)
@@ -1833,8 +2394,15 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     if action == "habit":
         sub = parts[1]
         if sub == "toggle":
-            with SessionLocal() as s:
-                svc.toggle_habit(s, ws, int(parts[2]))
+            try:
+                with SessionLocal() as s:
+                    svc.toggle_habit(s, ws, int(parts[2]), tz=svc.user_tz(user))
+            except ValueError as e:
+                if str(e) != "timer_required":
+                    raise
+                # A timed habit is finished by its timer: open it instead.
+                await show_timer(update, ctx, user, ws, "habit", int(parts[2]))
+                return
             await show_habits(update, ctx, edit=True)
         elif sub == "add":
             start_flow(ctx, "habit_name")
@@ -1904,8 +2472,15 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             await query.edit_message_text(t(lang, "task_deleted", title=title))
             await show_tasks(update, ctx)
         elif sub == "done":
-            with SessionLocal() as s:
-                task = svc.complete_task(s, ws, int(parts[2]))
+            try:
+                with SessionLocal() as s:
+                    task = svc.complete_task(s, ws, int(parts[2]),
+                                             tz=svc.user_tz(user))
+            except ValueError as e:
+                if str(e) != "timer_required":
+                    raise
+                await show_timer(update, ctx, user, ws, "task", int(parts[2]))
+                return
             await log_event(ctx.bot, user, "✅ TASK COMPLETED", f"Task: {esc(task.title)}")
             await query.edit_message_text(t(lang, "task_done", title=task.title))
             await show_tasks(update, ctx)
@@ -1916,6 +2491,34 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             await show_tasks(update, ctx, edit=True)
         elif sub == "noop":
             pass
+
+    elif action == "tmr":
+        await route_timer(update, ctx, parts, user, ws, lang)
+
+    elif action == "cd":
+        await route_countdown(update, ctx, parts, user, ws, lang)
+
+    # --- shared (team) work: each member ticks only their own share ---
+    elif action == "thabit" and len(parts) > 2 and parts[1] == "toggle":
+        try:
+            with SessionLocal() as s:
+                svc.toggle_team_habit(s, user.telegram_id, int(parts[2]),
+                                      tz=svc.user_tz(user))
+        except (PermissionError, ValueError):
+            await _notice(update, t(lang, "not_found"))
+            return
+        await show_habits(update, ctx, edit=True)
+
+    elif action == "ttask":
+        if len(parts) > 2 and parts[1] == "toggle":
+            try:
+                with SessionLocal() as s:
+                    svc.toggle_team_task(s, user.telegram_id, int(parts[2]),
+                                         tz=svc.user_tz(user))
+            except (PermissionError, ValueError):
+                await _notice(update, t(lang, "not_found"))
+                return
+        await show_team_tasks(update, ctx, user)
 
     elif action == "team":
         what = parts[1] if len(parts) > 1 else ""
@@ -1963,8 +2566,15 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                                 project_id=project_id,
                                 remind_before=svc.DEFAULT_REMIND_BEFORE
                                 if deadline else None)
+            timer = svc.timer_minutes_for(task.timer_minutes, task.title)
         ctx.user_data.pop("flow", None)
         await query.edit_message_text(t(lang, "task_added", title=task.title))
+        if timer:
+            # "2h report" just became a task done by a two-hour timer; say so
+            # now, not the first time the box refuses a tap.
+            await message.reply_text(t(lang, "task_added_timer",
+                                       dur=fmt_minutes(timer, lang)),
+                                     parse_mode=ParseMode.HTML)
         await log_event(ctx.bot, user, "⚡ TASK ADDED",
                         f"Task: {task.title}\nDeadline: {deadline or '—'}")
         await show_tasks(update, ctx)
@@ -2008,8 +2618,13 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             return
         with SessionLocal() as s:
             habit = svc.add_habit(s, ws, title, parts[1])
+            timer = svc.timer_minutes_for(habit.timer_minutes, habit.name)
         ctx.user_data.pop("flow", None)
         await query.edit_message_text(t(lang, "habit_added", name=habit.name))
+        if timer:
+            await message.reply_text(t(lang, "habit_added_timer",
+                                       dur=fmt_minutes(timer, lang)),
+                                     parse_mode=ParseMode.HTML)
         await log_event(ctx.bot, user, "➕ HABIT ADDED",
                         f"Habit: {habit.name}\nCategory: {parts[1]}")
         await show_habits(update, ctx)
@@ -2184,6 +2799,10 @@ def render_morning(data: dict, lang: str) -> str:
         lines.append("")
         lines.append(f"🎯 <b>{t(lang, 'r_mission')}</b>")
         lines.append(esc(primary["title"]))
+
+    # The dates being counted down to. Near the top, because "IELTS in 12
+    # days" is what decides how the rest of the morning is spent.
+    lines += _countdown_section(today.get("countdowns"), lang)
 
     # Everything today asks for, under one heading, so the plan reads as one
     # thing rather than as three unrelated lists.
@@ -2406,11 +3025,25 @@ def render_evening(data: dict, lang: str) -> str:
         lines.append("")
         lines.append(t(lang, "r_evening_clear"))
 
+    # Once more before sleep: each of them is one day closer tomorrow.
+    lines += _countdown_section(data.get("countdowns"), lang)
+
     # The last line of the day.
     lines.append("")
     lines.append(f"<b>{t(lang, 'r_good_night')}</b>")
 
     return "\n".join(lines)
+
+
+def _countdown_section(items: list[dict] | None, lang: str) -> list[str]:
+    """The countdown block both reports carry, or nothing when there is none."""
+    if not items:
+        return []
+    lines = ["", t(lang, "r_countdowns")]
+    lines += [countdown_line(item, lang) for item in items[:8]]
+    if len(items) > 8:
+        lines.append(f"<i>+{len(items) - 8}</i>")
+    return lines
 
 
 #: The name today's statistics run is claimed under.
@@ -2859,6 +3492,123 @@ async def _send_user_reminders(bot, telegram_id: int, ws: int, lang: str) -> int
     return sent
 
 
+#: A timer that finished this long ago without being announced — the process
+#: was down, most likely — is marked as told rather than announced hours late.
+TIMER_ANNOUNCE_WINDOW = timedelta(hours=6)
+
+
+async def tick_timers(bot) -> None:
+    """Finish timers whose time is up, announce them, keep the rest counting.
+
+    Runs every half minute. Finishing happens in the database first, so the
+    habit or task is ticked even if the message cannot be delivered; the
+    announcement is claimed per run, so a second instance cannot send it
+    twice. Never raises into the scheduler.
+    """
+    try:
+        with svc.JobLock(SessionLocal, "timers") as lock:
+            if not lock.acquired:
+                return
+            with SessionLocal() as s:
+                svc.settle_timers(s)
+                finished = [r.id for r in svc.unannounced_timers(s)]
+                live = [r.id for r in svc.live_timer_messages(s)]
+            for run_id in finished:
+                try:
+                    await _announce_timer(bot, run_id)
+                except Exception:
+                    log.exception("announcing timer %s failed", run_id)
+            for run_id in live:
+                try:
+                    await _refresh_timer_message(bot, run_id)
+                except Exception:
+                    log.exception("refreshing timer %s failed", run_id)
+    except Exception:
+        log.exception("timer job failed")
+
+
+def _timer_owner(s, run) -> User | None:
+    owner = svc.workspace_owner(s, run.workspace_id)
+    return s.get(User, owner) if owner else None
+
+
+async def _announce_timer(bot, run_id: int) -> bool:
+    """Tell the owner their timer ran out and the item is done. True if sent."""
+    from db import TimerRun
+
+    with SessionLocal() as s:
+        if not svc.claim_timer_notice(s, run_id):
+            return False
+        run = s.get(TimerRun, run_id)
+        user = _timer_owner(s, run) if run else None
+        if run is None or user is None:
+            return False
+        if run.finished_at and run.finished_at < db.utcnow() - TIMER_ANNOUNCE_WINDOW:
+            return False
+        lang = user.language or "uz"
+        chat_id, message_id = run.chat_id, run.message_id
+        kind, title, minutes = run.kind, run.title, run.duration_sec // 60
+        telegram_id = user.telegram_id
+
+    text = t(lang, "timer_finished_habit" if kind == "habit"
+             else "timer_finished_task",
+             title=esc(title), dur=fmt_minutes(minutes, lang))
+    # The message that was counting down stops, and says why.
+    if chat_id and message_id:
+        try:
+            await bot.edit_message_text(chat_id=chat_id, message_id=message_id,
+                                        text=text, parse_mode=ParseMode.HTML)
+        except TelegramError:
+            pass
+    try:
+        # A new message as well, because an edit does not make the phone ring.
+        await bot.send_message(telegram_id, text, parse_mode=ParseMode.HTML)
+        return True
+    except (Forbidden, BadRequest) as e:
+        log.info("timer %s announcement refused: %s", run_id, e)
+    except TelegramError as e:
+        # Transient: give the claim back so the next tick tries again.
+        log.warning("timer %s announcement failed, will retry: %s", run_id, e)
+        with SessionLocal() as s:
+            svc.release_timer_notice(s, run_id)
+    return False
+
+
+async def _refresh_timer_message(bot, run_id: int) -> None:
+    """Redraw a running timer's bot message with the time now left."""
+    from db import TimerRun
+
+    with SessionLocal() as s:
+        run = s.get(TimerRun, run_id)
+        if run is None or run.status != "running" or not run.message_id:
+            return
+        user = _timer_owner(s, run)
+        if user is None:
+            return
+        try:
+            info = svc.timer_for(s, run.workspace_id, run.kind, run.item_id,
+                                 tz=svc.user_tz(user))
+        except svc.NotFound:
+            return
+        lang = user.language or "uz"
+        chat_id, message_id = run.chat_id, run.message_id
+    try:
+        await bot.edit_message_text(chat_id=chat_id, message_id=message_id,
+                                    text=render_timer(info, lang),
+                                    parse_mode=ParseMode.HTML,
+                                    reply_markup=timer_keyboard(info, lang))
+    except BadRequest as e:
+        reason = str(e).lower()
+        if "not modified" in reason:
+            return
+        # Deleted, or too old to edit: stop trying to redraw it.
+        with SessionLocal() as s:
+            row = s.get(TimerRun, run_id)
+            if row is not None:
+                row.message_id = None
+                s.commit()
+
+
 # ---------------------------------------------------------------------------
 # Mini App authentication
 # ---------------------------------------------------------------------------
@@ -3121,6 +3871,10 @@ BOT_COMMANDS = [
     ("ertalabki", lambda u, c: send_report_now(u, c, "morning")),
     ("tekshir", lambda u, c: show_report_health(u, c)),
     ("jamoa", lambda u, c: show_teams(u, c)),
+    # The running timer, or the list to start one; and the dates being
+    # counted down to.
+    ("timer", lambda u, c: show_active_timer(u, c)),
+    ("countdown", lambda u, c: show_countdowns(u, c)),
 ]
 
 
@@ -3218,7 +3972,8 @@ async def lifespan(_: FastAPI):
             telegram_app.bot,
             send_reports=send_reports,
             send_reminders=send_reminders,
-            send_platform_stats=send_platform_stats_tick)
+            send_platform_stats=send_platform_stats_tick,
+            tick_timers=tick_timers)
     else:
         log.warning("BOT_TOKEN missing — API only, no bot and no scheduler")
 
@@ -3370,6 +4125,8 @@ class HabitIn(BaseModel):
     #: daily | weekdays | days:0,2,4 — anything else is read as daily.
     schedule: str | None = Field(default=None, max_length=24)
     remind_at: str | None = Field(default=None, max_length=5)
+    #: Timer length in minutes: 0 switches it off, null reads it from the name.
+    timer_minutes: int | None = Field(default=None, ge=0, le=24 * 60)
 
 
 class PrayerIn(BaseModel):
@@ -3394,6 +4151,8 @@ class TaskIn(BaseModel):
     recurrence: str | None = Field(default=None, max_length=24)
     project_id: int | None = None
     priority: str = Field(default="medium", max_length=6)
+    #: Timer length in minutes: 0 switches it off, null reads it from the name.
+    timer_minutes: int | None = Field(default=None, ge=0, le=24 * 60)
 
 
 class TaskPatch(BaseModel):
@@ -3406,6 +4165,8 @@ class TaskPatch(BaseModel):
     project_id: int | None = None
     priority: str | None = None
     status: str | None = None
+    #: Timer length in minutes: 0 switches it off, null reads it from the name.
+    timer_minutes: int | None = Field(default=None, ge=0, le=24 * 60)
 
 
 class ProjectIn(BaseModel):
@@ -4370,6 +5131,7 @@ def api_habits(day: str | None = None, init=Header(default=None, alias="X-Telegr
                 # copy of it in JavaScript is a second copy that can disagree.
                 "tiers": svc.habit_tier_progress(s, ws, target or svc.today_local(tz)),
                 "wake": svc.wake_state(s, ws, tz=tz),
+                "active_timer": svc.active_timer(s, ws),
                 "streak": svc.habit_streak(s, ws, tz=tz)}
 
 
@@ -4379,7 +5141,8 @@ def api_habit_add(body: HabitIn, init=Header(default=None, alias="X-Telegram-Ini
     with SessionLocal() as s:
         habit = svc.add_habit(s, ws, body.name, body.category,
                               schedule=body.schedule,
-                              remind_at=_time(body.remind_at))
+                              remind_at=_time(body.remind_at),
+                              timer_minutes=body.timer_minutes)
     return {"ok": True, "id": habit.id}
 
 
@@ -4389,6 +5152,8 @@ class HabitPatch(BaseModel):
     schedule: str | None = Field(default=None, max_length=24)
     remind_at: str | None = Field(default=None, max_length=5)
     target_time: str | None = Field(default=None, max_length=5)
+    #: Timer length in minutes: 0 switches it off, null reads it from the name.
+    timer_minutes: int | None = Field(default=None, ge=0, le=24 * 60)
 
 
 class HabitPauseIn(BaseModel):
@@ -4462,7 +5227,11 @@ def api_habit_toggle(habit_id: int, init=Header(default=None, alias="X-Telegram-
     with SessionLocal() as s:
         try:
             done = svc.toggle_habit(s, ws, habit_id, tz=svc.user_tz(user))
-        except ValueError:
+        except ValueError as e:
+            if str(e) == "timer_required":
+                # Not an error on the client's part: the habit is done by its
+                # timer, and the screen should open the timer instead.
+                raise HTTPException(status_code=409, detail="timer_required")
             raise HTTPException(status_code=400, detail="protected_habit")
         # The new counts come back with the toggle, so the row and the header
         # both settle in one round trip instead of two.
@@ -4481,6 +5250,149 @@ def api_habit_delete(habit_id: int, init=Header(default=None, alias="X-Telegram-
             svc.delete_habit(s, ws, habit_id)
         except ValueError:
             raise HTTPException(status_code=400, detail="protected_habit")
+    return {"ok": True}
+
+
+# --- timers ------------------------------------------------------------------
+
+class TimerSetIn(BaseModel):
+    #: Minutes; 0 switches the timer off, null goes back to reading the name.
+    minutes: int | None = Field(default=None, ge=0, le=24 * 60)
+
+
+def _timer_kind(kind: str) -> str:
+    if kind not in svc.TIMER_KINDS:
+        raise HTTPException(status_code=404, detail="not_found")
+    return kind
+
+
+def _timer_refused(e: ValueError) -> HTTPException:
+    return HTTPException(status_code=409, detail=str(e) or "timer_refused")
+
+
+@app.get("/api/timers/active")
+def api_timer_active(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """The timer counting right now, if any — every screen shows it."""
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        return {"timer": svc.active_timer(s, ws)}
+
+
+@app.get("/api/timers/{kind}/{item_id}")
+def api_timer_get(kind: str, item_id: int,
+                  init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        return svc.timer_for(s, ws, _timer_kind(kind), item_id,
+                             tz=svc.user_tz(user))
+
+
+@app.put("/api/timers/{kind}/{item_id}")
+def api_timer_set(kind: str, item_id: int, body: TimerSetIn,
+                  init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Set how long an item's timer runs, switch it off, or go back to auto."""
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        try:
+            return svc.set_item_timer(s, ws, _timer_kind(kind), item_id,
+                                      body.minutes)
+        except ValueError as e:
+            raise _timer_refused(e)
+
+
+@app.post("/api/timers/{kind}/{item_id}/start")
+def api_timer_start(kind: str, item_id: int,
+                    init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, ws = auth(init)
+    tz = svc.user_tz(user)
+    with SessionLocal() as s:
+        try:
+            svc.start_timer(s, ws, _timer_kind(kind), item_id, tz=tz)
+        except ValueError as e:
+            raise _timer_refused(e)
+        return svc.timer_for(s, ws, kind, item_id, tz=tz)
+
+
+@app.post("/api/timers/runs/{run_id}/{verb}")
+def api_timer_run(run_id: int, verb: str,
+                  init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Pause, resume or stop a run. Answers with the item's timer screen."""
+    user, ws = auth(init)
+    action = {"pause": svc.pause_timer, "resume": svc.resume_timer,
+              "stop": svc.stop_timer}.get(verb)
+    if action is None:
+        raise HTTPException(status_code=404, detail="not_found")
+    with SessionLocal() as s:
+        try:
+            run = action(s, ws, run_id)
+        except ValueError as e:
+            raise _timer_refused(e)
+        return svc.timer_for(s, ws, run["kind"], run["item_id"],
+                             tz=svc.user_tz(user))
+
+
+# --- countdowns ---------------------------------------------------------------
+
+class CountdownIn(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    #: ISO date from the date picker; typed forms ("15 noyabr", "30 kun") are
+    #: accepted too, the same ones the bot reads.
+    date: str = Field(min_length=1, max_length=40)
+
+
+class CountdownPatch(BaseModel):
+    title: str | None = Field(default=None, max_length=200)
+    date: str | None = Field(default=None, max_length=40)
+
+
+def _countdown_date(value: str, tz) -> date:
+    found = svc.parse_countdown_date(value, svc.today_local(tz))
+    if found is None:
+        raise HTTPException(status_code=422, detail="bad_date")
+    return found
+
+
+@app.get("/api/countdowns")
+def api_countdowns(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        return {"countdowns": svc.list_countdowns(s, ws, tz=svc.user_tz(user))}
+
+
+@app.post("/api/countdowns")
+def api_countdown_add(body: CountdownIn,
+                      init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, ws = auth(init)
+    tz = svc.user_tz(user)
+    with SessionLocal() as s:
+        try:
+            return svc.add_countdown(s, ws, body.title,
+                                     _countdown_date(body.date, tz), tz=tz)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.patch("/api/countdowns/{countdown_id}")
+def api_countdown_edit(countdown_id: int, body: CountdownPatch,
+                       init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, ws = auth(init)
+    tz = svc.user_tz(user)
+    with SessionLocal() as s:
+        try:
+            return svc.update_countdown(
+                s, ws, countdown_id, title=body.title,
+                target=_countdown_date(body.date, tz) if body.date else None,
+                tz=tz)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.delete("/api/countdowns/{countdown_id}")
+def api_countdown_delete(countdown_id: int,
+                         init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        svc.delete_countdown(s, ws, countdown_id)
     return {"ok": True}
 
 
@@ -4560,6 +5472,7 @@ def api_tasks(days: int = 7, q: str = "", project_id: int | None = None,
         shared = svc.team_items_for_day(s, user.telegram_id, tz=tz)
         out["team_tasks"] = shared["tasks"]
         out["teams"] = shared["teams"]
+        out["active_timer"] = svc.active_timer(s, ws)
         return out
 
 
@@ -4572,7 +5485,8 @@ def api_task_add(body: TaskIn, init=Header(default=None, alias="X-Telegram-Init-
                             description=body.description,
                             due_time=_time(body.due_time),
                             remind_before=body.remind_before,
-                            recurrence=body.recurrence)
+                            recurrence=body.recurrence,
+                            timer_minutes=body.timer_minutes)
     return {"ok": True, "id": task.id}
 
 
@@ -4586,7 +5500,12 @@ def api_task_patch(task_id: int, body: TaskPatch,
     if "due_time" in fields:
         fields["due_time"] = _time(fields["due_time"])
     with SessionLocal() as s:
-        svc.update_task(s, ws, task_id, **fields)
+        try:
+            svc.update_task(s, ws, task_id, **fields)
+        except ValueError as e:
+            if str(e) == "timer_required":
+                raise HTTPException(status_code=409, detail="timer_required")
+            raise HTTPException(status_code=422, detail=str(e))
     return {"ok": True}
 
 

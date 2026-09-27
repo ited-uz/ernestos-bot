@@ -47,10 +47,15 @@ log = logging.getLogger("ernestos")
 REPORT_GRACE = 600
 REMINDER_GRACE = 120
 STATS_GRACE = 3600
+#: Timers: how often a running countdown is checked, and its bot message
+#: redrawn. Thirty seconds is the most a finished timer waits to be announced,
+#: and one edit a minute per running timer is well inside Telegram's limits.
+TIMER_TICK_SECONDS = 30
+TIMER_GRACE = 60
 
 
-def build(bot, *, send_reports, send_reminders, send_platform_stats
-          ) -> AsyncIOScheduler:
+def build(bot, *, send_reports, send_reminders, send_platform_stats,
+          tick_timers=None) -> AsyncIOScheduler:
     """Wire the jobs onto a scheduler and return it, **not** started.
 
     Wiring and starting are separate because starting needs a running event
@@ -97,6 +102,16 @@ def build(bot, *, send_reports, send_reminders, send_platform_stats
                       args=[bot], id="stats",
                       max_instances=1, misfire_grace_time=STATS_GRACE)
 
+    # Habit and task timers. An interval rather than cron, because a timer
+    # ends at whatever second it ends; the job finishes the ones whose time is
+    # up, announces them, and keeps each running timer's message counting.
+    # Finishing is also done on every read, so a slow tick never leaves a
+    # timer "running" on screen after it has run out.
+    if tick_timers is not None:
+        scheduler.add_job(tick_timers, "interval", seconds=TIMER_TICK_SECONDS,
+                          args=[bot], id="timers",
+                          max_instances=1, misfire_grace_time=TIMER_GRACE)
+
     return scheduler
 
 
@@ -105,7 +120,7 @@ def start(bot, **jobs) -> AsyncIOScheduler:
     scheduler = build(bot, **jobs)
     scheduler.start()
     log.info("scheduler started — reports every %s min, reminders every %s min, "
-             "statistics at %02d:00 %s",
+             "timers every %s s, statistics at %02d:00 %s",
              config.REPORT_TICK_MINUTES, svc.REMINDER_JOB_MINUTES,
-             config.STATS_POST_HOUR, svc.TZ)
+             TIMER_TICK_SECONDS, config.STATS_POST_HOUR, svc.TZ)
     return scheduler

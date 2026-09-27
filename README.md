@@ -189,6 +189,73 @@ Loyiha sahifasida foiz **va** uning ortidagi son: `57% · 7 ta vazifadan 4 tasi
 bajarilgan`. Loyiha ichidan vazifa qo'shilganda o'sha loyiha avtomatik
 tanlanadi.
 
+## Taymer — vaqt bilan bajariladigan odat va vazifa
+
+"5h deep flow" — bu besh soat haqidagi va'da, va katakcha besh soat bilan
+besh daqiqani ajrata olmaydi. Shuning uchun odat yoki vazifaga **taymer**
+qo'yish mumkin: taymer yoqilgan bo'lsa, uni qo'lda belgilab bo'lmaydi —
+taymer tugaganda o'zi belgilanadi (botda ham, Mini App'da ham, statistikada
+ham).
+
+| Holat | Qanday |
+|---|---|
+| **Nomidan** (default) | Nomida vaqt bo'lsa, taymer o'zi yoqiladi: `5h`, `45 min`, `1 soat 30 daq`, `1,5 soat`, `2 soatlik`, `1h30m`, `30 минут`. Faqat birlik bilan: `5x namoz`, `20 bet`, `10k qadam` taymer emas; `100m`/`400m` — masofa |
+| **Qo'lda** | Istalgan odat/vazifaga: 15 daq … 5 soat yoki o'zingiz yozgan daqiqa (masalan "Sport" → 1 soat) |
+| **O'chiq** | Vaqt kerak bo'lmasa — hatto nomida `5h` bo'lsa ham — o'chiriladi va odatdagidek belgilanadi |
+
+* Bir vaqtning o'zida **bitta** taymer ishlaydi: yangisini boshlasangiz,
+  oldingisi pauzaga o'tadi (yo'qolmaydi).
+* **Pauza** qolgan vaqtni saqlaydi; **To'xtatish** hech narsani belgilamaydi.
+* Odat taymeri o'z kuniga tegishli: 23:30 da boshlangan 1 soatlik taymer
+  o'sha kechaning odatini belgilaydi; kechagi pauzadagi taymer bugunga
+  o'tmaydi.
+* Takrorlanuvchi vazifaning keyingi nusxasi taymerini meros qiladi.
+* Uchta avtomatik odat (Get up, 5x namoz, Kundalik) va jamoa odatlarida
+  taymer yo'q.
+
+**Botda:** taymerli odat tugmasi `5h deep flow · ⏱ 5 soat` ko'rinishida —
+bosilsa taymer ekrani ochiladi (▶️ Boshlash · ⏸ Pauza · ⏹ To'xtatish ·
+⚙️ Vaqtni o'zgartirish · 🚫 O'chirish). Ishlayotgan taymer xabari har
+daqiqada yangilanib turadi, tugaganda alohida xabar keladi (telefon
+jiringlaydi). `Odatlar → ⏱ Taymer` va `Vazifalar → ⏱ Taymer` ro'yxatidan
+istalgan elementga taymer qo'yiladi. `/timer` — hozir ishlayotgan taymer.
+
+**Mini App'da:** taymerli qatorning katakchasi o'rnida ⏱ — bosilsa katta
+soat (soniyalar bilan) ochiladi. Ishlayotgan taymer Bosh sahifa, Odatlar va
+Vazifalar tepasida banner bo'lib turadi. Odat/vazifa oynasida `Taymer →
+Sozlash`, yangi odat/vazifa qo'shishda esa `Taymer` tanlovi bor.
+
+Texnik: `timer_runs` jadvali (`elapsed_sec` + `started_at`, shuning uchun
+pauza mumkin). Vaqt serverda hisoblanadi; tugagan taymerni birinchi ko'rgan
+joy (har qanday o'qish yoki 30 soniyalik job) yakunlaydi, xabarni esa faqat
+job yuboradi — `notified_at` orqali bir marta.
+
+## Countdown — muhim sanagacha necha kun qoldi
+
+Imtihon, safar, loyiha muddati — sanani qo'shasiz, bot **har kuni ertalabki
+va kechqurungi hisobotda** necha kun qolganini aytadi:
+`⏳ IELTS imtihoni — 49 kun qoldi · 15-noyabr`. Ertaga bo'lsa `ertaga!`,
+bugun bo'lsa `bugun! 🎉`; o'tib ketgan sana hisobotda chiqmaydi.
+
+* **Botda:** Bosh sahifa yoki Vazifalar ostidagi `⏳ Countdown` tugmasi yoki
+  `/countdown`. Qo'shish ikki savol: nomi, keyin sana — `15.11.2026`,
+  `15 noyabr`, `2026-11-15`, `31.12`, `30 kun`, `3 hafta`, `2 oy`, `ertaga`.
+* **Mini App'da:** Vazifalar → Asosiy (kalendar tepasida), va bo'sh
+  bo'lmasa Bosh sahifada.
+* 20 tagacha, 10 yilgacha oldinga. Eslatma hisobot bilan birga keladi —
+  hisobot o'chirilgan bo'lsa, countdown ham kelmaydi.
+
+## Jamoa (guruh) ma'lumotlari botda
+
+Mini App'da jamoaga qo'shilgan odat va vazifalar botda ham chiqadi:
+
+* **Odatlar** — jamoa odatlari o'z darajasida `👥` belgisi bilan; bosilsa
+  **faqat sizning** ulushingiz belgilanadi (ilgari tugma shaxsiy odat
+  ID'siga yuborilardi va "topilmadi" chiqardi).
+* **Vazifalar** — `👥 Jamoa vazifalari` bo'limi (jamoa bo'yicha) va
+  `👥 Jamoa vazifalari` tugmasi: ✅/⬜ bosib o'z ulushingizni belgilaysiz.
+* **Bosh sahifa** — bugungi jamoa vazifalari ham ro'yxatda.
+
 ## Haftaning fokusi
 
 **Vazifalar** bo'limining tepasida — bu rejalashtirish qarori, va shu yer
@@ -419,6 +486,8 @@ Noldan ishga tushirish. Har bir qadamni tartib bilan bajaring.
    ```
    start - ErnestOS'ni ishga tushirish
    home - Bugungi holat
+   timer - Ishlayotgan taymer
+   countdown - Muhim sanalargacha necha kun qoldi
    ```
 
 ## B. Majburiy obuna kanalini yaratish

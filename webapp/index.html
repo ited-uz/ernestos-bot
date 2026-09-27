@@ -464,9 +464,12 @@ h3{font-size:17px;font-weight:600;letter-spacing:-.4px}
 .check:active{transform:scale(.86)}
 .check.lock{opacity:.45;cursor:default}
 .check.sq{border-radius:var(--radius-sm)}
+/* Done by a timer: the box shows a clock, and tapping it opens the timer. */
+.check.timed{color:var(--primary);border-color:var(--primary)}
 /* On the brand surface the ordinary border disappears, so it is keyed to
    the surface's own foreground instead. */
 .hero .check{border-color:color-mix(in srgb, var(--hero-text) 55%, transparent)}
+.hero .check.timed{color:var(--hero-text)}
 .hero .check.on{background:var(--hero-text);border-color:var(--hero-text);
                 color:var(--primary)}
 
@@ -904,6 +907,13 @@ details[open] > summary .chev{transform:rotate(90deg)}
 .toast .undo{color:var(--surface);font-weight:700;cursor:pointer;flex:none;
              text-decoration:underline}
 
+/* A timer's clock: the one large number on its sheet, in digits that do not
+   jitter sideways as they change. */
+.clock-big{font-size:46px;font-weight:700;text-align:center;line-height:1.1;
+           font-variant-numeric:tabular-nums;letter-spacing:.5px;
+           margin:var(--s3) 0 var(--s1)}
+.num-live{font-variant-numeric:tabular-nums}
+
 /* An empty state names the next step. "Nothing yet" alone is a dead end. */
 .empty{text-align:center;color:var(--text-2);padding:var(--s4) var(--s2);
        font-size:13.5px}
@@ -1279,6 +1289,26 @@ const DICT = {
   sub_join:"Kanalga kirish", sub_check:"Obunani tekshirish",
   sub_checking:"Tekshirilmoqda…", sub_still:"Hali obuna ko'rinmadi",
   sub_unknown:"Telegram javob bermadi — qayta urining",
+  /* timers and countdowns */
+  timer:"Taymer", timer_setup:"Sozlash", timer_start:"Boshlash",
+  timer_pause:"Pauza", timer_resume:"Davom etish", timer_stop:"To'xtatish",
+  timer_running_lbl:"Taymer ishlayapti", timer_paused_lbl:"Pauzada",
+  timer_ends_at:"{time} da tugaydi", timer_len:"Davomiyligi",
+  timer_off:"O'chiq", timer_auto:"nomidan", timer_from_name:"Nomidan (masalan: 5h)",
+  timer_custom_ph:"Daqiqa, masalan 50",
+  timer_rule_habit:"Odat taymer tugagach o'zi belgilanadi.",
+  timer_rule_task:"Vazifa taymer tugagach o'zi bajariladi.",
+  timer_off_hint:"Taymer o'chiq — oddiy belgilanadi. Vaqt kerak bo'lsa, pastdan tanlang.",
+  timer_done_today:"Bugun bajarildi", timer_done:"Bajarildi",
+  timer_finished:"Vaqt tugadi — belgilandi ✓",
+  timer_required:"Bu taymer bilan bajariladi — taymerni boshlang",
+  dur_h:"{h} soat", dur_m:"{m} daq", dur_hm:"{h} soat {m} daq",
+  countdown:"Countdown", countdown_add:"Countdown qo'shish",
+  countdown_title_ph:"Masalan: IELTS imtihoni", countdown_date:"Sana",
+  countdown_need:"Nom va sanani kiriting",
+  countdown_empty:"Muhim sanani qo'shing — bot har kuni ertalab va kechqurun necha kun qolganini eslatadi.",
+  cd_days_left:"{n} kun qoldi", cd_today:"Bugun!", cd_tomorrow:"Ertaga", cd_passed:"O'tdi",
+  cd_delete_sure:"O'chirilsinmi:",
   dow:["Du","Se","Ch","Pa","Ju","Sh","Ya"],
   dow_full:["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba","Yakshanba"],
   months:["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"],
@@ -1532,6 +1562,26 @@ const DICT = {
   sub_join:"Open the channel", sub_check:"Check my subscription",
   sub_checking:"Checking…", sub_still:"Still not subscribed",
   sub_unknown:"Telegram did not answer — please try again",
+  /* timers and countdowns */
+  timer:"Timer", timer_setup:"Set up", timer_start:"Start",
+  timer_pause:"Pause", timer_resume:"Resume", timer_stop:"Stop",
+  timer_running_lbl:"Timer running", timer_paused_lbl:"Paused",
+  timer_ends_at:"ends at {time}", timer_len:"Length",
+  timer_off:"Off", timer_auto:"from name", timer_from_name:"From the name (e.g. 5h)",
+  timer_custom_ph:"Minutes, e.g. 50",
+  timer_rule_habit:"The habit ticks itself when the timer ends.",
+  timer_rule_task:"The task completes itself when the timer ends.",
+  timer_off_hint:"Timer is off — tick it as usual. Pick a length below if it needs one.",
+  timer_done_today:"Done for today", timer_done:"Done",
+  timer_finished:"Time's up — ticked ✓",
+  timer_required:"This one is done by its timer — start the timer",
+  dur_h:"{h} h", dur_m:"{m} min", dur_hm:"{h} h {m} min",
+  countdown:"Countdowns", countdown_add:"Add a countdown",
+  countdown_title_ph:"E.g. IELTS exam", countdown_date:"Date",
+  countdown_need:"Enter a name and a date",
+  countdown_empty:"Add a date that matters — the bot tells you every morning and evening how many days are left.",
+  cd_days_left:"{n} days left", cd_today:"Today!", cd_tomorrow:"Tomorrow", cd_passed:"Passed",
+  cd_delete_sure:"Delete:",
   dow:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
   dow_full:["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],
   months:["January","February","March","April","May","June","July","August","September","October","November","December"],
@@ -1785,6 +1835,26 @@ const DICT = {
   sub_join:"Открыть канал", sub_check:"Проверить подписку",
   sub_checking:"Проверяем…", sub_still:"Подписка пока не видна",
   sub_unknown:"Telegram не ответил — попробуйте снова",
+  /* timers and countdowns */
+  timer:"Таймер", timer_setup:"Настроить", timer_start:"Старт",
+  timer_pause:"Пауза", timer_resume:"Продолжить", timer_stop:"Стоп",
+  timer_running_lbl:"Таймер идёт", timer_paused_lbl:"На паузе",
+  timer_ends_at:"закончится в {time}", timer_len:"Длительность",
+  timer_off:"Выкл", timer_auto:"из названия", timer_from_name:"Из названия (напр. 5h)",
+  timer_custom_ph:"Минуты, напр. 50",
+  timer_rule_habit:"Привычка отметится сама, когда таймер закончится.",
+  timer_rule_task:"Задача выполнится сама, когда таймер закончится.",
+  timer_off_hint:"Таймер выключен — отмечается как обычно. Если нужно время, выберите ниже.",
+  timer_done_today:"Сегодня выполнено", timer_done:"Выполнено",
+  timer_finished:"Время вышло — отмечено ✓",
+  timer_required:"Это выполняется по таймеру — запустите таймер",
+  dur_h:"{h} ч", dur_m:"{m} мин", dur_hm:"{h} ч {m} мин",
+  countdown:"Отсчёт", countdown_add:"Добавить отсчёт",
+  countdown_title_ph:"Например: экзамен IELTS", countdown_date:"Дата",
+  countdown_need:"Введите название и дату",
+  countdown_empty:"Добавьте важную дату — бот каждое утро и вечер напомнит, сколько дней осталось.",
+  cd_days_left:"осталось дней: {n}", cd_today:"Сегодня!", cd_tomorrow:"Завтра", cd_passed:"Прошло",
+  cd_delete_sure:"Удалить:",
   dow:["Пн","Вт","Ср","Чт","Пт","Сб","Вс"],
   dow_full:["Понедельник","Вторник","Среда","Четверг","Пятница","Суббота","Воскресенье"],
   months:["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"],
@@ -1879,6 +1949,9 @@ const ICONS = {
   book:'<path d="M5 4.5h9a3 3 0 0 1 3 3v12H8a3 3 0 0 1-3-3v-12Z"/><path d="M17 7.5h2v12H8"/>',
   flame:'<path d="M12 3.5s4.5 4 4.5 8a4.5 4.5 0 0 1-9 0c0-1.6.8-3 1.6-4 .3 1.2 1 1.9 1.7 1.9 1.2 0 1.6-1.4 1.2-5.9Z"/>',
   x:'<path d="M6 6l12 12M18 6 6 18"/>',
+  /* Two bulbs meeting at a waist, capped top and bottom: a countdown. */
+  hourglass:'<path d="M6.5 3.5h11M6.5 20.5h11"/>'
+    + '<path d="M8 3.5c0 4.4 8 4.6 8 8.5s-8 4.1-8 8.5M16 3.5c0 4.4-8 4.6-8 8.5s8 4.1 8 8.5"/>',
 };
 const icon = (name, size = 19) =>
   `<svg class="i" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none"
@@ -2107,8 +2180,10 @@ SCREENS.home = () => {
      The point of Home is that opening it answers the question without
      scrolling. */
   return headBlock(d)
+       + timerBanner(d.active_timer)
        + nowBlock(d)
        + tasksBlock(d)
+       + countdownBlock(d.countdowns)
        + scoreBlock(d)
        + todayBlock(d)
        + progressCard()
@@ -2202,8 +2277,13 @@ function nowBlock(d){
     wake:    {title: t("now_wake"),    act:"wake"},
     prayer:  {title: t("now_prayer"),  act:"go-tab", data:'data-tab="prayer"'},
     journal: {title: t("now_journal"), act:"go-tab", data:'data-tab="journal"'},
-    habit:   {title: n.title,          act:"habit-toggle-home"},
-    task:    {title: n.title,          act:"task-done"},
+    /* A habit or task done by its timer is started, not ticked, from here. */
+    habit:   n.timer_minutes
+               ? {title: n.title, act:"timer-open", data:'data-kind="habit"'}
+               : {title: n.title, act:"habit-toggle-home"},
+    task:    n.timer_minutes
+               ? {title: n.title, act:"timer-open", data:'data-kind="task"'}
+               : {title: n.title, act:"task-done"},
   };
   const kind = KINDS[n.kind];
 
@@ -2244,10 +2324,11 @@ function nowBlock(d){
   return `<div class="hero" style="margin-top:var(--s3)">
       ${head}
       <div class="row" style="margin-top:var(--s1);align-items:flex-start">
-        <div class="check" style="margin-top:2px"
+        <div class="check ${n.timer_minutes ? "timed" : ""}" style="margin-top:2px"
              data-act="${kind.act}" ${kind.data || ""}
              ${n.id ? `data-id="${n.id}"` : ""}
-             aria-label="${t("now_done")}">${icon("check", 14)}</div>
+             aria-label="${t(n.timer_minutes ? "timer" : "now_done")}">${
+               icon(n.timer_minutes ? "clock" : "check", 14)}</div>
         <div class="grow">
           <div class="wrap" style="font-size:18px;font-weight:600;line-height:1.3">
             ${esc(kind.title)}</div>
@@ -2702,7 +2783,7 @@ function habitsTab(){
         (n, x) => n + (x.due ? x.weight * x.done / x.due : 0), 0) / live * 100)
     : (due.length ? Math.round(done / due.length * 100) : 0);
 
-  let h = `<div class="tinted block tone-5">
+  let h = timerBanner(data.active_timer) + `<div class="tinted block tone-5">
       <div class="bh">
         <span class="itile lg">${icon("check", 18)}</span>
         <div class="grow"><div class="bt">${t("today")}</div>
@@ -2802,9 +2883,16 @@ function habitRow(x, cat, wake){
                                            : "habit_auto_prayer"));
   if(x.remind_at) meta.push(`${icon("bell", 12)} ${x.remind_at}`);
   if(x.schedule !== "daily" && !isWake) meta.push(scheduleLabel(x));
+  const timed = x.source !== "team" && !x.protected && Boolean(x.timer_minutes);
+  if(timed) meta.push(timerMeta(x));
 
   const box = !x.due
     ? `<div class="check lock" aria-hidden="true"></div>`
+    /* Done by its timer: the box starts the clock instead of ticking. Once
+       the timer has done its part the box is an ordinary one again. */
+    : timed && !x.done
+      ? `<div class="check timed" data-act="timer-open" data-kind="habit"
+             data-id="${x.id}" aria-label="${t("timer")}">${icon("clock", 14)}</div>`
     : x.source === "team"
       // Shared rituals are ticked by hand by each member — there is no
       // shared prayer module ticking them, so they are never locked.
@@ -3046,6 +3134,278 @@ document.addEventListener("input", e => {
   if(el) onJournalInput(el);
 });
 
+/* ---------- timers ----------
+   A habit or a task can be done by the clock instead of the box: "5h deep
+   flow" is finished by five hours running out, not by a tap. The length is
+   read from the name unless one was set, can be set on anything, and can be
+   switched off on anything. The server owns the clock — this file only draws
+   it, counting down from `remaining_sec` as measured when the payload
+   arrived, so a phone whose clock is wrong still shows the right time. */
+const TIMER_PRESETS = [15, 25, 30, 45, 60, 90, 120, 180, 240, 300];
+
+function fmtMinutes(m){
+  m = Math.round(m || 0);
+  const h = Math.floor(m / 60), r = m % 60;
+  if(h && r) return t("dur_hm", {h, m: r});
+  return h ? t("dur_h", {h}) : t("dur_m", {m: r});
+}
+
+/* H:MM:SS, or MM:SS under an hour. */
+function fmtClock(sec){
+  sec = Math.max(0, Math.ceil(sec));
+  const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+  const p = n => String(n).padStart(2, "0");
+  return h ? `${h}:${p(m)}:${p(s)}` : `${p(m)}:${p(s)}`;
+}
+
+/* Every run drawn on screen, by id, so the ticker can find it again. */
+const LIVE_RUNS = new Map();
+
+/* Seconds left on a run right now. The first time a run object is drawn it
+   is stamped with the moment it was received; it is replaced by a fresh one
+   on the next load, so the stamp never goes stale. */
+function leftOf(run){
+  if(!run._at) run._at = Date.now();
+  if(run.status !== "running") return run.remaining_sec;
+  return Math.max(0, run.remaining_sec - (Date.now() - run._at) / 1000);
+}
+function runPercent(run){
+  return run.duration_sec
+    ? Math.round((run.duration_sec - leftOf(run)) / run.duration_sec * 100) : 0;
+}
+function liveClock(run){
+  LIVE_RUNS.set(run.id, run);
+  return `<span class="num-live" data-run-clock="${run.id}">${fmtClock(leftOf(run))}</span>`;
+}
+function liveBar(run){
+  LIVE_RUNS.set(run.id, run);
+  return `<div class="bar accent"><span data-run-bar="${run.id}"
+    style="width:${runPercent(run)}%"></span></div>`;
+}
+
+/* The short timer note on a row. */
+function timerMeta(x){
+  const run = x.timer;
+  if(run && run.status === "running") return `▶ ${liveClock(run)}`;
+  if(run && run.status === "paused") return `⏸ ${fmtClock(run.remaining_sec)}`;
+  return x.timer_minutes ? `${icon("clock", 12)} ${fmtMinutes(x.timer_minutes)}` : "";
+}
+
+/* One ticker for the whole app: redraws every live clock once a second, and
+   when one reaches zero asks the server what happened — which finishes the
+   run, ticks the item and returns the new state. */
+let timerExpiring = false;
+setInterval(() => {
+  let expired = false;
+  for(const el of document.querySelectorAll("[data-run-clock]")){
+    const run = LIVE_RUNS.get(Number(el.dataset.runClock));
+    if(!run) continue;
+    const left = leftOf(run);
+    el.textContent = fmtClock(left);
+    if(run.status === "running" && left <= 0) expired = true;
+  }
+  for(const el of document.querySelectorAll("[data-run-bar]")){
+    const run = LIVE_RUNS.get(Number(el.dataset.runBar));
+    if(run) el.style.width = runPercent(run) + "%";
+  }
+  if(expired && !timerExpiring){
+    timerExpiring = true;
+    setTimeout(async () => {
+      try{
+        const info = state.timerInfo;
+        if(info && sheetOpen()){
+          const fresh = await api(`/api/timers/${info.kind}/${info.id}`);
+          state.timerInfo = fresh;
+          openSheet(timerSheet(fresh));
+          if(fresh.done){ notify("success"); toast(t("timer_finished")); }
+        }
+        await loadScreen(state.screen);
+      }catch(_){ /* the next tick or load corrects it */ }
+      timerExpiring = false;
+    }, 1200);
+  }
+}, 1000);
+
+/* The timer counting right now, on every screen that has room for it. */
+function timerBanner(run){
+  if(!run || (run.status !== "running" && run.status !== "paused")) return "";
+  return `<div class="tinted block tone-3" data-act="timer-open"
+       data-kind="${run.kind}" data-id="${run.item_id}"
+       style="margin:var(--s3) 0;cursor:pointer">
+      <div class="bh">
+        <span class="itile lg">${icon(run.status === "running" ? "play" : "pause", 18)}</span>
+        <div class="grow"><div class="bt ellipsis">${esc(run.title)}</div>
+          <div class="t2 tiny">${t(run.status === "running"
+            ? "timer_running_lbl" : "timer_paused_lbl")}</div></div>
+        <div class="num" style="font-size:22px;font-weight:700">${
+          run.status === "running" ? liveClock(run) : fmtClock(run.remaining_sec)}</div>
+      </div>
+      <div style="margin-top:var(--s2)">${liveBar(run)}</div>
+    </div>`;
+}
+
+function timerSheet(info){
+  const run = info.run;
+  const counting = run && (run.status === "running" || run.status === "paused");
+  const minutes = info.timer_minutes;
+  const kind = info.kind;
+
+  let body;
+  if(info.done && !counting){
+    body = `<div class="clock-big">✓</div>
+      <div class="hint" style="text-align:center">${t(kind === "habit"
+        ? "timer_done_today" : "timer_done")}</div>`;
+  } else if(!minutes){
+    body = `<div class="hint">${t("timer_off_hint")}</div>`;
+  } else if(counting){
+    const running = run.status === "running";
+    body = `<div class="clock-big">${running ? liveClock(run)
+                                            : fmtClock(run.remaining_sec)}</div>
+      ${liveBar(run)}
+      <div class="t2 small" style="text-align:center;margin-top:var(--s2)">
+        ${running && run.ends_at ? t("timer_ends_at", {time: run.ends_at})
+                                 : t("timer_paused_lbl")}
+        · ${fmtMinutes(minutes)}</div>
+      <div class="btns" style="margin-top:var(--s3)">
+        <button class="btn" data-act="timer-run" data-verb="${running ? "pause" : "resume"}"
+                data-id="${run.id}">${icon(running ? "pause" : "play", 16)}
+          ${t(running ? "timer_pause" : "timer_resume")}</button>
+        <button class="btn secondary" data-act="timer-run" data-verb="stop"
+                data-id="${run.id}">${icon("x", 16)} ${t("timer_stop")}</button>
+      </div>`;
+  } else {
+    body = `<div class="clock-big">${fmtClock(minutes * 60)}</div>
+      <div class="hint" style="text-align:center">${t(kind === "habit"
+        ? "timer_rule_habit" : "timer_rule_task")}</div>
+      <button class="btn" data-act="timer-start" data-kind="${kind}" data-id="${info.id}"
+              style="margin-top:var(--s3)">${icon("play", 16)} ${t("timer_start")}</button>`;
+  }
+
+  /* The length: presets as one tap, a typed number, from-the-name, off. Not
+     offered while the clock is counting — change it after, not mid-run. */
+  const current = info.timer_mode === "off" ? "off"
+    : info.timer_mode === "auto" ? "auto" : String(minutes);
+  const chip = (value, label) => `<div class="chip sm ${current === value ? "on" : ""}"
+      data-act="timer-len" data-kind="${kind}" data-id="${info.id}"
+      data-value="${value}">${label}</div>`;
+  const chooser = info.protected || counting ? "" : `
+    <label>${icon("clock", 13)} ${t("timer_len")}</label>
+    <div class="chips">
+      ${chip("off", t("timer_off"))}
+      ${info.parsed_minutes ? chip("auto", `${fmtMinutes(info.parsed_minutes)} · ${t("timer_auto")}`) : ""}
+      ${(info.presets || TIMER_PRESETS).map(m => chip(String(m), fmtMinutes(m))).join("")}
+    </div>
+    <div class="row" style="margin-top:var(--s2);gap:var(--s2)">
+      <input id="timer-min" type="number" min="1" max="1440" inputmode="numeric"
+             placeholder="${t("timer_custom_ph")}" style="flex:1" />
+      <button class="btn sm secondary" data-act="timer-custom" data-kind="${kind}"
+              data-id="${info.id}" style="min-width:96px">${t("save")}</button>
+    </div>`;
+
+  // With the timer off it is an ordinary item again.
+  const tick = !minutes && !info.done && !info.protected
+    ? `<button class="btn secondary" data-act="timer-tick" data-kind="${kind}"
+         data-id="${info.id}" style="margin-top:var(--s2)">${icon("check", 15)}
+         ${t("now_done")}</button>` : "";
+
+  return `<h3>${icon("clock", 18)} ${esc(info.title)}</h3>
+    ${body}${chooser}${tick}
+    <button class="btn secondary" data-act="close" style="margin-top:8px">
+      ${t("close")}</button>`;
+}
+
+/* The timer line inside a habit's or task's own sheet. */
+function timerSetting(kind, x){
+  const label = x.timer_minutes
+    ? fmtMinutes(x.timer_minutes) + (x.timer_mode === "auto" ? ` · ${t("timer_auto")}` : "")
+    : t("timer_off");
+  return `<label>${icon("clock", 13)} ${t("timer")}</label>
+    <div class="row" style="gap:var(--s2)">
+      <div class="grow t2 small">${label}</div>
+      <button class="btn sm secondary" data-act="timer-open" data-kind="${kind}"
+              data-id="${x.id}" style="min-width:96px">${t("timer_setup")}</button>
+    </div>`;
+}
+
+/* A timer choice on an add sheet: from the name (the default), off, or a
+   length. `null` means "read it from the name". */
+function timerPicker(id, value){
+  const current = value === undefined || value === null ? "" : String(value);
+  return `<label>${icon("clock", 13)} ${t("timer")}</label>
+    <select id="${id}">
+      <option value="" ${current === "" ? "selected" : ""}>${t("timer_from_name")}</option>
+      <option value="0" ${current === "0" ? "selected" : ""}>${t("timer_off")}</option>
+      ${TIMER_PRESETS.map(m => `<option value="${m}" ${current === String(m)
+        ? "selected" : ""}>${fmtMinutes(m)}</option>`).join("")}
+    </select>`;
+}
+function pickedTimer(id){
+  const v = document.getElementById(id)?.value ?? "";
+  return v === "" ? null : Number(v);
+}
+
+async function openTimer(kind, id){
+  try{
+    const info = await api(`/api/timers/${kind}/${id}`);
+    state.timerInfo = info;
+    openSheet(timerSheet(info));
+    /* Reading the timer can itself finish it — a run that ran out while the
+       app was closed — so the screen behind catches up too. */
+    loadScreen(state.screen);
+  }catch(e){ handleError(e); }
+}
+
+/* After any change: redraw the sheet from the server's answer, then the
+   screen behind it, which shows the same clock. */
+async function timerChanged(info){
+  state.timerInfo = info;
+  openSheet(timerSheet(info));
+  await loadScreen(state.screen);
+}
+
+/* ---------- countdowns ----------
+   Dates being counted down to — an exam, a trip, a launch. The bot reads them
+   out every morning and evening; here they sit under the day's work. */
+function cdLeft(x){
+  if(x.days_left < 0) return t("cd_passed");
+  if(x.days_left === 0) return t("cd_today");
+  if(x.days_left === 1) return t("cd_tomorrow");
+  return t("cd_days_left", {n: x.days_left});
+}
+
+function countdownRows(list){
+  return list.map(x => `<div class="item" style="min-height:48px"
+       data-act="cd-open" data-id="${x.id}" data-title="${esc(x.title)}">
+      <span class="itile">${icon("hourglass", 16)}</span>
+      <div class="grow"><div class="ellipsis">${esc(x.title)}</div>
+        <div class="meta num">${isoToLabel(x.date)}</div></div>
+      <div class="num" style="font-weight:700;white-space:nowrap">${cdLeft(x)}</div>
+    </div>`).join("");
+}
+
+/* Home carries the block only when there is something in it: the screen is
+   about today, and an empty countdown section would be one more thing to
+   read past. Adding one lives on the Tasks screen, where planning happens. */
+function countdownBlock(list, always){
+  list = list || [];
+  if(!list.length && !always) return "";
+  return `<h2>${t("countdown")}
+      <span class="act" data-act="cd-add">${icon("plus", 15)} ${t("add")}</span></h2>
+    ${list.length ? countdownRows(list)
+                  : `<div class="empty">${t("countdown_empty")}</div>`}`;
+}
+
+function countdownSheet(){
+  return `<h3>${icon("hourglass", 18)} ${t("countdown_add")}</h3>
+    <input id="cd-title" placeholder="${t("countdown_title_ph")}" maxlength="200" />
+    <label>${t("countdown_date")}</label>
+    <input type="date" id="cd-date" min="${todayISO()}" />
+    <button class="btn" data-act="cd-save" style="margin-top:14px">
+      ${icon("plus", 16)} ${t("add")}</button>
+    <button class="btn secondary" data-act="close" style="margin-top:8px">
+      ${t("cancel")}</button>`;
+}
+
 /* ---------- Tasks ---------- */
 /* Tasks, in four views of the same data rather than four lists.
 
@@ -3097,7 +3457,7 @@ function sectionHead(tone, ic, label, action){
    the inventory is the question. */
 function mainTab(){
   const d = state.tasks;
-  let h = weekFocusBlock();
+  let h = timerBanner(d?.active_timer) + weekFocusBlock();
   if(!d) return h + `<div class="spin"></div>`;
 
   const today = todayISO();
@@ -3134,7 +3494,9 @@ function mainTab(){
               style="margin:12px auto 0;display:flex">
         ${icon("plus", 16)} ${t("add_first_task")}</button></div>`;
 
-  // The month, last: what is coming after today, once today has been read.
+  // The dates being counted down to, then the month: what is coming after
+  // today, once today has been read.
+  h += countdownBlock(state.countdowns, true);
   h += sectionHead("tone-2", "calendar", t("calendar")) + calendarBlock();
   return h;
 }
@@ -3331,6 +3693,8 @@ function taskRow(task, opts){
   if(task.recurrence) meta.push(icon("repeat", 12));
   if(task.remind_before !== null && task.remind_before !== undefined)
     meta.push(icon("bell", 12));
+  const timed = !shared && Boolean(task.timer_minutes) && task.status !== "done";
+  if(timed) meta.push(timerMeta(task));
 
   /* Three, so they sit on one line. Four wrapped onto a second row and made
      every late task a 300px block; "this week" is the one a person reaches
@@ -3346,10 +3710,12 @@ function taskRow(task, opts){
       </div>` : "";
 
   return `<div class="trow pri-${task.priority}">
-      <div class="check ${shared && task.done ? "on" : ""}"
+      <div class="check ${shared && task.done ? "on" : ""} ${timed ? "timed" : ""}"
            ${shared ? `data-act="team-toggle" data-kind="task"`
+                    : timed ? `data-act="timer-open" data-kind="task"`
                     : `data-act="task-done"`} data-id="${task.id}"
-           aria-label="${t("now_done")}">${icon("check", 14)}</div>
+           aria-label="${t(timed ? "timer" : "now_done")}">${
+             icon(timed ? "clock" : "check", 14)}</div>
       <div class="grow">
         <div class="tt wrap"
              data-act="${shared ? "team-task-open" : "task-open"}"
@@ -3878,6 +4244,9 @@ function taskSheet(task, presetProject){
       <select id="task-project">
         <option value="">${t("standalone")}</option>${options}</select>
 
+      ${shared ? "" : editing ? timerSetting("task", {...f, id: task.id})
+                              : timerPicker("task-timer", f.timer_minutes)}
+
       <label>${t("task_desc")}</label>
       <textarea id="task-desc">${esc(f.description || "")}</textarea>
     </details>
@@ -3908,6 +4277,7 @@ function readTaskForm(){
     f.remind_before = v === "" ? null : Number(v);
   }
   if(get("task-repeat")) f.recurrence = get("task-repeat").value || "";
+  if(get("task-timer")) f.timer_minutes = pickedTimer("task-timer");
   const details = document.querySelector(".sheet details");
   if(details) f.open = details.open;
   return f;
@@ -3969,7 +4339,10 @@ function taskOwnerPicker(f, task, shared){
 
 function taskBody(){
   const f = readTaskForm();
+  const timer = document.getElementById("task-timer")
+    ? {timer_minutes: pickedTimer("task-timer")} : {};
   return {
+    ...timer,
     title: (f.title || "").trim(),
     description: f.description || "",
     deadline: formDeadline(),
@@ -4039,6 +4412,8 @@ function habitSheet(h){
       <button class="btn sm" data-act="habit-remind-save" data-id="${h.id}"
               style="min-width:96px">${t("save")}</button>
     </div>
+
+    ${h.protected || h.source === "team" ? "" : timerSetting("habit", h)}
 
     <label>${t("history")}</label>
     <div class="metrics">
@@ -5051,12 +5426,15 @@ async function loadScreen(screen){
          it, so it is fetched with the rest — but only once: moving between the
          tabs must not re-request a grid that is already drawn, and paging to
          another month must not be undone by the next tab tap. */
-      const [tasks, projects, focus, calendar] = await Promise.all([
+      const [tasks, projects, focus, calendar, countdowns] = await Promise.all([
         api("/api/tasks?days=365" + query), api("/api/projects"),
         api("/api/focus"),
         state.calendar ? Promise.resolve(state.calendar) : api("/api/calendar"),
+        // A failure here costs the countdown block, not the screen.
+        api("/api/countdowns").catch(() => ({countdowns: state.countdowns || []})),
       ]);
       setState({tasks, projects: projects.projects, focus: focus.week, calendar,
+                countdowns: countdowns.countdowns,
                 teams: tasks.teams || state.teams});
       /* The Projects tab lists shared shelves beside private ones, so the
          team payload has to be here too. Fetched once and reused, and a
@@ -5124,6 +5502,9 @@ function handleError(e, draft){
     return;
   }
   if(e.status === 409 && e.detail === "top3_full"){ toast(t("top3_full")); return; }
+  if(e.status === 409 && e.detail === "timer_required"){
+    toast(t("timer_required")); return; }
+  if(e.status === 409 && e.detail === "already_done"){ toast(t("timer_done")); return; }
   if(draft){
     lastDraft = draft;
     openSheet(`
@@ -5518,6 +5899,59 @@ const A = {
   },
 
   /* ---- habits ---- */
+  /* ---- timers ---- */
+  "timer-open": el => { haptic(); openTimer(el.dataset.kind, el.dataset.id); },
+  "timer-tick": el => {
+    closeSheet();
+    A[el.dataset.kind === "habit" ? "habit-toggle" : "task-done"](el);
+  },
+  "timer-start": async el => {
+    haptic("medium");
+    try{
+      await timerChanged(await api(
+        `/api/timers/${el.dataset.kind}/${el.dataset.id}/start`, {method:"POST"}));
+    }catch(e){ handleError(e); }
+  },
+  "timer-run": async el => {
+    haptic();
+    try{
+      await timerChanged(await api(
+        `/api/timers/runs/${el.dataset.id}/${el.dataset.verb}`, {method:"POST"}));
+    }catch(e){ handleError(e); }
+  },
+  "timer-len": async el => {
+    haptic();
+    const v = el.dataset.value;
+    const minutes = v === "auto" ? null : v === "off" ? 0 : Number(v);
+    try{
+      await timerChanged(await api(`/api/timers/${el.dataset.kind}/${el.dataset.id}`,
+        {method:"PUT", body:{minutes}}));
+    }catch(e){ handleError(e); }
+  },
+  "timer-custom": async el => {
+    const minutes = Math.round(Number(val("timer-min")));
+    if(!minutes || minutes < 1 || minutes > 1440) return toast(t("timer_custom_ph"));
+    try{
+      await timerChanged(await api(`/api/timers/${el.dataset.kind}/${el.dataset.id}`,
+        {method:"PUT", body:{minutes}}));
+    }catch(e){ handleError(e); }
+  },
+
+  /* ---- countdowns ---- */
+  "cd-add": () => { haptic(); openSheet(countdownSheet());
+    setTimeout(() => document.getElementById("cd-title")?.focus(), 60); },
+  "cd-save": () => {
+    const title = trimmed("cd-title"), date = val("cd-date");
+    if(!title || !date) return toast(t("countdown_need"));
+    save(() => api("/api/countdowns", {method:"POST", body:{title, date}}),
+         state.screen, false, t("saved"));
+  },
+  "cd-open": el => confirmSheet("cd-delete", el.dataset.id,
+                                `${t("cd_delete_sure")} ${el.dataset.title || ""}`),
+  "cd-delete": el => { haptic("medium");
+    save(() => api(`/api/countdowns/${el.dataset.id}`, {method:"DELETE"}),
+         state.screen, false, t("deleted")); },
+
   "habit-toggle": el => {
     haptic();
     const id = Number(el.dataset.id);
@@ -5552,6 +5986,7 @@ const A = {
     <select id="habit-sched">
       <option value="daily">${t("every_day")}</option>
       <option value="weekdays">${t("weekdays_only")}</option></select>
+    ${timerPicker("habit-timer")}
     <button class="btn" data-act="habit-save" style="margin-top:16px">
       ${t("save")}</button>
     <button class="btn secondary" data-act="close" style="margin-top:8px">
@@ -5567,6 +6002,7 @@ const A = {
         body:{name, schedule: val("habit-sched")}}), "habits");
     save(() => api("/api/habits", {method:"POST", body:{
       name, category: val("habit-cat"), schedule: val("habit-sched"),
+      timer_minutes: pickedTimer("habit-timer"),
     }}), "habits");
   },
   "habit-name-save": el => save(() => api(`/api/habits/${el.dataset.id}`,
@@ -6170,6 +6606,7 @@ function openTaskSheet(id){
     remind_before: task.remind_before, recurrence: task.recurrence || "",
     priority: task.priority, project_id: task.project_id,
     when: task.deadline ? "pick" : "none", open:false,
+    timer_minutes: task.timer_minutes, timer_mode: task.timer_mode,
   };
   openSheet(taskSheet(task));
 }

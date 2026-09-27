@@ -7,6 +7,8 @@ domain row carries `workspace_id`, so one user can never reach another's data.
     User ── Workspace ─┬─ Habit ── HabitLog
                        ├─ PrayerLog / PrayerDay
                        ├─ Task ── Project
+                       ├─ TimerRun   (a habit's or a task's countdown)
+                       ├─ Countdown  (days left until a date)
                        ├─ WeeklyFocus
                        ├─ JournalEntry
                        ├─ Birthday
@@ -182,6 +184,15 @@ class Habit(Base):
     paused_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     #: Optional daily nudge for this habit.
     remind_at: Mapped[time | None] = mapped_column(Time, nullable=True)
+    #: The countdown this habit is done by. Three states, on purpose:
+    #:   NULL  not set — read from the name, so "5h deep flow" carries a
+    #:         five-hour timer without anybody configuring one
+    #:   0     switched off, even when the name says "5h"
+    #:   >0    that many minutes, whatever the name says
+    #: While a timer is on, the habit is ticked by the timer finishing and not
+    #: by hand — that is the whole difference between "I did five hours" and
+    #: "I pressed the box".
+    timer_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     #: Soft delete — historical reports must not change retroactively.
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -316,9 +327,80 @@ class Task(Base):
     priority: Mapped[str] = mapped_column(String(6), default="medium")  # high|medium|low
     status: Mapped[str] = mapped_column(String(10), default="waiting")  # waiting|done
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    #: Same three states as `Habit.timer_minutes`: NULL reads the title,
+    #: 0 is off, a number is that many minutes.
+    timer_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Timers and countdowns
+# ---------------------------------------------------------------------------
+
+class TimerRun(Base):
+    """One run of a habit's or a task's countdown.
+
+    The clock is kept as two numbers rather than one moment, because a timer
+    can be paused: `elapsed_sec` is everything already run in earlier stretches
+    and `started_at` is when the current stretch began (NULL while paused).
+    What is left is `duration_sec - elapsed_sec - (now - started_at)`, which is
+    the same answer in the bot, in the Mini App and in the job that finishes it.
+
+    Finishing and announcing are separate on purpose. Whichever surface first
+    notices the time is up finishes the run and ticks the item; the scheduled
+    job alone sends the "time is up" message, claimed through `notified_at` so
+    two workers cannot both send it.
+    """
+
+    __tablename__ = "timer_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    #: habit | task
+    kind: Mapped[str] = mapped_column(String(8))
+    item_id: Mapped[int] = mapped_column(Integer, index=True)
+    #: The local day the run counts for. A habit started at 23:30 for an hour
+    #: is that evening's habit, not the next morning's.
+    day: Mapped[date] = mapped_column(Date, index=True)
+    title: Mapped[str] = mapped_column(String(300), default="")
+    duration_sec: Mapped[int] = mapped_column(Integer)
+    elapsed_sec: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    #: running | paused | finished | cancelled
+    status: Mapped[str] = mapped_column(String(10), default="running", index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    #: The bot message showing this timer, so the job can keep it counting.
+    chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class Countdown(Base):
+    """A date somebody is counting down to — an exam, a trip, a launch.
+
+    Read out every morning and every evening in the reports as "N days left",
+    which is the whole feature: a deadline three weeks away is easy to forget
+    until it is three days away.
+    """
+
+    #: Not "countdowns": builds before the public launch had a table by that
+    #: name with a different shape, and a database that was never reset may
+    #: still carry it. `create_all` would skip a table that exists, and the
+    #: column pass would bolt these columns onto the old ones — whose NOT NULL
+    #: constraints would then refuse every insert.
+    __tablename__ = "day_countdowns"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    target_date: Mapped[date] = mapped_column(Date, index=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class WeeklyFocus(Base):
