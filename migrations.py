@@ -593,13 +593,13 @@ def m0010_daily_report_unique() -> dict:
 
 
 def m0011_seed_team_rituals() -> dict:
-    """Give every existing team the ritual habits new ones are born with.
+    """Give every existing team the ritual habits.
 
-    Teams created before the shared programme existed hold only whatever the
-    members typed in. Waking, prayer and the journal are the spine of the day
-    on the personal side, and a team without them is a to-do list rather than
-    a shared programme — so they are added, protected, in the same three
-    tiers. Idempotent: a team that already has them is skipped.
+    Since v7 a team ritual is *mirrored*: it holds no ticks of its own and is
+    read from each member's personal habit, so a prayer is recorded once and
+    shown in every team rather than ticked again in each (#23). New teams
+    start empty; this remains for teams that want the shared view, and is
+    idempotent — a team that already has them is skipped.
     """
     from sqlalchemy import select as sql_select
 
@@ -619,6 +619,46 @@ def m0011_seed_team_rituals() -> dict:
             "teams_updated": teams, "habits_added": seeded}
 
 
+def m0012_close_past_days() -> dict:
+    """Close every past day into a snapshot, under the v7 formula.
+
+    The day-close job finishes yesterday (and up to a week of stragglers) from
+    now on. Days before that are still read live — correct, but recomputed on
+    every chart. This finishes them once: each past day that has any activity
+    row is recomputed from its own logs and closed, so history stops moving.
+
+    Idempotent: a closed day is never rewritten, so a second run closes only
+    what the first did not reach. Non-destructive: nothing but `daily_scores`
+    is written.
+    """
+    from datetime import timedelta
+
+    from sqlalchemy import or_, select as sql_select
+
+    import services as svc
+    from db import DailyScore, User
+
+    closed, users = 0, 0
+    with SessionLocal() as s:
+        for user in s.scalars(sql_select(User).where(User.onboarded.is_(True))).all():
+            yesterday = svc.today_local(svc.user_tz(user)) - timedelta(days=1)
+            days = s.scalars(sql_select(DailyScore.day).where(
+                DailyScore.user_id == user.telegram_id,
+                DailyScore.day <= yesterday,
+                or_(DailyScore.closed.is_(None), DailyScore.closed.is_(False)))).all()
+            if not days:
+                continue
+            users += 1
+            for day in sorted(days):
+                try:
+                    if svc.close_day(s, user.telegram_id, day) is not None:
+                        closed += 1
+                except Exception:
+                    s.rollback()
+                    log.exception("could not close %s for %s", day, user.telegram_id)
+    return {"migration": "0012_close_past_days", "users": users, "days_closed": closed}
+
+
 MIGRATIONS = {
     "0001": m0001_retire_summary_habit,
     "0002": m0002_retire_goals,
@@ -631,6 +671,7 @@ MIGRATIONS = {
     "0009": m0009_split_ritual_event_type,
     "0010": m0010_daily_report_unique,
     "0011": m0011_seed_team_rituals,
+    "0012": m0012_close_past_days,
 }
 
 

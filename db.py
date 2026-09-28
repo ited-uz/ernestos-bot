@@ -5,6 +5,8 @@ One PostgreSQL database. Every Telegram user gets one Workspace, and every
 domain row carries `workspace_id`, so one user can never reach another's data.
 
     User ── Workspace ─┬─ Habit ── HabitLog
+                       │    ├─ HabitScheduleVersion  (which days, from when)
+                       │    └─ HabitPauseInterval    (which days it was paused)
                        ├─ PrayerLog / PrayerDay
                        ├─ Task ── Project
                        ├─ TimerRun   (a habit's or a task's countdown)
@@ -106,7 +108,7 @@ class User(Base):
     timezone: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
     #: Report and reminder preferences. Nullable for the same reason: NULL means
-    #: "never chosen" and reads as the default (both reports on, 04:00 / 21:00,
+    #: "never chosen" and reads as the default (both reports on, 05:00 / 21:00,
     #: task reminders on, habit reminders off).
     morning_report: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     morning_time: Mapped[time | None] = mapped_column(Time, nullable=True)
@@ -132,6 +134,9 @@ class User(Base):
     #: Resumable onboarding: survives a bot restart mid-flow.
     onboarding_step: Mapped[str] = mapped_column(String(20), default="language")
     onboarded: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: The modules chosen at setup ("wake,prayer,journal"). NULL for accounts
+    #: that never saw the question, which keep whatever they already had.
+    modules: Mapped[str | None] = mapped_column(String(60), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
@@ -165,22 +170,22 @@ class Habit(Base):
     category: Mapped[str] = mapped_column(String(16), default="target")
     position: Mapped[int] = mapped_column(Integer, default=0)
     #: Derived habits cannot be ticked by hand:
-    #:   "prayer"  follows the daily prayer score
-    #:   "journal" follows a fully answered journal entry
+    #:   "prayer"  follows the daily prayer record (shown, scored as Prayer)
+    #:   "journal" follows a journal entry with at least one answer
     #:   "wakeup"  follows a "turdim" message sent before target_time + 1h
     is_protected: Mapped[bool] = mapped_column(Boolean, default=False)
     system_key: Mapped[str] = mapped_column(String(16), default="")
     #: Only meaningful for the wake-up habit: the hour the user intends to rise.
     target_time: Mapped[time | None] = mapped_column(Time, nullable=True)
-    #: Which days this habit is expected on:
+    #: Which days this habit is expected on *today and from now on*:
     #:   "daily"      every day
     #:   "weekdays"   Monday to Friday
     #:   "days:0,2,4" the listed weekdays, 0 = Monday
-    #: Nullable — NULL reads as "daily", so habits written before the column
-    #: existed keep behaving exactly as they did.
+    #: The days it was expected on in the past live in HabitScheduleVersion.
+    #: Nullable — NULL reads as "daily".
     schedule: Mapped[str | None] = mapped_column(String(24), nullable=True)
-    #: Paused habits leave today's denominator but keep every past log, so a
-    #: holiday or an injury does not have to mean deleting the habit.
+    #: Set while a pause is running, so the list can show it. Which days the
+    #: pause actually covers is HabitPauseInterval's job.
     paused_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     #: Optional daily nudge for this habit.
     remind_at: Mapped[time | None] = mapped_column(Time, nullable=True)
@@ -193,8 +198,62 @@ class Habit(Base):
     #: by hand — that is the whole difference between "I did five hours" and
     #: "I pressed the box".
     timer_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    #: Soft delete — historical reports must not change retroactively.
+    #: The first local day this habit is owed. NULL reads as the day it was
+    #: created, which is what every habit written before the column meant.
+    #: Set explicitly when somebody adds a habit "from tomorrow", so adding one
+    #: late in the evening cannot drag down a day that is already under way.
+    active_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    #: Soft delete — historical reports must not change retroactively. A habit
+    #: stays owed on every day up to and including the day it was archived.
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class HabitScheduleVersion(Base):
+    """Which days a habit was expected on, from a given day onwards.
+
+    The schedule used to be one column, read for every day in history, so
+    changing "every day" to "weekdays" today silently rewrote last month: every
+    Saturday that had been a miss stopped being one. A version row is written
+    whenever the schedule changes, effective from the next day, and every
+    backwards-looking number reads the version that was in force on the day it
+    is measuring.
+
+    `kind` is `habit` or `team_habit`, so one table serves both.
+    """
+
+    __tablename__ = "habit_schedule_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    kind: Mapped[str] = mapped_column(String(10), default="habit", index=True)
+    item_id: Mapped[int] = mapped_column(Integer, index=True)
+    #: Set for personal habits and for team ones respectively, so deleting an
+    #: account or a team can find its rows without a join.
+    workspace_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    team_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    valid_from: Mapped[date] = mapped_column(Date)
+    schedule: Mapped[str] = mapped_column(String(24), default="daily")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class HabitPauseInterval(Base):
+    """One stretch of days a habit was paused, inclusive at both ends.
+
+    `paused_at` alone could only say "paused now", and the arithmetic read it as
+    "paused on every day in history" — pausing a habit today erased every past
+    miss. The interval is what lets a pause remove exactly the days it covers.
+    """
+
+    __tablename__ = "habit_pause_intervals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    kind: Mapped[str] = mapped_column(String(10), default="habit", index=True)
+    item_id: Mapped[int] = mapped_column(Integer, index=True)
+    workspace_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    team_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    start_day: Mapped[date] = mapped_column(Date)
+    #: NULL while the pause is still running.
+    end_day: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
@@ -321,10 +380,19 @@ class Task(Base):
     #: 28th is what every later month inherits, so the task silently walks
     #: backwards and never returns to the 31st.
     anchor_day: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    #: The day on which the user picked this task as one of their top three.
+    #: Which recurring series this occurrence belongs to: the id of the first
+    #: task in it. Together with the deadline it is unique, which is what stops
+    #: two concurrent completions from creating the same next occurrence twice.
+    series_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    #: The day on which the user picked this task as the day's mission.
     #: A date rather than a flag, so yesterday's choice does not linger.
     focus_day: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     priority: Mapped[str] = mapped_column(String(6), default="medium")  # high|medium|low
+    #: The priority the day was scored with, when it was changed on its due
+    #: day. Lowering the priority of an unfinished task at 23:00 must not buy
+    #: a better day; the new priority counts from the next one.
+    day_priority: Mapped[str | None] = mapped_column(String(6), nullable=True)
+    day_priority_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(10), default="waiting")  # waiting|done
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     #: Same three states as `Habit.timer_minutes`: NULL reads the title,
@@ -340,13 +408,17 @@ class Task(Base):
 # ---------------------------------------------------------------------------
 
 class TimerRun(Base):
-    """One run of a habit's or a task's countdown.
+    """One run of a habit's or a task's countdown — private or shared.
 
     The clock is kept as two numbers rather than one moment, because a timer
     can be paused: `elapsed_sec` is everything already run in earlier stretches
     and `started_at` is when the current stretch began (NULL while paused).
     What is left is `duration_sec - elapsed_sec - (now - started_at)`, which is
     the same answer in the bot, in the Mini App and in the job that finishes it.
+
+    A shared item's timer belongs to the member running it: `workspace_id` is
+    that member's workspace, and finishing it ticks their share and nobody
+    else's.
 
     Finishing and announcing are separate on purpose. Whichever surface first
     notices the time is up finishes the run and ticks the item; the scheduled
@@ -359,7 +431,7 @@ class TimerRun(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     workspace_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
-    #: habit | task
+    #: habit | task | thabit (a team habit) | ttask (a team task)
     kind: Mapped[str] = mapped_column(String(8))
     item_id: Mapped[int] = mapped_column(Integer, index=True)
     #: The local day the run counts for. A habit started at 23:30 for an hour
@@ -385,6 +457,10 @@ class Countdown(Base):
     Read out every morning and every evening in the reports as "N days left",
     which is the whole feature: a deadline three weeks away is easy to forget
     until it is three days away.
+
+    A countdown is filed under what it is about: a task, a habit, or neither
+    ("general"), and it may be linked to the specific task or habit. A shared
+    one carries `team_id` and is read by every member.
     """
 
     #: Not "countdowns": builds before the public launch had a table by that
@@ -399,6 +475,15 @@ class Countdown(Base):
         Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String(200))
     target_date: Mapped[date] = mapped_column(Date, index=True)
+    #: general | task | habit. NULL (older rows) reads as general.
+    scope: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    #: The task or habit it belongs to, when there is one. For a shared
+    #: countdown this is a team task or team habit id.
+    item_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Set when the countdown belongs to a team; `workspace_id` then records
+    #: whose workspace created it, exactly as a shared project does.
+    team_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    created_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
@@ -411,6 +496,10 @@ class WeeklyFocus(Base):
     at a visibly lower weight. Three equally sized missions is no mission at
     all, so the hierarchy is in the slot number rather than in the user's
     memory.
+
+    A mission may be linked to the task that delivers it. Then it is done when
+    the task is, and it is counted once — through the task — rather than once
+    as a task and again as a mission.
     """
 
     __tablename__ = "weekly_focus"
@@ -425,6 +514,8 @@ class WeeklyFocus(Base):
     #: live tables, where existing rows have no value; readers default it.
     priority: Mapped[str | None] = mapped_column(String(6), nullable=True)
     done: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: The task this mission is delivered by, if any.
+    task_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     __table_args__ = (
@@ -444,8 +535,8 @@ class JournalEntry(Base):
         Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
     day: Mapped[date] = mapped_column(Date, index=True)
     text: Mapped[str] = mapped_column(Text, default="")
-    #: JSON object keyed by question id. The day counts as journalled only
-    #: once every question has an answer.
+    #: JSON object keyed by question id. One meaningful answer is a written
+    #: day; all of them is a full reflection.
     answers: Mapped[str] = mapped_column(Text, default="{}")
     mood: Mapped[str] = mapped_column(String(20), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -614,11 +705,11 @@ class DailyScore(Base):
     a local date is the bug this project already had once, and the reason
     `local_date_of` exists.
 
-    The component columns are stored rather than recomputed because the source
-    rows move underneath them: a task edited next week must not silently rewrite
-    last Tuesday's score. Recomputing today is fine and expected; recomputing
-    the past is not, which is why `upsert_daily_score` only ever writes the day
-    it was asked for.
+    It is also the day's *snapshot*. While the day is running the row is
+    rewritten on every action; once the day is over it is closed, and from then
+    on every statistic, chart and export reads the closed row instead of
+    recomputing the day from rows that may have moved since. Editing a habit's
+    schedule next month cannot rewrite what last Tuesday was.
     """
 
     __tablename__ = "daily_scores"
@@ -638,8 +729,23 @@ class DailyScore(Base):
     prayer_score: Mapped[int] = mapped_column(Integer, default=-1)
 
     total_score: Mapped[int] = mapped_column(Integer, default=0, index=True)
-    #: S | A | B | C | D | E — the grade the total falls into.
+    #: S | A | B | C | D | E — the grade the total falls into, or "-" for a day
+    #: that had nothing in it to measure.
     grade: Mapped[str] = mapped_column(String(1), default="E")
+    #: Whether anything was measured at all. NULL on rows from before the
+    #: column, which read as measured — they were written as such.
+    measured: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    #: The raw counts behind the percentages, so a closed day can still say
+    #: "3 / 5" and not only "60%".
+    tasks_done: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tasks_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    habits_done: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    habits_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    prayer_performed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: True once the day is over and the row is final.
+    closed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    #: Which version of the scoring rules produced this row.
+    formula: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow,
@@ -805,6 +911,31 @@ class JobRun(Base):
     )
 
 
+class IdempotencyKey(Base):
+    """The answer to one write, kept so a retried write gets the same answer.
+
+    A double tap on a slow connection, or a request the phone gave up on and
+    sent again, used to create the same task twice. The Mini App sends a key
+    with every create; the first request stores its response under it, and
+    any repeat within the day is answered from here instead of writing again.
+    """
+
+    __tablename__ = "idempotency_keys"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    key: Mapped[str] = mapped_column(String(64))
+    path: Mapped[str] = mapped_column(String(160), default="")
+    #: 0 while the first request is still being handled.
+    status_code: Mapped[int] = mapped_column(Integer, default=0)
+    body: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "key", name="uq_idempotency_key"),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Teams
 # ---------------------------------------------------------------------------
@@ -817,10 +948,10 @@ class JobRun(Base):
 # and the other person's effort would be invisible.
 #
 # So the definition is shared and the doing is not. `TeamTask` and `TeamHabit`
-# hold what the item *is* — one row, one title, one deadline, edited by either
-# member. `TeamTaskDone` and `TeamHabitLog` hold who has done it, one row per
-# member, which is what lets the reports say "you did four of six, she did
-# five" instead of collapsing the two of you into one number.
+# hold what the item *is* — one row, one title, one deadline, edited by the
+# people allowed to. `TeamTaskDone` and `TeamHabitLog` hold who has done it,
+# one row per member, which is what lets the reports say "you did four of six,
+# she did five" instead of collapsing the two of you into one number.
 #
 # Nothing here touches `workspace_id`, and no team row is ever mixed into a
 # workspace query: a person's private lists stay exactly as private as they
@@ -838,12 +969,24 @@ class Team(Base):
     #: The invite token, carried in `t.me/<bot>?start=team_<code>`. Random
     #: rather than the id, so a link cannot be guessed from a team number.
     code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    #: When the current invite link stops working. NULL on teams from before
+    #: invites expired; the first look at such a link gives it a fresh window.
+    code_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    #: When set, opening the link asks to join rather than joining.
+    approval_required: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    #: The member the owner has offered ownership to, until they accept.
+    pending_owner_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class TeamMember(Base):
-    """One person's membership of one team."""
+    """One person's membership of one team.
+
+    Leaving keeps the row, stamped with `left_at`: the days somebody *was* in
+    a team stay part of its history, and the days before they joined or after
+    they left are never counted against them.
+    """
 
     __tablename__ = "team_members"
 
@@ -852,8 +995,11 @@ class TeamMember(Base):
         Integer, ForeignKey("teams.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), index=True)
-    role: Mapped[str] = mapped_column(String(10), default="member")  # owner|member
+    role: Mapped[str] = mapped_column(String(10), default="member")  # owner|admin|member
     joined_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    left_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    #: all | important | assigned | off — how much this team may message them.
+    notify: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("team_id", "user_id", name="uq_team_member"),
@@ -879,6 +1025,15 @@ class TeamTask(Base):
     recurrence: Mapped[str | None] = mapped_column(String(24), nullable=True)
     anchor_day: Mapped[int | None] = mapped_column(Integer, nullable=True)
     priority: Mapped[str] = mapped_column(String(6), default="medium")
+    #: Who has to do it, and when it counts as done:
+    #:   all        every member does their own share (the default)
+    #:   any        one person doing it closes it for everybody
+    #:   assignees  only the people in `assignees` owe it
+    completion: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    #: Comma-separated Telegram ids, for `completion = assignees`.
+    assignees: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Same three states as a private task's timer.
+    timer_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_by: Mapped[int] = mapped_column(BigInteger, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -931,8 +1086,9 @@ class TeamHabit(Base):
     #: in the same arithmetic. Defaults to the top tier: something two people
     #: agreed to do is harder to drop than something one person told themselves.
     category: Mapped[str] = mapped_column(String(16), default="non_negotiable")
-    #: Set for the rituals every team is seeded with — waking, prayer, the
-    #: journal — so they can be recognised, kept, and never deleted by accident.
+    #: Set for a ritual — waking, prayer, the journal. A ritual is not ticked
+    #: in the team at all: each member's state is read from their own personal
+    #: habit, so one prayer is recorded once, not once per team.
     system_key: Mapped[str] = mapped_column(String(16), default="")
     is_protected: Mapped[bool] = mapped_column(Boolean, default=False)
     #: The hour it is meant to happen, and the hour to say so — the same two
@@ -942,6 +1098,10 @@ class TeamHabit(Base):
     target_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     remind_at: Mapped[time | None] = mapped_column(Time, nullable=True)
     paused_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    #: Same three states as a private habit's timer.
+    timer_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: The first day the team owes it; NULL reads as the day it was created.
+    active_from: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_by: Mapped[int] = mapped_column(BigInteger, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -967,6 +1127,67 @@ class TeamHabitLog(Base):
     __table_args__ = (
         UniqueConstraint("habit_id", "user_id", "day", name="uq_team_habit_day"),
     )
+
+
+class TeamDayScore(Base):
+    """One member's closed day in one team: what they owed and what they did.
+
+    The team's own snapshot, for the same reason `DailyScore` is one: a shared
+    item archived today, or a member who joined today, must not rewrite what
+    last week looked like. Written when the member's day closes, read by every
+    backwards-looking team number from then on.
+    """
+
+    __tablename__ = "team_day_scores"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    team_id: Mapped[int] = mapped_column(Integer, index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    day: Mapped[date] = mapped_column(Date, index=True)
+    done: Mapped[int] = mapped_column(Integer, default=0)
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("team_id", "user_id", "day", name="uq_team_day_score"),
+    )
+
+
+class TeamActivity(Base):
+    """What changed in a team, by whom, and when.
+
+    A shared list that changes silently is one people stop trusting. Every
+    structural change is written here, and the team screen reads it back —
+    with a way to undo an archive from the same row.
+    """
+
+    __tablename__ = "team_activity"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    team_id: Mapped[int] = mapped_column(Integer, index=True)
+    actor_id: Mapped[int] = mapped_column(BigInteger)
+    #: task_add | task_edit | task_archive | task_restore | habit_* |
+    #: rename | join | leave | role | transfer | invite_renew | invite_revoke …
+    action: Mapped[str] = mapped_column(String(24))
+    subject: Mapped[str] = mapped_column(String(300), default="")
+    item_kind: Mapped[str] = mapped_column(String(10), default="")
+    item_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
+class TeamJoinRequest(Base):
+    """Somebody asking to join a team that approves its members."""
+
+    __tablename__ = "team_join_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    team_id: Mapped[int] = mapped_column(Integer, index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    #: pending | approved | declined
+    status: Mapped[str] = mapped_column(String(10), default="pending")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    decided_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
 
 # ---------------------------------------------------------------------------
@@ -1018,6 +1239,32 @@ def _add_missing_columns() -> list[str]:
                 added.append(f"{table.name}.{column.name}")
 
     return added
+
+
+#: Indexes that live on tables which already exist in production, and so
+#: cannot be declared in `__table_args__` — `create_all` only builds those
+#: when it builds the whole table. `IF NOT EXISTS` makes each one idempotent
+#: on both SQLite and PostgreSQL.
+EXTRA_INDEXES = [
+    # The next occurrence of a recurring task can exist once per date. Two
+    # completions racing each other both try to create it; one wins.
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_task_series_day "
+    "ON tasks (series_id, deadline)",
+]
+
+
+def _ensure_indexes() -> list[str]:
+    from sqlalchemy import text
+
+    made = []
+    for statement in EXTRA_INDEXES:
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(statement))
+            made.append(statement.split(" ON ")[0].rsplit(" ", 1)[-1])
+        except Exception:
+            log.exception("could not create index: %s", statement)
+    return made
 
 
 #: The outbox's unique key. `claim_report` inserts a row and reads the
@@ -1209,6 +1456,7 @@ def init_db() -> None:
     added = _add_missing_columns()
     if added:
         log.info("schema updated — added columns: %s", ", ".join(added))
+    _ensure_indexes()
     try:
         repaired = _repair_report_outbox_key()
         if repaired:

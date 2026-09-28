@@ -52,10 +52,35 @@ STATS_GRACE = 3600
 #: and one edit a minute per running timer is well inside Telegram's limits.
 TIMER_TICK_SECONDS = 30
 TIMER_GRACE = 60
+#: Closing days: how often yesterday is finished for whoever's midnight has
+#: passed. Ten minutes puts every snapshot inside the first quarter hour of
+#: somebody's new day; the job is idempotent, so a late tick costs nothing.
+CLOSE_TICK_MINUTES = 10
+CLOSE_GRACE = 1800
+
+
+def close_days() -> None:
+    """Finish yesterday for everybody whose day has turned, and clear old
+    idempotency answers. One lock, so two instances never both do it.
+
+    A plain function: the scheduler runs it on its thread pool, so a slow
+    batch never holds up the bot's event loop.
+    """
+    from db import SessionLocal
+
+    with svc.JobLock(SessionLocal, "close_days") as lock:
+        if not lock.acquired:
+            return
+        with SessionLocal() as s:
+            closed = svc.close_due_days(s)
+            dropped = svc.idempotency_cleanup(s)
+    if closed or dropped:
+        log.info("day close: %s days closed, %s idempotency keys dropped",
+                 closed, dropped)
 
 
 def build(bot, *, send_reports, send_reminders, send_platform_stats,
-          tick_timers=None) -> AsyncIOScheduler:
+          tick_timers=None, close_days_job=None) -> AsyncIOScheduler:
     """Wire the jobs onto a scheduler and return it, **not** started.
 
     Wiring and starting are separate because starting needs a running event
@@ -111,6 +136,12 @@ def build(bot, *, send_reports, send_reminders, send_platform_stats,
         scheduler.add_job(tick_timers, "interval", seconds=TIMER_TICK_SECONDS,
                           args=[bot], id="timers",
                           max_instances=1, misfire_grace_time=TIMER_GRACE)
+
+    # Every past day is closed into a snapshot, so history is read from what
+    # the day was rather than recomputed from rows that have since changed.
+    scheduler.add_job(close_days_job or close_days, "interval",
+                      minutes=CLOSE_TICK_MINUTES, id="close_days",
+                      max_instances=1, misfire_grace_time=CLOSE_GRACE)
 
     return scheduler
 

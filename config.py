@@ -26,6 +26,7 @@ patch `application.WEBAPP_URL` keep working exactly as they did.
 from __future__ import annotations
 
 import os
+import re
 
 from dotenv import load_dotenv
 
@@ -53,8 +54,30 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 #: another's updates.
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "").strip().rstrip("/")
 #: Telegram echoes this back in a header, which is the only thing separating a
-#: real update from anybody who guessed the path.
+#: real update from anybody who guessed the path. Required whenever the
+#: webhook is on — see `check()` — because without it the endpoint would act
+#: on any JSON anybody posts to it, in any user's name.
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "").strip()
+
+#: The shortest secret accepted. 32 characters of Telegram's alphabet is well
+#: past anything guessable, and short enough to generate with one command:
+#:     python -c "import secrets; print(secrets.token_urlsafe(32))"
+WEBHOOK_SECRET_MIN = 32
+#: What Telegram allows in `secret_token`: 1–256 of A-Z a-z 0-9 _ -.
+_WEBHOOK_SECRET_RE = re.compile(r"^[A-Za-z0-9_-]{1,256}$")
+
+
+def webhook_secret_problem(secret: str) -> str | None:
+    """Why a webhook secret is unusable, or None when it is fine."""
+    if not secret:
+        return "WEBHOOK_SECRET is empty"
+    if len(secret) < WEBHOOK_SECRET_MIN:
+        return f"WEBHOOK_SECRET is shorter than {WEBHOOK_SECRET_MIN} characters"
+    if not _WEBHOOK_SECRET_RE.match(secret):
+        return ("WEBHOOK_SECRET may only contain A-Z, a-z, 0-9, '_' and '-' "
+                "(Telegram's own rule)")
+    return None
+
 
 #: The update types this bot acts on. Anything else is refused at Telegram's
 #: end rather than delivered and dropped here.
@@ -83,7 +106,8 @@ WEBAPP_URL = os.environ.get("WEBAPP_URL", "").strip().rstrip("/")
 #: replayed days later.
 INIT_DATA_MAX_AGE = int(os.environ.get("INIT_DATA_MAX_AGE", "86400"))
 
-#: Requests larger than this are refused before parsing (audit 013).
+#: Requests larger than this are refused before parsing (audit 013). Applies
+#: to the webhook as well as to the API.
 MAX_BODY_BYTES = int(os.environ.get("MAX_BODY_BYTES", str(256 * 1024)))
 
 # --- Operator channels -----------------------------------------------------
@@ -135,5 +159,15 @@ def check() -> None:
             f"{', '.join(missing)} is required in production. "
             "Set it in the deployment environment and redeploy."
         )
+    # A webhook without a secret is an endpoint that acts on whatever anybody
+    # posts to it. It is not a configuration to warn about; it does not start.
+    if WEBHOOK_URL:
+        problem = webhook_secret_problem(WEBHOOK_SECRET)
+        if problem:
+            raise RuntimeError(
+                f"{problem}. WEBHOOK_URL is set, so a secret of at least "
+                f"{WEBHOOK_SECRET_MIN} characters is required. Generate one "
+                "with: python -c \"import secrets; "
+                "print(secrets.token_urlsafe(32))\"")
     # `db.py` raises on a missing DATABASE_URL at import, before this runs, so
     # reaching here means the database half is already satisfied.

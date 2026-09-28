@@ -1134,6 +1134,423 @@ T: dict[str, dict[str, str]] = {
     },
 }
 
+# ---------------------------------------------------------------------------
+# v7 — where an item goes, editing from the chat, quick capture, the two
+# countdowns, team roles/invites/notifications, opt-in rituals, and the words
+# the audit asked to be said plainly (#14, #21, #25).
+# ---------------------------------------------------------------------------
+
+T["uz"].update({
+    # Home's two buttons, as they were asked for: a date, and a clock.
+    "btn_countdown": "📅 Date countdown",
+    "btn_timers": "⏱ Time countdown",
+    "cd_title": "📅 <b>Date countdown</b>",
+    "menu_teams": "👥 Jamoa",
+    # Plain words for the three tiers and the levels (#21).
+    "cat_non_negotiable": "🔴 Majburiy",
+    "cat_target": "🟡 Maqsadli",
+    "cat_bonus": "🟢 Qo'shimcha",
+    "plevel_builder": "Quruvchi", "plevel_operator": "Boshqaruvchi",
+    "plevel_architect": "Me'mor", "plevel_commander": "Sardor",
+    "plevel_elite": "Sara", "plevel_master": "Usta",
+    "team_all_done": "Hammangiz hammasini bajardingiz. Zo'r ish! 🎉",
+    "team_created": ("👥 <b>{name}</b> jamoasi yaratildi.\n\nHavolani sherigingizga "
+                     "yuboring — u jamoani ko'radi va «Qo'shilish»ni bossa, qo'shiladi. "
+                     "Havola 3 kun ishlaydi:"),
+    "ask_habits": (
+        "<b>Har kuni takrorlanadigan 1–3 ta odat?</b>\n"
+        "Har birini yangi qatordan yozing.\n\n"
+        "<i>Masalan:\n"
+        "Ertalab 30 daqiqa kitob\n"
+        "10 000 qadam\n"
+        "Suv — 2 litr</i>"),
+    # --- setup: what to keep ---------------------------------------------
+    "ask_modules": ("<b>Nimalarni kuzatamiz?</b>\n"
+                    "Faqat tanlaganingiz hisoblanadi. Keyin Sozlamalar → "
+                    "🧩 Modullar'dan o'zgartirasiz."),
+    "mod_wake": "☀️ Erta turish", "mod_prayer": "🕌 Namoz",
+    "mod_journal": "📔 Kundalik", "mod_team": "👥 Jamoa bilan ishlash",
+    "mod_continue": "Davom etish ➡️",
+    "modules_set": "✅ Tanlandi: <b>{list}</b>",
+    "modules_none": "hech biri — faqat o'z vazifa va odatlaringiz",
+    "modules_settings": ("🧩 <b>Modullar</b>\n\nO'chirilgan modul tarixini saqlaydi; "
+                         "qayta yoqsangiz, o'chiq kunlar «bajarilmadi» hisoblanmaydi."),
+    "btn_modules": "🧩 Modullar",
+    "setup_team_hint": ("👥 Jamoa bilan ishlamoqchi edingiz. Jamoa yarating va "
+                        "havolani sherigingizga yuboring:"),
+    # --- tasks screen ------------------------------------------------------
+    "tasks_today": "⚡ Bugun:",
+    "tasks_upcoming": "📅 Keyingi kunlar",
+    "no_deadline": "📥 Muddatsiz",
+    "days_none": "📥 Muddatsiz",
+    # --- where it goes ---------------------------------------------------
+    "dest_personal": "👤 Shaxsiy",
+    "ask_dest_task": "⚡ <b>{title}</b>\n\nKimniki: shaxsiymi yoki jamoaniki?",
+    "ask_dest_habit": "✅ <b>{title}</b>\n\nKimniki: shaxsiymi yoki jamoaniki?",
+    "task_added_team": "👥 Jamoa vazifasi qo'shildi: <b>{title}</b> · {team}",
+    "habit_added_team": "👥 Jamoa odati qo'shildi: <b>{name}</b> · {team}",
+    "flow_expired": "Bu qadam eskirdi — boshidan boshlang.",
+    # --- editing -----------------------------------------------------------
+    "btn_edit_habit": "✏️ Tahrirlash",
+    "edit_name": "✏️ Nomi", "edit_date": "📅 Muddati", "edit_priority": "🎚 Muhimligi",
+    "edit_category": "🗂 Toifasi", "edit_move": "🔀 Boshqa joyga",
+    "edit_delete": "🗑 O'chirish",
+    "ask_new_date": "Yangi muddat:",
+    "ask_priority": "Qanchalik muhim?",
+    "prio_high": "Muhim", "prio_medium": "O'rtacha", "prio_low": "Past",
+    "ask_move": "Qayerga ko'chiramiz?",
+    "moved_to": "🔀 Ko'chirildi: {where}",
+    "move_between_teams": "Jamoadan jamoaga to'g'ridan-to'g'ri ko'chirib bo'lmaydi — avval shaxsiyga o'tkazing.",
+    "confirm_delete": "Rostdan o'chirilsinmi? Bajarilganlar tarixi saqlanadi.",
+    "confirm_delete_habit": "Odat o'chirilsinmi? O'tgan kunlardagi natijalar o'zgarmaydi.",
+    "completion_all": "Hamma bajaradi", "completion_any": "Bittasi yetarli",
+    "completion_assignees": "Faqat tayinlanganlar",
+    "team_only_creator": "Buni faqat yaratgan kishi, admin yoki jamoa egasi o'zgartira oladi.",
+    "habit_paused": "Pauzada",
+    "habit_pause_from": "{day} dan pauza",
+    "habit_protected_edit": "Bu odat modul orqali boshqariladi (Sozlamalar → 🧩 Modullar).",
+    "habit_resume_btn": "▶️ Davom ettirish",
+    "pause_tomorrow": "⏸ Ertadan pauza", "pause_today": "⏸ Bugundan pauza",
+    "habit_mirrored": ("🔒 Bu marosim har bir a'zoning o'z odatidan olinadi — "
+                       "uni shaxsiy ro'yxatingizda belgilang, bu yerda ikki marta "
+                       "sanalmaydi."),
+    "team_not_assigned": "Bu vazifa sizga tayinlanmagan.",
+    # --- quick capture -----------------------------------------------------
+    "capture_ask": "Vazifa sifatida saqlaymi?",
+    "capture_save": "👤 Shaxsiy vazifa",
+    "capture_skip": "✖️ Kerak emas",
+    "capture_saved": "📥 Saqlandi: <b>{title}</b> · {where}",
+    "capture_expired": "Bu taklif eskirdi — matnni qayta yuboring.",
+    # --- the two countdowns ----------------------------------------------
+    "timer_for_habits": "✅ Odatlar", "timer_for_tasks": "⚡ Vazifalar",
+    "timer_home_hint": "\nQaysi biriga taymer qo'yamiz yoki ishga tushiramiz?",
+    "timer_team_own": "👥 Jamoa ishi: har kim o'z taymerini o'zi yuritadi.",
+    "cd_ask_scope": "📅 <b>Yangi Date countdown</b>\n\nNima uchun?",
+    "cd_scope_general": "Umumiy", "cd_scope_task": "Vazifa uchun",
+    "cd_scope_habit": "Odat uchun",
+    "cd_ask_dest": "Kimniki: shaxsiymi yoki jamoaniki?",
+    "cd_ask_link_task": "Qaysi vazifaga? (yoki alohida nom bilan)",
+    "cd_ask_link_habit": "Qaysi odatga? (yoki alohida nom bilan)",
+    "cd_no_link": "✍️ Alohida nom yozaman",
+    "cd_use_deadline": "📅 Vazifa muddati — {day}",
+    "team_ev_countdown": "👥 <b>{who}</b> yangi countdown qo'shdi:\n📅 {what}",
+    # --- statistics wording (#13, #14) -----------------------------------
+    "st_week_short": "7 kun", "st_month_short": "30 kun",
+    "st_nothing_measured": "Bu davrda o'lchanadigan narsa bo'lmagan.",
+    "points": "{n} punkt",
+    "team_units": "{items} ta ish · {confirmations} ta tasdiq · {left} tasi qolgan",
+    # --- teams: roles, invites, notifications ----------------------------
+    "role_owner": "Egasi", "role_admin": "Admin", "role_member": "A'zo",
+    "you": "siz",
+    "accept": "✅ Qabul qilish", "decline": "✖️ Yo'q",
+    "team_open_btn": "👥 Jamoani ochish",
+    "team_admin_only": "Buni faqat jamoa egasi yoki admin qila oladi.",
+    "team_invite_text": "👥 <b>{name}</b> jamoasiga taklif havolasi:",
+    "team_invite_until": "🔗 Havola {when} gacha ishlaydi",
+    "team_invite_expired": "🔗 Havola ishlamaydi — yangisini oling",
+    "team_invite_revoked": "Eski havola bekor qilindi.",
+    "team_revoke_btn": "⛔️ Havolani bekor qilish",
+    "team_approval_on": "✋ Qo'shilish uchun tasdiq kerak",
+    "team_approval_on_btn": "✋ Tasdiq bilan qo'shish",
+    "team_approval_off_btn": "🔓 Tasdiqsiz qo'shish",
+    "team_preview": ("👥 <b>{name}</b>\nEgasi: {owner} · a'zolar: {n}/{max}\n\n"
+                     "Jamoaga qo'shilasizmi? Umumiy vazifa va odatlar ro'yxatingizda "
+                     "👥 belgisi bilan chiqadi, har kim o'zinikini belgilaydi."),
+    "team_preview_approval": "✋ Qo'shilishni egasi yoki admin tasdiqlaydi.",
+    "team_join_btn": "✅ Qo'shilish",
+    "team_link_expired": "Bu havola muddati o'tgan. <b>{name}</b> egasidan yangisini so'rang.",
+    "team_unknown": "Bu taklif havolasi eskirgan yoki noto'g'ri.",
+    "team_requested": "✋ So'rov yuborildi — <b>{name}</b> admini tasdiqlagach qo'shilasiz.",
+    "team_request_new": "✋ <b>{who}</b> <b>{name}</b> jamoasiga qo'shilmoqchi.",
+    "team_request_declined": "<b>{name}</b> jamoasiga so'rovingiz qabul qilinmadi.",
+    "team_requests": "✋ Kutilayotgan so'rovlar: {n}",
+    "team_notify_btn": "🔔 Bildirishnomalar",
+    "team_notify_ask": ("🔔 Bu jamoadan qanday xabarlar kelsin?\n\n"
+                        "Hammasi — o'zgarishlar, hisobot va eslatmalar\n"
+                        "Muhim — hisobot va eslatmalar\n"
+                        "Faqat menga — menga tayinlangan vazifa eslatmalari\n"
+                        "O'chiq — hech narsa"),
+    "team_notify_now": "🔔 Bildirishnoma: {level}",
+    "notify_all": "Hammasi", "notify_important": "Muhim",
+    "notify_assigned": "Faqat menga", "notify_off": "O'chiq",
+    "team_stats_btn": "📊 Statistika",
+    "team_members_btn": "👤 A'zolar va rollar",
+    "team_members_title": "👤 <b>A'zolar</b>\n\n⭐ admin qilish yoki oddiy a'zo qilish, 🚫 chiqarish.",
+    "role_make_admin": "⭐ Admin qilish", "role_make_member": "👤 A'zo qilish",
+    "role_give_owner": "👑 Egalikni berish: {name}",
+    "team_owner_offer": "👑 Sizga <b>{name}</b> jamoasining egaligi taklif qilindi.",
+    "team_owner_offered": "Taklif yuborildi — u qabul qilgach, egalik o'tadi.",
+    "team_owner_now": "👑 Endi siz <b>{name}</b> jamoasining egasisiz.",
+    "team_owner_declined": "Egalik taklifi rad etildi.",
+    "team_owner_must_transfer": "Jamoa egasi chiqishdan oldin egalikni boshqa a'zoga berishi kerak.",
+    "team_leave_confirm": "Jamoani tark etasizmi? Siz qo'shgan ishlar jamoada qoladi.",
+})
+
+T["en"].update({
+    "btn_countdown": "📅 Date countdown",
+    "btn_timers": "⏱ Time countdown",
+    "cd_title": "📅 <b>Date countdown</b>",
+    "menu_teams": "👥 Team",
+    "cat_non_negotiable": "🔴 Must-do",
+    "cat_target": "🟡 Goal",
+    "cat_bonus": "🟢 Extra",
+    "team_all_done": "Everyone finished everything. 🎉",
+    "team_created": ("👥 Team <b>{name}</b> created.\n\nSend the link to your "
+                     "partner — they will see the team and join with one tap. "
+                     "The link works for 3 days:"),
+    "ask_habits": (
+        "<b>1–3 habits you repeat every day?</b>\n"
+        "One per line.\n\n"
+        "<i>For example:\n"
+        "Read 30 minutes in the morning\n"
+        "10,000 steps\n"
+        "Water — 2 litres</i>"),
+    "ask_modules": ("<b>What should we track?</b>\n"
+                    "Only what you pick is counted. Change it later in Settings → "
+                    "🧩 Modules."),
+    "mod_wake": "☀️ Early rising", "mod_prayer": "🕌 Prayer",
+    "mod_journal": "📔 Journal", "mod_team": "👥 Working with a team",
+    "mod_continue": "Continue ➡️",
+    "modules_set": "✅ Chosen: <b>{list}</b>",
+    "modules_none": "none — just your own tasks and habits",
+    "modules_settings": ("🧩 <b>Modules</b>\n\nA module switched off keeps its "
+                         "history; switched back on, the days it was off are not "
+                         "counted as missed."),
+    "btn_modules": "🧩 Modules",
+    "setup_team_hint": "👥 You wanted to work with a team. Create one and send the link:",
+    "tasks_today": "⚡ Today:",
+    "tasks_upcoming": "📅 Coming days",
+    "no_deadline": "📥 No date",
+    "days_none": "📥 No date",
+    "dest_personal": "👤 Personal",
+    "ask_dest_task": "⚡ <b>{title}</b>\n\nWhose is it: yours or a team's?",
+    "ask_dest_habit": "✅ <b>{title}</b>\n\nWhose is it: yours or a team's?",
+    "task_added_team": "👥 Team task added: <b>{title}</b> · {team}",
+    "habit_added_team": "👥 Team habit added: <b>{name}</b> · {team}",
+    "flow_expired": "That step has expired — please start again.",
+    "btn_edit_habit": "✏️ Edit",
+    "edit_name": "✏️ Name", "edit_date": "📅 Due date", "edit_priority": "🎚 Priority",
+    "edit_category": "🗂 Tier", "edit_move": "🔀 Move",
+    "edit_delete": "🗑 Delete",
+    "ask_new_date": "New due date:",
+    "ask_priority": "How important?",
+    "prio_high": "High", "prio_medium": "Medium", "prio_low": "Low",
+    "ask_move": "Move it where?",
+    "moved_to": "🔀 Moved: {where}",
+    "move_between_teams": "Items can't move straight from one team to another — move it to personal first.",
+    "confirm_delete": "Delete it? Completed history is kept.",
+    "confirm_delete_habit": "Delete this habit? Past days stay exactly as they were.",
+    "completion_all": "Everyone does it", "completion_any": "One person is enough",
+    "completion_assignees": "Assignees only",
+    "team_only_creator": "Only its creator, an admin or the team owner can change this.",
+    "habit_paused": "Paused",
+    "habit_pause_from": "Paused from {day}",
+    "habit_protected_edit": "This habit is managed by a module (Settings → 🧩 Modules).",
+    "habit_resume_btn": "▶️ Resume",
+    "pause_tomorrow": "⏸ Pause from tomorrow", "pause_today": "⏸ Pause from today",
+    "habit_mirrored": ("🔒 This ritual is read from each member's own habit — tick "
+                       "it in your personal list; it is never counted twice."),
+    "team_not_assigned": "This task isn't assigned to you.",
+    "capture_ask": "Save it as a task?",
+    "capture_save": "👤 Personal task",
+    "capture_skip": "✖️ No thanks",
+    "capture_saved": "📥 Saved: <b>{title}</b> · {where}",
+    "capture_expired": "That offer expired — send the text again.",
+    "timer_for_habits": "✅ Habits", "timer_for_tasks": "⚡ Tasks",
+    "timer_home_hint": "\nWhich one gets a timer, or starts one?",
+    "timer_team_own": "👥 Team item: everyone runs their own timer.",
+    "cd_ask_scope": "📅 <b>New date countdown</b>\n\nWhat is it for?",
+    "cd_scope_general": "General", "cd_scope_task": "For a task",
+    "cd_scope_habit": "For a habit",
+    "cd_ask_dest": "Whose is it: yours or a team's?",
+    "cd_ask_link_task": "Which task? (or give it its own name)",
+    "cd_ask_link_habit": "Which habit? (or give it its own name)",
+    "cd_no_link": "✍️ I'll type a name",
+    "cd_use_deadline": "📅 The task's due date — {day}",
+    "team_ev_countdown": "👥 <b>{who}</b> added a countdown:\n📅 {what}",
+    "st_week_short": "7 days", "st_month_short": "30 days",
+    "st_nothing_measured": "Nothing was measured in this period.",
+    "points": "{n} pts",
+    "team_units": "{items} items · {confirmations} check-ins · {left} left",
+    "role_owner": "Owner", "role_admin": "Admin", "role_member": "Member",
+    "you": "you",
+    "accept": "✅ Accept", "decline": "✖️ No",
+    "team_open_btn": "👥 Open the team",
+    "team_admin_only": "Only the team owner or an admin can do this.",
+    "team_invite_text": "👥 Invite link for <b>{name}</b>:",
+    "team_invite_until": "🔗 The link works until {when}",
+    "team_invite_expired": "🔗 The link no longer works — get a new one",
+    "team_invite_revoked": "The old link has been revoked.",
+    "team_revoke_btn": "⛔️ Revoke link",
+    "team_approval_on": "✋ Joining needs approval",
+    "team_approval_on_btn": "✋ Require approval",
+    "team_approval_off_btn": "🔓 Join without approval",
+    "team_preview": ("👥 <b>{name}</b>\nOwner: {owner} · members: {n}/{max}\n\n"
+                     "Join this team? Shared tasks and habits appear in your lists "
+                     "marked 👥, and everyone ticks their own."),
+    "team_preview_approval": "✋ The owner or an admin approves new members.",
+    "team_join_btn": "✅ Join",
+    "team_link_expired": "This link has expired. Ask the owner of <b>{name}</b> for a new one.",
+    "team_requested": "✋ Request sent — you'll join <b>{name}</b> once an admin approves.",
+    "team_request_new": "✋ <b>{who}</b> wants to join <b>{name}</b>.",
+    "team_request_declined": "Your request to join <b>{name}</b> was declined.",
+    "team_requests": "✋ Pending requests: {n}",
+    "team_notify_btn": "🔔 Notifications",
+    "team_notify_ask": ("🔔 What should this team send you?\n\n"
+                        "Everything — changes, reports and reminders\n"
+                        "Important — reports and reminders\n"
+                        "Only mine — reminders for tasks assigned to me\n"
+                        "Off — nothing"),
+    "team_notify_now": "🔔 Notifications: {level}",
+    "notify_all": "Everything", "notify_important": "Important",
+    "notify_assigned": "Only mine", "notify_off": "Off",
+    "team_stats_btn": "📊 Statistics",
+    "team_members_btn": "👤 Members & roles",
+    "team_members_title": "👤 <b>Members</b>\n\n⭐ make admin or member, 🚫 remove.",
+    "role_make_admin": "⭐ Make admin", "role_make_member": "👤 Make member",
+    "role_give_owner": "👑 Hand ownership to {name}",
+    "team_owner_offer": "👑 You've been offered ownership of <b>{name}</b>.",
+    "team_owner_offered": "Offer sent — ownership moves once they accept.",
+    "team_owner_now": "👑 You now own <b>{name}</b>.",
+    "team_owner_declined": "The ownership offer was declined.",
+    "team_owner_must_transfer": "The owner has to hand ownership to another member before leaving.",
+    "team_leave_confirm": "Leave the team? What you added stays with the team.",
+})
+
+T["ru"].update({
+    "btn_countdown": "📅 Date countdown",
+    "btn_timers": "⏱ Time countdown",
+    "cd_title": "📅 <b>Date countdown</b>",
+    "menu_teams": "👥 Команда",
+    "cat_non_negotiable": "🔴 Обязательно",
+    "cat_target": "🟡 Цель",
+    "cat_bonus": "🟢 Дополнительно",
+    "plevel_builder": "Строитель", "plevel_operator": "Оператор",
+    "plevel_architect": "Архитектор", "plevel_commander": "Командир",
+    "plevel_elite": "Элита", "plevel_master": "Мастер",
+    "team_all_done": "Все всё сделали. 🎉",
+    "team_created": ("👥 Команда <b>{name}</b> создана.\n\nОтправьте ссылку "
+                     "партнёру — он увидит команду и вступит одним нажатием. "
+                     "Ссылка работает 3 дня:"),
+    "ask_habits": (
+        "<b>1–3 привычки на каждый день?</b>\n"
+        "Каждую с новой строки.\n\n"
+        "<i>Например:\n"
+        "30 минут чтения утром\n"
+        "10 000 шагов\n"
+        "Вода — 2 литра</i>"),
+    "ask_modules": ("<b>Что будем отслеживать?</b>\n"
+                    "Считается только выбранное. Изменить можно в Настройки → "
+                    "🧩 Модули."),
+    "mod_wake": "☀️ Ранний подъём", "mod_prayer": "🕌 Намаз",
+    "mod_journal": "📔 Дневник", "mod_team": "👥 Работа в команде",
+    "mod_continue": "Дальше ➡️",
+    "modules_set": "✅ Выбрано: <b>{list}</b>",
+    "modules_none": "ничего — только свои задачи и привычки",
+    "modules_settings": ("🧩 <b>Модули</b>\n\nВыключенный модуль хранит историю; "
+                         "при включении дни, когда он был выключен, не считаются "
+                         "пропущенными."),
+    "btn_modules": "🧩 Модули",
+    "setup_team_hint": "👥 Вы хотели работать в команде. Создайте её и отправьте ссылку:",
+    "tasks_today": "⚡ Сегодня:",
+    "tasks_upcoming": "📅 Следующие дни",
+    "no_deadline": "📥 Без срока",
+    "days_none": "📥 Без срока",
+    "dest_personal": "👤 Личное",
+    "ask_dest_task": "⚡ <b>{title}</b>\n\nЧьё это: личное или командное?",
+    "ask_dest_habit": "✅ <b>{title}</b>\n\nЧьё это: личное или командное?",
+    "task_added_team": "👥 Командная задача добавлена: <b>{title}</b> · {team}",
+    "habit_added_team": "👥 Командная привычка добавлена: <b>{name}</b> · {team}",
+    "flow_expired": "Этот шаг устарел — начните заново.",
+    "btn_edit_habit": "✏️ Изменить",
+    "edit_name": "✏️ Название", "edit_date": "📅 Срок", "edit_priority": "🎚 Важность",
+    "edit_category": "🗂 Уровень", "edit_move": "🔀 Перенести",
+    "edit_delete": "🗑 Удалить",
+    "ask_new_date": "Новый срок:",
+    "ask_priority": "Насколько важно?",
+    "prio_high": "Высокая", "prio_medium": "Средняя", "prio_low": "Низкая",
+    "ask_move": "Куда перенести?",
+    "moved_to": "🔀 Перенесено: {where}",
+    "move_between_teams": "Напрямую из команды в команду нельзя — сначала перенесите в личное.",
+    "confirm_delete": "Удалить? История выполненного сохранится.",
+    "confirm_delete_habit": "Удалить привычку? Прошлые дни не изменятся.",
+    "completion_all": "Делают все", "completion_any": "Достаточно одного",
+    "completion_assignees": "Только назначенные",
+    "team_only_creator": "Изменить может только автор, админ или владелец команды.",
+    "habit_paused": "На паузе",
+    "habit_pause_from": "Пауза с {day}",
+    "habit_protected_edit": "Эта привычка управляется модулем (Настройки → 🧩 Модули).",
+    "habit_resume_btn": "▶️ Продолжить",
+    "pause_tomorrow": "⏸ Пауза с завтра", "pause_today": "⏸ Пауза с сегодня",
+    "habit_mirrored": ("🔒 Этот ритуал берётся из личной привычки каждого участника — "
+                       "отмечайте его в личном списке, дважды он не считается."),
+    "team_not_assigned": "Эта задача назначена не вам.",
+    "capture_ask": "Сохранить как задачу?",
+    "capture_save": "👤 Личная задача",
+    "capture_skip": "✖️ Не нужно",
+    "capture_saved": "📥 Сохранено: <b>{title}</b> · {where}",
+    "capture_expired": "Предложение устарело — отправьте текст ещё раз.",
+    "timer_for_habits": "✅ Привычки", "timer_for_tasks": "⚡ Задачи",
+    "timer_home_hint": "\nНа что поставить или запустить таймер?",
+    "timer_team_own": "👥 Командное дело: у каждого свой таймер.",
+    "cd_ask_scope": "📅 <b>Новый date countdown</b>\n\nДля чего?",
+    "cd_scope_general": "Общий", "cd_scope_task": "Для задачи",
+    "cd_scope_habit": "Для привычки",
+    "cd_ask_dest": "Чьё это: личное или командное?",
+    "cd_ask_link_task": "Какая задача? (или своё название)",
+    "cd_ask_link_habit": "Какая привычка? (или своё название)",
+    "cd_no_link": "✍️ Напишу название",
+    "cd_use_deadline": "📅 Срок задачи — {day}",
+    "team_ev_countdown": "👥 <b>{who}</b> добавил отсчёт:\n📅 {what}",
+    "st_week_short": "7 дней", "st_month_short": "30 дней",
+    "st_nothing_measured": "За этот период нечего было измерять.",
+    "points": "{n} п.",
+    "team_units": "{items} дел · {confirmations} отметок · осталось {left}",
+    "role_owner": "Владелец", "role_admin": "Админ", "role_member": "Участник",
+    "you": "вы",
+    "accept": "✅ Принять", "decline": "✖️ Нет",
+    "team_open_btn": "👥 Открыть команду",
+    "team_admin_only": "Это может только владелец команды или админ.",
+    "team_invite_text": "👥 Ссылка-приглашение в <b>{name}</b>:",
+    "team_invite_until": "🔗 Ссылка работает до {when}",
+    "team_invite_expired": "🔗 Ссылка больше не работает — получите новую",
+    "team_invite_revoked": "Старая ссылка отозвана.",
+    "team_revoke_btn": "⛔️ Отозвать ссылку",
+    "team_approval_on": "✋ Для вступления нужно одобрение",
+    "team_approval_on_btn": "✋ Вступление с одобрением",
+    "team_approval_off_btn": "🔓 Вступление без одобрения",
+    "team_preview": ("👥 <b>{name}</b>\nВладелец: {owner} · участники: {n}/{max}\n\n"
+                     "Вступить в команду? Общие задачи и привычки появятся в ваших "
+                     "списках с отметкой 👥, каждый отмечает своё."),
+    "team_preview_approval": "✋ Новых участников одобряет владелец или админ.",
+    "team_join_btn": "✅ Вступить",
+    "team_link_expired": "Срок ссылки истёк. Попросите у владельца <b>{name}</b> новую.",
+    "team_requested": "✋ Заявка отправлена — вы вступите в <b>{name}</b> после одобрения.",
+    "team_request_new": "✋ <b>{who}</b> хочет вступить в <b>{name}</b>.",
+    "team_request_declined": "Заявка на вступление в <b>{name}</b> отклонена.",
+    "team_requests": "✋ Ожидают одобрения: {n}",
+    "team_notify_btn": "🔔 Уведомления",
+    "team_notify_ask": ("🔔 Что присылать из этой команды?\n\n"
+                        "Всё — изменения, отчёты и напоминания\n"
+                        "Важное — отчёты и напоминания\n"
+                        "Только мне — напоминания о моих задачах\n"
+                        "Выкл — ничего"),
+    "team_notify_now": "🔔 Уведомления: {level}",
+    "notify_all": "Всё", "notify_important": "Важное",
+    "notify_assigned": "Только мне", "notify_off": "Выкл",
+    "team_stats_btn": "📊 Статистика",
+    "team_members_btn": "👤 Участники и роли",
+    "team_members_title": "👤 <b>Участники</b>\n\n⭐ сделать админом или участником, 🚫 удалить.",
+    "role_make_admin": "⭐ Сделать админом", "role_make_member": "👤 Сделать участником",
+    "role_give_owner": "👑 Передать владение: {name}",
+    "team_owner_offer": "👑 Вам предложили стать владельцем <b>{name}</b>.",
+    "team_owner_offered": "Предложение отправлено — владение перейдёт после согласия.",
+    "team_owner_now": "👑 Теперь вы владелец <b>{name}</b>.",
+    "team_owner_declined": "Предложение владения отклонено.",
+    "team_owner_must_transfer": "Перед выходом владелец должен передать команду другому участнику.",
+    "team_leave_confirm": "Выйти из команды? Добавленное вами останется в команде.",
+})
+
 PRAYER_LABELS = {
     "uz": {"bomdod": "Bomdod", "peshin": "Peshin", "asr": "Asr",
            "shom": "Shom", "xufton": "Xufton",

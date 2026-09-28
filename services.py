@@ -5,12 +5,19 @@ Every rule lives here exactly once. The Telegram bot and the Mini App API both
 call these functions, so a task created in the bot and a task created in the
 Mini App go through identical validation and produce identical rows.
 
-Two invariants hold throughout:
+Three invariants hold throughout:
 
   1. Every function takes `workspace_id` and scopes its query to it, so a
      caller can never read or modify another workspace's data.
-  2. Local dates use Asia/Tashkent. Grouping a day's habits by UTC would put
-     everything after 19:00 local time into the wrong day.
+  2. Local dates use the user's own zone (Asia/Tashkent by default). Grouping
+     a day's habits by UTC would put everything after 19:00 local time into
+     the wrong day.
+  3. **The measurement contract.** A day is scored by one formula, from the
+     things that were owed *on that day*: a habit counts from the day it
+     started until the day it was archived, only on the days its schedule of
+     the time covered and it was not paused; a closed day is read back from
+     its snapshot rather than recomputed. Changing a setting today can change
+     tomorrow, never last week.
 """
 
 from __future__ import annotations
@@ -19,19 +26,21 @@ import json
 import logging
 import re
 import secrets
+from collections import defaultdict
 from datetime import date, datetime, time as dtime, timedelta, timezone as _utc
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, or_, select, text as sql_text
+from sqlalchemy import func, or_, select, text as sql_text, update as sql_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from db import (
     Birthday, Countdown, DailyReportLog, DailyScore, Feedback, Habit, HabitLog,
-    JobRun, JournalEntry, PrayerDay, PrayerLog, Project, Referral, ReferralCode,
-    Task, Team, TeamHabit, TeamHabitLog, TeamMember, TeamTask, TeamTaskDone,
-    TimerRun, User, UserAchievement, UserProgress, WeeklyFocus, WeeklyReview,
-    Workspace, XPEvent, utcnow,
+    HabitPauseInterval, HabitScheduleVersion, IdempotencyKey, JobRun,
+    JournalEntry, PrayerDay, PrayerLog, Project, Referral, ReferralCode, Task,
+    Team, TeamActivity, TeamDayScore, TeamHabit, TeamHabitLog, TeamJoinRequest,
+    TeamMember, TeamTask, TeamTaskDone, TimerRun, User, UserAchievement,
+    UserProgress, WeeklyFocus, WeeklyReview, Workspace, XPEvent, utcnow,
 )
 
 log = logging.getLogger("ernestos")
@@ -39,9 +48,6 @@ log = logging.getLogger("ernestos")
 #: The default zone, used by every workspace that never chose one.
 TZ = ZoneInfo("Asia/Tashkent")
 
-#: Offered in Settings. A full IANA list is 600 entries the user has to scroll;
-#: these are the zones ErnestOS users actually live in, and any other valid
-#: IANA name still works if it is already stored.
 #: The zones offered first. Not a whitelist — the full IANA database follows
 #: them in `TIMEZONES` — but the twelve somebody is most likely to be in,
 #: sitting at the top of a list of six hundred so the common case stays one
@@ -56,12 +62,6 @@ COMMON_TIMEZONES = [
 
 def _all_timezones() -> list[str]:
     """Every zone this platform knows, common ones first.
-
-    The short list was a guess about where users live, and it was wrong for
-    anybody outside it: their only options were somebody else's city or a UTC
-    offset they would have to work out twice a year. Reports fire on this
-    clock, so being unable to name your own zone means being sent a morning
-    report in the middle of the night.
 
     Deprecated aliases and the `posix/`/`right/` trees are dropped — they are
     the same zones under older names, and six hundred entries is already a long
@@ -92,11 +92,7 @@ class NotFound(Exception):
 
 
 def tz_for(name: str | None) -> ZoneInfo:
-    """Resolve a stored zone name, falling back rather than raising.
-
-    A row holding a zone the platform no longer knows must not make the app
-    unusable, so an unknown name reads as the default.
-    """
+    """Resolve a stored zone name, falling back rather than raising."""
     if not name:
         return TZ
     try:
@@ -111,12 +107,7 @@ def user_tz(user: User | None) -> ZoneInfo:
 
 
 def today_local(tz: ZoneInfo | None = None) -> date:
-    """Today, in the caller's zone.
-
-    Every function that groups by day takes a `tz` so that "today" means the
-    same thing to the user as it does to their phone. Omitting it keeps the
-    historical default, which is what the bot's own scheduling still uses.
-    """
+    """Today, in the caller's zone."""
     return datetime.now(tz or TZ).date()
 
 
@@ -135,11 +126,7 @@ def now_local(tz: ZoneInfo | None = None) -> datetime:
 #   * `day` columns are local calendar dates — the day the user was living in;
 #   * `created_at` / `completed_at` are naive UTC instants.
 #
-# Comparing `completed_at.date()` with a local date is wrong for every user
-# whose offset crosses midnight: in Asia/Tashkent (UTC+5) everything finished
-# after 19:00 local carries yesterday's UTC date, so a task completed at 22:00
-# was filed under "earlier" instead of "today". These two helpers are the only
-# sanctioned way across the boundary.
+# These two helpers are the only sanctioned way across the boundary.
 
 def local_date_of(moment: datetime | None, tz: ZoneInfo | None = None) -> date | None:
     """The local calendar date a stored UTC instant fell on."""
@@ -150,11 +137,7 @@ def local_date_of(moment: datetime | None, tz: ZoneInfo | None = None) -> date |
 
 def utc_window(first: date, last: date | None = None,
                tz: ZoneInfo | None = None) -> tuple[datetime, datetime]:
-    """The half-open UTC range [start, end) covering local days first..last.
-
-    Used for counting rows by the day the user experienced, while still letting
-    the database do the filtering.
-    """
+    """The half-open UTC range [start, end) covering local days first..last."""
     zone = tz or TZ
     last = last or first
     start = datetime.combine(first, dtime(0, 0)).replace(tzinfo=zone)
@@ -209,38 +192,19 @@ def date_label(day: date, lang: str = "uz") -> str:
 #: Habits are grouped into three tiers everywhere they are shown.
 HABIT_CATEGORIES = ["non_negotiable", "target", "bonus"]
 
-#: What each tier is worth inside the habit percentage. The three tiers existed
-#: as *labels* long before they existed as arithmetic: a workspace could sort
-#: its habits into non-negotiable, target and bonus, and then every one of them
-#: counted for exactly the same amount, so a missed 5x namoz and a missed
-#: podcast cost the day the same number of points. That made the sorting
-#: decorative, and worse, it made the number dishonest — the screen said one of
-#: these matters more and the score disagreed.
-#:
-#: Fifty / thirty / twenty. Non-negotiable is worth more than the other two put
-#: together, which is what "non-negotiable" has to mean if the word is doing any
-#: work; bonus is worth having and never worth much.
+#: What each tier is worth inside the habit percentage. Fifty / thirty /
+#: twenty: non-negotiable is worth more than the other two put together, which
+#: is what "non-negotiable" has to mean if the word is doing any work.
 HABIT_TIER_WEIGHTS = {"non_negotiable": 50, "target": 30, "bonus": 20}
 
 #: (name, category, system_key). A system_key marks a derived habit the user
 #: cannot tick by hand: "wakeup" follows the morning check-in, "prayer" follows
-#: the daily prayer score and "journal" follows a fully answered entry.
-#:
-#: The starting set is exactly these three, and the reason is that a new account
-#: should open on habits it cannot argue with. Getting up, praying and writing
-#: the day up are the three ErnestOS is actually about; everything else — deep
-#: work, sport, reading, podcasts — is a choice about how somebody wants to live,
-#: and seeding four of those meant handing every new user a list they never
-#: picked and would have to prune before the screen told them anything true.
-#:
-#: All three are derived, so a new workspace has nothing to tick by hand until
-#: the user adds their own. That is deliberate: the first habit in the list is
-#: theirs, not ours.
+#: the prayer record and "journal" follows a written journal entry.
 #:
 #: This tuple is the only place defaults are defined. `seed_default_habits` is
 #: the only reader, and it runs on account creation and on an explicit wipe —
-#: never against an existing workspace, so shortening this list can never remove
-#: a habit somebody already has.
+#: never against an existing workspace. Which of the three a new account keeps
+#: is the user's own choice at setup (`set_modules`).
 DEFAULT_HABITS = [
     ("Get up",   "non_negotiable", "wakeup"),
     ("5x namoz", "non_negotiable", "prayer"),
@@ -248,11 +212,15 @@ DEFAULT_HABITS = [
 ]
 
 SYSTEM_PRAYER = "prayer"
-#: The journal is a non-negotiable habit again, and it completes only when all
-#: five questions are answered — a partial entry is saved and kept, but it does
-#: not tick the habit. Migration 0001 archived this habit; 0006 brings it back.
+#: The journal is a non-negotiable habit, and one meaningful answer is enough
+#: to tick it: a short evening is still a written day. All five answers is a
+#: full reflection, which the screens name separately.
 SYSTEM_JOURNAL = "journal"
 SYSTEM_WAKEUP = "wakeup"
+SYSTEM_KEYS = (SYSTEM_WAKEUP, SYSTEM_PRAYER, SYSTEM_JOURNAL)
+
+#: The modules a person chooses at setup, and the habit each one drives.
+MODULES = {"wake": SYSTEM_WAKEUP, "prayer": SYSTEM_PRAYER, "journal": SYSTEM_JOURNAL}
 
 #: Default rise time, used until the user picks their own.
 DEFAULT_WAKE_TIME = dtime(5, 0)
@@ -260,9 +228,7 @@ DEFAULT_WAKE_TIME = dtime(5, 0)
 WAKE_GRACE = timedelta(hours=1)
 
 
-#: How many times to re-read the maximum member number before giving up. Each
-#: retry costs one query and only happens when two accounts are created in the
-#: same instant, so a handful is plenty.
+#: How many times to re-read the maximum member number before giving up.
 MEMBER_NO_ATTEMPTS = 5
 
 
@@ -272,7 +238,9 @@ def get_or_create_user(s: Session, telegram_id: int, *, first_name: str = "",
     user = s.get(User, telegram_id)
     if user is not None:
         # Keep Telegram profile fields fresh, but never overwrite with blanks.
-        if first_name:
+        if first_name and not user.onboarded:
+            user.first_name = first_name
+        elif first_name and not user.first_name:
             user.first_name = first_name
         if last_name:
             user.last_name = last_name
@@ -281,14 +249,9 @@ def get_or_create_user(s: Session, telegram_id: int, *, first_name: str = "",
         return user, False
 
     # Sequential join number: max()+1 rather than a count, so deleting a user
-    # never hands their number to somebody else.
-    #
-    # Two people tapping /start in the same second both read the same max and
-    # both write it, and the number is not an internal detail — it is shown to
-    # the user as "you are member #42" and logged to the admin channel. The
-    # column is unique, so the loser of the race now fails loudly on flush and
-    # simply reads the new maximum and tries again, inside a SAVEPOINT so the
-    # retry cannot damage whatever transaction the caller is running.
+    # never hands their number to somebody else. The column is unique, so the
+    # loser of a same-second race fails on flush and simply tries again, inside
+    # a SAVEPOINT so the retry cannot damage the caller's transaction.
     for _ in range(MEMBER_NO_ATTEMPTS):
         next_no = (s.scalar(select(func.max(User.member_no))) or 0) + 1
         user = User(telegram_id=telegram_id, member_no=next_no,
@@ -315,12 +278,7 @@ def get_or_create_user(s: Session, telegram_id: int, *, first_name: str = "",
 
 
 def seed_default_habits(s: Session, ws: int) -> None:
-    """Put the starting set of habits into an empty workspace.
-
-    Used when an account is created and again when somebody wipes their data:
-    a workspace with no habits at all is not a clean slate, it is a dead one.
-    The caller commits.
-    """
+    """Put the starting set of habits into an empty workspace. The caller commits."""
     for position, (name, category, system_key) in enumerate(DEFAULT_HABITS, start=1):
         s.add(Habit(workspace_id=ws, name=name, category=category,
                     position=position, is_protected=bool(system_key),
@@ -345,34 +303,29 @@ def touch_activity(s: Session, telegram_id: int) -> None:
 def record_action(s: Session, telegram_id: int) -> int:
     """Count one thing actually done, and return the new total.
 
-    "Done" means the day changed: a task ticked or added, a habit logged, a
-    prayer recorded, a journal written. Opening a screen is not an action —
-    counting reads would let somebody exhaust their free run by scrolling, and
-    the count exists to measure whether the product has been *used*.
-
-    The caller commits. Every increment goes through here so the definition of
-    an action lives in one place rather than in each endpoint.
+    One UPDATE that adds one, rather than "read, add, write": two writes
+    landing in the same instant — a double tap, a bot tap and an API call —
+    used to read the same number and both write it plus one, losing a count.
+    The database does the addition, so twenty concurrent actions add twenty.
+    The caller commits.
     """
-    user = s.get(User, telegram_id)
-    if user is None:
+    result = s.execute(
+        sql_update(User).where(User.telegram_id == telegram_id)
+        .values(actions_count=func.coalesce(User.actions_count, 0) + 1)
+        .execution_options(synchronize_session=False))
+    if not result.rowcount:
         return 0
-    user.actions_count = (user.actions_count or 0) + 1
-    return user.actions_count
+    value = s.scalar(select(User.actions_count)
+                     .where(User.telegram_id == telegram_id)) or 0
+    cached = s.get(User, telegram_id)
+    if cached is not None:
+        # Keep the identity map honest without reloading the whole row.
+        s.expire(cached, ["actions_count"])
+    return int(value)
 
 
 def record_action_and_qualify(s: Session, telegram_id: int) -> tuple[int, int | None]:
-    """`record_action`, then the referral check. Returns (total, inviter_to_tell).
-
-    A separate function rather than a change to `record_action`, because that
-    one has callers and a return type they rely on, and "count an action" and
-    "maybe promote a referral" are not the same sentence.
-
-    This is the *only* place the qualification check hangs off ordinary usage.
-    Every write in the product already funnels through the action counter — the
-    bot's `count_action` and the API middleware — so hooking it here reaches all
-    of them without putting referral logic into forty endpoints, and without a
-    scheduler sweeping every user to ask who has grown up yet.
-    """
+    """`record_action`, then the referral check. Returns (total, inviter_to_tell)."""
     total = record_action(s, telegram_id)
     s.commit()
     return total, maybe_qualify_referral(s, telegram_id)
@@ -381,22 +334,10 @@ def record_action_and_qualify(s: Session, telegram_id: int) -> tuple[int, int | 
 def record_action_and_progress(s: Session, telegram_id: int) -> dict:
     """The action counter, the referral check and personal progression, once.
 
-    One funnel, three consequences. `record_action_and_qualify` already had two
-    of them; progression is the third, and it hangs off the same single point
-    for the same reason — every write in the product passes through the action
-    counter, so scoring the day here reaches all of them without putting XP
-    logic into forty endpoints and without a nightly job that visits every user
-    to ask how they did.
-
     Progression failing must never fail the user's actual action. Ticking a
     task is the thing they asked for; recomputing their level is bookkeeping
     that happens to be attached to it, and if the bookkeeping raises, the tick
-    still stands. So it is caught, logged and dropped.
-
-    Returns the progression result — including whether a level was just
-    crossed — for callers that want to say something about it. Callers that do
-    not care can ignore it, which is why the referral pair is still its own
-    function rather than being folded in here.
+    still stands.
     """
     total, inviter = record_action_and_qualify(s, telegram_id)
     result: dict = {}
@@ -419,6 +360,87 @@ def set_subscription(s: Session, telegram_id: int, subscribed: bool) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Modules — which of the three rituals somebody actually keeps
+# ---------------------------------------------------------------------------
+#
+# A new account used to be handed getting up, prayer and the journal whether
+# it wanted them or not, and some of them could not be removed. A shift worker,
+# somebody who travels, or somebody who only wanted a task list was in debt
+# from the first morning. The rituals are now modules: chosen at setup,
+# switched on and off in Settings, and a switched-off module keeps every log it
+# ever had — switching it back on brings the same habit back.
+
+def modules_for(s: Session, ws: int) -> dict[str, bool]:
+    """{"wake": True, "prayer": False, …} — which rituals are live."""
+    live = set(s.scalars(select(Habit.system_key).where(
+        Habit.workspace_id == ws, Habit.archived_at.is_(None),
+        Habit.system_key.in_(SYSTEM_KEYS))).all())
+    return {name: key in live for name, key in MODULES.items()}
+
+
+def set_modules(s: Session, ws: int, chosen, *, user: User | None = None) -> dict[str, bool]:
+    """Switch the three rituals on or off, keeping their history either way.
+
+    Off archives the habit; on brings back the most recent one, or creates it
+    if there never was one. Archiving follows the ordinary rule — a habit is
+    owed up to the day it was archived — except on the day it was created,
+    when switching it off means it was never owed at all: that is the setup
+    screen, where nothing has been missed yet.
+    """
+    chosen = {name for name in (chosen or ()) if name in MODULES}
+    tz = _habit_tz(s, ws)
+    today = today_local(tz)
+    for name, key in MODULES.items():
+        live = s.scalar(select(Habit).where(
+            Habit.workspace_id == ws, Habit.system_key == key,
+            Habit.archived_at.is_(None)))
+        if name in chosen and live is None:
+            old = s.scalar(select(Habit).where(
+                Habit.workspace_id == ws, Habit.system_key == key)
+                .order_by(Habit.id.desc()).limit(1))
+            if old is not None:
+                _reactivate(s, ws, old, today, tz)
+            else:
+                spec = next(d for d in DEFAULT_HABITS if d[2] == key)
+                top = s.scalar(select(func.max(Habit.position))
+                               .where(Habit.workspace_id == ws)) or 0
+                s.add(Habit(workspace_id=ws, name=spec[0], category=spec[1],
+                            position=top + 1, is_protected=True, system_key=key,
+                            target_time=DEFAULT_WAKE_TIME if key == SYSTEM_WAKEUP
+                            else None))
+        elif name not in chosen and live is not None:
+            live.archived_at = utcnow()
+    if user is not None:
+        user.modules = ",".join(sorted(chosen))
+    s.commit()
+    return modules_for(s, ws)
+
+
+def _reactivate(s: Session, ws: int, habit: Habit, today: date, tz: ZoneInfo) -> None:
+    """Bring an archived habit back without making its time away a debt.
+
+    Clearing `archived_at` alone would make the habit look live all along, and
+    every day it was switched off would turn into a missed day. The days away
+    become a closed pause instead — so the record before them stays exactly
+    as it was, and nothing between is owed.
+    """
+    archived = local_date_of(habit.archived_at, tz)
+    habit.archived_at = None
+    if archived is None or archived >= today:
+        return
+    start = habit.active_from or local_date_of(habit.created_at, tz)
+    if start is not None and start >= archived:
+        # Switched off on its first day, so never owed: it starts now.
+        habit.active_from = today
+        return
+    first_off, last_off = archived + timedelta(days=1), today - timedelta(days=1)
+    if first_off <= last_off:
+        s.add(HabitPauseInterval(kind=HABIT_KIND, item_id=habit.id,
+                                 workspace_id=ws, start_day=first_off,
+                                 end_day=last_off))
+
+
+# ---------------------------------------------------------------------------
 # Habits
 # ---------------------------------------------------------------------------
 
@@ -428,13 +450,16 @@ SCHEDULE_DAILY = "daily"
 SCHEDULE_WEEKDAYS = "weekdays"
 SCHEDULE_PREFIX_DAYS = "days:"
 
+#: The two kinds the schedule-version and pause tables serve.
+HABIT_KIND = "habit"
+TEAM_HABIT_KIND = "team_habit"
+
+#: The oldest day a first schedule version reaches back to: "since always".
+_BEGINNING = date(2000, 1, 1)
+
 
 def clean_schedule(value: str | None) -> str:
-    """Normalise a schedule, or fall back to daily.
-
-    Anything unrecognised becomes "daily" rather than an error: a habit whose
-    schedule cannot be parsed must still be tickable.
-    """
+    """Normalise a schedule, or fall back to daily."""
     value = (value or "").strip().lower()
     if value == SCHEDULE_WEEKDAYS:
         return SCHEDULE_WEEKDAYS
@@ -458,19 +483,224 @@ def schedule_days(schedule: str | None) -> list[int]:
     return [0, 1, 2, 3, 4, 5, 6]
 
 
-def habit_is_due(habit: Habit, day: date) -> bool:
+class DueCalendar:
+    """Which habits were owed on which local days — the measurement contract.
+
+    One object answers the question for every backwards-looking number, so the
+    streak, the history grid, the day's percentage and the chart cannot give
+    four different answers about the same Tuesday. A habit is owed on a day
+    when all of these hold:
+
+      * the day is on or after the day it started (`active_from`, else the day
+        it was created) — a habit added today was not missed last week;
+      * it had not been archived before that day — archiving today keeps every
+        past day, and today, exactly as they were;
+      * no pause interval covers the day;
+      * the schedule *in force on that day* includes its weekday.
+
+    Built once per question with every version and pause loaded in two queries
+    (`load`), then asked as often as needed without touching the database.
+    """
+
+    def __init__(self, tz: ZoneInfo | None = None):
+        self.tz = tz or TZ
+        self.versions: dict[tuple[str, int], list[tuple[date, str]]] = defaultdict(list)
+        self.pauses: dict[tuple[str, int], list[tuple[date, date | None]]] = defaultdict(list)
+
+    @classmethod
+    def load(cls, s: Session, items: dict[str, list[int]],
+             tz: ZoneInfo | None = None) -> "DueCalendar":
+        """A calendar for {kind: [ids]} — two queries, whatever the size."""
+        cal = cls(tz)
+        wanted = [(kind, ids) for kind, ids in items.items() if ids]
+        if not wanted:
+            return cal
+        cond_v = or_(*[(HabitScheduleVersion.kind == kind)
+                       & HabitScheduleVersion.item_id.in_(ids) for kind, ids in wanted])
+        for kind, item_id, valid_from, schedule in s.execute(
+                select(HabitScheduleVersion.kind, HabitScheduleVersion.item_id,
+                       HabitScheduleVersion.valid_from, HabitScheduleVersion.schedule)
+                .where(cond_v).order_by(HabitScheduleVersion.valid_from,
+                                        HabitScheduleVersion.id)).all():
+            cal.versions[(kind, item_id)].append((valid_from, schedule))
+        cond_p = or_(*[(HabitPauseInterval.kind == kind)
+                       & HabitPauseInterval.item_id.in_(ids) for kind, ids in wanted])
+        for kind, item_id, start, end in s.execute(
+                select(HabitPauseInterval.kind, HabitPauseInterval.item_id,
+                       HabitPauseInterval.start_day, HabitPauseInterval.end_day)
+                .where(cond_p)).all():
+            cal.pauses[(kind, item_id)].append((start, end))
+        return cal
+
+    @staticmethod
+    def kind_of(habit) -> str:
+        return TEAM_HABIT_KIND if isinstance(habit, TeamHabit) else HABIT_KIND
+
+    def start_of(self, habit) -> date | None:
+        return getattr(habit, "active_from", None) or local_date_of(habit.created_at, self.tz)
+
+    def end_of(self, habit) -> date | None:
+        """The last day the habit is owed, or None while it is live."""
+        if habit.archived_at is None:
+            return None
+        return local_date_of(habit.archived_at, self.tz)
+
+    def exists_on(self, habit, day: date) -> bool:
+        start = self.start_of(habit)
+        end = self.end_of(habit)
+        if start is not None and day < start:
+            return False
+        if end is not None:
+            # Archived on the very day it started: it was never owed at all —
+            # a habit set up by mistake and removed is not a missed habit.
+            if start is not None and start >= end:
+                return False
+            if day > end:
+                return False
+        return True
+
+    def paused_on(self, habit, day: date) -> bool:
+        intervals = self.pauses.get((self.kind_of(habit), habit.id), [])
+        for start, end in intervals:
+            if start <= day and (end is None or day <= end):
+                return True
+        # A pause from before intervals existed: it runs from the day it was
+        # made. Reading it that way keeps today exactly as it was and gives
+        # every earlier day back the misses the old rule erased.
+        if habit.paused_at is not None and not any(e is None for _, e in intervals):
+            legacy = local_date_of(habit.paused_at, self.tz)
+            if legacy is not None and day >= legacy:
+                return True
+        return False
+
+    def pause_pending(self, habit, day: date) -> date | None:
+        """The day a pause will start, when one is booked but not running yet."""
+        for start, end in self.pauses.get((self.kind_of(habit), habit.id), []):
+            if end is None and start > day:
+                return start
+        return None
+
+    def schedule_on(self, habit, day: date) -> str:
+        chosen = None
+        for valid_from, schedule in self.versions.get((self.kind_of(habit), habit.id), []):
+            if valid_from <= day:
+                chosen = schedule
+        return clean_schedule(chosen if chosen is not None else habit.schedule)
+
+    def due(self, habit, day: date) -> bool:
+        if not self.exists_on(habit, day):
+            return False
+        if self.paused_on(habit, day):
+            return False
+        return day.weekday() in schedule_days(self.schedule_on(habit, day))
+
+
+def calendar_for(s: Session, habits, tz: ZoneInfo | None = None) -> DueCalendar:
+    """A calendar for any mix of personal and team habits."""
+    items: dict[str, list[int]] = {HABIT_KIND: [], TEAM_HABIT_KIND: []}
+    for habit in habits:
+        items[DueCalendar.kind_of(habit)].append(habit.id)
+    return DueCalendar.load(s, items, tz)
+
+
+def habit_is_due(habit, day: date, cal: DueCalendar | None = None) -> bool:
     """Whether this habit is expected on that day.
 
-    A paused habit is never due — that is the entire point of pausing — and its
-    logs stay on disk, so past reports do not change.
+    With a calendar, the full contract. Without one — a caller holding a
+    single row and no session — the current schedule and pause, which is
+    right for today and only for today.
     """
+    if cal is not None:
+        return cal.due(habit, day)
     if habit.paused_at is not None:
         return False
     return day.weekday() in schedule_days(habit.schedule)
 
 
+def _habit_tz(s: Session, ws: int) -> ZoneInfo:
+    owner = workspace_owner(s, ws)
+    return user_tz(s.get(User, owner)) if owner else TZ
+
+
+def _record_schedule_change(s: Session, kind: str, habit, new_schedule: str, *,
+                            today: date, workspace_id: int | None = None,
+                            team_id: int | None = None) -> date:
+    """Write the new schedule as a version, effective from the next day.
+
+    A habit that started today has no past to protect, so the change applies
+    at once. Returns the day the new schedule starts.
+    """
+    new_schedule = clean_schedule(new_schedule)
+    existing = s.scalars(select(HabitScheduleVersion).where(
+        HabitScheduleVersion.kind == kind,
+        HabitScheduleVersion.item_id == habit.id)).all()
+    start = (getattr(habit, "active_from", None)
+             or local_date_of(habit.created_at) or today)
+    effective = today if start >= today else today + timedelta(days=1)
+    if not existing:
+        s.add(HabitScheduleVersion(kind=kind, item_id=habit.id,
+                                   workspace_id=workspace_id, team_id=team_id,
+                                   valid_from=_BEGINNING,
+                                   schedule=clean_schedule(habit.schedule)))
+    same_day = next((v for v in existing if v.valid_from == effective), None)
+    if same_day is not None:
+        same_day.schedule = new_schedule
+    else:
+        s.add(HabitScheduleVersion(kind=kind, item_id=habit.id,
+                                   workspace_id=workspace_id, team_id=team_id,
+                                   valid_from=effective, schedule=new_schedule))
+    habit.schedule = new_schedule
+    return effective
+
+
+def _apply_pause(s: Session, kind: str, habit, paused: bool, *, today: date,
+                 from_today: bool, workspace_id: int | None = None,
+                 team_id: int | None = None, tz: ZoneInfo | None = None) -> date | None:
+    """Start or end a pause as an interval of days. Returns the start day.
+
+    A pause starts tomorrow unless the caller asked for today — the screens
+    offer both and say which one today's number will reflect. Ending one
+    closes it at yesterday, so today is owed again; a pause that had not
+    started yet is simply removed.
+    """
+    intervals = s.scalars(select(HabitPauseInterval).where(
+        HabitPauseInterval.kind == kind,
+        HabitPauseInterval.item_id == habit.id)).all()
+    open_ones = [i for i in intervals if i.end_day is None]
+
+    if paused:
+        if open_ones:
+            return open_ones[0].start_day
+        if habit.paused_at is not None:
+            # Already paused under the old single-column rule.
+            return local_date_of(habit.paused_at, tz)
+        start = today if from_today else today + timedelta(days=1)
+        s.add(HabitPauseInterval(kind=kind, item_id=habit.id,
+                                 workspace_id=workspace_id, team_id=team_id,
+                                 start_day=start, end_day=None))
+        habit.paused_at = utcnow()
+        return start
+
+    yesterday = today - timedelta(days=1)
+    if not open_ones and habit.paused_at is not None:
+        legacy = local_date_of(habit.paused_at, tz)
+        if legacy is not None and legacy <= yesterday:
+            s.add(HabitPauseInterval(kind=kind, item_id=habit.id,
+                                     workspace_id=workspace_id, team_id=team_id,
+                                     start_day=legacy, end_day=yesterday))
+    for interval in open_ones:
+        if interval.start_day > yesterday:
+            s.delete(interval)
+        else:
+            interval.end_day = yesterday
+    habit.paused_at = None
+    return None
+
+
 def _habit_dict(habit: Habit, day: date, done: bool,
-                run: dict | None = None) -> dict:
+                run: dict | None = None, cal: DueCalendar | None = None) -> dict:
+    paused_now = cal.paused_on(habit, day) if cal else habit.paused_at is not None
+    pending = cal.pause_pending(habit, day) if cal else None
     return {
         "id": habit.id, "name": habit.name, "category": habit.category,
         "protected": habit.is_protected, "system_key": habit.system_key,
@@ -478,11 +708,17 @@ def _habit_dict(habit: Habit, day: date, done: bool,
         "remind_at": habit.remind_at.strftime("%H:%M") if habit.remind_at else None,
         "schedule": clean_schedule(habit.schedule),
         "days": schedule_days(habit.schedule),
-        "paused": habit.paused_at is not None,
-        "due": habit_is_due(habit, day),
+        # The schedule in force *today*, which differs from `schedule` on the
+        # day a change was made: the new one starts tomorrow.
+        "schedule_today": cal.schedule_on(habit, day) if cal else clean_schedule(habit.schedule),
+        "paused": paused_now,
+        "pause_from": pending.isoformat() if pending else None,
+        "active_from": (habit.active_from.isoformat() if habit.active_from else None),
+        "due": habit_is_due(habit, day, cal),
         "done": done,
-        # The countdown this habit is done by, if any: the minutes it runs
-        # for, how that was decided, and today's run while one is open.
+        # Prayer has a section and a score of its own; its habit row is a
+        # shortcut to it and is deliberately left out of the habit count.
+        "scored": habit.system_key != SYSTEM_PRAYER,
         **_timer_fields(habit.timer_minutes, habit.name,
                         protected=habit.is_protected),
         "timer": run,
@@ -496,6 +732,20 @@ def _active_habits(s: Session, ws: int) -> list[Habit]:
         .order_by(Habit.position, Habit.id)).all())
 
 
+def _habits_owed_candidates(s: Session, ws: int, first: date) -> list[Habit]:
+    """Every habit that could have been owed on or after `first`.
+
+    Live ones, plus archived ones whose archive came after the window opened —
+    an archived habit still counts on the days before it was archived.
+    """
+    start, _ = utc_window(first - timedelta(days=1), first - timedelta(days=1))
+    return list(s.scalars(
+        select(Habit).where(Habit.workspace_id == ws,
+                            or_(Habit.archived_at.is_(None),
+                                Habit.archived_at >= start))
+        .order_by(Habit.position, Habit.id)).all())
+
+
 def list_habits(s: Session, ws: int, day: date | None = None, *,
                 tz: ZoneInfo | None = None) -> list[dict]:
     """Habits with that day's completion state, in display order.
@@ -503,6 +753,7 @@ def list_habits(s: Session, ws: int, day: date | None = None, *,
     Paused habits stay in the list — hidden away, a paused habit is one the
     user cannot resume — but carry `paused: true` and `due: false`.
     """
+    tz = tz or _habit_tz(s, ws)
     day = day or today_local(tz)
     habits = _active_habits(s, ws)
     if not habits:
@@ -519,8 +770,8 @@ def list_habits(s: Session, ws: int, day: date | None = None, *,
         )
     ).all())
     runs = open_timer_runs(s, ws, "habit", day=day)
-
-    return [_habit_dict(h, day, h.id in done_ids, runs.get(h.id)) for h in habits]
+    cal = calendar_for(s, habits, tz)
+    return [_habit_dict(h, day, h.id in done_ids, runs.get(h.id), cal) for h in habits]
 
 
 def habits_by_category(s: Session, ws: int, day: date | None = None, *,
@@ -528,11 +779,8 @@ def habits_by_category(s: Session, ws: int, day: date | None = None, *,
                        include_team: bool = True) -> dict:
     """Habits grouped into the three tiers, preserving display order.
 
-    Shared habits are in these groups, not in a block of their own. They are
-    scored in the same arithmetic and owed on the same day, so putting them
-    somewhere else would be the screen disagreeing with the number underneath
-    it — and "which of these actually counts?" is the question that makes
-    somebody stop trusting both. Each row says where it came from instead.
+    Shared habits are in these groups, not in a block of their own. Each row
+    says where it came from instead.
     """
     grouped: dict[str, list[dict]] = {c: [] for c in HABIT_CATEGORIES}
     for habit in list_habits(s, ws, day, tz=tz):
@@ -552,16 +800,27 @@ def habits_by_category(s: Session, ws: int, day: date | None = None, *,
 
 def add_habit(s: Session, ws: int, name: str, category: str = "target", *,
               schedule: str | None = None, remind_at: dtime | None = None,
-              timer_minutes: int | None = None) -> Habit:
+              timer_minutes: int | None = None,
+              start: str | None = None, tz: ZoneInfo | None = None) -> Habit:
+    """A new habit, owed from today or — when `start == "tomorrow"` — from tomorrow.
+
+    Adding a habit at 22:00 that is owed today lowers a day that is nearly
+    over, which reads as a punishment for planning. The screens offer the
+    choice; the default stays today, which is what somebody adding a habit in
+    the morning means.
+    """
     name = name.strip()[:120]
     if not name:
         raise ValueError("empty habit name")
     if category not in HABIT_CATEGORIES:
         category = "target"
+    tz = tz or _habit_tz(s, ws)
+    today = today_local(tz)
     top = s.scalar(select(func.max(Habit.position)).where(Habit.workspace_id == ws)) or 0
     habit = Habit(workspace_id=ws, name=name, category=category, position=top + 1,
                   schedule=clean_schedule(schedule), remind_at=remind_at,
-                  timer_minutes=clean_timer_minutes(timer_minutes))
+                  timer_minutes=clean_timer_minutes(timer_minutes),
+                  active_from=today + timedelta(days=1) if start == "tomorrow" else today)
     s.add(habit)
     s.commit()
     return habit
@@ -574,16 +833,16 @@ def update_habit(s: Session, ws: int, habit_id: int, **fields) -> Habit:
     recreate, which throws away every log it had. So an ordinary habit's name,
     tier, schedule and reminder are all the user's to set.
 
-    The three derived habits are the exception, and on two counts. Their names
-    are the contract with the module that drives them, and their *schedule* is
-    the contract with the score: Get up, 5x namoz and Kundalik are the daily
-    floor every other number on Home is measured against, so a schedule of
-    "Mondays only" would not mean "I do this on Mondays", it would mean the
-    other six days stop counting and the day's percentage silently rises. The
-    Mini App no longer offers the picker for them; this is the half that a
-    hand-written request cannot get around.
+    The derived habits keep their names and their daily schedule: the name is
+    the contract with the module that drives them, and "5x namoz on Mondays"
+    would not mean "I pray on Mondays", it would mean the other six days stop
+    counting.
+
+    A schedule change is a new version, effective tomorrow: the days that
+    already happened keep the schedule they were lived under.
     """
     habit = _owned_habit(s, ws, habit_id)
+    tz = _habit_tz(s, ws)
 
     if "name" in fields and fields["name"] is not None:
         if habit.is_protected:
@@ -595,8 +854,10 @@ def update_habit(s: Session, ws: int, habit_id: int, **fields) -> Habit:
     if fields.get("category") in HABIT_CATEGORIES:
         habit.category = fields["category"]
     if ("schedule" in fields and fields["schedule"] is not None
-            and not habit.is_protected):
-        habit.schedule = clean_schedule(fields["schedule"])
+            and not habit.is_protected
+            and clean_schedule(fields["schedule"]) != clean_schedule(habit.schedule)):
+        _record_schedule_change(s, HABIT_KIND, habit, fields["schedule"],
+                                today=today_local(tz), workspace_id=ws)
     if "remind_at" in fields:
         habit.remind_at = fields["remind_at"]
     if "target_time" in fields and fields["target_time"] is not None:
@@ -607,24 +868,24 @@ def update_habit(s: Session, ws: int, habit_id: int, **fields) -> Habit:
     return habit
 
 
-def set_habit_paused(s: Session, ws: int, habit_id: int, paused: bool) -> Habit:
-    """Pause or resume a habit without touching a single log row."""
+def set_habit_paused(s: Session, ws: int, habit_id: int, paused: bool, *,
+                     from_day: str = "today") -> Habit:
+    """Pause or resume a habit without touching a single log row.
+
+    `from_day` is "today" or "tomorrow". Today is what a user who is ill this
+    morning means; tomorrow is what somebody planning a holiday means — and it
+    leaves today's number exactly where it is.
+    """
     habit = _owned_habit(s, ws, habit_id)
-    habit.paused_at = utcnow() if paused else None
+    tz = _habit_tz(s, ws)
+    _apply_pause(s, HABIT_KIND, habit, paused, today=today_local(tz),
+                 from_today=from_day != "tomorrow", workspace_id=ws, tz=tz)
     s.commit()
     return habit
 
 
 def reorder_habits(s: Session, ws: int, habit_ids: list[int]) -> list[dict]:
-    """Persist a new display order and return the canonical list.
-
-    Every id must be an active habit of this workspace and each may appear
-    once: a partial or padded list would silently reshuffle habits the caller
-    never saw. Ids the caller did not send keep their relative order after the
-    ones it did, so a stale client cannot lose a habit that was added
-    meanwhile. The whole move is one transaction — a half-applied order is
-    worse than none.
-    """
+    """Persist a new display order and return the canonical list."""
     if not habit_ids:
         raise ValueError("empty order")
     if len(set(habit_ids)) != len(habit_ids):
@@ -639,8 +900,6 @@ def reorder_habits(s: Session, ws: int, habit_ids: list[int]) -> list[dict]:
 
     for habit_id in habit_ids:
         if habit_id not in by_id:
-            # Includes another workspace's habit: indistinguishable from a
-            # habit that never existed.
             raise NotFound("habit")
 
     ordered = [by_id[habit_id] for habit_id in habit_ids]
@@ -663,8 +922,7 @@ def toggle_habit(s: Session, ws: int, habit_id: int,
                  day: date | None = None, *, tz: ZoneInfo | None = None) -> bool:
     """Flip today's completion. Returns the new state.
 
-    The protected `5x namoz` habit is derived from prayer logs, so a manual
-    toggle is refused rather than silently ignored.
+    The derived habits are refused rather than silently ignored.
     """
     habit = _owned_habit(s, ws, habit_id)
     if habit.is_protected:
@@ -673,15 +931,24 @@ def toggle_habit(s: Session, ws: int, habit_id: int,
     day = day or today_local(tz)
     row = s.scalar(select(HabitLog).where(
         HabitLog.workspace_id == ws, HabitLog.habit_id == habit_id, HabitLog.day == day))
-    # A habit with a timer is done by the timer, not by the box: "5h deep
-    # flow" ticked by hand after twenty minutes is the thing the timer is
-    # there to stop. Unticking stays free.
+    # A habit with a timer is done by the timer, not by the box. Unticking
+    # stays free.
     if not (row and row.done) and timer_blocks(s, ws, "habit", habit, day):
         raise ValueError("timer_required")
     if row is None:
         row = HabitLog(workspace_id=ws, habit_id=habit_id, day=day, done=True,
                        logged_at=now_local(tz))
         s.add(row)
+        try:
+            with s.begin_nested():
+                s.flush()
+        except IntegrityError:
+            # A second tap raced the first; the first one's tick stands.
+            row = s.scalar(select(HabitLog).where(
+                HabitLog.workspace_id == ws, HabitLog.habit_id == habit_id,
+                HabitLog.day == day))
+            s.commit()
+            return bool(row and row.done)
     else:
         row.done = not row.done
         row.logged_at = now_local(tz) if row.done else None
@@ -690,11 +957,21 @@ def toggle_habit(s: Session, ws: int, habit_id: int,
 
 
 def delete_habit(s: Session, ws: int, habit_id: int) -> str:
-    """Archive a habit, keeping its logs so past reports stay truthful."""
+    """Archive a habit, keeping its logs so past reports stay truthful.
+
+    It stays owed through today — removing it cannot improve a day that is
+    already running — unless it was only added today, in which case it was
+    never owed at all.
+    """
     habit = _owned_habit(s, ws, habit_id)
     if habit.is_protected:
         raise ValueError("protected")
     habit.archived_at = utcnow()
+    for countdown in s.scalars(select(Countdown).where(
+            Countdown.workspace_id == ws, Countdown.team_id.is_(None),
+            Countdown.scope == "habit", Countdown.item_id == habit.id,
+            Countdown.archived_at.is_(None))).all():
+        countdown.archived_at = utcnow()
     s.commit()
     return habit.name
 
@@ -721,11 +998,15 @@ def wake_state(s: Session, ws: int, *, tz: ZoneInfo | None = None) -> dict | Non
     button out rather than showing one that cannot do anything.
     """
     habit = wake_habit(s, ws)
-    if habit is None or habit.paused_at is not None:
+    if habit is None:
         return None
-
+    tz = tz or _habit_tz(s, ws)
     now = now_local(tz)
     day = now.date()
+    cal = calendar_for(s, [habit], tz)
+    if cal.paused_on(habit, day):
+        return None
+
     target = habit.target_time or DEFAULT_WAKE_TIME
     deadline = datetime.combine(day, target) + WAKE_GRACE
 
@@ -737,23 +1018,24 @@ def wake_state(s: Session, ws: int, *, tz: ZoneInfo | None = None) -> dict | Non
         "target": target.strftime("%H:%M"),
         "deadline": deadline.strftime("%H:%M"),
         "now": now.strftime("%H:%M"),
-        "logged": row is not None,
+        "logged": row is not None and row.logged_at is not None,
         "done": bool(row and row.done),
         "late": now > deadline,
-        # The time the user actually got up, so the button can answer with
-        # "✓ 04:53" instead of "recorded", which says nothing.
         "at": row.logged_at.strftime("%H:%M") if (row and row.logged_at) else None,
     }
 
 
 def mark_wakeup(s: Session, ws: int, now: datetime | None = None, *,
-                tz: ZoneInfo | None = None) -> dict:
+                tz: ZoneInfo | None = None, at: dtime | None = None) -> dict:
     """Record that the user got up, if they said so in time.
 
-    The rule: "turdim" counts until one hour after the target time. Saying it
-    later still records the moment — the user did get up, and hiding that is
-    what makes the screen feel like an accusation — but the habit stays undone
-    for the day, which is the whole point of the habit.
+    "Turdim" counts until one hour after the target time. Saying it later still
+    records the moment, but the habit stays undone for the day.
+
+    `at` is the time somebody actually got up, entered afterwards: the button
+    measures when it was pressed, and getting up at 04:50 and remembering to
+    say so at 06:30 is still getting up at 04:50. Only today, never a time
+    still in the future, and the screen asks for honesty rather than proof.
     """
     habit = wake_habit(s, ws)
     if habit is None:
@@ -761,23 +1043,29 @@ def mark_wakeup(s: Session, ws: int, now: datetime | None = None, *,
 
     now = now or now_local(tz)
     day = now.date()
+    moment = now
+    if at is not None:
+        moment = datetime.combine(day, at)
+        if moment > now:
+            raise ValueError("future_time")
     target = habit.target_time or DEFAULT_WAKE_TIME
     deadline = datetime.combine(day, target) + WAKE_GRACE
-    in_time = now <= deadline
+    in_time = moment <= deadline
 
     row = s.scalar(select(HabitLog).where(
         HabitLog.workspace_id == ws, HabitLog.habit_id == habit.id,
         HabitLog.day == day))
     if row is None:
         s.add(HabitLog(workspace_id=ws, habit_id=habit.id, day=day, done=in_time,
-                       logged_at=now))
+                       logged_at=moment))
     else:
         row.done = row.done or in_time
-        # Keep the first time reported: a second "turdim" is the same morning.
-        row.logged_at = row.logged_at or now
+        # Keep the first time reported, unless a real time is being entered.
+        if at is not None or row.logged_at is None:
+            row.logged_at = moment
     s.commit()
 
-    return {"done": in_time, "late": not in_time, "at": now.strftime("%H:%M"),
+    return {"done": in_time, "late": not in_time, "at": moment.strftime("%H:%M"),
             "target": target.strftime("%H:%M"),
             "deadline": deadline.strftime("%H:%M"),
             "now": now.strftime("%H:%M")}
@@ -789,67 +1077,80 @@ def workspace_owner(s: Session, ws: int) -> int | None:
     return s.scalar(select(Workspace.user_id).where(Workspace.id == ws))
 
 
-def due_team_habits(s: Session, ws: int, day: date) -> list[tuple]:
-    """(habit, done) for every team habit this workspace's owner owes today.
+# --- Shared work inside the personal day ------------------------------------
+#
+# Shared work counts in the personal day, once, with the same weights a
+# private item of the same kind carries: a shared high-priority task weighs
+# what a private high-priority task weighs, a shared bonus habit what a private
+# bonus habit weighs. It does not get a half of the day of its own — one shared
+# checkbox is not worth as much as everything else put together — and the
+# rituals a team mirrors from each member's own habits are not counted again.
 
-    Shared work counts in the personal day. That is a product decision, and a
-    deliberate reversal of an earlier one: the two numbers were kept apart so
-    a quiet team evening could not drag down a day you had personally
-    finished. In practice that split the thing it was meant to protect — a
-    couple doing the programme together were reading two percentages and
-    trusting neither. One number, and the shared half of the day is simply
-    part of the day.
-    """
+def due_team_habits(s: Session, ws: int, day: date) -> list[tuple]:
+    """(habit, done) for every shared habit this workspace's owner owes that day."""
     owner = workspace_owner(s, ws)
     if owner is None:
         return []
+    tz = _habit_tz(s, ws)
     rows: list[tuple] = []
-    for team in teams_for(s, owner):
+    for team in teams_for_on(s, owner, day, tz=tz):
         habits = [h for h in s.scalars(select(TeamHabit).where(
-            TeamHabit.team_id == team.id,
-            TeamHabit.archived_at.is_(None))).all()
-            if team_habit_is_due(h, day)]
+            TeamHabit.team_id == team.id)).all()
+            if not (h.system_key or "")]
         if not habits:
+            continue
+        cal = calendar_for(s, habits, tz)
+        owed = [h for h in habits if cal.due(h, day)]
+        if not owed:
             continue
         done_ids = set(s.scalars(select(TeamHabitLog.habit_id).where(
             TeamHabitLog.user_id == owner, TeamHabitLog.day == day,
             TeamHabitLog.done.is_(True),
-            TeamHabitLog.habit_id.in_([h.id for h in habits]))).all())
-        for habit in habits:
+            TeamHabitLog.habit_id.in_([h.id for h in owed]))).all())
+        for habit in owed:
             rows.append((habit, habit.id in done_ids))
     return rows
 
 
 def due_team_tasks(s: Session, ws: int, day: date) -> list[tuple]:
-    """(priority, done) for every team task of this owner's due on `day`."""
+    """(priority, done) for every shared task this owner owes on `day`."""
     owner = workspace_owner(s, ws)
     if owner is None:
         return []
+    tz = _habit_tz(s, ws)
     rows: list[tuple] = []
-    for team in teams_for(s, owner):
-        tasks = s.scalars(select(TeamTask).where(
-            TeamTask.team_id == team.id, TeamTask.archived_at.is_(None),
-            TeamTask.deadline == day)).all()
+    for team in teams_for_on(s, owner, day, tz=tz):
+        tasks = [t for t in s.scalars(select(TeamTask).where(
+            TeamTask.team_id == team.id, TeamTask.deadline == day)).all()
+            if _team_item_live_on(t, day, tz)]
         if not tasks:
             continue
-        done_ids = set(s.scalars(select(TeamTaskDone.task_id).where(
-            TeamTaskDone.user_id == owner, TeamTaskDone.done.is_(True),
-            TeamTaskDone.task_id.in_([t.id for t in tasks]))).all())
+        done_by = _team_done_map(s, [t.id for t in tasks])
         for task in tasks:
-            rows.append((task.priority, task.id in done_ids))
+            if not team_task_owed_by(task, owner):
+                continue
+            rows.append((task.priority,
+                         team_task_done_for(task, owner, done_by.get(task.id, set()))))
     return rows
+
+
+def _scored_personal(habits: list[Habit]) -> list[Habit]:
+    """The habits the habit component is built from: all but prayer's shortcut."""
+    return [h for h in habits if h.system_key != SYSTEM_PRAYER]
 
 
 def habit_progress(s: Session, ws: int, day: date, *,
                    include_team: bool = True) -> tuple[int, int]:
-    """(completed, total) habits that were actually expected on that day.
+    """(completed, total) habits that were actually owed on that day.
 
-    A habit scheduled for Monday/Wednesday/Friday is not counted on a Tuesday,
-    and a paused habit is not counted at all. Counting them would mean the
-    user's Tuesday score drops for a gym session they never planned — the exact
-    kind of false failure that makes people close the app.
+    Prayer is not in this count: it has its own section, its own "4/5" and its
+    own place in the score, and counting its habit here as well was the same
+    five prayers moving the number twice.
     """
-    habits = [h for h in _active_habits(s, ws) if habit_is_due(h, day)]
+    tz = _habit_tz(s, ws)
+    candidates = _scored_personal(_habits_owed_candidates(s, ws, day))
+    cal = calendar_for(s, candidates, tz)
+    habits = [h for h in candidates if cal.due(h, day)]
     shared = due_team_habits(s, ws, day) if include_team else []
     if not habits and not shared:
         return 0, 0
@@ -866,23 +1167,17 @@ def habit_tier_progress(s: Session, ws: int, day: date, *,
                         include_team: bool = True) -> dict[str, dict]:
     """Per-tier completion for one day: done, due, percent and applied weight.
 
-    Only tiers that actually have a habit due that day get a weight. This is
-    the part that keeps the number reachable: the default workspace holds three
-    non-negotiable habits and nothing else, and a fixed 50/30/20 split would
-    cap that user at 50% on a day they did everything they had. Renormalising
-    over the tiers in play means "I did all of it" is always 100%, whether "all
-    of it" is three habits or eleven.
-
-    `applied` is the weight after that renormalisation — what the tier is
-    really worth to *this* user today — and it is what the Mini App shows, so
-    the badge on the screen and the arithmetic behind it cannot drift apart.
+    Only tiers that actually have a habit due that day get a weight, and the
+    weights are renormalised over them — so "I did all of it" is always 100%,
+    whether "all of it" is two habits or eleven.
     """
-    habits = [h for h in _active_habits(s, ws) if habit_is_due(h, day)]
+    tz = _habit_tz(s, ws)
+    candidates = _scored_personal(_habits_owed_candidates(s, ws, day))
+    cal = calendar_for(s, candidates, tz)
+    habits = [h for h in candidates if cal.due(h, day)]
     done_ids = set(s.scalars(select(HabitLog.habit_id).where(
         HabitLog.workspace_id == ws, HabitLog.day == day,
         HabitLog.done.is_(True))).all()) if habits else set()
-    # Shared habits sit in the same tiers as personal ones, so a day made of
-    # both is scored by one rule rather than two stitched together.
     shared = due_team_habits(s, ws, day) if include_team else []
 
     tiers: dict[str, dict] = {}
@@ -911,13 +1206,7 @@ def habit_tier_progress(s: Session, ws: int, day: date, *,
 
 def habit_percent(s: Session, ws: int, day: date, *,
                   include_team: bool = True) -> int:
-    """The day's habit score, 0–100, with the three tiers weighted.
-
-    Replaces a flat done/total. Under the old arithmetic a user with three
-    non-negotiable habits and seven bonus ones could skip every mandatory one,
-    tick the seven optional ones and read 70% — which is not a description of
-    that day. Now the mandatory half of the score is missing and it reads 30%.
-    """
+    """The day's habit score, 0–100, with the three tiers weighted."""
     tiers = habit_tier_progress(s, ws, day, include_team=include_team)
     live = sum(t["weight"] for t in tiers.values() if t["due"])
     if not live:
@@ -936,22 +1225,25 @@ def habit_history(s: Session, ws: int, habit_id: int, *, days: int = 30,
                   tz: ZoneInfo | None = None) -> dict:
     """One habit's own record: its streak, its grid and its completion rate.
 
-    Only days the habit was scheduled for appear in the grid, so the rate is
-    "how often I did it when I meant to" rather than a number diluted by every
-    day it was never due.
+    Only days the habit was owed appear as due in the grid — under the
+    schedule of *that* day — so the rate is "how often I did it when I meant
+    to" and changing the schedule today does not rewrite the grid.
     """
     habit = _owned_habit(s, ws, habit_id)
+    tz = tz or _habit_tz(s, ws)
     today = today_local(tz)
     start = today - timedelta(days=days - 1)
+    cal = calendar_for(s, [habit], tz)
 
+    streak_start = today - timedelta(days=STREAK_HORIZON)
     done_days = set(s.scalars(select(HabitLog.day).where(
         HabitLog.workspace_id == ws, HabitLog.habit_id == habit_id,
-        HabitLog.done.is_(True), HabitLog.day >= start)).all())
+        HabitLog.done.is_(True), HabitLog.day >= streak_start)).all())
 
     grid, due_count, done_count = [], 0, 0
     for offset in range(days):
         day = start + timedelta(days=offset)
-        due = habit_is_due(habit, day)
+        due = cal.due(habit, day)
         done = day in done_days
         if due:
             due_count += 1
@@ -960,37 +1252,33 @@ def habit_history(s: Session, ws: int, habit_id: int, *, days: int = 30,
 
     last7 = [g for g in grid[-7:] if g["due"]]
 
-    # The streak counts backwards over scheduled days only, and today does not
+    # The streak counts backwards over owed days only, and today does not
     # break it while the day is still going.
-    #
-    # Its own window, independent of the grid's. The streak used to walk the
-    # same `done_days` the grid was built from, so it could never report more
-    # than `days` — a 90-day run of a habit shown on the default 30-day grid
-    # read as 30, and the number went *down* when the user narrowed the view.
-    streak_start = today - timedelta(days=STREAK_HORIZON)
-    streak_done = set(s.scalars(select(HabitLog.day).where(
-        HabitLog.workspace_id == ws, HabitLog.habit_id == habit_id,
-        HabitLog.done.is_(True), HabitLog.day >= streak_start)).all())
-
     streak, cursor, guard = 0, today, 0
-    if habit_is_due(habit, today) and today not in streak_done:
+    if cal.due(habit, today) and today not in done_days:
         cursor = today - timedelta(days=1)
     while guard < STREAK_HORIZON:
         guard += 1
-        if habit_is_due(habit, cursor):
-            if cursor not in streak_done:
+        if not cal.exists_on(habit, cursor) and cursor < (cal.start_of(habit) or cursor):
+            break
+        if cal.due(habit, cursor):
+            if cursor not in done_days:
                 break
             streak += 1
         cursor -= timedelta(days=1)
 
+    pending = cal.pause_pending(habit, today)
     return {
         "id": habit.id, "name": habit.name, "category": habit.category,
         "schedule": clean_schedule(habit.schedule),
+        "schedule_today": cal.schedule_on(habit, today),
         "days": schedule_days(habit.schedule),
-        "paused": habit.paused_at is not None,
+        "paused": cal.paused_on(habit, today),
+        "pause_from": pending.isoformat() if pending else None,
         "protected": habit.is_protected, "system_key": habit.system_key,
         "target_time": habit.target_time.strftime("%H:%M") if habit.target_time else None,
         "remind_at": habit.remind_at.strftime("%H:%M") if habit.remind_at else None,
+        "active_from": habit.active_from.isoformat() if habit.active_from else None,
         **_timer_fields(habit.timer_minutes, habit.name,
                         protected=habit.is_protected),
         "timer": open_timer_runs(s, ws, "habit", day=today).get(habit.id),
@@ -999,6 +1287,7 @@ def habit_history(s: Session, ws: int, habit_id: int, *, days: int = 30,
         "last7_done": sum(1 for g in last7 if g["done"]), "last7_due": len(last7),
         "last30_done": done_count, "last30_due": due_count,
         "percent": round(done_count / due_count * 100) if due_count else 0,
+        "source": "personal",
     }
 
 
@@ -1024,8 +1313,7 @@ PRAYER_REQUIRED = 5
 PRAYER_PERFORMED = {"jamaat", "on_time", "qaza"}
 
 #: An excused day is fulfilled, so it scores as a full day rather than as half
-#: of one. The PrayerLog rows stay untouched — this is the derived day score,
-#: and the underlying record still says nothing was logged.
+#: of one. The PrayerLog rows stay untouched — this is the derived day score.
 EXCUSED_SCORE = PRAYER_MAX_SCORE
 
 
@@ -1035,13 +1323,7 @@ def prayer_statuses_for(gender: str | None) -> list[str]:
 
 def prayer_score(statuses: dict[str, str], gender: str | None,
                  excused: bool = False) -> float:
-    """Daily *quality* score from the five prayers, 0 to 5.
-
-    This is how well the day was prayed — jamaat and on-time are worth a full
-    point, a qaza half — and it is a separate question from whether all five
-    were prayed at all. `prayer_is_complete` answers that one. Conflating them
-    is what let three prayers count as "5x namoz bajarildi".
-    """
+    """Daily *quality* score from the five prayers, 0 to 5."""
     if gender == "female" and excused:
         return EXCUSED_SCORE
     allowed = set(prayer_statuses_for(gender))
@@ -1061,12 +1343,7 @@ def prayers_performed(statuses: dict[str, str], gender: str | None) -> int:
 
 def prayer_is_complete(statuses: dict[str, str], gender: str | None,
                        excused: bool = False) -> bool:
-    """Whether the `5x namoz` habit is done for the day.
-
-    All five prayed, or an excused day. Nothing in between: four out of five is
-    four out of five, and saying otherwise is the app lying to the user about
-    their own religious practice.
-    """
+    """Whether the `5x namoz` habit is done for the day: all five, or excused."""
     if gender == "female" and excused:
         return True
     return prayers_performed(statuses, gender) >= PRAYER_REQUIRED
@@ -1178,6 +1455,17 @@ def prayer_state(s: Session, ws: int, day: date, gender: str | None) -> dict:
     }
 
 
+def prayer_owed(s: Session, ws: int, day: date) -> bool:
+    """Whether the prayer module was on for that day."""
+    tz = _habit_tz(s, ws)
+    candidates = [h for h in _habits_owed_candidates(s, ws, day)
+                  if h.system_key == SYSTEM_PRAYER]
+    if not candidates:
+        return False
+    cal = calendar_for(s, candidates, tz)
+    return any(cal.due(h, day) for h in candidates)
+
+
 # ---------------------------------------------------------------------------
 # Projects
 # ---------------------------------------------------------------------------
@@ -1206,15 +1494,7 @@ def _project_dict(s: Session, ws: int, p: Project) -> dict:
 
 def list_projects(s: Session, ws: int, *, status: str = "",
                   include_archived: bool = False) -> list[dict]:
-    """Projects, open ones first.
-
-    `status` filters to `active` or `done`; `include_archived` brings back the
-    ones put away. A finished project keeps its tasks and its history — the only
-    way to lose either is to delete it, which the UI asks about first.
-    """
-    # `team_id IS NULL` is what keeps a shared project out of a private list:
-    # the row still carries the creator's workspace, because that column is
-    # not nullable, but it belongs to the team.
+    """Projects, open ones first. Shared projects never appear here."""
     stmt = select(Project).where(Project.workspace_id == ws,
                                  Project.team_id.is_(None))
     if not include_archived:
@@ -1224,8 +1504,6 @@ def list_projects(s: Session, ws: int, *, status: str = "",
 
     projects = s.scalars(stmt.order_by(Project.created_at.desc())).all()
     rows = [_project_dict(s, ws, p) for p in projects]
-    # Active before finished, so the work in progress is never below the
-    # archive of things already closed.
     rows.sort(key=lambda p: (p["status"] == "done", p["archived"]))
     return rows
 
@@ -1245,7 +1523,7 @@ def add_project(s: Session, ws: int, name: str, *, description: str = "",
 def _owned_project(s: Session, ws: int, project_id: int, *,
                    allow_archived: bool = False) -> Project:
     project = s.get(Project, project_id)
-    if project is None or project.workspace_id != ws:
+    if project is None or project.workspace_id != ws or project.team_id is not None:
         raise NotFound("project")
     if project.archived_at and not allow_archived:
         raise NotFound("project")
@@ -1253,11 +1531,7 @@ def _owned_project(s: Session, ws: int, project_id: int, *,
 
 
 def update_project(s: Session, ws: int, project_id: int, **fields) -> Project:
-    """Rename a project, or adjust its description and deadline.
-
-    A project the user cannot rename is a typo they have to live with, or a
-    reason to delete and recreate — which detaches every task inside it.
-    """
+    """Rename a project, or adjust its description and deadline."""
     project = _owned_project(s, ws, project_id, allow_archived=True)
     if fields.get("name"):
         name = str(fields["name"]).strip()[:200]
@@ -1298,7 +1572,7 @@ def project_tasks(s: Session, ws: int, project_id: int, *,
 def delete_project(s: Session, ws: int, project_id: int) -> str:
     """Archive a project and detach its tasks. Tasks are never deleted with it."""
     project = s.get(Project, project_id)
-    if project is None or project.workspace_id != ws:
+    if project is None or project.workspace_id != ws or project.team_id is not None:
         raise NotFound("project")
     for task in s.scalars(select(Task).where(
             Task.workspace_id == ws, Task.project_id == project_id)).all():
@@ -1318,17 +1592,14 @@ PRIORITIES = ["high", "medium", "low"]
 #: asked which to start with.
 _PRIORITY_RANK = {"high": 0, "medium": 1, "low": 2}
 
-#: Fixed recurrences, plus "days:0,2,4" for a hand-picked set. Everything else
-#: is a one-off, because a recurrence nobody can describe is a bug generator.
+#: Fixed recurrences, plus "days:0,2,4" for a hand-picked set.
 RECURRENCES = ["daily", "weekdays", "weekly", "monthly"]
 
 #: Reminder offsets in minutes before the due moment, as offered in the UI.
 #: 0 means exactly on time.
 REMINDER_OFFSETS = [0, 10, 30, 60, 1440]
 #: What a task is given when nobody chose. Half an hour is the offset that is
-#: actually useful: on time is a notification about something already late,
-#: and an hour is early enough to be read and forgotten. The picker still
-#: offers every other value, including none at all.
+#: actually useful.
 DEFAULT_REMIND_BEFORE = 30
 #: A reminder cannot be asked for further ahead than this.
 MAX_REMIND_BEFORE = 60 * 24 * 7
@@ -1352,15 +1623,7 @@ def clean_recurrence(value: str | None) -> str:
 
 def next_occurrence(recurrence: str | None, after: date, *,
                     anchor_day: int | None = None) -> date | None:
-    """The next date a recurring task is due, strictly after `after`.
-
-    `anchor_day` is the day of the month the user originally picked, and it
-    only matters for the monthly rule. Without it the clamp below is lossy:
-    the 31st becomes the 28th in February, and because the next month is then
-    computed from *that*, the task stays on the 28th for ever. Passing the
-    anchor lets each month clamp from the original choice instead of from the
-    previous clamp, so a 31st task reads 31 / 28 / 31 / 30 as a person expects.
-    """
+    """The next date a recurring task is due, strictly after `after`."""
     rule = clean_recurrence(recurrence)
     if not rule:
         return None
@@ -1370,8 +1633,6 @@ def next_occurrence(recurrence: str | None, after: date, *,
         return after + timedelta(days=7)
     if rule == "monthly":
         year, month = after.year + (after.month == 12), (after.month % 12) + 1
-        # Clamp so the 31st of a 30-day month lands on the last day instead of
-        # raising, and a monthly task never silently stops recurring.
         last = (date(year + (month == 12), (month % 12) + 1, 1)
                 - timedelta(days=1)).day
         return date(year, month, min(anchor_day or after.day, last))
@@ -1411,7 +1672,7 @@ def add_task(s: Session, ws: int, title: str, *, deadline: date | None = None,
     if project_id is not None:
         # A task may only join a project inside the same workspace.
         project = s.get(Project, project_id)
-        if project is None or project.workspace_id != ws:
+        if project is None or project.workspace_id != ws or project.team_id is not None:
             raise NotFound("project")
 
     task = Task(workspace_id=ws, title=title, deadline=deadline,
@@ -1437,19 +1698,15 @@ def _spawn_next_occurrence(s: Session, ws: int, task: Task,
                            tz: ZoneInfo | None = None) -> Task | None:
     """Create the next instance of a recurring task, if there isn't one yet.
 
-    Ticking a recurring task off must not end the recurrence — the whole point
-    of "every weekday" is that tomorrow's copy appears. The finished occurrence
-    stays in the archive with its own completion date, so the history of a
-    recurring habit-like task is real rather than a single row overwritten
-    forever.
+    The series id and the unique index on (series, date) are what make this
+    safe to race: two completions arriving together both try to insert the
+    same next occurrence, the database accepts one, and the other is a no-op.
     """
     rule = clean_recurrence(task.recurrence)
     if not rule:
         return None
 
     base = task.deadline or today_local(tz)
-    # Remember the day the user picked the first time a monthly task recurs,
-    # so later clamps measure from their choice rather than from each other.
     anchor = task.anchor_day or (base.day if rule == "monthly" else None)
     nxt = next_occurrence(rule, base, anchor_day=anchor)
     if nxt is None:
@@ -1463,10 +1720,15 @@ def _spawn_next_occurrence(s: Session, ws: int, task: Task,
             break
         nxt = following
 
+    series = task.series_id or task.id
+    if task.series_id is None:
+        task.series_id = series
+
     existing = s.scalar(select(Task.id).where(
         Task.workspace_id == ws, Task.archived_at.is_(None),
-        Task.status == "waiting", Task.title == task.title,
-        Task.recurrence == rule, Task.deadline == nxt))
+        or_(Task.series_id == series,
+            (Task.title == task.title) & (Task.recurrence == rule)),
+        Task.status == "waiting", Task.deadline == nxt))
     if existing is not None:
         return None
 
@@ -1474,22 +1736,48 @@ def _spawn_next_occurrence(s: Session, ws: int, task: Task,
                  project_id=task.project_id, deadline=nxt, due_time=task.due_time,
                  remind_before=task.remind_before, recurrence=rule,
                  anchor_day=anchor, priority=task.priority,
-                 timer_minutes=task.timer_minutes)
+                 timer_minutes=task.timer_minutes, series_id=series)
     s.add(clone)
-    s.flush()
+    try:
+        with s.begin_nested():
+            s.flush()
+    except IntegrityError:
+        # Somebody else's completion already made it.
+        return None
     return clone
+
+
+def _finish_task(s: Session, ws: int, task: Task, tz: ZoneInfo | None,
+                 moment: datetime | None = None) -> bool:
+    """Mark a task done if it is still open. True when *this* call did it.
+
+    A conditional UPDATE rather than read-then-write, so two completions of
+    the same task — a double tap, the bot and the Mini App at once — finish it
+    once and spawn its next occurrence once.
+    """
+    moment = moment or utcnow()
+    won = s.execute(
+        sql_update(Task).where(Task.id == task.id, Task.status != "done")
+        .values(status="done", completed_at=moment)
+        .execution_options(synchronize_session=False)).rowcount
+    s.refresh(task)
+    if not won:
+        return False
+    _spawn_next_occurrence(s, ws, task, tz)
+    for countdown in s.scalars(select(Countdown).where(
+            Countdown.workspace_id == ws, Countdown.team_id.is_(None),
+            Countdown.scope == "task", Countdown.item_id == task.id,
+            Countdown.archived_at.is_(None))).all():
+        countdown.archived_at = utcnow()
+    return True
 
 
 def complete_task(s: Session, ws: int, task_id: int, *,
                   tz: ZoneInfo | None = None) -> Task:
     task = _owned_task(s, ws, task_id)
-    already_done = task.status == "done"
-    if not already_done and timer_blocks(s, ws, "task", task):
+    if task.status != "done" and timer_blocks(s, ws, "task", task):
         raise ValueError("timer_required")
-    task.status = "done"
-    task.completed_at = utcnow()
-    if not already_done:
-        _spawn_next_occurrence(s, ws, task, tz)
+    _finish_task(s, ws, task, tz)
     s.commit()
     return task
 
@@ -1502,40 +1790,51 @@ def reopen_task(s: Session, ws: int, task_id: int) -> Task:
     return task
 
 
+def _move_deadline(s: Session, ws: int, task: Task, new: date | None) -> None:
+    """Change a deadline, keeping the series index and linked countdowns true.
+
+    Two open occurrences of one series cannot share a date, so a task moved
+    onto a date its series already occupies leaves the series rather than
+    failing the move. A countdown filed on the task follows it.
+    """
+    if new is not None and task.series_id is not None:
+        clash = s.scalar(select(Task.id).where(
+            Task.series_id == task.series_id, Task.deadline == new,
+            Task.id != task.id))
+        if clash is not None:
+            task.series_id = None
+    task.deadline = new
+    task.reminder_sent_at = None
+    if new is not None:
+        for countdown in s.scalars(select(Countdown).where(
+                Countdown.workspace_id == ws, Countdown.team_id.is_(None),
+                Countdown.scope == "task", Countdown.item_id == task.id,
+                Countdown.archived_at.is_(None))).all():
+            countdown.target_date = new
+
+
 def reschedule_task(s: Session, ws: int, task_id: int, when: str, *,
                     tz: ZoneInfo | None = None) -> Task:
-    """Move a task's deadline with one tap.
-
-    `today` / `tomorrow` / `week` / `none` — the four answers to "not today",
-    which is the only useful thing to offer someone looking at an overdue list.
-    """
+    """Move a task's deadline with one tap: today, tomorrow, next week or none."""
     task = _owned_task(s, ws, task_id)
     today = today_local(tz)
-    if when == "today":
-        task.deadline = today
-    elif when == "tomorrow":
-        task.deadline = today + timedelta(days=1)
-    elif when == "week":
-        task.deadline = today + timedelta(days=7)
-    elif when == "none":
-        task.deadline = None
-    else:
+    targets = {"today": today, "tomorrow": today + timedelta(days=1),
+               "week": today + timedelta(days=7), "none": None}
+    if when not in targets:
         raise ValueError("unknown target")
-    # A rescheduled task deserves a fresh reminder.
-    task.reminder_sent_at = None
+    _move_deadline(s, ws, task, targets[when])
     s.commit()
     return task
 
 
-#: Exactly one. "The most important thing today" is singular by definition, and
-#: a list of three of them is a list. The column stays `focus_day`, so the pick
-#: expires on its own overnight rather than needing to be cleared.
+#: Exactly one. "The most important thing today" is singular by definition.
+#: The column stays `focus_day`, so the pick expires on its own overnight.
 MAX_TOP3 = 1
 
 
 def set_top3(s: Session, ws: int, task_id: int, picked: bool,
              day: date | None = None, *, tz: ZoneInfo | None = None) -> dict:
-    """Pick or unpick one of today's three most important tasks."""
+    """Pick or unpick today's main task."""
     task = _owned_task(s, ws, task_id)
     day = day or today_local(tz)
 
@@ -1548,8 +1847,6 @@ def set_top3(s: Session, ws: int, task_id: int, picked: bool,
         Task.workspace_id == ws, Task.archived_at.is_(None),
         Task.focus_day == day, Task.id != task_id)).all()
     if len(current) >= MAX_TOP3:
-        # With a limit of one, refusing would be a dead end: the user asked for
-        # *this* task to be the day's, so the previous one steps aside.
         if MAX_TOP3 == 1:
             for previous in current:
                 previous.focus_day = None
@@ -1559,18 +1856,14 @@ def set_top3(s: Session, ws: int, task_id: int, picked: bool,
     task.focus_day = day
     # Picking a task for today is also a statement that it is due today.
     if task.deadline is None or task.deadline > day:
-        task.deadline = day
+        _move_deadline(s, ws, task, day)
     s.commit()
     return {"picked": True, "count": len(current) + 1}
 
 
 def top3_tasks(s: Session, ws: int, day: date | None = None, *,
                tz: ZoneInfo | None = None) -> list[dict]:
-    """The three the user chose for today, open and finished alike.
-
-    Finished ones stay in place, ticked: crossing something off and watching it
-    vanish removes the only reward the list offers.
-    """
+    """The one the user chose for today, open and finished alike."""
     day = day or today_local(tz)
     rows = s.scalars(select(Task).where(
         Task.workspace_id == ws, Task.archived_at.is_(None),
@@ -1582,21 +1875,34 @@ def top3_tasks(s: Session, ws: int, day: date | None = None, *,
 def delete_task(s: Session, ws: int, task_id: int) -> str:
     task = _owned_task(s, ws, task_id)
     task.archived_at = utcnow()
+    for countdown in s.scalars(select(Countdown).where(
+            Countdown.workspace_id == ws, Countdown.team_id.is_(None),
+            Countdown.scope == "task", Countdown.item_id == task.id,
+            Countdown.archived_at.is_(None))).all():
+        countdown.archived_at = utcnow()
     s.commit()
     return task.title
 
 
 def update_task(s: Session, ws: int, task_id: int, **fields) -> Task:
     task = _owned_task(s, ws, task_id)
+    tz = _habit_tz(s, ws)
+    today = today_local(tz)
     if "title" in fields and fields["title"]:
         task.title = str(fields["title"]).strip()[:300]
     if "description" in fields:
         task.description = str(fields["description"] or "").strip()[:4000]
-    if "priority" in fields and fields["priority"] in PRIORITIES:
+    if "priority" in fields and fields["priority"] in PRIORITIES \
+            and fields["priority"] != task.priority:
+        # The day it is due, the day keeps the priority it started with: a
+        # lower one would buy a better score for the same unfinished work.
+        if task.deadline == today and task.day_priority_date != today \
+                and task.status != "done":
+            task.day_priority = task.priority
+            task.day_priority_date = today
         task.priority = fields["priority"]
     if "deadline" in fields:
-        task.deadline = fields["deadline"]
-        task.reminder_sent_at = None
+        _move_deadline(s, ws, task, fields["deadline"])
     if "due_time" in fields:
         task.due_time = fields["due_time"]
         task.reminder_sent_at = None
@@ -1609,7 +1915,7 @@ def update_task(s: Session, ws: int, task_id: int, **fields) -> Task:
         pid = fields["project_id"]
         if pid:
             project = s.get(Project, pid)
-            if project is None or project.workspace_id != ws:
+            if project is None or project.workspace_id != ws or project.team_id is not None:
                 raise NotFound("project")
             task.project_id = project.id
         else:
@@ -1617,20 +1923,39 @@ def update_task(s: Session, ws: int, task_id: int, **fields) -> Task:
     if "timer_minutes" in fields:
         _apply_timer_setting(s, ws, "task", task, fields["timer_minutes"])
     if "status" in fields and fields["status"] in ("waiting", "done"):
-        was_done = task.status == "done"
-        if (fields["status"] == "done" and not was_done
-                and timer_blocks(s, ws, "task", task)):
-            raise ValueError("timer_required")
-        task.status = fields["status"]
-        task.completed_at = utcnow() if fields["status"] == "done" else None
-        if fields["status"] == "done" and not was_done:
-            _spawn_next_occurrence(s, ws, task)
+        if fields["status"] == "done":
+            if task.status != "done" and timer_blocks(s, ws, "task", task):
+                raise ValueError("timer_required")
+            _finish_task(s, ws, task, tz)
+        else:
+            task.status = "waiting"
+            task.completed_at = None
     s.commit()
     return task
 
 
+def _task_weight_priority(task: Task, day: date) -> str:
+    """The priority a task is scored with on `day`."""
+    if task.day_priority_date == day and task.day_priority in PRIORITIES:
+        return task.day_priority
+    return task.priority
+
+
+def _task_countdowns(s: Session, ws: int, task_ids: list[int], today: date) -> dict[int, dict]:
+    if not task_ids:
+        return {}
+    out = {}
+    for row in s.scalars(select(Countdown).where(
+            Countdown.workspace_id == ws, Countdown.team_id.is_(None),
+            Countdown.scope == "task", Countdown.item_id.in_(task_ids),
+            Countdown.archived_at.is_(None))).all():
+        out[row.item_id] = {"id": row.id,
+                            "days_left": (row.target_date - today).days}
+    return out
+
+
 def _task_dict(s: Session, ws: int, task: Task, today: date,
-               runs: dict | None = None) -> dict:
+               runs: dict | None = None, countdowns: dict | None = None) -> dict:
     project_name = None
     if task.project_id:
         project = s.get(Project, task.project_id)
@@ -1648,8 +1973,10 @@ def _task_dict(s: Session, ws: int, task: Task, today: date,
         "days_left": days_left,
         "overdue": bool(task.deadline and task.deadline < today and task.status != "done"),
         "project_id": task.project_id, "project": project_name,
+        "countdown": (countdowns or {}).get(task.id),
         **_timer_fields(task.timer_minutes, task.title),
         "timer": (runs or {}).get(task.id),
+        "source": "personal",
     }
 
 
@@ -1664,12 +1991,7 @@ def list_tasks(s: Session, ws: int, *, horizon_days: int = 7,
                include_done: bool = False, search: str = "",
                project_id: int | None = None, priority: str = "",
                tz: ZoneInfo | None = None) -> dict:
-    """Tasks grouped for display: overdue, the next N days, and undated.
-
-    `search`, `project_id` and `priority` narrow the result. Once a list passes
-    thirty rows, scrolling stops being a way to find anything, and the filters
-    are cheaper than making the user remember where they put it.
-    """
+    """Tasks grouped for display: overdue, today, the next N days, undated."""
     today = today_local(tz)
     limit = today + timedelta(days=horizon_days)
     needle = search.strip().lower()[:100]
@@ -1685,34 +2007,33 @@ def list_tasks(s: Session, ws: int, *, horizon_days: int = 7,
         stmt = stmt.where(Task.priority == priority)
     tasks = s.scalars(stmt.order_by(Task.deadline.is_(None), Task.deadline,
                                     Task.priority)).all()
+    countdowns = _task_countdowns(s, ws, [t.id for t in tasks], today)
 
-    overdue, upcoming, undated, later = [], [], [], []
+    overdue, today_rows, upcoming, undated, later = [], [], [], [], []
     for task in tasks:
         if needle and needle not in (task.title or "").lower() \
                 and needle not in (task.description or "").lower():
             continue
-        row = _task_dict(s, ws, task, today, runs)
+        row = _task_dict(s, ws, task, today, runs, countdowns)
         if task.deadline is None:
             undated.append(row)
         elif task.deadline < today and task.status != "done":
             overdue.append(row)
         elif task.deadline <= limit:
             upcoming.append(row)
+            if task.deadline == today:
+                today_rows.append(row)
         else:
             later.append(row)
     return {"overdue": _sort_open(overdue), "upcoming": _sort_open(upcoming),
+            "today": _sort_open(today_rows),
             "undated": _sort_open(undated), "later": _sort_open(later),
             "total": len(overdue) + len(upcoming) + len(undated) + len(later)}
 
 
 def completed_tasks(s: Session, ws: int, limit: int = 200, *, search: str = "",
                     tz: ZoneInfo | None = None) -> dict:
-    """The Done archive, in three buckets rather than one endless list.
-
-    Today / this week / earlier: finishing something an hour ago and finishing
-    it in March are not the same fact, and one flat list treats them as if they
-    were.
-    """
+    """The Done archive, in three buckets rather than one endless list."""
     today = today_local(tz)
     monday = week_start(today)
     needle = search.strip().lower()[:100]
@@ -1744,17 +2065,13 @@ def tasks_due_today(s: Session, ws: int, *, tz: ZoneInfo | None = None) -> list[
         Task.workspace_id == ws, Task.archived_at.is_(None),
         Task.status == "waiting", Task.deadline == today)).all()
     runs = open_timer_runs(s, ws, "task")
-    return _sort_open([_task_dict(s, ws, t, today, runs) for t in tasks])
+    countdowns = _task_countdowns(s, ws, [t.id for t in tasks], today)
+    return _sort_open([_task_dict(s, ws, t, today, runs, countdowns) for t in tasks])
 
 
 def today_tasks_by_project(s: Session, ws: int, *, tz: ZoneInfo | None = None,
                            skip_ids: set[int] | None = None) -> list[dict]:
-    """Today's open tasks, grouped under the project they belong to.
-
-    Home shows today and only today. A week's worth of rows is a backlog, and
-    a backlog is what the user opens the app to escape. `skip_ids` leaves out
-    the ones already shown in the top three, so nothing appears twice.
-    """
+    """Today's open tasks, grouped under the project they belong to."""
     skip_ids = skip_ids or set()
     groups: dict[int | None, dict] = {}
     for task in tasks_due_today(s, ws, tz=tz):
@@ -1769,8 +2086,6 @@ def today_tasks_by_project(s: Session, ws: int, *, tz: ZoneInfo | None = None,
         group["tasks"].sort(key=lambda t: (_PRIORITY_RANK.get(t["priority"], 1),
                                            t["id"]))
 
-    # Named projects first, in a stable order; standalone tasks last, because
-    # "Alohida" is a leftover bucket rather than a project.
     named = sorted((g for g in groups.values() if g["project_id"] is not None),
                    key=lambda g: (g["project"] or "").lower())
     standalone = [g for g in groups.values() if g["project_id"] is None]
@@ -1778,12 +2093,10 @@ def today_tasks_by_project(s: Session, ws: int, *, tz: ZoneInfo | None = None,
 
 
 # ---------------------------------------------------------------------------
-# Weekly mission — exactly one per week
+# The week's goal — one primary, two supporting
 # ---------------------------------------------------------------------------
 
-#: Slot 1 is the week's mission; slots 2 and 3 are supporting priorities, drawn
-#: smaller. One dominant goal with two things beside it is a week a person can
-#: hold in their head; three equal goals is a list.
+#: Slot 1 is the week's goal; slots 2 and 3 are supporting priorities.
 MAX_FOCUS = 3
 PRIMARY_SLOT = 1
 
@@ -1791,12 +2104,27 @@ MISSION_PRIORITIES = ["high", "medium", "low"]
 DEFAULT_MISSION_PRIORITY = "medium"
 
 
-def _focus_dict(row: WeeklyFocus) -> dict:
+def _focus_dict(row: WeeklyFocus, linked: dict[int, Task] | None = None) -> dict:
+    task = (linked or {}).get(row.task_id) if row.task_id else None
+    done = (task.status == "done") if task is not None else row.done
     return {"id": row.id, "slot": row.slot, "title": row.title,
             "priority": row.priority if row.priority in MISSION_PRIORITIES
                         else DEFAULT_MISSION_PRIORITY,
             "primary": row.slot == PRIMARY_SLOT,
-            "done": row.done}
+            "done": bool(done),
+            # A goal delivered by a task is done when the task is, and is
+            # scored through the task — once.
+            "task_id": row.task_id if task is not None else None,
+            "task_title": task.title if task is not None else None}
+
+
+def _linked_tasks(s: Session, ws: int, rows: list[WeeklyFocus]) -> dict[int, Task]:
+    ids = [r.task_id for r in rows if r.task_id]
+    if not ids:
+        return {}
+    return {t.id: t for t in s.scalars(select(Task).where(
+        Task.workspace_id == ws, Task.id.in_(ids),
+        Task.archived_at.is_(None))).all()}
 
 
 def list_focus(s: Session, ws: int, when: date | None = None, *,
@@ -1805,17 +2133,13 @@ def list_focus(s: Session, ws: int, when: date | None = None, *,
     rows = s.scalars(select(WeeklyFocus).where(
         WeeklyFocus.workspace_id == ws, WeeklyFocus.week_start == start)
         .order_by(WeeklyFocus.slot, WeeklyFocus.id)).all()
-    return [_focus_dict(r) for r in rows]
+    linked = _linked_tasks(s, ws, rows)
+    return [_focus_dict(r, linked) for r in rows]
 
 
 def week_focus(s: Session, ws: int, when: date | None = None, *,
                tz: ZoneInfo | None = None) -> dict:
-    """The week split into its one mission and its supporting priorities.
-
-    The split is by slot, so every surface names the same primary — a screen
-    that picks "the first one it happens to read" would disagree with itself
-    across reloads.
-    """
+    """The week split into its one goal and its supporting priorities."""
     rows = list_focus(s, ws, when, tz=tz)
     primary = next((r for r in rows if r["slot"] == PRIMARY_SLOT), None)
     supporting = [r for r in rows if r["slot"] != PRIMARY_SLOT]
@@ -1828,16 +2152,25 @@ def week_focus(s: Session, ws: int, when: date | None = None, *,
 
 def primary_focus(s: Session, ws: int, when: date | None = None, *,
                   tz: ZoneInfo | None = None) -> dict | None:
-    """The one mission Home leads with, or the first supporting row if the
-    primary slot was never filled (older weeks can start at slot 2)."""
+    """The one goal Home leads with."""
     rows = list_focus(s, ws, when, tz=tz)
     if not rows:
         return None
     return next((r for r in rows if r["slot"] == PRIMARY_SLOT), rows[0])
 
 
+def _focus_task_or_none(s: Session, ws: int, task_id: int | None) -> int | None:
+    if not task_id:
+        return None
+    task = s.get(Task, task_id)
+    if task is None or task.workspace_id != ws or task.archived_at is not None:
+        raise NotFound("task")
+    return task.id
+
+
 def add_focus(s: Session, ws: int, title: str, when: date | None = None, *,
               priority: str = DEFAULT_MISSION_PRIORITY,
+              task_id: int | None = None,
               tz: ZoneInfo | None = None) -> WeeklyFocus:
     title = title.strip()[:200]
     if not title:
@@ -1851,7 +2184,7 @@ def add_focus(s: Session, ws: int, title: str, when: date | None = None, *,
     if free is None:
         raise ValueError("week is full")
     row = WeeklyFocus(workspace_id=ws, week_start=start, slot=free, title=title,
-                      priority=priority)
+                      priority=priority, task_id=_focus_task_or_none(s, ws, task_id))
     s.add(row)
     s.commit()
     return row
@@ -1859,12 +2192,7 @@ def add_focus(s: Session, ws: int, title: str, when: date | None = None, *,
 
 def carry_focus_forward(s: Session, ws: int, focus_id: int, *,
                         tz: ZoneInfo | None = None) -> WeeklyFocus:
-    """Move an unfinished mission into next week.
-
-    A week that ends with the mission untouched has two honest answers — it
-    still matters, or it does not. This is the first one, and it takes one tap
-    instead of retyping the title.
-    """
+    """Move an unfinished goal into next week, instead of retyping it."""
     row = s.get(WeeklyFocus, focus_id)
     if row is None or row.workspace_id != ws:
         raise NotFound("focus")
@@ -1877,7 +2205,7 @@ def carry_focus_forward(s: Session, ws: int, focus_id: int, *,
         raise ValueError("week is full")
 
     moved = WeeklyFocus(workspace_id=ws, week_start=target, slot=free,
-                        title=row.title, priority=row.priority)
+                        title=row.title, priority=row.priority, task_id=row.task_id)
     s.add(moved)
     s.delete(row)
     s.commit()
@@ -1885,7 +2213,7 @@ def carry_focus_forward(s: Session, ws: int, focus_id: int, *,
 
 
 def edit_focus(s: Session, ws: int, focus_id: int, title: str, *,
-               priority: str | None = None) -> WeeklyFocus:
+               priority: str | None = None, task_id=...) -> WeeklyFocus:
     row = s.get(WeeklyFocus, focus_id)
     if row is None or row.workspace_id != ws:
         raise NotFound("focus")
@@ -1895,14 +2223,25 @@ def edit_focus(s: Session, ws: int, focus_id: int, title: str, *,
     row.title = title
     if priority in MISSION_PRIORITIES:
         row.priority = priority
+    if task_id is not ...:
+        row.task_id = _focus_task_or_none(s, ws, task_id)
     s.commit()
     return row
 
 
 def toggle_focus(s: Session, ws: int, focus_id: int) -> bool:
+    """Tick a goal. A goal delivered by a task is ticked by ticking the task."""
     row = s.get(WeeklyFocus, focus_id)
     if row is None or row.workspace_id != ws:
         raise NotFound("focus")
+    if row.task_id:
+        task = s.get(Task, row.task_id)
+        if task is not None and task.workspace_id == ws and task.archived_at is None:
+            if task.status == "done":
+                reopen_task(s, ws, task.id)
+                return False
+            complete_task(s, ws, task.id, tz=_habit_tz(s, ws))
+            return True
     row.done = not row.done
     s.commit()
     return row.done
@@ -1922,8 +2261,7 @@ def delete_focus(s: Session, ws: int, focus_id: int) -> str:
 # Journal
 # ---------------------------------------------------------------------------
 
-#: The daily journal is five fixed questions. All five answered marks the day
-#: complete, which Home and the reports show as a status of its own.
+#: The daily journal is five fixed questions.
 JOURNAL_QUESTIONS = [
     {"id": "wins",      "uz": "Bugun nimalarga erishdim?",
      "en": "What did I accomplish today?", "ru": "Чего я достиг сегодня?"},
@@ -1939,9 +2277,12 @@ JOURNAL_QUESTIONS = [
 ]
 JOURNAL_KEYS = [q["id"] for q in JOURNAL_QUESTIONS]
 
+#: How many meaningful answers make a written day — the Kundalik habit's rule.
+#: One. Three honest lines on a hard evening are a journal entry, and scoring
+#: them the same as nothing is how somebody stops writing on hard evenings.
+JOURNAL_DONE_MIN = 1
 
-#: The five moods the optional check-in offers, saddest first. Stored as one of
-#: these keys; the UI supplies the face and the wording.
+#: The five moods the optional check-in offers, saddest first.
 MOODS = ["awful", "low", "ok", "good", "great"]
 
 
@@ -1951,19 +2292,20 @@ def journal_answered(answers: dict) -> int:
 
 
 def journal_is_complete(answers: dict) -> bool:
+    """All five answered — a full reflection."""
     return journal_answered(answers) == len(JOURNAL_KEYS)
+
+
+def journal_is_written(answers: dict) -> bool:
+    """Enough written to count the day — what ticks the Kundalik habit."""
+    return journal_answered(answers) >= JOURNAL_DONE_MIN
 
 
 def journal_done(s: Session, ws: int, day: date | None = None, *,
                  tz: ZoneInfo | None = None) -> bool:
-    """Whether the day's journal is fully answered.
-
-    This is a status the UI shows next to the habits, not a habit itself, and it
-    is deliberately kept out of the overall percentage: three answers out of
-    five is a journal entry, not a failed day.
-    """
+    """Whether the day's journal is written (at least one answer)."""
     entry = get_journal(s, ws, day or today_local(tz))
-    return bool(entry and entry["complete"])
+    return bool(entry and entry["written"])
 
 
 def get_journal(s: Session, ws: int, day: date | None = None, *,
@@ -1980,28 +2322,29 @@ def get_journal(s: Session, ws: int, day: date | None = None, *,
     return {"day": row.day.isoformat(), "text": row.text, "mood": row.mood,
             "answers": answers, "answered": journal_answered(answers),
             "total": len(JOURNAL_KEYS),
+            "written": journal_is_written(answers),
             "complete": journal_is_complete(answers)}
 
 
 def save_journal(s: Session, ws: int, *, answers: dict | None = None,
                  text: str = "", day: date | None = None,
                  mood: str = "", tz: ZoneInfo | None = None) -> JournalEntry:
-    """Save whatever is written so far.
-
-    A partial save is a normal save. Three answers are kept as three answers,
-    and completion is derived on read, so there is no state to keep in sync and
-    no reason to refuse an entry for being unfinished.
-    """
+    """Save whatever is written so far. Answers are merged, never replaced."""
     day = day or today_local(tz)
     row = s.scalar(select(JournalEntry).where(
         JournalEntry.workspace_id == ws, JournalEntry.day == day))
     if row is None:
         row = JournalEntry(workspace_id=ws, day=day)
         s.add(row)
+        try:
+            with s.begin_nested():
+                s.flush()
+        except IntegrityError:
+            # Two autosaves for the same new day arrived together.
+            row = s.scalar(select(JournalEntry).where(
+                JournalEntry.workspace_id == ws, JournalEntry.day == day))
 
     if answers is not None:
-        # Merge rather than replace: an autosave that carries one field must not
-        # wipe the four the user filled in earlier.
         try:
             current = json.loads(row.answers or "{}")
         except json.JSONDecodeError:
@@ -2026,13 +2369,7 @@ def save_journal(s: Session, ws: int, *, answers: dict | None = None,
 
 
 def sync_journal_habit(s: Session, ws: int, day: date) -> bool:
-    """Tick the protected `Kundalik` habit only on a fully answered day.
-
-    Derived exactly like the prayer habit, and for the same reason: the habit is
-    a mirror of the module, never a separate thing the user can tick by hand.
-    Three answers out of five is a saved journal entry and an unfinished habit —
-    both statements are true at once, and neither one overrides the other.
-    """
+    """Tick the `Kundalik` habit on any written day."""
     habit = s.scalar(select(Habit).where(
         Habit.workspace_id == ws, Habit.system_key == SYSTEM_JOURNAL,
         Habit.archived_at.is_(None)))
@@ -2040,7 +2377,7 @@ def sync_journal_habit(s: Session, ws: int, day: date) -> bool:
         return False
 
     entry = get_journal(s, ws, day)
-    done = bool(entry and entry["complete"])
+    done = bool(entry and entry["written"])
 
     row = s.scalar(select(HabitLog).where(
         HabitLog.workspace_id == ws, HabitLog.habit_id == habit.id,
@@ -2067,6 +2404,7 @@ def list_journal(s: Session, ws: int, limit: int = 60) -> list[dict]:
                     "mood": r.mood, "answers": answers,
                     "answered": journal_answered(answers),
                     "total": len(JOURNAL_KEYS),
+                    "written": journal_is_written(answers),
                     "complete": journal_is_complete(answers)})
     return out
 
@@ -2087,10 +2425,7 @@ def delete_journal(s: Session, ws: int, day: date) -> None:
 # ---------------------------------------------------------------------------
 
 def _next_occurrence(birth: date, today: date) -> date:
-    """This year's birthday, or next year's if it already passed.
-
-    29 February falls back to 28 February in common years.
-    """
+    """This year's birthday, or next year's if it already passed."""
     try:
         this_year = birth.replace(year=today.year)
     except ValueError:
@@ -2162,17 +2497,8 @@ def delete_birthday(s: Session, ws: int, birthday_id: int) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Statistics — streaks and chart series
+# Statistics — streaks
 # ---------------------------------------------------------------------------
-
-def _habit_percent(s: Session, ws: int, day: date) -> int:
-    """The habit component of the overall score — tier-weighted since the three
-    tiers became arithmetic rather than labels. `habit_progress` still returns
-    the raw counts, which is what "4/6 done" on screen means and what the
-    streak asks for; this is the *scored* value, and they are different
-    questions."""
-    return habit_percent(s, ws, day)
-
 
 def _prayer_score_for(s: Session, ws: int, day: date) -> float:
     row = s.scalar(select(PrayerDay).where(
@@ -2192,28 +2518,32 @@ def _prayer_day_complete(s: Session, ws: int, day: date, gender: str | None) -> 
 
 
 def habit_streak(s: Session, ws: int, *, tz: ZoneInfo | None = None) -> int:
-    """Consecutive days on which every habit that was due got done.
+    """Consecutive days on which every habit that was owed got done.
 
     Today may still be incomplete without breaking the streak — the day is not
     over — so counting starts from yesterday when today is unfinished. Days on
-    which nothing was scheduled are skipped rather than counted as failures:
-    a habit set to weekdays should not lose its streak every Saturday.
+    which nothing was owed are skipped rather than counted as failures. Prayer
+    has its own streak and is not part of this one.
     """
+    tz = tz or _habit_tz(s, ws)
     today = today_local(tz)
-    habits = _active_habits(s, ws)
+    earliest = today - timedelta(days=400)
+    habits = _scored_personal(_habits_owed_candidates(s, ws, earliest))
     if not habits:
         return 0
+    cal = calendar_for(s, habits, tz)
 
-    earliest = today - timedelta(days=400)
     done_by_day: dict[date, set[int]] = {}
     for habit_id, day in s.execute(select(HabitLog.habit_id, HabitLog.day).where(
             HabitLog.workspace_id == ws, HabitLog.done.is_(True),
             HabitLog.day >= earliest)).all():
         done_by_day.setdefault(day, set()).add(habit_id)
 
+    first = min((cal.start_of(h) or today) for h in habits)
+
     def complete(day: date) -> bool | None:
-        """True/False, or None when the day had nothing due."""
-        due = {h.id for h in habits if habit_is_due(h, day)}
+        """True/False, or None when the day had nothing owed."""
+        due = {h.id for h in habits if cal.due(h, day)}
         if not due:
             return None
         return due <= done_by_day.get(day, set())
@@ -2224,6 +2554,8 @@ def habit_streak(s: Session, ws: int, *, tz: ZoneInfo | None = None) -> int:
 
     streak = 0
     for _ in range(400):
+        if cursor < first:
+            break
         state = complete(cursor)
         if state is False:
             break
@@ -2235,11 +2567,7 @@ def habit_streak(s: Session, ws: int, *, tz: ZoneInfo | None = None) -> int:
 
 def prayer_streak(s: Session, ws: int, gender: str | None = None, *,
                   tz: ZoneInfo | None = None) -> int:
-    """Consecutive days on which all five prayers were prayed.
-
-    The same rule as the habit: a full day, not a score above some threshold.
-    Today does not break the streak while it is still going.
-    """
+    """Consecutive days on which all five prayers were prayed."""
     today = today_local(tz)
     cursor = today
     if not _prayer_day_complete(s, ws, today, gender):
@@ -2256,28 +2584,28 @@ def prayer_streak(s: Session, ws: int, gender: str | None = None, *,
 
 def prayer_breakdown(s: Session, ws: int, start: date, end: date,
                      gender: str | None = None) -> dict:
-    """What the prayer numbers actually consist of, over a range.
-
-    One opaque score tells the user nothing they can act on. Full days, on-time
-    share, jamaat count, qaza count and misses are five separate facts, and each
-    one suggests a different change.
-    """
+    """What the prayer numbers actually consist of, over a range."""
     rows = s.scalars(select(PrayerLog).where(
         PrayerLog.workspace_id == ws,
         PrayerLog.day >= start, PrayerLog.day <= end)).all()
 
     counts: dict[str, int] = {}
+    by_day: dict[date, dict[str, str]] = defaultdict(dict)
     for row in rows:
         counts[row.status] = counts.get(row.status, 0) + 1
+        by_day[row.day][row.prayer] = row.status
+    excused_days = set(s.scalars(select(PrayerDay.day).where(
+        PrayerDay.workspace_id == ws, PrayerDay.day >= start,
+        PrayerDay.day <= end, PrayerDay.excused.is_(True))).all())
 
     logged = sum(counts.values())
     performed = sum(counts.get(k, 0) for k in PRAYER_PERFORMED)
 
     days = (end - start).days + 1
-    full_days = 0
-    for offset in range(max(days, 0)):
-        if _prayer_day_complete(s, ws, start + timedelta(days=offset), gender):
-            full_days += 1
+    full_days = sum(
+        1 for offset in range(max(days, 0))
+        if prayer_is_complete(by_day.get(start + timedelta(days=offset), {}),
+                              gender, (start + timedelta(days=offset)) in excused_days))
 
     return {
         "counts": counts,
@@ -2287,10 +2615,8 @@ def prayer_breakdown(s: Session, ws: int, start: date, end: date,
         "on_time": counts.get("on_time", 0),
         "qaza": counts.get("qaza", 0),
         "missed": counts.get("missed", 0),
-        # Of the prayers that were prayed, how many were on time or in jamaat.
         "on_time_percent": (round((counts.get("on_time", 0) + counts.get("jamaat", 0))
                                   / performed * 100) if performed else 0),
-        # Of the five expected each day, how many were logged at all.
         "logged_percent": round(logged / (days * 5) * 100) if days > 0 else 0,
         "consistency": round(full_days / days * 100) if days > 0 else 0,
     }
@@ -2300,49 +2626,39 @@ def prayer_breakdown(s: Session, ws: int, start: date, end: date,
 # The one overall number
 # ---------------------------------------------------------------------------
 #
-# Every surface — the bot's Home, the Mini App's Home, the Statistics page and
-# the evening report — reads this function. There is no second copy of the
-# formula in JavaScript: two implementations drift, and a user who sees 80% in
-# the bot and 74% in the app stops believing either.
+# Every surface — the bot's Home, the Mini App's Home, the Statistics page,
+# the explanation sheet, the chart, the CSV, the reports and the stored daily
+# score — reads `day_score`. There is one formula, and it is this:
+#
+#   components  tasks (priority-weighted), habits (tier-weighted), the week's
+#               goals, prayer — each a percentage, or absent when nothing of
+#               that kind was owed that day;
+#   total       the weighted mean of the components that are present, with the
+#               weights renormalised over them.
+#
+# Shared work sits inside the components with the weight its own kind carries;
+# it does not get a separate half of the day. Rituals a team mirrors from each
+# member's personal habits are counted once, in the personal habit.
 
-#: Shown when the day has nothing measurable in it yet.
+#: Shown when the day has nothing measurable in it yet — as a number. The
+#: screens show "—" instead, because `measured` says there was nothing to show.
 EMPTY_OVERALL = 0
 
+#: The version of the rules below. Stored on every daily snapshot, so a future
+#: change can tell which rows were scored how.
+SCORE_FORMULA = 2
 
 #: What each part of a day is worth.
-#:
-#: A flat average said a five-minute habit and the day's real work were the
-#: same size, which is not what anybody means by "how did today go". Tasks lead
-#: because they are the thing a person actually chose to do today; the week's
-#: focus is next-heaviest per unit because it is the one goal that survives the
-#: day; habits are the base rhythm; prayer is a fixed personal routine that is
-#: either kept or not.
-#:
-#: The weights only ever apply to the parts a user *has*. A user who never
-#: opens the prayer module is not carrying a permanent 15% hole — see
-#: `weighted_overall`, which renormalises over whatever is present.
 OVERALL_WEIGHTS = {"tasks": 0.40, "habits": 0.25, "focus": 0.20, "prayer": 0.15}
 
 #: What a task is worth inside the tasks component, by its own priority.
-#:
-#: Three high-priority tasks and one trivial one is not a four-item day where
-#: every item is a quarter. Marking something "high" is the user telling the
-#: system what today is really about, and the score has to agree with them —
-#: otherwise the cheapest way to a good percentage is to do the easy ones.
 TASK_PRIORITY_WEIGHTS = {"high": 3, "medium": 2, "low": 1}
 
 
 def today_task_progress(s: Session, ws: int, day: date | None = None, *,
-                        tz: ZoneInfo | None = None) -> tuple[int, int]:
-    """(completed, total) tasks that belong to this day.
-
-    Only tasks actually scheduled for the day count. Folding in the whole
-    backlog would mean a user with 200 open tasks can never move the number,
-    and finishing today's work would not show up at all.
-
-    Plain counts, for the places that print "3 / 5". The score itself uses
-    `today_task_score`, which weighs each task by its priority.
-    """
+                        tz: ZoneInfo | None = None,
+                        include_team: bool = True) -> tuple[int, int]:
+    """(completed, total) tasks that belong to this day — plain counts."""
     day = day or today_local(tz)
     total = s.scalar(select(func.count(Task.id)).where(
         Task.workspace_id == ws, Task.archived_at.is_(None),
@@ -2350,20 +2666,23 @@ def today_task_progress(s: Session, ws: int, day: date | None = None, *,
     done = s.scalar(select(func.count(Task.id)).where(
         Task.workspace_id == ws, Task.archived_at.is_(None),
         Task.deadline == day, Task.status == "done")) or 0
-    shared = due_team_tasks(s, ws, day)
+    shared = due_team_tasks(s, ws, day) if include_team else []
     return done + sum(1 for _, ok in shared if ok), total + len(shared)
 
 
 def today_task_score(s: Session, ws: int, day: date | None = None, *,
                      tz: ZoneInfo | None = None,
                      include_team: bool = True) -> tuple[int, int]:
-    """(earned, available) task points for the day, weighted by priority."""
+    """(earned, available) task points for the day, weighted by priority.
+
+    Each task is weighed by the priority it had when the day began, when it
+    was changed on the day itself.
+    """
     day = day or today_local(tz)
-    rows = [(priority, status == "done") for priority, status in s.execute(
-        select(Task.priority, Task.status).where(
-            Task.workspace_id == ws, Task.archived_at.is_(None),
-            Task.deadline == day)).all()]
-    # Shared tasks are weighed by the same priorities, in the same total.
+    rows = [(_task_weight_priority(task, day), task.status == "done")
+            for task in s.scalars(select(Task).where(
+                Task.workspace_id == ws, Task.archived_at.is_(None),
+                Task.deadline == day)).all()]
     if include_team:
         rows += due_team_tasks(s, ws, day)
     earned = available = 0
@@ -2377,25 +2696,22 @@ def today_task_score(s: Session, ws: int, day: date | None = None, *,
 
 def focus_progress(s: Session, ws: int, day: date | None = None, *,
                    tz: ZoneInfo | None = None) -> tuple[int, int]:
-    """(done, total) of this week's missions.
+    """(done, total) of this week's goals that are scored as goals.
 
-    The week's focus is a weekly commitment read on a daily screen, which is
-    the point of it: it is the part of the score that does not reset overnight.
+    A goal delivered by a task is scored through that task, so it is left out
+    here — one piece of work, one place in the number.
     """
-    rows = list_focus(s, ws, day, tz=tz)
+    rows = [r for r in list_focus(s, ws, day, tz=tz) if not r["task_id"]]
     return sum(1 for r in rows if r["done"]), len(rows)
 
 
 def overall_components(s: Session, ws: int, day: date | None = None, *,
                        tz: ZoneInfo | None = None,
                        include_team: bool = True) -> dict:
-    """Each component's percentage, or None when it has no denominator today.
+    """Each component's percentage, or None when it had no denominator.
 
     A category with nothing in it is *absent*, not zero. Counting an empty
-    category as 0% would punish a user for a day with no tasks, which is the
-    opposite of what the number is for — and it is also what makes the weights
-    safe to state as fixed numbers, because an unused category is removed from
-    the calculation rather than scored at nought.
+    category as 0% would punish a user for a day with no tasks.
     """
     day = day or today_local(tz)
 
@@ -2403,39 +2719,26 @@ def overall_components(s: Session, ws: int, day: date | None = None, *,
                                                include_team=include_team)
     tasks_earned, tasks_available = today_task_score(
         s, ws, day, tz=tz, include_team=include_team)
-    # Weighted across the three tiers, not a flat count of ticks. The counts
-    # above are still what "4/6" on screen means; this is what the score is
-    # built from, and they are different questions on purpose.
     habits_scored = habit_percent(s, ws, day, include_team=include_team)
     focus_done, focus_total = focus_progress(s, ws, day, tz=tz)
     prayer_row = s.scalar(select(PrayerDay).where(
         PrayerDay.workspace_id == ws, PrayerDay.day == day))
-    prayer_habit = s.scalar(select(Habit.id).where(
-        Habit.workspace_id == ws, Habit.system_key == SYSTEM_PRAYER,
-        Habit.archived_at.is_(None)))
 
     return {
         "tasks": (round(tasks_earned / tasks_available * 100)
                   if tasks_available else None),
         "habits": habits_scored if habits_total else None,
         "focus": round(focus_done / focus_total * 100) if focus_total else None,
-        # Prayer's denominator is the five daily prayers, which exist for as
-        # long as the user keeps the habit — not only on days they logged one.
+        # Prayer's denominator is the five daily prayers, on every day the
+        # prayer module was on — not only on days something was logged.
         "prayer": (round(float(prayer_row.score if prayer_row else 0.0)
                          / PRAYER_MAX_SCORE * 100)
-                   if prayer_habit is not None else None),
+                   if prayer_owed(s, ws, day) else None),
     }
 
 
 def weighted_overall(components: dict) -> int:
-    """One number from the parts, each carrying its own weight.
-
-    Absent parts are dropped and the remaining weights renormalised, which is
-    what redistributes a missing category across the others in proportion
-    rather than in equal shares — somebody who does not use the prayer module
-    gets that 15% split 40:25:20, not 5 points each. A user with only tasks
-    scores exactly their task percentage, which is the only defensible answer.
-    """
+    """One number from the parts, each carrying its own weight."""
     present = {k: v for k, v in components.items()
                if v is not None and k in OVERALL_WEIGHTS}
     if not present:
@@ -2447,48 +2750,101 @@ def weighted_overall(components: dict) -> int:
                      for key, value in present.items()) / total_weight)
 
 
+def _is_measured(components: dict) -> bool:
+    return any(v is not None for k, v in components.items() if k in OVERALL_WEIGHTS)
+
+
+def _closed_score(s: Session, ws: int, day: date) -> DailyScore | None:
+    """The day's closed snapshot, if the day is over and was closed."""
+    owner = workspace_owner(s, ws)
+    if owner is None:
+        return None
+    return s.scalar(select(DailyScore).where(
+        DailyScore.user_id == owner, DailyScore.day == day,
+        DailyScore.closed.is_(True)))
+
+
+def _components_of(row: DailyScore) -> dict:
+    def part(value):
+        return None if value is None or value < 0 else int(value)
+    return {"tasks": part(row.task_score), "habits": part(row.habit_score),
+            "focus": part(row.focus_score), "prayer": part(row.prayer_score)}
+
+
+def day_score(s: Session, ws: int, day: date | None = None, *,
+              tz: ZoneInfo | None = None, live: bool = False) -> dict:
+    """The canonical score of one day.
+
+    A closed day comes from its snapshot; today, and any day that was never
+    closed, is computed from the rows. `personal` and `team` are the same
+    formula over each half alone, for the screens that explain where the
+    number came from — the headline is `value`, over both.
+    """
+    tz = tz or _habit_tz(s, ws)
+    day = day or today_local(tz)
+    today = today_local(tz)
+
+    snap = None if (live or day >= today) else _closed_score(s, ws, day)
+    if snap is not None:
+        components = _components_of(snap)
+        measured = snap.measured if snap.measured is not None else True
+        value = int(snap.total_score or 0)
+        return {"value": value, "personal": None, "team": None,
+                "band": score_band(value if measured else None),
+                "components": components, "measured": bool(measured),
+                "team_items": 0, "team_done": 0, "closed": True}
+
+    components = overall_components(s, ws, day, tz=tz, include_team=True)
+    personal_parts = overall_components(s, ws, day, tz=tz, include_team=False)
+    measured = _is_measured(components)
+    value = weighted_overall(components)
+
+    shared = (due_team_habits(s, ws, day) + due_team_tasks(s, ws, day))
+    team = (round(sum(1 for _, ok in shared if ok) / len(shared) * 100)
+            if shared else None)
+    return {"value": value,
+            "personal": (weighted_overall(personal_parts)
+                         if _is_measured(personal_parts) else None),
+            "team": team,
+            "band": score_band(value if measured else None),
+            "components": components,
+            "measured": measured,
+            "team_items": len(shared),
+            "team_done": sum(1 for _, ok in shared if ok),
+            "closed": False}
+
+
 def overall_percent(s: Session, ws: int, day: date | None = None) -> int:
-    """The weighted score for a day — private and shared, averaged."""
+    """The score for a day — the one number."""
     return day_score(s, ws, day)["value"]
 
 
 def overall_state(s: Session, ws: int, day: date | None = None) -> dict:
-    """Today's overall number plus how it compares with yesterday.
+    """Today's number, and how it compares with yesterday.
 
     The two days are only comparable when both had something to measure;
-    otherwise the trend is `flat` rather than an invented drop.
+    otherwise the trend is `flat` and there is no "yesterday" to show.
     """
-    day = day or today_local()
-    yesterday = day - timedelta(days=1)
+    tz = _habit_tz(s, ws)
+    day = day or today_local(tz)
+    now = day_score(s, ws, day, tz=tz)
+    before = day_score(s, ws, day - timedelta(days=1), tz=tz)
 
-    today_components = overall_components(s, ws, day)
-    today_available = [v for v in today_components.values() if v is not None]
-    y_components = overall_components(s, ws, yesterday)
-    y_available = [v for v in y_components.values() if v is not None]
-
-    value = weighted_overall(today_components)
-    previous = weighted_overall(y_components) if y_available else None
-
-    if previous is None or not today_available or value == previous:
+    previous = before["value"] if before["measured"] else None
+    if previous is None or not now["measured"] or now["value"] == previous:
         trend = "flat"
     else:
-        trend = "up" if value > previous else "down"
+        trend = "up" if now["value"] > previous else "down"
 
-    # The split the screens draw: private, shared, and the average of the two.
-    split = day_score(s, ws, day, tz=None)
-    return {"value": split["value"], "trend": trend, "yesterday": previous,
-            "personal": split["personal"], "team": split["team"],
-            "band": split["band"],
-            "components": today_components}
+    return {"value": now["value"], "trend": trend, "yesterday": previous,
+            "measured": now["measured"],
+            "personal": now["personal"], "team": now["team"],
+            "band": now["band"],
+            "components": now["components"],
+            "team_items": now["team_items"], "team_done": now["team_done"]}
 
 
 def _task_percent(s: Session, ws: int, day: date) -> int:
-    """The priority-weighted task percentage, or 0 on a day with no tasks.
-
-    The chart needs a number for every day, so an absent component is drawn as
-    zero here. The *score* never does that — see `overall_components`, which
-    returns None and drops the category from the weighting entirely.
-    """
     earned, available = today_task_score(s, ws, day)
     return round(earned / available * 100) if available else 0
 
@@ -2499,34 +2855,78 @@ def _focus_percent(s: Session, ws: int, day: date) -> int:
 
 
 def _overall_percent_for(s: Session, ws: int, day: date) -> int:
-    return weighted_overall(overall_components(s, ws, day))
+    return day_score(s, ws, day)["value"]
 
 
 #: The four series every chart and average is built from, plus the headline.
 SERIES_KEYS = ("habits", "prayer", "tasks", "focus", "overall")
 
 
-def _day_point(s: Session, ws: int, day: date) -> dict:
-    return {
-        "habits": _habit_percent(s, ws, day),
-        "prayer": _prayer_percent(s, ws, day),
-        "tasks": _task_percent(s, ws, day),
-        "focus": _focus_percent(s, ws, day),
-        "overall": _overall_percent_for(s, ws, day),
-    }
+def _closed_scores(s: Session, ws: int, first: date, last: date) -> dict[date, DailyScore]:
+    """Every closed snapshot in a range, by day — one query."""
+    owner = workspace_owner(s, ws)
+    if owner is None:
+        return {}
+    return {row.day: row for row in s.scalars(select(DailyScore).where(
+        DailyScore.user_id == owner, DailyScore.day >= first,
+        DailyScore.day <= last, DailyScore.closed.is_(True))).all()}
+
+
+def _day_point(s: Session, ws: int, day: date,
+               snapshots: dict[date, DailyScore] | None = None,
+               today: date | None = None) -> dict:
+    """One day as the chart draws it: each series, and whether it was measured.
+
+    A closed day is read from its snapshot, so the chart of last month cannot
+    move because of something edited this week.
+    """
+    today = today or today_local(_habit_tz(s, ws))
+    snap = (snapshots or {}).get(day) if day < today else None
+    if snap is None and day < today and snapshots is None:
+        snap = _closed_score(s, ws, day)
+    if snap is not None:
+        parts = _components_of(snap)
+        measured = snap.measured if snap.measured is not None else True
+        return {"habits": parts["habits"] or 0, "prayer": parts["prayer"] or 0,
+                "tasks": parts["tasks"] or 0, "focus": parts["focus"] or 0,
+                "overall": int(snap.total_score or 0), "measured": bool(measured),
+                "present": {k: v is not None for k, v in parts.items()}}
+    score = day_score(s, ws, day, live=True)
+    parts = score["components"]
+    return {"habits": parts["habits"] or 0, "prayer": parts["prayer"] or 0,
+            "tasks": parts["tasks"] or 0, "focus": parts["focus"] or 0,
+            "overall": score["value"], "measured": score["measured"],
+            "present": {k: v is not None for k, v in parts.items()}}
+
+
+def _average_points(points: list[dict]) -> dict:
+    """The average of each series over the days it was actually measured.
+
+    A day with nothing owed is not a day at 0%: counting it would drag every
+    average towards zero for days the user was never asked to do anything.
+    """
+    out = {}
+    for key in SERIES_KEYS:
+        if key == "overall":
+            values = [p[key] for p in points if p.get("measured", True)]
+        else:
+            values = [p[key] for p in points
+                      if p.get("present", {}).get(key, p.get("measured", True))]
+        out[key] = round(sum(values) / len(values)) if values else 0
+    out["measured_days"] = sum(1 for p in points if p.get("measured", True))
+    return out
 
 
 def _range_average(s: Session, ws: int, start: date, end: date) -> dict:
     """Average of each series across an inclusive day range."""
     days = (end - start).days + 1
     if days <= 0:
-        return {k: 0 for k in SERIES_KEYS}
-    totals = {k: 0 for k in SERIES_KEYS}
-    for offset in range(days):
-        point = _day_point(s, ws, start + timedelta(days=offset))
-        for key in totals:
-            totals[key] += point[key]
-    return {key: round(value / days) for key, value in totals.items()}
+        return {**{k: 0 for k in SERIES_KEYS}, "measured_days": 0}
+    snapshots = _closed_scores(s, ws, start, end)
+    today = today_local(_habit_tz(s, ws))
+    points = [_day_point(s, ws, start + timedelta(days=offset), snapshots, today)
+              for offset in range(days)]
+    return _average_points(points)
 
 
 def _range_percent(s: Session, ws: int, start: date, end: date) -> tuple[int, int]:
@@ -2542,37 +2942,36 @@ OVERALL_COMPONENTS = ["tasks", "habits", "focus", "prayer"]
 
 def overall_explain(s: Session, ws: int, user: User,
                     day: date | None = None) -> dict:
-    """The arithmetic behind today's percentage, component by component.
-
-    A number the user cannot check is a number they stop trusting. This returns
-    each part with its own numerator and denominator, which parts were counted,
-    and the mean that produced the headline — the same values, from the same
-    functions, that produced it.
-    """
+    """The arithmetic behind the day's percentage, component by component."""
     tz = user_tz(user)
     day = day or today_local(tz)
 
+    score = day_score(s, ws, day, tz=tz)
     tasks_done, tasks_total = today_task_progress(s, ws, day)
     habits_done, habits_total = habit_progress(s, ws, day)
     focus_done, focus_total = focus_progress(s, ws, day)
     prayer = prayer_state(s, ws, day, user.gender)
-    components = overall_components(s, ws, day)
+    components = score["components"]
     counted = [k for k in OVERALL_COMPONENTS if components.get(k) is not None]
-    # The weight each counted part actually carried today, after the absent
-    # ones were dropped and the rest renormalised. Printing the nominal 40/25/
-    # 20/15 to somebody who has no prayer module would be a lie about their
-    # own number.
     live = sum(OVERALL_WEIGHTS[k] for k in counted) or 1
+
+    team_tasks = due_team_tasks(s, ws, day)
+    team_habits = due_team_habits(s, ws, day)
 
     return {
         "day": day.isoformat(),
-        "value": overall_percent(s, ws, day),
+        "value": score["value"],
+        "measured": score["measured"],
         "counted": counted,
         "parts": [
             {"key": "tasks", "percent": components["tasks"],
-             "done": tasks_done, "total": tasks_total},
+             "done": tasks_done, "total": tasks_total,
+             "team_done": sum(1 for _, ok in team_tasks if ok),
+             "team_total": len(team_tasks)},
             {"key": "habits", "percent": components["habits"],
-             "done": habits_done, "total": habits_total},
+             "done": habits_done, "total": habits_total,
+             "team_done": sum(1 for _, ok in team_habits if ok),
+             "team_total": len(team_habits)},
             {"key": "focus", "percent": components["focus"],
              "done": focus_done, "total": focus_total},
             {"key": "prayer", "percent": components["prayer"],
@@ -2583,8 +2982,8 @@ def overall_explain(s: Session, ws: int, user: User,
         "nominal_weights": {k: round(v * 100)
                             for k, v in OVERALL_WEIGHTS.items()},
         "task_priority_weights": dict(TASK_PRIORITY_WEIGHTS),
-        # Spelled out so the UI never has to reimplement the rule.
         "rule": "weighted_mean_of_available",
+        "formula": SCORE_FORMULA,
     }
 
 
@@ -2594,60 +2993,69 @@ def stats(s: Session, ws: int, period: str = "week", *,
 
     `week`  — one point per day for the last 7 days.
     `month` — one point per day for the last 30 days.
-    `year`  — one point per month for the last 12 months, because 365 daily
-              points are unreadable on a phone.
+    `year`  — one point per month for the last 12 months.
 
-    Every period carries the previous one's averages as `deltas`, because "74%"
-    means nothing on its own and "74%, down from 81%" is something to act on.
+    Averages are over measured days only, and a change against the previous
+    period is only given when that period measured something.
     """
+    tz = tz or _habit_tz(s, ws)
     today = today_local(tz)
     keys = SERIES_KEYS
 
     if period == "year":
-        series = []
-        year, month = today.year, today.month
         months = []
+        year, month = today.year, today.month
         for _ in range(12):
             months.append((year, month))
             month -= 1
             if month == 0:
                 month, year = 12, year - 1
+        window_start = date(months[-1][0], months[-1][1], 1)
+        snapshots = _closed_scores(s, ws, window_start - timedelta(days=366), today)
+        series = []
         for y, m in reversed(months):
             start = date(y, m, 1)
             end = min(today, date(y + (m == 12), (m % 12) + 1, 1) - timedelta(days=1))
-            avg = _range_average(s, ws, start, end)
-            series.append({"day": start.isoformat(),
-                           "label": start.strftime("%m.%y"), **avg})
-        window_start = date(months[-1][0], months[-1][1], 1)
+            points = [_day_point(s, ws, start + timedelta(days=o), snapshots, today)
+                      for o in range((end - start).days + 1)]
+            avg = _average_points(points)
+            series.append({"day": start.isoformat(), "label": start.strftime("%m.%y"),
+                           **{k: avg[k] for k in keys},
+                           "measured": avg["measured_days"] > 0})
         previous_start = window_start - timedelta(days=365)
         previous_end = window_start - timedelta(days=1)
+        averages = _average_points([
+            {**p, "present": {k: True for k in keys}} for p in series
+            if p["measured"]]) if any(p["measured"] for p in series) else \
+            {**{k: 0 for k in keys}, "measured_days": 0}
     else:
         days = 7 if period == "week" else 30
-        series = []
-        for offset in range(days - 1, -1, -1):
-            day = today - timedelta(days=offset)
-            series.append({"day": day.isoformat(),
-                           "label": day.strftime("%d.%m"),
-                           **_day_point(s, ws, day)})
         window_start = today - timedelta(days=days - 1)
         previous_start = window_start - timedelta(days=days)
         previous_end = window_start - timedelta(days=1)
+        snapshots = _closed_scores(s, ws, previous_start, today)
+        series = []
+        for offset in range(days - 1, -1, -1):
+            day = today - timedelta(days=offset)
+            series.append({"day": day.isoformat(), "label": day.strftime("%d.%m"),
+                           **_day_point(s, ws, day, snapshots, today)})
+        averages = _average_points(series)
 
-    averages = {key: round(sum(p[key] for p in series) / len(series))
-                for key in keys}
-    previous = _range_average(s, ws, previous_start, previous_end)
-    deltas = {key: averages[key] - previous[key] for key in keys}
+    prev_snaps = _closed_scores(s, ws, previous_start, previous_end)
+    prev_points = [_day_point(s, ws, previous_start + timedelta(days=o), prev_snaps, today)
+                   for o in range((previous_end - previous_start).days + 1)]
+    previous = _average_points(prev_points)
+    has_previous = previous["measured_days"] > 0
+    deltas = {key: (averages[key] - previous[key]) if has_previous else None
+              for key in keys}
 
-    # The strongest day in the window, by the overall number. Only meaningful
-    # once something has actually been measured.
-    best = max(series, key=lambda p: p["overall"]) if series else None
+    measured = [p for p in series if p.get("measured", True)]
+    best = max(measured, key=lambda p: p["overall"]) if measured else None
     if best and best["overall"] <= 0:
         best = None
 
     breakdown = prayer_breakdown(s, ws, window_start, today, gender)
 
-    # The headline numbers are today's, from the same function Home uses, so
-    # the two screens can never disagree. The series stays a period average.
     overall = overall_state(s, ws, today)
     components = overall["components"]
     prayer_today = prayer_state(s, ws, today, gender)
@@ -2656,12 +3064,12 @@ def stats(s: Session, ws: int, period: str = "week", *,
     return {
         "period": period,
         "series": series,
-        "averages": averages,
-        "previous": previous,
+        "averages": {k: averages[k] for k in keys},
+        "measured_days": averages.get("measured_days", 0),
+        "previous": {k: previous[k] for k in keys},
         "deltas": deltas,
         "best_day": best and {"day": best["day"], "label": best["label"],
                               "overall": best["overall"]},
-        # Kept under their original names: the bot renderer and the CSV read them.
         "habit_avg": averages["habits"],
         "prayer_avg": averages["prayer"],
         "task_avg": averages["tasks"],
@@ -2672,10 +3080,8 @@ def stats(s: Session, ws: int, period: str = "week", *,
         "prayer_detail": breakdown,
         "today": {
             "overall": overall["value"],
+            "measured": overall["measured"],
             "trend": overall["trend"],
-            # Yesterday's own number, so the screen can say how far today has
-            # moved rather than only which way. "Up" is a direction; "+12%
-            # against yesterday" is the fact the direction was standing in for.
             "yesterday": overall["yesterday"],
             "tasks": components["tasks"],
             "habits": components["habits"],
@@ -2696,16 +3102,11 @@ SUMMARY_WINDOWS = {"day": 1, "week": 7, "month": 30}
 
 def summary(s: Session, ws: int, *, gender: str | None = None,
             tz: ZoneInfo | None = None) -> dict:
-    """Today, this week and this month as directly comparable numbers.
-
-    One percentage on its own is not information. Three windows in the same
-    units are: today against the week says whether today is going well, and the
-    week against the month says whether the direction is holding. Each window
-    also carries its change against the previous window of the same length, so
-    "74%" is never the whole story.
-    """
+    """Today, this week and this month as directly comparable numbers."""
+    tz = tz or _habit_tz(s, ws)
     today = today_local(tz)
-    out = {"today": overall_state(s, ws, today), "windows": {}}
+    state = overall_state(s, ws, today)
+    out = {"today": state, "windows": {}}
 
     for name, days in SUMMARY_WINDOWS.items():
         end = today
@@ -2713,28 +3114,40 @@ def summary(s: Session, ws: int, *, gender: str | None = None,
         current = _range_average(s, ws, start, end)
         previous = _range_average(s, ws, start - timedelta(days=days),
                                   start - timedelta(days=1))
+        known = current["measured_days"] > 0
+        before = previous["measured_days"] > 0
         out["windows"][name] = {
-            **current,
+            **{k: current[k] for k in SERIES_KEYS},
             "days": days,
-            "delta": current["overall"] - previous["overall"],
-            "previous": previous["overall"],
+            "measured": known,
+            # A change needs something on both sides of it.
+            "delta": (current["overall"] - previous["overall"]) if known and before else None,
+            "previous": previous["overall"] if before else None,
         }
+    # Today's cell is the live number, not an average of one day.
+    out["windows"]["day"]["overall"] = state["value"]
+    out["windows"]["day"]["measured"] = state["measured"]
+    out["windows"]["day"]["delta"] = (state["value"] - state["yesterday"]
+                                      if state["measured"] and state["yesterday"] is not None
+                                      else None)
 
     prayer = prayer_state(s, ws, today, gender)
     habits_done, habits_total = habit_progress(s, ws, today)
     tasks_done, tasks_total = today_task_progress(s, ws, today)
-    components = out["today"]["components"]
+    components = state["components"]
 
     out["today"] = {
-        "overall": out["today"]["value"],
-        "trend": out["today"]["trend"],
+        "overall": state["value"],
+        "measured": state["measured"],
+        "trend": state["trend"],
         "tasks": components["tasks"], "habits": components["habits"],
-        "prayer": components["prayer"],
+        "prayer": components["prayer"], "focus": components["focus"],
         "tasks_done": tasks_done, "tasks_total": tasks_total,
         "habits_done": habits_done, "habits_total": habits_total,
         "prayer_performed": prayer["performed"],
         "prayer_required": PRAYER_REQUIRED,
         "prayer_score": prayer["score"], "prayer_max": PRAYER_MAX_SCORE,
+        "prayer_owed": components["prayer"] is not None,
         "streak": habit_streak(s, ws, tz=tz),
     }
     return out
@@ -2742,21 +3155,19 @@ def summary(s: Session, ws: int, *, gender: str | None = None,
 
 def stats_csv(s: Session, ws: int, period: str = "month", *,
               gender: str | None = None, tz: ZoneInfo | None = None) -> str:
-    """The statistics view as CSV, for the download button.
-
-    CSV rather than PDF: it opens in Excel, Numbers and Google Sheets without
-    a viewer, and the file stays a few kilobytes.
-    """
+    """The statistics view as CSV, for the download button."""
     data = stats(s, ws, period, gender=gender, tz=tz)
     detail = data["prayer_detail"]
     lines = ["ErnestOS statistics"]
     lines.append(f"period,{period}")
     lines.append(f"generated,{datetime.now(tz or TZ):%Y-%m-%d %H:%M}")
+    lines.append(f"formula,{SCORE_FORMULA}")
     lines.append("")
     lines.append(f"overall average %,{data['overall_avg']}")
     lines.append(f"task average %,{data['task_avg']}")
     lines.append(f"habit average %,{data['habit_avg']}")
     lines.append(f"prayer average %,{data['prayer_avg']}")
+    lines.append(f"measured days,{data['measured_days']}")
     lines.append(f"habit streak,{data['habit_streak']}")
     lines.append(f"prayer streak,{data['prayer_streak']}")
     lines.append("")
@@ -2766,10 +3177,11 @@ def stats_csv(s: Session, ws: int, period: str = "month", *,
     for status, count in sorted(detail["counts"].items()):
         lines.append(f"{status},{count}")
     lines.append("")
-    lines.append("date,overall %,tasks %,habits %,prayer %")
+    lines.append("date,overall %,tasks %,habits %,prayer %,measured")
     for point in data["series"]:
         lines.append(f"{point['day']},{point['overall']},{point['tasks']},"
-                     f"{point['habits']},{point['prayer']}")
+                     f"{point['habits']},{point['prayer']},"
+                     f"{'yes' if point.get('measured', True) else 'no'}")
     return "\n".join(lines)
 
 
@@ -2781,8 +3193,8 @@ def calendar_month(s: Session, ws: int, year: int, month: int, *,
                    tz: ZoneInfo | None = None) -> dict:
     """Every dated item inside one month, keyed by ISO date.
 
-    Each event carries its kind and its id, so tapping one opens the actual
-    task, project or birthday rather than a dead row of text.
+    Shared tasks and countdowns are on it too: a month that leaves out what
+    you owe your team, or the exam you are counting down to, is not the month.
     """
     first = date(year, month, 1)
     last = date(year + (month == 12), (month % 12) + 1, 1) - timedelta(days=1)
@@ -2802,7 +3214,8 @@ def calendar_month(s: Session, ws: int, year: int, month: int, *,
              "due_time": task.due_time.strftime("%H:%M") if task.due_time else None})
 
     for project in s.scalars(select(Project).where(
-            Project.workspace_id == ws, Project.archived_at.is_(None),
+            Project.workspace_id == ws, Project.team_id.is_(None),
+            Project.archived_at.is_(None),
             Project.deadline.isnot(None),
             Project.deadline.between(first, last))).all():
         add(project.deadline, "project", project.name, {"id": project.id})
@@ -2815,6 +3228,38 @@ def calendar_month(s: Session, ws: int, year: int, month: int, *,
         if first <= occurrence <= last:
             add(occurrence, "birthday", row.person_name,
                 {"id": row.id, "turning": year - row.birth_date.year})
+
+    owner = workspace_owner(s, ws)
+    teams = teams_for(s, owner) if owner else []
+    for team in teams:
+        tasks = s.scalars(select(TeamTask).where(
+            TeamTask.team_id == team.id, TeamTask.archived_at.is_(None),
+            TeamTask.deadline.isnot(None),
+            TeamTask.deadline.between(first, last))).all()
+        done_by = _team_done_map(s, [t.id for t in tasks])
+        for task in tasks:
+            if not team_task_owed_by(task, owner):
+                continue
+            add(task.deadline, "team_task", task.title,
+                {"id": task.id, "team_id": team.id, "team_name": team.name,
+                 "status": "done" if team_task_done_for(
+                     task, owner, done_by.get(task.id, set())) else "waiting",
+                 "priority": task.priority})
+
+    team_ids = [t.id for t in teams]
+    cd_filter = Countdown.team_id.in_(team_ids) if team_ids else None
+    stmt = select(Countdown).where(
+        Countdown.archived_at.is_(None),
+        Countdown.target_date.between(first, last),
+        or_(Countdown.workspace_id == ws, cd_filter) if cd_filter is not None
+        else Countdown.workspace_id == ws)
+    names = {t.id: t.name for t in teams}
+    for row in s.scalars(stmt).all():
+        if row.team_id is not None and row.team_id not in names:
+            continue
+        add(row.target_date, "countdown", row.title,
+            {"id": row.id, "team_id": row.team_id,
+             "team_name": names.get(row.team_id)})
 
     return {"year": year, "month": month,
             "first_weekday": first.weekday(), "days_in_month": last.day,
@@ -2831,18 +3276,9 @@ BREAK_DAYS = 3
 
 def break_state(s: Session, ws: int, user: User, *,
                 tz: ZoneInfo | None = None) -> dict:
-    """Whether this user is returning from a gap, and what is waiting.
-
-    Someone who has been away for a week should be met with one decision, not
-    a backlog and a broken streak.
-    """
+    """Whether this user is returning from a gap, and what is waiting."""
     zone = tz or user_tz(user)
     today = today_local(zone)
-    # `last_active_at` is a UTC instant and `today` is a local calendar date,
-    # so `.date()` on the raw column compares two different kinds of time. In
-    # Tashkent anything after 19:00 local still carries yesterday's UTC date,
-    # which made a user who was active last night read as a day away and
-    # triggered the "welcome back" prompt on somebody who never left.
     last_seen = (local_date_of(user.last_active_at, zone)
                  if user.last_active_at else today)
     away = (today - last_seen).days
@@ -2867,16 +3303,7 @@ FRESH_START_MODES = {
 
 def fresh_start(s: Session, ws: int, *, mode: str = "today",
                 tz: ZoneInfo | None = None) -> int:
-    """Clear the backlog in one move. Returns how many tasks were handled.
-
-    `today`   — pull every overdue task to today, keep them all.
-    `week`    — spread them over the next seven days, a few per day.
-    `undate`  — keep the tasks, drop the dates, so nothing is "late" any more.
-    `archive` — move them out of the way; archived, never deleted.
-
-    No mode destroys a task. Archiving sets `archived_at`, which is reversible
-    in the database, and is why the confirmation can promise nothing is lost.
-    """
+    """Clear the backlog in one move. Returns how many tasks were handled."""
     today = today_local(tz)
     overdue = s.scalars(select(Task).where(
         Task.workspace_id == ws, Task.archived_at.is_(None),
@@ -2887,11 +3314,11 @@ def fresh_start(s: Session, ws: int, *, mode: str = "today",
         if mode == "archive":
             task.archived_at = utcnow()
         elif mode == "undate":
-            task.deadline = None
+            _move_deadline(s, ws, task, None)
         elif mode == "week":
-            task.deadline = today + timedelta(days=index % 7)
+            _move_deadline(s, ws, task, today + timedelta(days=index % 7))
         else:
-            task.deadline = today
+            _move_deadline(s, ws, task, today)
         task.reminder_sent_at = None
     s.commit()
     return len(overdue)
@@ -2930,8 +3357,6 @@ def weekly_review(s: Session, ws: int, user: User,
         "task_pct": averages["tasks"], "overall_pct": averages["overall"],
         "focus": focus,
         "focus_done": sum(1 for f in focus if f["done"]),
-        # The review is offered from Friday onwards, and only once a week has
-        # something in it to review.
         "is_week_end": today.weekday() >= 4,
         "answers": {
             "went_well": row.went_well if row else "",
@@ -2974,8 +3399,6 @@ def _now_task(task: dict, reason: str) -> dict:
             "reason": reason, "priority": task["priority"],
             "due_time": task["due_time"], "deadline": task["deadline"],
             "project": task["project"],
-            # A task done by its timer is finished by starting the timer, so
-            # the card has to know which kind of tap it is offering.
             "timer_minutes": task.get("timer_minutes"),
             "timer": task.get("timer")}
 
@@ -2984,14 +3407,9 @@ def now_next(s: Session, ws: int, user: User, *,
              tz: ZoneInfo | None = None) -> dict:
     """The one thing to do next, decided by a fixed ladder.
 
-    Home's job is to answer "what now?" without the user having to read the
-    whole screen and choose. The order is deliberate and completely
-    deterministic — no model, no scoring, nothing that can produce a different
-    answer for the same day:
-
       1. get up, while it still counts
-      2. whatever the user pinned as the day's mission
-      3. anything already late — a missed deadline outranks a future one
+      2. whatever the user pinned as the day's main task
+      3. anything already late
       4. anything else due today, earliest time first, then by priority
       5. a habit that is due and not done
       6. today's prayers, once the day is past noon
@@ -2999,11 +3417,7 @@ def now_next(s: Session, ws: int, user: User, *,
       8. otherwise: today's important work is finished
 
     Every answer carries a `reason`, because a card that decides on the user's
-    behalf owes them the sentence explaining why this one and not another. It
-    is also why the pinned mission sits at the top of the ladder: the user can
-    always overrule the order by pinning something, and then the card says so.
-
-    Nothing here invents work. If the day is empty, it says so.
+    behalf owes them the sentence explaining why this one and not another.
     """
     tz = tz or user_tz(user)
     today = today_local(tz)
@@ -3018,9 +3432,6 @@ def now_next(s: Session, ws: int, user: User, *,
         if task["status"] != "done":
             return _now_task(task, "pinned")
 
-    # Late work first. `list_tasks` already sorts by deadline, then time of
-    # day, then priority, so the oldest genuinely urgent thing surfaces rather
-    # than whichever row happened to be created first.
     for task in list_tasks(s, ws, horizon_days=0, tz=tz)["overdue"]:
         if task["status"] != "done":
             return _now_task(task, "overdue")
@@ -3037,14 +3448,18 @@ def now_next(s: Session, ws: int, user: User, *,
                     "timer_minutes": habit.get("timer_minutes"),
                     "timer": habit.get("timer")}
 
-    prayer = prayer_state(s, ws, today, user.gender)
-    if not prayer["complete"] and prayer["performed"] < PRAYER_REQUIRED \
-            and now.hour >= 12:
-        return {"kind": "prayer", "title": "", "id": None, "action": "prayer",
-                "meta": f"{prayer['performed']}/{PRAYER_REQUIRED}",
-                "reason": "prayer"}
+    if prayer_owed(s, ws, today):
+        prayer = prayer_state(s, ws, today, user.gender)
+        if not prayer["complete"] and prayer["performed"] < PRAYER_REQUIRED \
+                and now.hour >= 12:
+            return {"kind": "prayer", "title": "", "id": None, "action": "prayer",
+                    "meta": f"{prayer['performed']}/{PRAYER_REQUIRED}",
+                    "reason": "prayer"}
 
-    if now.hour >= DAY_CLOSE_HOUR and not journal_done(s, ws, today):
+    journal_on = s.scalar(select(Habit.id).where(
+        Habit.workspace_id == ws, Habit.system_key == SYSTEM_JOURNAL,
+        Habit.archived_at.is_(None))) is not None
+    if journal_on and now.hour >= DAY_CLOSE_HOUR and not journal_done(s, ws, today):
         return {"kind": "journal", "title": "", "id": None, "action": "journal",
                 "meta": "", "reason": "evening"}
 
@@ -3053,12 +3468,7 @@ def now_next(s: Session, ws: int, user: User, *,
 
 
 def week_strip(s: Session, ws: int, *, tz: ZoneInfo | None = None) -> dict:
-    """The current week as seven cells, with a marker where something lands.
-
-    A full month grid on Home costs a third of the first screen to answer a
-    question the user is not asking yet. The week is the useful horizon; the
-    month is one tap away.
-    """
+    """The current week as seven cells, with a marker where something lands."""
     today = today_local(tz)
     start = week_start(today)
     end = start + timedelta(days=6)
@@ -3090,19 +3500,14 @@ def week_strip(s: Session, ws: int, *, tz: ZoneInfo | None = None) -> dict:
 
 
 def home(s: Session, ws: int, user: User) -> dict:
-    """Everything Home shows, and nothing else.
-
-    Home answers two questions — what should I do right now, and how is today
-    going — so the payload carries exactly the fields on that screen. The month
-    grid, the project rollups and the analytics history all live one tap away,
-    because each one was something to read past before reaching the answer.
-    """
+    """Everything Home shows, and nothing else."""
     tz = user_tz(user)
     today = today_local(tz)
     done, total = habit_progress(s, ws, today)
     prayer = prayer_state(s, ws, today, user.gender)
     top3 = top3_tasks(s, ws, today, tz=tz)
     journal = get_journal(s, ws, today)
+    mods = modules_for(s, ws)
 
     return {
         "date": today.isoformat(),
@@ -3114,27 +3519,32 @@ def home(s: Session, ws: int, user: User) -> dict:
         "gender": user.gender,
         "timezone": user.timezone or str(TZ),
         "photo_file_id": user.photo_file_id,
+        "modules": mods,
         "habits": {"done": done, "total": total},
         "prayer": {"score": prayer["score"], "max": PRAYER_MAX_SCORE,
                    "performed": prayer["performed"], "required": PRAYER_REQUIRED,
-                   "complete": prayer["complete"], "excused": prayer["excused"]},
+                   "complete": prayer["complete"], "excused": prayer["excused"],
+                   "owed": prayer_owed(s, ws, today)},
         "streak": habit_streak(s, ws, tz=tz),
         "overall": overall_state(s, ws, today),
-        # The single dominant answer to "what now?".
         "now": now_next(s, ws, user, tz=tz),
         "wake": wake_state(s, ws, tz=tz),
-        # One mission with its supporting priorities, and today's work.
         "focus": week_focus(s, ws, tz=tz),
         "mission": primary_focus(s, ws, tz=tz),
         "top3": top3,
         "top3_max": MAX_TOP3,
         "tasks_today": today_tasks_by_project(
             s, ws, tz=tz, skip_ids={t["id"] for t in top3}),
-        "journal_today": bool(journal and journal["complete"]),
+        "tasks_today_total": len(tasks_due_today(s, ws, tz=tz)),
+        # Written (one answer is enough to tick the habit) and complete (all
+        # five, a full reflection) are two different facts and both are shown.
+        "journal_today": bool(journal and journal["written"]),
+        "journal_full": bool(journal and journal["complete"]),
         "journal_answered": journal["answered"] if journal else 0,
         "journal_total": len(JOURNAL_KEYS),
         "birthdays": list_birthdays(s, ws, within_days=7, tz=tz),
-        "countdowns": list_countdowns(s, ws, tz=tz, include_past=False),
+        "countdowns": countdowns_for_user(s, ws, user.telegram_id, tz=tz,
+                                          include_past=False),
         "active_timer": active_timer(s, ws),
         "week": week_strip(s, ws, tz=tz),
         "break": break_state(s, ws, user, tz=tz),
@@ -3145,29 +3555,13 @@ def home(s: Session, ws: int, user: User) -> dict:
 # External calendars
 # ---------------------------------------------------------------------------
 
-#: Providers the sync layer is being built for. Listed rather than hard-coded
-#: at the call site so the UI can ask what exists without guessing.
+#: Providers the sync layer is being built for.
 CALENDAR_PROVIDERS = ("google", "icloud", "caldav")
 
 
 def sync_calendar(s: Session, ws: int, provider: str,
                   credentials: dict | None = None) -> dict:
-    """Two-way sync with an external calendar. Not implemented yet.
-
-    Deliberately a stub with a real signature rather than nothing at all: the
-    shape of this call is the decision that matters, and it is worth fixing
-    before the first provider is written. What it will do, when it does it:
-
-      * read events in the window ErnestOS already draws (this month forward);
-      * map each to a task with a deadline and a due_time, keyed by the
-        provider's own event id so a second sync updates rather than duplicates;
-      * never write back a task the user did not explicitly share, because a
-        personal task list appearing in somebody's work calendar is a privacy
-        incident, not a feature.
-
-    Returns the same shape it will return when it works, so a caller written
-    against it today keeps working.
-    """
+    """Two-way sync with an external calendar. Not implemented yet."""
     if provider not in CALENDAR_PROVIDERS:
         raise ValueError("unknown provider")
     log.info("calendar sync requested for workspace %s (%s) — not implemented",
@@ -3181,17 +3575,14 @@ def sync_calendar(s: Session, ws: int, provider: str,
 # ---------------------------------------------------------------------------
 
 def export_workspace(s: Session, ws: int, user: User) -> dict:
-    """Everything this workspace contains, as plain JSON-ready data.
-
-    The user wrote it, so they can have it back. No aggregate, no summary —
-    the actual rows, in the form they were stored.
-    """
+    """Everything this workspace contains, as plain JSON-ready data."""
     def habits():
         for h in s.scalars(select(Habit).where(Habit.workspace_id == ws)).all():
             yield {"name": h.name, "category": h.category,
                    "schedule": clean_schedule(h.schedule),
                    "target_time": h.target_time.strftime("%H:%M") if h.target_time else None,
                    "timer_minutes": h.timer_minutes,
+                   "active_from": h.active_from.isoformat() if h.active_from else None,
                    "paused": h.paused_at is not None,
                    "archived": h.archived_at is not None,
                    "created": h.created_at.isoformat() if h.created_at else None}
@@ -3221,7 +3612,8 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
             {"name": p.name, "description": p.description, "status": p.status,
              "deadline": p.deadline.isoformat() if p.deadline else None,
              "archived": p.archived_at is not None}
-            for p in s.scalars(select(Project).where(Project.workspace_id == ws)).all()],
+            for p in s.scalars(select(Project).where(
+                Project.workspace_id == ws, Project.team_id.is_(None))).all()],
         "tasks": [
             {"title": t.title, "description": t.description, "status": t.status,
              "priority": t.priority, "project_id": t.project_id,
@@ -3234,9 +3626,11 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
             for t in s.scalars(select(Task).where(Task.workspace_id == ws)).all()],
         "countdowns": [
             {"title": c.title, "date": c.target_date.isoformat(),
+             "scope": c.scope or "general",
              "archived": c.archived_at is not None}
             for c in s.scalars(select(Countdown)
-                               .where(Countdown.workspace_id == ws)
+                               .where(Countdown.workspace_id == ws,
+                                      Countdown.team_id.is_(None))
                                .order_by(Countdown.target_date)).all()],
         "weekly_focus": [
             {"week_start": f.week_start.isoformat(), "slot": f.slot,
@@ -3258,14 +3652,20 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
              "note": r.note}
             for r in s.scalars(select(Birthday)
                                .where(Birthday.workspace_id == ws)).all()],
+        "daily_scores": [
+            {"day": r.day.isoformat(), "score": r.total_score, "grade": r.grade,
+             "closed": bool(r.closed)}
+            for r in s.scalars(select(DailyScore)
+                               .where(DailyScore.user_id == user.telegram_id)
+                               .order_by(DailyScore.day)).all()],
     }
 
 
 #: Every table that holds workspace-scoped data. Deleting an account walks this
 #: list, so adding a model without adding it here is the one way a deletion
-#: could leave someone's rows behind — which is why the list is explicit rather
-#: than left to the database.
-WORKSPACE_TABLES = [TimerRun, HabitLog, Habit, PrayerLog, PrayerDay, Task,
+#: could leave someone's rows behind — which is why the list is explicit.
+WORKSPACE_TABLES = [TimerRun, HabitLog, HabitScheduleVersion, HabitPauseInterval,
+                    Habit, PrayerLog, PrayerDay, Task,
                     Project, WeeklyFocus, WeeklyReview, JournalEntry, Birthday,
                     Countdown, Feedback, DailyReportLog]
 
@@ -3273,15 +3673,8 @@ WORKSPACE_TABLES = [TimerRun, HabitLog, Habit, PrayerLog, PrayerDay, Task,
 def wipe_workspace(s: Session, telegram_id: int) -> bool:
     """Erase everything the user has written, but keep the account.
 
-    The difference from `delete_account` is the whole reason both exist:
-    somebody who wants to start over is not somebody who wants to leave. This
-    empties the workspace — tasks, habits, logs, prayers, journal, projects,
-    missions — and then puts the default habits back, so what they land on is a
-    fresh ErnestOS rather than a broken one with no habits in it at all.
-
-    The account, the language, the theme and the notification settings survive,
-    because none of those are "data the user wrote", they are how they use the
-    product.
+    Shared projects created from this workspace belong to their team, so they
+    stay where they are; everything private goes.
     """
     from sqlalchemy import delete as sql_delete
 
@@ -3289,32 +3682,22 @@ def wipe_workspace(s: Session, telegram_id: int) -> bool:
     if ws is None:
         return False
     for model in WORKSPACE_TABLES:
-        s.execute(sql_delete(model).where(model.workspace_id == ws))
+        stmt = sql_delete(model).where(model.workspace_id == ws)
+        if model in (Project, Countdown):
+            stmt = stmt.where(model.team_id.is_(None))
+        s.execute(stmt)
 
-    # Level, XP, streaks, daily scores and achievements hang off `user_id`,
-    # not `workspace_id`, so the loop above never reaches them. Without this a
-    # "wipe everything" left the user at level 9 with a 200-day streak over an
-    # empty workspace — every number on the progress screen describing work
-    # that no longer exists, and a leaderboard position to match.
     for model in (XPEvent, DailyScore, UserAchievement, UserProgress):
         s.execute(sql_delete(model).where(model.user_id == telegram_id))
 
     s.commit()
-    # A workspace with no habits is not a clean slate, it is a dead one.
     seed_default_habits(s, ws)
     s.commit()
     return True
 
 
 def delete_account(s: Session, telegram_id: int) -> bool:
-    """Erase a user and everything in their workspace, for real.
-
-    Only ever called from an explicitly confirmed action. The rows are removed
-    table by table rather than trusting `ON DELETE CASCADE`: SQLite enforces
-    foreign keys only when the connection asks it to, and a delete that silently
-    leaves a workspace full of journal entries behind would be the worst
-    possible thing to be wrong about.
-    """
+    """Erase a user and everything in their workspace, for real."""
     from sqlalchemy import delete as sql_delete
 
     user = s.get(User, telegram_id)
@@ -3327,26 +3710,22 @@ def delete_account(s: Session, telegram_id: int) -> bool:
             s.execute(sql_delete(model).where(model.workspace_id == ws))
         s.execute(sql_delete(Workspace).where(Workspace.id == ws))
 
-    # Referral rows hang off the *user*, not the workspace, so the loop above
-    # does not reach them — and a foreign key pointing at a user being deleted
-    # would block the delete outright on PostgreSQL. Leaving means leaving:
-    # their own invite code goes, the record of who invited them goes, and so
-    # does their side of anybody they invited. Somebody else's *count* drops by
-    # one, which is the correct price of an account that no longer exists —
-    # keeping the row to protect a statistic would be keeping data about a
-    # person who asked to be forgotten.
     s.execute(sql_delete(ReferralCode).where(ReferralCode.user_id == telegram_id))
     s.execute(sql_delete(Referral).where(
         or_(Referral.referred_user_id == telegram_id,
             Referral.inviter_user_id == telegram_id)))
 
-    # Progression hangs off the user for the same reason referrals do, and so
-    # needs the same explicit removal. A deleted account must not leave a row on
-    # the ranking table: it would keep occupying a position in a leaderboard
-    # made of people, and every rank below it would be one worse than the truth.
     for model in (XPEvent, DailyScore, UserAchievement):
         s.execute(sql_delete(model).where(model.user_id == telegram_id))
     s.execute(sql_delete(UserProgress).where(UserProgress.user_id == telegram_id))
+    s.execute(sql_delete(IdempotencyKey).where(IdempotencyKey.user_id == telegram_id))
+    # Their share of every team: memberships, ticks and snapshots. The teams
+    # themselves stay for the people still in them.
+    s.execute(sql_delete(TeamMember).where(TeamMember.user_id == telegram_id))
+    s.execute(sql_delete(TeamTaskDone).where(TeamTaskDone.user_id == telegram_id))
+    s.execute(sql_delete(TeamHabitLog).where(TeamHabitLog.user_id == telegram_id))
+    s.execute(sql_delete(TeamDayScore).where(TeamDayScore.user_id == telegram_id))
+    s.execute(sql_delete(TeamJoinRequest).where(TeamJoinRequest.user_id == telegram_id))
 
     s.delete(user)
     s.commit()
@@ -3375,42 +3754,90 @@ def mark_feedback_delivered(s: Session, feedback_id: int) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Idempotent writes
+# ---------------------------------------------------------------------------
+#
+# The Mini App sends `X-Idempotency-Key` with every create. The first request
+# with a key claims it (status 0), does its work and stores its response; a
+# repeat — a double tap, or a retry after the phone lost the answer — gets the
+# stored response instead of writing a second row.
+
+#: How long an answer is kept for a retry. A day is far past any real retry.
+IDEMPOTENCY_TTL = timedelta(hours=24)
+IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+
+
+def idempotency_begin(s: Session, user_id: int, key: str, path: str) -> tuple:
+    """("new", id) to go ahead, ("done", status, body) to answer, ("busy",)."""
+    row = IdempotencyKey(user_id=user_id, key=key, path=path[:160])
+    s.add(row)
+    try:
+        s.commit()
+        return ("new", row.id)
+    except IntegrityError:
+        s.rollback()
+    existing = s.scalar(select(IdempotencyKey).where(
+        IdempotencyKey.user_id == user_id, IdempotencyKey.key == key))
+    if existing is None:
+        return ("busy",)
+    if existing.path != path[:160]:
+        # The same key on a different endpoint is a client bug, not a retry.
+        return ("mismatch",)
+    if existing.status_code:
+        return ("done", existing.status_code, existing.body)
+    return ("busy",)
+
+
+def idempotency_finish(s: Session, row_id: int, status: int, body: str) -> None:
+    row = s.get(IdempotencyKey, row_id)
+    if row is None:
+        return
+    if 200 <= status < 300:
+        row.status_code = status
+        row.body = body[:20000]
+    else:
+        # A failed attempt must not block a corrected retry with the same key.
+        s.delete(row)
+    s.commit()
+
+
+def idempotency_answer(s: Session, user_id: int, key: str) -> tuple | None:
+    row = s.scalar(select(IdempotencyKey).where(
+        IdempotencyKey.user_id == user_id, IdempotencyKey.key == key))
+    if row is None or not row.status_code:
+        return None
+    return row.status_code, row.body
+
+
+def idempotency_cleanup(s: Session) -> int:
+    from sqlalchemy import delete as sql_delete
+    result = s.execute(sql_delete(IdempotencyKey).where(
+        IdempotencyKey.created_at < utcnow() - IDEMPOTENCY_TTL))
+    s.commit()
+    return result.rowcount or 0
+
+
+# ---------------------------------------------------------------------------
 # Referrals
 # ---------------------------------------------------------------------------
 #
 # One level only: A invites B. If B then invites C, C belongs to B and nobody
-# gets credit twice. There is no tree here and there is not meant to be one.
-#
-# The whole system rests on two rules that are enforced by the schema rather
-# than by care:
-#
-#   * `Referral.referred_user_id` is the primary key, so an account has at most
-#     one inviter, for ever. First touch wins and cannot be overwritten.
-#   * attribution is only attempted when `get_or_create_user` reports the
-#     account was *just created*. An existing user opening a link is not a
-#     referral, however the link was constructed.
+# gets credit twice.
 
 #: How many real actions the invited person must take before the referral
-#: counts. Clicking a link is not usage; neither is pressing /start. Three is
-#: roughly "they came back and did something", which is the smallest signal
-#: that distinguishes a referral from a click.
+#: counts.
 REFERRAL_QUALIFY_ACTIONS = 3
 
 #: The prefix that marks a Telegram start parameter as one of ours.
 REFERRAL_PREFIX = "ref_"
 
-#: Length of the random part. ~10 characters of urlsafe base64 is about 60 bits
-#: — far beyond guessable, and short enough that `ref_<code>` stays well inside
-#: Telegram's 64-character start-parameter limit.
+#: Length of the random part — about 60 bits.
 REFERRAL_CODE_BYTES = 8
 
-#: Codes are matched exactly against this. `token_urlsafe` emits A-Z a-z 0-9 _ -
-#: which is precisely the set Telegram accepts in a deep link, so no encoding
-#: is ever needed and a code can be pasted anywhere.
+#: Codes are matched exactly against this.
 REFERRAL_CODE_RE = re.compile(r"^[A-Za-z0-9_-]{6,32}$")
 
-#: Qualified referrals -> status key. Computed from the count on read; storing
-#: a level would be a second copy of a number the referrals already answer.
+#: Qualified referrals -> status key.
 REFERRAL_LEVELS = [
     (0, "new"),
     (1, "inviter"),
@@ -3421,17 +3848,7 @@ REFERRAL_LEVELS = [
 
 
 def get_or_create_referral_code(s: Session, user_id: int) -> str:
-    """This account's invite code, generated once and stable for ever.
-
-    Stable matters more than it sounds: a link already sitting in somebody's
-    chat history has to keep working, so this never rotates. Repeated calls
-    return the same string.
-
-    The retry loop is not for the birthday problem — at 60 bits a collision is
-    not going to happen — it is for the case where two requests for the same
-    brand-new user race each other. Whichever loses the insert re-reads and
-    returns the winner's code, so both callers still get one stable answer.
-    """
+    """This account's invite code, generated once and stable for ever."""
     for _ in range(5):
         row = s.get(ReferralCode, user_id)
         if row is not None:
@@ -3440,16 +3857,9 @@ def get_or_create_referral_code(s: Session, user_id: int) -> str:
                            code=secrets.token_urlsafe(REFERRAL_CODE_BYTES))
         s.add(row)
         try:
-            # A SAVEPOINT, not a bare commit: this is usually called partway
-            # through registration, in the caller's transaction, alongside the
-            # freshly written user and workspace rows. `s.rollback()` on a
-            # clash would throw all of that away and leave the caller looking
-            # at objects the database no longer has. Only the insert is undone.
             with s.begin_nested():
                 s.flush()
         except IntegrityError:
-            # Either this user was given a code by a concurrent request, or the
-            # random code collided. Both are answered by looking again.
             s.expunge(row)
             continue
         s.commit()
@@ -3458,12 +3868,7 @@ def get_or_create_referral_code(s: Session, user_id: int) -> str:
 
 
 def parse_referral_payload(payload: str | None) -> str | None:
-    """`ref_<code>` -> `<code>`, or None for anything else.
-
-    Deliberately total: every malformed, hostile or simply unrelated start
-    parameter returns None and onboarding carries on. A referral link is not
-    something the user typed, so a broken one is never their problem to see.
-    """
+    """`ref_<code>` -> `<code>`, or None for anything else."""
     if not payload or not isinstance(payload, str):
         return None
     if not payload.startswith(REFERRAL_PREFIX):
@@ -3474,21 +3879,7 @@ def parse_referral_payload(payload: str | None) -> str | None:
 
 def claim_referral(s: Session, referred_user_id: int, payload: str | None, *,
                    source: str = "bot", newly_created: bool = False) -> bool:
-    """Attribute a brand-new account to whoever invited them. Returns success.
-
-    Every rejection here is silent and returns False, because none of them are
-    the user's fault and none should interrupt onboarding:
-
-      * the account already existed — attribution is first-touch only, and this
-        is the check that stops an existing user being claimed by anybody who
-        can get them to open a link;
-      * the payload is not one of ours, or names a code nobody owns;
-      * the code is the caller's own — a self-referral;
-      * this account already has an inviter.
-
-    The caller commits nothing: this function owns its own transaction, and on
-    any failure the database is exactly as it was.
-    """
+    """Attribute a brand-new account to whoever invited them. Returns success."""
     if not newly_created:
         return False
 
@@ -3510,29 +3901,13 @@ def claim_referral(s: Session, referred_user_id: int, payload: str | None, *,
     try:
         s.commit()
     except IntegrityError:
-        # Two /start retries arriving together. The primary key settles it and
-        # the first inviter keeps the attribution.
         s.rollback()
         return False
     return True
 
 
 def maybe_qualify_referral(s: Session, user_id: int) -> int | None:
-    """Promote a pending referral once the invited person genuinely arrived.
-
-    Returns the inviter's telegram id when this call is the one that flipped
-    it, else None — so the caller knows whether a congratulation is owed, and
-    knows it exactly once. Callers may fire a Telegram message on a non-None
-    result without any risk of sending it twice.
-
-    The two conditions are deliberately both required. Actions without
-    onboarding means somebody poking at the API mid-signup; onboarding without
-    actions means somebody who arrived and left. Only the pair is usage.
-
-    Cheap enough to call on every recorded action: it is one indexed primary
-    key lookup that returns None immediately for the overwhelming majority of
-    users, who were never referred at all.
-    """
+    """Promote a pending referral once the invited person genuinely arrived."""
     referral = s.get(Referral, user_id)
     if referral is None or referral.status != "pending":
         return None
@@ -3543,9 +3918,15 @@ def maybe_qualify_referral(s: Session, user_id: int) -> int | None:
     if (user.actions_count or 0) < REFERRAL_QUALIFY_ACTIONS:
         return None
 
-    referral.status = "qualified"
-    referral.qualified_at = utcnow()
+    won = s.execute(
+        sql_update(Referral).where(Referral.referred_user_id == user_id,
+                                   Referral.status == "pending")
+        .values(status="qualified", qualified_at=utcnow())
+        .execution_options(synchronize_session=False)).rowcount
     s.commit()
+    if not won:
+        return None
+    s.expire(referral)
     return referral.inviter_user_id
 
 
@@ -3568,12 +3949,7 @@ def referral_level(qualified: int) -> dict:
 
 
 def referral_stats(s: Session, user_id: int) -> dict:
-    """Aggregate counts for one inviter. Never the identity of the invited.
-
-    Counts only, on purpose: knowing *that* four people joined is the whole of
-    what the inviter needs, and knowing *who* would hand one user a list of
-    other users they can now see the activity of.
-    """
+    """Aggregate counts for one inviter. Never the identity of the invited."""
     rows = s.execute(
         select(Referral.status, func.count())
         .where(Referral.inviter_user_id == user_id)
@@ -3609,73 +3985,44 @@ def platform_referral_stats(s: Session) -> dict:
 # Personal progression — score, XP, levels
 # ---------------------------------------------------------------------------
 #
-# Two progression systems live in ErnestOS and they are deliberately kept
-# apart. *Referral* progression measures how many genuinely active people
-# somebody brought in; *personal* progression measures how well they run their
-# own life. Nothing below reads a referral, and nothing in the referral section
-# reads any of this. Somebody who invited a hundred people and does not use the
-# product has a low personal level, and that is the correct answer.
+# The daily score *is* the overall percentage — `day_score` — rather than a
+# parallel calculation: two numbers that both claim to be "how today went" and
+# disagree by a few points on two screens is the most corrosive thing this
+# codebase could do to its own credibility.
 #
-# The scoring formula is not a new one. ErnestOS already computes a weighted
-# daily percentage — `overall_components` and `weighted_overall`, tasks 40 /
-# habits 25 / focus 20 / prayer 15 — and it is already on the Home screen with
-# those weights printed on the tiles. Introducing a second formula with
-# different weights would mean two numbers that both claim to be "how today
-# went", disagreeing by a few points, on two screens of the same app. That is
-# the single most corrosive thing this codebase can do to its own credibility,
-# and it is why the daily score *is* the overall percentage rather than a
-# parallel calculation.
-#
-# Two categories a generic design would add are deliberately absent:
-#
-#   * **Execution quality.** ErnestOS does not reliably track whether a task
-#     was done on the day it was planned for, and inventing a proxy would be
-#     fake precision dressed as a metric. Its weight is not redistributed by
-#     hand — `weighted_overall` already renormalises over whatever is present.
-#   * **Reflection as its own component.** The journal is already a
-#     non-negotiable habit, so it is counted through `habits`. Scoring it twice
-#     would make one screen's worth of writing move the number twice.
+# Progression is the secondary signal. Home leads with the day's plan and its
+# one number; level, XP, rank and achievements live behind the avatar, where
+# somebody can look at them when they want to.
 
-#: Score -> grade. Read top down, first threshold wins. The labels are graded
-#: rather than judgemental on purpose: the bottom band is "Reset", not "Failed".
-#: Nothing in this product tells somebody they were a bad person on a Tuesday.
+#: Score -> grade. The bottom band is "Reset", not "Failed".
 GRADE_BANDS = [(90, "S"), (80, "A"), (70, "B"), (60, "C"), (40, "D"), (0, "E")]
+
+#: The grade stored for a day that had nothing in it to measure.
+UNMEASURED_GRADE = "-"
 
 #: A day at or above this is a Perfect Day.
 PERFECT_DAY_SCORE = 90
 
-#: What a day has to reach to count toward the consistency streak. Deliberately
-#: not "opened the app": a streak that survives on attendance measures nothing
-#: and everybody knows it. 60 is the C band — a day with real work in it.
+#: What a day has to reach to count toward the consistency streak.
 STREAK_THRESHOLD = 60
 
-#: Missing a day does not have to cost a month. Two protected days per calendar
-#: month, spent automatically, and they buy the streak only — no XP is awarded
-#: for a day that did not earn it.
+#: Missing a day does not have to cost a month. Two protected days per month.
 RECOVERY_DAYS_PER_MONTH = 2
 
 #: How many days away before returning counts as a comeback, and how long
-#: before another one can be earned. The cooldown is what stops the obvious
-#: exploit of disappearing on purpose every few days to farm the bonus.
+#: before another one can be earned.
 COMEBACK_AFTER_DAYS = 3
 COMEBACK_COOLDOWN_DAYS = 14
 
-#: Local days on record before a user is ranked. One brilliant first day must
-#: not put a brand-new account at #1 above people with a year of work behind
-#: them.
+#: Local days on record before a user is ranked.
 RANK_MIN_DAYS = 7
 
 #: The rolling windows the two ranks are computed over, in calendar days.
-#: Calendar, not active — a user who stops using ErnestOS should slide down as
-#: the window fills with empty days, without anybody having to punish them.
 RANK_WINDOW_DAYS = 30
 WEEKLY_WINDOW_DAYS = 7
 
-#: (threshold XP, key, roman numeral). Seven levels, and the level is always
-#: computed from `xp_total` rather than stored: a stored level is a second copy
-#: of a number XP already answers, and the two drift the first time an award is
-#: replayed. Names belong to personal progression only — referral status levels
-#: are a separate ladder in the referral section, and the two never mix.
+#: (threshold XP, key, roman numeral). The level is always computed from
+#: `xp_total` rather than stored.
 PERSONAL_LEVELS = [
     (0, "starter", "I"),
     (500, "builder", "II"),
@@ -3686,14 +4033,14 @@ PERSONAL_LEVELS = [
     (30000, "master", "VII"),
 ]
 
-#: What each kind of event is worth. Awarded once per key, ever — see `award_xp`.
+#: What each kind of event is worth. Awarded once per key, ever.
 XP_VALUES = {
-    "task": 10,          # a task completed
-    "ritual_wake": 5,    # got up on time
-    "ritual_prayer": 10,  # all five prayers
-    "ritual_journal": 5,  # a complete journal entry
-    "habit": 5,          # any other habit ticked
-    "focus": 10,         # a weekly focus mission finished
+    "task": 10,
+    "ritual_wake": 5,
+    "ritual_prayer": 10,
+    "ritual_journal": 5,
+    "habit": 5,
+    "focus": 10,
     "perfect_day": 25,
     "streak_7": 50,
     "streak_30": 200,
@@ -3702,14 +4049,10 @@ XP_VALUES = {
     "achievement": 20,
 }
 
-#: The most XP ordinary activity can produce in one local day. Without it, the
-#: cheapest way to a high level is to create and complete forty trivial tasks,
-#: which is the opposite of what the number is supposed to mean.
+#: The most XP ordinary activity can produce in one local day.
 XP_DAILY_CAP = 120
 
-#: Event types that are milestones rather than activity, and so are paid
-#: outside the cap. A 30-day streak bonus that silently vanished because the
-#: user also had a busy day would be a bug the user experiences as a lie.
+#: Milestones, paid outside the cap.
 XP_UNCAPPED = {"perfect_day", "streak", "comeback", "onboarding", "achievement"}
 
 
@@ -3722,12 +4065,7 @@ def grade_for(score: int) -> str:
 
 
 def get_personal_level(xp: int) -> dict:
-    """Everything the UI needs about where this XP total sits on the ladder.
-
-    Returns the current level, the next one, and how far through the gap the
-    user is — computed, never stored, so replaying an award cannot leave a
-    level number that disagrees with the XP behind it.
-    """
+    """Everything the UI needs about where this XP total sits on the ladder."""
     xp = max(int(xp or 0), 0)
     index = 0
     for i, (threshold, _, _) in enumerate(PERSONAL_LEVELS):
@@ -3752,12 +4090,7 @@ def get_personal_level(xp: int) -> dict:
 
 
 def _progress_row(s: Session, user_id: int) -> UserProgress:
-    """This user's summary row, created empty on first sight.
-
-    Created lazily rather than at signup so the feature needs no backfill pass
-    over existing accounts: the first time anybody's day is scored, their row
-    appears. An account that never comes back never gets one, which is correct.
-    """
+    """This user's summary row, created empty on first sight."""
     row = s.get(UserProgress, user_id)
     if row is None:
         try:
@@ -3765,8 +4098,6 @@ def _progress_row(s: Session, user_id: int) -> UserProgress:
                 row = UserProgress(user_id=user_id)
                 s.add(row)
         except IntegrityError:
-            # Two concurrent requests both found nothing and both inserted.
-            # The savepoint keeps the loser's other work intact.
             row = s.get(UserProgress, user_id)
             if row is None:
                 raise
@@ -3775,17 +4106,7 @@ def _progress_row(s: Session, user_id: int) -> UserProgress:
 
 def award_xp(s: Session, user_id: int, event_key: str, event_type: str,
              xp: int, day: date) -> int:
-    """Write one XP event if it has never been written. Returns XP granted.
-
-    The unique constraint on `event_key` is the whole mechanism, not a
-    belt-and-braces check on top of one: the caller does not have to know
-    whether this award already happened, and two concurrent requests cannot
-    both win. Everything that awards XP goes through here, so "can this be
-    claimed twice?" has one answer in one place.
-
-    Returns 0 when the key already existed or the daily cap is reached, so a
-    caller can tell whether anything actually happened without a second query.
-    """
+    """Write one XP event if it has never been written. Returns XP granted."""
     if xp <= 0:
         return 0
 
@@ -3797,12 +4118,6 @@ def award_xp(s: Session, user_id: int, event_key: str, event_type: str,
             return 0
         xp = min(xp, XP_DAILY_CAP - earned)
 
-    # A SAVEPOINT, not a plain flush, and this is not defensive decoration.
-    # `sync_day_xp` calls this in a loop inside one transaction, and a bare
-    # `s.rollback()` on the duplicate would discard *every award already made
-    # in that transaction* — so a user whose second habit had already been paid
-    # would silently lose the XP for the first. The nested block rolls back
-    # only the insert that collided.
     try:
         with s.begin_nested():
             s.add(XPEvent(user_id=user_id, event_key=event_key,
@@ -3819,24 +4134,26 @@ def xp_total(s: Session, user_id: int) -> int:
 
 
 def recompute_daily_score(s: Session, user_id: int, ws: int,
-                          day: date) -> DailyScore:
+                          day: date, *, close: bool = False) -> DailyScore:
     """Write (or rewrite) one day's score row from that day's live data.
 
-    Only ever the day it is asked for. Recomputing today as the day goes on is
-    the whole point; recomputing *last Tuesday* is not, because the source rows
-    move — a task edited next week must not rewrite a score the user has
-    already been shown, and a streak must not change retroactively under them.
-
-    Components are stored as -1 for "absent", matching the distinction
-    `overall_components` draws between a category with nothing in it and a
-    category scored zero. A day with no tasks is not a day that failed its
-    tasks.
+    A closed row is final and is returned untouched: the day it describes is
+    over, and nothing done afterwards may rewrite what it was. `close=True`
+    is the day-close job finishing a day.
     """
-    components = overall_components(s, ws, day)
-    total = weighted_overall(components)
-
     row = s.scalar(select(DailyScore).where(DailyScore.user_id == user_id,
                                             DailyScore.day == day))
+    if row is not None and row.closed:
+        return row
+
+    score = day_score(s, ws, day, live=True)
+    components = score["components"]
+    total = score["value"]
+    measured = score["measured"]
+    tasks_done, tasks_total = today_task_progress(s, ws, day)
+    habits_done, habits_total = habit_progress(s, ws, day)
+    prayer = prayer_state(s, ws, day, getattr(s.get(User, user_id), "gender", None))
+
     if row is None:
         try:
             with s.begin_nested():
@@ -3857,13 +4174,18 @@ def recompute_daily_score(s: Session, user_id: int, ws: int,
     row.focus_score = part("focus")
     row.prayer_score = part("prayer")
     row.total_score = int(total)
-    row.grade = grade_for(int(total))
+    row.measured = measured
+    row.grade = grade_for(int(total)) if measured else UNMEASURED_GRADE
+    row.tasks_done, row.tasks_total = tasks_done, tasks_total
+    row.habits_done, row.habits_total = habits_done, habits_total
+    row.prayer_performed = prayer["performed"]
+    row.formula = SCORE_FORMULA
+    if close:
+        row.closed = True
 
     try:
         s.flush()
     except IntegrityError:
-        # Another request inserted this user's day between the read and the
-        # write. Theirs is as correct as ours — both read the same source rows.
         s.rollback()
         row = s.scalar(select(DailyScore).where(DailyScore.user_id == user_id,
                                                 DailyScore.day == day))
@@ -3872,25 +4194,68 @@ def recompute_daily_score(s: Session, user_id: int, ws: int,
     return row
 
 
-def sync_day_xp(s: Session, user_id: int, ws: int, day: date) -> int:
-    """Award every XP event today's state has earned. Returns XP newly granted.
+def close_day(s: Session, user_id: int, day: date) -> DailyScore | None:
+    """Finish one past day for one user: the personal snapshot and the teams'.
 
-    Driven by *state*, not by intercepting each action, and that is what makes
-    it safe to call on every write. Each award names itself after the thing it
-    is for — the task's id, the habit and the day — so running this a hundred
-    times in a row grants exactly what running it once granted.
-
-    It is also what closes the toggle-farming hole for free. Completing a task,
-    undoing it and completing it again produces the key `task:412` all three
-    times; the ledger accepts it once. No XP is taken back when something is
-    undone, because "award once, when it first happens" needs no refund path
-    and a refund path is where double-spend bugs live.
+    Idempotent. The day must be over in the user's own zone; a day still
+    running is never closed.
     """
+    user = s.get(User, user_id)
+    if user is None:
+        return None
+    ws = s.scalar(select(Workspace.id).where(Workspace.user_id == user_id))
+    if ws is None:
+        return None
+    tz = user_tz(user)
+    if day >= today_local(tz):
+        return None
+    row = recompute_daily_score(s, user_id, ws, day, close=True)
+    for team in teams_for_on(s, user_id, day, tz=tz):
+        close_team_member_day(s, team.id, user_id, day, tz=tz)
+    s.commit()
+    return row
+
+
+#: How many users the day-close job finishes per tick. A tick is every few
+#: minutes, so everybody is reached well within the first hour of their day.
+CLOSE_BATCH = 300
+
+
+def close_due_days(s: Session, *, limit: int = CLOSE_BATCH) -> int:
+    """Close yesterday for everybody whose day has turned. Returns how many.
+
+    Also closes any older row left open by the action funnel — a user who
+    wrote on Monday and never came back still gets Monday finished.
+    """
+    closed = 0
+    users = s.execute(select(User.telegram_id, User.timezone)
+                      .where(User.onboarded.is_(True))).all()
+    for telegram_id, zone in users:
+        if closed >= limit:
+            break
+        yesterday = today_local(tz_for(zone)) - timedelta(days=1)
+        pending = [d for d in s.scalars(select(DailyScore.day).where(
+            DailyScore.user_id == telegram_id, DailyScore.day <= yesterday,
+            or_(DailyScore.closed.is_(None), DailyScore.closed.is_(False)))).all()]
+        has_yesterday = s.scalar(select(DailyScore.id).where(
+            DailyScore.user_id == telegram_id, DailyScore.day == yesterday,
+            DailyScore.closed.is_(True))) is not None
+        if not has_yesterday and yesterday not in pending:
+            pending.append(yesterday)
+        for day in sorted(pending)[-7:]:
+            try:
+                close_day(s, telegram_id, day)
+                closed += 1
+            except Exception:
+                s.rollback()
+                log.exception("could not close %s for %s", day, telegram_id)
+    return closed
+
+
+def sync_day_xp(s: Session, user_id: int, ws: int, day: date) -> int:
+    """Award every XP event today's state has earned. Returns XP newly granted."""
     granted = 0
 
-    # Tasks completed on this local day. `completed_at` is a UTC instant, so
-    # the day is converted to a UTC window rather than compared directly —
-    # anything finished after 19:00 in Tashkent carries yesterday's UTC date.
     start, end = utc_window(day)
     task_ids = s.scalars(select(Task.id).where(
         Task.workspace_id == ws, Task.status == "done",
@@ -3899,18 +4264,10 @@ def sync_day_xp(s: Session, user_id: int, ws: int, day: date) -> int:
         granted += award_xp(s, user_id, f"task:{task_id}", "task",
                             XP_VALUES["task"], day)
 
-    # Habits ticked today. The three derived ones are worth naming separately —
-    # they are the floor the product is built on — and everything else is a
-    # habit the user chose, worth the ordinary amount.
     rows = s.execute(select(Habit.id, Habit.system_key)
                      .join(HabitLog, HabitLog.habit_id == Habit.id)
                      .where(HabitLog.workspace_id == ws, HabitLog.day == day,
                             HabitLog.done.is_(True))).all()
-    # One `event_type` per ritual, not one shared "ritual" label. They used to
-    # share it, and `early_riser` — which counts days the user woke up on time
-    # — counted prayer and journal days too, so anyone praying and writing
-    # daily earned a thirty-day award in ten. Migration 0009 relabels the rows
-    # already written under the shared name.
     SYSTEM_XP = {SYSTEM_WAKEUP: ("ritual_wake", "wake"),
                  SYSTEM_PRAYER: ("ritual_prayer", "prayer"),
                  SYSTEM_JOURNAL: ("ritual_journal", "journal")}
@@ -3919,11 +4276,10 @@ def sync_day_xp(s: Session, user_id: int, ws: int, day: date) -> int:
         granted += award_xp(s, user_id, f"habit:{habit_id}:{day}", event_type,
                             XP_VALUES[value_key], day)
 
-    # Weekly focus missions finished. Keyed on the mission, not the day, so
-    # finishing one is worth ten once — not ten every day of the week it stays
-    # ticked.
+    # Goals scored as goals — a goal delivered by a task was paid as the task.
     focus_ids = s.scalars(select(WeeklyFocus.id).where(
         WeeklyFocus.workspace_id == ws, WeeklyFocus.done.is_(True),
+        WeeklyFocus.task_id.is_(None),
         WeeklyFocus.week_start == week_start(day))).all()
     for focus_id in focus_ids:
         granted += award_xp(s, user_id, f"focus:{focus_id}", "focus",
@@ -3936,34 +4292,24 @@ def _month_key(day: date) -> str:
     return f"{day.year:04d}-{day.month:02d}"
 
 
-def _apply_day_to_streak(progress: UserProgress, day: date, score: int) -> dict:
+def _apply_day_to_streak(progress: UserProgress, day: date, score: int,
+                         measured: bool = True) -> dict:
     """Move the streak on by one day. Returns what happened, for the caller.
 
-    Called once per local day, in order, from `refresh_progress`. The same day
-    arriving twice is a no-op — `last_score_date` is the guard — which matters
-    because every single write in the product triggers a refresh.
-
-    The rules, in the order they are checked:
-
-      * same day again  -> nothing moves;
-      * a good day right after the last one -> streak + 1;
-      * a weak day right after the last one -> spend a Recovery Day if one is
-        left this month, otherwise the streak resets to zero;
-      * a gap of more than one day -> the streak restarts at 1 if today was
-        good, and a long enough gap also earns a Comeback.
-
-    A Recovery Day protects the streak and nothing else: no XP is granted for a
-    day that did not earn any. The allowance resets by comparing the stored
-    month with today's, so nothing has to sweep every user on the first.
+    A day with nothing in it to measure moves nothing: it is neither a good
+    day nor a missed one, and a new account's empty first morning must not
+    read as a failure.
     """
     result = {"streak_changed": False, "recovery_used": False,
               "comeback": False, "gap": 0}
+
+    if not measured:
+        return result
 
     last = progress.last_score_date
     if last == day:
         return result
 
-    # A new calendar month hands the allowance back.
     if progress.recovery_month != _month_key(day):
         progress.recovery_month = _month_key(day)
         progress.recovery_used = 0
@@ -3973,7 +4319,6 @@ def _apply_day_to_streak(progress: UserProgress, day: date, score: int) -> dict:
     result["gap"] = gap or 0
 
     if last is None or gap is not None and gap > 1:
-        # Returning after a break, or arriving for the first time.
         if gap is not None and gap - 1 >= COMEBACK_AFTER_DAYS and good:
             cooldown = progress.last_comeback_date
             if (cooldown is None
@@ -3986,12 +4331,10 @@ def _apply_day_to_streak(progress: UserProgress, day: date, score: int) -> dict:
             progress.current_streak = (progress.current_streak or 0) + 1
         elif progress.recovery_used < RECOVERY_DAYS_PER_MONTH:
             progress.recovery_used += 1
-            result["recovery_used"] = True   # streak survives, untouched
+            result["recovery_used"] = True
         else:
             progress.current_streak = 0
     else:
-        # gap < 0: a day earlier than the last one scored. Backfilling history
-        # must never rewrite a streak the user has already been shown.
         return result
 
     progress.last_score_date = day
@@ -4003,13 +4346,7 @@ def _apply_day_to_streak(progress: UserProgress, day: date, score: int) -> dict:
 
 def _eligible_window(s: Session, user_id: int, today: date,
                      days: int) -> tuple[date, int]:
-    """(first day, how many calendar days) the rolling index is averaged over.
-
-    Calendar days, so that going quiet lowers the index on its own rather than
-    needing a punishment rule. But never days from before this account existed:
-    a user three days old is measured over three days, not charged for
-    twenty-seven days of absence that happened before they arrived.
-    """
+    """(first day, how many calendar days) the rolling index is averaged over."""
     first_scored = s.scalar(select(func.min(DailyScore.day))
                             .where(DailyScore.user_id == user_id))
     start = today - timedelta(days=days - 1)
@@ -4022,17 +4359,9 @@ def performance_index(s: Session, user_id: int, today: date,
                       days: int = RANK_WINDOW_DAYS) -> float:
     """How this user has actually been doing lately, 0-100. The ranking metric.
 
-    Explicitly *not* lifetime XP. Ranking on a lifetime total would mean the
-    board is ordered by how long each account has existed, and nobody joining
-    this year could ever pass somebody who stopped using the product in March.
-    Lifetime effort is what Level is for; this is current form.
-
         70%  average daily score across the window
         20%  consistency — the share of days that cleared the streak threshold
-        10%  weekly focus follow-through
-
-    Missing days count as zero inside the window, which is what makes the
-    number decay on its own when somebody stops showing up.
+        10%  weekly goal follow-through
     """
     start, span = _eligible_window(s, user_id, today, days)
     if span <= 0:
@@ -4046,7 +4375,7 @@ def performance_index(s: Session, user_id: int, today: date,
         return 0.0
 
     totals = [r[0] for r in rows]
-    average = sum(totals) / span                       # absent days are zeroes
+    average = sum(totals) / span
     consistency = sum(1 for t in totals if t >= STREAK_THRESHOLD) / span * 100
     focus_days = [r[1] for r in rows if r[1] >= 0]
     focus = sum(focus_days) / len(focus_days) if focus_days else 0.0
@@ -4057,17 +4386,6 @@ def performance_index(s: Session, user_id: int, today: date,
 def refresh_progress(s: Session, user_id: int, *, day: date | None = None,
                      tz: ZoneInfo | None = None) -> dict:
     """Bring one user's progression up to date. The single entry point.
-
-    Everything hangs off this: scoring the day, paying out whatever the day
-    earned, moving the streak, and refreshing the two ranking indexes. It is
-    called from exactly one place in ordinary use — the action counter every
-    write in the product already funnels through — plus onboarding completion,
-    because a day's worth of work can be done before `onboarded` flips.
-
-    Returns what changed, so a caller can decide whether anything is worth
-    telling the user about. Nothing here sends a message: this is a database
-    service, and putting a Telegram call inside it would make every write in
-    the product depend on the network.
 
     Callers commit.
     """
@@ -4086,15 +4404,14 @@ def refresh_progress(s: Session, user_id: int, *, day: date | None = None,
     before_level = get_personal_level(before_xp)["number"]
 
     score_row = recompute_daily_score(s, user_id, ws, day)
+    measured = score_row.measured if score_row.measured is not None else True
     granted = sync_day_xp(s, user_id, ws, day)
 
-    # A Perfect Day is paid once per day, ever — the key carries the date, so
-    # a day that dips back below 90 and climbs again does not pay twice.
-    if score_row.total_score >= PERFECT_DAY_SCORE:
+    if measured and score_row.total_score >= PERFECT_DAY_SCORE:
         granted += award_xp(s, user_id, f"perfect_day:{user_id}:{day}",
                             "perfect_day", XP_VALUES["perfect_day"], day)
 
-    moved = _apply_day_to_streak(progress, day, score_row.total_score)
+    moved = _apply_day_to_streak(progress, day, score_row.total_score, measured)
 
     if moved["comeback"]:
         granted += award_xp(s, user_id, f"comeback:{user_id}:{day}",
@@ -4105,14 +4422,15 @@ def refresh_progress(s: Session, user_id: int, *, day: date | None = None,
                 s, user_id, f"streak_{milestone}:{user_id}:{day}", "streak",
                 XP_VALUES[f"streak_{milestone}"], day)
 
-    # Perfect days are counted from the ledger rather than incremented, so a
-    # recomputed score cannot inflate the count.
     progress.perfect_days = int(s.scalar(select(func.count()).select_from(XPEvent)
                                          .where(XPEvent.user_id == user_id,
                                                 XPEvent.event_type == "perfect_day")) or 0)
     progress.xp_total = xp_total(s, user_id)
     progress.scored_days = int(s.scalar(select(func.count()).select_from(DailyScore)
-                                        .where(DailyScore.user_id == user_id)) or 0)
+                                        .where(DailyScore.user_id == user_id,
+                                               or_(DailyScore.measured.is_(None),
+                                                   DailyScore.measured.is_(True))))
+                               or 0)
     progress.performance_index_30d = performance_index(s, user_id, day,
                                                        RANK_WINDOW_DAYS)
     progress.performance_index_7d = performance_index(s, user_id, day,
@@ -4123,13 +4441,14 @@ def refresh_progress(s: Session, user_id: int, *, day: date | None = None,
 
     return {
         "score": score_row.total_score,
+        "measured": measured,
         "grade": score_row.grade,
         "xp_gained": granted,
         "xp_total": progress.xp_total,
         "level_up": after_level > before_level,
         "level": get_personal_level(progress.xp_total),
         "streak": progress.current_streak or 0,
-        "perfect_day": score_row.total_score >= PERFECT_DAY_SCORE,
+        "perfect_day": measured and score_row.total_score >= PERFECT_DAY_SCORE,
         "achievements": unlocked,
         **moved,
     }
@@ -4138,18 +4457,7 @@ def refresh_progress(s: Session, user_id: int, *, day: date | None = None,
 # ---------------------------------------------------------------------------
 # Achievements
 # ---------------------------------------------------------------------------
-#
-# Definitions live here rather than in a table: each one is a key, a rule and
-# three translations — code, in other words — and a row per definition would
-# mean a migration every time a word changed. `user_achievements` stores only
-# the fact that somebody earned one.
-#
-# Thirteen, and no more for now. A wall of badges is how a progression system
-# stops meaning anything: if everything is an achievement, nothing is.
 
-#: key -> (rule, target) where `rule` reads the progress row and the day.
-#: `target` is what the UI draws a progress bar toward, or None when the
-#: achievement is a single event rather than a count.
 ACHIEVEMENTS = [
     ("first_step",      "scored_days",   1),
     ("perfect_day",     "perfect_days",  1),
@@ -4169,12 +4477,7 @@ ACHIEVEMENTS = [
 
 def _achievement_values(s: Session, user_id: int,
                         progress: UserProgress) -> dict[str, int]:
-    """Every number the achievement rules read, in one pass.
-
-    Deliberately one function rather than a query per achievement: thirteen
-    rules that each go to the database would be thirteen round trips on every
-    single write in the product.
-    """
+    """Every number the achievement rules read, in one pass."""
     counts = dict(s.execute(
         select(XPEvent.event_type, func.count())
         .where(XPEvent.user_id == user_id)
@@ -4201,12 +4504,7 @@ def _achievement_values(s: Session, user_id: int,
 
 def check_achievements(s: Session, user_id: int, progress: UserProgress,
                        score_row: DailyScore) -> list[str]:
-    """Unlock whatever this user has now earned. Returns only what is new.
-
-    The unique constraint on (user_id, achievement_key) is what makes this
-    idempotent, exactly as `event_key` does for XP — so this can run on every
-    write without a "have I already?" check per achievement.
-    """
+    """Unlock whatever this user has now earned. Returns only what is new."""
     values = _achievement_values(s, user_id, progress)
     already = set(s.scalars(select(UserAchievement.achievement_key)
                             .where(UserAchievement.user_id == user_id)).all())
@@ -4215,9 +4513,6 @@ def check_achievements(s: Session, user_id: int, progress: UserProgress,
     for key, field, target in ACHIEVEMENTS:
         if key in already or values.get(field, 0) < target:
             continue
-        # Savepoint for the same reason `award_xp` uses one: this runs in a
-        # loop, and a collision on the fourth achievement must not undo the
-        # three already written in this transaction.
         try:
             with s.begin_nested():
                 s.add(UserAchievement(user_id=user_id, achievement_key=key))
@@ -4233,12 +4528,7 @@ def check_achievements(s: Session, user_id: int, progress: UserProgress,
 
 
 def achievement_state(s: Session, user_id: int) -> list[dict]:
-    """Every achievement, unlocked or not, with progress where it is meaningful.
-
-    Returns all thirteen rather than only the earned ones: a locked achievement
-    with "7 / 30" against it is the part that does the motivating, and a screen
-    that shows only what somebody already has cannot do that.
-    """
+    """Every achievement, unlocked or not, with progress where it is meaningful."""
     progress = s.get(UserProgress, user_id)
     if progress is None:
         values = {}
@@ -4265,20 +4555,9 @@ def achievement_state(s: Session, user_id: int) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Ranking
 # ---------------------------------------------------------------------------
-#
-# One indexed scan of one narrow column, and nothing else. The tempting
-# implementation — aggregate everybody's daily scores when somebody opens their
-# profile — is O(all users x all history) per request, and it is why
-# `user_progress` exists at all. Each user's index is written when their own day
-# changes; ranking only ever reads it.
 
 def _rank_for(s: Session, column, value: float) -> tuple[int, int]:
-    """(rank, eligible users) for a value in one of the index columns.
-
-    Rank is "how many people are strictly ahead, plus one", so equal indexes
-    share a rank — #184, #184, #186. Inventing decimal places to break ties
-    would be precision the underlying numbers do not have.
-    """
+    """(rank, eligible users) for a value in one of the index columns."""
     eligible = int(s.scalar(select(func.count()).select_from(UserProgress)
                             .where(UserProgress.scored_days >= RANK_MIN_DAYS)) or 0)
     ahead = int(s.scalar(select(func.count()).select_from(UserProgress)
@@ -4288,14 +4567,7 @@ def _rank_for(s: Session, column, value: float) -> tuple[int, int]:
 
 
 def global_rank(s: Session, user_id: int) -> dict:
-    """Where this user stands, and whether they stand anywhere yet.
-
-    Ranking unlocks after `RANK_MIN_DAYS` days on record. Before that the
-    payload says how many are left rather than showing a rank built on two
-    days of data — a brand-new account with one 100-point day would otherwise
-    sit at #1 above people with a year behind them, which discredits the board
-    for everybody who can see it.
-    """
+    """Where this user stands, and whether they stand anywhere yet."""
     progress = s.get(UserProgress, user_id)
     if progress is None or (progress.scored_days or 0) < RANK_MIN_DAYS:
         remaining = RANK_MIN_DAYS - ((progress.scored_days or 0) if progress else 0)
@@ -4309,8 +4581,6 @@ def global_rank(s: Session, user_id: int) -> dict:
                           progress.performance_index_7d or 0.0)
 
     previous = progress.last_global_rank
-    # Best only ever improves. Overwriting it with a worse rank would make
-    # "personal best" mean "most recent", which is not what the words say.
     if progress.best_global_rank is None or rank < progress.best_global_rank:
         progress.best_global_rank = rank
     progress.last_global_rank = rank
@@ -4322,26 +4592,19 @@ def global_rank(s: Session, user_id: int) -> dict:
         "weekly": weekly,
         "best": progress.best_global_rank,
         "users": users,
-        # Rounded to whole percent above 1%, one decimal below it — a top-2%
-        # user is not helped by being told 1.4327%.
         "top_percent": (round(rank / users * 100)
                         if users and rank / users * 100 >= 1
                         else round(rank / users * 100, 1) if users else None),
-        # Only reported when there is a real previous rank to compare with.
-        # Inventing movement on a first view would be a number that means
-        # nothing dressed as one that means something.
         "movement": (previous - rank) if previous is not None else None,
     }
 
 
 def progress_snapshot(s: Session, user_id: int, *,
                       tz: ZoneInfo | None = None) -> dict:
-    """Everything the Progress screen shows, for one user, about themselves.
+    """Everything the Progress sheet shows, for one user, about themselves.
 
-    Never takes a user id from the caller's request — the id comes from the
-    verified Telegram identity — so there is no parameter to tamper with and
-    no way to read somebody else's day. What ranking exposes about other people
-    is a count and a position, never a name.
+    A day with nothing measured says so — score and grade are None — instead
+    of handing a new account the bottom grade before it has done anything.
     """
     user = s.get(User, user_id)
     zone = tz or user_tz(user)
@@ -4349,13 +4612,10 @@ def progress_snapshot(s: Session, user_id: int, *,
 
     progress = s.get(UserProgress, user_id)
     if progress is None:
-        # Same shape as the populated payload, down to the breakdown keys. A
-        # client that has to branch on whether a field exists is a client that
-        # will get it wrong on the one screen nobody tests: the first one a new
-        # user ever opens.
         level = get_personal_level(0)
         return {
-            "daily": {"score": 0, "grade": "E", "perfect_day": False,
+            "daily": {"score": None, "grade": None, "measured": False,
+                      "perfect_day": False,
                       "to_perfect": PERFECT_DAY_SCORE,
                       "breakdown": {"tasks": None, "habits": None,
                                     "focus": None, "prayer": None},
@@ -4363,7 +4623,8 @@ def progress_snapshot(s: Session, user_id: int, *,
             "xp": {"total": 0, "today": 0, "cap": XP_DAILY_CAP},
             "level": level,
             "streak": {"current": 0, "best": 0,
-                       "recovery_remaining": RECOVERY_DAYS_PER_MONTH},
+                       "recovery_remaining": RECOVERY_DAYS_PER_MONTH,
+                       "threshold": STREAK_THRESHOLD},
             "rank": global_rank(s, user_id),
             "perfect_days": 0,
             "scored_days": 0,
@@ -4377,14 +4638,16 @@ def progress_snapshot(s: Session, user_id: int, *,
     def part(value: int | None) -> int | None:
         return None if value is None or value < 0 else value
 
+    measured = bool(row) and (row.measured if row.measured is not None else True)
     used = (progress.recovery_used or 0) if progress.recovery_month == _month_key(today) else 0
 
     return {
         "daily": {
-            "score": row.total_score if row else 0,
-            "grade": row.grade if row else "E",
-            "perfect_day": bool(row and row.total_score >= PERFECT_DAY_SCORE),
-            "to_perfect": max(PERFECT_DAY_SCORE - (row.total_score if row else 0), 0),
+            "score": row.total_score if measured else None,
+            "grade": row.grade if measured else None,
+            "measured": measured,
+            "perfect_day": bool(measured and row.total_score >= PERFECT_DAY_SCORE),
+            "to_perfect": max(PERFECT_DAY_SCORE - (row.total_score if measured else 0), 0),
             "breakdown": {
                 "tasks": part(row.task_score if row else None),
                 "habits": part(row.habit_score if row else None),
@@ -4414,7 +4677,9 @@ def platform_progress_stats(s: Session) -> dict:
                           .where(UserProgress.scored_days >= RANK_MIN_DAYS)) or 0)
     today = today_local()
     avg = s.scalar(select(func.avg(DailyScore.total_score))
-                   .where(DailyScore.day == today))
+                   .where(DailyScore.day == today,
+                          or_(DailyScore.measured.is_(None),
+                              DailyScore.measured.is_(True))))
     perfect = int(s.scalar(select(func.count()).select_from(DailyScore).where(
         DailyScore.day == today,
         DailyScore.total_score >= PERFECT_DAY_SCORE)) or 0)
@@ -4451,8 +4716,7 @@ def already_sent(s: Session, ws: int, report_type: str, report_date: date) -> bo
 
 
 #: Returned by `claim_report` when the outbox itself could not be written but
-#: the day was claimed another way. Negative so it can never collide with a
-#: real row id, and so `s.get(DailyReportLog, id)` simply finds nothing.
+#: the day was claimed another way.
 FALLBACK_CLAIM = -1
 
 
@@ -4462,32 +4726,16 @@ def _fallback_claim_name(ws: int, report_type: str) -> str:
 
 
 #: Claims refused by the database for a reason that is not a peer worker.
-#: Read back by `/health/reports` and `/tekshir`, because the symptom of this
-#: is silence and silence is what made it hard to find.
 CLAIM_ANOMALIES: dict = {}
 
 
-#: How many times one report may be attempted in a day before it is given up
-#: on. Three, because the errors worth retrying — a rate limit, a 500, a
-#: dropped connection — clear within minutes, and the ones that are not worth
-#: retrying are marked permanent explicitly rather than by exhausting this.
+#: How many times one report may be attempted in a day before it is given up on.
 REPORT_MAX_ATTEMPTS = 3
 
 
 def claim_report(s: Session, ws: int, report_type: str,
                  report_date: date) -> int | None:
-    """Try to own this report. Returns the outbox id, or None if someone else won.
-
-    The INSERT is the lock: the unique constraint means exactly one worker can
-    succeed, so two schedulers cannot both send (audit 036).
-
-    A row left in `retry` is taken over rather than refused. Without that, one
-    momentary failure — Telegram rate-limiting us, a connection dropped
-    mid-send — cost the user their report for the rest of the day, because the
-    row that recorded the failure was also the row that blocked every later
-    attempt. `sent` and `failed` are still final, so this cannot resend a
-    report that went out or hammer an account that has blocked the bot.
-    """
+    """Try to own this report. Returns the outbox id, or None if someone else won."""
     row = DailyReportLog(workspace_id=ws, report_type=report_type,
                          report_date=report_date, status="claimed")
     s.add(row)
@@ -4502,20 +4750,8 @@ def claim_report(s: Session, ws: int, report_type: str,
         DailyReportLog.report_type == report_type,
         DailyReportLog.report_date == report_date))
     if existing is None:
-        # The insert was rejected, yet nothing occupies this slot. That is not
-        # a peer winning the race — it means the table is carrying a
-        # constraint this code does not know about, most likely a unique index
-        # from an older schema on the wrong columns (workspace and type, with
-        # no date), under which exactly one report per user is ever allowed to
-        # exist and every day after the first is refused. Silently returning
-        # None here, as this used to, makes that indistinguishable from a
-        # normal skip and hides it for ever.
         CLAIM_ANOMALIES["count"] = CLAIM_ANOMALIES.get("count", 0) + 1
         CLAIM_ANOMALIES["last"] = f"{report_type} {report_date} ws={ws}"
-        # Once per report per day, not once per user per tick. Every account
-        # hits this within the same second, and at a two-minute tick that was
-        # thousands of identical lines a night — which buries the one line
-        # that matters and costs real money in log retention.
         seen = f"{report_type}:{report_date}"
         if CLAIM_ANOMALIES.get("reported") != seen:
             CLAIM_ANOMALIES["reported"] = seen
@@ -4529,13 +4765,6 @@ def claim_report(s: Session, ws: int, report_type: str,
                 "logged)",
                 report_type, report_date, ws)
 
-        # The outbox is unusable, but "once a day" does not have to live in
-        # that particular table. `job_runs` carries the same kind of unique
-        # key, is written by a different feature and is not affected — so the
-        # report can still be claimed exactly once and still be delivered.
-        # A degraded mode on purpose: it keeps the product working on a
-        # database whose schema is wrong, instead of going silent and waiting
-        # for somebody to notice.
         if claim_job_run(s, _fallback_claim_name(ws, report_type), report_date):
             return FALLBACK_CLAIM
         return None
@@ -4558,19 +4787,7 @@ def mark_report_sent(s: Session, report_id: int) -> None:
 
 def mark_report_failed(s: Session, report_id: int, error: str, *,
                        permanent: bool = True) -> None:
-    """Record the failure, and decide whether today is over for this report.
-
-    `permanent=True` is the usual case and the old behaviour: the account
-    blocked the bot or no longer exists, neither improves within the day, and
-    retrying every tick would mean hammering Telegram with the same rejection
-    for hours.
-
-    `permanent=False` is for the failures that say nothing about the account —
-    a rate limit, a 500, a timeout. Those used to be filed as permanent too,
-    so a single unlucky second cost the user their whole report. The row is
-    parked in `retry` instead and the next tick picks it up, up to
-    `REPORT_MAX_ATTEMPTS`.
-    """
+    """Record the failure, and decide whether today is over for this report."""
     row = s.get(DailyReportLog, report_id)
     if row is None:
         return
@@ -4584,11 +4801,7 @@ def mark_report_failed(s: Session, report_id: int, error: str, *,
 def release_report(s: Session, report_id: int, *, ws: int | None = None,
                    report_type: str | None = None,
                    report_date: date | None = None) -> None:
-    """Drop a claim entirely, so the next run may try again from scratch.
-
-    The workspace and date are only needed for a claim taken through the
-    `job_runs` fallback, which has no outbox row to delete.
-    """
+    """Drop a claim entirely, so the next run may try again from scratch."""
     if report_id == FALLBACK_CLAIM:
         if ws is not None and report_type and report_date:
             release_job_run(s, _fallback_claim_name(ws, report_type), report_date)
@@ -4600,28 +4813,12 @@ def release_report(s: Session, report_id: int, *, ws: int | None = None,
 
 
 #: How long a row may sit in `claimed` before the next tick treats it as
-#: abandoned. Generous on purpose: a claim is only ever held for as long as it
-#: takes to render one report and hand it to Telegram, so anything still
-#: `claimed` half an hour later belongs to a process that is gone.
+#: abandoned.
 STALE_CLAIM_MINUTES = 30
 
 
 def reclaim_stale_claims(s: Session, report_date: date) -> int:
-    """Free claims whose worker died, and return how many were freed.
-
-    `claim_report` writes `claimed` and the sender marks it `sent` or `failed`
-    afterwards. Between those two writes the process can disappear — a deploy,
-    an OOM kill, a platform restart — and the row is then the worst of both
-    worlds: it satisfies the unique constraint, so no later tick can claim that
-    slot, and nothing ever sends it. That user's report for that day is lost,
-    silently, with no way back. Repeat the deploy each morning and the feature
-    is simply off for them.
-
-    Deleting the row is safe because the once-a-day guarantee never lived in
-    the row's *existence* — it lives in its status. A row that reached `sent`
-    or `failed` is a decision and is left alone; only `claimed` is ambiguous,
-    and only after it is too old to belong to a live sender.
-    """
+    """Free claims whose worker died, and return how many were freed."""
     cutoff = utcnow() - timedelta(minutes=STALE_CLAIM_MINUTES)
     rows = s.scalars(select(DailyReportLog).where(
         DailyReportLog.report_date == report_date,
@@ -4635,14 +4832,7 @@ def reclaim_stale_claims(s: Session, report_date: date) -> int:
 
 
 def claim_job_run(s: Session, job_name: str, run_date: date) -> bool:
-    """Claim today's run of a platform-wide job. True means "you send it".
-
-    The same trick `claim_report` uses, minus the workspace: the INSERT is the
-    lock, so of every tick in every process exactly one gets True and the rest
-    get False. That is what lets a once-a-day job run on a two-minute tick —
-    the schedule stops being the thing that guarantees "once", and a restart at
-    any hour can no longer cost a day.
-    """
+    """Claim today's run of a platform-wide job. True means "you send it"."""
     s.add(JobRun(job_name=job_name, run_date=run_date))
     try:
         s.commit()
@@ -4694,29 +4884,23 @@ def morning_data(s: Session, ws: int, user: User) -> dict:
     focus = list_focus(s, ws, tz=tz)
     top3 = top3_tasks(s, ws, today, tz=tz)
 
-    # What today actually asks for, not what yesterday asked for. The habit
-    # count in this payload used to be yesterday's total under a "today" key,
-    # so a Monday/Wednesday habit was announced on a Tuesday.
-    today_habits = [h for h in list_habits(s, ws, today, tz=tz) if h["due"]]
+    today_habits = [h for h in list_habits(s, ws, today, tz=tz)
+                    if h["due"] and h["scored"]]
 
-    # Yesterday as one comparable number, from the same function every other
-    # surface uses, plus the components behind it.
-    y_components = overall_components(s, ws, yesterday)
-    y_available = [v for v in y_components.values() if v is not None]
-    y_overall = weighted_overall(y_components)
+    y_score = day_score(s, ws, yesterday, tz=tz)
 
     return {
-        # The report opens by greeting somebody, so it needs to know who.
         "name": user.first_name or "",
         "yesterday": {
             "date": yesterday.isoformat(),
-            "overall": y_overall,
-            "measured": bool(y_available),
-            "components": y_components,
+            "overall": y_score["value"],
+            "measured": y_score["measured"],
+            "components": y_score["components"],
             "habits_done": y_done, "habits_total": y_total,
             "prayer_score": y_prayer["score"],
             "prayer_performed": y_prayer["performed"],
             "prayer_required": PRAYER_REQUIRED,
+            "prayer_owed": prayer_owed(s, ws, yesterday),
             "tasks_completed": y_completed, "tasks_missed": y_missed,
             "journal": journal_done(s, ws, yesterday, tz=tz),
         },
@@ -4728,15 +4912,12 @@ def morning_data(s: Session, ws: int, user: User) -> dict:
             "focus": focus,
             "focus_done": sum(1 for f in focus if f["done"]),
             "birthdays": [b for b in list_birthdays(s, ws, within_days=1, tz=tz)],
-            # Every date being counted down to, read out every morning.
             "countdowns": list_countdowns(s, ws, tz=tz, include_past=False),
-            # Today's habits: the ones still to do, and how many are due at
-            # all — a morning report that lists the day's work has to include
-            # the part of it that repeats.
             "habits": [h["name"] for h in today_habits if not h["done"]],
             "habits_done": sum(1 for h in today_habits if h["done"]),
             "habits_total": len(today_habits),
             "prayer_required": PRAYER_REQUIRED,
+            "prayer_owed": prayer_owed(s, ws, today),
         },
     }
 
@@ -4765,26 +4946,23 @@ def evening_data(s: Session, ws: int, user: User) -> dict:
 
     return {
         "date": today.isoformat(),
-        # The same number Home and Statistics show, from the same function.
         "overall": overall_state(s, ws, today),
         "habits_done": done, "habits_total": total,
-        # Only what was actually due today: a Monday/Wednesday habit is not
-        # "still unfinished" on a Tuesday evening.
         "habits_remaining": [h["name"] for h in habits
-                             if h["due"] and not h["done"]],
+                             if h["due"] and not h["done"] and h["scored"]],
         "prayer_score": prayer["score"],
         "prayer_performed": prayer["performed"],
         "prayer_required": PRAYER_REQUIRED,
+        "prayer_owed": prayer_owed(s, ws, today),
         "tasks_completed": completed,
         "tasks_remaining": [t.title for t in remaining],
         "tasks_overdue": [t.title for t in overdue],
         "focus": focus,
         "focus_done": sum(1 for f in focus if f["done"]),
-        # Complete, not merely started: the `Kundalik` habit uses the same
-        # rule, and a report that says "written" beside an unticked habit is
-        # the app disagreeing with itself.
         "journal": journal_done(s, ws, today, tz=tz),
-        # And once more at night: tomorrow is one day closer to each of them.
+        "journal_on": s.scalar(select(Habit.id).where(
+            Habit.workspace_id == ws, Habit.system_key == SYSTEM_JOURNAL,
+            Habit.archived_at.is_(None))) is not None,
         "countdowns": list_countdowns(s, ws, tz=tz, include_past=False),
     }
 
@@ -4792,32 +4970,8 @@ def evening_data(s: Session, ws: int, user: User) -> dict:
 def active_recipients(s: Session) -> list[tuple[int, int, str]]:
     """(telegram_id, workspace_id, language) for every user who should get reports.
 
-    The question this asks is the same one the API and the bot ask before
-    letting somebody in: *is this account allowed through right now?* It used
-    to ask something subtly different — `is_subscribed IS TRUE` — and that was
-    wrong in a way that was invisible from the outside and switched the whole
-    feature off.
-
-    `is_subscribed` is not "may use ErnestOS". It is "Telegram confirmed, at
-    some point, that this account is in the channel", and it is written in
-    exactly two places, both of them behind a *confirmed* membership check.
-    A user inside their free run never reaches one — `check_subscription`
-    returns "free" and stops — and if no channel is configured, nobody ever
-    reaches one at all. So a fully onboarded user whom `trial_state` reports as
-    `gated=False` sat at `is_subscribed=False` forever, matched nothing here,
-    and silently received no morning report, no evening report and no
-    reminders. The suite missed it because its fixtures set the flag by hand.
-
-    The rule below is `dependencies.trial_state` written as SQL, deliberately
-    in the same order:
-
-      * onboarded, always — a half-registered account gets nothing;
-      * no channel configured → everybody qualifies, because there is nothing
-        to gate on;
-      * otherwise → in the channel, **or** still inside the free run.
-
-    Kept as one query rather than a Python loop over every user: this runs on
-    every scheduler tick.
+    The rule is `dependencies.trial_state` written as SQL: onboarded, and
+    either no channel configured, in the channel, or still inside the free run.
     """
     import dependencies as deps
 
@@ -4825,9 +4979,6 @@ def active_recipients(s: Session) -> list[tuple[int, int, str]]:
     if deps.REQUIRED_CHANNEL_ID:
         allowed.append(or_(
             User.is_subscribed.is_(True),
-            # `actions_count` is NULL for rows written before the counter
-            # existed; coalesce so those users read as "free run untouched"
-            # rather than dropping out of the comparison entirely.
             func.coalesce(User.actions_count, 0) < deps.FREE_ACTIONS,
         ))
 
@@ -4842,63 +4993,24 @@ def active_recipients(s: Session) -> list[tuple[int, int, str]]:
 # ---------------------------------------------------------------------------
 # Notification preferences
 # ---------------------------------------------------------------------------
-#
-# Every preference column is nullable, because they were added to live tables.
-# NULL means "never chosen", and these are what it means instead. Reading them
-# through one function is what stops "the default" from being three different
-# things in three files.
 
-#: 07:00, and the previous value is worth recording because it was a bug that
-#: looked like a setting. This was `dtime(4, 0)`, from when the scheduler ran on
-#: the server clock: 04:00 UTC is 09:00 in Tashkent, which is a reasonable hour
-#: to be told about your day. When the scheduler moved to the project clock
-#: (`svc.TZ`, Asia/Tashkent) that same literal silently became four in the
-#: morning. Nothing failed, no error was logged, and the reports went out on
-#: time every day — to people who were asleep, who reported the morning report
-#: as "not arriving" because they only ever saw it hours later under a stack of
-#: other notifications.
-#:
-#: 05:00 matches `DEFAULT_WAKE_TIME` — the report arrives as the day is meant to
-#: start, not an hour before it, and it lands near bomdod for the audience this
-#: is built for. The 90-minute window carries it to 06:30 for anybody who is up
-#: a little later. This is only what NULL means; a chosen time always wins.
+#: 05:00 matches `DEFAULT_WAKE_TIME`. This is only what NULL means; a chosen
+#: time always wins.
 DEFAULT_MORNING_TIME = dtime(5, 0)
-#: 21:30 rather than 21:00: the day's last habits and prayers are usually still
-#: being entered on the hour, and a summary that arrives mid-entry is wrong.
 DEFAULT_EVENING_TIME = dtime(21, 0)
 
-#: How long after its configured time a report may still go out. Past this the
-#: day has moved on, and a morning summary at noon is noise rather than a
-#: report — a user who onboards at 15:00 must not be sent one immediately.
+#: How long after its configured time a report may still go out.
 REPORT_WINDOW = timedelta(minutes=90)
 
 #: How long after its moment a *missed* report may still be delivered.
-#:
-#: The 90-minute window above assumes the process is alive at the moment the
-#: report is owed. On a platform that sleeps an idle service or cycles its
-#: containers, the 05:00 report is exactly the one nothing is awake for: the
-#: user is asleep, no request comes in, and by the time anything runs again the
-#: window has closed and that day's report is gone — permanently, and with no
-#: trace. Habit reminders never showed this because people set them for hours
-#: they are awake, which is also when the service is being used.
-#:
-#: So a report that was never sent stays owed. Six hours is long enough to
-#: cover a night of downtime and short enough that "this morning's summary"
-#: still means this morning. `claim_report` remains the once-a-day guarantee,
-#: so a wider window cannot produce a second copy.
 REPORT_CATCHUP = timedelta(hours=6)
-#: The same idea for task reminders: a phone that was off does not get an alert
-#: about a meeting that started two hours ago. A task reminder is marked sent
-#: the moment it goes out, so a generous window cannot produce a duplicate.
+#: The same idea for task reminders.
 REMINDER_WINDOW = timedelta(minutes=30)
 
-#: How often the reminder job runs. The scheduler reads this, so the interval
-#: and the windows below cannot drift apart.
+#: How often the reminder job runs.
 REMINDER_JOB_MINUTES = 5
 
-#: Habit reminders have nothing to mark — a habit has one row per day and it
-#: means "done", not "reminded" — so their window is exactly one job interval.
-#: Any wider and every pass inside the window would send the nudge again.
+#: Habit reminders' window is exactly one job interval.
 HABIT_REMINDER_WINDOW = timedelta(minutes=REMINDER_JOB_MINUTES)
 
 
@@ -4911,8 +5023,6 @@ def prefs_for(user: User) -> dict:
         "evening_report": True if user.evening_report is None else bool(user.evening_report),
         "evening_time": (user.evening_time or DEFAULT_EVENING_TIME).strftime("%H:%M"),
         "task_reminders": True if user.task_reminders is None else bool(user.task_reminders),
-        # Off by default: a habit reminder every day is the fastest way to teach
-        # someone to ignore the app's notifications.
         "habit_reminders": False if user.habit_reminders is None else bool(user.habit_reminders),
     }
 
@@ -4921,7 +5031,6 @@ def save_prefs(s: Session, user: User, **fields) -> dict:
     """Write notification settings. Unknown or malformed values are ignored."""
     if "timezone" in fields and fields["timezone"]:
         name = str(fields["timezone"])[:40]
-        # Only store a zone the platform can actually resolve.
         try:
             ZoneInfo(name)
         except Exception:
@@ -4939,12 +5048,7 @@ def save_prefs(s: Session, user: User, **fields) -> dict:
 
 
 def report_is_due(user: User, report_type: str, now: datetime) -> bool:
-    """Whether this user's report should go out at this local moment.
-
-    A window rather than an exact match, so a scheduler that runs every few
-    minutes — or recovers from a restart — still delivers exactly once. The
-    once-per-day guarantee itself comes from `claim_report`, not from here.
-    """
+    """Whether this user's report should go out at this local moment."""
     prefs = prefs_for(user)
     if report_type == "morning":
         if not prefs["morning_report"]:
@@ -4959,25 +5063,14 @@ def report_is_due(user: User, report_type: str, now: datetime) -> bool:
     if now < scheduled:
         return False
 
-    # Never past the end of the user's own day: a report belongs to the day it
-    # describes, and tomorrow's tick will be claiming tomorrow's slot.
     end_of_day = datetime.combine(now.date(), dtime(23, 59, 59))
     limit = min(scheduled + REPORT_CATCHUP, end_of_day)
-    # Past the limit the day has moved on, and this is also what stops an
-    # account registered at 15:00 from being greeted with a summary of a
-    # morning it was not there for: 15:00 is long past 05:00 plus the
-    # catch-up.
     return now <= limit
 
 
 def due_task_reminders(s: Session, ws: int, user: User,
                        now: datetime | None = None) -> list[dict]:
-    """Tasks whose reminder is due now and has not been sent.
-
-    A reminder for a task that is already done is never returned: the point of
-    the reminder has passed, and sending it anyway is what teaches people to
-    mute the bot.
-    """
+    """Tasks whose reminder is due now and has not been sent."""
     if not prefs_for(user)["task_reminders"]:
         return []
 
@@ -5039,13 +5132,7 @@ def due_habit_reminders(s: Session, ws: int, user: User,
 def mark_habit_reminder_sent(s: Session, ws: int, habit_id: int,
                              day: date | None = None,
                              tz: ZoneInfo | None = None) -> None:
-    """Record that today's nudge for this habit has gone out.
-
-    Writes the day's log row if it does not exist yet, with `done=False`: the
-    row means "this habit has a state today", and being reminded is part of
-    that state. `toggle_habit` updates the same row rather than adding another,
-    because (habit_id, day) is unique.
-    """
+    """Record that today's nudge for this habit has gone out."""
     day = day or today_local(tz)
     row = s.scalar(select(HabitLog).where(
         HabitLog.workspace_id == ws, HabitLog.habit_id == habit_id,
@@ -5087,8 +5174,6 @@ def platform_stats(s: Session) -> dict:
         "onboarded": onboarded,
         "subscribed": subscribed,
         "blocked": max(onboarded - subscribed, 0),
-        # "Today" is the operator's day, in the platform's own zone, and the
-        # timestamps are UTC — so the window is converted rather than compared.
         "dau": count(User, User.last_active_at >= day_from,
                      User.last_active_at < day_to),
         "wau": count(User, User.last_active_at >= week_ago),
@@ -5101,13 +5186,10 @@ def platform_stats(s: Session) -> dict:
                             Task.completed_at >= week_ago),
         "journal_today": count(JournalEntry, JournalEntry.day == today),
         "feedback_week": count(Feedback, Feedback.created_at >= week_ago),
+        "teams": count(Team, Team.archived_at.is_(None)),
         "languages": languages,
         "genders": genders,
-        # Growth, aggregate only — counts and a conversion rate, never who
-        # invited whom. Two grouped queries over an indexed column.
         **platform_referral_stats(s),
-        # Progression, aggregate only — averages and counts, never a name and
-        # never one person's day.
         **platform_progress_stats(s),
     }
 
@@ -5116,46 +5198,24 @@ def platform_stats(s: Session) -> dict:
 # Scheduler coordination
 # ---------------------------------------------------------------------------
 
-#: Stable per-job key for pg_try_advisory_lock. Any two instances computing it
-#: from the same job name land on the same number.
 def _lock_key(name: str) -> int:
     import zlib
     return zlib.crc32(name.encode()) - 2**31
 
 
 #: How many consecutive ticks may be refused the lock before that is treated
-#: as a stuck lock rather than a busy peer. At a two-minute tick this is about
-#: twenty minutes, which no healthy report batch comes close to.
+#: as a stuck lock rather than a busy peer.
 LOCK_REFUSAL_ALARM = 10
 
-#: Per-job count of consecutive refusals, for the warning above and for
-#: `/health/ready` to read back.
+#: Per-job count of consecutive refusals.
 LOCK_REFUSALS: dict[str, int] = {}
 
 
 class JobLock:
     """Hold a PostgreSQL advisory lock for the duration of one job run.
 
-    Two instances of the app would otherwise both fire the same job. The loser
-    exits quietly instead of sending a second copy (audit 032). On SQLite there
-    is nothing to coordinate, so the lock is always granted.
-
-    The lock is **transaction**-scoped, and that is the whole point.
-    `pg_try_advisory_lock` — what this used to call — is scoped to the
-    *connection*, and a connection is a pooled resource that this class does
-    not own. Releasing it was an explicit statement in `__exit__`, so any
-    failure on the way out (the unlock itself, or the commit after it) fell
-    through to `finally: close()` and handed the connection back to the pool
-    **still holding the lock**. Nothing afterwards knew to release it: every
-    later tick asked on some other connection, got False, and skipped the batch
-    without sending anything — for every user, silently, until the process
-    happened to restart. A single failed unlock could switch reports off for
-    days.
-
-    `pg_try_advisory_xact_lock` cannot leak that way, because PostgreSQL
-    releases it when the transaction ends, however it ends — commit, rollback,
-    a dropped connection or a killed process. The job body runs inside that
-    open transaction, which is already how this worked.
+    Transaction-scoped (`pg_try_advisory_xact_lock`), so it cannot leak: it is
+    released when the transaction ends, however it ends.
     """
 
     def __init__(self, session_factory, name: str):
@@ -5178,8 +5238,6 @@ class JobLock:
         else:
             refusals = LOCK_REFUSALS.get(self._name, 0) + 1
             LOCK_REFUSALS[self._name] = refusals
-            # One refusal is a peer instance doing the work, which is the
-            # feature. Twenty minutes of them is not, and used to be invisible.
             if refusals >= LOCK_REFUSAL_ALARM:
                 log.warning(
                     "job %s has been refused its lock %s times in a row — "
@@ -5192,8 +5250,6 @@ class JobLock:
     def __exit__(self, *exc) -> None:
         if self._session is None:
             return
-        # Ending the transaction is what releases the lock, so this needs no
-        # unlock statement and cannot fail to run one.
         try:
             self._session.rollback()
         except Exception:
@@ -5212,28 +5268,47 @@ class JobLock:
 # deliberately narrow:
 #
 #   * **Membership is the only key.** Every function here takes the acting
-#     user and refuses anything they are not a member of. There is no team
-#     equivalent of "workspace_id came from the request body".
-#   * **The item is shared, the tick is not.** Either member may add, edit or
-#     archive a task; neither can tick it for the other. That is what lets a
-#     report say what each of them actually did.
+#     user and refuses anything they are not a member of.
+#   * **The item is shared, the tick is not.** Each member ticks their own
+#     share — and a task says, when it is made, whether one person's tick
+#     closes it for everybody, or whether only named people owe it.
+#   * **Roles.** The owner can do everything and is the only one who hands
+#     roles out or hands the team over; an admin manages the team and its
+#     items; a member adds work and edits what they themselves added.
+#   * **History is fixed.** A member is owed only the days they were in the
+#     team, an archived item keeps the days before it was archived, and a
+#     closed day is read from its snapshot.
 #   * **Nothing leaks into private space.** No query in this section touches
-#     `workspace_id`, and no workspace query touches a team table, so joining
-#     a team reveals nothing about anyone's own lists.
+#     another person's workspace except to read the three rituals a team
+#     mirrors, and those only as done / not done.
 
-#: A shared space is for people working together, not an audience. Small
-#: enough that the reports stay readable and nobody has to scroll a roster.
-#: A product decision rather than a deployment knob, so it is a constant here
-#: instead of an environment variable — settings live in `config`.
+#: A shared space is for people working together, not an audience.
 MAX_TEAM_MEMBERS = 8
-#: How many teams one account may belong to, so a single user cannot be
-#: dragged into an unbounded number of daily summaries.
+#: How many teams one account may belong to.
 MAX_TEAMS_PER_USER = 5
 #: Bytes of randomness in an invite code.
 TEAM_CODE_BYTES = 9
-#: The longest a team name may be. Long enough for "Ernest va Gulyora", short
-#: enough to sit on one line of a report.
+#: The longest a team name may be.
 TEAM_NAME_MAX = 60
+#: How long an invite link works. Long enough to be opened the next evening,
+#: short enough that a link left in an old chat stops being a way in.
+TEAM_INVITE_TTL = timedelta(hours=72)
+
+TEAM_ROLES = ("owner", "admin", "member")
+_ROLE_RANK = {"member": 0, "admin": 1, "owner": 2}
+
+#: How much a team may message a member:
+#:   all        changes, reports and reminders
+#:   important  reports and reminders, not every added or removed item
+#:   assigned   only reminders for tasks that name them
+#:   off        nothing from this team
+NOTIFY_LEVELS = ("all", "important", "assigned", "off")
+
+#: Who has to do a shared task, and when it is done.
+COMPLETION_POLICIES = ("all", "any", "assignees")
+
+#: How far back a member's team streak is walked.
+TEAM_STREAK_HORIZON = 120
 
 
 def clean_team_name(name: str | None) -> str:
@@ -5241,8 +5316,21 @@ def clean_team_name(name: str | None) -> str:
     return " ".join(str(name or "").split())[:TEAM_NAME_MAX].strip()
 
 
+def _log_team(s: Session, team_id: int, actor_id: int, action: str,
+              subject: str = "", kind: str = "", item_id: int | None = None) -> None:
+    """One line in the team's activity. The caller commits."""
+    s.add(TeamActivity(team_id=team_id, actor_id=actor_id, action=action[:24],
+                       subject=(subject or "")[:300], item_kind=kind[:10],
+                       item_id=item_id))
+
+
 def create_team(s: Session, user_id: int, name: str) -> Team:
-    """Start a team, with its creator as the first member and its owner."""
+    """Start a team, with its creator as the first member and its owner.
+
+    A new team starts empty. It used to be seeded with the personal rituals —
+    getting up, prayer, the journal — as separate shared habits, which meant
+    one prayer was ticked once privately and again in every team.
+    """
     name = clean_team_name(name)
     if not name:
         raise ValueError("empty_name")
@@ -5251,11 +5339,10 @@ def create_team(s: Session, user_id: int, name: str) -> Team:
 
     for _ in range(5):
         team = Team(name=name, owner_id=user_id,
-                    code=secrets.token_urlsafe(TEAM_CODE_BYTES))
+                    code=secrets.token_urlsafe(TEAM_CODE_BYTES),
+                    code_expires_at=utcnow() + TEAM_INVITE_TTL)
         s.add(team)
         try:
-            # A SAVEPOINT, so a collided code cannot roll back whatever the
-            # caller was already doing.
             with s.begin_nested():
                 s.flush()
             break
@@ -5265,26 +5352,18 @@ def create_team(s: Session, user_id: int, name: str) -> Team:
         raise RuntimeError("could not allocate a team code")
 
     s.add(TeamMember(team_id=team.id, user_id=user_id, role="owner"))
-    seed_team_rituals(s, team.id, user_id)
+    _log_team(s, team.id, user_id, "create", name)
     s.commit()
     return team
 
 
-#: What every team starts with, and it is the personal set on purpose. A shared
-#: space that could only hold "tasks we both agreed on" would be a to-do list
-#: with two names on it; the point of doing this with somebody is that the
-#: whole programme is shared — you both get up, you both pray, you both write
-#: the day down — and each of you ticks your own.
+#: The rituals a team may mirror. Kept for migrations and older teams: a team
+#: that already has them reads each member's own habit rather than a tick.
 DEFAULT_TEAM_HABITS = DEFAULT_HABITS
 
 
 def seed_team_rituals(s: Session, team_id: int, created_by: int) -> int:
-    """Put the ritual habits into a team. Idempotent; returns how many it added.
-
-    Protected, like their personal counterparts: these are the spine of the
-    programme, and a team where one member can delete "namoz" for both of them
-    is not a shared commitment.
-    """
+    """Put the mirrored rituals into a team. Idempotent; returns how many it added."""
     existing = {h.system_key for h in s.scalars(select(TeamHabit).where(
         TeamHabit.team_id == team_id,
         TeamHabit.system_key != "")).all()}
@@ -5302,13 +5381,41 @@ def seed_team_rituals(s: Session, team_id: int, created_by: int) -> int:
 
 
 def teams_for(s: Session, user_id: int) -> list[Team]:
-    """Every live team this user belongs to, oldest first."""
+    """Every live team this user is currently in, oldest first."""
+    if user_id is None:
+        return []
     return list(s.scalars(
         select(Team)
         .join(TeamMember, TeamMember.team_id == Team.id)
-        .where(TeamMember.user_id == user_id, Team.archived_at.is_(None))
+        .where(TeamMember.user_id == user_id, TeamMember.left_at.is_(None),
+               Team.archived_at.is_(None))
         .order_by(Team.created_at)
     ).all())
+
+
+def teams_for_on(s: Session, user_id: int, day: date, *,
+                 tz: ZoneInfo | None = None) -> list[Team]:
+    """Every team this user was a member of on `day` — including ones since left."""
+    if user_id is None:
+        return []
+    rows = s.execute(
+        select(Team, TeamMember)
+        .join(TeamMember, TeamMember.team_id == Team.id)
+        .where(TeamMember.user_id == user_id)
+        .order_by(Team.created_at)).all()
+    out = []
+    for team, member in rows:
+        joined = local_date_of(member.joined_at, tz)
+        left = local_date_of(member.left_at, tz)
+        archived = local_date_of(team.archived_at, tz)
+        if joined is not None and day < joined:
+            continue
+        if left is not None and day >= left:
+            continue
+        if archived is not None and day >= archived:
+            continue
+        out.append(team)
+    return out
 
 
 def team_for(s: Session, user_id: int, team_id: int) -> Team | None:
@@ -5317,7 +5424,7 @@ def team_for(s: Session, user_id: int, team_id: int) -> Team | None:
         select(Team)
         .join(TeamMember, TeamMember.team_id == Team.id)
         .where(Team.id == team_id, Team.archived_at.is_(None),
-               TeamMember.user_id == user_id)
+               TeamMember.user_id == user_id, TeamMember.left_at.is_(None))
     )
 
 
@@ -5328,29 +5435,77 @@ def _require_team(s: Session, user_id: int, team_id: int) -> Team:
     return team
 
 
+def _membership(s: Session, team_id: int, user_id: int) -> TeamMember | None:
+    return s.scalar(select(TeamMember).where(
+        TeamMember.team_id == team_id, TeamMember.user_id == user_id,
+        TeamMember.left_at.is_(None)))
+
+
+def role_of(s: Session, team_id: int, user_id: int) -> str | None:
+    row = _membership(s, team_id, user_id)
+    if row is None:
+        return None
+    return row.role if row.role in TEAM_ROLES else "member"
+
+
+def _require_role(s: Session, user_id: int, team_id: int, minimum: str) -> Team:
+    team = _require_team(s, user_id, team_id)
+    role = role_of(s, team_id, user_id) or "member"
+    if _ROLE_RANK[role] < _ROLE_RANK[minimum]:
+        raise PermissionError("forbidden")
+    return team
+
+
+def _may_manage(s: Session, user_id: int, team_id: int, created_by: int | None) -> bool:
+    """The creator of an item, or an admin or the owner of its team."""
+    if created_by == user_id:
+        return True
+    role = role_of(s, team_id, user_id) or "member"
+    return _ROLE_RANK[role] >= _ROLE_RANK["admin"]
+
+
+def _require_manage(s: Session, user_id: int, team_id: int,
+                    created_by: int | None) -> None:
+    if not _may_manage(s, user_id, team_id, created_by):
+        raise PermissionError("forbidden")
+
+
+def team_permissions(s: Session, team_id: int, user_id: int) -> dict:
+    """What this member may do, for the screen to show only live controls."""
+    role = role_of(s, team_id, user_id) or "member"
+    rank = _ROLE_RANK[role]
+    return {"role": role,
+            "rename": rank >= 1, "invite": rank >= 1, "approve": rank >= 1,
+            "manage_items": rank >= 1, "roles": rank >= 2, "transfer": rank >= 2,
+            "remove_members": rank >= 1}
+
+
+def _display_name(user: User | None, fallback: str = "?") -> str:
+    if user is None:
+        return fallback
+    name = (user.first_name or "").strip() or (user.username or "").strip()
+    return name or f"#{user.member_no}"
+
+
 def team_members(s: Session, team_id: int) -> list[dict]:
-    """Who is in the team, with the name each of them is shown under."""
+    """Who is in the team now, with the name each of them is shown under."""
     rows = s.execute(
         select(TeamMember, User)
         .join(User, User.telegram_id == TeamMember.user_id)
-        .where(TeamMember.team_id == team_id)
+        .where(TeamMember.team_id == team_id, TeamMember.left_at.is_(None))
         .order_by(TeamMember.joined_at)
     ).all()
-    out = []
-    for member, user in rows:
-        name = (user.first_name or "").strip() or (user.username or "").strip()
-        out.append({"user_id": member.user_id, "role": member.role,
-                    "name": name or f"#{user.member_no}",
-                    "joined_at": member.joined_at})
-    return out
+    return [{"user_id": member.user_id,
+             "role": member.role if member.role in TEAM_ROLES else "member",
+             "name": _display_name(user),
+             "joined_at": member.joined_at,
+             "notify": member.notify if member.notify in NOTIFY_LEVELS else "all",
+             "language": user.language or "uz"}
+            for member, user in rows]
 
 
 def parse_team_payload(payload: str | None) -> str | None:
-    """`team_<code>` -> `<code>`, or None for anything else.
-
-    Total, like `parse_referral_payload`: every other start parameter, and
-    every malformed one, simply is not a team invite.
-    """
+    """`team_<code>` -> `<code>`, or None for anything else."""
     value = (payload or "").strip()
     if not value.startswith("team_"):
         return None
@@ -5358,90 +5513,17 @@ def parse_team_payload(payload: str | None) -> str | None:
     return code or None
 
 
-def join_team(s: Session, user_id: int, code: str) -> tuple[Team | None, str]:
-    """Accept an invite. Returns (team, outcome).
-
-    Outcomes: "joined", "already", "full", "unknown". Never raises on a bad
-    code — a stale or mistyped link is an ordinary thing for a user to have,
-    not an error for the caller to handle.
-    """
-    code = (code or "").strip()
-    if not code:
-        return None, "unknown"
-    team = s.scalar(select(Team).where(Team.code == code,
-                                       Team.archived_at.is_(None)))
-    if team is None:
-        return None, "unknown"
-
-    existing = s.scalar(select(TeamMember).where(
-        TeamMember.team_id == team.id, TeamMember.user_id == user_id))
-    if existing is not None:
-        return team, "already"
-
-    count = s.scalar(select(func.count()).select_from(TeamMember)
-                     .where(TeamMember.team_id == team.id)) or 0
-    if count >= MAX_TEAM_MEMBERS:
-        return team, "full"
-    if len(teams_for(s, user_id)) >= MAX_TEAMS_PER_USER:
-        return team, "full"
-
-    s.add(TeamMember(team_id=team.id, user_id=user_id, role="member"))
-    try:
-        with s.begin_nested():
-            s.flush()
-    except IntegrityError:
-        # Two taps on the same link in the same second.
-        s.rollback()
-        return team, "already"
-    s.commit()
-    return team, "joined"
+def _ensure_invite_window(team: Team) -> None:
+    """A team from before invites expired gets one fresh window, once."""
+    if team.code_expires_at is None:
+        team.code_expires_at = utcnow() + TEAM_INVITE_TTL
 
 
-def rename_team(s: Session, user_id: int, team_id: int, name: str) -> Team:
-    """Rename a team. Any member may do it.
-
-    Deliberately not owner-only: a shared space belongs to the people in it,
-    and for the two-person case this is built around, "ask him to rename it"
-    is friction with no safety behind it.
-    """
-    team = _require_team(s, user_id, team_id)
-    cleaned = clean_team_name(name)
-    if not cleaned:
-        raise ValueError("empty_name")
-    team.name = cleaned
-    s.commit()
-    return team
-
-
-def leave_team(s: Session, user_id: int, team_id: int) -> bool:
-    """Leave a team. The last member out archives it.
-
-    The owner leaving hands ownership to the longest-standing member rather
-    than dissolving the team under everybody else — the person who set it up
-    is not necessarily the person who keeps using it.
-    """
-    team = team_for(s, user_id, team_id)
-    if team is None:
-        return False
-    row = s.scalar(select(TeamMember).where(
-        TeamMember.team_id == team_id, TeamMember.user_id == user_id))
-    if row is None:
-        return False
-    s.delete(row)
-    s.flush()
-
-    remaining = team_members(s, team_id)
-    if not remaining:
-        team.archived_at = utcnow()
-    elif team.owner_id == user_id:
-        team.owner_id = remaining[0]["user_id"]
-        heir = s.scalar(select(TeamMember).where(
-            TeamMember.team_id == team_id,
-            TeamMember.user_id == remaining[0]["user_id"]))
-        if heir is not None:
-            heir.role = "owner"
-    s.commit()
-    return True
+def invite_info(team: Team) -> dict:
+    expires = team.code_expires_at
+    return {"expires_at": expires.isoformat() if expires else None,
+            "expired": bool(expires and expires <= utcnow()),
+            "approval": bool(team.approval_required)}
 
 
 def team_invite_link(team: Team, bot_username: str) -> str | None:
@@ -5451,6 +5533,396 @@ def team_invite_link(team: Team, bot_username: str) -> str | None:
     return f"https://t.me/{bot_username}?start=team_{team.code}"
 
 
+def preview_invite(s: Session, code: str) -> dict | None:
+    """What joining would mean — the screen shown before anybody joins."""
+    code = (code or "").strip()
+    if not code:
+        return None
+    team = s.scalar(select(Team).where(Team.code == code,
+                                       Team.archived_at.is_(None)))
+    if team is None:
+        return None
+    _ensure_invite_window(team)
+    s.commit()
+    owner = s.get(User, team.owner_id)
+    members = team_members(s, team.id)
+    return {"team_id": team.id, "name": team.name, "code": team.code,
+            "owner": _display_name(owner), "members": len(members),
+            "max_members": MAX_TEAM_MEMBERS, **invite_info(team)}
+
+
+def join_team(s: Session, user_id: int, code: str) -> tuple[Team | None, str]:
+    """Accept an invite. Returns (team, outcome).
+
+    Outcomes: "joined", "already", "full", "unknown", "expired", "requested".
+    Never raises on a bad code — a stale or mistyped link is an ordinary thing
+    for a user to have. The caller shows the preview and asks first; this is
+    the step after "Qo'shilish".
+    """
+    code = (code or "").strip()
+    if not code:
+        return None, "unknown"
+    team = s.scalar(select(Team).where(Team.code == code,
+                                       Team.archived_at.is_(None)))
+    if team is None:
+        return None, "unknown"
+    _ensure_invite_window(team)
+    if team.code_expires_at <= utcnow():
+        s.commit()
+        return team, "expired"
+
+    existing = s.scalar(select(TeamMember).where(
+        TeamMember.team_id == team.id, TeamMember.user_id == user_id))
+    if existing is not None and existing.left_at is None:
+        return team, "already"
+
+    count = s.scalar(select(func.count()).select_from(TeamMember)
+                     .where(TeamMember.team_id == team.id,
+                            TeamMember.left_at.is_(None))) or 0
+    if count >= MAX_TEAM_MEMBERS:
+        return team, "full"
+    if len(teams_for(s, user_id)) >= MAX_TEAMS_PER_USER:
+        return team, "full"
+
+    if team.approval_required:
+        pending = s.scalar(select(TeamJoinRequest).where(
+            TeamJoinRequest.team_id == team.id, TeamJoinRequest.user_id == user_id,
+            TeamJoinRequest.status == "pending"))
+        if pending is None:
+            s.add(TeamJoinRequest(team_id=team.id, user_id=user_id))
+            s.commit()
+        return team, "requested"
+
+    return team, _admit(s, team, user_id, existing)
+
+
+def _admit(s: Session, team: Team, user_id: int,
+           existing: TeamMember | None = None) -> str:
+    if existing is not None:
+        # Coming back: a new stretch of membership, from now.
+        existing.left_at = None
+        existing.joined_at = utcnow()
+        existing.role = "member"
+    else:
+        s.add(TeamMember(team_id=team.id, user_id=user_id, role="member"))
+        try:
+            with s.begin_nested():
+                s.flush()
+        except IntegrityError:
+            s.rollback()
+            return "already"
+    _log_team(s, team.id, user_id, "join", _display_name(s.get(User, user_id)))
+    s.commit()
+    return "joined"
+
+
+def list_join_requests(s: Session, user_id: int, team_id: int) -> list[dict]:
+    _require_role(s, user_id, team_id, "admin")
+    rows = s.execute(select(TeamJoinRequest, User)
+                     .join(User, User.telegram_id == TeamJoinRequest.user_id)
+                     .where(TeamJoinRequest.team_id == team_id,
+                            TeamJoinRequest.status == "pending")
+                     .order_by(TeamJoinRequest.created_at)).all()
+    return [{"id": r.id, "user_id": r.user_id, "name": _display_name(u),
+             "created_at": r.created_at.isoformat()} for r, u in rows]
+
+
+def decide_join_request(s: Session, user_id: int, request_id: int,
+                        approve: bool) -> tuple[TeamJoinRequest, Team, str]:
+    """Approve or decline one request. Returns (request, team, outcome)."""
+    request = s.get(TeamJoinRequest, request_id)
+    if request is None or request.status != "pending":
+        raise ValueError("unknown_request")
+    team = _require_role(s, user_id, request.team_id, "admin")
+    request.decided_at = utcnow()
+    request.decided_by = user_id
+    if not approve:
+        request.status = "declined"
+        s.commit()
+        return request, team, "declined"
+    count = s.scalar(select(func.count()).select_from(TeamMember)
+                     .where(TeamMember.team_id == team.id,
+                            TeamMember.left_at.is_(None))) or 0
+    if count >= MAX_TEAM_MEMBERS:
+        request.status = "declined"
+        s.commit()
+        return request, team, "full"
+    request.status = "approved"
+    existing = s.scalar(select(TeamMember).where(
+        TeamMember.team_id == team.id, TeamMember.user_id == request.user_id))
+    outcome = _admit(s, team, request.user_id, existing)
+    return request, team, "approved" if outcome == "joined" else outcome
+
+
+def renew_invite(s: Session, user_id: int, team_id: int) -> Team:
+    """A new link, working for the next three days. The old one stops at once."""
+    team = _require_role(s, user_id, team_id, "admin")
+    for _ in range(5):
+        team.code = secrets.token_urlsafe(TEAM_CODE_BYTES)
+        team.code_expires_at = utcnow() + TEAM_INVITE_TTL
+        try:
+            with s.begin_nested():
+                s.flush()
+            break
+        except IntegrityError:
+            continue
+    _log_team(s, team.id, user_id, "invite_renew")
+    s.commit()
+    return team
+
+
+def revoke_invite(s: Session, user_id: int, team_id: int) -> Team:
+    """No link works any more until a new one is made."""
+    team = _require_role(s, user_id, team_id, "admin")
+    team.code = secrets.token_urlsafe(TEAM_CODE_BYTES)
+    team.code_expires_at = utcnow()
+    _log_team(s, team.id, user_id, "invite_revoke")
+    s.commit()
+    return team
+
+
+def set_invite_approval(s: Session, user_id: int, team_id: int, on: bool) -> Team:
+    team = _require_role(s, user_id, team_id, "admin")
+    team.approval_required = bool(on)
+    _log_team(s, team.id, user_id, "approval_on" if on else "approval_off")
+    s.commit()
+    return team
+
+
+def rename_team(s: Session, user_id: int, team_id: int, name: str) -> Team:
+    """Rename a team. The owner or an admin may; the change is logged."""
+    team = _require_role(s, user_id, team_id, "admin")
+    cleaned = clean_team_name(name)
+    if not cleaned:
+        raise ValueError("empty_name")
+    team.name = cleaned
+    _log_team(s, team.id, user_id, "rename", cleaned)
+    s.commit()
+    return team
+
+
+def leave_team(s: Session, user_id: int, team_id: int) -> bool:
+    """Leave a team. The last member out archives it.
+
+    The owner cannot simply walk out on everybody else: ownership is handed to
+    a member who accepts it first, so nobody finds themselves in charge of a
+    team without having said yes. Raises ValueError("owner_must_transfer").
+    """
+    team = team_for(s, user_id, team_id)
+    if team is None:
+        return False
+    row = _membership(s, team_id, user_id)
+    if row is None:
+        return False
+    others = [m for m in team_members(s, team_id) if m["user_id"] != user_id]
+    if team.owner_id == user_id and others:
+        raise ValueError("owner_must_transfer")
+    row.left_at = utcnow()
+    _log_team(s, team.id, user_id, "leave", _display_name(s.get(User, user_id)))
+    if not others:
+        team.archived_at = utcnow()
+    s.commit()
+    return True
+
+
+def set_member_role(s: Session, actor_id: int, team_id: int, member_id: int,
+                    role: str) -> dict:
+    """The owner makes a member an admin, or an admin a member again."""
+    team = _require_role(s, actor_id, team_id, "owner")
+    if role not in ("admin", "member"):
+        raise ValueError("bad_role")
+    row = _membership(s, team_id, member_id)
+    if row is None or member_id == team.owner_id:
+        raise ValueError("unknown_member")
+    row.role = role
+    _log_team(s, team.id, actor_id, "role",
+              f"{_display_name(s.get(User, member_id))}: {role}")
+    s.commit()
+    return {"user_id": member_id, "role": role}
+
+
+def remove_member(s: Session, actor_id: int, team_id: int, member_id: int) -> bool:
+    """Take somebody out of a team. Admins remove members; the owner, anybody."""
+    team = _require_role(s, actor_id, team_id, "admin")
+    if member_id == team.owner_id or member_id == actor_id:
+        raise ValueError("cannot_remove")
+    row = _membership(s, team_id, member_id)
+    if row is None:
+        return False
+    actor_role = role_of(s, team_id, actor_id)
+    if row.role == "admin" and actor_role != "owner":
+        raise PermissionError("forbidden")
+    row.left_at = utcnow()
+    _log_team(s, team.id, actor_id, "remove", _display_name(s.get(User, member_id)))
+    s.commit()
+    return True
+
+
+def offer_ownership(s: Session, owner_id: int, team_id: int, member_id: int) -> Team:
+    """Offer the team to a member. Nothing changes until they accept."""
+    team = _require_role(s, owner_id, team_id, "owner")
+    if member_id == owner_id or _membership(s, team_id, member_id) is None:
+        raise ValueError("unknown_member")
+    team.pending_owner_id = member_id
+    _log_team(s, team.id, owner_id, "transfer_offer",
+              _display_name(s.get(User, member_id)))
+    s.commit()
+    return team
+
+
+def answer_ownership(s: Session, user_id: int, team_id: int, accept: bool) -> Team:
+    """Accept or decline an ownership offer made to this user."""
+    team = _require_team(s, user_id, team_id)
+    if team.pending_owner_id != user_id:
+        raise ValueError("no_offer")
+    team.pending_owner_id = None
+    if accept:
+        old = _membership(s, team_id, team.owner_id)
+        new = _membership(s, team_id, user_id)
+        if old is not None:
+            old.role = "admin"
+        if new is not None:
+            new.role = "owner"
+        team.owner_id = user_id
+        _log_team(s, team.id, user_id, "transfer_accept",
+                  _display_name(s.get(User, user_id)))
+    else:
+        _log_team(s, team.id, user_id, "transfer_decline")
+    s.commit()
+    return team
+
+
+def set_team_notify(s: Session, user_id: int, team_id: int, level: str) -> str:
+    """How much this team may message this member. Only their own setting."""
+    _require_team(s, user_id, team_id)
+    if level not in NOTIFY_LEVELS:
+        raise ValueError("bad_level")
+    row = _membership(s, team_id, user_id)
+    row.notify = level
+    s.commit()
+    return level
+
+
+#: Which notify levels hear which kind of message.
+_NOTIFY_HEARS = {
+    "change": {"all"},
+    "join": {"all"},
+    "report": {"all", "important"},
+    "reminder": {"all", "important"},
+}
+
+
+def team_recipients(s: Session, team_id: int, except_user: int | None,
+                    event: str) -> list[tuple[int, str]]:
+    """(user_id, language) of every member who wants this kind of message."""
+    hears = _NOTIFY_HEARS.get(event, {"all"})
+    return [(m["user_id"], m["language"]) for m in team_members(s, team_id)
+            if m["user_id"] != except_user and m["notify"] in hears]
+
+
+def member_notify(s: Session, team_id: int, user_id: int) -> str:
+    row = _membership(s, team_id, user_id)
+    return row.notify if row is not None and row.notify in NOTIFY_LEVELS else "all"
+
+
+def list_team_activity(s: Session, user_id: int, team_id: int,
+                       limit: int = 30) -> list[dict]:
+    """The team's recent changes, newest first, each with who made it."""
+    _require_team(s, user_id, team_id)
+    rows = s.execute(select(TeamActivity, User)
+                     .outerjoin(User, User.telegram_id == TeamActivity.actor_id)
+                     .where(TeamActivity.team_id == team_id)
+                     .order_by(TeamActivity.id.desc()).limit(limit)).all()
+    out = []
+    archived_now: dict[tuple[str, int], bool] = {}
+    for act, user in rows:
+        restorable = False
+        if act.action in ("task_archive", "habit_archive") and act.item_id:
+            key = (act.item_kind, act.item_id)
+            if key not in archived_now:
+                model = TeamTask if act.item_kind == "task" else TeamHabit
+                item = s.get(model, act.item_id)
+                archived_now[key] = bool(item and item.archived_at is not None)
+            restorable = archived_now[key]
+        out.append({"id": act.id, "action": act.action, "subject": act.subject,
+                    "kind": act.item_kind, "item_id": act.item_id,
+                    "who": _display_name(user), "actor_id": act.actor_id,
+                    "at": act.created_at.isoformat(),
+                    "restorable": restorable})
+    return out
+
+
+# --- Shared task rules --------------------------------------------------------
+
+def clean_completion(value: str | None) -> str:
+    return value if value in COMPLETION_POLICIES else "all"
+
+
+def _parse_assignees(text: str | None) -> set[int]:
+    out = set()
+    for part in (text or "").split(","):
+        part = part.strip()
+        if part.lstrip("-").isdigit():
+            out.add(int(part))
+    return out
+
+
+def _clean_assignees(s: Session, team_id: int, ids) -> str | None:
+    """Only current members can be named; an empty list means nobody named."""
+    members = {m["user_id"] for m in team_members(s, team_id)}
+    chosen = sorted({int(x) for x in (ids or []) if int(x) in members})
+    return ",".join(str(x) for x in chosen) or None
+
+
+def team_task_owed_by(task: TeamTask, user_id: int) -> bool:
+    """Whether this member owes this task at all."""
+    if clean_completion(task.completion) == "assignees":
+        named = _parse_assignees(task.assignees)
+        return not named or user_id in named
+    return True
+
+
+def team_task_done_for(task: TeamTask, user_id: int, done_by: set[int]) -> bool:
+    """Whether the task is done *for this member*, under its completion rule."""
+    if clean_completion(task.completion) == "any":
+        return bool(done_by)
+    return user_id in done_by
+
+
+def _team_done_map(s: Session, task_ids: list[int]) -> dict[int, set[int]]:
+    """{task_id: members who have ticked it} — one query."""
+    out: dict[int, set[int]] = defaultdict(set)
+    if not task_ids:
+        return out
+    for task_id, member_id in s.execute(
+            select(TeamTaskDone.task_id, TeamTaskDone.user_id)
+            .where(TeamTaskDone.task_id.in_(task_ids),
+                   TeamTaskDone.done.is_(True))).all():
+        out[task_id].add(member_id)
+    return out
+
+
+def _team_item_live_on(item, day: date, tz: ZoneInfo | None = None) -> bool:
+    """A shared task existed on `day`, and had not been archived yet."""
+    born = local_date_of(item.created_at, tz)
+    if born is not None and born > day:
+        return False
+    if item.archived_at is not None:
+        gone = local_date_of(item.archived_at, tz)
+        if gone is not None and gone <= day:
+            return False
+    return True
+
+
+def _existed_on(created_at: datetime | None, day: date,
+                tz: ZoneInfo | None = None) -> bool:
+    """Whether something had been created by the end of that local day."""
+    if created_at is None:
+        return True
+    born = local_date_of(created_at, tz)
+    return born is None or born <= day
+
+
 # --- Team tasks -------------------------------------------------------------
 
 def add_team_task(s: Session, user_id: int, team_id: int, title: str, *,
@@ -5458,13 +5930,11 @@ def add_team_task(s: Session, user_id: int, team_id: int, title: str, *,
                   description: str = "", due_time: dtime | None = None,
                   remind_before: int | None = None,
                   recurrence: str | None = None,
-                  project_id: int | None = None) -> dict:
-    """Put a task in front of the whole team.
-
-    Takes everything a personal task takes. A shared task that could not
-    carry a time or a reminder would be the weaker of the two kinds, which is
-    backwards: the reason to put something in a team is that it matters more.
-    """
+                  project_id: int | None = None,
+                  completion: str | None = None,
+                  assignees=None,
+                  timer_minutes: int | None = None) -> dict:
+    """Put a task in front of the team, saying who has to do it."""
     _require_team(s, user_id, team_id)
     title = title.strip()[:300]
     if not title:
@@ -5473,6 +5943,7 @@ def add_team_task(s: Session, user_id: int, team_id: int, title: str, *,
         priority = "medium"
     rule = clean_recurrence(recurrence)
     project = _team_project_or_none(s, team_id, project_id)
+    policy = clean_completion(completion)
     task = TeamTask(team_id=team_id, title=title, project_id=project,
                     description=(description or "").strip()[:2000],
                     deadline=deadline, due_time=due_time,
@@ -5480,56 +5951,96 @@ def add_team_task(s: Session, user_id: int, team_id: int, title: str, *,
                     recurrence=rule or None,
                     anchor_day=(deadline.day if rule == "monthly" and deadline
                                 else None),
-                    priority=priority, created_by=user_id)
+                    priority=priority, created_by=user_id,
+                    completion=policy,
+                    assignees=(_clean_assignees(s, team_id, assignees)
+                               if policy == "assignees" else None),
+                    timer_minutes=clean_timer_minutes(timer_minutes))
     s.add(task)
+    s.flush()
+    _log_team(s, team_id, user_id, "task_add", title, "task", task.id)
     s.commit()
     return team_task_row(s, task, user_id)
 
 
+def _team_task_dicts(s: Session, tasks: list[TeamTask], viewer_id: int,
+                     tz: ZoneInfo | None = None) -> list[dict]:
+    """Rows for many shared tasks in a handful of queries."""
+    if not tasks:
+        return []
+    done_map = _team_done_map(s, [t.id for t in tasks])
+    project_ids = {t.project_id for t in tasks if t.project_id}
+    projects = dict(s.execute(select(Project.id, Project.name)
+                              .where(Project.id.in_(project_ids))).all()) \
+        if project_ids else {}
+    team_ids = {t.team_id for t in tasks}
+    names = {}
+    member_rows = s.execute(select(TeamMember.team_id, User)
+                            .join(User, User.telegram_id == TeamMember.user_id)
+                            .where(TeamMember.team_id.in_(team_ids))).all()
+    for _team, user in member_rows:
+        names[user.telegram_id] = _display_name(user)
+    viewer_ws = s.scalar(select(Workspace.id).where(Workspace.user_id == viewer_id))
+    runs = open_timer_runs(s, viewer_ws, "ttask") if viewer_ws else {}
+    today = today_local(tz)
+    countdowns = _team_item_countdowns(s, "task", [t.id for t in tasks], today)
+    out = []
+    for task in tasks:
+        done_by = done_map.get(task.id, set())
+        policy = clean_completion(task.completion)
+        assignees = sorted(_parse_assignees(task.assignees))
+        out.append({
+            "id": task.id, "team_id": task.team_id, "title": task.title,
+            "description": task.description or "",
+            "deadline": task.deadline.isoformat() if task.deadline else None,
+            "due_time": task.due_time.strftime("%H:%M") if task.due_time else None,
+            "remind_before": task.remind_before,
+            "recurrence": task.recurrence,
+            "priority": task.priority, "created_by": task.created_by,
+            "project_id": task.project_id,
+            "project": projects.get(task.project_id),
+            "completion": policy,
+            "assignees": assignees,
+            "assignee_names": [names.get(a, "?") for a in assignees],
+            "owed": team_task_owed_by(task, viewer_id),
+            "mine": viewer_id in done_by,
+            "done": team_task_done_for(task, viewer_id, done_by),
+            "done_by": sorted(done_by),
+            "done_by_names": [names.get(u, "?") for u in sorted(done_by)],
+            "done_count": len(done_by),
+            "overdue": bool(task.deadline and task.deadline < today
+                            and not team_task_done_for(task, viewer_id, done_by)),
+            "archived": task.archived_at is not None,
+            "countdown": countdowns.get(task.id),
+            **_timer_fields(task.timer_minutes, task.title),
+            "timer": runs.get(task.id),
+        })
+    return out
+
+
 def team_task_row(s: Session, task: TeamTask, viewer_id: int) -> dict:
     """One task, plus who has finished it — including the person looking."""
-    done_by = {uid for uid, in s.execute(
-        select(TeamTaskDone.user_id).where(
-            TeamTaskDone.task_id == task.id,
-            TeamTaskDone.done.is_(True))).all()}
-    return {
-        "id": task.id, "team_id": task.team_id, "title": task.title,
-        "description": task.description or "",
-        "deadline": task.deadline.isoformat() if task.deadline else None,
-        "due_time": task.due_time.strftime("%H:%M") if task.due_time else None,
-        "remind_before": task.remind_before,
-        "recurrence": task.recurrence,
-        "priority": task.priority, "created_by": task.created_by,
-        "project_id": task.project_id,
-        "project": (s.scalar(select(Project.name)
-                             .where(Project.id == task.project_id))
-                    if task.project_id else None),
-        "done": viewer_id in done_by,
-        "done_by": sorted(done_by),
-        "done_count": len(done_by),
-    }
+    return _team_task_dicts(s, [task], viewer_id)[0]
 
 
 def list_team_tasks(s: Session, user_id: int, team_id: int, *,
                     day: date | None = None, horizon_days: int = 7,
                     project_id: int | None = None,
                     tz: ZoneInfo | None = None) -> list[dict]:
-    """The team's open tasks, each carrying this viewer's own done state."""
+    """The team's open tasks, each carrying this viewer's own state."""
     _require_team(s, user_id, team_id)
     today = day or today_local(tz)
     limit = today + timedelta(days=horizon_days)
     stmt = select(TeamTask).where(TeamTask.team_id == team_id,
                                   TeamTask.archived_at.is_(None))
     if project_id is not None:
-        # Filing is the question here, not the calendar: a project's tasks are
-        # all of them, not only the ones due this week.
         stmt = stmt.where(TeamTask.project_id == project_id)
     else:
         stmt = stmt.where(or_(TeamTask.deadline.is_(None),
                               TeamTask.deadline <= limit))
     tasks = s.scalars(stmt.order_by(
         TeamTask.deadline.is_(None), TeamTask.deadline, TeamTask.id)).all()
-    return [team_task_row(s, t, user_id) for t in tasks]
+    return _team_task_dicts(s, list(tasks), user_id, tz)
 
 
 def toggle_team_task(s: Session, user_id: int, task_id: int, *,
@@ -5537,46 +6048,62 @@ def toggle_team_task(s: Session, user_id: int, task_id: int, *,
                      tz: ZoneInfo | None = None) -> bool:
     """Tick or untick a team task **for the person asking**, and only them.
 
-    There is no argument for whose completion to write, and that is the point:
-    a member can record their own share and nobody else's.
+    Returns whether the task now counts as done for them — under "any", one
+    person's tick is everybody's.
     """
     task = s.get(TeamTask, task_id)
     if task is None or task.archived_at is not None:
         raise ValueError("unknown_task")
     _require_team(s, user_id, task.team_id)
+    if not team_task_owed_by(task, user_id):
+        raise ValueError("not_assigned")
 
     row = s.scalar(select(TeamTaskDone).where(
         TeamTaskDone.task_id == task_id, TeamTaskDone.user_id == user_id))
+    ticking = row is None or not row.done
+    if ticking and team_timer_blocks(s, user_id, "ttask", task):
+        raise ValueError("timer_required")
     if row is not None:
-        # Flipped, not deleted: the row also remembers whether this member has
-        # been reminded, and unticking a task is not a reason to forget that.
         row.done = not row.done
         row.done_at = utcnow()
         row.day = day or today_local(tz)
-        s.commit()
-        return bool(row.done)
-
-    s.add(TeamTaskDone(task_id=task_id, user_id=user_id, done=True,
-                       day=day or today_local(tz), done_at=utcnow()))
-    try:
-        with s.begin_nested():
-            s.flush()
-    except IntegrityError:
-        s.rollback()
-        return True
+    else:
+        s.add(TeamTaskDone(task_id=task_id, user_id=user_id, done=True,
+                           day=day or today_local(tz), done_at=utcnow()))
+        try:
+            with s.begin_nested():
+                s.flush()
+        except IntegrityError:
+            s.rollback()
     s.commit()
-    return True
+    done_by = _team_done_map(s, [task_id]).get(task_id, set())
+    return team_task_done_for(task, user_id, done_by)
 
 
 def archive_team_task(s: Session, user_id: int, task_id: int) -> bool:
-    """Take a task off the team's list. Either member may."""
+    """Take a task off the team's list. Its creator, an admin or the owner may."""
     task = s.get(TeamTask, task_id)
     if task is None or task.archived_at is not None:
         return False
     _require_team(s, user_id, task.team_id)
+    _require_manage(s, user_id, task.team_id, task.created_by)
     task.archived_at = utcnow()
+    _log_team(s, task.team_id, user_id, "task_archive", task.title, "task", task.id)
     s.commit()
     return True
+
+
+def restore_team_task(s: Session, user_id: int, task_id: int) -> dict:
+    """Undo an archive."""
+    task = s.get(TeamTask, task_id)
+    if task is None or task.archived_at is None:
+        raise ValueError("unknown_task")
+    _require_team(s, user_id, task.team_id)
+    _require_manage(s, user_id, task.team_id, task.created_by)
+    task.archived_at = None
+    _log_team(s, task.team_id, user_id, "task_restore", task.title, "task", task.id)
+    s.commit()
+    return team_task_row(s, task, user_id)
 
 
 # --- Team habits ------------------------------------------------------------
@@ -5585,7 +6112,10 @@ def add_team_habit(s: Session, user_id: int, team_id: int, name: str, *,
                    schedule: str | None = None,
                    category: str = "non_negotiable",
                    target_time: dtime | None = None,
-                   remind_at: dtime | None = None) -> dict:
+                   remind_at: dtime | None = None,
+                   timer_minutes: int | None = None,
+                   start: str | None = None,
+                   tz: ZoneInfo | None = None) -> dict:
     """A habit the team keeps together, with the same settings a private one has."""
     _require_team(s, user_id, team_id)
     name = name.strip()[:120]
@@ -5593,97 +6123,291 @@ def add_team_habit(s: Session, user_id: int, team_id: int, name: str, *,
         raise ValueError("empty_name")
     if category not in HABIT_CATEGORIES:
         category = "non_negotiable"
+    today = today_local(tz)
     position = (s.scalar(select(func.max(TeamHabit.position))
                          .where(TeamHabit.team_id == team_id)) or 0) + 1
     habit = TeamHabit(team_id=team_id, name=name,
                       schedule=clean_schedule(schedule), category=category,
                       target_time=target_time, remind_at=remind_at,
-                      position=position, created_by=user_id)
+                      position=position, created_by=user_id,
+                      timer_minutes=clean_timer_minutes(timer_minutes),
+                      active_from=today + timedelta(days=1) if start == "tomorrow" else today)
     s.add(habit)
+    s.flush()
+    _log_team(s, team_id, user_id, "habit_add", name, "habit", habit.id)
     s.commit()
     return team_habit_row(habit, user_id, set())
 
 
-def team_habit_row(habit: TeamHabit, viewer_id: int, done_by: set) -> dict:
+def team_habit_row(habit: TeamHabit, viewer_id: int, done_by: set, *,
+                   due: bool = True, mine: bool | None = None,
+                   run: dict | None = None, paused: bool | None = None) -> dict:
     """One team habit, shaped exactly like a personal one on the wire."""
-    return {"id": habit.id, "name": habit.name, "category": habit.category,
+    ritual = bool(habit.system_key)
+    return {"id": habit.id, "team_id": habit.team_id, "name": habit.name,
+            "category": habit.category,
             "schedule": clean_schedule(habit.schedule),
+            "days": schedule_days(habit.schedule),
             "target_time": (habit.target_time.strftime("%H:%M")
                             if habit.target_time else None),
             "remind_at": (habit.remind_at.strftime("%H:%M")
                           if habit.remind_at else None),
             "system_key": habit.system_key or "",
+            # A ritual is read from each member's own habit, never ticked here.
+            "mirrored": ritual,
             "protected": bool(habit.is_protected),
-            "paused": habit.paused_at is not None,
-            # `list_team_habits` only ever returns habits that are owed
-            # today, so the flag the screens read is true by construction.
-            # Without it every shared row rendered as "not today", greyed out.
-            "due": True,
-            "done": viewer_id in done_by,
-            "done_by": sorted(done_by), "done_count": len(done_by)}
+            "paused": (habit.paused_at is not None) if paused is None else paused,
+            "due": due,
+            "done": (viewer_id in done_by) if mine is None else mine,
+            "done_by": sorted(done_by), "done_count": len(done_by),
+            "created_by": habit.created_by,
+            "scored": not ritual,
+            **_timer_fields(habit.timer_minutes, habit.name, protected=ritual),
+            "timer": run}
 
 
-def edit_team_habit(s: Session, user_id: int, habit_id: int, **fields) -> dict:
-    """Change a shared habit. Either member may; the rituals keep their name."""
-    habit = s.get(TeamHabit, habit_id)
-    if habit is None or habit.archived_at is not None:
-        raise ValueError("unknown_habit")
-    _require_team(s, user_id, habit.team_id)
+class TeamLedger:
+    """Everything a team owed and did over a range of days, from ~11 queries.
 
-    if "name" in fields and fields["name"]:
-        if habit.is_protected:
-            # Renaming "5x namoz" out from under the other person is not a
-            # decision one of them makes alone.
-            raise ValueError("protected")
-        habit.name = str(fields["name"]).strip()[:120]
-    if fields.get("category") in HABIT_CATEGORIES:
-        habit.category = fields["category"]
-    if "schedule" in fields:
-        habit.schedule = clean_schedule(fields["schedule"])
-    for key in ("target_time", "remind_at"):
-        if key in fields:
-            setattr(habit, key, fields[key])
-    if "paused" in fields:
-        habit.paused_at = utcnow() if fields["paused"] else None
-    s.commit()
-    return team_habit_row(habit, user_id, set())
+    The team screens used to rebuild each day from scratch — members, tasks,
+    ticks, habits, logs, day after day — which came to hundreds of statements
+    for one scoreboard. This reads the whole range once and answers every
+    per-member, per-day question from memory:
+
+      * a member owes only the days they were in the team;
+      * a task counts on its deadline if it existed then and had not been
+        archived before it;
+      * a habit counts under the calendar (start, archive, pauses, schedule
+        of the day);
+      * a ritual counts for a member when their own personal ritual was owed,
+        and is done when they did it there;
+      * a closed day is read from its snapshot.
+    """
+
+    def __init__(self, s: Session, team_id: int, first: date, last: date,
+                 tz: ZoneInfo | None = None):
+        self.team_id, self.first, self.last = team_id, first, last
+        self.tz = tz or TZ
+        rows = s.execute(select(TeamMember, User)
+                         .join(User, User.telegram_id == TeamMember.user_id)
+                         .where(TeamMember.team_id == team_id)
+                         .order_by(TeamMember.joined_at)).all()
+        self.members = [{"user_id": m.user_id, "name": _display_name(u),
+                         "role": m.role if m.role in TEAM_ROLES else "member",
+                         "joined": local_date_of(m.joined_at, self.tz),
+                         "left": local_date_of(m.left_at, self.tz),
+                         "active": m.left_at is None}
+                        for m, u in rows]
+        self.tasks = list(s.scalars(select(TeamTask).where(
+            TeamTask.team_id == team_id,
+            TeamTask.deadline.between(first, last))).all())
+        self.done = _team_done_map(s, [t.id for t in self.tasks])
+        self.habits = list(s.scalars(select(TeamHabit).where(
+            TeamHabit.team_id == team_id)
+            .order_by(TeamHabit.position, TeamHabit.id)).all())
+
+        keys = {h.system_key for h in self.habits if h.system_key}
+        uids = [m["user_id"] for m in self.members]
+        self.sys_by_member: dict[int, dict[str, list[Habit]]] = defaultdict(lambda: defaultdict(list))
+        sys_habits: list[Habit] = []
+        if keys and uids:
+            ws_of = dict(s.execute(select(Workspace.id, Workspace.user_id)
+                                   .where(Workspace.user_id.in_(uids))).all())
+            if ws_of:
+                sys_habits = list(s.scalars(select(Habit).where(
+                    Habit.workspace_id.in_(list(ws_of)),
+                    Habit.system_key.in_(keys))).all())
+                for habit in sys_habits:
+                    self.sys_by_member[ws_of[habit.workspace_id]][habit.system_key].append(habit)
+        self.cal = calendar_for(s, self.habits + sys_habits, self.tz)
+
+        plain = [h.id for h in self.habits if not h.system_key]
+        self.logs: dict[tuple[int, date], set[int]] = defaultdict(set)
+        if plain:
+            for habit_id, member_id, day in s.execute(
+                    select(TeamHabitLog.habit_id, TeamHabitLog.user_id, TeamHabitLog.day)
+                    .where(TeamHabitLog.habit_id.in_(plain),
+                           TeamHabitLog.day.between(first, last),
+                           TeamHabitLog.done.is_(True))).all():
+                self.logs[(habit_id, day)].add(member_id)
+        self.sys_done: set[tuple[int, date]] = set()
+        if sys_habits:
+            for habit_id, day in s.execute(
+                    select(HabitLog.habit_id, HabitLog.day)
+                    .where(HabitLog.habit_id.in_([h.id for h in sys_habits]),
+                           HabitLog.day.between(first, last),
+                           HabitLog.done.is_(True))).all():
+                self.sys_done.add((habit_id, day))
+        self.snapshots = {(row.user_id, row.day): (row.done, row.total)
+                          for row in s.scalars(select(TeamDayScore).where(
+                              TeamDayScore.team_id == team_id,
+                              TeamDayScore.day.between(first, last))).all()}
+
+    # -- who and what --------------------------------------------------------
+
+    def member(self, user_id: int) -> dict | None:
+        return next((m for m in self.members if m["user_id"] == user_id), None)
+
+    def member_on(self, member: dict, day: date) -> bool:
+        if member["joined"] is not None and day < member["joined"]:
+            return False
+        if member["left"] is not None and day >= member["left"]:
+            return False
+        return True
+
+    def tasks_on(self, day: date) -> list[TeamTask]:
+        return [t for t in self.tasks
+                if t.deadline == day and _team_item_live_on(t, day, self.tz)]
+
+    def habits_on(self, day: date) -> list[TeamHabit]:
+        return [h for h in self.habits if h.system_key or self.cal.due(h, day)]
+
+    def habit_owed(self, habit: TeamHabit, user_id: int, day: date) -> bool:
+        if habit.system_key:
+            if not self.cal.exists_on(habit, day):
+                return False
+            own = self.sys_by_member.get(user_id, {}).get(habit.system_key, [])
+            return any(self.cal.due(h, day) for h in own)
+        return self.cal.due(habit, day)
+
+    def habit_done(self, habit: TeamHabit, user_id: int, day: date) -> bool:
+        if habit.system_key:
+            own = self.sys_by_member.get(user_id, {}).get(habit.system_key, [])
+            return any((h.id, day) in self.sys_done for h in own)
+        return user_id in self.logs.get((habit.id, day), set())
+
+    def habit_done_by(self, habit: TeamHabit, day: date) -> set[int]:
+        return {m["user_id"] for m in self.members
+                if self.member_on(m, day) and self.habit_done(habit, m["user_id"], day)}
+
+    # -- per member, per day -------------------------------------------------
+
+    def live_member_day(self, user_id: int, day: date) -> tuple[int, int]:
+        member = self.member(user_id)
+        if member is None or not self.member_on(member, day):
+            return 0, 0
+        done = total = 0
+        for task in self.tasks_on(day):
+            if not team_task_owed_by(task, user_id):
+                continue
+            total += 1
+            done += team_task_done_for(task, user_id, self.done.get(task.id, set()))
+        for habit in self.habits_on(day):
+            if not self.habit_owed(habit, user_id, day):
+                continue
+            total += 1
+            done += self.habit_done(habit, user_id, day)
+        return done, total
+
+    def member_day(self, user_id: int, day: date, today: date) -> tuple[int, int]:
+        if day < today and (user_id, day) in self.snapshots:
+            return self.snapshots[(user_id, day)]
+        return self.live_member_day(user_id, day)
+
+    def window(self, first: date, last: date, today: date) -> dict[int, list[int]]:
+        totals = {m["user_id"]: [0, 0] for m in self.members}
+        cursor = first
+        while cursor <= last:
+            for m in self.members:
+                done, total = self.member_day(m["user_id"], cursor, today)
+                totals[m["user_id"]][0] += done
+                totals[m["user_id"]][1] += total
+            cursor += timedelta(days=1)
+        return totals
+
+    # -- one day, item by item -----------------------------------------------
+
+    def day_detail(self, day: date) -> dict:
+        present = [m for m in self.members if self.member_on(m, day)]
+        tasks, habits = [], []
+        for task in self.tasks_on(day):
+            done_by = self.done.get(task.id, set())
+            owing = [m["user_id"] for m in present if team_task_owed_by(task, m["user_id"])]
+            finished = [u for u in owing if team_task_done_for(task, u, done_by)]
+            tasks.append({"id": task.id, "title": task.title, "priority": task.priority,
+                          "deadline": task.deadline.isoformat() if task.deadline else None,
+                          "completion": clean_completion(task.completion),
+                          "owed_by": owing,
+                          "done_by": sorted(u for u in done_by if u in owing) or
+                                     (sorted(done_by) if clean_completion(task.completion) == "any" else []),
+                          "finished_for": finished,
+                          "done_count": len(finished),
+                          "missing": [u for u in owing if u not in finished]})
+        for habit in self.habits_on(day):
+            owing = [m["user_id"] for m in present
+                     if self.habit_owed(habit, m["user_id"], day)]
+            if not owing:
+                continue
+            finished = [u for u in owing if self.habit_done(habit, u, day)]
+            habits.append({"id": habit.id, "name": habit.name,
+                           "mirrored": bool(habit.system_key),
+                           "owed_by": owing, "done_by": finished,
+                           "finished_for": finished,
+                           "done_count": len(finished),
+                           "missing": [u for u in owing if u not in finished]})
+        return {"tasks": tasks, "habits": habits, "present": present}
 
 
 def list_team_habits(s: Session, user_id: int, team_id: int, *,
                      day: date | None = None,
                      tz: ZoneInfo | None = None) -> list[dict]:
-    """Today's team habits, each with this viewer's own tick and everyone's."""
+    """Today's team habits this viewer owes, each with their own state and everyone's."""
     _require_team(s, user_id, team_id)
     today = day or today_local(tz)
-    habits = s.scalars(
-        select(TeamHabit)
-        .where(TeamHabit.team_id == team_id, TeamHabit.archived_at.is_(None))
-        .order_by(TeamHabit.position, TeamHabit.id)
-    ).all()
+    ledger = TeamLedger(s, team_id, today, today, tz)
+    viewer_ws = s.scalar(select(Workspace.id).where(Workspace.user_id == user_id))
+    runs = open_timer_runs(s, viewer_ws, "thabit", day=today) if viewer_ws else {}
+    out = []
+    for habit in ledger.habits:
+        if habit.archived_at is not None:
+            continue
+        paused = ledger.cal.paused_on(habit, today)
+        owed = ledger.habit_owed(habit, user_id, today)
+        if not owed and not paused:
+            continue
+        out.append(team_habit_row(habit, user_id, ledger.habit_done_by(habit, today),
+                                  due=owed, mine=ledger.habit_done(habit, user_id, today),
+                                  run=runs.get(habit.id), paused=paused))
+    return out
 
-    logs = s.execute(
-        select(TeamHabitLog.habit_id, TeamHabitLog.user_id)
-        .where(TeamHabitLog.day == today, TeamHabitLog.done.is_(True),
-               TeamHabitLog.habit_id.in_([h.id for h in habits] or [0]))
-    ).all()
-    done_map: dict[int, set[int]] = {}
-    for habit_id, member_id in logs:
-        done_map.setdefault(habit_id, set()).add(member_id)
 
-    return [team_habit_row(h, user_id, done_map.get(h.id, set()))
-            for h in habits if team_habit_is_due(h, today)]
+def edit_team_habit(s: Session, user_id: int, habit_id: int, **fields) -> dict:
+    """Change a shared habit. Its creator, an admin or the owner may."""
+    habit = s.get(TeamHabit, habit_id)
+    if habit is None or habit.archived_at is not None:
+        raise ValueError("unknown_habit")
+    _require_team(s, user_id, habit.team_id)
+    _require_manage(s, user_id, habit.team_id, habit.created_by)
+    tz = user_tz(s.get(User, user_id))
+    today = today_local(tz)
+
+    if "name" in fields and fields["name"]:
+        if habit.system_key:
+            raise ValueError("protected")
+        habit.name = str(fields["name"]).strip()[:120]
+    if fields.get("category") in HABIT_CATEGORIES:
+        habit.category = fields["category"]
+    if "schedule" in fields and fields["schedule"] is not None and not habit.system_key \
+            and clean_schedule(fields["schedule"]) != clean_schedule(habit.schedule):
+        _record_schedule_change(s, TEAM_HABIT_KIND, habit, fields["schedule"],
+                                today=today, team_id=habit.team_id)
+    for key in ("target_time", "remind_at"):
+        if key in fields:
+            setattr(habit, key, fields[key])
+    if "timer_minutes" in fields and not habit.system_key:
+        habit.timer_minutes = clean_timer_minutes(fields["timer_minutes"])
+    if "paused" in fields:
+        _apply_pause(s, TEAM_HABIT_KIND, habit, bool(fields["paused"]), today=today,
+                     from_today=fields.get("from_day") != "tomorrow",
+                     team_id=habit.team_id, tz=tz)
+    _log_team(s, habit.team_id, user_id, "habit_edit", habit.name, "habit", habit.id)
+    s.commit()
+    return team_habit_row(habit, user_id, set())
 
 
 def team_habit_is_due(habit: TeamHabit, day: date) -> bool:
-    """Whether the team expects this habit on that day.
-
-    A paused habit is never due — the same rule a personal one follows, and
-    the same reason: a Tuesday score must not drop for a session nobody
-    planned.
-    """
-    if habit.paused_at is not None:
-        return False
-    return day.weekday() in schedule_days(habit.schedule)
+    """Today's rule for one shared habit, without its history."""
+    return habit_is_due(habit, day)
 
 
 def toggle_team_habit(s: Session, user_id: int, habit_id: int, *,
@@ -5694,11 +6418,18 @@ def toggle_team_habit(s: Session, user_id: int, habit_id: int, *,
     if habit is None or habit.archived_at is not None:
         raise ValueError("unknown_habit")
     _require_team(s, user_id, habit.team_id)
+    if habit.system_key:
+        # Mirrored from each member's own habit: ticking it here would be the
+        # same prayer recorded twice.
+        raise ValueError("mirrored")
     today = day or today_local(tz)
 
     row = s.scalar(select(TeamHabitLog).where(
         TeamHabitLog.habit_id == habit_id, TeamHabitLog.user_id == user_id,
         TeamHabitLog.day == today))
+    ticking = row is None or not row.done
+    if ticking and team_timer_blocks(s, user_id, "thabit", habit, today):
+        raise ValueError("timer_required")
     if row is None:
         row = TeamHabitLog(habit_id=habit_id, user_id=user_id, day=today,
                            done=True, logged_at=utcnow())
@@ -5721,147 +6452,88 @@ def archive_team_habit(s: Session, user_id: int, habit_id: int) -> bool:
     if habit is None or habit.archived_at is not None:
         return False
     _require_team(s, user_id, habit.team_id)
-    if habit.is_protected:
-        # One member deleting "namoz" for both of them is not a decision
-        # either of them made together.
+    if habit.is_protected and role_of(s, habit.team_id, user_id) != "owner":
+        # A ritual the whole team keeps is not one member's to remove.
         raise ValueError("protected")
+    _require_manage(s, user_id, habit.team_id, habit.created_by)
     habit.archived_at = utcnow()
+    _log_team(s, habit.team_id, user_id, "habit_archive", habit.name, "habit", habit.id)
     s.commit()
     return True
 
 
-# --- What the team did today ------------------------------------------------
+def restore_team_habit(s: Session, user_id: int, habit_id: int) -> dict:
+    habit = s.get(TeamHabit, habit_id)
+    if habit is None or habit.archived_at is None:
+        raise ValueError("unknown_habit")
+    _require_team(s, user_id, habit.team_id)
+    _require_manage(s, user_id, habit.team_id, habit.created_by)
+    habit.archived_at = None
+    _log_team(s, habit.team_id, user_id, "habit_restore", habit.name, "habit", habit.id)
+    s.commit()
+    return team_habit_row(habit, user_id, set())
 
-def _existed_on(created_at: datetime | None, day: date,
-                tz: ZoneInfo | None = None) -> bool:
-    """Whether something had been created by the end of that local day.
 
-    The denominator of any backwards-looking number depends on this. An item
-    added today was not owed last Tuesday, and counting it as missed then is
-    the difference between a statistic and a discouragement.
-    """
-    if created_at is None:
-        return True
-    born = local_date_of(created_at, tz)
-    return born is None or born <= day
-
+# --- What the team did ------------------------------------------------------
 
 def team_day_summary(s: Session, team_id: int, day: date | None = None, *,
                      tz: ZoneInfo | None = None) -> dict:
-    """One day of a team, per member.
+    """One day of a team, per member — what the reports and the bot show.
 
-    The shape the reports need: what the team set itself, and how far each
-    person got with their own half of it. Deliberately per-member rather than
-    one combined number — "we are at 60%" hides which of you is carrying it,
-    and the whole reason two people share a list is to see each other's
-    progress.
+    Only what was owed that day: tasks due on it, habits the calendar owed,
+    and each member counted only on a day they were in the team.
     """
     today = day or today_local(tz)
     team = s.get(Team, team_id)
     if team is None:
         return {}
+    ledger = TeamLedger(s, team_id, today, today, tz)
+    detail = ledger.day_detail(today)
+    present = detail["present"]
 
-    members = team_members(s, team_id)
-    ids = [m["user_id"] for m in members]
-
-    # Only what existed on the day being counted. Without this the month
-    # denominator included every day *before* the team was made — a pair who
-    # started yesterday read "1% · 2/154" and reasonably concluded the number
-    # was broken. A day you were not there for is not a day you missed.
-    tasks = [t for t in s.scalars(
-        select(TeamTask)
-        .where(TeamTask.team_id == team_id, TeamTask.archived_at.is_(None),
-               or_(TeamTask.deadline.is_(None), TeamTask.deadline <= today))
-        .order_by(TeamTask.deadline.is_(None), TeamTask.deadline, TeamTask.id)
-    ).all() if _existed_on(t.created_at, today, tz)]
-    task_ids = [t.id for t in tasks]
-    done_rows = s.execute(select(TeamTaskDone.task_id, TeamTaskDone.user_id)
-                          .where(TeamTaskDone.done.is_(True),
-                                 TeamTaskDone.task_id.in_(task_ids or [0]))).all()
-    task_done: dict[int, set[int]] = {}
-    for task_id, member_id in done_rows:
-        task_done.setdefault(task_id, set()).add(member_id)
-
-    habits = [h for h in s.scalars(
-        select(TeamHabit)
-        .where(TeamHabit.team_id == team_id, TeamHabit.archived_at.is_(None))
-        .order_by(TeamHabit.position, TeamHabit.id)).all()
-        if team_habit_is_due(h, today) and _existed_on(h.created_at, today, tz)]
-    habit_ids = [h.id for h in habits]
-    habit_rows = s.execute(
-        select(TeamHabitLog.habit_id, TeamHabitLog.user_id)
-        .where(TeamHabitLog.day == today, TeamHabitLog.done.is_(True),
-               TeamHabitLog.habit_id.in_(habit_ids or [0]))).all()
-    habit_done: dict[int, set[int]] = {}
-    for habit_id, member_id in habit_rows:
-        habit_done.setdefault(habit_id, set()).add(member_id)
-
-    total = len(tasks) + len(habits)
     people = []
-    for member in members:
-        uid = member["user_id"]
-        tasks_done = sum(1 for t in tasks if uid in task_done.get(t.id, ()))
-        habits_done = sum(1 for h in habits if uid in habit_done.get(h.id, ()))
-        got = tasks_done + habits_done
+    for member in present:
+        done, total = ledger.live_member_day(member["user_id"], today)
+        tasks_total = sum(1 for t in detail["tasks"] if member["user_id"] in t["owed_by"])
+        tasks_done = sum(1 for t in detail["tasks"] if member["user_id"] in t["finished_for"])
         people.append({
-            "user_id": uid, "name": member["name"],
-            "tasks_done": tasks_done, "tasks_total": len(tasks),
-            "habits_done": habits_done, "habits_total": len(habits),
-            "done": got, "total": total,
-            # None rather than 0 when the team set itself nothing: an empty
-            # day is unmeasured, not a failure, exactly as it is personally.
-            "percent": round(got / total * 100) if total else None,
+            "user_id": member["user_id"], "name": member["name"],
+            "tasks_done": tasks_done, "tasks_total": tasks_total,
+            "habits_done": done - tasks_done, "habits_total": total - tasks_total,
+            "done": done, "total": total,
+            "percent": round(done / total * 100) if total else None,
         })
 
+    confirmations = sum(len(x["owed_by"]) for x in detail["tasks"] + detail["habits"])
+    confirmed = sum(len(x["finished_for"]) for x in detail["tasks"] + detail["habits"])
     return {
         "team_id": team_id, "name": team.name, "date": today.isoformat(),
-        "members": people, "member_ids": ids,
-        "tasks": [{"id": t.id, "title": t.title, "priority": t.priority,
-                   "deadline": t.deadline.isoformat() if t.deadline else None,
-                   "done_by": sorted(task_done.get(t.id, ())),
-                   "done_count": len(task_done.get(t.id, ()))}
-                  for t in tasks],
-        "habits": [{"id": h.id, "name": h.name,
-                    "done_by": sorted(habit_done.get(h.id, ())),
-                    "done_count": len(habit_done.get(h.id, ()))}
-                   for h in habits],
-        "total": total,
+        "members": people, "member_ids": [m["user_id"] for m in present],
+        "tasks": [{**t, "done_by": t["finished_for"]} for t in detail["tasks"]],
+        "habits": [{**h, "done_by": h["finished_for"]} for h in detail["habits"]],
+        "total": len(detail["tasks"]) + len(detail["habits"]),
+        # The three numbers the screen needs to stay countable by hand.
+        "units": {"items": len(detail["tasks"]) + len(detail["habits"]),
+                  "confirmations": confirmations, "confirmed": confirmed,
+                  "left": confirmations - confirmed},
     }
 
 
 def team_summaries_for(s: Session, user_id: int, day: date | None = None, *,
                        tz: ZoneInfo | None = None) -> list[dict]:
-    """Every team this user is in, summarised for their own day.
-
-    The day is the *reader's* local day: two people in different zones each
-    get the summary of the day they are living in, which is the same rule the
-    personal reports follow.
-    """
+    """Every team this user is in, summarised for their own day."""
     return [team_day_summary(s, team.id, day, tz=tz)
             for team in teams_for(s, user_id)]
 
 
 def team_items_for_day(s: Session, user_id: int, day: date | None = None, *,
                        tz: ZoneInfo | None = None) -> dict:
-    """Every team task and habit this user has today, across all their teams.
-
-    Returned as its own block rather than mixed into the workspace lists, and
-    that separation is the whole design. The personal screens *show* shared
-    work — a plan that hides half of what you owe today is not a plan — but
-    the personal score is built from `workspace_id` alone and never sees these
-    rows. So the two numbers stay honest: your own percentage measures what
-    you set yourself, and the team's measures what the two of you set
-    together. Merging them would mean a quiet evening for the team dragging
-    down a day you personally finished, and neither number would mean
-    anything afterwards.
-
-    Each row carries the team it came from, so the surface showing it can say
-    whose work it is without a second lookup.
-    """
+    """Every team task and habit this user has today, across all their teams."""
     today = day or today_local(tz)
     tasks: list[dict] = []
     habits: list[dict] = []
-    for team in teams_for(s, user_id):
+    teams = teams_for(s, user_id)
+    for team in teams:
         for row in list_team_tasks(s, user_id, team.id, day=today, tz=tz):
             tasks.append({**row, "source": "team",
                           "team_id": team.id, "team_name": team.name})
@@ -5869,116 +6541,76 @@ def team_items_for_day(s: Session, user_id: int, day: date | None = None, *,
             habits.append({**row, "source": "team",
                            "team_id": team.id, "team_name": team.name})
     return {"tasks": tasks, "habits": habits,
-            "teams": [{"id": t.id, "name": t.name} for t in teams_for(s, user_id)]}
+            "teams": [{"id": t.id, "name": t.name} for t in teams]}
 
 
-# --- Team statistics --------------------------------------------------------
+def close_team_member_day(s: Session, team_id: int, user_id: int, day: date, *,
+                          tz: ZoneInfo | None = None) -> None:
+    """Snapshot one member's closed day in one team. Idempotent; caller commits."""
+    existing = s.scalar(select(TeamDayScore).where(
+        TeamDayScore.team_id == team_id, TeamDayScore.user_id == user_id,
+        TeamDayScore.day == day))
+    if existing is not None:
+        return
+    done, total = TeamLedger(s, team_id, day, day, tz).live_member_day(user_id, day)
+    s.add(TeamDayScore(team_id=team_id, user_id=user_id, day=day,
+                       done=done, total=total))
+    try:
+        with s.begin_nested():
+            s.flush()
+    except IntegrityError:
+        pass
+
 
 def team_stats(s: Session, user_id: int, team_id: int, *, period: str = "week",
                tz: ZoneInfo | None = None) -> dict:
-    """A team's record over a period, per member and side by side.
-
-    The comparison is the feature. A personal chart answers "am I keeping
-    this up"; a shared one answers "are we", and the only honest way to show
-    that is both lines, not an average that hides one person having carried
-    the week. Deliberately not framed as a competition — no winner, no
-    ranking — because the people using this are on the same side.
-    """
+    """A team's record over a period, per member and side by side."""
     _require_team(s, user_id, team_id)
     days = {"week": 7, "month": 30, "year": 365}.get(period, 7)
     today = today_local(tz)
     start = today - timedelta(days=days - 1)
+    horizon = min(start, today - timedelta(days=TEAM_STREAK_HORIZON))
+    ledger = TeamLedger(s, team_id, horizon, today, tz)
+    active = [m for m in ledger.members if m["active"]]
 
-    members = team_members(s, team_id)
-    ids = [m["user_id"] for m in members]
-
-    tasks = s.scalars(select(TeamTask).where(
-        TeamTask.team_id == team_id, TeamTask.archived_at.is_(None),
-        TeamTask.deadline.is_not(None),
-        TeamTask.deadline >= start, TeamTask.deadline <= today)).all()
-    habit_born = {}
-    task_done = {}
-    for task_id, member_id in s.execute(
-            select(TeamTaskDone.task_id, TeamTaskDone.user_id)
-            .where(TeamTaskDone.done.is_(True),
-                   TeamTaskDone.task_id.in_([t.id for t in tasks] or [0]))).all():
-        task_done.setdefault(task_id, set()).add(member_id)
-
-    habits = s.scalars(select(TeamHabit).where(
-        TeamHabit.team_id == team_id, TeamHabit.archived_at.is_(None))).all()
-    habit_done: dict[tuple, set] = {}
-    for habit_id, member_id, day in s.execute(
-            select(TeamHabitLog.habit_id, TeamHabitLog.user_id, TeamHabitLog.day)
-            .where(TeamHabitLog.day >= start, TeamHabitLog.day <= today,
-                   TeamHabitLog.done.is_(True),
-                   TeamHabitLog.habit_id.in_([h.id for h in habits] or [0]))).all():
-        habit_done.setdefault((habit_id, day), set()).add(member_id)
-
-    series, totals = [], {uid: {"done": 0, "total": 0} for uid in ids}
+    series, totals = [], {m["user_id"]: [0, 0] for m in active}
     for offset in range(days):
         day = start + timedelta(days=offset)
-        owed = ([t for t in tasks
-                 if t.deadline == day and _existed_on(t.created_at, day, tz)]
-                + [h for h in habits if team_habit_is_due(h, day)
-                   and _existed_on(h.created_at, day, tz)])
         point = {"date": day.isoformat(), "label": day.strftime("%d.%m")}
-        for uid in ids:
-            got = 0
-            for item in owed:
-                if isinstance(item, TeamTask):
-                    got += uid in task_done.get(item.id, ())
-                else:
-                    got += uid in habit_done.get((item.id, day), ())
-            point[str(uid)] = round(got / len(owed) * 100) if owed else None
-            totals[uid]["done"] += got
-            totals[uid]["total"] += len(owed)
+        for member in active:
+            uid = member["user_id"]
+            done, total = ledger.member_day(uid, day, today)
+            point[str(uid)] = round(done / total * 100) if total else None
+            totals[uid][0] += done
+            totals[uid][1] += total
         series.append(point)
 
     people = []
-    for member in members:
+    for member in active:
         uid = member["user_id"]
-        done, total = totals[uid]["done"], totals[uid]["total"]
+        done, total = totals[uid]
         people.append({
             "user_id": uid, "name": member["name"],
             "done": done, "total": total,
             "percent": round(done / total * 100) if total else None,
-            "streak": team_streak(s, team_id, uid, today, tz=tz),
+            "streak": _ledger_streak(ledger, uid, today),
         })
 
     return {"team_id": team_id, "period": period, "days": days,
             "from": start.isoformat(), "to": today.isoformat(),
             "series": series, "members": people,
-            # One number for the pair: what the two of you managed between
-            # you, out of everything the two of you owed.
             "together": (round(sum(p["done"] for p in people)
                                / sum(p["total"] for p in people) * 100)
                          if any(p["total"] for p in people) else None)}
 
 
-def team_streak(s: Session, team_id: int, member_id: int, today: date, *,
-                tz: ZoneInfo | None = None, horizon: int = 400) -> int:
-    """Consecutive days this member cleared everything the team owed.
-
-    Today does not break it while it is still running, the same rule a
-    personal streak follows: a day is only a miss once it is over.
-    """
-    habits = s.scalars(select(TeamHabit).where(
-        TeamHabit.team_id == team_id, TeamHabit.archived_at.is_(None))).all()
-    if not habits:
-        return 0
-    start = today - timedelta(days=horizon)
-    done = {}
-    for habit_id, day in s.execute(
-            select(TeamHabitLog.habit_id, TeamHabitLog.day)
-            .where(TeamHabitLog.user_id == member_id, TeamHabitLog.day >= start,
-                   TeamHabitLog.done.is_(True))).all():
-        done.setdefault(day, set()).add(habit_id)
-
+def _ledger_streak(ledger: TeamLedger, member_id: int, today: date) -> int:
+    """Consecutive days this member cleared everything the team owed them."""
     streak, cursor = 0, today
-    for _ in range(horizon):
-        owed = {h.id for h in habits if team_habit_is_due(h, cursor)}
-        if owed:
-            if not owed <= done.get(cursor, set()):
+    while cursor >= ledger.first:
+        done, total = ledger.member_day(member_id, cursor, today)
+        if total:
+            if done < total:
                 if cursor == today:
                     cursor -= timedelta(days=1)
                     continue
@@ -5988,12 +6620,76 @@ def team_streak(s: Session, team_id: int, member_id: int, today: date, *,
     return streak
 
 
+def team_streak(s: Session, team_id: int, member_id: int, today: date, *,
+                tz: ZoneInfo | None = None, horizon: int = TEAM_STREAK_HORIZON) -> int:
+    """Consecutive days this member cleared everything the team owed."""
+    ledger = TeamLedger(s, team_id, today - timedelta(days=horizon), today, tz)
+    return _ledger_streak(ledger, member_id, today)
+
+
+def team_scoreboard(s: Session, user_id: int, team_id: int, *,
+                    tz: ZoneInfo | None = None) -> dict:
+    """Day, week and month at once, plus what is still open and who did what.
+
+    One ledger over sixty days answers all of it — the three periods, the
+    three periods before them, and today item by item.
+    """
+    _require_team(s, user_id, team_id)
+    today = today_local(tz)
+    ledger = TeamLedger(s, team_id, today - timedelta(days=59), today, tz)
+    members = [m for m in ledger.members if m["active"]]
+
+    periods = {}
+    for label, days in (("day", 1), ("week", 7), ("month", 30)):
+        start = today - timedelta(days=days - 1)
+        totals = ledger.window(start, today, today)
+        before = ledger.window(start - timedelta(days=days),
+                               start - timedelta(days=1), today)
+        rows = []
+        for m in members:
+            uid = m["user_id"]
+            done, total = totals[uid]
+            percent = round(done / total * 100) if total else None
+            was_done, was_total = before[uid]
+            previous = round(was_done / was_total * 100) if was_total else None
+            rows.append({
+                "user_id": uid, "name": m["name"],
+                "is_you": uid == user_id,
+                "done": done, "total": total, "percent": percent,
+                "previous": previous,
+                "delta": (percent - previous
+                          if percent is not None and previous is not None
+                          else None),
+            })
+        periods[label] = rows
+
+    detail = ledger.day_detail(today)
+    open_items, done_items = [], []
+    for kind, rows in (("task", detail["tasks"]), ("habit", detail["habits"])):
+        for row in rows:
+            entry = {"kind": kind, "id": row["id"],
+                     "title": row.get("title") or row.get("name"),
+                     "mirrored": row.get("mirrored", False),
+                     "done_by": row["finished_for"],
+                     "owed": len(row["owed_by"]),
+                     "done_count": len(row["finished_for"]),
+                     "missing": row["missing"]}
+            (done_items if not entry["missing"] else open_items).append(entry)
+
+    confirmations = sum(e["owed"] for e in open_items + done_items)
+    confirmed = sum(e["done_count"] for e in open_items + done_items)
+    return {"team_id": team_id, "date": today.isoformat(),
+            "members": [{"user_id": m["user_id"], "name": m["name"],
+                         "role": m["role"]} for m in members],
+            "periods": periods,
+            "open": open_items, "done": done_items,
+            "open_count": len(open_items), "done_count": len(done_items),
+            "units": {"items": len(open_items) + len(done_items),
+                      "confirmations": confirmations, "confirmed": confirmed,
+                      "left": confirmations - confirmed}}
+
+
 # --- Team reminders ---------------------------------------------------------
-#
-# Shared work is reminded exactly as private work is, and per member: two
-# people in different zones owe the same habit at different moments, and one
-# of them being told must never silence the other. That is why the marker
-# lives on the per-member row rather than on the item.
 
 def due_team_task_reminders(s: Session, user_id: int, user: User,
                             now: datetime | None = None) -> list[dict]:
@@ -6006,18 +6702,28 @@ def due_team_task_reminders(s: Session, user_id: int, user: User,
 
     out = []
     for team in teams_for(s, user_id):
+        level = member_notify(s, team.id, user_id)
+        if level == "off":
+            continue
         tasks = s.scalars(select(TeamTask).where(
             TeamTask.team_id == team.id, TeamTask.archived_at.is_(None),
             TeamTask.deadline == today,
             TeamTask.remind_before.is_not(None))).all()
         if not tasks:
             continue
+        done_map = _team_done_map(s, [t.id for t in tasks])
         state = {row.task_id: row for row in s.scalars(select(TeamTaskDone).where(
             TeamTaskDone.user_id == user_id,
             TeamTaskDone.task_id.in_([t.id for t in tasks]))).all()}
         for task in tasks:
+            if not team_task_owed_by(task, user_id):
+                continue
+            if level == "assigned" and user_id not in _parse_assignees(task.assignees):
+                continue
+            if team_task_done_for(task, user_id, done_map.get(task.id, set())):
+                continue
             mine = state.get(task.id)
-            if mine is not None and (mine.done or mine.reminder_sent_at):
+            if mine is not None and mine.reminder_sent_at:
                 continue
             target = datetime.combine(today, task.due_time or dtime(9, 0))
             fire = target - timedelta(minutes=task.remind_before or 0)
@@ -6052,11 +6758,17 @@ def due_team_habit_reminders(s: Session, user_id: int, user: User,
 
     out = []
     for team in teams_for(s, user_id):
+        if member_notify(s, team.id, user_id) not in ("all", "important"):
+            continue
         habits = [h for h in s.scalars(select(TeamHabit).where(
             TeamHabit.team_id == team.id,
             TeamHabit.archived_at.is_(None),
             TeamHabit.remind_at.is_not(None))).all()
-            if team_habit_is_due(h, today)]
+            if not h.system_key]
+        if not habits:
+            continue
+        cal = calendar_for(s, habits, tz)
+        habits = [h for h in habits if cal.due(h, today)]
         if not habits:
             continue
         logs = {row.habit_id: row for row in s.scalars(select(TeamHabitLog).where(
@@ -6089,21 +6801,14 @@ def mark_team_habit_reminded(s: Session, user_id: int, habit_id: int,
 
 
 def teammates_of(s: Session, team_id: int, except_user: int) -> list[int]:
-    """Everybody in the team but one — who to tell when something changes."""
+    """Everybody in the team but one."""
     return [m["user_id"] for m in team_members(s, team_id)
             if m["user_id"] != except_user]
 
 
 def team_habit_history(s: Session, user_id: int, habit_id: int, *,
                        days: int = 30, tz: ZoneInfo | None = None) -> dict:
-    """A shared habit's record — the reader's own, and everybody else's.
-
-    Deliberately the same shape a personal habit's history has, key for key,
-    so the sheet that draws one can draw the other without a second layout.
-    The one addition is `members`: the whole reason to keep a habit with
-    somebody is to see how they are getting on with it, and a shared habit
-    that only showed your own grid would be a private habit with a label.
-    """
+    """A shared habit's record — the reader's own, and everybody else's."""
     habit = s.get(TeamHabit, habit_id)
     if habit is None or habit.archived_at is not None:
         raise ValueError("unknown_habit")
@@ -6111,22 +6816,36 @@ def team_habit_history(s: Session, user_id: int, habit_id: int, *,
 
     today = today_local(tz)
     start = today - timedelta(days=days - 1)
-    horizon_start = today - timedelta(days=STREAK_HORIZON)
+    horizon_start = today - timedelta(days=TEAM_STREAK_HORIZON)
+    ledger = TeamLedger(s, habit.team_id, horizon_start, today, tz)
 
-    rows = s.execute(select(TeamHabitLog.user_id, TeamHabitLog.day).where(
-        TeamHabitLog.habit_id == habit_id, TeamHabitLog.done.is_(True),
-        TeamHabitLog.day >= horizon_start)).all()
-    by_member: dict[int, set] = {}
-    for member_id, day in rows:
-        by_member.setdefault(member_id, set()).add(day)
+    first_log: dict[int, date] = {}
+    for (logged_habit, day), uids in ledger.logs.items():
+        if logged_habit != habit.id:
+            continue
+        for uid in uids:
+            if uid not in first_log or day < first_log[uid]:
+                first_log[uid] = day
 
-    def record(member_id: int) -> dict:
-        done_days = by_member.get(member_id, set())
+    def on(member: dict, day: date) -> bool:
+        """In the team that day — or already keeping this habit before joining.
+
+        A habit brought into the team keeps its owner's run: their days with
+        it before they joined are their own record, not days they owed.
+        """
+        if ledger.member_on(member, day):
+            return True
+        started = first_log.get(member["user_id"])
+        return (started is not None and day >= started
+                and (member["left"] is None or day < member["left"]))
+
+    def record(member: dict) -> dict:
+        uid = member["user_id"]
         grid, due_count, done_count = [], 0, 0
         for offset in range(days):
             day = start + timedelta(days=offset)
-            due = team_habit_is_due(habit, day)
-            done = day in done_days
+            due = on(member, day) and ledger.habit_owed(habit, uid, day)
+            done = ledger.habit_done(habit, uid, day)
             if due:
                 due_count += 1
                 done_count += int(done)
@@ -6134,13 +6853,14 @@ def team_habit_history(s: Session, user_id: int, habit_id: int, *,
 
         last7 = [g for g in grid[-7:] if g["due"]]
 
-        streak, cursor, guard = 0, today, 0
-        if team_habit_is_due(habit, today) and today not in done_days:
+        streak, cursor = 0, today
+        if ledger.habit_owed(habit, uid, today) and not ledger.habit_done(habit, uid, today):
             cursor = today - timedelta(days=1)
-        while guard < STREAK_HORIZON:
-            guard += 1
-            if team_habit_is_due(habit, cursor):
-                if cursor not in done_days:
+        while cursor >= horizon_start:
+            if not on(member, cursor):
+                break
+            if ledger.habit_owed(habit, uid, cursor):
+                if not ledger.habit_done(habit, uid, cursor):
                     break
                 streak += 1
             cursor -= timedelta(days=1)
@@ -6151,44 +6871,47 @@ def team_habit_history(s: Session, user_id: int, habit_id: int, *,
             "last7_due": len(last7),
             "last30_done": done_count, "last30_due": due_count,
             "percent": round(done_count / due_count * 100) if due_count else 0,
-            "done_today": today in done_days,
+            "done_today": ledger.habit_done(habit, uid, today),
         }
 
-    mine = record(user_id)
-    members = [{**m, "is_you": m["user_id"] == user_id,
-                **record(m["user_id"])}
-               for m in team_members(s, habit.team_id)]
+    active = [m for m in ledger.members if m["active"]]
+    me = next((m for m in active if m["user_id"] == user_id), None)
+    mine = record(me) if me else {}
+    members = [{**m, "is_you": m["user_id"] == user_id, **record(m)}
+               for m in active]
+    viewer_ws = s.scalar(select(Workspace.id).where(Workspace.user_id == user_id))
+    run = (open_timer_runs(s, viewer_ws, "thabit", day=today).get(habit.id)
+           if viewer_ws else None)
 
     return {
         "id": habit.id, "name": habit.name, "category": habit.category,
         "schedule": clean_schedule(habit.schedule),
+        "schedule_today": ledger.cal.schedule_on(habit, today),
         "days": schedule_days(habit.schedule),
-        "paused": habit.paused_at is not None,
+        "paused": ledger.cal.paused_on(habit, today),
         "protected": bool(habit.is_protected),
+        "mirrored": bool(habit.system_key),
         "system_key": habit.system_key or "",
         "target_time": (habit.target_time.strftime("%H:%M")
                         if habit.target_time else None),
         "remind_at": (habit.remind_at.strftime("%H:%M")
                       if habit.remind_at else None),
+        "created_by": habit.created_by,
+        "can_manage": _may_manage(s, user_id, habit.team_id, habit.created_by),
         "source": "team", "team_id": team.id, "team_name": team.name,
+        **_timer_fields(habit.timer_minutes, habit.name,
+                        protected=bool(habit.system_key)),
+        "timer": run,
         **mine,
-        "members": members,
+        "members": [{k: v for k, v in m.items() if k not in ("joined", "left")}
+                    for m in members],
     }
 
 
 def move_habit(s: Session, user_id: int, *, habit_id: int | None = None,
                team_habit_id: int | None = None,
                to_team: int | None = None) -> dict:
-    """Move a habit between a private list and a shared one, keeping its days.
-
-    The logs come with it. A habit moved from "mine" to "ours" that lost its
-    streak would be a habit nobody moves, and the streak is usually the reason
-    somebody wants it shared in the first place.
-
-    Moving a shared habit into a private list removes it from the other
-    member, which is a real decision rather than a tidy-up — the caller is
-    expected to announce it.
-    """
+    """Move a habit between a private list and a shared one, keeping its days."""
     owner_ws = workspace_id_for(s, user_id)
 
     if habit_id is not None:
@@ -6196,8 +6919,6 @@ def move_habit(s: Session, user_id: int, *, habit_id: int | None = None,
             raise ValueError("no_destination")
         habit = _owned_habit(s, owner_ws, habit_id)
         if habit.is_protected:
-            # The derived rituals are written by the prayer and journal
-            # modules; moving one would leave those writing to nothing.
             raise ValueError("protected")
         _require_team(s, user_id, to_team)
 
@@ -6207,15 +6928,19 @@ def move_habit(s: Session, user_id: int, *, habit_id: int | None = None,
                           category=habit.category, schedule=habit.schedule,
                           target_time=habit.target_time,
                           remind_at=habit.remind_at, position=position,
+                          timer_minutes=habit.timer_minutes,
+                          active_from=habit.active_from
+                          or local_date_of(habit.created_at),
                           created_by=user_id)
         s.add(moved)
         s.flush()
-        for log in s.scalars(select(HabitLog).where(
+        for row in s.scalars(select(HabitLog).where(
                 HabitLog.habit_id == habit.id)).all():
             s.add(TeamHabitLog(habit_id=moved.id, user_id=user_id,
-                               day=log.day, done=log.done,
-                               logged_at=log.logged_at))
+                               day=row.day, done=row.done,
+                               logged_at=row.logged_at))
         habit.archived_at = utcnow()
+        _log_team(s, to_team, user_id, "habit_add", moved.name, "habit", moved.id)
         s.commit()
         return team_habit_row(moved, user_id, set())
 
@@ -6226,23 +6951,28 @@ def move_habit(s: Session, user_id: int, *, habit_id: int | None = None,
     if shared is None or shared.archived_at is not None:
         raise ValueError("unknown_habit")
     _require_team(s, user_id, shared.team_id)
-    if shared.is_protected:
+    if shared.is_protected or shared.system_key:
         raise ValueError("protected")
+    _require_manage(s, user_id, shared.team_id, shared.created_by)
 
     top = s.scalar(select(func.max(Habit.position))
                    .where(Habit.workspace_id == owner_ws)) or 0
     habit = Habit(workspace_id=owner_ws, name=shared.name,
                   category=shared.category, schedule=shared.schedule,
                   target_time=shared.target_time, remind_at=shared.remind_at,
+                  timer_minutes=shared.timer_minutes,
+                  active_from=shared.active_from or local_date_of(shared.created_at),
                   position=top + 1)
     s.add(habit)
     s.flush()
-    for log in s.scalars(select(TeamHabitLog).where(
+    for row in s.scalars(select(TeamHabitLog).where(
             TeamHabitLog.habit_id == shared.id,
             TeamHabitLog.user_id == user_id)).all():
-        s.add(HabitLog(workspace_id=owner_ws, habit_id=habit.id, day=log.day,
-                       done=log.done, logged_at=log.logged_at))
+        s.add(HabitLog(workspace_id=owner_ws, habit_id=habit.id, day=row.day,
+                       done=row.done, logged_at=row.logged_at))
     shared.archived_at = utcnow()
+    _log_team(s, shared.team_id, user_id, "habit_archive", shared.name,
+              "habit", shared.id)
     s.commit()
     return {"id": habit.id, "name": habit.name, "source": "personal"}
 
@@ -6251,30 +6981,24 @@ def move_habit(s: Session, user_id: int, *, habit_id: int | None = None,
 
 def list_team_projects(s: Session, user_id: int, team_id: int, *,
                        include_archived: bool = False) -> list[dict]:
-    """The team's own shelves, with how far each has got.
-
-    The same object a personal project is — one table, one set of rules — so
-    a shared task can be filed exactly as a private one is, and the screen
-    that draws a project does not need to know which kind it is looking at.
-    """
+    """The team's own shelves, with how far each has got."""
     _require_team(s, user_id, team_id)
     stmt = select(Project).where(Project.team_id == team_id)
     if not include_archived:
         stmt = stmt.where(Project.archived_at.is_(None))
-
+    projects = s.scalars(stmt.order_by(Project.status, Project.created_at)).all()
+    if not projects:
+        return []
+    tasks = s.scalars(select(TeamTask).where(
+        TeamTask.project_id.in_([p.id for p in projects]),
+        TeamTask.archived_at.is_(None))).all()
+    done_map = _team_done_map(s, [t.id for t in tasks])
     out = []
-    for project in s.scalars(stmt.order_by(Project.status,
-                                           Project.created_at)).all():
-        total = s.scalar(select(func.count(TeamTask.id)).where(
-            TeamTask.project_id == project.id,
-            TeamTask.archived_at.is_(None))) or 0
-        done = s.scalar(select(func.count(func.distinct(TeamTask.id)))
-                        .select_from(TeamTask)
-                        .join(TeamTaskDone, TeamTaskDone.task_id == TeamTask.id)
-                        .where(TeamTask.project_id == project.id,
-                               TeamTask.archived_at.is_(None),
-                               TeamTaskDone.user_id == user_id,
-                               TeamTaskDone.done.is_(True))) or 0
+    for project in projects:
+        mine = [t for t in tasks if t.project_id == project.id]
+        total = len(mine)
+        done = sum(1 for t in mine
+                   if team_task_done_for(t, user_id, done_map.get(t.id, set())))
         out.append({
             "id": project.id, "name": project.name,
             "description": project.description or "",
@@ -6300,6 +7024,8 @@ def add_team_project(s: Session, user_id: int, team_id: int, name: str, *,
                       description=(description or "").strip()[:2000],
                       deadline=deadline)
     s.add(project)
+    s.flush()
+    _log_team(s, team_id, user_id, "project_add", name, "project", project.id)
     s.commit()
     return {"id": project.id, "name": project.name, "team_id": team_id,
             "source": "team", "status": project.status,
@@ -6308,12 +7034,7 @@ def add_team_project(s: Session, user_id: int, team_id: int, name: str, *,
 
 def _team_project_or_none(s: Session, team_id: int,
                           project_id: int | None) -> int | None:
-    """A project id, but only if it is this team's. Otherwise nothing.
-
-    The same rule a personal task follows about its own workspace: filing a
-    task onto somebody else's shelf is not a thing the API should make
-    possible by passing a number.
-    """
+    """A project id, but only if it is this team's. Otherwise nothing."""
     if project_id is None:
         return None
     project = s.get(Project, project_id)
@@ -6322,93 +7043,13 @@ def _team_project_or_none(s: Session, team_id: int,
     return project.id
 
 
-def team_scoreboard(s: Session, user_id: int, team_id: int, *,
-                    tz: ZoneInfo | None = None) -> dict:
-    """Day, week and month at once, plus what is still open and who did what.
-
-    The Team screen answers a different question from the personal one. A
-    person opens their own screen to decide what to do next; two people open
-    the shared one to find out where they stand — so this is a report, not a
-    worklist: three periods side by side, and for today an explicit list of
-    what each of you has and has not done.
-    """
-    _require_team(s, user_id, team_id)
-    today = today_local(tz)
-    members = team_members(s, team_id)
-
-    def window(first: date, last: date) -> dict:
-        """Each member's done/total over an inclusive range of local days."""
-        totals = {m["user_id"]: [0, 0] for m in members}
-        cursor = first
-        while cursor <= last:
-            for row in team_day_summary(s, team_id, cursor, tz=tz)["members"]:
-                totals[row["user_id"]][0] += row["done"]
-                totals[row["user_id"]][1] += row["total"]
-            cursor += timedelta(days=1)
-        return totals
-
-    periods = {}
-    for label, days in (("day", 1), ("week", 7), ("month", 30)):
-        start = today - timedelta(days=days - 1)
-        totals = window(start, today)
-        # The same length again, immediately before, so the number can be read
-        # as a direction rather than only a level. A percentage on its own
-        # says how today went; the change says whether things are going the
-        # way you want, which is the question two people actually have.
-        before = window(start - timedelta(days=days), start - timedelta(days=1))
-
-        rows = []
-        for m in members:
-            uid = m["user_id"]
-            done, total = totals[uid]
-            percent = round(done / total * 100) if total else None
-            was_done, was_total = before[uid]
-            previous = round(was_done / was_total * 100) if was_total else None
-            rows.append({
-                "user_id": uid, "name": m["name"],
-                "is_you": uid == user_id,
-                "done": done, "total": total, "percent": percent,
-                "previous": previous,
-                # None when there is nothing to compare with — a team's first
-                # week has no "last week", and inventing +100% would be a lie
-                # that flatters.
-                "delta": (percent - previous
-                          if percent is not None and previous is not None
-                          else None),
-            })
-        periods[label] = rows
-
-    # Today, item by item: the bit that turns a percentage into something you
-    # can act on before the day is over.
-    todays = team_day_summary(s, team_id, today, tz=tz)
-    open_items, done_items = [], []
-    for kind, rows in (("task", todays["tasks"]), ("habit", todays["habits"])):
-        for row in rows:
-            entry = {"kind": kind, "id": row["id"],
-                     "title": row.get("title") or row.get("name"),
-                     "done_by": row["done_by"],
-                     "missing": [m["user_id"] for m in members
-                                 if m["user_id"] not in row["done_by"]]}
-            (done_items if not entry["missing"] else open_items).append(entry)
-
-    return {"team_id": team_id, "date": today.isoformat(),
-            "members": members, "periods": periods,
-            "open": open_items, "done": done_items,
-            "open_count": len(open_items), "done_count": len(done_items)}
-
-
 def edit_team_task(s: Session, user_id: int, task_id: int, **fields) -> dict:
-    """Change a shared task. Either member may, and everything is editable.
-
-    The same field set a private task takes. A shared task that could be
-    given a deadline but never moved, or a priority but never a time, would
-    be the second-class kind — and the ones that matter most are exactly the
-    ones people put in a team.
-    """
+    """Change a shared task. Its creator, an admin or the owner may."""
     task = s.get(TeamTask, task_id)
     if task is None or task.archived_at is not None:
         raise ValueError("unknown_task")
     _require_team(s, user_id, task.team_id)
+    _require_manage(s, user_id, task.team_id, task.created_by)
 
     if "title" in fields and fields["title"]:
         task.title = str(fields["title"]).strip()[:300]
@@ -6416,6 +7057,12 @@ def edit_team_task(s: Session, user_id: int, task_id: int, **fields) -> dict:
         task.description = (fields["description"] or "").strip()[:2000]
     if "deadline" in fields:
         task.deadline = fields["deadline"]
+        if fields["deadline"] is not None:
+            for countdown in s.scalars(select(Countdown).where(
+                    Countdown.team_id == task.team_id, Countdown.scope == "task",
+                    Countdown.item_id == task.id,
+                    Countdown.archived_at.is_(None))).all():
+                countdown.target_date = fields["deadline"]
     if "due_time" in fields:
         task.due_time = fields["due_time"]
     if "remind_before" in fields:
@@ -6430,6 +7077,16 @@ def edit_team_task(s: Session, user_id: int, task_id: int, **fields) -> dict:
     if "project_id" in fields:
         task.project_id = _team_project_or_none(s, task.team_id,
                                                 fields["project_id"])
+    if "completion" in fields and fields["completion"] is not None:
+        task.completion = clean_completion(fields["completion"])
+        if task.completion != "assignees":
+            task.assignees = None
+    if "assignees" in fields and fields["assignees"] is not None:
+        task.assignees = (_clean_assignees(s, task.team_id, fields["assignees"])
+                          if clean_completion(task.completion) == "assignees" else None)
+    if "timer_minutes" in fields:
+        task.timer_minutes = clean_timer_minutes(fields["timer_minutes"])
+    _log_team(s, task.team_id, user_id, "task_edit", task.title, "task", task.id)
     s.commit()
     return team_task_row(s, task, user_id)
 
@@ -6444,25 +7101,16 @@ def team_task_for(s: Session, user_id: int, task_id: int) -> dict | None:
         return None
     row = team_task_row(s, task, user_id)
     row.update({"source": "team", "team_id": team.id, "team_name": team.name,
-                "done_by_names": [m["name"] for m in team_members(s, team.id)
-                                  if m["user_id"] in row["done_by"]]})
+                "can_manage": _may_manage(s, user_id, team.id, task.created_by),
+                "members": [{"user_id": m["user_id"], "name": m["name"]}
+                            for m in team_members(s, team.id)]})
     return row
 
 
 def move_task(s: Session, user_id: int, *, task_id: int | None = None,
               team_task_id: int | None = None,
               to_team: int | None = None) -> dict:
-    """Move a task between a private list and a shared one.
-
-    Changing your mind about where something belongs is ordinary — "finish
-    the maths" starts private and becomes something the two of you are doing,
-    or the other way round. Recreating it by hand loses the deadline, the
-    reminder, the repeat and the history, so nobody does it and the task just
-    sits in the wrong place.
-
-    A shared task carries no project across, and a private one drops its own:
-    a project is a shelf inside one container, and the shelf does not move.
-    """
+    """Move a task between a private list and a shared one."""
     ws = workspace_id_for(s, user_id)
 
     if task_id is not None:
@@ -6478,7 +7126,8 @@ def move_task(s: Session, user_id: int, *, task_id: int | None = None,
                          deadline=task.deadline, due_time=task.due_time,
                          remind_before=task.remind_before,
                          recurrence=task.recurrence, anchor_day=task.anchor_day,
-                         priority=task.priority, created_by=user_id)
+                         priority=task.priority, created_by=user_id,
+                         completion="all", timer_minutes=task.timer_minutes)
         s.add(moved)
         s.flush()
         if task.status == "done":
@@ -6487,6 +7136,7 @@ def move_task(s: Session, user_id: int, *, task_id: int | None = None,
                                or today_local(), done_at=task.completed_at
                                or utcnow()))
         task.archived_at = utcnow()
+        _log_team(s, to_team, user_id, "task_add", moved.title, "task", moved.id)
         s.commit()
         return team_task_row(s, moved, user_id)
 
@@ -6497,6 +7147,7 @@ def move_task(s: Session, user_id: int, *, task_id: int | None = None,
     if shared is None or shared.archived_at is not None:
         raise ValueError("unknown_task")
     _require_team(s, user_id, shared.team_id)
+    _require_manage(s, user_id, shared.team_id, shared.created_by)
 
     mine = s.scalar(select(TeamTaskDone).where(
         TeamTaskDone.task_id == shared.id, TeamTaskDone.user_id == user_id))
@@ -6505,22 +7156,20 @@ def move_task(s: Session, user_id: int, *, task_id: int | None = None,
                 deadline=shared.deadline, due_time=shared.due_time,
                 remind_before=shared.remind_before,
                 recurrence=shared.recurrence, anchor_day=shared.anchor_day,
-                priority=shared.priority,
+                priority=shared.priority, timer_minutes=shared.timer_minutes,
                 status="done" if (mine and mine.done) else "waiting",
                 completed_at=(mine.done_at if mine and mine.done else None))
     s.add(task)
     shared.archived_at = utcnow()
+    _log_team(s, shared.team_id, user_id, "task_archive", shared.title,
+              "task", shared.id)
     s.commit()
     return {"id": task.id, "title": task.title, "source": "personal"}
 
 
 def move_project(s: Session, user_id: int, project_id: int,
                  to_team: int | None) -> dict:
-    """Move a project, and the tasks filed on it, between private and shared.
-
-    The shelf and everything on it travel together — a project that arrived
-    somewhere empty would be a folder, not a move.
-    """
+    """Move a project, and the tasks filed on it, between private and shared."""
     ws = workspace_id_for(s, user_id)
     project = s.get(Project, project_id)
     if project is None or project.archived_at is not None:
@@ -6545,7 +7194,8 @@ def move_project(s: Session, user_id: int, project_id: int,
                              remind_before=task.remind_before,
                              recurrence=task.recurrence,
                              anchor_day=task.anchor_day,
-                             priority=task.priority, created_by=user_id)
+                             priority=task.priority, created_by=user_id,
+                             completion="all")
             s.add(moved)
             s.flush()
             if task.status == "done":
@@ -6553,15 +7203,15 @@ def move_project(s: Session, user_id: int, project_id: int,
                                    done=True, day=today_local(),
                                    done_at=task.completed_at or utcnow()))
             task.archived_at = utcnow()
+        _log_team(s, to_team, user_id, "project_add", project.name,
+                  "project", project.id)
         s.commit()
         return {"id": project.id, "name": project.name, "source": "team",
                 "team_id": to_team, "moved_tasks": len(tasks)}
 
-    # Shared -> private. Only for a project that is shared, and it takes it
-    # away from the other member, so the caller announces it.
     if project.team_id is None:
         raise ValueError("already_private")
-    _require_team(s, user_id, project.team_id)
+    _require_role(s, user_id, project.team_id, "admin")
 
     shared_tasks = s.scalars(select(TeamTask).where(
         TeamTask.project_id == project.id,
@@ -6570,6 +7220,7 @@ def move_project(s: Session, user_id: int, project_id: int,
         TeamTaskDone.user_id == user_id, TeamTaskDone.done.is_(True),
         TeamTaskDone.task_id.in_([t.id for t in shared_tasks] or [0]))).all())
 
+    team_id = project.team_id
     project.team_id = None
     project.workspace_id = ws
     s.flush()
@@ -6584,16 +7235,17 @@ def move_project(s: Session, user_id: int, project_id: int,
                    status="done" if shared.id in done_ids else "waiting",
                    completed_at=utcnow() if shared.id in done_ids else None))
         shared.archived_at = utcnow()
+    _log_team(s, team_id, user_id, "project_remove", project.name,
+              "project", project.id)
     s.commit()
     return {"id": project.id, "name": project.name, "source": "personal",
             "moved_tasks": len(shared_tasks)}
 
 
-# --- The day as two halves, and one number ---------------------------------
+# --- The day's colour bands ---------------------------------------------------
 
 #: Where a percentage stops being one thing and starts being another. Used for
-#: the colour a number is shown in, so the bands are stated once here rather
-#: than guessed at in three places in the browser.
+#: the colour a number is shown in.
 SCORE_BANDS = ((85, "great"), (65, "good"), (40, "fair"), (0, "low"))
 
 
@@ -6607,45 +7259,6 @@ def score_band(percent: int | None) -> str:
     return "low"
 
 
-def day_score(s: Session, ws: int, day: date | None = None, *,
-              tz: ZoneInfo | None = None) -> dict:
-    """The day as its two halves and the one number they make.
-
-    Private work and shared work are scored apart and then averaged, rather
-    than poured into one pool. The pool version let whichever side happened to
-    have more items decide the whole day: a week with twelve private tasks and
-    one shared habit read as a private score with a rounding error attached,
-    which is not what somebody keeping a programme with another person means
-    by "how did we do".
-
-    Averaging two percentages gives each half the same say regardless of how
-    many rows it holds. When one half is empty there is nothing to average and
-    the other half simply is the day.
-    """
-    day = day or today_local(tz)
-    personal_parts = overall_components(s, ws, day, tz=tz, include_team=False)
-    personal = (weighted_overall(personal_parts)
-                if any(v is not None for v in personal_parts.values()) else None)
-
-    owner = workspace_owner(s, ws)
-    shared_items = (due_team_habits(s, ws, day) + due_team_tasks(s, ws, day)
-                    if owner else [])
-    if shared_items:
-        done = sum(1 for _, ok in shared_items if ok)
-        team = round(done / len(shared_items) * 100)
-    else:
-        team = None
-
-    present = [x for x in (personal, team) if x is not None]
-    value = round(sum(present) / len(present)) if present else EMPTY_OVERALL
-
-    return {"value": value, "personal": personal, "team": team,
-            "band": score_band(value if present else None),
-            "components": personal_parts,
-            "team_items": len(shared_items),
-            "team_done": sum(1 for _, ok in shared_items if ok)}
-
-
 # ---------------------------------------------------------------------------
 # Timers — a habit or a task that is done by the clock, not by a tap
 # ---------------------------------------------------------------------------
@@ -6655,15 +7268,16 @@ def day_score(s: Session, ws: int, day: date | None = None, *,
 # only way to finish it is to let the timer run out, and the moment it does the
 # item is ticked for you — in the bot, in the Mini App, and in the score.
 #
-# The timer is read from the name when nobody set one ("5h", "45 min",
-# "1 soat 30 daqiqa"), can be set to any length on any item ("Sport" → 1h),
-# and can be switched off on any item, including one whose name says "5h".
+# Shared items carry timers too. The length is the team's setting; each run
+# belongs to the member running it, and finishing it ticks their share only.
 
 #: Longest timer accepted. A day is already more than any one sitting.
 TIMER_MAX_MINUTES = 24 * 60
 #: The lengths both surfaces offer as one tap, in minutes.
 TIMER_PRESETS = [15, 25, 30, 45, 60, 90, 120, 180, 240, 300]
-TIMER_KINDS = ("habit", "task")
+#: habit and task are private; thabit and ttask are a team habit and task.
+TIMER_KINDS = ("habit", "task", "thabit", "ttask")
+TEAM_TIMER_KINDS = ("thabit", "ttask")
 #: A run still counting, as opposed to one that has ended either way.
 TIMER_OPEN = ("running", "paused")
 
@@ -6672,12 +7286,10 @@ _HOUR_UNITS = ("h", "hr", "hrs", "hour", "hours", "soat", "soatlik",
 _MINUTE_UNITS = ("m", "min", "mins", "minut", "minute", "minutes", "minutlik",
                  "daq", "daqiqa", "daqiqalik",
                  "мин", "минут", "минута", "минуты")
-#: Longest spelling first, so "minutes" is not read as "m" plus leftovers.
 _DURATION_RE = re.compile(
     r"(?<![\w.,])(\d{1,4}(?:[.,]\d{1,2})?)\s*("
     + "|".join(sorted(_HOUR_UNITS + _MINUTE_UNITS, key=len, reverse=True))
     + r")(?!\w)", re.IGNORECASE)
-#: "1h30m" is two amounts written together; a space makes it two words.
 _LETTER_THEN_DIGIT = re.compile(r"(?<=[^\W\d_])(?=\d)")
 
 
@@ -6685,8 +7297,7 @@ def parse_duration_minutes(text: str | None) -> int | None:
     """The length of time a name talks about, in minutes, or None.
 
     Only an explicit unit counts: "5h", "45 min", "1,5 soat", "2 soatlik",
-    "1h30m", "30 минут". A bare number never does — "5x namoz", "Read 20
-    pages" and "10k qadam" are counts, not durations.
+    "1h30m", "30mins", "30 минут". A bare number never does.
     """
     if not text:
         return None
@@ -6694,8 +7305,6 @@ def parse_duration_minutes(text: str | None) -> int | None:
     total = 0.0
     for number, unit in _DURATION_RE.findall(spaced):
         value = float(number.replace(",", "."))
-        # "100m", "400m" and "1500m" are running distances, not sittings. A
-        # bare "m" is minutes only below the shortest of them.
         if unit.lower() == "m" and value >= 100:
             continue
         total += value * 60 if unit.lower() in _HOUR_UNITS else value
@@ -6720,12 +7329,7 @@ def clean_timer_minutes(value) -> int | None:
 
 def timer_minutes_for(configured: int | None, name: str | None, *,
                       protected: bool = False) -> int | None:
-    """How long the timer on an item actually runs, or None when it has none.
-
-    The derived habits never have one: Get up, namoz and the journal are
-    ticked by their own modules, and a clock in front of them would be a
-    second rule for the same box.
-    """
+    """How long the timer on an item actually runs, or None when it has none."""
     if protected:
         return None
     if configured is None:
@@ -6737,10 +7341,9 @@ def timer_minutes_for(configured: int | None, name: str | None, *,
 
 def _timer_fields(configured: int | None, name: str | None, *,
                   protected: bool = False) -> dict:
-    """The timer half of a habit or task row, identical on both kinds."""
+    """The timer half of a habit or task row, identical on every kind."""
     return {
         "timer_minutes": timer_minutes_for(configured, name, protected=protected),
-        # auto: read from the name · on: set by hand · off: switched off
         "timer_mode": ("auto" if configured is None
                        else "off" if configured <= 0 else "on"),
     }
@@ -6764,6 +7367,17 @@ def _timer_item(s: Session, ws: int, kind: str, item_id: int):
         if task.archived_at is not None:
             raise NotFound("task")
         return task, timer_minutes_for(task.timer_minutes, task.title), task.title
+    if kind in TEAM_TIMER_KINDS:
+        owner = workspace_owner(s, ws)
+        model = TeamHabit if kind == "thabit" else TeamTask
+        item = s.get(model, item_id)
+        if item is None or item.archived_at is not None or owner is None \
+                or team_for(s, owner, item.team_id) is None:
+            raise NotFound("item")
+        name = item.name if kind == "thabit" else item.title
+        protected = bool(getattr(item, "system_key", ""))
+        return item, timer_minutes_for(item.timer_minutes, name,
+                                       protected=protected), name
     raise ValueError("unknown_kind")
 
 
@@ -6777,12 +7391,7 @@ def _run_remaining(run: TimerRun, now: datetime | None = None) -> int:
 
 def timer_run_dict(run: TimerRun, now: datetime | None = None,
                    tz: ZoneInfo | None = None) -> dict:
-    """One run as both surfaces draw it.
-
-    `remaining_sec` rather than an end time is what the Mini App counts down
-    from: it is measured on the server, so a phone whose clock is three minutes
-    out still shows the right number.
-    """
+    """One run as both surfaces draw it."""
     now = now or utcnow()
     remaining = _run_remaining(run, now) if run.status in TIMER_OPEN else 0
     ends = None
@@ -6796,18 +7405,19 @@ def timer_run_dict(run: TimerRun, now: datetime | None = None,
             "ends_at": ends, "day": run.day.isoformat()}
 
 
+def _day_bound(kind: str) -> bool:
+    """Whether a run belongs to one day — habits do, tasks do not."""
+    return kind in ("habit", "thabit")
+
+
 def _open_run(s: Session, ws: int, kind: str, item_id: int,
               day: date | None = None) -> TimerRun | None:
-    """The run still counting for this item, if there is one.
-
-    A habit's run belongs to its day: yesterday's paused "deep flow" is not
-    today's, and is closed rather than resumed into the wrong day.
-    """
+    """The run still counting for this item, if there is one."""
     run = s.scalar(select(TimerRun).where(
         TimerRun.workspace_id == ws, TimerRun.kind == kind,
         TimerRun.item_id == item_id, TimerRun.status.in_(TIMER_OPEN))
         .order_by(TimerRun.id.desc()).limit(1))
-    if run is not None and kind == "habit" and day is not None and run.day != day:
+    if run is not None and _day_bound(kind) and day is not None and run.day != day:
         run.status = "cancelled"
         run.started_at = None
         s.flush()
@@ -6818,6 +7428,8 @@ def _open_run(s: Session, ws: int, kind: str, item_id: int,
 def open_timer_runs(s: Session, ws: int, kind: str, *,
                     day: date | None = None) -> dict[int, dict]:
     """{item_id: run} for every run of this kind still counting."""
+    if ws is None:
+        return {}
     stmt = select(TimerRun).where(
         TimerRun.workspace_id == ws, TimerRun.kind == kind,
         TimerRun.status.in_(TIMER_OPEN))
@@ -6832,14 +7444,10 @@ def open_timer_runs(s: Session, ws: int, kind: str, *,
 
 
 def _complete_by_timer(s: Session, run: TimerRun, moment: datetime) -> None:
-    """Tick the item a finished run belongs to — the timer's whole purpose.
-
-    Writes the completion directly rather than through `toggle_habit` or
-    `complete_task`, because those are the doors that refuse a timed item;
-    this is the one path that is allowed through them.
-    """
+    """Tick the item a finished run belongs to — the timer's whole purpose."""
     ws = run.workspace_id
     tz = _workspace_tz(s, ws)
+    at = moment.replace(tzinfo=_utc.utc).astimezone(tz).replace(tzinfo=None)
     if run.kind == "habit":
         habit = s.get(Habit, run.item_id)
         if habit is None or habit.workspace_id != ws or habit.archived_at is not None:
@@ -6847,7 +7455,6 @@ def _complete_by_timer(s: Session, run: TimerRun, moment: datetime) -> None:
         row = s.scalar(select(HabitLog).where(
             HabitLog.workspace_id == ws, HabitLog.habit_id == habit.id,
             HabitLog.day == run.day))
-        at = moment.replace(tzinfo=_utc.utc).astimezone(tz).replace(tzinfo=None)
         if row is None:
             s.add(HabitLog(workspace_id=ws, habit_id=habit.id, day=run.day,
                            done=True, logged_at=at))
@@ -6859,24 +7466,42 @@ def _complete_by_timer(s: Session, run: TimerRun, moment: datetime) -> None:
         if (task is None or task.workspace_id != ws
                 or task.archived_at is not None or task.status == "done"):
             return
-        task.status = "done"
-        task.completed_at = moment
-        _spawn_next_occurrence(s, ws, task, tz)
+        _finish_task(s, ws, task, tz, moment)
+    elif run.kind in TEAM_TIMER_KINDS:
+        owner = workspace_owner(s, ws)
+        if owner is None:
+            return
+        if run.kind == "thabit":
+            habit = s.get(TeamHabit, run.item_id)
+            if habit is None or habit.archived_at is not None:
+                return
+            row = s.scalar(select(TeamHabitLog).where(
+                TeamHabitLog.habit_id == habit.id, TeamHabitLog.user_id == owner,
+                TeamHabitLog.day == run.day))
+            if row is None:
+                s.add(TeamHabitLog(habit_id=habit.id, user_id=owner, day=run.day,
+                                   done=True, logged_at=moment))
+            elif not row.done:
+                row.done = True
+                row.logged_at = moment
+        else:
+            task = s.get(TeamTask, run.item_id)
+            if task is None or task.archived_at is not None:
+                return
+            row = s.scalar(select(TeamTaskDone).where(
+                TeamTaskDone.task_id == task.id, TeamTaskDone.user_id == owner))
+            if row is None:
+                s.add(TeamTaskDone(task_id=task.id, user_id=owner, done=True,
+                                   day=run.day, done_at=moment))
+            elif not row.done:
+                row.done = True
+                row.done_at = moment
+                row.day = run.day
 
 
 def settle_timers(s: Session, ws: int | None = None,
                   now: datetime | None = None) -> list[int]:
-    """Finish every running timer whose time is up. Returns their ids.
-
-    Called by the scheduled job for everybody and by every read of one
-    workspace's habits or tasks, so a timer that ran out while the phone was
-    in a pocket is already done the moment anything is opened.
-
-    The status change is a conditional UPDATE: of two workers that notice the
-    same run at once, exactly one wins and ticks the item.
-    """
-    from sqlalchemy import update as sql_update
-
+    """Finish every running timer whose time is up. Returns their ids."""
     now = now or utcnow()
     stmt = select(TimerRun).where(TimerRun.status == "running")
     if ws is not None:
@@ -6887,18 +7512,17 @@ def settle_timers(s: Session, ws: int | None = None,
         if _run_remaining(run, now) > 0:
             continue
         if _run_is_stale(s, run, date.min):
-            # Nothing left to tick, so nothing to announce either.
             run.status, run.started_at = "cancelled", None
             cancelled = True
             continue
-        # The moment it actually reached zero, not the moment it was noticed.
         moment = (run.started_at or now) + timedelta(
             seconds=max(0, run.duration_sec - (run.elapsed_sec or 0)))
         moment = min(moment, now)
         won = s.execute(sql_update(TimerRun).where(
             TimerRun.id == run.id, TimerRun.status == "running").values(
             status="finished", finished_at=moment, started_at=None,
-            elapsed_sec=run.duration_sec)).rowcount
+            elapsed_sec=run.duration_sec)
+            .execution_options(synchronize_session=False)).rowcount
         if not won:
             continue
         s.refresh(run)
@@ -6910,15 +7534,13 @@ def settle_timers(s: Session, ws: int | None = None,
 
 
 def timer_blocks(s: Session, ws: int, kind: str, item, day: date | None = None) -> bool:
-    """Whether a timer stands between this item and being ticked by hand.
-
-    True while the item has a timer and no run of it has finished — for a
-    habit, no run *that day*. Once the clock has done its part, unticking and
-    re-ticking by hand is the user's business.
-    """
+    """Whether a timer stands between this item and being ticked by hand."""
     if kind == "habit":
         minutes = timer_minutes_for(item.timer_minutes, item.name,
                                     protected=item.is_protected)
+    elif kind == "thabit":
+        minutes = timer_minutes_for(item.timer_minutes, item.name,
+                                    protected=bool(item.system_key))
     else:
         minutes = timer_minutes_for(item.timer_minutes, item.title)
     if not minutes:
@@ -6926,9 +7548,18 @@ def timer_blocks(s: Session, ws: int, kind: str, item, day: date | None = None) 
     stmt = select(TimerRun.id).where(
         TimerRun.workspace_id == ws, TimerRun.kind == kind,
         TimerRun.item_id == item.id, TimerRun.status == "finished")
-    if kind == "habit" and day is not None:
+    if _day_bound(kind) and day is not None:
         stmt = stmt.where(TimerRun.day == day)
     return s.scalar(stmt.limit(1)) is None
+
+
+def team_timer_blocks(s: Session, user_id: int, kind: str, item,
+                      day: date | None = None) -> bool:
+    """`timer_blocks` for a shared item, from the member's own workspace."""
+    ws = s.scalar(select(Workspace.id).where(Workspace.user_id == user_id))
+    if ws is None:
+        return False
+    return timer_blocks(s, ws, kind, item, day or today_local(_workspace_tz(s, ws)))
 
 
 def _pause_run(run: TimerRun, now: datetime) -> None:
@@ -6939,14 +7570,34 @@ def _pause_run(run: TimerRun, now: datetime) -> None:
     run.status = "paused"
 
 
+def _item_done_for_timer(s: Session, ws: int, kind: str, item, today: date) -> bool:
+    if kind == "habit":
+        return bool(s.scalar(select(HabitLog.id).where(
+            HabitLog.workspace_id == ws, HabitLog.habit_id == item.id,
+            HabitLog.day == today, HabitLog.done.is_(True))))
+    if kind == "task":
+        return item.status == "done"
+    owner = workspace_owner(s, ws)
+    if kind == "thabit":
+        return bool(s.scalar(select(TeamHabitLog.id).where(
+            TeamHabitLog.habit_id == item.id, TeamHabitLog.user_id == owner,
+            TeamHabitLog.day == today, TeamHabitLog.done.is_(True))))
+    done_by = _team_done_map(s, [item.id]).get(item.id, set())
+    return team_task_done_for(item, owner, done_by)
+
+
+def _item_paused(s: Session, kind: str, item, today: date, tz) -> bool:
+    if kind in ("habit", "thabit"):
+        return calendar_for(s, [item], tz).paused_on(item, today)
+    return False
+
+
 def start_timer(s: Session, ws: int, kind: str, item_id: int, *,
                 tz: ZoneInfo | None = None,
                 now: datetime | None = None) -> dict:
     """Start (or resume) the timer on one item.
 
-    One clock at a time: whatever else was running is paused, not lost. Deep
-    work and a workout do not happen at once, and two timers quietly counting
-    in parallel would tick both.
+    One clock at a time: whatever else was running is paused, not lost.
     """
     now = now or utcnow()
     tz = tz or _workspace_tz(s, ws)
@@ -6955,14 +7606,9 @@ def start_timer(s: Session, ws: int, kind: str, item_id: int, *,
     if not minutes:
         raise ValueError("timer_off")
     today = today_local(tz)
-    if kind == "habit":
-        if item.paused_at is not None:
-            raise ValueError("paused")
-        if s.scalar(select(HabitLog.id).where(
-                HabitLog.workspace_id == ws, HabitLog.habit_id == item.id,
-                HabitLog.day == today, HabitLog.done.is_(True))):
-            raise ValueError("already_done")
-    elif item.status == "done":
+    if _item_paused(s, kind, item, today, tz):
+        raise ValueError("paused")
+    if _item_done_for_timer(s, ws, kind, item, today):
         raise ValueError("already_done")
 
     for other in s.scalars(select(TimerRun).where(
@@ -6970,7 +7616,7 @@ def start_timer(s: Session, ws: int, kind: str, item_id: int, *,
         if not (other.kind == kind and other.item_id == item.id):
             _pause_run(other, now)
 
-    run = _open_run(s, ws, kind, item.id, today if kind == "habit" else None)
+    run = _open_run(s, ws, kind, item.id, today if _day_bound(kind) else None)
     if run is None:
         run = TimerRun(workspace_id=ws, kind=kind, item_id=item.id,
                        day=today, title=(title or "")[:300],
@@ -7030,18 +7676,23 @@ def timer_for(s: Session, ws: int, kind: str, item_id: int, *,
     settle_timers(s, ws)
     item, minutes, title = _timer_item(s, ws, kind, item_id)
     today = today_local(tz)
-    run = _open_run(s, ws, kind, item.id, today if kind == "habit" else None)
+    run = _open_run(s, ws, kind, item.id, today if _day_bound(kind) else None)
+    done = _item_done_for_timer(s, ws, kind, item, today)
+    configured = item.timer_minutes
     if kind == "habit":
-        done = bool(s.scalar(select(HabitLog.id).where(
-            HabitLog.workspace_id == ws, HabitLog.habit_id == item.id,
-            HabitLog.day == today, HabitLog.done.is_(True))))
-        configured, protected = item.timer_minutes, item.is_protected
+        protected = item.is_protected
+    elif kind == "thabit":
+        protected = bool(item.system_key)
     else:
-        done = item.status == "done"
-        configured, protected = item.timer_minutes, False
+        protected = False
+    can_set = True
+    if kind in TEAM_TIMER_KINDS:
+        owner = workspace_owner(s, ws)
+        can_set = _may_manage(s, owner, item.team_id, item.created_by)
     s.commit()
     return {"kind": kind, "id": item.id, "title": title, "done": done,
-            "protected": protected,
+            "protected": protected, "can_set": can_set and not protected,
+            "team_id": getattr(item, "team_id", None),
             **_timer_fields(configured, title, protected=protected),
             "parsed_minutes": parse_duration_minutes(title),
             "run": timer_run_dict(run, tz=tz) if run else None,
@@ -7051,18 +7702,21 @@ def timer_for(s: Session, ws: int, kind: str, item_id: int, *,
 def _apply_timer_setting(s: Session, ws: int, kind: str, item, value) -> None:
     """Change how long an item's timer runs, or switch it off.
 
-    A run already counting follows the change: a shorter timer finishes
-    sooner, and switching the timer off abandons the run rather than leaving
-    a clock ticking towards an item that no longer waits for it.
+    A run already counting follows the change. For a shared item every
+    member's open run follows it, since the length is the team's setting.
     """
     item.timer_minutes = clean_timer_minutes(value)
-    name = item.name if kind == "habit" else item.title
-    minutes = timer_minutes_for(item.timer_minutes, name,
-                                protected=getattr(item, "is_protected", False))
-    for run in s.scalars(select(TimerRun).where(
-            TimerRun.workspace_id == ws, TimerRun.kind == kind,
-            TimerRun.item_id == item.id,
-            TimerRun.status.in_(TIMER_OPEN))).all():
+    name = item.name if kind in ("habit", "thabit") else item.title
+    protected = (getattr(item, "is_protected", False) if kind == "habit"
+                 else bool(getattr(item, "system_key", "")) if kind == "thabit"
+                 else False)
+    minutes = timer_minutes_for(item.timer_minutes, name, protected=protected)
+    stmt = select(TimerRun).where(TimerRun.kind == kind,
+                                  TimerRun.item_id == item.id,
+                                  TimerRun.status.in_(TIMER_OPEN))
+    if kind not in TEAM_TIMER_KINDS:
+        stmt = stmt.where(TimerRun.workspace_id == ws)
+    for run in s.scalars(stmt).all():
         if minutes:
             run.duration_sec = minutes * 60
         else:
@@ -7076,35 +7730,43 @@ def set_item_timer(s: Session, ws: int, kind: str, item_id: int,
     item, _, _ = _timer_item(s, ws, kind, item_id)
     if kind == "habit" and item.is_protected:
         raise ValueError("protected")
+    if kind == "thabit" and item.system_key:
+        raise ValueError("protected")
+    if kind in TEAM_TIMER_KINDS:
+        owner = workspace_owner(s, ws)
+        if not _may_manage(s, owner, item.team_id, item.created_by):
+            raise ValueError("forbidden")
     _apply_timer_setting(s, ws, kind, item, value)
     s.commit()
     return timer_for(s, ws, kind, item_id)
 
 
 def _run_is_stale(s: Session, run: TimerRun, today: date) -> bool:
-    """A run that can no longer finish anything.
-
-    Its item was deleted, finished some other way, or moved into a team; or
-    it is a habit's run paused on a day that is over — yesterday's half-done
-    deep work is not today's, and resuming it would tick the wrong day.
-    """
+    """A run that can no longer finish anything."""
     if run.kind == "habit":
         item = s.get(Habit, run.item_id)
         if item is None or item.archived_at is not None \
                 or item.workspace_id != run.workspace_id:
             return True
         return run.status == "paused" and run.day < today
-    item = s.get(Task, run.item_id)
-    return (item is None or item.archived_at is not None
-            or item.workspace_id != run.workspace_id or item.status == "done")
+    if run.kind == "task":
+        item = s.get(Task, run.item_id)
+        return (item is None or item.archived_at is not None
+                or item.workspace_id != run.workspace_id or item.status == "done")
+    owner = workspace_owner(s, run.workspace_id)
+    model = TeamHabit if run.kind == "thabit" else TeamTask
+    item = s.get(model, run.item_id)
+    if item is None or item.archived_at is not None or owner is None \
+            or team_for(s, owner, item.team_id) is None:
+        return True
+    if run.kind == "thabit":
+        return run.status == "paused" and run.day < today
+    done_by = _team_done_map(s, [item.id]).get(item.id, set())
+    return team_task_done_for(item, owner, done_by)
 
 
 def active_timer(s: Session, ws: int) -> dict | None:
-    """The timer to show on every screen: the running one, else a paused one.
-
-    Runs that can no longer finish anything are closed on the way, so the
-    banner never offers a clock for something that is gone.
-    """
+    """The timer to show on every screen: the running one, else a paused one."""
     settle_timers(s, ws)
     tz = _workspace_tz(s, ws)
     today = today_local(tz)
@@ -7125,11 +7787,10 @@ def active_timer(s: Session, ws: int) -> dict | None:
 
 def claim_timer_notice(s: Session, run_id: int) -> bool:
     """Take the right to announce that this run finished. True exactly once."""
-    from sqlalchemy import update as sql_update
-
     won = s.execute(sql_update(TimerRun).where(
         TimerRun.id == run_id, TimerRun.status == "finished",
-        TimerRun.notified_at.is_(None)).values(notified_at=utcnow())).rowcount
+        TimerRun.notified_at.is_(None)).values(notified_at=utcnow())
+        .execution_options(synchronize_session=False)).rowcount
     s.commit()
     return bool(won)
 
@@ -7163,18 +7824,50 @@ def attach_timer_message(s: Session, ws: int, run_id: int, chat_id: int,
     s.commit()
 
 
+def timer_candidates(s: Session, ws: int, user_id: int, kind: str, *,
+                     tz: ZoneInfo | None = None) -> list[dict]:
+    """Everything a timer could be put on, private and shared, for the bot's list.
+
+    `kind` is "habit" or "task"; shared ones come back with their own kind
+    ("thabit" / "ttask") and team name, so one list covers both.
+    """
+    tz = tz or _workspace_tz(s, ws)
+    today = today_local(tz)
+    out: list[dict] = []
+    if kind == "habit":
+        for h in list_habits(s, ws, today, tz=tz):
+            if not h["protected"] and not h["paused"]:
+                out.append({**h, "kind": "habit", "title": h["name"]})
+        for team in teams_for(s, user_id):
+            for h in list_team_habits(s, user_id, team.id, day=today, tz=tz):
+                if not h["mirrored"] and not h["paused"]:
+                    out.append({**h, "kind": "thabit", "title": h["name"],
+                                "team_name": team.name})
+    else:
+        data = list_tasks(s, ws, horizon_days=365, tz=tz)
+        for t in data["overdue"] + data["upcoming"] + data["undated"] + data["later"]:
+            out.append({**t, "kind": "task"})
+        for team in teams_for(s, user_id):
+            for t in list_team_tasks(s, user_id, team.id, day=today, tz=tz):
+                if t["owed"] and not t["done"]:
+                    out.append({**t, "kind": "ttask", "team_name": team.name})
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Countdowns — how many days until a date that matters
 # ---------------------------------------------------------------------------
+#
+# A countdown is filed under what it is about — a task, a habit, or neither —
+# and may be linked to the particular task or habit. A shared one belongs to a
+# team: every member sees it, and it is read out in the team's own report.
 
-#: Enough for every exam, trip and launch somebody is actually watching. A
-#: report that reads out forty dates every morning has stopped being read.
+#: Enough for every exam, trip and launch somebody is actually watching.
 MAX_COUNTDOWNS = 20
-#: How far ahead a countdown may point. Ten years is a plan; more is a typo.
+#: How far ahead a countdown may point.
 COUNTDOWN_MAX_DAYS = 3650
+COUNTDOWN_SCOPES = ("general", "task", "habit")
 
-#: A month is recognised by how its name starts, in any of the three
-#: languages, so "dekabr", "December", "декабря" and "dek" are all twelve.
 _MONTH_PREFIXES = {
     1: ("yan", "jan", "янв"), 2: ("fev", "feb", "фев"), 3: ("mar", "мар"),
     4: ("apr", "апр"), 5: ("may", "май", "мая"), 6: ("iyun", "jun", "июн"),
@@ -7217,13 +7910,7 @@ def _add_months(day: date, months: int) -> date:
 
 
 def parse_countdown_date(text: str | None, today: date) -> date | None:
-    """A date typed the way people type dates, or None.
-
-    2026-12-31 · 31.12.2026 · 31/12/26 · 31.12 · 31 dekabr · December 31 ·
-    31 декабря · 45 kun · 3 hafta · 2 oy · ertaga. A day and month without a
-    year is the next time that date comes round, so "1.01" in December means
-    the coming January rather than the one that has passed.
-    """
+    """A date typed the way people type dates, or None."""
     raw = (text or "").strip().lower()
     if not raw:
         return None
@@ -7272,56 +7959,226 @@ def parse_countdown_date(text: str | None, today: date) -> date | None:
     return None
 
 
-def _countdown_dict(row: Countdown, today: date) -> dict:
+#: Words a quick capture recognises as "when". The rest of the text is the title.
+_WEEKDAY_WORDS = {
+    "dushanba": 0, "seshanba": 1, "chorshanba": 2, "payshanba": 3,
+    "juma": 4, "shanba": 5, "yakshanba": 6,
+    "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+    "friday": 4, "saturday": 5, "sunday": 6,
+    "понедельник": 0, "вторник": 1, "среда": 2, "среду": 2, "четверг": 3,
+    "пятница": 4, "пятницу": 4, "суббота": 5, "субботу": 5,
+    "воскресенье": 6,
+}
+_TIME_RE = re.compile(r"(?:\bsoat\s*)?\b([01]?\d|2[0-3])[:.]([0-5]\d)\b(?:\s*da\b)?")
+
+
+def parse_quick_capture(text: str, today: date) -> dict:
+    """Split "ertaga 15:00 doktorga qo'ng'iroq" into title, date and time.
+
+    Deliberately small: the day words, a weekday, a written date and a clock
+    time. Whatever is not recognised stays in the title, so nothing typed is
+    ever lost — at worst the date is not picked up and the task is undated.
+    """
+    raw = " ".join((text or "").split())
+    deadline, due = None, None
+
+    m = _TIME_RE.search(raw)
+    if m:
+        due = dtime(int(m.group(1)), int(m.group(2)))
+        raw = (raw[:m.start()] + raw[m.end():]).strip()
+
+    words = raw.split(" ")
+    kept = []
+    for word in words:
+        key = word.lower().strip(".,!?")
+        if deadline is None and key in _RELATIVE_WORDS:
+            deadline = today + timedelta(days=_RELATIVE_WORDS[key])
+            continue
+        if deadline is None and key in _WEEKDAY_WORDS:
+            ahead = (_WEEKDAY_WORDS[key] - today.weekday()) % 7
+            deadline = today + timedelta(days=ahead)
+            continue
+        kept.append(word)
+    raw = " ".join(kept)
+
+    if deadline is None:
+        for pattern in (r"\b(\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?)\b",
+                        r"\b(\d{1,2}[-\s](?:yan|fev|mar|apr|may|iyun|iyul|avg|sen|okt|noy|dek|"
+                        r"jan|feb|jun|jul|aug|sep|oct|nov|dec|янв|фев|мар|апр|мая|июн|июл|авг|"
+                        r"сен|окт|ноя|дек)[^\s,]*)"):
+            m = re.search(pattern, raw, re.IGNORECASE)
+            if m:
+                found = parse_countdown_date(m.group(1), today)
+                if found is not None:
+                    deadline = found
+                    raw = (raw[:m.start()] + raw[m.end():]).strip()
+                    break
+
+    title = " ".join(raw.split()).strip(" ,.-")
+    return {"title": title or " ".join((text or "").split()),
+            "deadline": deadline, "due_time": due}
+
+
+def _countdown_dict(row: Countdown, today: date, *, team_name: str | None = None,
+                    item_title: str | None = None) -> dict:
     return {"id": row.id, "title": row.title,
             "date": row.target_date.isoformat(),
-            "days_left": (row.target_date - today).days}
+            "days_left": (row.target_date - today).days,
+            "scope": row.scope if row.scope in COUNTDOWN_SCOPES else "general",
+            "item_id": row.item_id,
+            "item_title": item_title,
+            "team_id": row.team_id, "team_name": team_name,
+            "created_by": row.created_by}
+
+
+def _item_titles(s: Session, rows: list[Countdown]) -> dict[tuple, str]:
+    """The linked item's name for each countdown that has one."""
+    out = {}
+    want = defaultdict(set)
+    for row in rows:
+        if row.item_id and row.scope in ("task", "habit"):
+            want[(row.scope, row.team_id is not None)].add(row.item_id)
+    for (scope, shared), ids in want.items():
+        if scope == "task":
+            model, field = (TeamTask, TeamTask.title) if shared else (Task, Task.title)
+        else:
+            model, field = (TeamHabit, TeamHabit.name) if shared else (Habit, Habit.name)
+        for item_id, title in s.execute(select(model.id, field)
+                                        .where(model.id.in_(ids))).all():
+            out[(scope, shared, item_id)] = title
+    return out
+
+
+def _team_item_countdowns(s: Session, scope: str, item_ids: list[int],
+                          today: date) -> dict[int, dict]:
+    if not item_ids:
+        return {}
+    return {row.item_id: {"id": row.id, "days_left": (row.target_date - today).days}
+            for row in s.scalars(select(Countdown).where(
+                Countdown.team_id.isnot(None), Countdown.scope == scope,
+                Countdown.item_id.in_(item_ids),
+                Countdown.archived_at.is_(None))).all()}
 
 
 def list_countdowns(s: Session, ws: int, *, tz: ZoneInfo | None = None,
-                    include_past: bool = True) -> list[dict]:
-    """Every countdown, soonest first, each with the days left to it.
-
-    The reports pass `include_past=False`: a date that has gone by has
-    nothing left to count, and "−3 days" read out every morning is noise.
-    The list itself keeps them, so they can be seen and cleared.
-    """
+                    include_past: bool = True, scope: str | None = None) -> list[dict]:
+    """Every private countdown, soonest first, each with the days left to it."""
     today = today_local(tz)
-    rows = s.scalars(select(Countdown).where(
-        Countdown.workspace_id == ws, Countdown.archived_at.is_(None))
-        .order_by(Countdown.target_date, Countdown.id)).all()
-    out = [_countdown_dict(r, today) for r in rows]
+    stmt = select(Countdown).where(
+        Countdown.workspace_id == ws, Countdown.team_id.is_(None),
+        Countdown.archived_at.is_(None))
+    rows = s.scalars(stmt.order_by(Countdown.target_date, Countdown.id)).all()
+    if scope is not None:
+        rows = [r for r in rows if (r.scope or "general") == scope]
+    titles = _item_titles(s, list(rows))
+    out = [_countdown_dict(r, today, item_title=titles.get(
+        (r.scope, False, r.item_id))) for r in rows]
     if not include_past:
         out = [c for c in out if c["days_left"] >= 0]
     return out
 
 
+def list_team_countdowns(s: Session, user_id: int, team_id: int, *,
+                         tz: ZoneInfo | None = None,
+                         include_past: bool = True) -> list[dict]:
+    team = _require_team(s, user_id, team_id)
+    today = today_local(tz)
+    rows = s.scalars(select(Countdown).where(
+        Countdown.team_id == team_id, Countdown.archived_at.is_(None))
+        .order_by(Countdown.target_date, Countdown.id)).all()
+    titles = _item_titles(s, list(rows))
+    out = [_countdown_dict(r, today, team_name=team.name,
+                           item_title=titles.get((r.scope, True, r.item_id)))
+           for r in rows]
+    if not include_past:
+        out = [c for c in out if c["days_left"] >= 0]
+    return out
+
+
+def countdowns_for_user(s: Session, ws: int, user_id: int, *,
+                        tz: ZoneInfo | None = None,
+                        include_past: bool = True) -> list[dict]:
+    """Private and shared countdowns together, soonest first — what Home shows."""
+    rows = list_countdowns(s, ws, tz=tz, include_past=include_past)
+    for team in teams_for(s, user_id):
+        rows += list_team_countdowns(s, user_id, team.id, tz=tz,
+                                     include_past=include_past)
+    return sorted(rows, key=lambda c: (c["days_left"], c["id"]))
+
+
+def _validate_countdown_link(s: Session, ws: int, scope: str, item_id: int | None,
+                             team_id: int | None) -> int | None:
+    if scope not in ("task", "habit") or not item_id:
+        return None
+    if team_id is None:
+        if scope == "task":
+            _owned_task(s, ws, item_id)
+        else:
+            _owned_habit(s, ws, item_id)
+        return item_id
+    model = TeamTask if scope == "task" else TeamHabit
+    item = s.get(model, item_id)
+    if item is None or item.team_id != team_id or item.archived_at is not None:
+        raise NotFound("item")
+    return item_id
+
+
 def add_countdown(s: Session, ws: int, title: str, target: date, *,
-                  tz: ZoneInfo | None = None) -> dict:
+                  tz: ZoneInfo | None = None, scope: str = "general",
+                  item_id: int | None = None, team_id: int | None = None,
+                  user_id: int | None = None) -> dict:
     title = (title or "").strip()[:200]
     if not title:
         raise ValueError("empty_title")
+    scope = scope if scope in COUNTDOWN_SCOPES else "general"
     today = today_local(tz)
     if target < today:
         raise ValueError("past_date")
     if (target - today).days > COUNTDOWN_MAX_DAYS:
         raise ValueError("too_far")
-    count = s.scalar(select(func.count(Countdown.id)).where(
-        Countdown.workspace_id == ws, Countdown.archived_at.is_(None))) or 0
+    team_name = None
+    if team_id is not None:
+        owner = user_id or workspace_owner(s, ws)
+        team_name = _require_team(s, owner, team_id).name
+        count = s.scalar(select(func.count(Countdown.id)).where(
+            Countdown.team_id == team_id, Countdown.archived_at.is_(None))) or 0
+    else:
+        count = s.scalar(select(func.count(Countdown.id)).where(
+            Countdown.workspace_id == ws, Countdown.team_id.is_(None),
+            Countdown.archived_at.is_(None))) or 0
     if count >= MAX_COUNTDOWNS:
         raise ValueError("too_many")
-    row = Countdown(workspace_id=ws, title=title, target_date=target)
+    linked = _validate_countdown_link(s, ws, scope, item_id, team_id)
+    row = Countdown(workspace_id=ws, title=title, target_date=target,
+                    scope=scope, item_id=linked, team_id=team_id,
+                    created_by=user_id or workspace_owner(s, ws))
     s.add(row)
+    if team_id is not None:
+        _log_team(s, team_id, row.created_by, "countdown_add", title)
     s.commit()
-    return _countdown_dict(row, today)
+    return _countdown_dict(row, today, team_name=team_name)
+
+
+def _countdown_for_edit(s: Session, ws: int, countdown_id: int) -> Countdown:
+    row = s.get(Countdown, countdown_id)
+    if row is None or row.archived_at is not None:
+        raise NotFound("countdown")
+    if row.team_id is None:
+        if row.workspace_id != ws:
+            raise NotFound("countdown")
+        return row
+    owner = workspace_owner(s, ws)
+    if team_for(s, owner, row.team_id) is None:
+        raise NotFound("countdown")
+    if not _may_manage(s, owner, row.team_id, row.created_by):
+        raise PermissionError("forbidden")
+    return row
 
 
 def update_countdown(s: Session, ws: int, countdown_id: int, *,
                      title: str | None = None, target: date | None = None,
                      tz: ZoneInfo | None = None) -> dict:
-    row = s.get(Countdown, countdown_id)
-    if row is None or row.workspace_id != ws or row.archived_at is not None:
-        raise NotFound("countdown")
+    row = _countdown_for_edit(s, ws, countdown_id)
     today = today_local(tz)
     if title is not None:
         title = title.strip()[:200]
@@ -7337,9 +8194,9 @@ def update_countdown(s: Session, ws: int, countdown_id: int, *,
 
 
 def delete_countdown(s: Session, ws: int, countdown_id: int) -> str:
-    row = s.get(Countdown, countdown_id)
-    if row is None or row.workspace_id != ws or row.archived_at is not None:
-        raise NotFound("countdown")
+    row = _countdown_for_edit(s, ws, countdown_id)
     row.archived_at = utcnow()
+    if row.team_id is not None:
+        _log_team(s, row.team_id, workspace_owner(s, ws), "countdown_del", row.title)
     s.commit()
     return row.title

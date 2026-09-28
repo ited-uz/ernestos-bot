@@ -972,6 +972,26 @@ details[open] > summary .chev{transform:rotate(90deg)}
 @media (prefers-reduced-motion:reduce){
   *{animation:none!important;transition:none!important}
 }
+
+/* v7 — classes the team screen used without ever defining, and the new parts */
+.muted{color:var(--text-2)}
+.sm{font-size:12.5px}
+.card-t{font-weight:650;margin-bottom:var(--s1)}
+.done{text-decoration:line-through;color:var(--text-2)}
+.ghost{background:none;border:0;color:var(--text-2);font-size:20px;min-width:40px;
+  min-height:40px;cursor:pointer;border-radius:10px}
+.tabs{display:flex;gap:6px;overflow-x:auto;margin:var(--s2) 0;scrollbar-width:none}
+.tab{padding:7px 13px;border-radius:var(--radius-pill);background:var(--surface-2);
+  white-space:nowrap;cursor:pointer;font-size:13.5px}
+.tab.on{background:var(--primary-fill);color:var(--on-primary)}
+.banner{display:flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s3);
+  border-radius:12px;background:var(--surface-2);margin:var(--s2) 0;font-size:13.5px;
+  cursor:pointer}
+.hub{display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);margin-top:var(--s2)}
+.hub .btn{min-height:48px}
+[data-act][tabindex]:focus-visible,.check:focus-visible,.chip:focus-visible,
+.tab:focus-visible,.seg>div:focus-visible,.sw:focus-visible{
+  outline:2px solid var(--primary);outline-offset:2px}
 </style>
 </head>
 <body>
@@ -1140,7 +1160,7 @@ const DICT = {
   inbox_hint:"Muddatli, muddatsiz va kechikkanlar — hammasi shu yerda",
   /* habits */
   add_habit:"Odat qo'shish", habit_name:"Odat nomi", category:"Kategoriya",
-  non_negotiable:"Asosiy", target:"Rivojlanish", bonus:"Qo'shimcha",
+  non_negotiable:"Majburiy", target:"Maqsadli", bonus:"Qo'shimcha",
   edit_habit:"Odatni tahrirlash", schedule:"Kunlar", every_day:"Har kuni",
   weekdays_only:"Ish kunlari", pick_days:"Tanlangan kunlar",
   pause:"To'xtatib turish", resume:"Davom etish", paused:"To'xtatilgan",
@@ -1228,9 +1248,9 @@ const DICT = {
   /* --- Shaxsiy progressiya. Referral darajalaridan butunlay ajratilgan —
          biri hayotni qanday boshqarayotganingizni, ikkinchisi kimni olib
          kelganingizni o'lchaydi. Ikkalasi hech qachon aralashmaydi. --- */
-  progress:"Progressiya", plevel_starter:"Boshlovchi", plevel_builder:"Builder",
-  plevel_operator:"Operator", plevel_architect:"Architect",
-  plevel_commander:"Commander", plevel_elite:"Elite", plevel_master:"Master",
+  progress:"Progressiya", plevel_starter:"Boshlovchi", plevel_builder:"Quruvchi",
+  plevel_operator:"Boshqaruvchi", plevel_architect:"Me'mor",
+  plevel_commander:"Sardor", plevel_elite:"Sara", plevel_master:"Usta",
   xp_to_next:"{level} darajasiga {n} XP qoldi",
   grade_S:"Mukammal kun", grade_A:"A'lo", grade_B:"Kuchli", grade_C:"Harakat",
   grade_D:"Tiklanish", grade_E:"Qaytadan",
@@ -1309,6 +1329,60 @@ const DICT = {
   countdown_empty:"Muhim sanani qo'shing — bot har kuni ertalab va kechqurun necha kun qolganini eslatadi.",
   cd_days_left:"{n} kun qoldi", cd_today:"Bugun!", cd_tomorrow:"Ertaga", cd_passed:"O'tdi",
   cd_delete_sure:"O'chirilsinmi:",
+  /* v7 */
+  date_cd:"Date countdown", time_cd:"Time countdown",
+  tc_hint:"Odat yoki vazifaga taymer qo'ying — vaqt tugagach o'zi belgilanadi.",
+  tc_habits:"Odatlar uchun", tc_tasks:"Vazifalar uchun", tc_empty:"Taymer qo'yiladigan narsa yo'q",
+  timer_team_own:"👥 Jamoa ishi — har kim o'z taymerini yuritadi",
+  cd_scope:"Nima uchun", cd_scope_general:"Umumiy", cd_scope_task:"Vazifa uchun",
+  cd_scope_habit:"Odat uchun", cd_link:"Qaysi biriga", cd_link_none:"Alohida nom bilan",
+  cd_whose:"Kimniki", cd_all:"Hammasini ko'rish",
+  tab_today:"Bugun", tab_plan:"Reja", tab_calendar:"Taqvim",
+  team_tab_today:"Bugun", team_tab_work:"Ishlar", team_tab_results:"Natija",
+  team_units:"{items} ta ish · {confirmations} ta tasdiq · {left} tasi qolgan",
+  completion_all:"Hamma bajaradi", completion_any:"Bittasi yetarli",
+  completion_assignees:"Tayinlanganlar", who_does:"Kim bajaradi",
+  not_assigned:"Sizga tayinlanmagan",
+  habit_mirrored:"Bu marosim shaxsiy odatingizdan olinadi — uni shaxsiy ro'yxatda belgilang, bu yerda ikki marta sanalmaydi",
+  role_owner:"Egasi", role_admin:"Admin", role_member:"A'zo", you:"siz",
+  invite_until:"🔗 Havola {when} gacha ishlaydi", invite_expired:"🔗 Havola ishlamaydi — yangisini oling",
+  invite_renew:"Yangi havola", invite_revoke:"Havolani bekor qilish", invite_revoked:"Havola bekor qilindi",
+  approval_label:"Qo'shilishni tasdiqlash", requests_title:"Qo'shilish so'rovlari",
+  approve:"Qabul qilish", decline:"Rad etish", share:"Ulashish",
+  members_roles:"A'zolar va rollar", make_admin:"Admin qilish", make_member:"A'zo qilish",
+  remove_member:"Chiqarish", give_owner:"Egalikni berish",
+  owner_offer:"Sizga «{name}» jamoasi egaligi taklif qilindi", accept:"Qabul qilish",
+  offer_sent:"Taklif yuborildi — u qabul qilgach egalik o'tadi",
+  owner_must_transfer:"Chiqishdan oldin egalikni boshqa a'zoga bering",
+  notify_title:"Bildirishnomalar", notify_all:"Hammasi", notify_important:"Muhim",
+  notify_assigned:"Faqat menga", notify_off:"O'chiq",
+  notify_all_hint:"O'zgarishlar, hisobot va eslatmalar", notify_important_hint:"Hisobot va eslatmalar",
+  notify_assigned_hint:"Faqat menga tayinlangan vazifa eslatmalari", notify_off_hint:"Bu jamoadan hech narsa kelmaydi",
+  activity:"Faollik tarixi", restore:"Qaytarish", restored:"Qaytarildi",
+  act_create:"jamoani yaratdi", act_join:"qo'shildi", act_leave:"chiqdi", act_remove:"a'zoni chiqardi",
+  act_rename:"nomini o'zgartirdi", act_role:"rolni o'zgartirdi",
+  act_task_add:"vazifa qo'shdi", act_task_archive:"vazifani olib tashladi",
+  act_task_edit:"vazifani o'zgartirdi", act_task_restore:"vazifani qaytardi",
+  act_habit_add:"odat qo'shdi", act_habit_archive:"odatni olib tashladi",
+  act_habit_edit:"odatni o'zgartirdi", act_habit_restore:"odatni qaytardi",
+  act_invite_renew:"yangi havola oldi", act_invite_revoke:"havolani bekor qildi",
+  act_approval_on:"tasdiqni yoqdi", act_approval_off:"tasdiqni o'chirdi",
+  act_transfer_offer:"egalikni taklif qildi", act_transfer_accept:"egalikni qabul qildi",
+  act_transfer_decline:"egalikni rad etdi", act_countdown_add:"countdown qo'shdi",
+  act_countdown_del:"countdownni o'chirdi", act_project_add:"loyiha qo'shdi",
+  act_project_remove:"loyihani olib tashladi",
+  forbidden:"Buni faqat yaratgan kishi, admin yoki jamoa egasi qila oladi",
+  read_only:"Faqat ko'rish rejimi — o'zgartirish uchun kanalga qo'shiling",
+  setup_title:"Sozlash botda yakunlanadi",
+  setup_body:"ErnestOS botiga qayting va bir necha savolga javob bering — keyin hammasi shu yerda ochiladi.",
+  back_to_bot:"Botga qaytish",
+  modules:"Modullar", modules_hint:"Nimani kuzatasiz", mod_wake:"Erta turish", mod_prayer:"Namoz",
+  mod_journal:"Kundalik",
+  modules_note:"O'chirilgan modul tarixini saqlaydi. Qayta yoqsangiz, o'chiq turgan kunlar «bajarilmadi» deb sanalmaydi.",
+  wake_enter:"Vaqtni kiritish", wake_enter_hint:"Qachon turganingizni yozing — tugmani bosgan vaqtingiz emas",
+  pause_today:"Bugundan", pause_tomorrow:"Ertadan", pause_when:"Qachondan to'xtatamiz?",
+  pause_note:"Bugundan desangiz, bugungi hisobdan ham chiqadi",
+  pts:"p.", team_join_hint:"Taklif havolasini bosing — jamoani ko'rib, keyin qo'shilasiz",
   dow:["Du","Se","Ch","Pa","Ju","Sh","Ya"],
   dow_full:["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba","Yakshanba"],
   months:["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"],
@@ -1421,7 +1495,7 @@ const DICT = {
   inbox_zone:"Inbox — every open task",
   inbox_hint:"Dated, undated and late — all of it, here",
   add_habit:"Add habit", habit_name:"Habit name", category:"Category",
-  non_negotiable:"Non-negotiable", target:"Target", bonus:"Bonus",
+  non_negotiable:"Must-do", target:"Goal", bonus:"Extra",
   edit_habit:"Edit habit", schedule:"Days", every_day:"Every day",
   weekdays_only:"Weekdays", pick_days:"Chosen days",
   pause:"Pause", resume:"Resume", paused:"Paused",
@@ -1582,6 +1656,60 @@ const DICT = {
   countdown_empty:"Add a date that matters — the bot tells you every morning and evening how many days are left.",
   cd_days_left:"{n} days left", cd_today:"Today!", cd_tomorrow:"Tomorrow", cd_passed:"Passed",
   cd_delete_sure:"Delete:",
+  /* v7 */
+  date_cd:"Date countdown", time_cd:"Time countdown",
+  tc_hint:"Put a timer on a habit or task — it ticks itself when the time is up.",
+  tc_habits:"For habits", tc_tasks:"For tasks", tc_empty:"Nothing to put a timer on",
+  timer_team_own:"👥 Team item — everyone runs their own timer",
+  cd_scope:"What is it for", cd_scope_general:"General", cd_scope_task:"For a task",
+  cd_scope_habit:"For a habit", cd_link:"Which one", cd_link_none:"Its own name",
+  cd_whose:"Whose", cd_all:"See all",
+  tab_today:"Today", tab_plan:"Plan", tab_calendar:"Calendar",
+  team_tab_today:"Today", team_tab_work:"Work", team_tab_results:"Results",
+  team_units:"{items} items · {confirmations} check-ins · {left} left",
+  completion_all:"Everyone does it", completion_any:"One is enough",
+  completion_assignees:"Assignees", who_does:"Who does it",
+  not_assigned:"Not assigned to you",
+  habit_mirrored:"This ritual is read from your own habit — tick it in your personal list, it is never counted twice",
+  role_owner:"Owner", role_admin:"Admin", role_member:"Member", you:"you",
+  invite_until:"🔗 The link works until {when}", invite_expired:"🔗 The link no longer works — get a new one",
+  invite_renew:"New link", invite_revoke:"Revoke link", invite_revoked:"Link revoked",
+  approval_label:"Approve new members", requests_title:"Join requests",
+  approve:"Approve", decline:"Decline", share:"Share",
+  members_roles:"Members and roles", make_admin:"Make admin", make_member:"Make member",
+  remove_member:"Remove", give_owner:"Hand over ownership",
+  owner_offer:"You have been offered ownership of «{name}»", accept:"Accept",
+  offer_sent:"Offer sent — ownership moves once they accept",
+  owner_must_transfer:"Hand ownership to another member before leaving",
+  notify_title:"Notifications", notify_all:"Everything", notify_important:"Important",
+  notify_assigned:"Only mine", notify_off:"Off",
+  notify_all_hint:"Changes, reports and reminders", notify_important_hint:"Reports and reminders",
+  notify_assigned_hint:"Reminders for tasks assigned to me", notify_off_hint:"Nothing from this team",
+  activity:"Activity", restore:"Restore", restored:"Restored",
+  act_create:"created the team", act_join:"joined", act_leave:"left", act_remove:"removed a member",
+  act_rename:"renamed the team", act_role:"changed a role",
+  act_task_add:"added a task", act_task_archive:"removed a task",
+  act_task_edit:"edited a task", act_task_restore:"restored a task",
+  act_habit_add:"added a habit", act_habit_archive:"removed a habit",
+  act_habit_edit:"edited a habit", act_habit_restore:"restored a habit",
+  act_invite_renew:"made a new link", act_invite_revoke:"revoked the link",
+  act_approval_on:"turned approval on", act_approval_off:"turned approval off",
+  act_transfer_offer:"offered ownership", act_transfer_accept:"accepted ownership",
+  act_transfer_decline:"declined ownership", act_countdown_add:"added a countdown",
+  act_countdown_del:"removed a countdown", act_project_add:"added a project",
+  act_project_remove:"removed a project",
+  forbidden:"Only its creator, an admin or the team owner can do this",
+  read_only:"Read-only mode — join the channel to make changes",
+  setup_title:"Setup finishes in the bot",
+  setup_body:"Go back to the ErnestOS bot and answer a few questions — then everything opens here.",
+  back_to_bot:"Back to the bot",
+  modules:"Modules", modules_hint:"What you keep track of", mod_wake:"Early rising", mod_prayer:"Prayer",
+  mod_journal:"Journal",
+  modules_note:"A module switched off keeps its history. Switched back on, the days it was off are not counted as missed.",
+  wake_enter:"Enter the time", wake_enter_hint:"When you actually got up — not when you pressed the button",
+  pause_today:"From today", pause_tomorrow:"From tomorrow", pause_when:"Pause from when?",
+  pause_note:"From today takes today out of the count as well",
+  pts:"pts", team_join_hint:"Open an invite link — you see the team first, then join",
   dow:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
   dow_full:["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],
   months:["January","February","March","April","May","June","July","August","September","October","November","December"],
@@ -1775,9 +1903,9 @@ const DICT = {
   /* --- Личная прогрессия, полностью отдельная от реферального статуса —
          одно измеряет, как вы управляете своей жизнью, другое — кого вы
          привели. Они никогда не смешиваются. --- */
-  progress:"Прогресс", plevel_starter:"Начинающий", plevel_builder:"Builder",
-  plevel_operator:"Operator", plevel_architect:"Architect",
-  plevel_commander:"Commander", plevel_elite:"Elite", plevel_master:"Master",
+  progress:"Прогресс", plevel_starter:"Начинающий", plevel_builder:"Строитель",
+  plevel_operator:"Оператор", plevel_architect:"Архитектор",
+  plevel_commander:"Командир", plevel_elite:"Элита", plevel_master:"Мастер",
   xp_to_next:"{n} XP до уровня {level}",
   grade_S:"Идеальный день", grade_A:"Отлично", grade_B:"Уверенно",
   grade_C:"Движение", grade_D:"Восстановление", grade_E:"С начала",
@@ -1855,6 +1983,60 @@ const DICT = {
   countdown_empty:"Добавьте важную дату — бот каждое утро и вечер напомнит, сколько дней осталось.",
   cd_days_left:"осталось дней: {n}", cd_today:"Сегодня!", cd_tomorrow:"Завтра", cd_passed:"Прошло",
   cd_delete_sure:"Удалить:",
+  /* v7 */
+  date_cd:"Date countdown", time_cd:"Time countdown",
+  tc_hint:"Поставьте таймер на привычку или задачу — по окончании она отметится сама.",
+  tc_habits:"Для привычек", tc_tasks:"Для задач", tc_empty:"Не на что ставить таймер",
+  timer_team_own:"👥 Командное дело — у каждого свой таймер",
+  cd_scope:"Для чего", cd_scope_general:"Общий", cd_scope_task:"Для задачи",
+  cd_scope_habit:"Для привычки", cd_link:"Что именно", cd_link_none:"Своё название",
+  cd_whose:"Чьё", cd_all:"Показать все",
+  tab_today:"Сегодня", tab_plan:"План", tab_calendar:"Календарь",
+  team_tab_today:"Сегодня", team_tab_work:"Дела", team_tab_results:"Итоги",
+  team_units:"{items} дел · {confirmations} отметок · осталось {left}",
+  completion_all:"Делают все", completion_any:"Достаточно одного",
+  completion_assignees:"Назначенные", who_does:"Кто делает",
+  not_assigned:"Назначено не вам",
+  habit_mirrored:"Этот ритуал берётся из вашей личной привычки — отмечайте его в личном списке, дважды он не считается",
+  role_owner:"Владелец", role_admin:"Админ", role_member:"Участник", you:"вы",
+  invite_until:"🔗 Ссылка работает до {when}", invite_expired:"🔗 Ссылка не работает — получите новую",
+  invite_renew:"Новая ссылка", invite_revoke:"Отозвать ссылку", invite_revoked:"Ссылка отозвана",
+  approval_label:"Одобрять вступление", requests_title:"Заявки на вступление",
+  approve:"Принять", decline:"Отклонить", share:"Поделиться",
+  members_roles:"Участники и роли", make_admin:"Сделать админом", make_member:"Сделать участником",
+  remove_member:"Удалить", give_owner:"Передать владение",
+  owner_offer:"Вам предложили стать владельцем «{name}»", accept:"Принять",
+  offer_sent:"Предложение отправлено — владение перейдёт после согласия",
+  owner_must_transfer:"Перед выходом передайте владение другому участнику",
+  notify_title:"Уведомления", notify_all:"Всё", notify_important:"Важное",
+  notify_assigned:"Только мне", notify_off:"Выкл",
+  notify_all_hint:"Изменения, отчёты и напоминания", notify_important_hint:"Отчёты и напоминания",
+  notify_assigned_hint:"Напоминания о задачах, назначенных мне", notify_off_hint:"Из этой команды ничего",
+  activity:"История", restore:"Вернуть", restored:"Возвращено",
+  act_create:"создал команду", act_join:"вступил", act_leave:"вышел", act_remove:"удалил участника",
+  act_rename:"переименовал команду", act_role:"изменил роль",
+  act_task_add:"добавил задачу", act_task_archive:"убрал задачу",
+  act_task_edit:"изменил задачу", act_task_restore:"вернул задачу",
+  act_habit_add:"добавил привычку", act_habit_archive:"убрал привычку",
+  act_habit_edit:"изменил привычку", act_habit_restore:"вернул привычку",
+  act_invite_renew:"создал новую ссылку", act_invite_revoke:"отозвал ссылку",
+  act_approval_on:"включил одобрение", act_approval_off:"выключил одобрение",
+  act_transfer_offer:"предложил владение", act_transfer_accept:"принял владение",
+  act_transfer_decline:"отклонил владение", act_countdown_add:"добавил отсчёт",
+  act_countdown_del:"удалил отсчёт", act_project_add:"добавил проект",
+  act_project_remove:"убрал проект",
+  forbidden:"Это может только автор, админ или владелец команды",
+  read_only:"Режим просмотра — вступите в канал, чтобы вносить изменения",
+  setup_title:"Настройка завершается в боте",
+  setup_body:"Вернитесь в бот ErnestOS и ответьте на несколько вопросов — затем здесь откроется всё.",
+  back_to_bot:"Вернуться в бот",
+  modules:"Модули", modules_hint:"Что вы отслеживаете", mod_wake:"Ранний подъём", mod_prayer:"Намаз",
+  mod_journal:"Дневник",
+  modules_note:"Выключенный модуль хранит историю. При включении дни, когда он был выключен, не считаются пропущенными.",
+  wake_enter:"Ввести время", wake_enter_hint:"Когда вы действительно встали — а не когда нажали кнопку",
+  pause_today:"С сегодня", pause_tomorrow:"С завтра", pause_when:"С какого дня пауза?",
+  pause_note:"С сегодня — сегодняшний день тоже не считается",
+  pts:"п.", team_join_hint:"Откройте ссылку-приглашение — сначала увидите команду, потом вступите",
   dow:["Пн","Вт","Ср","Чт","Пт","Сб","Вс"],
   dow_full:["Понедельник","Вторник","Среда","Четверг","Пятница","Суббота","Воскресенье"],
   months:["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"],
@@ -2012,12 +2194,24 @@ function setState(patch){ Object.assign(state, patch); render(); }
    the offline message and keeps whatever they had typed. */
 const API_TIMEOUT_MS = 15000;
 
+/* The key a create is sent with. `save` sets it before the request and a
+   retry of the same draft reuses it, so the server answers a repeat from the
+   first attempt instead of writing a second row. The first post uses it up. */
+let idemKey = null;
+const newKey = () => ((window.crypto?.randomUUID?.() || "")
+  .replace(/-/g, "") || (Date.now().toString(36) + Math.random().toString(36).slice(2)))
+  .slice(0, 32).padEnd(12, "0");
+
 async function api(path, options = {}){
+  const method = (options.method || "GET").toUpperCase();
+  const extra = {};
+  if(method === "POST" && idemKey){ extra["X-Idempotency-Key"] = idemKey; idemKey = null; }
   const res = await fetch(path, {
     ...options,
     signal: options.signal || AbortSignal.timeout(API_TIMEOUT_MS),
     headers:{"Content-Type":"application/json",
-             "X-Telegram-Init-Data": tg?.initData || "", ...(options.headers||{})},
+             "X-Telegram-Init-Data": tg?.initData || "", ...extra,
+             ...(options.headers||{})},
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
   if(!res.ok){
@@ -2049,7 +2243,9 @@ function toast(msg, undoLabel, undoFn){
 const haptic = s => tg?.HapticFeedback?.impactOccurred?.(s || "light");
 const notify = s => tg?.HapticFeedback?.notificationOccurred?.(s || "success");
 
-function openSheet(html){
+function openSheet(html, view){
+  // Which sheet is showing, so a late answer redraws only its own sheet.
+  state.sheetView = view || null;
   document.getElementById("sheet-body").innerHTML =
     `<div class="grabber"></div>${html}`;
   document.getElementById("sheet").classList.add("show");
@@ -2091,7 +2287,7 @@ const trimmed = id => val(id).trim();
 function deltaTag(value){
   if(!value) return `<span class="delta flat">·</span>`;
   const up = value > 0;
-  return `<span class="delta ${up ? "up" : "down"}">${up ? "↑" : "↓"}${Math.abs(value)}</span>`;
+  return `<span class="delta ${up ? "up" : "down"}">${up ? "↑" : "↓"}${Math.abs(value)}<small> ${t("pts")}</small></span>`;
 }
 
 /* Local dates without pulling in a formatting library: the payload
@@ -2369,7 +2565,9 @@ function scoreBlock(d){
 
   const line = ([id, label]) => {
     const w = s?.windows?.[id];
-    const value = id === "day" ? d.overall.value : w?.overall;
+    const value = id === "day"
+      ? (d.overall.measured === false ? null : d.overall.value)
+      : (w && w.measured === false ? null : w?.overall);
     const delta = id === "day" ? dayDelta : w?.delta;
     const known = value !== undefined && value !== null;
 
@@ -2423,7 +2621,7 @@ function todayBlock(d){
       <div class="row" style="gap:var(--s1)">
         <span class="itile">${icon(COMPONENT_ICON[key], 17)}</span>
         <div class="grow"></div>
-        <span class="wt num">${WEIGHTS[key]}%</span>
+        <span class="wt num" title="${t("weight")}">⚖ ${WEIGHTS[key]}%</span>
       </div>
       <div class="k ellipsis">${label}</div>
       <div class="v num">${value}</div>
@@ -2440,7 +2638,7 @@ function todayBlock(d){
       ${tile("focus", t("week_focus"), `${focus.done || 0}/${focus.total || 0}`,
              ratio(focus.done, focus.total),
              `data-act="nav" data-screen="tasks"`)}
-      ${tile("prayer", t("prayer"),
+      ${d.modules?.prayer === false ? "" : tile("prayer", t("prayer"),
              d.prayer.excused ? "✓" : `${d.prayer.performed}/${d.prayer.required}`,
              prayer, `data-act="go-tab" data-tab="prayer"`)}
     </div>`;
@@ -2469,6 +2667,14 @@ function tasksBlock(d){
     .map(g => ({...g, tasks: g.tasks.filter(x => x.id !== missionId)}))
     .filter(g => g.tasks.length);
 
+  const byTeam = {};
+  for(const x of (d.team_today || []))
+    (byTeam[x.team_name || ""] ||= []).push({...x, source:"team"});
+  const shared = Object.entries(byTeam).map(([name, items]) =>
+    `<div class="group">👥 ${esc(name)}</div>`
+    + items.map(x => taskRow(x, {hideDate: true})).join("")).join("");
+
+  if(!rows.length && shared) return h + shared;
   if(!rows.length){
     return h + `<div class="empty">${t("no_tasks_yet")}
       <button class="btn secondary sm" data-act="task-add">
@@ -2480,7 +2686,7 @@ function tasksBlock(d){
       ? `<div class="group">${icon("target", 13)} ${esc(group.project)}</div>`
       : `<div class="group">${esc(t("standalone"))}</div>`}
     ${group.tasks.map(x => taskRow(x, {hideProject: true, hideDate: true}))
-                 .join("")}`).join("");
+                 .join("")}`).join("") + shared;
 }
 
 function calendarBlock(){
@@ -2542,7 +2748,7 @@ function teamDelta(delta){
   if(delta === null || delta === undefined) return "";
   const tone = delta > 0 ? "up" : delta < 0 ? "down" : "flat";
   const sign = delta > 0 ? "▲ +" : delta < 0 ? "▼ −" : "= ";
-  return `<span class="delta ${tone}">${sign}${Math.abs(delta)}%</span>`;
+  return `<span class="delta ${tone}">${sign}${Math.abs(delta)} ${t("pts")}</span>`;
 }
 
 /* One person's line: name, bar, percentage, and how it moved. */
@@ -2573,33 +2779,71 @@ SCREENS.team = () => {
       <h3 style="margin:8px 0 6px">${t("team_empty_title")}</h3>
       <p class="muted" style="margin:0 0 16px">${t("team_empty")}</p>
       <button class="btn" data-act="team-new">${t("team_new")}</button>
+      <div class="t3 tiny" style="margin-top:12px">${t("team_join_hint")}</div>
     </div>`;
 
-  const team = teams.find(x => x.id === state.teamId) || teams[0];
+  const team = teamCurrent();
   const board = team.board || {};
-  const tabs = teams.length > 1 ? `
-    <div class="tabs">${teams.map(x => `
-      <div class="tab ${x.id === team.id ? "on" : ""}"
+  const tab = state.teamTab || "today";
+  const pick = teams.length > 1 ? `
+    <div class="tabs" role="tablist">${teams.map(x => `
+      <div class="tab ${x.id === team.id ? "on" : ""}" role="tab" tabindex="0"
+           aria-selected="${x.id === team.id}"
            data-act="team-pick" data-id="${x.id}">${esc(x.name)}</div>`).join("")}
     </div>` : "";
 
-  const nameOf = id => {
-    const m = (board.members || []).find(x => x.user_id === id);
-    return esc(m?.name || "?");
-  };
+  let h = `
+    <div class="head">
+      <div class="grow"><h1>${esc(team.name)}</h1>
+        <div class="muted sm">${(team.members || []).map(m => esc(m.name)
+          + (m.role === "owner" ? " 👑" : m.role === "admin" ? " ⭐" : "")).join(" · ")}</div></div>
+      <button class="ghost" data-act="team-menu" data-id="${team.id}"
+              aria-label="${t("settings")}">⋯</button>
+    </div>
+    ${pick}`;
 
-  /* Today, as a headline. The pair's own number first, because that is what
-     the two of you did between you, then each of you underneath. */
+  if(team.ownership_offer) h += `<div class="banner">
+      <div class="grow">👑 ${t("owner_offer", {name: esc(team.name)})}</div>
+      <button class="btn sm" data-act="team-owner-answer" data-value="1">${t("accept")}</button>
+      <button class="btn sm secondary" data-act="team-owner-answer" data-value="0">${t("decline")}</button>
+    </div>`;
+  if(team.requests) h += `<div class="banner" data-act="team-menu" role="button" tabindex="0">
+      ✋ <div class="grow">${t("requests_title")} · ${team.requests}</div>${icon("chevron", 15)}</div>`;
+
+  h += `<div class="seg" role="tablist" style="margin:12px 0">
+      ${TEAM_TABS.map(([id, key]) => `<div class="${tab === id ? "on" : ""}" role="tab"
+        tabindex="0" aria-selected="${tab === id}" data-act="team-tab"
+        data-tab="${id}">${t(key)}</div>`).join("")}</div>`;
+
+  if(tab === "work") return h + teamWorkTab(team, board);
+  if(tab === "results") return h + teamResultsTab(team, board);
+  return h + teamTodayTab(team, board);
+};
+
+/* Bugun · Ishlar · Natija — what is left today, the work itself, and how it
+   went. One long scroll put the periods above the tasks and the tasks under
+   three cards of numbers; three tabs keep each question on its own page. */
+const TEAM_TABS = [["today", "team_tab_today"], ["work", "team_tab_work"],
+                   ["results", "team_tab_results"]];
+
+/* "5 ta ish · 10 ta tasdiq · 9 tasi qolgan" — three numbers that can be
+   counted by hand, instead of a percentage of nobody knows what (#25). */
+function teamUnits(units){
+  if(!units || !units.items) return t("team_nothing");
+  return t("team_units", {items: units.items, confirmations: units.confirmations,
+                          left: units.left});
+}
+
+function teamTodayTab(team, board){
   const todayRows = board.periods?.day || [];
   const pairDone = todayRows.reduce((n, r) => n + r.done, 0);
   const pairTotal = todayRows.reduce((n, r) => n + r.total, 0);
   const pairPct = pairTotal ? Math.round(pairDone / pairTotal * 100) : null;
-
   const head = `<div class="card">
       <div class="row" style="padding:0 0 10px">
         <div class="grow">
           <div class="card-t" style="margin:0">${t("team_today")}</div>
-          <div class="muted sm">${pairDone}/${pairTotal}</div>
+          <div class="muted sm">${teamUnits(board.units)}</div>
         </div>
         <b class="band-${bandOf(pairPct)}" style="font-size:30px">${
           pairPct === null ? "—" : pairPct + "%"}</b>
@@ -2607,20 +2851,23 @@ SCREENS.team = () => {
       ${todayRows.map(r => memberLine(r, {tight:true})).join("")}
     </div>`;
 
-  /* What is still open, and whose name is on it. A percentage says how the
-     day went; this says what to do about it while there is still time. */
-  const open = (board.open || []).map(x => `
-    <div class="row">
-      <span class="itile sm">${x.kind === "task" ? "⚡" : "✅"}</span>
-      <div class="grow">${esc(x.title)}
-        <div class="muted sm">${x.missing.map(nameOf).join(" · ")}</div></div>
+  // What is still open today, each with your own box when it is yours.
+  const me = state.me?.telegram_id;
+  const nameOf = id => esc((board.members || []).find(m => m.user_id === id)?.name || "?");
+  const full = x => ((x.kind === "task" ? team.tasks : team.habits) || [])
+      .find(r => r.id === x.id)
+    || {...x, owed: (x.missing || []).includes(me) || (x.done_by || []).includes(me),
+        done: (x.done_by || []).includes(me)};
+  const open = (board.open || []).map(x => `<div class="row" style="padding:6px 0">
+      ${teamBox({...full(x), mirrored: x.mirrored}, x.kind)}
+      <div class="grow">${x.kind === "task" ? "⚡" : "✅"} ${esc(x.title)}
+        <div class="muted sm">${(x.missing || []).map(nameOf).join(" · ")}</div></div>
     </div>`).join("");
   const done = (board.done || []).map(x => `
-    <div class="row" style="opacity:.55">
+    <div class="row" style="opacity:.55;padding:4px 0">
       <span class="itile sm">✔️</span>
       <div class="grow done">${esc(x.title)}</div>
     </div>`).join("");
-
   const work = `<div class="card">
       <div class="row" style="padding:0 0 6px">
         <div class="card-t grow" style="margin:0">${t("team_left_today")}</div>
@@ -2630,63 +2877,104 @@ SCREENS.team = () => {
       ${done}
     </div>`;
 
-  /* The periods, last, and one line each. They are the slowest-moving thing
-     on the screen and the least use in the moment, so they sit under the
-     work rather than above it. */
+  const cds = team.countdowns || [];
+  const countdowns = `<h2>📅 ${t("date_cd")}
+      <span class="act" data-act="cd-add" data-team="${team.id}">${icon("plus", 15)}
+        ${t("add")}</span></h2>
+    ${cds.length ? countdownRows(cds) : `<div class="empty">${t("countdown_empty")}</div>`}
+    <div class="hub">
+      <button class="btn secondary" data-act="tc-open">⏱ ${t("time_cd")}</button>
+      <button class="btn secondary" data-act="dc-open">📅 ${t("date_cd")}</button>
+    </div>`;
+  return head + work + countdowns;
+}
+
+function teamWorkTab(team, board){
+  return `<div class="card">
+      <div class="card-t">${t("team_tasks")}</div>
+      ${(team.tasks || []).map(x => sharedRow(x, "task", x.title, board, team)).join("")
+        || `<div class="muted">${t("team_nothing")}</div>`}
+      <button class="btn secondary" data-act="team-add" data-kind="task"
+              style="margin-top:10px">+ ${t("team_add_task")}</button>
+    </div>
+    <div class="card">
+      <div class="card-t">${t("team_habits")}</div>
+      ${(team.habits || []).map(x => sharedRow(x, "habit", x.name, board, team)).join("")
+        || `<div class="muted">${t("team_nothing")}</div>`}
+      <button class="btn secondary" data-act="team-add" data-kind="habit"
+              style="margin-top:10px">+ ${t("team_add_habit")}</button>
+    </div>
+    ${teamProjectsBlock(team)}`;
+}
+
+function teamResultsTab(team, board){
   const periods = ["day", "week", "month"].map(key => {
     const rows = board.periods?.[key] || [];
     const gotDone = rows.reduce((n, r) => n + r.done, 0);
     const gotTotal = rows.reduce((n, r) => n + r.total, 0);
     const pct = gotTotal ? Math.round(gotDone / gotTotal * 100) : null;
-    const delta = rows.length
-      ? rows.map(r => r.delta).filter(d => d !== null && d !== undefined) : [];
+    const delta = rows.map(r => r.delta).filter(d => d !== null && d !== undefined);
     const avg = delta.length
       ? Math.round(delta.reduce((a, b) => a + b, 0) / delta.length) : null;
     const label = {day: t("team_p_day"), week: t("team_p_week"),
                    month: t("team_p_month")}[key];
     return `<div class="row">
         <div class="grow">${label}</div>
-        <div class="muted sm" style="width:58px;text-align:right">${
-          gotDone}/${gotTotal}</div>
+        <div class="muted sm" style="width:58px;text-align:right">${gotDone}/${gotTotal}</div>
         ${teamDelta(avg)}
         <div style="width:50px;text-align:right">
           <b class="band-${bandOf(pct)}">${pct === null ? "—" : pct + "%"}</b></div>
       </div>`;
   }).join("");
+  const members = ["week", "month"].map(key => {
+    const rows = board.periods?.[key] || [];
+    if(!rows.length) return "";
+    return `<div class="card"><div class="card-t">${
+      t(key === "week" ? "team_p_week" : "team_p_month")}</div>
+      ${rows.map(r => memberLine(r)).join("")}</div>`;
+  }).join("");
+  const log = state.teamActivity?.[team.id];
+  if(!log) loadTeamActivity(team.id);
+  const activity = `<h2>${t("activity")}</h2>` + (log
+    ? (log.length ? `<div class="card">${log.map(activityRow).join("")}</div>`
+                  : `<div class="empty">${t("empty")}</div>`)
+    : `<div class="card"><div class="spin"></div></div>`);
+  return `<div class="card"><div class="card-t">${t("team_results")}</div>
+      <div class="muted sm" style="margin-bottom:6px">${teamUnits(board.units)}</div>
+      ${periods}</div>` + members + activity;
+}
 
-  return `
-    <div class="head">
-      <div class="grow"><h1>${esc(team.name)}</h1>
-        <div class="muted sm">${(team.members || [])
-          .map(m => esc(m.name)).join(" · ")}</div></div>
-      <button class="ghost" data-act="team-menu" data-id="${team.id}">⋯</button>
-    </div>
-    ${tabs}
-    ${head}
-    ${work}
-    ${teamProjectsBlock(team)}
+async function loadTeamActivity(teamId){
+  state.teamActivity ||= {};
+  if(state.teamActivityLoading === teamId) return;
+  state.teamActivityLoading = teamId;
+  try{
+    state.teamActivity[teamId] = (await api(`/api/teams/${teamId}/activity`)).activity || [];
+  }catch(_){ state.teamActivity[teamId] = []; }
+  state.teamActivityLoading = null;
+  if(state.screen === "team") render();
+}
 
-    <div class="card">
-      <div class="card-t">${t("team_results")}</div>
-      ${periods}
-    </div>
+function shortMoment(iso){
+  if(!iso) return "";
+  const d = new Date(/[zZ]|[+-]\d\d:\d\d$/.test(iso) ? iso : iso + "Z");
+  if(isNaN(d)) return "";
+  const p = n => String(n).padStart(2, "0");
+  return `${d.getDate()} ${D().months[d.getMonth()]} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 
-    <div class="card">
-      <div class="card-t">${t("team_tasks")}</div>
-      ${(team.tasks || []).map(x => sharedRow(x, "task", x.title, board)).join("")
-        || `<div class="muted">${t("team_nothing")}</div>`}
-      <button class="btn secondary" data-act="team-add" data-kind="task"
-              style="margin-top:10px">+ ${t("team_add_task")}</button>
-    </div>
-
-    <div class="card">
-      <div class="card-t">${t("team_habits")}</div>
-      ${(team.habits || []).map(x => sharedRow(x, "habit", x.name, board)).join("")
-        || `<div class="muted">${t("team_nothing")}</div>`}
-      <button class="btn secondary" data-act="team-add" data-kind="habit"
-              style="margin-top:10px">+ ${t("team_add_habit")}</button>
+/* Who changed what, and — for anything taken off the list — a way back (#26). */
+function activityRow(a){
+  const key = `act_${a.action}`;
+  const verb = t(key);
+  return `<div class="row" style="padding:6px 0">
+      <div class="grow"><b>${esc(a.who)}</b> ${esc(verb === key ? a.action : verb)}
+        ${a.subject ? `<span class="muted">· ${esc(a.subject)}</span>` : ""}
+        <div class="muted sm">${shortMoment(a.at)}</div></div>
+      ${a.restorable ? `<button class="btn sm secondary" data-act="team-restore"
+          data-kind="${a.kind}" data-id="${a.item_id}">${t("restore")}</button>` : ""}
     </div>`;
-};
+}
 
 /* One shared item: your own box on the left — the only tick you can move —
    and everybody else's state named on the right. */
@@ -2711,31 +2999,80 @@ function teamProjectsBlock(team){
     </div>`;
 }
 
-function sharedRow(x, kind, label, board){
-  const others = (board?.members || [])
-    .filter(m => m.user_id !== state.me?.telegram_id);
+/* The box beside a shared item, which is only ever the reader's own share.
+   A mirrored ritual is read from the member's own habit and cannot be ticked
+   here; a task named for other people has no box for you; a timed item
+   starts its clock instead. Green only when *your* share is done (#17). */
+function teamBox(x, kind){
+  const label = x.title || x.name || "";
+  if(x.mirrored)
+    return `<div class="check lock ${x.done ? "on" : ""}" data-act="mirrored-note"
+      role="img" tabindex="0" aria-label="${esc(t("habit_mirrored"))}">${
+        x.done ? icon("check", 14) : ""}</div>`;
+  if(x.owed === false || (kind === "habit" && x.due === false))
+    return `<div class="check lock" aria-hidden="true"></div>`;
+  if(x.timer_minutes && !x.done)
+    return `<div class="check timed" data-act="timer-open"
+      data-kind="${kind === "task" ? "ttask" : "thabit"}" data-id="${x.id}"
+      role="button" tabindex="0" aria-label="${t("timer")} · ${esc(label)}">${
+        icon("clock", 14)}</div>`;
+  return checkBox(x.done, `data-act="team-toggle" data-kind="${kind}" data-id="${x.id}"`, label);
+}
+
+/* A checkbox a screen reader and a keyboard can use as one (#20). */
+function checkBox(on, attrs, label){
+  return `<div class="check ${on ? "on" : ""}" ${attrs} role="checkbox" tabindex="0"
+      aria-checked="${on ? "true" : "false"}"
+      aria-label="${esc(label || t("now_done"))}">${icon("check", 14)}</div>`;
+}
+
+function teamItemMeta(x, kind){
+  const meta = [];
+  if(kind === "task"){
+    if(x.completion && x.completion !== "all")
+      meta.push(t(`completion_${x.completion}`)
+        + (x.completion === "assignees" && (x.assignee_names || []).length
+            ? ` · ${x.assignee_names.map(esc).join(", ")}` : ""));
+    if(x.deadline) meta.push(`<span class="num">${isoToLabel(x.deadline)}</span>`);
+    if(x.owed === false) meta.push(t("not_assigned"));
+  }
+  if(x.mirrored) meta.push("🔒");
+  if(x.timer_minutes) meta.push(timerMeta(x));
+  if(x.countdown && x.countdown.days_left >= 0) meta.push(`⏳ ${cdLeft(x.countdown)}`);
+  return meta;
+}
+
+function sharedRow(x, kind, label, board, team){
+  const me = state.me?.telegram_id;
+  const others = (board?.members || []).filter(m => m.user_id !== me);
   const marks = others.map(m => {
     const got = (x.done_by || []).includes(m.user_id);
     return `<span class="${got ? "band-great" : "muted"}" style="font-size:12px">${
       got ? "✓" : "○"} ${esc(m.name)}</span>`;
   }).join(" ");
-
-  return `<div class="row">
-      <div class="check ${x.done ? "on" : ""}" data-act="team-toggle"
-           data-kind="${kind}" data-id="${x.id}"></div>
-      <div class="grow" data-act="${kind === "task" ? "team-task-open"
-                                                    : "team-habit-open"}"
-           data-id="${x.id}">
+  const meta = teamItemMeta(x, kind);
+  const canRemove = !x.protected && !x.mirrored
+    && (x.created_by === me || team?.permissions?.manage_items);
+  return `<div class="row" style="padding:6px 0">
+      ${teamBox(x, kind)}
+      <div class="grow" data-act="${kind === "task" ? "team-task-open" : "team-habit-open"}"
+           data-id="${x.id}" role="button" tabindex="0">
         <div class="${x.done ? "done" : ""}">${esc(label)}</div>
+        ${meta.length ? `<div class="muted sm">${meta.join(" · ")}</div>` : ""}
         ${marks ? `<div class="muted sm">${marks}</div>` : ""}
       </div>
-      ${x.protected ? "" : `<button class="ghost" data-act="team-remove"
-              data-kind="${kind}" data-id="${x.id}">✕</button>`}
+      ${canRemove ? `<button class="ghost" data-act="team-remove" data-kind="${kind}"
+          data-id="${x.id}" aria-label="${t("delete")}">✕</button>` : ""}
     </div>`;
 }
 
 SCREENS.habits = () => {
-  const tabs = [["habits","habits"],["prayer","prayer"],["journal","journal"]];
+  /* Only the modules somebody chose have a tab (#22). */
+  const mods = state.me?.modules || state.home?.modules || {};
+  const tabs = [["habits","habits"],
+                ...(mods.prayer === false ? [] : [["prayer","prayer"]]),
+                ...(mods.journal === false ? [] : [["journal","journal"]])];
+  if(!tabs.some(([id]) => id === state.tab)) state.tab = "habits";
   let h = `<h1>${t(state.tab)}</h1>
     <div class="seg" style="margin:12px 0 14px">
       ${tabs.map(([id, key]) => `<div class="${state.tab === id ? "on" : ""}"
@@ -2855,7 +3192,9 @@ function habitRow(x, cat, wake){
   // A wake-up that has not happened yet gets the button; once it has, the
   // row shows the time it actually happened.
   const wakeBtn = isWake && wake && !wake.logged
-    ? `<button class="btn sm" data-act="wake">☀️ ${t("wake_btn")}</button>` : "";
+    ? `<button class="btn sm" data-act="wake">☀️ ${t("wake_btn")}</button>
+       <button class="iconbtn sm" data-act="wake-at"
+               aria-label="${t("wake_enter")}">${icon("clock", 15)}</button>` : "";
   const wakeMeta = isWake && wake && wake.logged
     ? (wake.done
         ? t("wake_done_at", {time: wake.at || wake.now})
@@ -2883,28 +3222,27 @@ function habitRow(x, cat, wake){
                                            : "habit_auto_prayer"));
   if(x.remind_at) meta.push(`${icon("bell", 12)} ${x.remind_at}`);
   if(x.schedule !== "daily" && !isWake) meta.push(scheduleLabel(x));
-  const timed = x.source !== "team" && !x.protected && Boolean(x.timer_minutes);
+  const shared = x.source === "team";
+  const timed = !x.protected && !x.mirrored && Boolean(x.timer_minutes);
   if(timed) meta.push(timerMeta(x));
 
-  const box = !x.due
-    ? `<div class="check lock" aria-hidden="true"></div>`
+  /* A shared habit's box is the reader's own share — a mirrored ritual is
+     read from their personal habit and never ticked twice. */
+  const box = shared ? teamBox(x, "habit")
+    : !x.due
+      ? `<div class="check lock" aria-hidden="true"></div>`
     /* Done by its timer: the box starts the clock instead of ticking. Once
        the timer has done its part the box is an ordinary one again. */
     : timed && !x.done
       ? `<div class="check timed" data-act="timer-open" data-kind="habit"
-             data-id="${x.id}" aria-label="${t("timer")}">${icon("clock", 14)}</div>`
-    : x.source === "team"
-      // Shared rituals are ticked by hand by each member — there is no
-      // shared prayer module ticking them, so they are never locked.
-      ? `<div class="check ${x.done ? "on" : ""}" data-act="team-toggle"
-             data-kind="habit" data-id="${x.id}">${icon("check", 14)}</div>`
-      : x.protected
-        ? `<div class="check ${x.done ? "on" : ""} lock"
-               data-act="auto-habit">${x.done ? icon("check", 14) : ""}</div>`
-        : `<div class="check ${x.done ? "on" : ""}" data-act="habit-toggle"
-               data-id="${x.id}">${icon("check", 14)}</div>`;
+             data-id="${x.id}" role="button" tabindex="0"
+             aria-label="${t("timer")} · ${esc(x.name)}">${icon("clock", 14)}</div>`
+    : x.protected
+      ? `<div class="check ${x.done ? "on" : ""} lock" data-act="auto-habit"
+             role="img" tabindex="0" aria-label="${esc(t("auto_habit"))}">${
+               x.done ? icon("check", 14) : ""}</div>`
+      : checkBox(x.done, `data-act="habit-toggle" data-id="${x.id}"`, x.name);
 
-  const shared = x.source === "team";
   // A shared habit opens its own sheet, exactly as a private one does.
   // Sending the reader to the Team tab instead answered a question they had
   // not asked and lost the one they had: how is this habit going.
@@ -3043,7 +3381,8 @@ function journalTab(){
     String(draft[q.id] ?? answers[q.id] ?? "").trim()).length;
 
   let h = `<div class="row" style="margin-bottom:12px">
-      <div class="grow small ${answered === questions.length ? "" : "t2"}">
+      <div class="grow small ${answered === questions.length ? "" : "t2"}" id="jcount"
+           aria-live="polite">
         ${answered === questions.length ? `✓ ${t("journal_complete")}`
           : t("journal_progress", {done:answered, total:questions.length})}</div>
       <div class="t3 tiny" id="jsave"></div>
@@ -3090,7 +3429,10 @@ function journalTab(){
    long entry lost to that is the fastest way to teach someone never to
    write a long entry again, so every keystroke goes to localStorage and
    the backend gets a debounced save. */
-const draftKey = () => `ernestos-journal-${todayISO()}`;
+/* Per account as well as per day: two people sharing a phone must never be
+   handed each other's unsent entry. */
+const draftKey = () =>
+  `ernestos-journal-${state.me?.telegram_id || "anon"}-${todayISO()}`;
 
 function loadDraft(){
   try{ return JSON.parse(localStorage.getItem(draftKey()) || "{}"); }
@@ -3107,28 +3449,55 @@ function clearDraft(){
   try{ localStorage.removeItem(draftKey()); }catch(_){}
 }
 
-let journalTimer;
+/* Autosave. Every changed answer waits in `journalPending` until typing
+   pauses, and all of them go in one request — one timer for all fields used
+   to drop the first field's save when the second was typed within a second.
+   Requests run one after another, so an older answer can never land after a
+   newer one. */
+let journalTimer, journalPending = {}, journalChain = Promise.resolve(), journalSeq = 0;
+
+function updateJournalCounter(){
+  const qs = state.journalQuestions || [];
+  const done = qs.filter(q =>
+    (document.getElementById("jq-" + q.id)?.value || "").trim()).length;
+  const el = document.getElementById("jcount");
+  if(el) el.textContent = done === qs.length && qs.length
+    ? `✓ ${t("journal_complete")}` : t("journal_progress", {done, total: qs.length});
+}
+
 function onJournalInput(el){
   saveDraft(el.dataset.journal, el.value);
+  journalPending[el.dataset.journal] = el.value;
+  updateJournalCounter();
   const note = document.getElementById("jsave");
   if(note) note.textContent = t("autosaved");
   clearTimeout(journalTimer);
-  // Debounced so a paragraph is one request, not one per keystroke.
-  journalTimer = setTimeout(async () => {
+  journalTimer = setTimeout(flushJournal, 900);
+}
+
+function flushJournal(){
+  clearTimeout(journalTimer);
+  const answers = journalPending;
+  journalPending = {};
+  if(!Object.keys(answers).length) return journalChain;
+  const seq = ++journalSeq;
+  journalChain = journalChain.then(async () => {
+    const note = document.getElementById("jsave");
     try{
-      const body = {answers:{[el.dataset.journal]: el.value}};
-      const r = await api("/api/journal", {method:"POST", body});
-      if(note) note.textContent = "✓";
+      const r = await api("/api/journal", {method:"POST", body:{answers}});
       state.journal = {...(state.journal || {}), answered:r.answered,
                        complete:r.complete,
-                       answers:{...(state.journal?.answers || {}),
-                                [el.dataset.journal]: el.value}};
+                       answers:{...(state.journal?.answers || {}), ...answers}};
+      if(seq === journalSeq && note) note.textContent = "✓";
     }catch(_){
-      // The draft is already on disk, so a failed save is recoverable.
+      // The draft is on disk; the answers wait for the next pause or Save.
+      journalPending = {...answers, ...journalPending};
       if(note) note.textContent = "…";
     }
-  }, 900);
+  });
+  return journalChain;
 }
+document.addEventListener("visibilitychange", () => { if(document.hidden) flushJournal(); });
 document.addEventListener("input", e => {
   const el = e.target.closest("[data-journal]");
   if(el) onJournalInput(el);
@@ -3253,7 +3622,7 @@ function timerSheet(info){
   let body;
   if(info.done && !counting){
     body = `<div class="clock-big">✓</div>
-      <div class="hint" style="text-align:center">${t(kind === "habit"
+      <div class="hint" style="text-align:center">${t(kind === "habit" || kind === "thabit"
         ? "timer_done_today" : "timer_done")}</div>`;
   } else if(!minutes){
     body = `<div class="hint">${t("timer_off_hint")}</div>`;
@@ -3275,7 +3644,7 @@ function timerSheet(info){
       </div>`;
   } else {
     body = `<div class="clock-big">${fmtClock(minutes * 60)}</div>
-      <div class="hint" style="text-align:center">${t(kind === "habit"
+      <div class="hint" style="text-align:center">${t(kind === "habit" || kind === "thabit"
         ? "timer_rule_habit" : "timer_rule_task")}</div>
       <button class="btn" data-act="timer-start" data-kind="${kind}" data-id="${info.id}"
               style="margin-top:var(--s3)">${icon("play", 16)} ${t("timer_start")}</button>`;
@@ -3283,12 +3652,14 @@ function timerSheet(info){
 
   /* The length: presets as one tap, a typed number, from-the-name, off. Not
      offered while the clock is counting — change it after, not mid-run. */
-  const current = info.timer_mode === "off" ? "off"
+  const current = info.timer_mode === "off" || !minutes ? "off"
     : info.timer_mode === "auto" ? "auto" : String(minutes);
   const chip = (value, label) => `<div class="chip sm ${current === value ? "on" : ""}"
       data-act="timer-len" data-kind="${kind}" data-id="${info.id}"
       data-value="${value}">${label}</div>`;
-  const chooser = info.protected || counting ? "" : `
+  /* On a shared item the length is the team's setting — its creator, an
+     admin or the owner changes it; everybody runs their own clock. */
+  const chooser = info.protected || counting || info.can_set === false ? "" : `
     <label>${icon("clock", 13)} ${t("timer_len")}</label>
     <div class="chips">
       ${chip("off", t("timer_off"))}
@@ -3309,6 +3680,7 @@ function timerSheet(info){
          ${t("now_done")}</button>` : "";
 
   return `<h3>${icon("clock", 18)} ${esc(info.title)}</h3>
+    ${info.team_id ? `<div class="t3 tiny">${t("timer_team_own")}</div>` : ""}
     ${body}${chooser}${tick}
     <button class="btn secondary" data-act="close" style="margin-top:8px">
       ${t("close")}</button>`;
@@ -3373,37 +3745,166 @@ function cdLeft(x){
   return t("cd_days_left", {n: x.days_left});
 }
 
+const CD_ICON = {general:"📅", task:"⚡", habit:"✅"};
+
 function countdownRows(list){
   return list.map(x => `<div class="item" style="min-height:48px"
-       data-act="cd-open" data-id="${x.id}" data-title="${esc(x.title)}">
-      <span class="itile">${icon("hourglass", 16)}</span>
+       data-act="cd-open" data-id="${x.id}" data-title="${esc(x.title)}"
+       role="button" tabindex="0">
+      <span class="itile">${CD_ICON[x.scope] || icon("hourglass", 16)}</span>
       <div class="grow"><div class="ellipsis">${esc(x.title)}</div>
-        <div class="meta num">${isoToLabel(x.date)}</div></div>
+        <div class="meta num">${isoToLabel(x.date)}${
+          x.item_title && x.item_title !== x.title ? ` · ${esc(x.item_title)}` : ""}${
+          x.team_name ? ` · 👥 ${esc(x.team_name)}` : ""}</div></div>
       <div class="num" style="font-weight:700;white-space:nowrap">${cdLeft(x)}</div>
     </div>`).join("");
 }
 
-/* Home carries the block only when there is something in it: the screen is
-   about today, and an empty countdown section would be one more thing to
-   read past. Adding one lives on the Tasks screen, where planning happens. */
-function countdownBlock(list, always){
+/* The two countdowns, side by side wherever a day is planned: a date being
+   counted down to, and a clock on a habit or a task. */
+function countdownHub(){
+  return `<div class="hub">
+      <button class="btn secondary" data-act="dc-open">📅 ${t("date_cd")}</button>
+      <button class="btn secondary" data-act="tc-open">⏱ ${t("time_cd")}</button>
+    </div>`;
+}
+
+function countdownBlock(list){
   list = list || [];
-  if(!list.length && !always) return "";
-  return `<h2>${t("countdown")}
+  return `<h2>📅 ${t("date_cd")}
       <span class="act" data-act="cd-add">${icon("plus", 15)} ${t("add")}</span></h2>
-    ${list.length ? countdownRows(list)
-                  : `<div class="empty">${t("countdown_empty")}</div>`}`;
+    ${countdownRows(list.slice(0, 3))}
+    ${list.length > 3 ? `<div class="t2 small" data-act="dc-open" role="button" tabindex="0"
+        style="margin-top:6px;text-decoration:underline">${t("cd_all")} · ${list.length}</div>` : ""}
+    ${countdownHub()}`;
+}
+
+/* Every countdown: yours by kind, then each team's. */
+function countdownHubSheet(list){
+  list = list || [];
+  const personal = list.filter(x => !x.team_id);
+  const groups = [["general", "cd_scope_general"], ["task", "cd_scope_task"],
+                  ["habit", "cd_scope_habit"]].map(([scope, key]) => {
+    const rows = personal.filter(x => (x.scope || "general") === scope);
+    return rows.length ? `<div class="group">${CD_ICON[scope]} ${t(key)}</div>`
+                         + countdownRows(rows) : "";
+  }).join("");
+  const byTeam = {};
+  for(const x of list.filter(x => x.team_id)) (byTeam[x.team_name || ""] ||= []).push(x);
+  const teams = Object.entries(byTeam).map(([name, rows]) =>
+    `<div class="group">👥 ${esc(name)}</div>` + countdownRows(rows)).join("");
+  return `<h3>📅 ${t("date_cd")}</h3>
+    ${groups || teams ? groups + teams : `<div class="empty">${t("countdown_empty")}</div>`}
+    <button class="btn" data-act="cd-add" style="margin-top:12px">${icon("plus", 16)}
+      ${t("countdown_add")}</button>
+    <button class="btn secondary" data-act="close" style="margin-top:8px">${t("close")}</button>`;
+}
+
+/* What a new countdown can be tied to, for the scope and owner chosen. */
+function cdLinkItems(f){
+  const dest = f.dest || "personal";
+  if(dest === "personal"){
+    if(f.scope === "task"){
+      const d = state.tasks;
+      return d ? [...d.overdue, ...d.upcoming, ...d.undated, ...(d.later || [])]
+        .map(x => ({id:x.id, title:x.title, deadline:x.deadline})) : [];
+    }
+    return (state.habits?.habits || []).filter(x => !x.protected)
+      .map(x => ({id:x.id, title:x.name}));
+  }
+  const team = (state.team?.teams || []).find(x => "team:" + x.id === dest);
+  if(!team) return [];
+  return f.scope === "task"
+    ? (team.tasks || []).map(x => ({id:x.id, title:x.title, deadline:x.deadline}))
+    : (team.habits || []).filter(x => !x.mirrored).map(x => ({id:x.id, title:x.name}));
+}
+
+function readCdForm(){
+  const f = state.cdForm || (state.cdForm = {scope:"general", dest:"personal"});
+  const g = id => document.getElementById(id);
+  if(g("cd-title")) f.title = g("cd-title").value;
+  if(g("cd-date")) f.date = g("cd-date").value;
+  if(g("cd-link")) f.item = g("cd-link").value;
+  return f;
+}
+
+async function ensureCdData(){
+  const jobs = [];
+  if(!state.tasks) jobs.push(api("/api/tasks?days=365").then(r => { state.tasks = r; })
+                             .catch(() => {}));
+  if(!state.habits) jobs.push(api("/api/habits").then(r => { state.habits = r; })
+                              .catch(() => {}));
+  if((state.teams || []).length && !state.team)
+    jobs.push(api("/api/teams").then(r => { state.team = r; }).catch(() => {}));
+  await Promise.all(jobs);
 }
 
 function countdownSheet(){
+  const f = state.cdForm || (state.cdForm = {scope:"general", dest:"personal"});
+  const teams = state.teams || [];
+  const chip = (act, value, current, label) => `<div class="chip sm ${
+      current === value ? "on" : ""}" data-act="${act}" data-value="${value}"
+      role="radio" tabindex="0" aria-checked="${current === value}">${label}</div>`;
+  const items = cdLinkItems(f);
   return `<h3>${icon("hourglass", 18)} ${t("countdown_add")}</h3>
-    <input id="cd-title" placeholder="${t("countdown_title_ph")}" maxlength="200" />
+    <label>${t("cd_scope")}</label>
+    <div class="chips">${["general", "task", "habit"].map(s =>
+      chip("cd-scope", s, f.scope, `${CD_ICON[s]} ${t("cd_scope_" + s)}`)).join("")}</div>
+    ${teams.length ? `<label>${t("cd_whose")}</label><div class="chips">
+      ${chip("cd-dest", "personal", f.dest, t("dest_personal"))}
+      ${teams.map(x => chip("cd-dest", "team:" + x.id, f.dest, "👥 " + esc(x.name))).join("")}
+      </div>` : ""}
+    ${f.scope !== "general" ? `<label>${t("cd_link")}</label>
+      <select id="cd-link" data-act="cd-link">
+        <option value="">${t("cd_link_none")}</option>
+        ${items.map(x => `<option value="${x.id}" ${String(f.item) === String(x.id)
+          ? "selected" : ""}>${esc(x.title)}</option>`).join("")}
+      </select>` : ""}
     <label>${t("countdown_date")}</label>
-    <input type="date" id="cd-date" min="${todayISO()}" />
+    <input type="date" id="cd-date" min="${todayISO()}" value="${esc(f.date || "")}" />
+    <input id="cd-title" placeholder="${t("countdown_title_ph")}" maxlength="200"
+           value="${esc(f.title || "")}" style="margin-top:10px" />
     <button class="btn" data-act="cd-save" style="margin-top:14px">
       ${icon("plus", 16)} ${t("add")}</button>
     <button class="btn secondary" data-act="close" style="margin-top:8px">
       ${t("cancel")}</button>`;
+}
+
+/* ⏱ Time countdown: the running clock, and everything a clock can go on —
+   private and shared, habits and tasks — one tap from its timer. */
+async function openTimeHub(kind){
+  state.tcKind = kind || state.tcKind || "habit";
+  openSheet(timeHubSheet(null), "tc");
+  try{
+    const r = await api(`/api/timers/candidates/${state.tcKind}`);
+    if(state.sheetView === "tc") openSheet(timeHubSheet(r), "tc");
+  }catch(e){ handleError(e); }
+}
+
+function timeHubSheet(r){
+  const kind = state.tcKind || "habit";
+  const seg = `<div class="seg" role="tablist" style="margin:10px 0">
+      ${[["habit", "tc_habits"], ["task", "tc_tasks"]].map(([k, key]) =>
+        `<div class="${kind === k ? "on" : ""}" role="tab" tabindex="0"
+          aria-selected="${kind === k}" data-act="tc-kind" data-value="${k}">${t(key)}</div>`)
+        .join("")}</div>`;
+  let body;
+  if(!r) body = `<div class="spin"></div>`;
+  else if(!(r.items || []).length) body = `<div class="empty">${t("tc_empty")}</div>`;
+  else body = r.items.map(x => `
+    <div class="item pressable" data-act="timer-open" data-kind="${x.kind}" data-id="${x.id}"
+         role="button" tabindex="0" style="min-height:50px">
+      <span class="itile">${icon("clock", 16)}</span>
+      <div class="grow"><div class="ellipsis">${esc(x.title)}</div>
+        <div class="meta">${x.team_name ? `👥 ${esc(x.team_name)}` : t("src_personal")}${
+          x.timer_minutes || x.timer ? " · " + timerMeta(x) : ""}</div></div>
+      ${icon("chevron", 15)}</div>`).join("");
+  return `<h3>⏱ ${t("time_cd")}</h3>
+    ${r?.active ? timerBanner(r.active) : ""}
+    ${seg}
+    <div class="t3 tiny" style="margin-bottom:8px">${t("tc_hint")}</div>
+    ${body}
+    <button class="btn secondary" data-act="close" style="margin-top:12px">${t("close")}</button>`;
 }
 
 /* ---------- Tasks ---------- */
@@ -3421,26 +3922,43 @@ function countdownSheet(){
    planner asks — what is coming after today — and putting it there means the
    whole plan is one scroll instead of a screen plus a sheet. */
 SCREENS.tasks = () => {
-  const tabs = [["main", t("main_tab")], ["open", t("open_tab")],
-                ["projects", t("projects")], ["done", t("done_tab")]];
+  /* Bugun · Reja · Taqvim (#18). The plan holds the inbox, the projects and
+     the archive as three chips under one tab; the calendar and both
+     countdowns are a tab of their own rather than the foot of Today. */
+  const tabs = [["main", t("tab_today")], ["open", t("tab_plan")],
+                ["calendar", t("tab_calendar")]];
+  const PLAN = ["open", "projects", "done"];
+  const active = PLAN.includes(state.taskTab) ? "open" : state.taskTab;
 
   let h = `<div class="head">
       <h1 class="grow">${t("tasks")}</h1>
       <button class="iconbtn" data-act="task-add"
               aria-label="${t("add_task")}">${icon("plus")}</button>
     </div>
-    <div class="seg" style="margin:12px 0 12px">
-      ${tabs.map(([id, label]) => `<div class="${state.taskTab === id ? "on" : ""}"
+    <div class="seg" role="tablist" style="margin:12px 0 12px">
+      ${tabs.map(([id, label]) => `<div class="${active === id ? "on" : ""}" role="tab"
+        tabindex="0" aria-selected="${active === id}"
         data-act="task-tab" data-tab="${id}">${label}</div>`).join("")}
     </div>`;
 
-  if(state.taskTab === "done") return h + doneTab();
-
-  if(state.taskTab === "open") return h + openTab();
-  if(state.taskTab === "projects") return h + projectsTab();
-  // Shared tasks are inside the day's list now, not appended underneath.
+  if(PLAN.includes(state.taskTab)){
+    h += `<div class="chips" style="margin-bottom:10px">${[["open", t("open_tab")],
+      ["projects", t("projects")], ["done", t("done_tab")]].map(([id, label]) =>
+      `<div class="chip sm ${state.taskTab === id ? "on" : ""}" role="tab" tabindex="0"
+        aria-selected="${state.taskTab === id}" data-act="task-tab"
+        data-tab="${id}">${label}</div>`).join("")}</div>`;
+    if(state.taskTab === "done") return h + doneTab();
+    if(state.taskTab === "projects") return h + projectsTab();
+    return h + openTab();
+  }
+  if(state.taskTab === "calendar") return h + calendarTab();
   return h + mainTab();
 };
+
+function calendarTab(){
+  return countdownBlock(state.countdowns)
+    + sectionHead("tone-2", "calendar", t("calendar")) + calendarBlock();
+}
 
 /* A section heading that carries a hue, so the screen reads as a few
    labelled groups rather than one uninterrupted scroll. */
@@ -3494,11 +4012,9 @@ function mainTab(){
               style="margin:12px auto 0;display:flex">
         ${icon("plus", 16)} ${t("add_first_task")}</button></div>`;
 
-  // The dates being counted down to, then the month: what is coming after
-  // today, once today has been read.
-  h += countdownBlock(state.countdowns, true);
-  h += sectionHead("tone-2", "calendar", t("calendar")) + calendarBlock();
-  return h;
+  // The dates and the month are the Taqvim tab now; both countdowns stay a
+  // tap away from Today.
+  return h + countdownHub();
 }
 
 function searchBox(id, value, placeholder, action){
@@ -3693,8 +4209,12 @@ function taskRow(task, opts){
   if(task.recurrence) meta.push(icon("repeat", 12));
   if(task.remind_before !== null && task.remind_before !== undefined)
     meta.push(icon("bell", 12));
-  const timed = !shared && Boolean(task.timer_minutes) && task.status !== "done";
+  const timed = Boolean(task.timer_minutes) && task.status !== "done"
+    && !(shared && task.done);
   if(timed) meta.push(timerMeta(task));
+  if(shared && task.completion && task.completion !== "all")
+    meta.push(t("completion_" + task.completion));
+  if(shared && task.owed === false) meta.push(t("not_assigned"));
 
   /* Three, so they sit on one line. Four wrapped onto a second row and made
      every late task a 300px block; "this week" is the one a person reaches
@@ -3710,12 +4230,13 @@ function taskRow(task, opts){
       </div>` : "";
 
   return `<div class="trow pri-${task.priority}">
-      <div class="check ${shared && task.done ? "on" : ""} ${timed ? "timed" : ""}"
-           ${shared ? `data-act="team-toggle" data-kind="task"`
-                    : timed ? `data-act="timer-open" data-kind="task"`
-                    : `data-act="task-done"`} data-id="${task.id}"
-           aria-label="${t(timed ? "timer" : "now_done")}">${
-             icon(timed ? "clock" : "check", 14)}</div>
+      ${shared ? teamBox(task, "task")
+        : `<div class="check ${timed ? "timed" : ""}"
+           ${timed ? `data-act="timer-open" data-kind="task"` : `data-act="task-done"`}
+           data-id="${task.id}" role="${timed ? "button" : "checkbox"}" tabindex="0"
+           aria-checked="false"
+           aria-label="${t(timed ? "timer" : "now_done")} · ${esc(task.title)}">${
+             icon(timed ? "clock" : "check", 14)}</div>`}
       <div class="grow">
         <div class="tt wrap"
              data-act="${shared ? "team-task-open" : "task-open"}"
@@ -3940,7 +4461,7 @@ SCREENS.stats = () => {
       </div>
       <div class="num" style="font-size:42px;font-weight:760;
            letter-spacing:-1.5px;line-height:1.02;margin-top:2px">
-        ${today.overall}%</div>
+        ${today.measured === false ? "—" : today.overall + "%"}</div>
       <div class="small wrap" style="margin-top:var(--s1)">
         ${known
           ? `<b>${TREND_ICON[dir] || ""}${change > 0 ? "+" : ""}${change}%</b>
@@ -3958,7 +4479,7 @@ SCREENS.stats = () => {
       <div class="row" style="gap:var(--s1)">
         <span class="itile">${icon(COMPONENT_ICON[key], 17)}</span>
         <div class="grow"></div>
-        <span class="wt num">${WEIGHTS[key]}%</span>
+        <span class="wt num" title="${t("weight")}">⚖ ${WEIGHTS[key]}%</span>
       </div>
       <div class="k ellipsis">${label}</div>
       <div class="v num">${value}</div>
@@ -4060,28 +4581,30 @@ function teamStatsOnStats(){
   const teams = state.team?.teams || [];
   if(!teams.length) return "";
   return teams.map(team => {
-    const rows = team.board?.periods?.week || [];
-    if(!rows.length) return "";
+    const board = team.board || {};
+    const periods = board.periods || {};
+    if(!(periods.week || []).length) return "";
+    // Names, not "you": this is about specific people side by side.
+    const block = (key, label) => `<div class="t3 tiny" style="margin-top:8px">${label}</div>`
+      + (periods[key] || []).map(r => {
+        const pct = r.percent === null || r.percent === undefined ? 0 : r.percent;
+        return `<div style="margin-top:4px">
+            <div class="row" style="padding:0 0 3px">
+              <div class="grow">${esc(r.name)}</div>
+              ${teamDelta(r.delta)}
+              <div style="width:48px;text-align:right"><b class="band-${bandOf(r.percent)}">${
+                r.percent === null || r.percent === undefined ? "—" : r.percent + "%"}</b></div>
+            </div>
+            <div class="bar"><i class="band-${bandOf(r.percent)}" style="width:${pct}%"></i></div>
+            <div class="muted sm">${r.done}/${r.total}</div>
+          </div>`;
+      }).join("");
     return sectionHead("tone-3", "users", esc(team.name),
-      `<span class="act" data-act="nav" data-screen="team">${
+      `<span class="act" data-act="team-open" data-id="${team.id}">${
         t("team_open")} ${icon("chevron", 13)}</span>`)
-      + `<div class="card">${rows.map(r => {
-          // Names, not "you" — this screen is about two specific people and
-          // "Ernest 2/9 · Gulyora 3/9" reads as two of them, which is the
-          // whole point of putting them side by side.
-          const name = esc(r.name);
-          const pct = r.percent === null ? 0 : r.percent;
-          return `<div style="margin-top:6px">
-              <div class="row" style="padding:0 0 3px">
-                <div class="grow">${name}</div>
-                ${teamDelta(r.delta)}
-                <div style="width:48px;text-align:right"><b>${
-                  r.percent === null ? "—" : r.percent + "%"}</b></div>
-              </div>
-              <div class="bar"><i style="width:${pct}%"></i></div>
-              <div class="muted sm">${r.done}/${r.total}</div>
-            </div>`;
-        }).join("")}</div>`;
+      + `<div class="card"><div class="muted sm">${teamUnits(board.units)}</div>
+          ${block("day", t("team_p_day"))}${block("week", t("team_p_week"))}
+          ${block("month", t("team_p_month"))}</div>`;
   }).join("");
 }
 
@@ -4177,10 +4700,13 @@ function taskSheet(task, presetProject){
   /* A shared task files onto the team's shelves, never onto a private one —
      a project is a shelf inside one workspace, and offering somebody else's
      would produce a task nobody could find. */
-  const shared = f.source === "team" || task?.source === "team";
+  /* A new task headed for a team is a shared task from the first keystroke:
+     it files onto the team's shelves and asks who does it. */
+  const teamDest = !editing && destOf().team;
+  const shared = f.source === "team" || task?.source === "team" || teamDest;
+  const teamId = f.team_id || task?.team_id || (teamDest ? destOf().id : null);
   const projects = shared
-    ? ((state.team?.teams || []).find(x => x.id === (f.team_id || task?.team_id))
-       ?.projects || [])
+    ? ((state.team?.teams || []).find(x => x.id === teamId)?.projects || [])
     : (state.projects || []);
   const options = projects.map(p =>
     `<option value="${p.id}" ${String(p.id) === String(f.project_id) ? "selected" : ""}
@@ -4195,6 +4721,7 @@ function taskSheet(task, presetProject){
            value="${esc(f.title || "")}" />
 
     ${editing ? taskOwnerPicker(f, task, shared) : destPicker()}
+    ${shared ? teamTaskOptions(f, task, teamId) : ""}
 
     <div class="chips" style="margin-top:10px">
       ${chips.map(([id, label]) => `<div class="chip sm
@@ -4244,8 +4771,8 @@ function taskSheet(task, presetProject){
       <select id="task-project">
         <option value="">${t("standalone")}</option>${options}</select>
 
-      ${shared ? "" : editing ? timerSetting("task", {...f, id: task.id})
-                              : timerPicker("task-timer", f.timer_minutes)}
+      ${editing ? timerSetting(shared ? "ttask" : "task", {...f, id: task.id})
+                : timerPicker("task-timer", f.timer_minutes)}
 
       <label>${t("task_desc")}</label>
       <textarea id="task-desc">${esc(f.description || "")}</textarea>
@@ -4260,6 +4787,29 @@ function taskSheet(task, presetProject){
       ${icon("trash", 15)} ${t("delete")}</button>` : ""}
     <button class="btn secondary" data-act="close" style="margin-top:8px">
       ${t("cancel")}</button>`;
+}
+
+/* Who does a shared task: everybody, any one of you, or the named people (#24). */
+function teamTaskOptions(f, task, teamId){
+  if(!teamId) return "";
+  const members = f.members || task?.members
+    || (state.team?.teams || []).find(x => x.id === teamId)?.members || [];
+  const policy = f.completion || task?.completion || "all";
+  const chosen = new Set((f.assignees ?? task?.assignees ?? []).map(Number));
+  return `<label>${t("who_does")}</label>
+    <div class="chips">${["all", "any", "assignees"].map(p => `<div class="chip sm ${
+      policy === p ? "on" : ""}" data-act="task-completion" data-value="${p}" role="radio"
+      tabindex="0" aria-checked="${policy === p}">${t("completion_" + p)}</div>`).join("")}</div>
+    ${policy === "assignees" ? `<div class="chips" style="margin-top:6px">${members.map(m => `
+      <div class="chip sm ${chosen.has(m.user_id) ? "on" : ""}" data-act="task-assignee"
+           data-id="${m.user_id}" role="checkbox" tabindex="0"
+           aria-checked="${chosen.has(m.user_id)}">${esc(m.name)}</div>`).join("")}</div>` : ""}`;
+}
+
+function rerenderTaskSheet(){
+  const f = state.form;
+  openSheet(taskSheet(f.id ? {id: f.id, source: f.source, team_id: f.team_id} : null,
+                      f.project_id));
 }
 
 /* Reads the sheet's current inputs into state.form, so re-rendering for
@@ -4360,17 +4910,24 @@ function taskBody(){
    holiday or an injury it is the right one and deleting throws away
    every log. */
 function habitSheet(h){
+  state.habitSheet = h;
+  const team = h.source === "team";
+  /* What may be changed here. A personal ritual is driven by its module; a
+     shared habit is changed by its creator, an admin or the owner, and a
+     mirrored one is read from each member's own habit. */
+  const locked = team ? (h.mirrored || h.can_manage === false) : h.protected;
   const days = h.days || [0,1,2,3,4,5,6];
   const custom = h.schedule !== "daily" && h.schedule !== "weekdays";
   const grid = h.grid || [];
 
   return `
     <h3>${icon("check", 18)} ${t("edit_habit")}</h3>
-    ${h.protected
-      ? `<div class="hint">${t("auto_habit")}</div>`
+    ${locked
+      ? `<div class="hint"><b>${esc(h.name)}</b> — ${t(h.mirrored ? "habit_mirrored"
+          : team ? "forbidden" : "auto_habit")}</div>`
       : `<input id="habit-name" value="${esc(h.name)}" />`}
 
-    ${h.protected ? "" : `<label>${t("category")}</label>
+    ${locked ? "" : `<label>${t("category")}</label>
       <div class="chips">${["non_negotiable","target","bonus"].map(c =>
         `<div class="chip sm ${h.category === c ? "on" : ""}"
           data-act="habit-cat" data-id="${h.id}" data-value="${c}">${t(c)}</div>`).join("")}
@@ -4382,9 +4939,10 @@ function habitSheet(h){
           has an opinion about. Offering a day picker for them asked a question
           with only one right answer, and any other answer quietly punched a
           hole in the score. They say "every day" instead. */
-      h.protected
+      h.protected || locked
       ? `<label>${t("schedule")}</label>
-         <div class="t2 small">${t("every_day")} · ${t("habit_always_daily")}</div>`
+         <div class="t2 small">${team ? scheduleLabel(h)
+           : `${t("every_day")} · ${t("habit_always_daily")}`}</div>`
       : `<label>${t("schedule")}</label>
     <div class="chips">
       <div class="chip sm ${h.schedule === "daily" ? "on" : ""}"
@@ -4406,14 +4964,14 @@ function habitSheet(h){
                 style="min-width:96px">${t("save")}</button>
       </div>` : ""}
 
-    <label>${t("reminder")} <span class="t3">(${t("optional")})</span></label>
+    ${team && locked ? "" : `<label>${t("reminder")} <span class="t3">(${t("optional")})</span></label>
     <div class="field">
       <input type="time" id="habit-remind" value="${h.remind_at || ""}" />
       <button class="btn sm" data-act="habit-remind-save" data-id="${h.id}"
               style="min-width:96px">${t("save")}</button>
-    </div>
+    </div>`}
 
-    ${h.protected || h.source === "team" ? "" : timerSetting("habit", h)}
+    ${locked ? "" : timerSetting(team ? "thabit" : "habit", h)}
 
     <label>${t("history")}</label>
     <div class="metrics">
@@ -4431,11 +4989,11 @@ function habitSheet(h){
     ${partnerRecords(h)}
     ${ownerPicker(h)}
 
-    ${h.protected ? "" : `
+    ${locked ? "" : `
       <div class="btns">
         <button class="btn secondary" data-act="habit-pause" data-id="${h.id}"
-                data-value="${h.paused ? 0 : 1}">
-          ${h.paused ? icon("play", 15) + " " + t("resume")
+                data-value="${h.paused || h.pause_from ? 0 : 1}">
+          ${h.paused || h.pause_from ? icon("play", 15) + " " + t("resume")
                      : icon("pause", 15) + " " + t("pause")}</button>
         ${h.name !== undefined ? `<button class="btn secondary"
           data-act="habit-name-save" data-id="${h.id}">${t("save")}</button>` : ""}
@@ -4731,6 +5289,7 @@ function settingsSheet(){
 
     ${row("set-look", "sun", "tone-4", t("appearance"), t("appearance_hint"))}
     ${row("set-notify", "bell", "tone-1", t("notifications"), t("notify_hint"))}
+    ${row("set-modules", "check", "tone-4", t("modules"), t("modules_hint"))}
     ${row("set-account", "user", "tone-3", t("account"), t("account_hint"))}
     ${row("set-privacy", "shield", "tone-5", t("privacy_data"), t("privacy_hint"))}
     ${row("set-referral", "gift", "tone-2", t("ref_title"), t("ref_hint"))}
@@ -4746,7 +5305,25 @@ const SETTINGS_VIEWS = {
   root: () => settingsSheet(), look: () => appearanceSheet(),
   notify: () => notifySheet(), account: () => accountSheet(),
   privacy: () => privacyDataSheet(), referral: () => referralSheet(),
+  modules: () => modulesSheet(),
 };
+
+/* Which rituals are kept (#22). Off keeps every log; on again does not count
+   the days away as missed. */
+function modulesSheet(){
+  const mods = state.me?.modules || {};
+  const row = (key, label) => `<div class="setrow"><div class="grow lbl">${label}</div>
+      <div class="sw ${mods[key] ? "on" : ""}" data-act="mod-toggle" data-key="${key}"
+           role="switch" tabindex="0" aria-checked="${mods[key] ? "true" : "false"}"></div>
+    </div>`;
+  return `<h3>🧩 ${t("modules")}</h3>
+    ${row("wake", "☀️ " + t("mod_wake"))}
+    ${row("prayer", "🕌 " + t("mod_prayer"))}
+    ${row("journal", "📔 " + t("mod_journal"))}
+    <div class="t3 tiny" style="margin-top:8px">${t("modules_note")}</div>
+    <button class="btn secondary" data-act="settings" style="margin-top:14px">
+      ${t("back")}</button>`;
+}
 function openSettings(view){
   state.settingsView = SETTINGS_VIEWS[view] ? view : "root";
   openSheet(SETTINGS_VIEWS[state.settingsView]());
@@ -5325,6 +5902,52 @@ function blockedScreen(){
       </div></div>`;
 }
 
+/* The subscription ask as a sheet: reading stays open underneath it (#15). */
+function blockedSheet(){
+  const b = state.subInfo || {};
+  return `<div style="text-align:center">
+      <div style="font-size:30px">🔒</div>
+      <h3 style="margin-top:8px">${t("sub_title")}</h3>
+      <div class="t2 small" style="margin-top:6px">${t("read_only")}</div>
+      ${b.note ? `<div class="tag hot" style="margin-top:12px">${esc(b.note)}</div>` : ""}
+    </div>
+    ${b.channel ? `<button class="btn" data-act="sub-join" data-url="${esc(b.channel)}"
+      style="margin-top:14px">${icon("globe", 16)} ${t("sub_join")}</button>` : ""}
+    <button class="btn secondary" data-act="sub-check" style="margin-top:8px">
+      ${icon("check", 16)} ${t("sub_check")}</button>
+    <button class="btn secondary" data-act="close" style="margin-top:8px">${t("close")}</button>`;
+}
+
+/* Setup is finished in the chat. A spinner that never ended was the answer
+   to a 409 here before. */
+function setupScreen(){
+  return `<div style="padding:40px 0 0;text-align:center">
+      <div style="font-size:34px">👋</div>
+      <h1 style="margin-top:12px">${t("setup_title")}</h1>
+      <div class="t2 small" style="margin-top:8px;max-width:340px;margin-left:auto;
+           margin-right:auto">${t("setup_body")}</div>
+      <div style="margin-top:22px;text-align:left">
+        <button class="btn" data-act="back-to-bot">${t("back_to_bot")}</button>
+        <button class="btn secondary" data-act="reload" style="margin-top:8px">
+          ${t("retry")}</button>
+      </div></div>`;
+}
+
+function readOnlyBanner(){
+  return state.readOnly ? `<div class="banner" data-act="sub-open" role="button" tabindex="0">
+      🔒 <div class="grow">${t("read_only")}</div>${icon("chevron", 15)}</div>` : "";
+}
+
+/* The FAB adds whatever the screen is about (#19). */
+function fabAction(){
+  if(state.screen === "habits") return state.tab === "habits" ? "habit-add" : null;
+  if(state.screen === "tasks" || state.screen === "project") return "task-add";
+  if(state.screen === "team")
+    return (state.team?.teams || []).length ? "team-add-task" : "team-new";
+  if(state.screen === "stats") return null;
+  return "quick-add";
+}
+
 /* An error is never a dead end: every failure screen carries the action
    that could fix it. */
 function errorScreen(){
@@ -5359,14 +5982,19 @@ function render(){
   root.dataset.mode = resolveMode();
 
   const app = document.getElementById("app");
-  if(state.blocked)      app.innerHTML = blockedScreen();
-  else if(state.error)   app.innerHTML = errorScreen();
-  else if(state.loading) app.innerHTML = `<div class="spin"></div>`;
-  else                   app.innerHTML = (SCREENS[state.screen] || SCREENS.home)();
+  if(state.blocked)         app.innerHTML = blockedScreen();
+  else if(state.needsSetup) app.innerHTML = setupScreen();
+  else if(state.error)      app.innerHTML = errorScreen();
+  else if(state.loading)    app.innerHTML = `<div class="spin"></div>`;
+  else app.innerHTML = readOnlyBanner() + (SCREENS[state.screen] || SCREENS.home)();
 
-  const chromeOff = Boolean(state.blocked || state.error || state.loading);
-  document.getElementById("fab").style.display = chromeOff ? "none" : "grid";
-  document.getElementById("fab").innerHTML = icon("plus", 24);
+  const chromeOff = Boolean(state.blocked || state.error || state.loading
+                            || state.needsSetup);
+  const fab = document.getElementById("fab");
+  const fabAct = fabAction();
+  fab.style.display = chromeOff || !fabAct ? "none" : "grid";
+  fab.dataset.act = fabAct || "quick-add";
+  fab.innerHTML = icon("plus", 24);
   document.getElementById("nav").style.display = chromeOff ? "none" : "grid";
 
   const active = NAV_OF[state.screen] || state.screen;
@@ -5411,6 +6039,7 @@ async function loadScreen(screen){
       setState({home, summary, progress});
     } else if(screen === "team"){
       const team = await api("/api/teams");
+      state.teamActivity = {};
       setState({team, teams: (team.teams || []).map(x => ({id:x.id, name:x.name}))});
     } else if(screen === "habits"){
       const [habits, prayer, journal] = await Promise.all([
@@ -5429,10 +6058,14 @@ async function loadScreen(screen){
       const [tasks, projects, focus, calendar, countdowns] = await Promise.all([
         api("/api/tasks?days=365" + query), api("/api/projects"),
         api("/api/focus"),
-        state.calendar ? Promise.resolve(state.calendar) : api("/api/calendar"),
+        state.calendar && !state.calendarStale ? Promise.resolve(state.calendar)
+          : api(state.calendar
+              ? `/api/calendar?year=${state.calendar.year}&month=${state.calendar.month}`
+              : "/api/calendar"),
         // A failure here costs the countdown block, not the screen.
         api("/api/countdowns").catch(() => ({countdowns: state.countdowns || []})),
       ]);
+      state.calendarStale = false;
       setState({tasks, projects: projects.projects, focus: focus.week, calendar,
                 countdowns: countdowns.countdowns,
                 teams: tasks.teams || state.teams});
@@ -5495,12 +6128,21 @@ let lastDraft = null;
 
 function handleError(e, draft){
   console.error("ErnestOS:", e);
+  if(e.status === 403 && e.detail === "forbidden"){ toast(t("forbidden")); return; }
   if(e.status === 403){
-    // Not an error screen — the subscription flow, with a way through it.
-    setState({blocked:{channel:state.blocked?.channel}, loading:false});
+    // Reading stays open; the ask is a sheet over the screen, with a way through.
+    state.readOnly = true;
+    openSheet(blockedSheet(), "sub");
+    render();
     checkSubscription(true);
     return;
   }
+  if(e.status === 409 && e.detail === "onboarding_required"){
+    setState({needsSetup:true, loading:false}); return; }
+  if(e.status === 409 && e.detail === "mirrored"){ toast(t("habit_mirrored")); return; }
+  if(e.status === 409 && e.detail === "not_assigned"){ toast(t("not_assigned")); return; }
+  if(e.status === 422 && e.detail === "owner_must_transfer"){
+    toast(t("owner_must_transfer")); return; }
   if(e.status === 409 && e.detail === "top3_full"){ toast(t("top3_full")); return; }
   if(e.status === 409 && e.detail === "timer_required"){
     toast(t("timer_required")); return; }
@@ -5529,18 +6171,20 @@ async function checkSubscription(quiet){
   try{
     const r = await api("/api/subscription");
     if(r.subscribed){
-      setState({blocked:null, error:null, loading:true});
+      state.readOnly = false;
       const me = await api("/api/me");
       state.lang = me.language || state.lang;
-      setState({me, loading:false, screen:"home"});
-      await loadScreen("home");
+      setState({me, blocked:null, error:null, loading:false});
+      if(state.sheetView === "sub") closeSheet();
+      await loadScreen(state.screen);
       return true;
     }
-    setState({blocked:{channel:r.channel,
-      note: quiet ? "" : r.state === "unknown" ? t("sub_unknown") : t("sub_still")}});
-  }catch(e){
-    setState({blocked:{channel:state.blocked?.channel, note:t("sub_unknown")}});
+    state.subInfo = {channel: r.channel,
+      note: quiet ? "" : r.state === "unknown" ? t("sub_unknown") : t("sub_still")};
+  }catch(_){
+    state.subInfo = {channel: state.subInfo?.channel, note: t("sub_unknown")};
   }
+  if(sheetOpen() && state.sheetView === "sub") openSheet(blockedSheet(), "sub");
   return false;
 }
 
@@ -5548,9 +6192,14 @@ async function checkSubscription(quiet){
    Actions
    ================================================================== */
 async function save(request, reload, quiet, message, draft){
+  // One key per submission; a retry of the same draft sends the same key.
+  const key = draft?.key || newKey();
+  idemKey = key;
   try{
     await request();
+    idemKey = null;
     lastDraft = null;
+    state.calendarStale = true;
     closeSheet();
     if(!quiet) toast(message || t("saved"));
     // A caller that updated `state` itself and passed no reload target still
@@ -5559,8 +6208,9 @@ async function save(request, reload, quiet, message, draft){
     if(reload) await loadScreen(reload);
     else render();
   }catch(e){
+    idemKey = null;
     closeSheet();
-    handleError(e, draft && {...draft, request, reload});
+    handleError(e, draft && {...draft, request, reload, key});
   }
 }
 
@@ -5572,7 +6222,7 @@ function optimistic(mutate, request, reload){
                                    tasks:state.tasks, project:state.project});
   mutate();
   render();
-  request().then(() => { if(reload) loadScreen(reload); })
+  request().then(() => { state.calendarStale = true; if(reload) loadScreen(reload); })
     .catch(e => {
       const back = JSON.parse(snapshot);
       setState(back);
@@ -5599,13 +6249,23 @@ const A = {
   "dest-pick": el => {
     haptic();
     state.dest = el.dataset.value;
+    /* On the task sheet the destination changes the form itself — a team's
+       shelves and "who does it" — so the sheet is redrawn. */
+    if(document.getElementById("task-title") && !state.form?.id){
+      readTaskForm();
+      state.form.project_id = null;
+      if(state.dest.startsWith("team:") && !state.team)
+        api("/api/teams").then(r => { state.team = r;
+          if(document.getElementById("task-title")) rerenderTaskSheet(); }).catch(() => {});
+      return rerenderTaskSheet();
+    }
     const sheet = document.querySelector(".sheet-inner");
     if(!sheet) return;
     for(const chip of sheet.querySelectorAll('[data-act="dest-pick"]'))
       chip.classList.toggle("on", chip.dataset.value === state.dest);
   },
 
-  "quick-add": () => { haptic(); openSheet(`
+  "quick-add": () => { haptic(); state.dest = "personal"; openSheet(`
     <h3>${icon("plus", 18)} ${t("quick_add")}</h3>
     <input id="quick-title" placeholder="${t("quick_ph")}" autofocus />
     ${destPicker()}
@@ -5628,7 +6288,7 @@ const A = {
   "retry-draft": () => {
     const draft = lastDraft;
     if(!draft?.request) return closeSheet();
-    save(draft.request, draft.reload);
+    save(draft.request, draft.reload, false, undefined, draft);
   },
 
   /* ---- wake-up: a real button, in both surfaces ---- */
@@ -5653,7 +6313,8 @@ const A = {
   /* ---- week / calendar ---- */
   "calendar-open": async () => {
     haptic();
-    if(!state.calendar){
+    if(!state.calendar || state.calendarStale){
+      state.calendarStale = false;
       try{ state.calendar = await api("/api/calendar"); }
       catch(e){ return handleError(e); }
     }
@@ -5792,37 +6453,39 @@ const A = {
     const id = Number(el.dataset.id);
     const kind = el.dataset.kind;
     optimistic(() => {
-      /* The same row can be on screen in two places — the Team tab and the
-         shared block inside Tasks or Habits — so patch every copy rather
-         than the one the tap happened to come from. */
+      /* The same row can be on screen in several places — the Team tab, the
+         shared rows inside Tasks and Habits, Home — so every copy flips. */
       const lists = [];
       for(const team of (state.team?.teams || []))
         lists.push(kind === "task" ? team.tasks : team.habits);
-      lists.push(kind === "task" ? state.tasks?.team_tasks
-                                 : state.habits?.team_habits);
+      lists.push(kind === "task" ? state.tasks?.team_tasks : state.habits?.team_habits);
+      if(kind === "task") lists.push(state.home?.team_today);
+      for(const cat of Object.values(state.habits?.grouped || {})) lists.push(cat);
       let flipped = null;
       for(const list of lists)
         for(const row of (list || []))
-          if(row.id === id){
+          if(row.id === id && (kind === "task" || row.source === "team" || row.team_id)){
             if(flipped === null) flipped = !row.done;
             row.done = flipped;
-            row.done_count = (row.done_count || 0) + (flipped ? 1 : -1);
           }
     }, () => api(`/api/teams/${kind}s/${id}/toggle`, {method:"POST"}),
-       state.screen === "team" ? "team" : state.screen);
+       state.screen);
   },
 
+  /* A shared task opens the full task sheet, headed for the team. */
   "team-add": el => {
     const kind = el.dataset.kind;
-    openSheet(`
-      <h3>${t(kind === "task" ? "team_add_task" : "team_add_habit")}</h3>
-      <input id="team-item" maxlength="300"
-        placeholder="${t(kind === "task" ? "team_task_ph" : "team_habit_ph")}">
-      <button class="btn" data-act="team-item-save" data-kind="${kind}"
-              style="margin-top:12px">${t("save")}</button>
-      <button class="btn secondary" data-act="close" style="margin-top:8px">
-        ${t("cancel")}</button>`);
+    const team = teamCurrent();
+    if(!team) return;
+    if(kind === "task"){
+      state.dest = "team:" + team.id;
+      state.form = {when:"today", priority:"medium", completion:"all", assignees:[],
+                    remind_before: DEFAULT_REMIND_BEFORE};
+      return openSheet(taskSheet(null));
+    }
+    A["habit-add"]({dataset:{dest: "team:" + team.id}});
   },
+  "team-add-task": () => A["team-add"]({dataset:{kind:"task"}}),
 
   "team-item-save": el => {
     const text = val("team-item");
@@ -5831,8 +6494,7 @@ const A = {
     const team = teamCurrent();
     if(!team) return;
     const body = kind === "task"
-      ? {title:text, deadline: todayISO(),
-         project_id: state.teamProjectId || null}
+      ? {title:text, deadline: todayISO(), project_id: state.teamProjectId || null}
       : {name:text};
     save(() => api(`/api/teams/${team.id}/${kind}s`, {method:"POST", body}), "team");
   },
@@ -5844,22 +6506,69 @@ const A = {
          "team");
   },
 
-  "team-menu": el => {
+  "team-menu": async () => {
     const team = teamCurrent();
     if(!team) return;
-    openSheet(`
-      <h3>${esc(team.name)}</h3>
-      ${team.invite_link ? `
-        <p class="muted" style="margin:0 0 6px">${t("team_invite_hint")}</p>
-        <input id="team-link" readonly value="${esc(team.invite_link)}">
-        <button class="btn" data-act="team-copy" style="margin-top:10px">
-          ${t("team_copy")}</button>` : ""}
-      <button class="btn secondary" data-act="team-rename" style="margin-top:10px">
-        ${t("team_rename")}</button>
-      <button class="btn secondary" data-act="team-leave" style="margin-top:8px">
-        ${t("team_leave")}</button>
-      <button class="btn secondary" data-act="close" style="margin-top:8px">
-        ${t("cancel")}</button>`);
+    haptic();
+    openSheet(teamMenuSheet(team), "team-menu");
+    if(team.permissions?.approve){
+      try{
+        (state.teamRequests ||= {})[team.id] =
+          (await api(`/api/teams/${team.id}/requests`)).requests;
+        if(state.sheetView === "team-menu") openSheet(teamMenuSheet(team), "team-menu");
+      }catch(_){}
+    }
+  },
+  "team-tab": el => { haptic(); setState({teamTab: el.dataset.tab}); },
+  "team-open": el => goto("team", {teamId: Number(el.dataset.id), teamTab: "results"}),
+  "mirrored-note": () => toast(t("habit_mirrored")),
+  "team-share": () => {
+    const team = teamCurrent();
+    if(!team?.invite_link) return;
+    const url = "https://t.me/share/url?url=" + encodeURIComponent(team.invite_link)
+              + "&text=" + encodeURIComponent(team.name);
+    if(tg?.openTelegramLink) tg.openTelegramLink(url); else window.open(url, "_blank");
+  },
+  "team-invite-renew": () => teamWrite(team =>
+    api(`/api/teams/${team.id}/invite/renew`, {method:"POST"}), "menu"),
+  "team-invite-revoke": () => teamWrite(team =>
+    api(`/api/teams/${team.id}/invite/revoke`, {method:"POST"}), "menu", t("invite_revoked")),
+  "team-approval": () => teamWrite(team =>
+    api(`/api/teams/${team.id}/invite/approval`,
+        {method:"PUT", body:{on: !team.invite?.approval}}), "menu"),
+  "team-request": el => teamWrite(async team => {
+    await api(`/api/teams/requests/${el.dataset.id}`,
+              {method:"POST", body:{accept: el.dataset.value === "1"}});
+    state.teamRequests[team.id] = (state.teamRequests?.[team.id] || [])
+      .filter(r => String(r.id) !== el.dataset.id);
+  }, "menu"),
+  "team-notify": el => teamWrite(team =>
+    api(`/api/teams/${team.id}/notify`, {method:"PUT", body:{level: el.dataset.value}}), "menu"),
+  "team-members": () => {
+    const team = teamCurrent();
+    if(team) openSheet(teamMembersSheet(team), "team-members");
+  },
+  "team-role": el => teamWrite(team =>
+    api(`/api/teams/${team.id}/members/${el.dataset.id}/role`,
+        {method:"PUT", body:{role: el.dataset.value}}), "members"),
+  "team-kick": el => {
+    if(!confirm(t("remove_member") + "?")) return;
+    teamWrite(team => api(`/api/teams/${team.id}/members/${el.dataset.id}`,
+                          {method:"DELETE"}), "members");
+  },
+  "team-transfer": el => teamWrite(team =>
+    api(`/api/teams/${team.id}/transfer`,
+        {method:"POST", body:{user_id: Number(el.dataset.id)}}), "members", t("offer_sent")),
+  "team-owner-answer": el => teamWrite(team =>
+    api(`/api/teams/${team.id}/transfer/answer`,
+        {method:"POST", body:{accept: el.dataset.value === "1"}}), null),
+  "team-restore": el => {
+    haptic();
+    const team = teamCurrent();
+    save(async () => {
+      await api(`/api/teams/${el.dataset.kind}s/${el.dataset.id}/restore`, {method:"POST"});
+      if(team && state.teamActivity) delete state.teamActivity[team.id];
+    }, "team", false, t("restored"));
   },
 
   "team-copy": () => {
@@ -5903,8 +6612,14 @@ const A = {
   "timer-open": el => { haptic(); openTimer(el.dataset.kind, el.dataset.id); },
   "timer-tick": el => {
     closeSheet();
-    A[el.dataset.kind === "habit" ? "habit-toggle" : "task-done"](el);
+    const kind = el.dataset.kind;
+    if(kind === "thabit" || kind === "ttask")
+      return A["team-toggle"]({dataset:{kind: kind === "ttask" ? "task" : "habit",
+                                        id: el.dataset.id}});
+    A[kind === "habit" ? "habit-toggle" : "task-done"](el);
   },
+  "tc-open": el => { haptic(); openTimeHub(el?.dataset?.value); },
+  "tc-kind": el => { haptic(); openTimeHub(el.dataset.value); },
   "timer-start": async el => {
     haptic("medium");
     try{
@@ -5938,17 +6653,53 @@ const A = {
   },
 
   /* ---- countdowns ---- */
-  "cd-add": () => { haptic(); openSheet(countdownSheet());
-    setTimeout(() => document.getElementById("cd-title")?.focus(), 60); },
+  "dc-open": async () => {
+    haptic();
+    openSheet(countdownHubSheet(state.allCountdowns || state.home?.countdowns || []), "dc");
+    try{
+      state.allCountdowns = (await api("/api/countdowns")).countdowns;
+      if(state.sheetView === "dc") openSheet(countdownHubSheet(state.allCountdowns), "dc");
+    }catch(e){ handleError(e); }
+  },
+  "cd-add": async el => {
+    haptic();
+    const team = el?.dataset?.team;
+    state.cdForm = {scope:"general", dest: team ? "team:" + team : "personal"};
+    openSheet(countdownSheet(), "cd-form");
+    await ensureCdData();
+    if(state.sheetView === "cd-form"){ readCdForm(); openSheet(countdownSheet(), "cd-form"); }
+  },
+  "cd-scope": el => { haptic(); readCdForm();
+    state.cdForm.scope = el.dataset.value; state.cdForm.item = "";
+    openSheet(countdownSheet(), "cd-form"); },
+  "cd-dest": el => { haptic(); readCdForm();
+    state.cdForm.dest = el.dataset.value; state.cdForm.item = "";
+    openSheet(countdownSheet(), "cd-form"); },
+  // A linked task brings its name and its due date with it.
+  "cd-link": el => {
+    readCdForm();
+    const item = cdLinkItems(state.cdForm).find(x => String(x.id) === el.value);
+    if(item){
+      if(!state.cdForm.title) state.cdForm.title = item.title;
+      if(item.deadline && !state.cdForm.date) state.cdForm.date = item.deadline;
+    }
+    openSheet(countdownSheet(), "cd-form");
+  },
   "cd-save": () => {
-    const title = trimmed("cd-title"), date = val("cd-date");
-    if(!title || !date) return toast(t("countdown_need"));
-    save(() => api("/api/countdowns", {method:"POST", body:{title, date}}),
-         state.screen, false, t("saved"));
+    const f = readCdForm();
+    const linked = cdLinkItems(f).find(x => String(x.id) === String(f.item));
+    const title = (f.title || "").trim() || linked?.title || "";
+    if(!title || !f.date) return toast(t("countdown_need"));
+    const body = {title, date: f.date, scope: f.scope || "general",
+                  item_id: linked ? linked.id : null,
+                  team_id: (f.dest || "").startsWith("team:") ? Number(f.dest.slice(5)) : null};
+    state.allCountdowns = null;
+    save(() => api("/api/countdowns", {method:"POST", body}), state.screen, false,
+         t("saved"), {body});
   },
   "cd-open": el => confirmSheet("cd-delete", el.dataset.id,
                                 `${t("cd_delete_sure")} ${el.dataset.title || ""}`),
-  "cd-delete": el => { haptic("medium");
+  "cd-delete": el => { haptic("medium"); state.allCountdowns = null;
     save(() => api(`/api/countdowns/${el.dataset.id}`, {method:"DELETE"}),
          state.screen, false, t("deleted")); },
 
@@ -5973,7 +6724,7 @@ const A = {
     try{ openSheet(habitSheet(await api(`/api/habits/${el.dataset.id}/history`))); }
     catch(e){ handleError(e); }
   },
-  "habit-add": () => openSheet(`
+  "habit-add": el => { state.dest = el?.dataset?.dest || "personal"; openSheet(`
     <h3>${icon("plus", 18)} ${t("add_habit")}</h3>
     <input id="habit-name" placeholder="${t("habit_name")}" />
     ${destPicker()}
@@ -5990,7 +6741,7 @@ const A = {
     <button class="btn" data-act="habit-save" style="margin-top:16px">
       ${t("save")}</button>
     <button class="btn secondary" data-act="close" style="margin-top:8px">
-      ${t("cancel")}</button>`),
+      ${t("cancel")}</button>`); },
   "habit-save": () => {
     const name = trimmed("habit-name");
     if(!name) return;
@@ -5999,53 +6750,79 @@ const A = {
       // A shared habit has no category: tiers weigh a personal day, and the
       // team's number is a plain count of what the two of you agreed to do.
       return save(() => api(`/api/teams/${dest.id}/habits`, {method:"POST",
-        body:{name, schedule: val("habit-sched")}}), "habits");
+        body:{name, schedule: val("habit-sched"), category: val("habit-cat"),
+              timer_minutes: pickedTimer("habit-timer")}}), state.screen);
     save(() => api("/api/habits", {method:"POST", body:{
       name, category: val("habit-cat"), schedule: val("habit-sched"),
       timer_minutes: pickedTimer("habit-timer"),
     }}), "habits");
   },
-  "habit-name-save": el => save(() => api(`/api/habits/${el.dataset.id}`,
-    {method:"PATCH", body:{name: trimmed("habit-name")}}), "habits"),
-  "habit-cat": el => save(() => api(`/api/habits/${el.dataset.id}`,
-    {method:"PATCH", body:{category: el.dataset.value}}), "habits", true),
+  "habit-name-save": el => save(() => habitPatch(el.dataset.id,
+    {name: trimmed("habit-name")}), state.screen),
+  "habit-cat": el => save(() => habitPatch(el.dataset.id,
+    {category: el.dataset.value}), state.screen, true),
   "habit-sched": el => {
     const value = el.dataset.value;
-    if(value !== "custom")
-      return save(() => api(`/api/habits/${el.dataset.id}`,
-        {method:"PATCH", body:{schedule:value}}), "habits", true)
-        .then(() => A["habit-open"](el));
-    // Start a custom schedule from the working week rather than from
-    // nothing, so the user is editing a set instead of building one.
-    save(() => api(`/api/habits/${el.dataset.id}`,
-      {method:"PATCH", body:{schedule:"days:0,2,4"}}), "habits", true)
-      .then(() => A["habit-open"](el));
+    // A custom schedule starts from the working week rather than from nothing.
+    const schedule = value === "custom" ? "days:0,2,4" : value;
+    save(() => habitPatch(el.dataset.id, {schedule}), state.screen, true)
+      .then(() => reopenHabit(el.dataset.id));
   },
   "habit-day": async el => {
     haptic();
     try{
-      const h = await api(`/api/habits/${el.dataset.id}/history`);
+      const h = state.habitSheet?.id == el.dataset.id ? state.habitSheet
+        : await api(habitHistoryPath(el.dataset.id));
       const day = Number(el.dataset.day);
       const days = new Set(h.days);
       days.has(day) ? days.delete(day) : days.add(day);
       const list = [...days].sort();
-      // An empty set would mean "never due", which is what pausing is
-      // for; keep at least one day so the habit stays meaningful.
+      // An empty set would mean "never due", which is what pausing is for.
       if(!list.length) return;
-      await api(`/api/habits/${el.dataset.id}`,
-        {method:"PATCH", body:{schedule:"days:" + list.join(",")}});
-      openSheet(habitSheet(await api(`/api/habits/${el.dataset.id}/history`)));
-      loadScreen("habits");
+      await habitPatch(el.dataset.id, {schedule:"days:" + list.join(",")});
+      await reopenHabit(el.dataset.id);
+      loadScreen(state.screen);
     }catch(e){ handleError(e); }
   },
-  "habit-remind-save": el => save(() => api(`/api/habits/${el.dataset.id}`,
-    {method:"PATCH", body:{remind_at: val("habit-remind") || null}}), "habits"),
-  "habit-target-save": el => save(() => api(`/api/habits/${el.dataset.id}`,
-    {method:"PATCH", body:{target_time: val("habit-target")}}), "habits"),
-  "habit-pause": el => save(() => api(`/api/habits/${el.dataset.id}/pause`,
-    {method:"POST", body:{paused: el.dataset.value === "1"}}), "habits"),
+  "habit-remind-save": el => save(() => habitPatch(el.dataset.id,
+    {remind_at: val("habit-remind") || null}), state.screen),
+  "habit-target-save": el => save(() => habitPatch(el.dataset.id,
+    {target_time: val("habit-target")}), state.screen),
+  /* Pausing asks from when: from today takes today out of the count too,
+     from tomorrow keeps today owed. Resuming is immediate. */
+  "habit-pause": el => {
+    if(el.dataset.value !== "1")
+      return save(() => habitPause(el.dataset.id, false, "today"), state.screen);
+    openSheet(`<h3>⏸ ${t("pause_when")}</h3>
+      <div class="hint">${t("pause_note")}</div>
+      <div class="btns">
+        <button class="btn" data-act="habit-pause-go" data-id="${el.dataset.id}"
+                data-from="tomorrow">${t("pause_tomorrow")}</button>
+        <button class="btn secondary" data-act="habit-pause-go" data-id="${el.dataset.id}"
+                data-from="today">${t("pause_today")}</button></div>
+      <button class="btn secondary" data-act="close" style="margin-top:8px">
+        ${t("cancel")}</button>`);
+  },
+  "habit-pause-go": el => save(() => habitPause(el.dataset.id, true, el.dataset.from),
+                               state.screen),
   "habit-resume": el => save(() => api(`/api/habits/${el.dataset.id}/pause`,
     {method:"POST", body:{paused:false}}), "habits", true),
+  "wake-at": () => openSheet(`<h3>☀️ ${t("wake_enter")}</h3>
+    <div class="hint">${t("wake_enter_hint")}</div>
+    <input type="time" id="wake-at" value="${new Date().toTimeString().slice(0, 5)}" />
+    <button class="btn" data-act="wake-at-save" style="margin-top:12px">${t("save")}</button>
+    <button class="btn secondary" data-act="close" style="margin-top:8px">${t("cancel")}</button>`),
+  "wake-at-save": async () => {
+    const at = val("wake-at");
+    if(!at) return;
+    try{
+      const r = await api("/api/wakeup", {method:"POST", body:{at}});
+      notify(r.done ? "success" : "warning");
+      toast(r.done ? t("wake_done_at", {time:r.at}) : t("wake_late_at", {time:r.at}));
+      closeSheet();
+      await loadScreen(state.screen);
+    }catch(e){ closeSheet(); handleError(e); }
+  },
   "habit-delete-confirm": el => confirmSheet("habit-delete", el.dataset.id),
   "habit-delete": el => { haptic("medium");
     save(() => api(`/api/habits/${el.dataset.id}`, {method:"DELETE"}),
@@ -6089,7 +6866,12 @@ const A = {
   "journal-save": () => {
     const answers = {};
     state.journalQuestions.forEach(q => { answers[q.id] = val("jq-" + q.id); });
+    // Whatever autosave still holds is in this request; wait for the one in
+    // flight, so it cannot land after this and undo it.
+    clearTimeout(journalTimer);
+    journalPending = {};
     save(async () => {
+      await journalChain;
       const r = await api("/api/journal", {method:"POST", body:{answers}});
       clearDraft();
       return r;
@@ -6189,6 +6971,7 @@ const A = {
   "mission-clear": el => save(() => api(`/api/tasks/${el.dataset.id}/top3`,
     {method:"POST", body:{picked:false}}), "home", true),
   "task-add": el => {
+    state.dest = el?.dataset?.dest || "personal";
     const project = el?.dataset?.project || state.project?.project?.id || "";
     state.form = {when:"today", priority:"medium", project_id: project || null,
                   remind_before: DEFAULT_REMIND_BEFORE};
@@ -6205,26 +6988,42 @@ const A = {
     state.form.when = el.dataset.value;
     if(el.dataset.value === "pick" && !state.form.deadline)
       state.form.deadline = todayISO();
-    openSheet(taskSheet(state.form.id ? {id:state.form.id} : null,
-                        state.form.project_id));
+    rerenderTaskSheet();
   },
   "task-priority": el => {
     readTaskForm();
     state.form.priority = el.dataset.value;
-    openSheet(taskSheet(state.form.id ? {id:state.form.id} : null,
-                        state.form.project_id));
+    rerenderTaskSheet();
+  },
+  "task-completion": el => {
+    readTaskForm();
+    state.form.completion = el.dataset.value;
+    rerenderTaskSheet();
+  },
+  "task-assignee": el => {
+    readTaskForm();
+    const id = Number(el.dataset.id);
+    const set = new Set((state.form.assignees || []).map(Number));
+    set.has(id) ? set.delete(id) : set.add(id);
+    state.form.assignees = [...set];
+    rerenderTaskSheet();
   },
   "task-save": el => {
     const body = taskBody();
     if(!body.title) return;
     const dest = destOf();
-    if(dest.team)
-      // A shared task carries no project: projects are a shelf inside one
-      // person's workspace, and a team task does not live on anybody's.
-      return save(() => api(`/api/teams/${dest.id}/tasks`, {method:"POST",
-        body:{title: body.title, deadline: body.deadline,
-              priority: body.priority, description: body.description || ""}}),
-        state.screen, false, t("saved"));
+    if(dest.team){
+      const f = state.form;
+      const teamBody = {
+        title: body.title, deadline: body.deadline, priority: body.priority,
+        description: body.description || "", due_time: body.due_time,
+        remind_before: body.remind_before, recurrence: body.recurrence || null,
+        project_id: body.project_id, completion: f.completion || "all",
+        assignees: f.completion === "assignees" ? (f.assignees || []) : null,
+        timer_minutes: body.timer_minutes ?? null};
+      return save(() => api(`/api/teams/${dest.id}/tasks`, {method:"POST", body:teamBody}),
+                  state.screen, false, t("saved"), {body:teamBody});
+    }
     if(el.dataset.project && !body.project_id)
       body.project_id = Number(el.dataset.project);
     save(() => api("/api/tasks", {method:"POST", body}),
@@ -6234,6 +7033,10 @@ const A = {
   "task-update": el => {
     const body = taskBody();
     if(!body.title) return;
+    if(state.form?.source === "team"){
+      body.completion = state.form.completion || "all";
+      body.assignees = body.completion === "assignees" ? (state.form.assignees || []) : null;
+    }
     const path = state.form?.source === "team"
       ? `/api/teams/tasks/${el.dataset.id}` : `/api/tasks/${el.dataset.id}`;
     save(() => api(path, {method:"PATCH", body}), state.screen);
@@ -6572,7 +7375,143 @@ const A = {
     el.textContent = t("sub_checking");
     await checkSubscription(false);
   },
+  "sub-open": () => { openSheet(blockedSheet(), "sub"); checkSubscription(true); },
+  "back-to-bot": () => { tg?.close?.(); },
+  "set-modules": () => { haptic(); openSettings("modules"); },
+  "mod-toggle": async el => {
+    haptic();
+    const mods = {...(state.me?.modules || {})};
+    mods[el.dataset.key] = !mods[el.dataset.key];
+    try{
+      const r = await api("/api/modules", {method:"POST",
+        body:{modules: Object.keys(mods).filter(k => mods[k])}});
+      state.me = {...state.me, modules: r.modules};
+      reopenSettings();
+      toast(t("saved"));
+      await loadScreen(state.screen);
+    }catch(e){ handleError(e); }
+  },
 };
+
+/* ---------- team helpers ---------- */
+
+/* A write to the team, then the team reloaded, then the sheet it came from
+   redrawn on the fresh data — so a switch flips where it was tapped. */
+async function teamWrite(request, reopen, message){
+  const team = teamCurrent();
+  if(!team) return;
+  haptic();
+  // The sheet this came from. If another has been opened meanwhile, the
+  // answer must not paint the old one back over it.
+  const view = state.sheetView;
+  try{
+    await request(team);
+    state.team = await api("/api/teams");
+    if(state.teamActivity) delete state.teamActivity[team.id];
+    const fresh = teamCurrent();
+    if(state.sheetView !== view || !sheetOpen()){ /* the user moved on */ }
+    else if(reopen === "members" && fresh) openSheet(teamMembersSheet(fresh), "team-members");
+    else if(reopen && fresh) openSheet(teamMenuSheet(fresh), "team-menu");
+    else closeSheet();
+    render();
+    toast(message || t("saved"));
+  }catch(e){ handleError(e); }
+}
+
+function inviteStatus(inv){
+  if(!inv || inv.expired || !inv.expires_at) return t("invite_expired");
+  return t("invite_until", {when: shortMoment(inv.expires_at)});
+}
+
+/* The ⋯ sheet: the invite (for those who may invite), requests, your own
+   notification level, members and roles, rename, leave (#26, #29, #30). */
+function teamMenuSheet(team){
+  const p = team.permissions || {};
+  const inv = team.invite || {};
+  let h = `<h3>${esc(team.name)}</h3>`;
+  if(p.invite){
+    h += `<label>${t("team_invite")}</label>
+      ${team.invite_link && !inv.expired ? `
+        <input id="team-link" readonly value="${esc(team.invite_link)}">
+        <div class="btns">
+          <button class="btn" data-act="team-copy">${t("team_copy")}</button>
+          <button class="btn secondary" data-act="team-share">${t("share")}</button>
+        </div>` : ""}
+      <div class="t2 small" style="margin-top:6px">${inviteStatus(inv)}</div>
+      <div class="btns">
+        <button class="btn secondary sm" data-act="team-invite-renew">${t("invite_renew")}</button>
+        <button class="btn secondary sm" data-act="team-invite-revoke">${t("invite_revoke")}</button>
+      </div>
+      <div class="setrow"><div class="grow lbl">${t("approval_label")}</div>
+        <div class="sw ${inv.approval ? "on" : ""}" data-act="team-approval" role="switch"
+             tabindex="0" aria-checked="${inv.approval ? "true" : "false"}"></div></div>`;
+    const reqs = state.teamRequests?.[team.id] || [];
+    if(reqs.length) h += `<label>${t("requests_title")}</label>` + reqs.map(r => `
+      <div class="row" style="padding:4px 0"><div class="grow">${esc(r.name)}</div>
+        <button class="btn sm" data-act="team-request" data-id="${r.id}"
+                data-value="1">${t("approve")}</button>
+        <button class="btn sm secondary" data-act="team-request" data-id="${r.id}"
+                data-value="0">${t("decline")}</button></div>`).join("");
+  }
+  h += `<label>🔔 ${t("notify_title")}</label>
+    <div class="stack">${["all", "important", "assigned", "off"].map(level => `
+      <div class="item pressable" data-act="team-notify" data-value="${level}"
+           role="radio" tabindex="0" aria-checked="${team.notify === level}">
+        <div class="grow"><div>${t("notify_" + level)}</div>
+          <div class="t3 tiny">${t("notify_" + level + "_hint")}</div></div>
+        ${team.notify === level ? icon("check", 16) : ""}</div>`).join("")}</div>
+    <div class="btns" style="margin-top:12px">
+      <button class="btn secondary" data-act="team-members">${t("members_roles")}</button>
+      ${p.rename ? `<button class="btn secondary" data-act="team-rename">${t("team_rename")}</button>` : ""}
+    </div>
+    <button class="btn danger" data-act="team-leave" style="margin-top:8px">${t("team_leave")}</button>
+    <button class="btn secondary" data-act="close" style="margin-top:8px">${t("close")}</button>`;
+  return h;
+}
+
+function teamMembersSheet(team){
+  const p = team.permissions || {};
+  const me = state.me?.telegram_id;
+  return `<h3>${t("members_roles")}</h3>` + (team.members || []).map(m => {
+    const actions = [];
+    if(m.user_id !== me && m.role !== "owner"){
+      if(p.roles) actions.push(`<button class="btn sm secondary" data-act="team-role"
+        data-id="${m.user_id}" data-value="${m.role === "admin" ? "member" : "admin"}">${
+          t(m.role === "admin" ? "make_member" : "make_admin")}</button>`);
+      if(p.remove_members && (p.roles || m.role === "member"))
+        actions.push(`<button class="btn sm danger" data-act="team-kick"
+          data-id="${m.user_id}">${t("remove_member")}</button>`);
+      if(p.transfer) actions.push(`<button class="btn sm secondary" data-act="team-transfer"
+          data-id="${m.user_id}">👑 ${t("give_owner")}</button>`);
+    }
+    return `<div class="card tight" style="margin-top:6px">
+      <div class="row"><div class="grow"><b>${esc(m.name)}</b>${
+        m.is_you ? ` <span class="muted">(${t("you")})</span>` : ""}
+        <div class="muted sm">${t("role_" + m.role)}</div></div></div>
+      ${actions.length ? `<div class="chips" style="margin-top:6px">${actions.join("")}</div>` : ""}
+    </div>`;
+  }).join("") + `<button class="btn secondary" data-act="team-menu"
+      style="margin-top:12px">${t("back")}</button>`;
+}
+
+/* ---------- habit helpers: a shared habit is changed through the team ---------- */
+const habitIsTeam = id => state.habitSheet?.source === "team"
+  && String(state.habitSheet.id) === String(id);
+const habitHistoryPath = id => habitIsTeam(id)
+  ? `/api/teams/habits/${id}/history` : `/api/habits/${id}/history`;
+function habitPatch(id, body){
+  return api(habitIsTeam(id) ? `/api/teams/habits/${id}` : `/api/habits/${id}`,
+             {method:"PATCH", body});
+}
+function habitPause(id, paused, from){
+  return habitIsTeam(id)
+    ? api(`/api/teams/habits/${id}`, {method:"PATCH", body:{paused, from}})
+    : api(`/api/habits/${id}/pause`, {method:"POST", body:{paused, from}});
+}
+async function reopenHabit(id){
+  try{ openSheet(habitSheet(await api(habitHistoryPath(id)))); }
+  catch(e){ handleError(e); }
+}
 
 /* Opens the edit sheet for a task found in whatever is currently loaded. */
 /* A shared task opens the very same sheet a private one does — deadline,
@@ -6589,6 +7528,9 @@ async function openTeamTaskSheet(id){
       priority: task.priority, project_id: task.project_id,
       when: task.deadline ? "pick" : "none", open:false,
       source: "team", team_id: task.team_id,
+      completion: task.completion || "all", assignees: task.assignees || [],
+      members: task.members || [],
+      timer_minutes: task.timer_minutes, timer_mode: task.timer_mode,
     };
     openSheet(taskSheet(task));
   }catch(e){ handleError(e); }
@@ -6736,12 +7678,30 @@ const CHANGE_TAGS = new Set(["INPUT", "SELECT", "TEXTAREA"]);
 
 /* One delegated listener: rebuilt HTML never loses its handlers because
    the handler lives on document, not on the nodes. */
+const lastTap = new WeakMap();
 document.addEventListener("click", e => {
   const el = e.target.closest("[data-act]");
   if(!el) return;
   if(CHANGE_TAGS.has(el.tagName)) return;
   const action = A[el.dataset.act];
-  if(action){ e.preventDefault(); action(el); }
+  if(!action) return;
+  e.preventDefault();
+  /* A second tap on the same button a moment later is a double tap, not a
+     second intent — it must not write twice. Checkboxes are exempt: ticking
+     and unticking quickly is a real thing to do. */
+  const now = Date.now();
+  if(el.tagName === "BUTTON" && now - (lastTap.get(el) || 0) < 700) return;
+  lastTap.set(el, now);
+  action(el);
+});
+/* Enter and Space act on anything focusable that has an action, so every
+   box and row works from a keyboard as well as a finger (#20). */
+document.addEventListener("keydown", e => {
+  if(e.key !== "Enter" && e.key !== " ") return;
+  const el = e.target.closest?.("[data-act][tabindex]");
+  if(!el || CHANGE_TAGS.has(el.tagName) || el.tagName === "BUTTON") return;
+  e.preventDefault();
+  A[el.dataset.act]?.(el);
 });
 // Search runs on Enter rather than per keystroke: one request per intent.
 document.addEventListener("keydown", e => {
@@ -6767,13 +7727,14 @@ async function boot(){
   try{
     const me = await api("/api/me");
     state.lang = me.language || "uz";
-    if(!me.is_subscribed && me.onboarded){
-      // Blocked, not broken. The screen offers join and check.
-      setState({me, loading:false});
-      await checkSubscription(true);
+    if(!me.onboarded){
+      // Setup is finished in the chat; say so rather than spin (409 before).
+      setState({me, loading:false, needsSetup:true});
       return;
     }
-    setState({me, loading:false, blocked:null, error:null});
+    // The channel gate stops writes, not reading: a banner, not a wall (#15).
+    state.readOnly = Boolean(me.gated);
+    setState({me, loading:false, blocked:null, error:null, needsSetup:false});
     /* The destination picker appears on every add sheet, including the one
        behind the FAB on Home, so the team list has to be known before the
        first tap rather than after the Tasks screen has been visited. One

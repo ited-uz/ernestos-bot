@@ -12,12 +12,15 @@ Mahsulotning asosiy sikli:
 
 | Bo'lim | Mazmuni |
 |---|---|
-| 🏠 Bosh sahifa | **Hozir** (avtomatik tanlanadi), kun/hafta/oy foizi yonma-yon, vazifa/odat/namoz, bugungi vazifalar |
-| ✅ Odatlar | Odatlar (3 kategoriya, jadval, pauza, tarix) + namoz + kundalik |
-| ⚡ Vazifalar | **Asosiy / Ochiq / Bajarilgan**, kalendar, qidiruv va filtr, kechikkanlar uchun tez ko'chirish, loyihalar |
-| 📊 Statistika | Umumiy % + Vazifalar / Odatlar / Namoz, o'zgarish (↑↓), eng yaxshi kun, namoz tafsiloti |
+| 🏠 Bosh sahifa | **Hozir** (avtomatik tanlanadi), bugungi vazifalar (jamoanikilar bilan), 📅 Date countdown va ⏱ Time countdown, kun/hafta/oy foizi |
+| ✅ Odatlar | Odatlar (Majburiy / Maqsadli / Qo'shimcha, jadval, pauza, tarix) + namoz + kundalik (modul yoqilgan bo'lsa) |
+| ⚡ Vazifalar | **Bugun / Reja / Taqvim** — Reja ichida Ochiq · Loyihalar · Bajarilgan; Taqvim'da oy va countdownlar |
+| 👥 Jamoa | **Bugun / Ishlar / Natija**, rollar (egasi / admin / a'zo), taklif havolasi, so'rovlar, bildirishnoma darajasi, faollik tarixi va qaytarish |
+| 📊 Statistika | Umumiy % + Vazifalar / Odatlar / Namoz, o'zgarish (punktda), jamoa natijalari (kun/hafta/oy) |
 
-Pastdagi navigatsiya aynan shu to'rtta. Qolgan hamma narsa — kalendar,
+> **v7 da nima o'zgardi** — [docs/V7_OZGARISHLAR.md](docs/V7_OZGARISHLAR.md).
+
+Pastdagi navigatsiya aynan shu beshta. Qolgan hamma narsa — kalendar,
 tug'ilgan kunlar, haftalik yakun, sozlamalar, export — kerakli joydan
 ochiladi, alohida tab sifatida emas.
 

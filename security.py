@@ -25,6 +25,7 @@ import hmac
 import html
 import json
 import logging
+from contextvars import ContextVar
 from datetime import datetime
 from urllib.parse import parse_qsl
 
@@ -108,6 +109,27 @@ def verify_init_data(init_data: str) -> dict:
     return verify_init_payload(init_data)["user"]
 
 
+#: (method, path) of the request being served, set by the API middleware. The
+#: default is a write, so anything that reaches `auth` without it is treated
+#: by the stricter rule rather than the looser one.
+REQUEST: ContextVar[tuple[str, str]] = ContextVar("request", default=("POST", ""))
+
+#: Writes an account stopped by the channel gate may still make: settings,
+#: leaving, feedback, taking their data away. None of them is *use* of the
+#: product, and refusing them would hold somebody's own data hostage.
+UNGATED_WRITES = ("/api/settings", "/api/prefs", "/api/feedback",
+                  "/api/export", "/api/account/", "/api/modules")
+
+
+def gate_allows(method: str, path: str) -> bool:
+    """Whether a gated account may make this request: reads, and the writes
+    above. The gate stops new work; it never locks anybody out of their own
+    record (#15)."""
+    if method in ("GET", "HEAD", "OPTIONS"):
+        return True
+    return path.startswith(UNGATED_WRITES)
+
+
 def auth(init_data: str | None, *, require_onboarded: bool = True) -> tuple[User, int]:
     """Resolve the caller to (user, workspace_id) and apply access policy.
 
@@ -147,7 +169,7 @@ def auth(init_data: str | None, *, require_onboarded: bool = True) -> tuple[User
         ws = svc.workspace_id_for(s, user.telegram_id)
 
         trial = deps.trial_state(user)
-        if trial.gated:
+        if trial.gated and not gate_allows(*REQUEST.get()):
             raise HTTPException(status_code=403, detail="subscription_required")
 
         if require_onboarded and not user.onboarded:

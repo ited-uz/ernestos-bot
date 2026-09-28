@@ -11,6 +11,7 @@ Run with:  uvicorn app:app --host 0.0.0.0 --port $PORT
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import logging
 import os
@@ -183,13 +184,19 @@ def subscribe_keyboard(lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-async def guard(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> tuple[User, int] | None:
+async def guard(update: Update, ctx: ContextTypes.DEFAULT_TYPE, *,
+                write: bool = True) -> tuple[User, int] | None:
     """Every protected action starts here.
 
     Returns (user, workspace_id) when the caller may proceed, otherwise sends
     the appropriate prompt and returns None. The access decision itself is
     `dependencies.check_subscription`, which the API calls too — the two
     surfaces must never disagree about who is allowed in.
+
+    `write=False` is for screens that only show something. Once the free run
+    is spent, somebody who has not joined the channel can still read their own
+    day — their data never becomes a hostage — and only changing it asks for
+    the channel first.
     """
     tg_user = update.effective_user
     if tg_user is None:
@@ -211,7 +218,7 @@ async def guard(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> tuple[User, i
 
     verdict = await deps.check_subscription(tg_user.id, ctx.bot)
     target = update.effective_message
-    if verdict not in deps.ALLOWED:
+    if verdict not in deps.ALLOWED and write:
         if target:
             # "missing" is the free run being spent, which is a different
             # message from having left a channel already joined.
@@ -279,7 +286,7 @@ def main_menu(lang: str) -> ReplyKeyboardMarkup:
     rows = [
         [t(lang, "menu_home"), t(lang, "menu_habits")],
         [t(lang, "menu_tasks"), t(lang, "menu_stats")],
-        [t(lang, "menu_settings"), t(lang, "menu_feedback")],
+        [t(lang, "menu_teams"), t(lang, "menu_settings"), t(lang, "menu_feedback")],
         [t(lang, "menu_wake")],
     ]
     if WEBAPP_URL:
@@ -437,13 +444,13 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
                         f"Language: {lang}\nRegistered: "
                         f"{datetime.now(svc.TZ):%Y-%m-%d %H:%M}")
 
-    # A team invite is acted on once the account exists, for a new user and an
-    # existing one alike: the link is how somebody is added, and refusing it
-    # because they happened to already have an account would be baffling.
+    # A team invite is shown once the account exists, for a new user and an
+    # existing one alike — as a preview with a Join button. Opening a link
+    # never adds anybody to anything by itself: they see the team, who runs
+    # it and how full it is, and decide.
     if team_code:
-        await accept_team_invite(update, ctx, team_code)
+        await preview_team_invite(update, ctx, team_code)
         if onboarded:
-            await show_teams(update, ctx)
             return
 
     if onboarded:
@@ -457,7 +464,12 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 #: The order onboarding walks, and the only place it is written down.
 #:
-#:   language → intro → name → goal → tasks → habits → done
+#:   language → intro → name → modules → goal → tasks → habits → done
+#:
+#: `modules` is where somebody says what they actually want to keep: getting
+#: up, prayer, the journal, a team. Nothing is handed to them that they did
+#: not pick — a new account used to start in debt to three rituals it never
+#: chose, some of which could not even be removed.
 #:
 #: Six taps and four short answers, and every one of them builds something the
 #: user then sees. That is the whole design: onboarding is not a form standing
@@ -475,7 +487,26 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 #:     for and bought the user nothing they could feel. Not asked anywhere.
 #:   * gender, which only the prayer module needs, so it is asked the first
 #:     time prayer is opened and explained when it is asked.
-ONBOARDING_STEPS = ["language", "intro", "name", "goal", "tasks", "habits", "done"]
+ONBOARDING_STEPS = ["language", "intro", "name", "modules", "goal", "tasks",
+                    "habits", "done"]
+
+#: The choices on the modules step, in the order they are shown. Three are the
+#: rituals `services.MODULES` drives; "team" is a promise to offer a team at
+#: the end rather than a habit.
+SETUP_MODULES = ["wake", "prayer", "journal", "team"]
+MODULE_LABELS = {"wake": "mod_wake", "prayer": "mod_prayer",
+                 "journal": "mod_journal", "team": "mod_team"}
+
+
+def modules_keyboard(lang: str, chosen: set[str], *, prefix: str = "setup:mod",
+                     done: str = "setup:mod_done") -> InlineKeyboardMarkup:
+    """One toggle per module, ✓ when chosen, and a button to carry on."""
+    rows = [[InlineKeyboardButton(
+        f"{'✅' if name in chosen else '⬜'} {t(lang, MODULE_LABELS[name])}",
+        callback_data=f"{prefix}:{name}")]
+        for name in (SETUP_MODULES if prefix.startswith("setup") else list(svc.MODULES))]
+    rows.append([InlineKeyboardButton(t(lang, "mod_continue"), callback_data=done)])
+    return InlineKeyboardMarkup(rows)
 
 #: Steps from older builds. Anybody parked on one is moved into the new flow
 #: rather than shown a question that no longer exists.
@@ -529,6 +560,11 @@ async def resume_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         await message.reply_text(t(lang, "ask_name"), parse_mode=ParseMode.HTML,
                                  reply_markup=InlineKeyboardMarkup(rows) if rows
                                  else None)
+
+    elif step == "modules":
+        chosen = set(setup_data(ctx).setdefault("modules", []))
+        await message.reply_text(t(lang, "ask_modules"), parse_mode=ParseMode.HTML,
+                                 reply_markup=modules_keyboard(lang, chosen))
 
     elif step == "goal":
         await message.reply_text(t(lang, "ask_goal"), parse_mode=ParseMode.HTML,
@@ -601,7 +637,7 @@ async def handle_setup_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             user = s.get(User, tg_user.id)
             user.first_name = text.strip()[:200]
             s.commit()
-        return await advance_setup(update, ctx, "goal")
+        return await advance_setup(update, ctx, "modules")
 
     if step == "goal":
         with SessionLocal() as s:
@@ -658,7 +694,21 @@ SETUP_MAX_HABITS = 3
 #: `set` and `theme` are settings, not use — the same reasoning as
 #: `UNCOUNTED_PATHS` on the API side.
 COUNTED_CALLBACKS = {"habit", "task", "taskday", "taskproj", "project", "habitcat",
-                     "thabit", "ttask"}
+                     "thabit", "ttask", "cap", "ted", "tep", "tem", "tex",
+                     "hec", "hem", "hex", "cdq"}
+
+#: Buttons that only open a screen. They work for an account the channel gate
+#: has stopped, because reading your own data is never what the gate is for.
+READ_CALLBACKS = {("habit", "back"), ("habit", "noop"),
+                  ("habit", "mirrored"), ("task", "back"), ("task", "noop"),
+                  ("tmr", "home"), ("tmr", "list"), ("tmr", "back"),
+                  ("cd", "list"), ("cd", "back"), ("team", "list"),
+                  ("team", "open"), ("team", "stats")}
+
+
+def is_read_callback(action: str, parts: list[str]) -> bool:
+    sub = parts[1] if len(parts) > 1 else ""
+    return action == "home" or (action, sub) in READ_CALLBACKS
 
 
 async def on_contact(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -768,12 +818,18 @@ async def finish_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> N
     # a score before the user's next tap.
     await finish_onboarding_progress(tg_user.id)
 
+    wants_team = bool((ctx.user_data.get("setup") or {}).get("team"))
     ctx.user_data.pop("setup", None)
     await message.reply_text(render_day_ready(data, lang), parse_mode=ParseMode.HTML,
                              reply_markup=main_menu(lang))
     markup = webapp_button(lang)
     if markup:
         await message.reply_text(t(lang, "day_ready_app"), reply_markup=markup)
+    if wants_team:
+        await message.reply_text(
+            t(lang, "setup_team_hint"), parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
+                t(lang, "team_create_btn"), callback_data="team:new")]]))
     await log_event(ctx.bot, snapshot, "✅ ONBOARDING COMPLETE",
                     f"Language: {snapshot.language}")
     if qualified_inviter is not None:
@@ -813,7 +869,8 @@ def render_day_ready(data: dict, lang: str) -> str:
     habits = data.get("habits") or {}
     if habits.get("total"):
         lines.append(f"✅ <b>{t(lang, 'r_habits_today')}</b> · {habits['total']}")
-    lines.append(f"🕌 <b>{t(lang, 'r_prayer_today')}</b>")
+    if (data.get("prayer") or {}).get("owed", True):
+        lines.append(f"🕌 <b>{t(lang, 'r_prayer_today')}</b>")
     lines.append("")
 
     now = data.get("now") or {}
@@ -852,26 +909,39 @@ def render_now(now: dict, lang: str) -> str:
 
 
 def render_home(data: dict, lang: str) -> str:
-    """Home in one screenful: the mission, today's work, today's numbers.
+    """Home in one screenful: the date, the mission, today's work, the numbers.
 
-    Deliberately short. Everything that used to sit here — goals, projects,
-    birthdays, the overdue wall — answered a question the user was not asking at
-    6am, and each line of it pushed the answer further down the message.
+        🗓️ 28-sentabr, Dushanba
+
+        🎯 Missiya
+        — yo'q
+
+        ⚡ Bugun
+        — 👥 Speaking | 30mins (Miro*)
+
+        ✅  0/9
+        🕌 0/5
+        🔥0
+        📊 ▪️ 0%
+
+    No title line — the chat is already this bot's, and a heading naming whose
+    system it is was the one line nobody read. The four numbers get a line
+    each, so they read as a column rather than a sentence. The countdowns and
+    the privacy note live one tap away (the buttons, and Settings).
     """
-    name = (data.get("name") or "").strip()
-    title = t(lang, "home_title", name=esc(name)) if name \
-        else t(lang, "home_title_plain")
-    lines = [f"<b>{title}</b>", f"📅 {data['date_label']}"]
+    lines = [f"🗓️ {data['date_label']}"]
 
     mission = data.get("mission")
     lines.append(f"\n<b>{t(lang, 'home_mission')}</b>")
     lines.append(esc(mission["title"]) if mission else t(lang, "none"))
 
     lines.append(f"\n<b>{t(lang, 'home_today')}</b>")
-    rows = [task for group in data["tasks_today"] for task in group["tasks"]]
+    # The pinned task first — it is the day's main one — then the rest.
+    pinned = [x for x in (data.get("top3") or []) if x.get("status") != "done"]
+    rows = pinned + [task for group in data["tasks_today"] for task in group["tasks"]]
     # Shared work due today is today's work too; marked 👥 so it is clear
     # whose list it came from, and ticked per person.
-    shared = data.get("team_today") or []
+    shared = [x for x in (data.get("team_today") or []) if x.get("owed", True)]
     if rows or shared:
         for task in rows[:8]:
             when = f" · {task['due_time']}" if task.get("due_time") else ""
@@ -881,25 +951,19 @@ def render_home(data: dict, lang: str) -> str:
         for task in shared[:6]:
             mark = "✅" if task.get("done") else "—"
             lines.append(f"{mark} 👥 {esc(task['title'])}"
-                         f" <i>({esc(task.get('team_name') or '')})</i>")
+                         f" ({esc(task.get('team_name') or '')})")
     else:
         lines.append(t(lang, "none"))
 
-    # One status line: habits, prayers, streak. Then the one number.
     habits, prayer, overall = data["habits"], data["prayer"], data["overall"]
-    lines.append(f"\n✅  {habits['done']}/{habits['total']} ·"
-                 f"🕌 {prayer['performed']}/{prayer['required']} · 🔥{data['streak']}")
-    lines.append(f"📊 {TREND_MARK.get(overall['trend'], '▪️')} {overall['value']}%")
-
-    # The dates being counted down to, nearest first — three at most, the
-    # full list is one tap away.
-    countdowns = data.get("countdowns") or []
-    if countdowns:
-        lines.append("")
-        for item in countdowns[:3]:
-            lines.append(countdown_line(item, lang))
-
-    lines.append(f"\n{t(lang, 'privacy_line')}")
+    lines.append("")
+    lines.append(f"✅  {habits['done']}/{habits['total']}")
+    if prayer.get("owed", True):
+        lines.append(f"🕌 {prayer['performed']}/{prayer['required']}")
+    lines.append(f"🔥{data['streak']}")
+    # A day with nothing in it to measure says so, rather than "0%".
+    value = (f"{overall['value']}%" if overall.get("measured", True) else "—")
+    lines.append(f"📊 {TREND_MARK.get(overall['trend'], '▪️')} {value}")
     return "\n".join(lines)
 
 
@@ -921,9 +985,12 @@ def countdown_line(item: dict, lang: str) -> str:
 
 
 def home_keyboard(lang: str) -> InlineKeyboardMarkup:
-    """Home's two ways onward: the countdowns, and the full app."""
+    """Home's ways onward: the two countdowns — to a date, and on a clock —
+    and the full app."""
     rows = [[InlineKeyboardButton(t(lang, "btn_countdown"),
-                                  callback_data="cd:list")]]
+                                  callback_data="cd:list"),
+             InlineKeyboardButton(t(lang, "btn_timers"),
+                                  callback_data="tmr:home")]]
     if WEBAPP_URL:
         rows.append([InlineKeyboardButton(
             t(lang, "menu_app"), web_app=WebAppInfo(url=WEBAPP_URL))])
@@ -956,46 +1023,93 @@ def render_stats(data: dict, lang: str) -> str:
     lines = [f"<b>{t(lang, 'stats_title')}</b>", ""]
 
     # Today, in full: the overall number and what it is made of.
+    measured = today.get("measured", True)
     lines.append(f"<b>{t(lang, 'st_today')}</b>")
-    lines.append(f"{_bar(today['overall'])}  <b>{today['overall']}%</b> "
+    lines.append(f"{_bar(today['overall'] if measured else 0)}  "
+                 f"<b>{today['overall'] if measured else dash}"
+                 f"{'%' if measured else ''}</b> "
                  f"{TREND_MARK.get(today['trend'], '▪️')}")
-    lines.append(f"{t(lang, 'st_tasks')}: {pct(today['tasks'])} · "
-                 f"{t(lang, 'st_habits')}: {pct(today['habits'])} · "
-                 f"{t(lang, 'st_prayer')}: {today['prayer_performed']}/"
-                 f"{today['prayer_required']}")
+    parts = [f"{t(lang, 'st_tasks')}: {pct(today['tasks'])}",
+             f"{t(lang, 'st_habits')}: {pct(today['habits'])}"]
+    if today.get("prayer_owed", True):
+        parts.append(f"{t(lang, 'st_prayer')}: {today['prayer_performed']}/"
+                     f"{today['prayer_required']}")
+    lines.append(" · ".join(parts))
 
     # Then the two longer windows, each with its own overall.
     for key, label in (("week", "st_week"), ("month", "st_month")):
         window = data["windows"][key]
         lines.append("")
         lines.append(f"<b>{t(lang, label)}</b>")
+        if not window.get("measured", True):
+            lines.append(f"<i>{t(lang, 'st_nothing_measured')}</i>")
+            continue
         lines.append(f"{_bar(window['overall'])}  <b>{window['overall']}%</b> "
-                     f"{_delta(window['delta'])}")
+                     f"{_delta(window['delta'], lang)}")
         lines.append(f"{t(lang, 'st_tasks')}: {window['tasks']}% · "
                      f"{t(lang, 'st_habits')}: {window['habits']}% · "
                      f"{t(lang, 'st_prayer')}: {window['prayer']}%")
 
     lines.append("")
     lines.append(f"🔥 {t(lang, 'st_streak')}: {today['streak']}")
+
+    # Every team this person is in, each member's share side by side: today,
+    # the last seven days and the last thirty.
+    for team in data.get("teams") or []:
+        lines += [""] + render_team_stats(team, lang)
     lines.append("")
     lines.append(t(lang, "privacy_line"))
     return "\n".join(lines)
 
 
-def _delta(value: int) -> str:
-    """A signed change against the previous window of the same length."""
+def render_team_stats(team: dict, lang: str) -> list[str]:
+    """One team on the statistics screen — names, bars, and the two windows."""
+    board = team.get("board") or {}
+    periods = board.get("periods") or {}
+    lines = [f"👥 <b>{esc(team['name'])}</b>"]
+    today = periods.get("day") or []
+    if not today:
+        lines.append(f"<i>{t(lang, 'empty')}</i>")
+        return lines
+    lines.append(f"<b>{t(lang, 'st_today')}</b>")
+    for row in today:
+        percent = row["percent"]
+        lines.append(f"{_bar(percent or 0, 6)}  {esc(row['name'])} · "
+                     f"{row['done']}/{row['total']}"
+                     + (f" · {percent}%" if percent is not None else ""))
+    for key, label in (("week", "st_week_short"), ("month", "st_month_short")):
+        rows = periods.get(key) or []
+        cells = [f"{esc(r['name'])} {r['percent']}%" if r["percent"] is not None
+                 else f"{esc(r['name'])} —" for r in rows]
+        lines.append(f"{t(lang, label)}: " + " · ".join(cells))
+    units = board.get("units") or {}
+    if units.get("items"):
+        lines.append(f"<i>{t(lang, 'team_units', items=units['items'], confirmed=units['confirmed'], confirmations=units['confirmations'], left=units['left'])}</i>")
+    return lines
+
+
+def _delta(value: int | None, lang: str = "uz") -> str:
+    """A signed change against the previous window of the same length, in
+    points — "+12 punkt", never "+12%", which would read as a relative rise."""
+    if value is None:
+        return ""
     if not value:
         return "▪️"
-    return f"{'🔺' if value > 0 else '🔻'}{abs(value)}%"
+    return f"{'🔺' if value > 0 else '🔻'}{t(lang, 'points', n=abs(value))}"
 
 
 async def show_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    got = await guard(update, ctx)
+    got = await guard(update, ctx, write=False)
     if got is None:
         return
     user, ws = got
     with SessionLocal() as s:
-        data = svc.summary(s, ws, gender=user.gender, tz=svc.user_tz(user))
+        tz = svc.user_tz(user)
+        data = svc.summary(s, ws, gender=user.gender, tz=tz)
+        data["teams"] = [{"name": team.name,
+                          "board": svc.team_scoreboard(s, user.telegram_id,
+                                                       team.id, tz=tz)}
+                         for team in svc.teams_for(s, user.telegram_id)]
     message = update.effective_message
     if message:
         await message.reply_text(render_stats(data, user.language),
@@ -1034,7 +1148,7 @@ async def handle_wakeup(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def show_home(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    got = await guard(update, ctx)
+    got = await guard(update, ctx, write=False)
     if got is None:
         return
     user, ws = got
@@ -1111,9 +1225,22 @@ def habits_keyboard(grouped: dict, lang: str) -> InlineKeyboardMarkup:
         for h in habits:
             if h.get("source") == "team":
                 mark = "✅" if h.get("done") else "⬜"
-                rows.append([InlineKeyboardButton(
-                    f"{mark} 👥 {h['name']}",
-                    callback_data=f"thabit:toggle:{h['id']}")])
+                if h.get("mirrored"):
+                    # Read from the member's own ritual; nothing to tick here.
+                    rows.append([InlineKeyboardButton(
+                        f"{mark} 👥 {h['name']} 🔒",
+                        callback_data="habit:mirrored")])
+                elif not h.get("due", True):
+                    rows.append([InlineKeyboardButton(
+                        f"⏸ 👥 {h['name']}", callback_data="habit:noop")])
+                elif h.get("timer_minutes") and not h.get("done"):
+                    rows.append([InlineKeyboardButton(
+                        f"👥 {h['name']} · {_timer_badge(h, lang)}",
+                        callback_data=f"tmr:open:H:{h['id']}")])
+                else:
+                    rows.append([InlineKeyboardButton(
+                        f"{mark} 👥 {h['name']}",
+                        callback_data=f"thabit:toggle:{h['id']}")])
                 continue
             if h.get("paused"):
                 # A paused habit is shown, greyed by its label, with resume as
@@ -1149,16 +1276,18 @@ def habits_keyboard(grouped: dict, lang: str) -> InlineKeyboardMarkup:
 
     rows.append([
         InlineKeyboardButton(t(lang, "btn_add_habit"), callback_data="habit:add"),
-        InlineKeyboardButton(t(lang, "btn_del_habit"), callback_data="habit:dellist"),
+        InlineKeyboardButton(t(lang, "btn_edit_habit"), callback_data="habit:editlist"),
     ])
     rows.append([InlineKeyboardButton(t(lang, "btn_timers"),
-                                      callback_data="tmr:list:h")])
+                                      callback_data="tmr:list:h"),
+                 InlineKeyboardButton(t(lang, "btn_countdown"),
+                                      callback_data="cd:list")])
     return InlineKeyboardMarkup(rows)
 
 
 async def show_habits(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                       edit: bool = False) -> None:
-    got = await guard(update, ctx)
+    got = await guard(update, ctx, write=False)
     if got is None:
         return
     user, ws = got
@@ -1206,19 +1335,29 @@ def short_date(iso: str | None, lang: str) -> str:
     return f"{day.day}-{month}"
 
 
-def _task_lines(tasks: list[dict], lang: str, start: int = 1) -> list[str]:
-    """Numbered rows: colour, number, title, then the details underneath."""
+def _task_lines(tasks: list[dict], lang: str, start: int = 1, *,
+                hide_date: bool = False) -> list[str]:
+    """Numbered rows: colour, number, title, then the details underneath.
+
+        🟡 1. hisobotni tekshirish
+             └ 25-sentabr · 20:05
+    """
     lines = []
     for number, task in enumerate(tasks, start=start):
         mark = PRIORITY_MARK.get(task["priority"], "▫️")
-        lines.append(f"{mark} <b>{number}.</b> {esc(task['title'])}")
+        lines.append(f"{mark} {number}. {esc(task['title'])}")
         meta = []
-        if task.get("deadline"):
+        if task.get("deadline") and not hide_date:
             meta.append(short_date(task["deadline"], lang))
         if task.get("due_time"):
             meta.append(task["due_time"])
+        if task.get("project"):
+            meta.append(f"📁 {esc(task['project'])}")
         if task.get("recurrence"):
             meta.append("🔁")
+        countdown = task.get("countdown")
+        if countdown and countdown.get("days_left", -1) >= 0:
+            meta.append(f"⏳ {countdown_left({'days_left': countdown['days_left']}, lang)}")
         badge = _timer_badge(task, lang)
         if badge:
             meta.append(badge)
@@ -1228,12 +1367,25 @@ def _task_lines(tasks: list[dict], lang: str, start: int = 1) -> list[str]:
 
 
 def render_tasks(data: dict, lang: str) -> str:
-    """The next seven days, grouped by project.
+    """Late, today, the coming days, undated, then the team's — in that order.
 
-    The old version printed every task as two dense lines with a folder icon and
-    an ISO date, and thirty of those is a wall nobody reads. Grouping by project
-    removes the repeated folder name, numbering gives the eye somewhere to land,
-    and the colour comes first so the list is sorted before it is read.
+        ❗ Kechikkan
+        🟡 1. hisobotni tekshirish
+             └ 25-sentabr · 20:05
+
+        ⚡ Bugun:
+        — yo'q
+
+        📥 Muddatsiz
+        🟡 1. namoz vaqtlarini ErnestOS ga qo'shish
+
+        👥 Jamoa vazifalari
+        Miro*
+        ⬜ Speaking | 30mins · 28-sentabr
+
+    Numbering restarts in each section, so "2" always means the second thing
+    under the heading the eye is on. Projects are named on the task's own line
+    rather than as headings of their own.
     """
     lines = []
 
@@ -1242,35 +1394,30 @@ def render_tasks(data: dict, lang: str) -> str:
         lines += _task_lines(data["overdue"], lang)
         lines.append("")
 
-    lines.append(f"<b>{t(lang, 'tasks_title')}</b>")
+    today = data.get("today")
+    if today is None:
+        today = [x for x in data["upcoming"] if x.get("days_left") == 0]
+    today_ids = {x["id"] for x in today}
+    lines.append(f"<b>{t(lang, 'tasks_today')}</b>")
+    lines += _task_lines(today, lang, hide_date=True) or [t(lang, "none")]
 
-    # Group the coming week under the project each task belongs to.
-    groups: dict[str | None, list[dict]] = {}
-    for task in data["upcoming"]:
-        groups.setdefault(task["project"], []).append(task)
-
-    if groups:
-        named = sorted((k for k in groups if k), key=lambda x: x.lower())
-        for project in named:
-            lines.append("")
-            lines.append(f"📁 <b>{esc(project)}</b>")
-            lines += _task_lines(groups[project], lang)
-        if None in groups:
-            lines.append("")
-            # The label already carries its own icon.
-            lines.append(f"<b>{t(lang, 'standalone')}</b>")
-            lines += _task_lines(groups[None], lang)
-    else:
-        lines.append(t(lang, "none"))
+    upcoming = [x for x in data["upcoming"] if x["id"] not in today_ids]
+    if upcoming:
+        lines.append("")
+        lines.append(f"<b>{t(lang, 'tasks_upcoming')}</b>")
+        lines += _task_lines(upcoming, lang)
 
     if data["undated"]:
         lines.append("")
         lines.append(f"<b>{t(lang, 'tasks_undated')}</b>")
-        lines += _task_lines(data["undated"][:6], lang)
+        lines += _task_lines(data["undated"][:8], lang)
+        if len(data["undated"]) > 8:
+            lines.append(f"<i>+{len(data['undated']) - 8}</i>")
 
     # Shared work, per team. The tick is the reader's own share: a task the
-    # partner finished and you have not is still open for you.
-    team_tasks = data.get("team_tasks") or []
+    # partner finished and you have not is still open for you — unless the
+    # task was set up so that one person's tick closes it.
+    team_tasks = [x for x in (data.get("team_tasks") or []) if x.get("owed", True)]
     if team_tasks:
         lines.append("")
         lines.append(f"<b>{t(lang, 'tasks_team')}</b>")
@@ -1278,12 +1425,14 @@ def render_tasks(data: dict, lang: str) -> str:
         for task in team_tasks:
             by_team.setdefault(task.get("team_name") or "", []).append(task)
         for name, rows in by_team.items():
-            lines.append(f"<i>{esc(name)}</i>")
+            lines.append(esc(name))
             for task in rows[:8]:
                 mark = "✅" if task.get("done") else "⬜"
                 when = (f" · {short_date(task['deadline'], lang)}"
                         if task.get("deadline") else "")
-                lines.append(f"{mark} {esc(task['title'])}{when}")
+                badge = _timer_badge(task, lang)
+                lines.append(f"{mark} {esc(task['title'])}{when}"
+                             + (f" · {badge}" if badge else ""))
 
     return "\n".join(lines)
 
@@ -1320,7 +1469,7 @@ def tasks_keyboard(lang: str, *, projects: list[dict],
         rows.append(action_row)
 
     delete_row = []
-    if editable:
+    if open_tasks:
         delete_row.append(InlineKeyboardButton(t(lang, "btn_del_task"),
                                                callback_data="task:dellist"))
     if projects:
@@ -1352,7 +1501,7 @@ def _all_open_tasks(s, ws: int) -> list[dict]:
 
 async def show_tasks(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                      edit: bool = False) -> None:
-    got = await guard(update, ctx)
+    got = await guard(update, ctx, write=False)
     if got is None:
         return
     user, ws = got
@@ -1365,7 +1514,8 @@ async def show_tasks(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 
     text = render_tasks(data, user.language)
     markup = tasks_keyboard(user.language, projects=projects,
-                            open_tasks=open_tasks, editable=open_tasks,
+                            open_tasks=open_tasks,
+                            editable=open_tasks + len(data["team_tasks"]),
                             team_tasks=len(data["team_tasks"]))
     if edit and update.callback_query:
         await update.callback_query.edit_message_text(
@@ -1432,8 +1582,16 @@ async def show_project(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 # for a run. The kind is a single letter because Telegram allows 64 bytes of
 # callback data and a habit id plus a minute count has to fit behind it.
 
-KIND_OF_CODE = {"h": "habit", "t": "task"}
-CODE_OF_KIND = {"habit": "h", "task": "t"}
+#: Upper case is the team's copy of the same thing: `H` a shared habit, `T` a
+#: shared task. The run still lives in the member's own workspace — each
+#: member runs their own clock on the team's item.
+KIND_OF_CODE = {"h": "habit", "t": "task", "H": "thabit", "T": "ttask"}
+CODE_OF_KIND = {v: k for k, v in KIND_OF_CODE.items()}
+HABIT_KINDS = ("habit", "thabit")
+
+#: Where each kind's own tick lives, for the "tick it by hand" button.
+TICK_CALLBACK = {"h": "habit:toggle:{}", "t": "task:done:{}",
+                 "H": "thabit:toggle:{}", "T": "ttask:toggle:{}"}
 
 
 def _timer_percent(run: dict) -> int:
@@ -1445,12 +1603,15 @@ def _timer_percent(run: dict) -> int:
 def render_timer(info: dict, lang: str) -> str:
     """One item's timer: how long it is, and where the clock is now."""
     lines = [t(lang, "timer_title", title=esc(info["title"]))]
+    if info.get("team_name"):
+        lines.append(f"👥 {esc(info['team_name'])}")
     run = info.get("run")
     counting = bool(run and run["status"] in ("running", "paused"))
     minutes = info.get("timer_minutes")
+    is_habit = info["kind"] in HABIT_KINDS
 
     if info.get("done") and not counting:
-        lines += ["", t(lang, "timer_done_today" if info["kind"] == "habit"
+        lines += ["", t(lang, "timer_done_today" if is_habit
                         else "timer_done_task")]
         if minutes:
             lines.append(t(lang, "timer_len", dur=fmt_minutes(minutes, lang)))
@@ -1472,8 +1633,10 @@ def render_timer(info: dict, lang: str) -> str:
         if run["status"] == "running" and run.get("ends_at"):
             lines.append(t(lang, "timer_ends", time=run["ends_at"]))
     else:
-        lines += ["", t(lang, "timer_rule_habit" if info["kind"] == "habit"
+        lines += ["", t(lang, "timer_rule_habit" if is_habit
                         else "timer_rule_task")]
+    if info["kind"] in svc.TEAM_TIMER_KINDS:
+        lines.append(f"<i>{t(lang, 'timer_team_own')}</i>")
     return "\n".join(lines)
 
 
@@ -1496,24 +1659,25 @@ def timer_keyboard(info: dict, lang: str) -> InlineKeyboardMarkup:
                      InlineKeyboardButton(t(lang, "btn_timer_stop"),
                                           callback_data=f"tmr:stop:{run['id']}")])
     else:
+        # On a shared item the length is the team's setting: its creator, an
+        # admin or the owner changes it. Everybody may run their own clock.
+        can_set = info.get("can_set", not info.get("protected"))
         if minutes and not info.get("done"):
             rows.append([InlineKeyboardButton(
                 t(lang, "btn_timer_start", dur=fmt_minutes(minutes, lang)),
                 callback_data=f"tmr:go:{code}:{item}")])
-        if not info.get("protected"):
+        if can_set:
             rows.append([InlineKeyboardButton(
                 t(lang, "btn_timer_change" if minutes else "btn_timer_set"),
                 callback_data=f"tmr:dur:{code}:{item}")])
-        if minutes and not info.get("protected"):
+        if minutes and can_set:
             rows.append([InlineKeyboardButton(
                 t(lang, "btn_timer_off"), callback_data=f"tmr:set:{code}:{item}:0")])
         if not minutes and not info.get("done") and not info.get("protected"):
             # With the timer off it is an ordinary item again, and the
             # ordinary way to finish it is one tap away.
             rows.append([InlineKeyboardButton(
-                t(lang, "btn_tick"),
-                callback_data=(f"habit:toggle:{item}" if code == "h"
-                               else f"task:done:{item}"))])
+                t(lang, "btn_tick"), callback_data=TICK_CALLBACK[code].format(item))])
     rows.append([InlineKeyboardButton(t(lang, "back"),
                                       callback_data=f"tmr:back:{code}")])
     return InlineKeyboardMarkup(rows)
@@ -1566,6 +1730,9 @@ async def show_timer(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     lang = user.language
     with SessionLocal() as s:
         info = svc.timer_for(s, ws, kind, item_id, tz=svc.user_tz(user))
+        if info.get("team_id"):
+            team = svc.team_for(s, user.telegram_id, info["team_id"])
+            info["team_name"] = team.name if team else ""
     sent = await _show(update, render_timer(info, lang),
                        timer_keyboard(info, lang), edit=edit)
     run = info.get("run")
@@ -1580,30 +1747,56 @@ async def show_timer(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 async def show_timer_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                           user: User, ws: int, kind: str, *,
                           edit: bool = True) -> None:
-    """Every habit (or open task) and its timer, to pick one to set."""
+    """Every habit (or open task) and its timer, private and shared, to pick one.
+
+    Shared items are marked 👥 with their team, and open the member's own clock
+    on the team's item.
+    """
     lang = user.language
-    code = CODE_OF_KIND[kind]
     with SessionLocal() as s:
-        if kind == "habit":
-            items = [(h["id"], h["name"], h) for h in svc.list_habits(
-                s, ws, tz=svc.user_tz(user))
-                if not h["protected"] and not h["paused"]]
-        else:
-            items = [(x["id"], x["title"], x) for x in _all_open_tasks(s, ws)][:20]
-    rows = [[InlineKeyboardButton(
-        f"{name[:36]} · {_timer_badge(row, lang) or '—'}",
-        callback_data=f"tmr:open:{code}:{item_id}")] for item_id, name, row in items]
-    rows.append([InlineKeyboardButton(t(lang, "back"),
-                                      callback_data=f"tmr:back:{code}")])
+        items = svc.timer_candidates(s, ws, user.telegram_id, kind,
+                                     tz=svc.user_tz(user))[:24]
+    rows = []
+    for row in items:
+        mark = "👥 " if row["kind"] in svc.TEAM_TIMER_KINDS else ""
+        rows.append([InlineKeyboardButton(
+            f"{mark}{row['title'][:34]} · {_timer_badge(row, lang) or '—'}",
+            callback_data=f"tmr:open:{CODE_OF_KIND[row['kind']]}:{row['id']}")])
+    rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="tmr:home")])
     text = t(lang, "timer_list_habits" if kind == "habit" else "timer_list_tasks")
     if not items:
         text += "\n\n" + t(lang, "empty")
     await _show(update, text, InlineKeyboardMarkup(rows), edit=edit)
 
 
+async def show_timer_home(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                          user: User, ws: int, *, edit: bool = True) -> None:
+    """⏱ Time countdown: the clock that is running, and where to start one."""
+    lang = user.language
+    with SessionLocal() as s:
+        run = svc.active_timer(s, ws)
+    lines = [f"<b>{t(lang, 'btn_timers')}</b>", ""]
+    rows = []
+    if run:
+        key = "timer_running" if run["status"] == "running" else "timer_paused"
+        lines += [f"<b>{esc(run['title'])}</b>",
+                  t(lang, key, left=fmt_left(run["remaining_sec"], lang)),
+                  f"{_bar(_timer_percent(run))}  {_timer_percent(run)}%", ""]
+        rows.append([InlineKeyboardButton(
+            f"▶️ {run['title'][:30]}",
+            callback_data=f"tmr:open:{CODE_OF_KIND[run['kind']]}:{run['item_id']}")])
+    else:
+        lines.append(t(lang, "timer_none_active"))
+    lines.append(t(lang, "timer_home_hint"))
+    rows.append([InlineKeyboardButton(t(lang, "timer_for_habits"), callback_data="tmr:list:h"),
+                 InlineKeyboardButton(t(lang, "timer_for_tasks"), callback_data="tmr:list:t")])
+    rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="home:show")])
+    await _show(update, "\n".join(lines), InlineKeyboardMarkup(rows), edit=edit)
+
+
 async def show_active_timer(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     """`/timer`: the clock that is running now, or the list to start one."""
-    got = await guard(update, ctx)
+    got = await guard(update, ctx, write=False)
     if got is None:
         return
     user, ws = got
@@ -1613,10 +1806,7 @@ async def show_active_timer(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> N
         await show_timer(update, ctx, user, ws, run["kind"], run["item_id"],
                          edit=False)
         return
-    message = update.effective_message
-    if message:
-        await message.reply_text(t(user.language, "timer_none_active"))
-    await show_timer_list(update, ctx, user, ws, "habit", edit=False)
+    await show_timer_home(update, ctx, user, ws, edit=False)
 
 
 async def _notice(update: Update, text: str) -> None:
@@ -1636,7 +1826,10 @@ async def _notice(update: Update, text: str) -> None:
 
 TIMER_REFUSALS = {"already_done": "timer_already_done",
                   "paused": "timer_is_paused",
-                  "timer_required": "timer_required"}
+                  "timer_required": "timer_required",
+                  "timer_off": "timer_off_text",
+                  "forbidden": "team_only_creator",
+                  "protected": "habit_protected"}
 
 
 async def route_timer(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
@@ -1645,12 +1838,15 @@ async def route_timer(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     sub = parts[1] if len(parts) > 1 else ""
     tz = svc.user_tz(user)
 
+    if sub == "home":
+        await show_timer_home(update, ctx, user, ws)
+        return
     if sub == "list":
         await show_timer_list(update, ctx, user, ws,
-                              KIND_OF_CODE.get(parts[2], "habit"))
+                              "task" if parts[2].lower() == "t" else "habit")
         return
     if sub == "back":
-        if parts[2] == "t":
+        if parts[2].lower() == "t":
             await show_tasks(update, ctx, edit=True)
         else:
             await show_habits(update, ctx, edit=True)
@@ -1685,12 +1881,19 @@ async def route_timer(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     elif sub == "dur":
         with SessionLocal() as s:
             info = svc.timer_for(s, ws, kind, item_id, tz=tz)
+        if not info.get("can_set", True):
+            await _notice(update, t(lang, "team_only_creator"))
+            return
         await _show(update, t(lang, "timer_pick", title=esc(info["title"])),
                     timer_pick_keyboard(info, lang), edit=True)
     elif sub == "set":
         value = None if parts[4] == "a" else int(parts[4])
-        with SessionLocal() as s:
-            svc.set_item_timer(s, ws, kind, item_id, value)
+        try:
+            with SessionLocal() as s:
+                svc.set_item_timer(s, ws, kind, item_id, value)
+        except ValueError as e:
+            await _notice(update, t(lang, TIMER_REFUSALS.get(str(e), "error")))
+            return
         await show_timer(update, ctx, user, ws, kind, item_id)
     elif sub == "custom":
         start_flow(ctx, "timer_custom", kind=kind, item=item_id)
@@ -1713,13 +1916,49 @@ def _typed_minutes(text: str) -> int | None:
 # Countdowns
 # ---------------------------------------------------------------------------
 
+#: The three kinds of countdown, in the order they are offered and listed.
+CD_SCOPES = (("general", "g", "cd_scope_general"),
+             ("task", "t", "cd_scope_task"),
+             ("habit", "h", "cd_scope_habit"))
+CD_SCOPE_OF = {code: scope for scope, code, _ in CD_SCOPES}
+CD_ICON = {"general": "📅", "task": "⚡", "habit": "✅"}
+
+
 def render_countdowns(items: list[dict], lang: str) -> str:
+    """Yours by kind — general, for a task, for a habit — then each team's.
+
+        📅 Date countdown
+
+        📅 Umumiy
+        ⏳ IELTS — 49 kun qoldi · 16-noyabr
+
+        ⚡ Vazifa uchun
+        ⏳ Hisobot → Oylik hisobot — ertaga! · 29-sentabr
+
+        👥 Miro*
+        ⏳ Demo day — 12 kun qoldi · 10-oktabr
+    """
     lines = [t(lang, "cd_title"), ""]
     if not items:
         lines.append(t(lang, "cd_empty"))
-    for item in items:
-        lines.append(countdown_line(item, lang))
-    return "\n".join(lines)
+        return "\n".join(lines)
+    personal = [x for x in items if not x.get("team_id")]
+    for scope, _code, key in CD_SCOPES:
+        rows = [x for x in personal if (x.get("scope") or "general") == scope]
+        if not rows:
+            continue
+        lines.append(f"<b>{CD_ICON[scope]} {t(lang, key)}</b>")
+        lines += [countdown_line(x, lang) for x in rows]
+        lines.append("")
+    teams: dict[str, list[dict]] = {}
+    for x in items:
+        if x.get("team_id"):
+            teams.setdefault(x.get("team_name") or "", []).append(x)
+    for name, rows in teams.items():
+        lines.append(f"<b>👥 {esc(name)}</b>")
+        lines += [countdown_line(x, lang) for x in rows]
+        lines.append("")
+    return "\n".join(lines).rstrip()
 
 
 def countdowns_keyboard(items: list[dict], lang: str) -> InlineKeyboardMarkup:
@@ -1727,51 +1966,205 @@ def countdowns_keyboard(items: list[dict], lang: str) -> InlineKeyboardMarkup:
     if items:
         row.append(InlineKeyboardButton(t(lang, "btn_cd_del"),
                                         callback_data="cd:dellist"))
-    return InlineKeyboardMarkup([row])
+    return InlineKeyboardMarkup([row, [InlineKeyboardButton(
+        t(lang, "btn_timers"), callback_data="tmr:home")]])
 
 
 async def show_countdowns(update: Update, ctx: ContextTypes.DEFAULT_TYPE, *,
                           edit: bool = False) -> None:
-    got = await guard(update, ctx)
+    got = await guard(update, ctx, write=False)
     if got is None:
         return
     user, ws = got
     with SessionLocal() as s:
-        items = svc.list_countdowns(s, ws, tz=svc.user_tz(user))
+        items = svc.countdowns_for_user(s, ws, user.telegram_id,
+                                        tz=svc.user_tz(user))
     await _show(update, render_countdowns(items, user.language),
                 countdowns_keyboard(items, user.language), edit=edit)
 
 
+def _cd_link_choices(s, user: User, ws: int, scope: str, dest: str) -> list[tuple[int, str, str | None]]:
+    """(id, title, deadline) of what a new countdown can be tied to."""
+    tz = svc.user_tz(user)
+    if scope == "task":
+        if dest == "p":
+            data = svc.list_tasks(s, ws, horizon_days=365, tz=tz)
+            rows = data["overdue"] + data["upcoming"] + data["later"] + data["undated"]
+        else:
+            rows = svc.list_team_tasks(s, user.telegram_id, int(dest),
+                                       horizon_days=365, tz=tz)
+        return [(x["id"], x["title"], x.get("deadline")) for x in rows][:12]
+    if dest == "p":
+        rows = [h for h in svc.list_habits(s, ws, tz=tz) if not h["protected"]]
+    else:
+        rows = [h for h in svc.list_team_habits(s, user.telegram_id, int(dest), tz=tz)
+                if not h.get("mirrored")]
+    return [(x["id"], x["name"], None) for x in rows][:12]
+
+
+async def ask_countdown_date(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                             lang: str, flow: dict, deadline: str | None = None) -> None:
+    """The last question: which date. A linked task's own deadline is one tap."""
+    start_flow(ctx, "cd_date", **{k: flow.get(k) for k in ("title", "scope", "dest", "item")})
+    rows = []
+    if deadline:
+        rows.append([InlineKeyboardButton(
+            t(lang, "cd_use_deadline", day=short_date(deadline, lang)),
+            callback_data=f"cdq:{deadline}")])
+    rows.append([InlineKeyboardButton(t(lang, "cancel"), callback_data="flow:cancel")])
+    await _show(update, t(lang, "cd_ask_date", title=esc(flow.get("title") or "")),
+                InlineKeyboardMarkup(rows), edit=bool(update.callback_query))
+
+
+async def save_countdown(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                         user: User, ws: int, flow: dict, target: date) -> bool:
+    """Write the countdown the flow describes. False keeps the flow open."""
+    lang = user.language
+    tz = svc.user_tz(user)
+    dest = flow.get("dest") or "p"
+    message = update.effective_message
+    try:
+        with SessionLocal() as s:
+            item = svc.add_countdown(
+                s, ws, flow["title"], target, tz=tz,
+                scope=flow.get("scope") or "general",
+                item_id=int(flow["item"]) if flow.get("item") else None,
+                team_id=None if dest == "p" else int(dest),
+                user_id=user.telegram_id)
+    except ValueError as e:
+        reason = str(e)
+        if reason in ("past_date", "too_far"):
+            # A typo in the year, most likely — keep the flow open.
+            await message.reply_text(t(lang, "cd_past" if reason == "past_date"
+                                       else "cd_too_far"))
+            return False
+        ctx.user_data.pop("flow", None)
+        await message.reply_text(t(lang, "cd_too_many" if reason == "too_many"
+                                   else "error"))
+        return True
+    except (PermissionError, svc.NotFound):
+        ctx.user_data.pop("flow", None)
+        await message.reply_text(t(lang, "not_found"))
+        return True
+    ctx.user_data.pop("flow", None)
+    await message.reply_text(
+        t(lang, "cd_added", title=esc(item["title"]),
+          left=countdown_left(item, lang)),
+        parse_mode=ParseMode.HTML)
+    if dest != "p":
+        await notify_teammates(int(dest), user.telegram_id, "team_ev_countdown",
+                               item["title"], item.get("team_name") or "")
+    await show_countdowns(update, ctx)
+    return True
+
+
 async def route_countdown(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
-                          parts: list[str], user: User, ws: int,
+                          action: str, parts: list[str], user: User, ws: int,
                           lang: str) -> None:
+    """cd:* the screen · cds scope · cdd where · cdl linked item · cdq the date."""
     query = update.callback_query
     sub = parts[1] if len(parts) > 1 else ""
+
+    if action == "cds":
+        # Kind chosen: next, whose — unless there is no team to choose.
+        scope = CD_SCOPE_OF.get(sub, "general")
+        with SessionLocal() as s:
+            teams = svc.teams_for(s, user.telegram_id)
+        flow = start_flow(ctx, "cd_setup", scope=scope)
+        if teams:
+            await _show(update, t(lang, "cd_ask_dest"),
+                        dest_keyboard(lang, teams, "cdd"), edit=True)
+            return
+        await _cd_after_dest(update, ctx, user, ws, lang, flow, "p")
+        return
+    if action == "cdd":
+        flow = current_flow(ctx, "cd_setup")
+        if flow is None:
+            await _notice(update, t(lang, "flow_expired"))
+            return
+        await _cd_after_dest(update, ctx, user, ws, lang, flow, sub)
+        return
+    if action == "cdl":
+        flow = current_flow(ctx, "cd_setup")
+        if flow is None:
+            await _notice(update, t(lang, "flow_expired"))
+            return
+        item_id = int(sub)
+        if not item_id:
+            start_flow(ctx, "cd_title", scope=flow["scope"], dest=flow["dest"])
+            await _show(update, t(lang, "cd_ask_title"), cancel_keyboard(lang), edit=True)
+            return
+        with SessionLocal() as s:
+            choices = {c[0]: c for c in _cd_link_choices(s, user, ws, flow["scope"],
+                                                          flow["dest"])}
+        if item_id not in choices:
+            await _notice(update, t(lang, "not_found"))
+            return
+        _, title, deadline = choices[item_id]
+        flow.update(item=item_id, title=title[:200])
+        await ask_countdown_date(update, ctx, lang, flow, deadline)
+        return
+    if action == "cdq":
+        flow = current_flow(ctx, "cd_date")
+        if flow is None:
+            await _notice(update, t(lang, "flow_expired"))
+            return
+        await save_countdown(update, ctx, user, ws, flow, date.fromisoformat(sub))
+        return
+
     if sub == "list":
         await show_countdowns(update, ctx)
     elif sub == "back":
         await show_countdowns(update, ctx, edit=True)
     elif sub == "add":
-        start_flow(ctx, "cd_title")
-        await update.effective_message.reply_text(
-            t(lang, "cd_ask_title"), parse_mode=ParseMode.HTML,
-            reply_markup=cancel_keyboard(lang))
+        rows = [[InlineKeyboardButton(f"{CD_ICON[scope]} {t(lang, key)}",
+                                      callback_data=f"cds:{code}")]
+                for scope, code, key in CD_SCOPES]
+        rows.append([InlineKeyboardButton(t(lang, "cancel"), callback_data="cd:back")])
+        await _show(update, t(lang, "cd_ask_scope"), InlineKeyboardMarkup(rows),
+                    edit=True)
     elif sub == "dellist":
         with SessionLocal() as s:
-            items = svc.list_countdowns(s, ws, tz=svc.user_tz(user))
+            items = svc.countdowns_for_user(s, ws, user.telegram_id,
+                                            tz=svc.user_tz(user))
         if not items:
             await _notice(update, t(lang, "empty"))
             return
-        rows = [[InlineKeyboardButton(f"🗑 {item['title'][:40]}",
-                                      callback_data=f"cd:del:{item['id']}")]
-                for item in items]
+        rows = [[InlineKeyboardButton(
+            f"🗑 {'👥 ' if item.get('team_id') else ''}{item['title'][:38]}",
+            callback_data=f"cd:del:{item['id']}")] for item in items]
         rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="cd:back")])
         await query.edit_message_text(t(lang, "cd_choose_delete"),
                                       reply_markup=InlineKeyboardMarkup(rows))
     elif sub == "del":
-        with SessionLocal() as s:
-            svc.delete_countdown(s, ws, int(parts[2]))
+        try:
+            with SessionLocal() as s:
+                svc.delete_countdown(s, ws, int(parts[2]))
+        except PermissionError:
+            await _notice(update, t(lang, "team_only_creator"))
+            return
         await show_countdowns(update, ctx, edit=True)
+
+
+async def _cd_after_dest(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                         user: User, ws: int, lang: str, flow: dict,
+                         dest: str) -> None:
+    """Whose countdown is settled: a general one asks its name, a task or habit
+    one offers the items to tie it to."""
+    flow["dest"] = dest
+    if flow["scope"] == "general":
+        start_flow(ctx, "cd_title", scope="general", dest=dest)
+        await _show(update, t(lang, "cd_ask_title"), cancel_keyboard(lang), edit=True)
+        return
+    with SessionLocal() as s:
+        choices = _cd_link_choices(s, user, ws, flow["scope"], dest)
+    rows = [[InlineKeyboardButton(title[:40], callback_data=f"cdl:{item_id}")]
+            for item_id, title, _deadline in choices]
+    rows.append([InlineKeyboardButton(t(lang, "cd_no_link"), callback_data="cdl:0")])
+    rows.append([InlineKeyboardButton(t(lang, "cancel"), callback_data="flow:cancel")])
+    await _show(update, t(lang, "cd_ask_link_task" if flow["scope"] == "task"
+                          else "cd_ask_link_habit"),
+                InlineKeyboardMarkup(rows), edit=True)
 
 
 # ---------------------------------------------------------------------------
@@ -1895,6 +2288,7 @@ async def show_settings(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         [InlineKeyboardButton(t(lang, "btn_theme"), callback_data="set:theme")],
         [InlineKeyboardButton(t(lang, "btn_photo"), callback_data="set:photo")],
         [InlineKeyboardButton(t(lang, "wake_time_btn"), callback_data="set:waketime")],
+        [InlineKeyboardButton(t(lang, "btn_modules"), callback_data="set:modules")],
         # One row, at the bottom, where it is findable without competing with
         # the settings somebody actually opened this screen to change.
         [InlineKeyboardButton(t(lang, "ref_menu"), callback_data="ref:show")],
@@ -1939,37 +2333,57 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         await handle_setup_answer(update, ctx, step, text)
         return
 
+    # Main menu first — match against every language so a language change
+    # mid-session never strands the user with a dead keyboard. A menu tap in
+    # the middle of a flow is the user leaving it: "📋 Vazifalar" typed while
+    # the bot waits for a task title must open Tasks, not become a task
+    # called "📋 Vazifalar".
+    route = menu_route(text)
+    if route is not None:
+        ctx.user_data.pop("flow", None)
+        await route(update, ctx, lang)
+        return
+
     flow = current_flow(ctx)
     if flow:
         await handle_flow(update, ctx, flow, text)
         return
 
-    # Main menu routing — match against every language so a language change
-    # mid-session never strands the user with a dead keyboard.
-    for code in ("uz", "en", "ru"):
-        if text == t(code, "menu_wake"):
-            return await handle_wakeup(update, ctx)
-        if text == t(code, "menu_home"):
-            return await show_home(update, ctx)
-        if text == t(code, "menu_habits"):
-            return await show_habits(update, ctx)
-        if text == t(code, "menu_tasks"):
-            return await show_tasks(update, ctx)
-        if text == t(code, "menu_stats"):
-            return await show_stats(update, ctx)
-        if text == t(code, "menu_settings"):
-            return await show_settings(update, ctx)
-        if text == t(code, "menu_feedback"):
-            start_flow(ctx, "feedback")
-            return await message.reply_text(t(lang, "ask_feedback"),
-                                            reply_markup=cancel_keyboard(lang))
-        if text == t(code, "menu_app"):
-            markup = webapp_button(lang)
-            if markup:
-                return await message.reply_text(t(lang, "open_app"), reply_markup=markup)
-            return
+    # Anything else is something to remember: offered as a task, one tap away.
+    await offer_capture(update, ctx, text)
 
-    await show_home(update, ctx)
+
+async def _menu_feedback(update: Update, ctx: ContextTypes.DEFAULT_TYPE, lang: str) -> None:
+    start_flow(ctx, "feedback")
+    await update.effective_message.reply_text(t(lang, "ask_feedback"),
+                                              reply_markup=cancel_keyboard(lang))
+
+
+async def _menu_app(update: Update, ctx: ContextTypes.DEFAULT_TYPE, lang: str) -> None:
+    markup = webapp_button(lang)
+    if markup:
+        await update.effective_message.reply_text(t(lang, "open_app"), reply_markup=markup)
+
+
+MENU_ROUTES = {
+    "menu_wake": lambda u, c, _l: handle_wakeup(u, c),
+    "menu_home": lambda u, c, _l: show_home(u, c),
+    "menu_habits": lambda u, c, _l: show_habits(u, c),
+    "menu_tasks": lambda u, c, _l: show_tasks(u, c),
+    "menu_stats": lambda u, c, _l: show_stats(u, c),
+    "menu_settings": lambda u, c, _l: show_settings(u, c),
+    "menu_teams": lambda u, c, _l: show_teams(u, c),
+    "menu_feedback": _menu_feedback,
+    "menu_app": _menu_app,
+}
+
+
+def menu_route(text: str):
+    """The screen a main-menu button opens, in any language, or None."""
+    for key, route in MENU_ROUTES.items():
+        if any(text == t(code, key) for code in ("uz", "en", "ru")):
+            return route
+    return None
 
 
 def start_flow(ctx: ContextTypes.DEFAULT_TYPE, name: str, **data) -> dict:
@@ -2013,17 +2427,46 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 
     try:
         if name == "habit_name":
-            start_flow(ctx, "habit_cat", title=text)
+            # Yours, or one of your teams'? Asked only when there is a team.
+            with SessionLocal() as s:
+                teams = svc.teams_for(s, user.telegram_id)
+            if teams:
+                start_flow(ctx, "habit_dest", title=text[:120])
+                await message.reply_text(t(lang, "ask_dest_habit", title=esc(text[:120])),
+                                         parse_mode=ParseMode.HTML,
+                                         reply_markup=dest_keyboard(lang, teams, "hdest"))
+                return
+            start_flow(ctx, "habit_cat", title=text[:120], dest="p")
             await message.reply_text(t(lang, "ask_habit_cat"),
-                                     reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t(lang, "cat_non_negotiable"),
-                                      callback_data="habitcat:non_negotiable")],
-                [InlineKeyboardButton(t(lang, "cat_target"),
-                                      callback_data="habitcat:target")],
-                [InlineKeyboardButton(t(lang, "cat_bonus"),
-                                      callback_data="habitcat:bonus")],
-                [InlineKeyboardButton(t(lang, "cancel"), callback_data="flow:cancel")],
-            ]))
+                                     reply_markup=category_keyboard(lang))
+
+        elif name == "habit_rename":
+            with SessionLocal() as s:
+                if flow.get("kind") == "t":
+                    svc.edit_team_habit(s, user.telegram_id, int(flow["target_id"]),
+                                        name=text)
+                else:
+                    svc.update_habit(s, ws, int(flow["target_id"]), name=text)
+            ctx.user_data.pop("flow", None)
+            await message.reply_text(t(lang, "saved"))
+            await show_habit_edit(update, ctx, user, ws, flow.get("kind") or "p",
+                                  int(flow["target_id"]))
+
+        elif name == "task_edit_date":
+            target = svc.parse_countdown_date(text, svc.today_local(svc.user_tz(user)))
+            if target is None:
+                await message.reply_text(t(lang, "cd_bad_date"), parse_mode=ParseMode.HTML)
+                return
+            with SessionLocal() as s:
+                if flow.get("kind") == "t":
+                    svc.edit_team_task(s, user.telegram_id, int(flow["target_id"]),
+                                       deadline=target)
+                else:
+                    svc.update_task(s, ws, int(flow["target_id"]), deadline=target)
+            ctx.user_data.pop("flow", None)
+            await message.reply_text(t(lang, "saved"))
+            await show_task_edit(update, ctx, user, ws, flow.get("kind") or "p",
+                                 int(flow["target_id"]))
 
         elif name == "wake_time":
             try:
@@ -2040,24 +2483,31 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                 reply_markup=main_menu(lang))
 
         elif name == "task_edit":
+            kind = flow.get("kind") or "p"
             with SessionLocal() as s:
-                task = svc.update_task(s, ws, flow["target_id"], title=text)
+                if kind == "t":
+                    row = svc.edit_team_task(s, user.telegram_id,
+                                             int(flow["target_id"]), title=text)
+                    title = row["title"]
+                else:
+                    title = svc.update_task(s, ws, int(flow["target_id"]), title=text).title
             ctx.user_data.pop("flow", None)
-            await message.reply_text(t(lang, "task_updated", title=task.title))
-            await show_tasks(update, ctx)
+            await message.reply_text(t(lang, "task_updated", title=title))
+            await show_task_edit(update, ctx, user, ws, kind, int(flow["target_id"]))
 
         elif name == "task_title":
-            start_flow(ctx, "task_days", title=text)
+            # Yours, or one of your teams'? Asked only when there is a team.
+            with SessionLocal() as s:
+                teams = svc.teams_for(s, user.telegram_id)
+            if teams:
+                start_flow(ctx, "task_dest", title=text[:300])
+                await message.reply_text(t(lang, "ask_dest_task", title=esc(text[:300])),
+                                         parse_mode=ParseMode.HTML,
+                                         reply_markup=dest_keyboard(lang, teams, "tdest"))
+                return
+            start_flow(ctx, "task_days", title=text[:300], dest="p")
             await message.reply_text(t(lang, "ask_task_days"),
-                                     reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t(lang, "days_today"), callback_data="taskday:0"),
-                 InlineKeyboardButton(t(lang, "days_1"), callback_data="taskday:1")],
-                [InlineKeyboardButton(t(lang, "days_2"), callback_data="taskday:2"),
-                 InlineKeyboardButton(t(lang, "days_3"), callback_data="taskday:3")],
-                [InlineKeyboardButton(t(lang, "days_7"), callback_data="taskday:7"),
-                 InlineKeyboardButton(t(lang, "days_custom"), callback_data="taskday:custom")],
-                [InlineKeyboardButton(t(lang, "cancel"), callback_data="flow:cancel")],
-            ]))
+                                     reply_markup=days_keyboard(lang))
 
         elif name == "team_name":
             try:
@@ -2106,7 +2556,8 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             # typed at 23:00 in London meant three days from Tashkent's
             # tomorrow, so the task landed a day early.
             deadline = svc.today_local(svc.user_tz(user)) + timedelta(days=days)
-            await ask_task_project(update, ctx, flow["title"], deadline)
+            await ask_task_project(update, ctx, flow["title"], deadline,
+                                   flow.get("dest") or "p")
 
         elif name == "project_add":
             with SessionLocal() as s:
@@ -2139,10 +2590,8 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                              int(flow["item"]), edit=False)
 
         elif name == "cd_title":
-            start_flow(ctx, "cd_date", title=text[:200])
-            await message.reply_text(t(lang, "cd_ask_date", title=esc(text[:200])),
-                                     parse_mode=ParseMode.HTML,
-                                     reply_markup=cancel_keyboard(lang))
+            await ask_countdown_date(update, ctx, lang,
+                                     {**flow, "title": text[:200]})
 
         elif name == "cd_date":
             tz = svc.user_tz(user)
@@ -2151,26 +2600,7 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                 await message.reply_text(t(lang, "cd_bad_date"),
                                          parse_mode=ParseMode.HTML)
                 return
-            try:
-                with SessionLocal() as s:
-                    item = svc.add_countdown(s, ws, flow["title"], target, tz=tz)
-            except ValueError as e:
-                reason = str(e)
-                if reason in ("past_date", "too_far"):
-                    # A typo in the year, most likely — keep the flow open.
-                    await message.reply_text(t(lang, "cd_past" if reason == "past_date"
-                                               else "cd_too_far"))
-                    return
-                ctx.user_data.pop("flow", None)
-                await message.reply_text(t(lang, "cd_too_many" if reason == "too_many"
-                                           else "error"))
-                return
-            ctx.user_data.pop("flow", None)
-            await message.reply_text(
-                t(lang, "cd_added", title=esc(item["title"]),
-                  left=countdown_left(item, lang)),
-                parse_mode=ParseMode.HTML)
-            await show_countdowns(update, ctx)
+            await save_countdown(update, ctx, user, ws, flow, target)
 
         elif name == "feedback":
             with SessionLocal() as s:
@@ -2199,25 +2629,41 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                 # Never claim delivery that did not happen.
                 await message.reply_text(t(lang, "feedback_saved"))
 
-    except ValueError:
+    except PermissionError:
         ctx.user_data.pop("flow", None)
-        await message.reply_text(t(lang, "error"))
+        await message.reply_text(t(lang, "team_only_creator"))
+    except ValueError as e:
+        ctx.user_data.pop("flow", None)
+        await message.reply_text(t(lang, "habit_protected" if str(e) == "protected"
+                                   else "error"))
     except svc.NotFound:
         ctx.user_data.pop("flow", None)
         await message.reply_text(t(lang, "not_found"))
 
 
 async def ask_task_project(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
-                           title: str, deadline: date) -> None:
+                           title: str, deadline: date | None,
+                           dest: str = "p") -> None:
+    """Which project, if any — the team's own shelves for a shared task.
+
+    With no project to choose from there is no question: the task is made.
+    """
     got = await guard(update, ctx)
     if got is None:
         return
     user, ws = got
     lang = user.language
     with SessionLocal() as s:
-        projects = svc.list_projects(s, ws)
+        if dest == "p":
+            projects = svc.list_projects(s, ws)
+        else:
+            projects = svc.list_team_projects(s, user.telegram_id, int(dest))
 
-    start_flow(ctx, "task_project", title=title, deadline=deadline.isoformat())
+    start_flow(ctx, "task_project", title=title,
+               deadline=deadline.isoformat() if deadline else "", dest=dest)
+    if not projects:
+        await create_task_from_flow(update, ctx, user, ws, 0)
+        return
     rows = [[InlineKeyboardButton(t(lang, "standalone"), callback_data="taskproj:0")]]
     for p in projects[:10]:
         rows.append([InlineKeyboardButton(f"📁 {p['name']}",
@@ -2228,6 +2674,525 @@ async def ask_task_project(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     if message:
         await message.reply_text(t(lang, "ask_task_project"),
                                  reply_markup=InlineKeyboardMarkup(rows))
+
+
+async def create_task_from_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                                user: User, ws: int, project_id: int) -> None:
+    """The last step of adding a task in the chat: write it where it was meant to go."""
+    flow = current_flow(ctx, "task_project") or {}
+    title, deadline = flow.get("title"), flow.get("deadline") or None
+    dest = flow.get("dest") or "p"
+    lang = user.language
+    message = update.effective_message
+    if not title:
+        if update.callback_query:
+            await _notice(update, t(lang, "error"))
+        return
+    due = date.fromisoformat(deadline) if deadline else None
+    ctx.user_data.pop("flow", None)
+    with SessionLocal() as s:
+        if dest == "p":
+            # The chat flow asks for a title, a date and a project and stops
+            # there, so a task made here gets the standard reminder; the Mini
+            # App's task sheet is where it can be changed or turned off.
+            task = svc.add_task(s, ws, title, deadline=due,
+                                project_id=project_id or None,
+                                remind_before=svc.DEFAULT_REMIND_BEFORE if due else None)
+            timer = svc.timer_minutes_for(task.timer_minutes, task.title)
+            team_name = None
+        else:
+            row = svc.add_team_task(s, user.telegram_id, int(dest), title,
+                                    deadline=due, project_id=project_id or None,
+                                    remind_before=svc.DEFAULT_REMIND_BEFORE if due else None)
+            timer = row.get("timer_minutes")
+            team = svc.team_for(s, user.telegram_id, int(dest))
+            team_name = team.name if team else ""
+    text = (t(lang, "task_added", title=title) if team_name is None
+            else t(lang, "task_added_team", title=esc(title), team=esc(team_name)))
+    if update.callback_query:
+        try:
+            await update.callback_query.edit_message_text(text, parse_mode=ParseMode.HTML)
+        except BadRequest:
+            await message.reply_text(text, parse_mode=ParseMode.HTML)
+    elif message:
+        await message.reply_text(text, parse_mode=ParseMode.HTML)
+    if timer and message:
+        await message.reply_text(t(lang, "task_added_timer",
+                                   dur=fmt_minutes(timer, lang)),
+                                 parse_mode=ParseMode.HTML)
+    if team_name is not None:
+        await notify_teammates(int(dest), user.telegram_id, "team_ev_task_add",
+                               title, team_name)
+    await log_event(ctx.bot, user, "⚡ TASK ADDED",
+                    f"Task: {esc(title)}\nDeadline: {deadline or '—'}")
+    await count_action(user.telegram_id, ctx, message, lang)
+    await show_tasks(update, ctx)
+
+
+# ---------------------------------------------------------------------------
+# Where a new item goes — your own list or one of your teams
+# ---------------------------------------------------------------------------
+
+def dest_keyboard(lang: str, teams: list, prefix: str) -> InlineKeyboardMarkup:
+    """👤 Shaxsiy, then one button per team, then cancel."""
+    rows = [[InlineKeyboardButton(t(lang, "dest_personal"),
+                                  callback_data=f"{prefix}:p")]]
+    for team in teams[:svc.MAX_TEAMS_PER_USER]:
+        rows.append([InlineKeyboardButton(f"👥 {team.name[:30]}",
+                                          callback_data=f"{prefix}:{team.id}")])
+    rows.append([InlineKeyboardButton(t(lang, "cancel"), callback_data="flow:cancel")])
+    return InlineKeyboardMarkup(rows)
+
+
+def days_keyboard(lang: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(t(lang, "days_today"), callback_data="taskday:0"),
+         InlineKeyboardButton(t(lang, "days_1"), callback_data="taskday:1")],
+        [InlineKeyboardButton(t(lang, "days_2"), callback_data="taskday:2"),
+         InlineKeyboardButton(t(lang, "days_3"), callback_data="taskday:3")],
+        [InlineKeyboardButton(t(lang, "days_7"), callback_data="taskday:7"),
+         InlineKeyboardButton(t(lang, "days_none"), callback_data="taskday:none")],
+        [InlineKeyboardButton(t(lang, "days_custom"), callback_data="taskday:custom")],
+        [InlineKeyboardButton(t(lang, "cancel"), callback_data="flow:cancel")],
+    ])
+
+
+def category_keyboard(lang: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(t(lang, "cat_non_negotiable"),
+                              callback_data="habitcat:non_negotiable")],
+        [InlineKeyboardButton(t(lang, "cat_target"), callback_data="habitcat:target")],
+        [InlineKeyboardButton(t(lang, "cat_bonus"), callback_data="habitcat:bonus")],
+        [InlineKeyboardButton(t(lang, "cancel"), callback_data="flow:cancel")],
+    ])
+
+
+def _dest_label(lang: str, dest: str, teams: dict[int, str]) -> str:
+    if dest == "p":
+        return t(lang, "dest_personal")
+    return f"👥 {teams.get(int(dest), '')}"
+
+
+# ---------------------------------------------------------------------------
+# Editing a task or a habit from the chat — private and shared alike
+# ---------------------------------------------------------------------------
+#
+# Callback data carries the kind in one letter — `p` a private item, `t` a
+# team item — and the id, so every edit button fits in Telegram's 64 bytes.
+
+def _task_edit_view(s, user: User, ws: int, kind: str, item_id: int) -> tuple[str, InlineKeyboardMarkup] | None:
+    """The edit menu for one task: what it is now, and what can be changed."""
+    lang = user.language
+    tz = svc.user_tz(user)
+    teams = svc.teams_for(s, user.telegram_id)
+    if kind == "p":
+        task = s.get(db.Task, item_id)
+        if task is None or task.workspace_id != ws or task.archived_at is not None:
+            return None
+        row = svc._task_dict(s, ws, task, svc.today_local(tz))
+        where = t(lang, "dest_personal")
+        can_manage = True
+    else:
+        row = svc.team_task_for(s, user.telegram_id, item_id)
+        if row is None:
+            return None
+        where = f"👥 {esc(row['team_name'])}"
+        can_manage = row.get("can_manage", False)
+    lines = [f"✏️ <b>{esc(row['title'])}</b>",
+             f"📅 {short_date(row['deadline'], lang) if row.get('deadline') else t(lang, 'no_deadline')}"
+             f"{' · ' + row['due_time'] if row.get('due_time') else ''}"
+             f" · {PRIORITY_MARK.get(row['priority'], '▫️')} {t(lang, 'prio_' + row['priority'])}",
+             f"📍 {where}"]
+    if kind == "t" and row.get("completion") != "all":
+        lines.append(f"👤 {t(lang, 'completion_' + row['completion'])}")
+    if not can_manage:
+        lines.append(f"<i>{t(lang, 'team_only_creator')}</i>")
+    code = f"{kind}:{item_id}"
+    rows = []
+    if can_manage:
+        rows.append([InlineKeyboardButton(t(lang, "edit_name"), callback_data=f"te:{code}:n"),
+                     InlineKeyboardButton(t(lang, "edit_date"), callback_data=f"te:{code}:d")])
+        rows.append([InlineKeyboardButton(t(lang, "edit_priority"), callback_data=f"te:{code}:p")])
+        if teams:
+            rows.append([InlineKeyboardButton(t(lang, "edit_move"), callback_data=f"te:{code}:m")])
+    rows.append([InlineKeyboardButton(t(lang, "btn_timers"),
+                                      callback_data=f"tmr:open:{'t' if kind == 'p' else 'T'}:{item_id}")])
+    if can_manage:
+        rows.append([InlineKeyboardButton(t(lang, "edit_delete"), callback_data=f"te:{code}:x")])
+    rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="task:back")])
+    return "\n".join(lines), InlineKeyboardMarkup(rows)
+
+
+def _habit_edit_view(s, user: User, ws: int, kind: str, item_id: int) -> tuple[str, InlineKeyboardMarkup] | None:
+    lang = user.language
+    teams = svc.teams_for(s, user.telegram_id)
+    if kind == "p":
+        habit = s.get(db.Habit, item_id)
+        if habit is None or habit.workspace_id != ws or habit.archived_at is not None:
+            return None
+        info = svc.habit_history(s, ws, item_id, days=7, tz=svc.user_tz(user))
+        where = t(lang, "dest_personal")
+        can_manage, protected = True, info["protected"]
+    else:
+        try:
+            info = svc.team_habit_history(s, user.telegram_id, item_id, days=7,
+                                          tz=svc.user_tz(user))
+        except (ValueError, PermissionError):
+            return None
+        where = f"👥 {esc(info['team_name'])}"
+        can_manage, protected = info["can_manage"], info["mirrored"]
+    lines = [f"✏️ <b>{esc(info['name'])}</b>",
+             f"🗂 {t(lang, CATEGORY_KEYS[info['category']])} · 📍 {where}",
+             f"🔥 {info.get('streak', 0)} · {info.get('last7_done', 0)}/{info.get('last7_due', 0)}"]
+    if info.get("paused"):
+        lines.append(f"⏸ {t(lang, 'habit_paused')}")
+    elif info.get("pause_from"):
+        lines.append(f"⏸ {t(lang, 'habit_pause_from', day=short_date(info['pause_from'], lang))}")
+    if protected:
+        lines.append(f"<i>{t(lang, 'habit_protected_edit')}</i>")
+    code = f"{kind}:{item_id}"
+    rows = []
+    if can_manage and not protected:
+        rows.append([InlineKeyboardButton(t(lang, "edit_name"), callback_data=f"he:{code}:n"),
+                     InlineKeyboardButton(t(lang, "edit_category"), callback_data=f"he:{code}:c")])
+        if teams:
+            rows.append([InlineKeyboardButton(t(lang, "edit_move"), callback_data=f"he:{code}:m")])
+        if info.get("paused") or info.get("pause_from"):
+            rows.append([InlineKeyboardButton(t(lang, "habit_resume_btn"),
+                                              callback_data=f"he:{code}:r")])
+        else:
+            rows.append([InlineKeyboardButton(t(lang, "pause_tomorrow"), callback_data=f"he:{code}:pt"),
+                         InlineKeyboardButton(t(lang, "pause_today"), callback_data=f"he:{code}:pd")])
+        rows.append([InlineKeyboardButton(
+            t(lang, "btn_timers"),
+            callback_data=f"tmr:open:{'h' if kind == 'p' else 'H'}:{item_id}")])
+        rows.append([InlineKeyboardButton(t(lang, "edit_delete"), callback_data=f"he:{code}:x")])
+    rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="habit:back")])
+    return "\n".join(lines), InlineKeyboardMarkup(rows)
+
+
+async def show_task_edit(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                         user: User, ws: int, kind: str, item_id: int) -> None:
+    with SessionLocal() as s:
+        view = _task_edit_view(s, user, ws, kind, item_id)
+    if view is None:
+        await _notice(update, t(user.language, "not_found"))
+        return
+    await _show(update, view[0], view[1], edit=True)
+
+
+async def show_habit_edit(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                          user: User, ws: int, kind: str, item_id: int) -> None:
+    with SessionLocal() as s:
+        view = _habit_edit_view(s, user, ws, kind, item_id)
+    if view is None:
+        await _notice(update, t(user.language, "not_found"))
+        return
+    await _show(update, view[0], view[1], edit=True)
+
+
+async def route_task_edit(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                          action: str, parts: list[str], user: User, ws: int) -> None:
+    """te / ted / tep / tem / tex — every change to a task, from the chat."""
+    lang = user.language
+    kind, item_id = parts[1], int(parts[2])
+    tz = svc.user_tz(user)
+    code = f"{kind}:{item_id}"
+
+    if action == "te":
+        op = parts[3]
+        if op == "n":
+            start_flow(ctx, "task_edit", target_id=item_id, kind=kind)
+            await _show(update, t(lang, "ask_new_title"), cancel_keyboard(lang), edit=True)
+        elif op == "d":
+            await _show(update, t(lang, "ask_new_date"), InlineKeyboardMarkup([
+                [InlineKeyboardButton(t(lang, "days_today"), callback_data=f"ted:{code}:0"),
+                 InlineKeyboardButton(t(lang, "days_1"), callback_data=f"ted:{code}:1")],
+                [InlineKeyboardButton(t(lang, "days_7"), callback_data=f"ted:{code}:7"),
+                 InlineKeyboardButton(t(lang, "days_none"), callback_data=f"ted:{code}:none")],
+                [InlineKeyboardButton(t(lang, "days_custom"), callback_data=f"ted:{code}:custom")],
+                [InlineKeyboardButton(t(lang, "back"), callback_data=f"tedit:{code}")],
+            ]), edit=True)
+        elif op == "p":
+            await _show(update, t(lang, "ask_priority"), InlineKeyboardMarkup([
+                [InlineKeyboardButton(f"{PRIORITY_MARK[p]} {t(lang, 'prio_' + p)}",
+                                      callback_data=f"tep:{code}:{p[0]}")]
+                for p in ("high", "medium", "low")] + [
+                [InlineKeyboardButton(t(lang, "back"), callback_data=f"tedit:{code}")]]),
+                edit=True)
+        elif op == "m":
+            with SessionLocal() as s:
+                teams = svc.teams_for(s, user.telegram_id)
+            await _show(update, t(lang, "ask_move"), dest_keyboard(lang, teams, f"tem:{code}"),
+                        edit=True)
+        elif op == "x":
+            await _show(update, t(lang, "confirm_delete"), InlineKeyboardMarkup([
+                [InlineKeyboardButton(t(lang, "edit_delete"), callback_data=f"tex:{code}")],
+                [InlineKeyboardButton(t(lang, "back"), callback_data=f"tedit:{code}")]]),
+                edit=True)
+        return
+
+    try:
+        with SessionLocal() as s:
+            if action == "ted":
+                value = parts[3]
+                if value == "custom":
+                    start_flow(ctx, "task_edit_date", target_id=item_id, kind=kind)
+                    await _show(update, t(lang, "cd_ask_date", title=""),
+                                cancel_keyboard(lang), edit=True)
+                    return
+                today = svc.today_local(tz)
+                new = None if value == "none" else today + timedelta(days=int(value))
+                if kind == "p":
+                    svc.update_task(s, ws, item_id, deadline=new)
+                else:
+                    svc.edit_team_task(s, user.telegram_id, item_id, deadline=new)
+            elif action == "tep":
+                priority = {"h": "high", "m": "medium", "l": "low"}[parts[3]]
+                if kind == "p":
+                    svc.update_task(s, ws, item_id, priority=priority)
+                else:
+                    svc.edit_team_task(s, user.telegram_id, item_id, priority=priority)
+            elif action == "tem":
+                target = parts[3]
+                if kind == "p" and target != "p":
+                    moved = svc.move_task(s, user.telegram_id, task_id=item_id,
+                                          to_team=int(target))
+                    team = svc.team_for(s, user.telegram_id, int(target))
+                    await notify_teammates(int(target), user.telegram_id,
+                                           "team_ev_task_add", moved["title"],
+                                           team.name if team else "")
+                    await _show(update, t(lang, "moved_to", where=f"👥 {esc(team.name if team else '')}"),
+                                None, edit=True)
+                    return
+                if kind == "t" and target == "p":
+                    svc.move_task(s, user.telegram_id, team_task_id=item_id)
+                    await _show(update, t(lang, "moved_to", where=t(lang, "dest_personal")),
+                                None, edit=True)
+                    return
+                if kind == "t" and target != "p":
+                    await _notice(update, t(lang, "move_between_teams"))
+                    return
+            elif action == "tex":
+                if kind == "p":
+                    title = svc.delete_task(s, ws, item_id)
+                else:
+                    row = s.get(db.TeamTask, item_id)
+                    title = row.title if row else ""
+                    team_id = row.team_id if row else None
+                    svc.archive_team_task(s, user.telegram_id, item_id)
+                    if team_id is not None:
+                        team = svc.team_for(s, user.telegram_id, team_id)
+                        await notify_teammates(team_id, user.telegram_id,
+                                               "team_ev_task_del", title,
+                                               team.name if team else "")
+                await _show(update, t(lang, "task_deleted", title=esc(title)), None, edit=True)
+                await show_tasks(update, ctx)
+                return
+    except PermissionError:
+        await _notice(update, t(lang, "team_only_creator"))
+        return
+    except (ValueError, svc.NotFound):
+        await _notice(update, t(lang, "error"))
+        return
+    await show_task_edit(update, ctx, user, ws, kind, item_id)
+
+
+async def route_habit_edit(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                           action: str, parts: list[str], user: User, ws: int) -> None:
+    """he / hec / hem / hex — every change to a habit, from the chat."""
+    lang = user.language
+    kind, item_id = parts[1], int(parts[2])
+    code = f"{kind}:{item_id}"
+    try:
+        with SessionLocal() as s:
+            if action == "he":
+                op = parts[3]
+                if op == "n":
+                    start_flow(ctx, "habit_rename", target_id=item_id, kind=kind)
+                    await _show(update, t(lang, "ask_new_title"), cancel_keyboard(lang),
+                                edit=True)
+                    return
+                if op == "c":
+                    await _show(update, t(lang, "ask_habit_cat"), InlineKeyboardMarkup(
+                        [[InlineKeyboardButton(t(lang, CATEGORY_KEYS[c]),
+                                               callback_data=f"hec:{code}:{c[0]}")]
+                         for c in svc.HABIT_CATEGORIES] + [
+                        [InlineKeyboardButton(t(lang, "back"), callback_data=f"hedit:{code}")]]),
+                        edit=True)
+                    return
+                if op == "m":
+                    teams = svc.teams_for(s, user.telegram_id)
+                    await _show(update, t(lang, "ask_move"),
+                                dest_keyboard(lang, teams, f"hem:{code}"), edit=True)
+                    return
+                if op == "x":
+                    await _show(update, t(lang, "confirm_delete_habit"), InlineKeyboardMarkup([
+                        [InlineKeyboardButton(t(lang, "edit_delete"), callback_data=f"hex:{code}")],
+                        [InlineKeyboardButton(t(lang, "back"), callback_data=f"hedit:{code}")]]),
+                        edit=True)
+                    return
+                if op in ("pt", "pd", "r"):
+                    paused = op != "r"
+                    start = "tomorrow" if op == "pt" else "today"
+                    if kind == "p":
+                        svc.set_habit_paused(s, ws, item_id, paused, from_day=start)
+                    else:
+                        svc.edit_team_habit(s, user.telegram_id, item_id,
+                                            paused=paused, from_day=start)
+            elif action == "hec":
+                category = {"n": "non_negotiable", "t": "target", "b": "bonus"}[parts[3]]
+                if kind == "p":
+                    svc.update_habit(s, ws, item_id, category=category)
+                else:
+                    svc.edit_team_habit(s, user.telegram_id, item_id, category=category)
+            elif action == "hem":
+                target = parts[3]
+                if kind == "p" and target != "p":
+                    moved = svc.move_habit(s, user.telegram_id, habit_id=item_id,
+                                           to_team=int(target))
+                    team = svc.team_for(s, user.telegram_id, int(target))
+                    await notify_teammates(int(target), user.telegram_id,
+                                           "team_ev_habit_add", moved["name"],
+                                           team.name if team else "")
+                    await _show(update, t(lang, "moved_to", where=f"👥 {esc(team.name if team else '')}"),
+                                None, edit=True)
+                    return
+                if kind == "t" and target == "p":
+                    svc.move_habit(s, user.telegram_id, team_habit_id=item_id)
+                    await _show(update, t(lang, "moved_to", where=t(lang, "dest_personal")),
+                                None, edit=True)
+                    return
+                if kind == "t" and target != "p":
+                    await _notice(update, t(lang, "move_between_teams"))
+                    return
+            elif action == "hex":
+                if kind == "p":
+                    name = svc.delete_habit(s, ws, item_id)
+                else:
+                    row = s.get(db.TeamHabit, item_id)
+                    name, team_id = (row.name, row.team_id) if row else ("", None)
+                    svc.archive_team_habit(s, user.telegram_id, item_id)
+                    if team_id is not None:
+                        team = svc.team_for(s, user.telegram_id, team_id)
+                        await notify_teammates(team_id, user.telegram_id,
+                                               "team_ev_habit_del", name,
+                                               team.name if team else "")
+                await log_event(ctx.bot, user, "🗑 HABIT DELETED", f"Habit: {esc(name)}")
+                await show_habits(update, ctx, edit=True)
+                return
+    except PermissionError:
+        await _notice(update, t(lang, "team_only_creator"))
+        return
+    except ValueError as e:
+        await _notice(update, t(lang, "habit_protected" if str(e) == "protected" else "error"))
+        return
+    except svc.NotFound:
+        await _notice(update, t(lang, "not_found"))
+        return
+    await show_habit_edit(update, ctx, user, ws, kind, item_id)
+
+
+# ---------------------------------------------------------------------------
+# Quick capture — anything typed that is not a command becomes a task, on a tap
+# ---------------------------------------------------------------------------
+
+#: A greeting is not a task. These, typed alone, just open Home.
+GREETINGS = {"salom", "assalomu alaykum", "assalom", "hi", "hello", "hey",
+             "привет", "здравствуйте", "rahmat", "thanks", "спасибо", "ok", "ок"}
+
+#: How long an offered capture can still be saved.
+CAPTURE_TTL = 1800
+
+
+async def offer_capture(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                        text: str) -> None:
+    """"ertaga 15:00 doktorga qo'ng'iroq" → a task, one tap away.
+
+    Nothing is written until the tap: a stray message must not become a task
+    nobody meant. But the tap is the only step — the date and the time are
+    already read out of the text, and where it goes is one button per list.
+    """
+    got = await guard(update, ctx, write=False)
+    if got is None:
+        return
+    user, ws = got
+    lang = user.language
+    message = update.effective_message
+    if text.lower().strip(" !.") in GREETINGS or len(text.strip()) < 3:
+        await show_home(update, ctx)
+        return
+    with SessionLocal() as s:
+        parsed = svc.parse_quick_capture(text[:300], svc.today_local(svc.user_tz(user)))
+        teams = svc.teams_for(s, user.telegram_id)
+    capture_id = uuid.uuid4().hex[:6]
+    ctx.user_data["capture"] = {
+        "id": capture_id, "title": parsed["title"][:300],
+        "deadline": parsed["deadline"].isoformat() if parsed["deadline"] else "",
+        "due_time": parsed["due_time"].strftime("%H:%M") if parsed["due_time"] else "",
+        "expires": time.time() + CAPTURE_TTL}
+    when = []
+    if parsed["deadline"]:
+        when.append(f"📅 {short_date(parsed['deadline'].isoformat(), lang)}")
+    if parsed["due_time"]:
+        when.append(f"⏰ {parsed['due_time'].strftime('%H:%M')}")
+    body = f"📥 <b>{esc(parsed['title'])}</b>"
+    if when:
+        body += "\n" + " · ".join(when)
+    body += f"\n\n{t(lang, 'capture_ask')}"
+    rows = [[InlineKeyboardButton(t(lang, "capture_save"),
+                                  callback_data=f"cap:{capture_id}:p")]]
+    for team in teams[:svc.MAX_TEAMS_PER_USER]:
+        rows.append([InlineKeyboardButton(f"👥 {team.name[:30]}",
+                                          callback_data=f"cap:{capture_id}:{team.id}")])
+    rows.append([InlineKeyboardButton(t(lang, "capture_skip"),
+                                      callback_data=f"cap:{capture_id}:x")])
+    await message.reply_text(body, parse_mode=ParseMode.HTML,
+                             reply_markup=InlineKeyboardMarkup(rows))
+
+
+async def save_capture(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                       parts: list[str], user: User, ws: int) -> None:
+    lang = user.language
+    capture = ctx.user_data.get("capture") or {}
+    if (len(parts) < 3 or capture.get("id") != parts[1]
+            or capture.get("expires", 0) < time.time()):
+        await _notice(update, t(lang, "capture_expired"))
+        return
+    ctx.user_data.pop("capture", None)
+    target = parts[2]
+    if target == "x":
+        await update.callback_query.edit_message_text(t(lang, "cancelled"))
+        return
+    deadline = date.fromisoformat(capture["deadline"]) if capture["deadline"] else None
+    due = _parse_hhmm(capture["due_time"]) if capture["due_time"] else None
+    with SessionLocal() as s:
+        if target == "p":
+            svc.add_task(s, ws, capture["title"], deadline=deadline, due_time=due,
+                         remind_before=svc.DEFAULT_REMIND_BEFORE if deadline else None)
+            where = t(lang, "dest_personal")
+        else:
+            svc.add_team_task(s, user.telegram_id, int(target), capture["title"],
+                              deadline=deadline, due_time=due,
+                              remind_before=svc.DEFAULT_REMIND_BEFORE if deadline else None)
+            team = svc.team_for(s, user.telegram_id, int(target))
+            where = f"👥 {team.name if team else ''}"
+    await update.callback_query.edit_message_text(
+        t(lang, "capture_saved", title=esc(capture["title"]), where=esc(where)),
+        parse_mode=ParseMode.HTML)
+    if target != "p":
+        with SessionLocal() as s:
+            team = svc.team_for(s, user.telegram_id, int(target))
+        await notify_teammates(int(target), user.telegram_id, "team_ev_task_add",
+                               capture["title"], team.name if team else "")
+
+
+def _parse_hhmm(value: str) -> dtime | None:
+    try:
+        hour, minute = (int(x) for x in value.replace(".", ":").split(":"))
+        return dtime(hour, minute)
+    except (ValueError, TypeError):
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -2323,6 +3288,32 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             # Keeping the Telegram name is one tap, which is what it should be.
             await query.edit_message_text(t(lang, "name_set", name=esc(telegram_name)),
                                           parse_mode=ParseMode.HTML)
+            return await advance_setup(update, ctx, "modules")
+
+        if parts[1] == "mod" and len(parts) > 2:
+            chosen = set(setup_data(ctx).setdefault("modules", []))
+            name = parts[2]
+            if name in SETUP_MODULES:
+                chosen ^= {name}
+            setup_data(ctx)["modules"] = sorted(chosen)
+            try:
+                await query.edit_message_reply_markup(
+                    reply_markup=modules_keyboard(lang, chosen))
+            except BadRequest:
+                pass
+            return
+
+        if parts[1] == "mod_done":
+            chosen = set(setup_data(ctx).get("modules") or [])
+            with SessionLocal() as s:
+                user = s.get(User, tg_user.id)
+                ws = svc.workspace_id_for(s, tg_user.id)
+                svc.set_modules(s, ws, chosen, user=user)
+            setup_data(ctx)["team"] = "team" in chosen
+            labels = [t(lang, MODULE_LABELS[n]) for n in SETUP_MODULES if n in chosen]
+            await query.edit_message_text(
+                t(lang, "modules_set", list=", ".join(labels) if labels
+                  else t(lang, "modules_none")), parse_mode=ParseMode.HTML)
             return await advance_setup(update, ctx, "goal")
 
         if parts[1] == "skip":
@@ -2330,6 +3321,13 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             order = ONBOARDING_STEPS
             nxt = order[order.index(step) + 1] if step in order else "done"
             return await advance_setup(update, ctx, nxt)
+        return
+
+    # A team invite is answered before anything else: the person opening it
+    # may not have finished setting up, and joining is their decision to make
+    # on a screen that says what they are joining.
+    if action == "tjoin":
+        await answer_team_invite(update, ctx, parts[1] if len(parts) > 1 else "x")
         return
 
     if action == "gender":
@@ -2361,8 +3359,10 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         await show_invite(update, ctx)
         return
 
-    # Everything below requires a completed, subscribed account.
-    got = await guard(update, ctx)
+    # Everything below requires a completed account. A button that only opens
+    # a screen stays usable for somebody who left the channel — their own data
+    # is never locked away from them; what the gate stops is new writes.
+    got = await guard(update, ctx, write=not is_read_callback(action, parts))
     if got is None:
         return
     user, ws = got
@@ -2376,12 +3376,12 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if action in COUNTED_CALLBACKS:
             await count_action(user.telegram_id, ctx, update.effective_message, lang)
     except svc.NotFound:
-        await query.answer(t(lang, "not_found"), show_alert=True)
+        await _notice(update, t(lang, "not_found"))
+    except PermissionError:
+        await _notice(update, t(lang, "team_only_creator"))
     except ValueError as e:
-        if str(e) == "protected":
-            await query.answer(t(lang, "habit_protected"), show_alert=True)
-        else:
-            await query.answer(t(lang, "error"), show_alert=True)
+        await _notice(update, t(lang, "habit_protected" if str(e) == "protected"
+                                else "error"))
 
 
 async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
@@ -2436,6 +3436,28 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             with SessionLocal() as s:
                 svc.set_habit_paused(s, ws, int(parts[2]), False)
             await show_habits(update, ctx, edit=True)
+        elif sub == "editlist":
+            # Private and shared habits together; a shared one is edited by
+            # its creator, an admin or the owner, and says so if you are not.
+            with SessionLocal() as s:
+                mine = [h for h in svc.list_habits(s, ws, tz=svc.user_tz(user))
+                        if not h["protected"]]
+                shared = svc.team_items_for_day(s, user.telegram_id,
+                                                tz=svc.user_tz(user))["habits"]
+                shared = [h for h in shared if not h.get("mirrored")]
+            if not mine and not shared:
+                await _notice(update, t(lang, "empty"))
+                return
+            rows = [[InlineKeyboardButton(h["name"][:40], callback_data=f"hedit:p:{h['id']}")]
+                    for h in mine[:15]]
+            rows += [[InlineKeyboardButton(f"👥 {h['name'][:30]} · {h['team_name'][:12]}",
+                                           callback_data=f"hedit:t:{h['id']}")]
+                     for h in shared[:10]]
+            rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="habit:back")])
+            await query.edit_message_text(t(lang, "choose_edit"),
+                                          reply_markup=InlineKeyboardMarkup(rows))
+        elif sub == "mirrored":
+            await _notice(update, t(lang, "habit_mirrored"))
         elif sub == "back":
             await show_habits(update, ctx, edit=True)
         elif sub == "noop":
@@ -2451,17 +3473,28 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         elif sub in ("donelist", "editlist", "dellist"):
             with SessionLocal() as s:
                 tasks = _all_open_tasks(s, ws)
-            if not tasks:
+                shared = (svc.team_items_for_day(s, user.telegram_id,
+                                                 tz=svc.user_tz(user))["tasks"]
+                          if sub == "editlist" else [])
+            if not tasks and not shared:
                 # The button is not drawn in this state, so reaching here means
                 # a stale keyboard. Say so instead of opening an empty chooser.
                 await query.answer(t(lang, "empty"), show_alert=True)
                 return
-            verb = {"donelist": "done", "editlist": "edit", "dellist": "del"}[sub]
             prompt = {"donelist": "choose_done", "editlist": "choose_edit",
                       "dellist": "choose_delete"}[sub]
-            rows = [[InlineKeyboardButton(task["title"][:40],
-                                          callback_data=f"task:{verb}:{task['id']}")]
-                    for task in tasks[:15]]
+            if sub == "editlist":
+                rows = [[InlineKeyboardButton(task["title"][:40],
+                                              callback_data=f"tedit:p:{task['id']}")]
+                        for task in tasks[:15]]
+                rows += [[InlineKeyboardButton(
+                    f"👥 {task['title'][:30]} · {(task.get('team_name') or '')[:12]}",
+                    callback_data=f"tedit:t:{task['id']}")] for task in shared[:10]]
+            else:
+                verb = {"donelist": "done", "dellist": "del"}[sub]
+                rows = [[InlineKeyboardButton(task["title"][:40],
+                                              callback_data=f"task:{verb}:{task['id']}")]
+                        for task in tasks[:15]]
             rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="task:back")])
             await query.edit_message_text(t(lang, prompt),
                                           reply_markup=InlineKeyboardMarkup(rows))
@@ -2485,18 +3518,36 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             await query.edit_message_text(t(lang, "task_done", title=task.title))
             await show_tasks(update, ctx)
         elif sub == "edit":
-            start_flow(ctx, "task_edit", target_id=int(parts[2]))
-            await query.edit_message_text(t(lang, "ask_new_title"))
+            # An old keyboard's edit button: the full edit menu now.
+            await show_task_edit(update, ctx, user, ws, "p", int(parts[2]))
         elif sub == "back":
             await show_tasks(update, ctx, edit=True)
         elif sub == "noop":
             pass
 
+    elif action == "tedit":
+        await show_task_edit(update, ctx, user, ws, parts[1], int(parts[2]))
+
+    elif action in ("te", "ted", "tep", "tem", "tex"):
+        await route_task_edit(update, ctx, action, parts, user, ws)
+
+    elif action == "hedit":
+        await show_habit_edit(update, ctx, user, ws, parts[1], int(parts[2]))
+
+    elif action in ("he", "hec", "hem", "hex"):
+        await route_habit_edit(update, ctx, action, parts, user, ws)
+
+    elif action == "cap":
+        await save_capture(update, ctx, parts, user, ws)
+
+    elif action == "home":
+        await show_home(update, ctx)
+
     elif action == "tmr":
         await route_timer(update, ctx, parts, user, ws, lang)
 
-    elif action == "cd":
-        await route_countdown(update, ctx, parts, user, ws, lang)
+    elif action in ("cd", "cds", "cdd", "cdl", "cdq"):
+        await route_countdown(update, ctx, action, parts, user, ws, lang)
 
     # --- shared (team) work: each member ticks only their own share ---
     elif action == "thabit" and len(parts) > 2 and parts[1] == "toggle":
@@ -2504,8 +3555,16 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             with SessionLocal() as s:
                 svc.toggle_team_habit(s, user.telegram_id, int(parts[2]),
                                       tz=svc.user_tz(user))
-        except (PermissionError, ValueError):
+        except PermissionError:
             await _notice(update, t(lang, "not_found"))
+            return
+        except ValueError as e:
+            reason = str(e)
+            if reason == "timer_required":
+                await show_timer(update, ctx, user, ws, "thabit", int(parts[2]))
+            else:
+                await _notice(update, t(lang, "habit_mirrored" if reason == "mirrored"
+                                        else "not_found"))
             return
         await show_habits(update, ctx, edit=True)
 
@@ -2515,69 +3574,69 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                 with SessionLocal() as s:
                     svc.toggle_team_task(s, user.telegram_id, int(parts[2]),
                                          tz=svc.user_tz(user))
-            except (PermissionError, ValueError):
+            except PermissionError:
                 await _notice(update, t(lang, "not_found"))
+                return
+            except ValueError as e:
+                reason = str(e)
+                if reason == "timer_required":
+                    await show_timer(update, ctx, user, ws, "ttask", int(parts[2]))
+                else:
+                    await _notice(update, t(lang, "team_not_assigned"
+                                            if reason == "not_assigned" else "not_found"))
                 return
         await show_team_tasks(update, ctx, user)
 
-    elif action == "team":
-        what = parts[1] if len(parts) > 1 else ""
-        if what == "new":
-            start_flow(ctx, "team_name")
-            await query.edit_message_text(t(lang, "team_ask_name"))
+    elif action in ("team", "treq", "tnot", "town", "trole"):
+        await route_team(update, ctx, action, parts, user, lang)
+
+    elif action in ("tdest", "hdest"):
+        # Where the new task or habit goes: yours, or a team's.
+        kind = "task" if action == "tdest" else "habit"
+        flow = current_flow(ctx, f"{kind}_dest") or {}
+        title = flow.get("title")
+        if not title:
+            await _notice(update, t(lang, "flow_expired"))
             return
-        if what == "invite" and len(parts) > 2:
-            await send_team_invite(update, ctx, int(parts[2]))
-            return
-        if what == "rename" and len(parts) > 2:
-            start_flow(ctx, "team_rename", team_id=int(parts[2]))
-            await query.edit_message_text(t(lang, "team_ask_rename"))
-            return
-        await query.answer()
+        dest = parts[1]
+        if dest != "p":
+            with SessionLocal() as s:
+                if svc.team_for(s, user.telegram_id, int(dest)) is None:
+                    await _notice(update, t(lang, "not_found"))
+                    return
+        if kind == "task":
+            start_flow(ctx, "task_days", title=title, dest=dest)
+            await query.edit_message_text(t(lang, "ask_task_days"),
+                                          reply_markup=days_keyboard(lang))
+        else:
+            start_flow(ctx, "habit_cat", title=title, dest=dest)
+            await query.edit_message_text(t(lang, "ask_habit_cat"),
+                                          reply_markup=category_keyboard(lang))
 
     elif action == "taskday":
         flow = current_flow(ctx, "task_days") or {}
         title = flow.get("title")
         if not title:
-            await query.answer(t(lang, "error"), show_alert=True)
+            await _notice(update, t(lang, "flow_expired"))
             return
+        dest = flow.get("dest") or "p"
         if parts[1] == "custom":
-            start_flow(ctx, "task_custom_days", title=title)
+            start_flow(ctx, "task_custom_days", title=title, dest=dest)
             await query.edit_message_text(t(lang, "ask_custom_days"))
             return
+        if parts[1] == "none":
+            await query.edit_message_text(t(lang, "no_deadline"))
+            await ask_task_project(update, ctx, title, None, dest)
+            return
         deadline = svc.today_local(svc.user_tz(user)) + timedelta(days=int(parts[1]))
-        await query.edit_message_text(f"📅 {deadline.isoformat()}")
-        await ask_task_project(update, ctx, title, deadline)
+        await query.edit_message_text(f"📅 {short_date(deadline.isoformat(), lang)}")
+        await ask_task_project(update, ctx, title, deadline, dest)
 
     elif action == "taskproj":
-        flow = current_flow(ctx, "task_project") or {}
-        title, deadline = flow.get("title"), flow.get("deadline")
-        if not title:
-            await query.answer(t(lang, "error"), show_alert=True)
+        if current_flow(ctx, "task_project") is None:
+            await _notice(update, t(lang, "flow_expired"))
             return
-        project_id = int(parts[1]) or None
-        with SessionLocal() as s:
-            # The chat flow asks for a title, a date and a project and stops
-            # there, so a task made here would never get a reminder at all.
-            # It gets the standard one instead; the Mini App's task sheet is
-            # where it can be changed or turned off.
-            task = svc.add_task(s, ws, title,
-                                deadline=date.fromisoformat(deadline) if deadline else None,
-                                project_id=project_id,
-                                remind_before=svc.DEFAULT_REMIND_BEFORE
-                                if deadline else None)
-            timer = svc.timer_minutes_for(task.timer_minutes, task.title)
-        ctx.user_data.pop("flow", None)
-        await query.edit_message_text(t(lang, "task_added", title=task.title))
-        if timer:
-            # "2h report" just became a task done by a two-hour timer; say so
-            # now, not the first time the box refuses a tap.
-            await message.reply_text(t(lang, "task_added_timer",
-                                       dur=fmt_minutes(timer, lang)),
-                                     parse_mode=ParseMode.HTML)
-        await log_event(ctx.bot, user, "⚡ TASK ADDED",
-                        f"Task: {task.title}\nDeadline: {deadline or '—'}")
-        await show_tasks(update, ctx)
+        await create_task_from_flow(update, ctx, user, ws, int(parts[1]))
 
     # --- projects ---
     elif action == "project":
@@ -2614,19 +3673,38 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         flow = current_flow(ctx, "habit_cat") or {}
         title = flow.get("title")
         if not title:
-            await query.answer(t(lang, "error"), show_alert=True)
+            await _notice(update, t(lang, "flow_expired"))
             return
+        dest = flow.get("dest") or "p"
+        category = parts[1] if parts[1] in svc.HABIT_CATEGORIES else "target"
+        tz = svc.user_tz(user)
         with SessionLocal() as s:
-            habit = svc.add_habit(s, ws, title, parts[1])
-            timer = svc.timer_minutes_for(habit.timer_minutes, habit.name)
+            if dest == "p":
+                habit = svc.add_habit(s, ws, title, category, tz=tz)
+                name, timer = habit.name, svc.timer_minutes_for(habit.timer_minutes,
+                                                                habit.name)
+                team_name = None
+            else:
+                row = svc.add_team_habit(s, user.telegram_id, int(dest), title,
+                                         category=category, tz=tz)
+                name, timer = row["name"], row.get("timer_minutes")
+                team = svc.team_for(s, user.telegram_id, int(dest))
+                team_name = team.name if team else ""
         ctx.user_data.pop("flow", None)
-        await query.edit_message_text(t(lang, "habit_added", name=habit.name))
+        if team_name is None:
+            await query.edit_message_text(t(lang, "habit_added", name=name))
+        else:
+            await query.edit_message_text(
+                t(lang, "habit_added_team", name=esc(name), team=esc(team_name)),
+                parse_mode=ParseMode.HTML)
+            await notify_teammates(int(dest), user.telegram_id, "team_ev_habit_add",
+                                   name, team_name)
         if timer:
             await message.reply_text(t(lang, "habit_added_timer",
                                        dur=fmt_minutes(timer, lang)),
                                      parse_mode=ParseMode.HTML)
         await log_event(ctx.bot, user, "➕ HABIT ADDED",
-                        f"Habit: {habit.name}\nCategory: {parts[1]}")
+                        f"Habit: {esc(name)}\nCategory: {category}")
         await show_habits(update, ctx)
 
     # --- settings ---
@@ -2674,6 +3752,13 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             start_flow(ctx, "wake_time")
             await query.edit_message_text(t(lang, "ask_wake_time"),
                                           reply_markup=InlineKeyboardMarkup([back]))
+        elif sub == "modules":
+            with SessionLocal() as s:
+                live = svc.modules_for(s, ws)
+            await query.edit_message_text(
+                t(lang, "modules_settings"), parse_mode=ParseMode.HTML,
+                reply_markup=modules_keyboard(lang, {k for k, v in live.items() if v},
+                                              prefix="setm", done="set:back"))
         elif sub == "photodel":
             ctx.user_data.pop("flow", None)
             with SessionLocal() as s:
@@ -2682,6 +3767,20 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                 s.commit()
             await query.edit_message_text(t(lang, "photo_removed"))
             await show_settings(update, ctx)
+
+    elif action == "setm":
+        # A ritual switched off keeps every log it had; switched back on, it
+        # picks up where it was, and the days away are not counted as missed.
+        with SessionLocal() as s:
+            row = s.get(User, user.telegram_id)
+            live = {k for k, v in svc.modules_for(s, ws).items() if v}
+            live ^= {parts[1]} if parts[1] in svc.MODULES else set()
+            live = {k for k, v in svc.set_modules(s, ws, live, user=row).items() if v}
+        try:
+            await query.edit_message_reply_markup(
+                reply_markup=modules_keyboard(lang, live, prefix="setm", done="set:back"))
+        except BadRequest:
+            pass
 
     elif action == "theme":
         with SessionLocal() as s:
@@ -2851,6 +3950,21 @@ def render_morning(data: dict, lang: str) -> str:
     return "\n".join(lines)
 
 
+def team_item_mark(item: dict) -> str:
+    """✅ only when everybody who owed it has it — never on a partial tick.
+
+    `owed_by` is who the item was for that day (everybody, one "any" task,
+    or its assignees); `finished_for` is who it counts as done for. A green
+    tick on a habit half the team has not done yet reads as "done", and the
+    other half then believes it.
+    """
+    owed = set(item.get("owed_by") or [])
+    finished = set(item.get("finished_for") or item.get("done_by") or [])
+    if owed and owed <= finished:
+        return "✅"
+    return "🔸" if finished else "◻️"
+
+
 def render_team(summary: dict, lang: str, viewer_id: int, *,
                 evening: bool) -> str | None:
     """One team's day, as its own message.
@@ -2881,12 +3995,12 @@ def render_team(summary: dict, lang: str, viewer_id: int, *,
         return ", ".join(esc(m["name"]) for m in summary["members"]
                          if m["user_id"] in ids)
 
+    lines.insert(1, f"<i>{render_team_units(summary, lang)}</i>")
+
     if summary["tasks"]:
         lines.append(f"<b>{t(lang, 'team_tasks')}</b>")
         for task in summary["tasks"][:8]:
-            mark = "✅" if task["done_count"] == len(summary["member_ids"]) else (
-                "◻️" if not task["done_count"] else "🔸")
-            row = f"{mark} {esc(task['title'])}"
+            row = f"{team_item_mark(task)} {esc(task['title'])}"
             if task["done_by"]:
                 row += f"  <i>— {who(task['done_by'])}</i>"
             lines.append(row)
@@ -2897,9 +4011,7 @@ def render_team(summary: dict, lang: str, viewer_id: int, *,
     if summary["habits"]:
         lines.append(f"<b>{t(lang, 'team_habits')}</b>")
         for habit in summary["habits"][:8]:
-            mark = "✅" if habit["done_count"] == len(summary["member_ids"]) else (
-                "◻️" if not habit["done_count"] else "🔸")
-            row = f"{mark} {esc(habit['name'])}"
+            row = f"{team_item_mark(habit)} {esc(habit['name'])}"
             if habit["done_by"]:
                 row += f"  <i>— {who(habit['done_by'])}</i>"
             lines.append(row)
@@ -3173,8 +4285,11 @@ async def _send_team_summaries(bot, telegram_id: int, lang: str,
             user = s.get(User, telegram_id)
             if user is None:
                 return 0
-            summaries = svc.team_summaries_for(s, telegram_id,
-                                               tz=svc.user_tz(user))
+            # Only teams this member still wants reports from.
+            summaries = [svc.team_day_summary(s, team.id, tz=svc.user_tz(user))
+                         for team in svc.teams_for(s, telegram_id)
+                         if svc.member_notify(s, team.id, telegram_id)
+                         in ("all", "important")]
     except Exception:
         log.exception("could not build team summaries for %s", telegram_id)
         return 0
@@ -3635,54 +4750,146 @@ scheduler = None
 #: The screens reachable by command as well as by keyboard button. `/start`,
 #: `/home` and `/guide` are registered separately because they are also the
 #: entry points, and must work before onboarding finishes.
-async def show_teams(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    """The team screen: what you share, and with whom."""
-    got = await guard(update, ctx)
+ROLE_ICON = {"owner": "👑", "admin": "⭐", "member": "👤"}
+
+
+def _invite_status(info: dict, lang: str, tz) -> str:
+    """`🔗 Havola 2-oktabr 14:00 gacha ishlaydi` — or that it no longer does."""
+    if info.get("expired") or not info.get("expires_at"):
+        return t(lang, "team_invite_expired")
+    until = datetime.fromisoformat(info["expires_at"]).replace(
+        tzinfo=svc._utc.utc).astimezone(tz)
+    return t(lang, "team_invite_until",
+             when=f"{short_date(until.date().isoformat(), lang)} {until:%H:%M}")
+
+
+def render_team_units(summary: dict, lang: str) -> str:
+    """`5 ta ish · 10 ta tasdiq · 9 tasi qolgan` — three countable numbers."""
+    units = summary.get("units") or {}
+    if not units.get("items"):
+        return t(lang, "team_nothing_today")
+    return t(lang, "team_units", items=units["items"],
+             confirmations=units["confirmations"], left=units["left"])
+
+
+async def show_teams(update: Update, ctx: ContextTypes.DEFAULT_TYPE, *,
+                     edit: bool = False) -> None:
+    """The team screen: every team, today's count, and a way into each."""
+    got = await guard(update, ctx, write=False)
     if not got:
         return
     user, _ = got
     lang = user.language
-    message = update.effective_message
+    tz = svc.user_tz(user)
 
     with SessionLocal() as s:
         teams = svc.teams_for(s, user.telegram_id)
-        summaries = [(team, svc.team_day_summary(s, team.id,
-                                                 tz=svc.user_tz(user)),
-                      svc.team_members(s, team.id)) for team in teams]
+        summaries = [(team, svc.team_day_summary(s, team.id, tz=tz),
+                      svc.team_members(s, team.id),
+                      svc.role_of(s, team.id, user.telegram_id)) for team in teams]
+        offers = [team for team in teams if team.pending_owner_id == user.telegram_id]
 
     if not teams:
-        await message.reply_text(
-            t(lang, "team_none"), parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
-                t(lang, "team_create_btn"), callback_data="team:new")]]))
+        await _show(update, t(lang, "team_none"), InlineKeyboardMarkup([[
+            InlineKeyboardButton(t(lang, "team_create_btn"), callback_data="team:new")]]),
+            edit=edit)
         return
 
     lines = [t(lang, "team_list_title"), ""]
     rows = []
-    for team, summary, members in summaries:
-        who = ", ".join(esc(m["name"]) for m in members)
-        lines.append(f"<b>{esc(team.name)}</b>")
-        lines.append(f"<i>{who}</i>")
+    for team, summary, members, role in summaries:
+        lines.append(f"<b>{esc(team.name)}</b> · {ROLE_ICON.get(role, '👤')} "
+                     f"{t(lang, 'role_' + (role or 'member'))}")
+        lines.append(f"<i>{', '.join(esc(m['name']) for m in members)}</i>")
+        lines.append(render_team_units(summary, lang))
         for member in summary.get("members", []):
             percent = member["percent"]
             lines.append(f"   {member['done']}/{member['total']} · "
                          f"{esc(member['name'])}"
                          + (f" · {percent}%" if percent is not None else ""))
         lines.append("")
-        rows.append([InlineKeyboardButton(f"🔗 {team.name[:18]}",
-                                          callback_data=f"team:invite:{team.id}"),
-                     InlineKeyboardButton(t(lang, "team_rename_btn"),
-                                          callback_data=f"team:rename:{team.id}")])
-    rows.append([InlineKeyboardButton(t(lang, "team_create_btn"),
-                                      callback_data="team:new")])
+        rows.append([InlineKeyboardButton(f"👥 {team.name[:30]}",
+                                          callback_data=f"team:open:{team.id}")])
+    for team in offers:
+        lines.append(t(lang, "team_owner_offer", name=esc(team.name)))
+        rows.append([InlineKeyboardButton(t(lang, "accept"), callback_data=f"town:a:{team.id}"),
+                     InlineKeyboardButton(t(lang, "decline"), callback_data=f"town:d:{team.id}")])
+    if len(teams) < svc.MAX_TEAMS_PER_USER:
+        rows.append([InlineKeyboardButton(t(lang, "team_create_btn"),
+                                          callback_data="team:new")])
+    await _show(update, "\n".join(lines).rstrip(), InlineKeyboardMarkup(rows), edit=edit)
 
-    await message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML,
-                             reply_markup=InlineKeyboardMarkup(rows))
+
+async def show_team(update: Update, ctx: ContextTypes.DEFAULT_TYPE, user: User,
+                    team_id: int, *, edit: bool = True) -> None:
+    """One team: who is in it and as what, the invite, and your own settings."""
+    lang = user.language
+    tz = svc.user_tz(user)
+    with SessionLocal() as s:
+        team = svc.team_for(s, user.telegram_id, team_id)
+        if team is None:
+            await _notice(update, t(lang, "not_found"))
+            return
+        members = svc.team_members(s, team_id)
+        perms = svc.team_permissions(s, team_id, user.telegram_id)
+        summary = svc.team_day_summary(s, team_id, tz=tz)
+        invite = svc.invite_info(team)
+        notify = svc.member_notify(s, team_id, user.telegram_id)
+        requests = (svc.list_join_requests(s, user.telegram_id, team_id)
+                    if perms["approve"] else [])
+        name = team.name
+
+    lines = [f"<b>👥 {esc(name)}</b>", render_team_units(summary, lang), ""]
+    for m in members:
+        you = f" ({t(lang, 'you')})" if m["user_id"] == user.telegram_id else ""
+        lines.append(f"{ROLE_ICON[m['role']]} {esc(m['name'])}{you} · "
+                     f"{t(lang, 'role_' + m['role'])}")
+    lines.append("")
+    if perms["invite"]:
+        lines.append(_invite_status(invite, lang, tz))
+        if invite["approval"]:
+            lines.append(t(lang, "team_approval_on"))
+    lines.append(t(lang, "team_notify_now", level=t(lang, f"notify_{notify}")))
+    if requests:
+        lines.append("")
+        lines.append(t(lang, "team_requests", n=len(requests)))
+
+    rows = []
+    if perms["invite"]:
+        rows.append([InlineKeyboardButton(t(lang, "team_invite_btn"),
+                                          callback_data=f"team:invite:{team_id}"),
+                     InlineKeyboardButton(t(lang, "team_revoke_btn"),
+                                          callback_data=f"team:revoke:{team_id}")])
+        rows.append([InlineKeyboardButton(
+            t(lang, "team_approval_off_btn" if invite["approval"] else "team_approval_on_btn"),
+            callback_data=f"team:approval:{team_id}:{0 if invite['approval'] else 1}")])
+    for request in requests[:5]:
+        rows.append([InlineKeyboardButton(f"✅ {request['name'][:24]}",
+                                          callback_data=f"treq:a:{request['id']}"),
+                     InlineKeyboardButton("✖️", callback_data=f"treq:d:{request['id']}")])
+    rows.append([InlineKeyboardButton(t(lang, "team_notify_btn"),
+                                      callback_data=f"team:notify:{team_id}"),
+                 InlineKeyboardButton(t(lang, "team_stats_btn"),
+                                      callback_data=f"team:stats:{team_id}")])
+    if perms["roles"] or perms["remove_members"]:
+        rows.append([InlineKeyboardButton(t(lang, "team_members_btn"),
+                                          callback_data=f"team:members:{team_id}")])
+    if perms["rename"]:
+        rows.append([InlineKeyboardButton(t(lang, "team_rename_btn"),
+                                          callback_data=f"team:rename:{team_id}")])
+    rows.append([InlineKeyboardButton(t(lang, "team_leave_btn"),
+                                      callback_data=f"team:leave:{team_id}")])
+    rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="team:list")])
+    await _show(update, "\n".join(lines), InlineKeyboardMarkup(rows), edit=edit)
 
 
 async def send_team_invite(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                            team_id: int) -> None:
-    """Hand the user the link that adds somebody to this team."""
+    """Hand the user the link that adds somebody to this team.
+
+    An expired link is renewed first — asking for the link is asking for one
+    that works. Owners and admins only.
+    """
     got = await guard(update, ctx)
     if not got:
         return
@@ -3690,13 +4897,21 @@ async def send_team_invite(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     lang = user.language
     message = update.effective_message
 
-    with SessionLocal() as s:
-        team = svc.team_for(s, user.telegram_id, team_id)
-        if team is None:
-            await message.reply_text(t(lang, "error"))
-            return
-        link = svc.team_invite_link(team, BOT_USERNAME)
-        name = team.name
+    try:
+        with SessionLocal() as s:
+            team = svc.team_for(s, user.telegram_id, team_id)
+            if team is None:
+                await message.reply_text(t(lang, "error"))
+                return
+            if not svc.team_permissions(s, team_id, user.telegram_id)["invite"]:
+                raise PermissionError("forbidden")
+            if svc.invite_info(team)["expired"] or team.code_expires_at is None:
+                team = svc.renew_invite(s, user.telegram_id, team_id)
+            link = svc.team_invite_link(team, BOT_USERNAME)
+            name, info = team.name, svc.invite_info(team)
+    except PermissionError:
+        await _notice(update, t(lang, "team_admin_only"))
+        return
 
     if not link:
         # Without a configured @name there is no link to give, and inventing
@@ -3704,50 +4919,261 @@ async def send_team_invite(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         await message.reply_text(t(lang, "ref_not_configured"))
         return
     await message.reply_text(
-        t(lang, "team_created", name=esc(name)) + f"\n\n{link}",
+        t(lang, "team_invite_text", name=esc(name)) + f"\n\n{link}\n\n"
+        + _invite_status(info, lang, svc.user_tz(user)),
         parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 
-async def accept_team_invite(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
-                             code: str) -> bool:
-    """Join the team an invite link points at. True when it was handled.
-
-    Called from `/start`, where the payload arrives. Returns False for a
-    payload that is not a team invite so the caller can carry on with normal
-    onboarding.
-    """
+async def preview_team_invite(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                              code: str) -> None:
+    """What opening an invite shows: the team, who runs it, how full it is —
+    and a button to join. Nobody is added to anything by opening a link."""
     tg_user = update.effective_user
     message = update.effective_message
-    if tg_user is None or message is None:
-        return False
-
     with SessionLocal() as s:
         user = s.get(User, tg_user.id)
         lang = user.language if user else "uz"
+        info = svc.preview_invite(s, code)
+        already = bool(info and svc.team_for(s, tg_user.id, info["team_id"]))
+    if info is None:
+        await message.reply_text(t(lang, "team_unknown", name=""), parse_mode=ParseMode.HTML)
+        return
+    if already:
+        await message.reply_text(t(lang, "team_already", name=esc(info["name"])),
+                                 parse_mode=ParseMode.HTML)
+        return
+    if info["expired"]:
+        await message.reply_text(t(lang, "team_link_expired", name=esc(info["name"])),
+                                 parse_mode=ParseMode.HTML)
+        return
+    ctx.user_data["team_invite"] = code
+    text = t(lang, "team_preview", name=esc(info["name"]), owner=esc(info["owner"]),
+             n=info["members"], max=info["max_members"])
+    if info["approval"]:
+        text += "\n" + t(lang, "team_preview_approval")
+    await message.reply_text(text, parse_mode=ParseMode.HTML,
+                             reply_markup=InlineKeyboardMarkup([[
+                                 InlineKeyboardButton(t(lang, "team_join_btn"),
+                                                      callback_data="tjoin:y"),
+                                 InlineKeyboardButton(t(lang, "decline"),
+                                                      callback_data="tjoin:x")]]))
+
+
+async def answer_team_invite(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                             answer: str) -> None:
+    """The tap on the invite preview: join (or ask to), or not."""
+    tg_user = update.effective_user
+    query = update.callback_query
+    code = ctx.user_data.pop("team_invite", None)
+    with SessionLocal() as s:
+        user = s.get(User, tg_user.id)
+        lang = user.language if user else "uz"
+        onboarded = bool(user and user.onboarded)
+    if answer != "y" or not code:
+        await query.edit_message_text(t(lang, "cancelled") if answer != "y"
+                                      else t(lang, "flow_expired"))
+        return
+
+    with SessionLocal() as s:
         team, outcome = svc.join_team(s, tg_user.id, code)
-        name = esc(team.name) if team else ""
-        members = svc.team_members(s, team.id) if team else []
+        name = team.name if team else ""
+        team_id = team.id if team else None
         joiner = (tg_user.first_name or "").strip() or str(tg_user.id)
+        recipients = (svc.team_recipients(s, team_id, tg_user.id, "join")
+                      if team and outcome == "joined" else [])
+        approvers = ([(m["user_id"], m["language"]) for m in svc.team_members(s, team_id)
+                      if m["role"] in ("owner", "admin")]
+                     if team and outcome == "requested" else [])
 
     key = {"joined": "team_joined", "already": "team_already",
-           "full": "team_full", "unknown": "team_unknown"}[outcome]
-    await message.reply_text(t(lang, key, name=name),
-                             parse_mode=ParseMode.HTML)
+           "full": "team_full", "unknown": "team_unknown",
+           "expired": "team_link_expired", "requested": "team_requested"}[outcome]
+    await query.edit_message_text(t(lang, key, name=esc(name)),
+                                  parse_mode=ParseMode.HTML)
 
-    # Tell the people already in it, so joining is visible from both sides.
-    if outcome == "joined":
-        for member in members:
-            if member["user_id"] == tg_user.id:
-                continue
+    # Each teammate hears it in their own language, and only if they asked to.
+    for member_id, member_lang in recipients:
+        try:
+            await ctx.bot.send_message(
+                member_id, t(member_lang, "team_member_joined", who=esc(joiner),
+                             name=esc(name)), parse_mode=ParseMode.HTML)
+        except TelegramError as e:
+            log.info("could not tell %s about a new member: %s", member_id, e)
+    for member_id, member_lang in approvers:
+        try:
+            await ctx.bot.send_message(
+                member_id, t(member_lang, "team_request_new", who=esc(joiner),
+                             name=esc(name)), parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
+                    t(member_lang, "team_open_btn"), callback_data=f"team:open:{team_id}")]]))
+        except TelegramError as e:
+            log.info("could not tell %s about a join request: %s", member_id, e)
+    if outcome == "joined" and onboarded:
+        await show_teams(update, ctx)
+
+
+async def route_team(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                     action: str, parts: list[str], user: User, lang: str) -> None:
+    """team:* · treq (join requests) · tnot (notify level) · town (ownership) · trole."""
+    query = update.callback_query
+    uid = user.telegram_id
+    what = parts[1] if len(parts) > 1 else ""
+
+    try:
+        if action == "treq":
+            with SessionLocal() as s:
+                request, team, outcome = svc.decide_join_request(
+                    s, uid, int(parts[2]), parts[1] == "a")
+                joiner = s.get(User, request.user_id)
+                joiner_lang = joiner.language if joiner else "uz"
+                team_id, name = team.id, team.name
+            key = {"approved": "team_joined", "declined": "team_request_declined",
+                   "full": "team_full"}.get(outcome, "team_already")
             try:
-                await ctx.bot.send_message(
-                    member["user_id"],
-                    t(lang, "team_member_joined", who=esc(joiner), name=name),
-                    parse_mode=ParseMode.HTML)
+                await ctx.bot.send_message(request.user_id,
+                                           t(joiner_lang, key, name=esc(name)),
+                                           parse_mode=ParseMode.HTML)
             except TelegramError as e:
-                log.info("could not tell %s about a new member: %s",
-                         member["user_id"], e)
-    return True
+                log.info("could not answer join request %s: %s", request.id, e)
+            await show_team(update, ctx, user, team_id)
+            return
+
+        if action == "tnot":
+            team_id, level = int(parts[1]), parts[2]
+            with SessionLocal() as s:
+                svc.set_team_notify(s, uid, team_id, level)
+            await show_team(update, ctx, user, team_id)
+            return
+
+        if action == "town":
+            with SessionLocal() as s:
+                team = svc.answer_ownership(s, uid, int(parts[2]), parts[1] == "a")
+                name = team.name
+            await _show(update, t(lang, "team_owner_now" if parts[1] == "a"
+                                  else "team_owner_declined", name=esc(name)),
+                        None, edit=True)
+            return
+
+        if action == "trole":
+            # trole:<team>:<member>:<a|m|x|o>
+            team_id, member_id, op = int(parts[1]), int(parts[2]), parts[3]
+            with SessionLocal() as s:
+                if op == "x":
+                    svc.remove_member(s, uid, team_id, member_id)
+                elif op == "o":
+                    svc.offer_ownership(s, uid, team_id, member_id)
+                    target = s.get(User, member_id)
+                    target_lang = target.language if target else "uz"
+                    team_name = svc.team_for(s, uid, team_id).name
+                else:
+                    svc.set_member_role(s, uid, team_id, member_id,
+                                        "admin" if op == "a" else "member")
+            if op == "o":
+                try:
+                    await ctx.bot.send_message(
+                        member_id, t(target_lang, "team_owner_offer", name=esc(team_name)),
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=InlineKeyboardMarkup([[
+                            InlineKeyboardButton(t(target_lang, "accept"),
+                                                 callback_data=f"town:a:{team_id}"),
+                            InlineKeyboardButton(t(target_lang, "decline"),
+                                                 callback_data=f"town:d:{team_id}")]]))
+                except TelegramError as e:
+                    log.info("could not offer ownership to %s: %s", member_id, e)
+                await _notice(update, t(lang, "team_owner_offered"))
+            await show_team_members(update, ctx, user, team_id)
+            return
+
+        if what == "new":
+            start_flow(ctx, "team_name")
+            await query.edit_message_text(t(lang, "team_ask_name"))
+        elif what == "list":
+            await show_teams(update, ctx, edit=True)
+        elif what == "open":
+            await show_team(update, ctx, user, int(parts[2]))
+        elif what == "invite":
+            await send_team_invite(update, ctx, int(parts[2]))
+        elif what == "revoke":
+            with SessionLocal() as s:
+                svc.revoke_invite(s, uid, int(parts[2]))
+            await _notice(update, t(lang, "team_invite_revoked"))
+            await show_team(update, ctx, user, int(parts[2]))
+        elif what == "approval":
+            with SessionLocal() as s:
+                svc.set_invite_approval(s, uid, int(parts[2]), parts[3] == "1")
+            await show_team(update, ctx, user, int(parts[2]))
+        elif what == "rename":
+            start_flow(ctx, "team_rename", team_id=int(parts[2]))
+            await query.edit_message_text(t(lang, "team_ask_rename"))
+        elif what == "notify":
+            team_id = int(parts[2])
+            rows = [[InlineKeyboardButton(t(lang, f"notify_{level}"),
+                                          callback_data=f"tnot:{team_id}:{level}")]
+                    for level in svc.NOTIFY_LEVELS]
+            rows.append([InlineKeyboardButton(t(lang, "back"),
+                                              callback_data=f"team:open:{team_id}")])
+            await _show(update, t(lang, "team_notify_ask"), InlineKeyboardMarkup(rows),
+                        edit=True)
+        elif what == "stats":
+            team_id = int(parts[2])
+            with SessionLocal() as s:
+                stats = {"name": svc.team_for(s, uid, team_id).name,
+                         "board": svc.team_scoreboard(s, uid, team_id,
+                                                      tz=svc.user_tz(user))}
+            await _show(update, "\n".join(render_team_stats(stats, lang)),
+                        InlineKeyboardMarkup([[InlineKeyboardButton(
+                            t(lang, "back"), callback_data=f"team:open:{team_id}")]]),
+                        edit=True)
+        elif what == "members":
+            await show_team_members(update, ctx, user, int(parts[2]))
+        elif what == "leave":
+            await _show(update, t(lang, "team_leave_confirm"), InlineKeyboardMarkup([
+                [InlineKeyboardButton(t(lang, "team_leave_btn"),
+                                      callback_data=f"team:leavey:{parts[2]}")],
+                [InlineKeyboardButton(t(lang, "back"),
+                                      callback_data=f"team:open:{parts[2]}")]]), edit=True)
+        elif what == "leavey":
+            with SessionLocal() as s:
+                svc.leave_team(s, uid, int(parts[2]))
+            await _show(update, t(lang, "team_left"), None, edit=True)
+    except PermissionError:
+        await _notice(update, t(lang, "team_admin_only"))
+    except ValueError as e:
+        reason = str(e)
+        await _notice(update, t(lang, {"owner_must_transfer": "team_owner_must_transfer",
+                                       "cannot_remove": "error",
+                                       "no_offer": "flow_expired"}.get(reason, "error")))
+
+
+async def show_team_members(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                            user: User, team_id: int) -> None:
+    """Roles, for the owner; removal, for owner and admins."""
+    lang = user.language
+    with SessionLocal() as s:
+        members = svc.team_members(s, team_id)
+        perms = svc.team_permissions(s, team_id, user.telegram_id)
+    rows = []
+    for m in members:
+        if m["user_id"] == user.telegram_id or m["role"] == "owner":
+            continue
+        row = [InlineKeyboardButton(f"{ROLE_ICON[m['role']]} {m['name'][:18]}",
+                                    callback_data="habit:noop")]
+        if perms["roles"]:
+            op = "m" if m["role"] == "admin" else "a"
+            row.append(InlineKeyboardButton(
+                t(lang, "role_make_member" if op == "m" else "role_make_admin"),
+                callback_data=f"trole:{team_id}:{m['user_id']}:{op}"))
+        if perms["remove_members"] and (perms["roles"] or m["role"] == "member"):
+            row.append(InlineKeyboardButton("🚫", callback_data=f"trole:{team_id}:{m['user_id']}:x"))
+        rows.append(row)
+        if perms["transfer"]:
+            rows.append([InlineKeyboardButton(t(lang, "role_give_owner", name=m["name"][:18]),
+                                              callback_data=f"trole:{team_id}:{m['user_id']}:o")])
+    rows.append([InlineKeyboardButton(t(lang, "back"), callback_data=f"team:open:{team_id}")])
+    text = t(lang, "team_members_title")
+    if len(rows) == 1:
+        text += "\n\n" + t(lang, "empty")
+    await _show(update, text, InlineKeyboardMarkup(rows), edit=True)
 
 
 async def send_report_now(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
@@ -3943,7 +5369,7 @@ async def lifespan(_: FastAPI):
             # instances cannot all poll the same bot.
             await telegram_app.bot.set_webhook(
                 WEBHOOK_URL, allowed_updates=ALLOWED_UPDATES,
-                secret_token=WEBHOOK_SECRET or None,
+                secret_token=WEBHOOK_SECRET,
                 drop_pending_updates=False)
             log.info("telegram bot on webhook: %s", WEBHOOK_URL)
         else:
@@ -4050,7 +5476,40 @@ async def guard_requests(request: Request, call_next):
         return JSONResponse(status_code=429, content={"detail": "rate_limited"},
                             headers={"Retry-After": str(retry_after)})
 
+    security.REQUEST.set((request.method, request.url.path))
+
+    # A create sent twice — a double tap, or a retry after the phone lost the
+    # answer — is answered from the first attempt instead of writing twice.
+    idem_key = request.headers.get("x-idempotency-key", "")
+    idem_row = None
+    if (key > 0 and idem_key and request.method == "POST"
+            and svc.IDEMPOTENCY_KEY_RE.match(idem_key)):
+        with SessionLocal() as s:
+            claim = svc.idempotency_begin(s, key, idem_key, request.url.path)
+        if claim[0] == "done":
+            return Response(content=claim[2] or "{}", status_code=claim[1],
+                            media_type="application/json",
+                            headers={"X-Idempotent-Replay": "1"})
+        if claim[0] == "busy":
+            return JSONResponse(status_code=409, content={"detail": "in_progress"})
+        if claim[0] == "mismatch":
+            return JSONResponse(status_code=422, content={"detail": "idempotency_key_reused"})
+        idem_row = claim[1]
+
     response = await call_next(request)
+
+    if idem_row is not None:
+        body = b"".join([chunk async for chunk in response.body_iterator])
+        try:
+            with SessionLocal() as s:
+                svc.idempotency_finish(s, idem_row, response.status_code,
+                                       body.decode("utf-8", "replace"))
+        except Exception:
+            log.exception("could not store an idempotent answer")
+        response = Response(content=body, status_code=response.status_code,
+                            headers={k: v for k, v in response.headers.items()
+                                     if k.lower() != "content-length"},
+                            media_type=response.media_type)
 
     # One place decides what spends a free action: a write that succeeded.
     # Counting in the middleware rather than in forty handlers is what stops
@@ -4107,6 +5566,20 @@ async def not_found(request: Request, exc: svc.NotFound):
     return JSONResponse(status_code=404, content={"detail": "not_found"})
 
 
+def _perm(e: PermissionError) -> HTTPException:
+    """Not in the team: 404, the same answer as a team that does not exist.
+    In it, but not allowed: 403 — the screen then says who can do it."""
+    if str(e) == "forbidden":
+        return HTTPException(status_code=403, detail="forbidden")
+    return HTTPException(status_code=404, detail="not_found")
+
+
+@app.exception_handler(PermissionError)
+async def permission_denied(request: Request, exc: PermissionError):
+    error = _perm(exc)
+    return JSONResponse(status_code=error.status_code, content={"detail": error.detail})
+
+
 # --- request bodies ---
 
 # Every string is bounded at the schema edge, so an oversized field is
@@ -4127,6 +5600,8 @@ class HabitIn(BaseModel):
     remind_at: str | None = Field(default=None, max_length=5)
     #: Timer length in minutes: 0 switches it off, null reads it from the name.
     timer_minutes: int | None = Field(default=None, ge=0, le=24 * 60)
+    #: "today" (default) or "tomorrow" — whether today already owes it.
+    start: str | None = Field(default=None, max_length=10)
 
 
 class PrayerIn(BaseModel):
@@ -4178,6 +5653,9 @@ class ProjectIn(BaseModel):
 class FocusIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     priority: str | None = Field(default=None, max_length=6)
+    #: The task this mission is carried out by. Finishing the task finishes
+    #: the mission — the day scores it once, as the task.
+    task_id: int | None = None
 
 
 class HabitOrderIn(BaseModel):
@@ -4443,7 +5921,37 @@ def api_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
             "has_phone": bool(user.phone_number),
             "prefs": svc.prefs_for(user),
             "timezones": svc.TIMEZONES,
-            "onboarded": user.onboarded, "is_subscribed": user.is_subscribed}
+            "onboarded": user.onboarded, "is_subscribed": user.is_subscribed,
+            # Read-only mode: the channel gate stops writes, never reading.
+            "gated": deps.trial_state(user).gated,
+            "onboarding_step": user.onboarding_step,
+            "modules": _modules_of(user)}
+
+
+def _modules_of(user: User) -> dict:
+    with SessionLocal() as s:
+        return svc.modules_for(s, svc.workspace_id_for(s, user.telegram_id))
+
+
+class ModulesIn(BaseModel):
+    modules: list[str] = Field(default_factory=list, max_length=8)
+
+
+@app.get("/api/modules")
+def api_modules(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        return {"modules": svc.modules_for(s, ws), "available": list(svc.MODULES)}
+
+
+@app.post("/api/modules")
+def api_modules_save(body: ModulesIn,
+                     init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Switch the rituals on or off. History is kept either way."""
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        row = s.get(User, user.telegram_id)
+        return {"modules": svc.set_modules(s, ws, body.modules, user=row)}
 
 
 @app.post("/api/settings")
@@ -4534,6 +6042,26 @@ class TeamTaskIn(BaseModel):
     remind_before: int | None = None
     recurrence: str | None = Field(default=None, max_length=24)
     project_id: int | None = None
+    #: all — everybody does it · any — one person is enough · assignees — the
+    #: named people only (#24).
+    completion: str | None = Field(default=None, max_length=10)
+    assignees: list[int] | None = Field(default=None, max_length=svc.MAX_TEAM_MEMBERS)
+    timer_minutes: int | None = Field(default=None, ge=0, le=24 * 60)
+
+
+class TeamTaskPatch(BaseModel):
+    """Only what is sent changes — a missing field is left as it was."""
+    title: str | None = Field(default=None, min_length=1, max_length=300)
+    deadline: date | None = None
+    priority: str | None = None
+    description: str | None = Field(default=None, max_length=2000)
+    due_time: str | None = Field(default=None, max_length=5)
+    remind_before: int | None = None
+    recurrence: str | None = Field(default=None, max_length=24)
+    project_id: int | None = None
+    completion: str | None = Field(default=None, max_length=10)
+    assignees: list[int] | None = Field(default=None, max_length=svc.MAX_TEAM_MEMBERS)
+    timer_minutes: int | None = Field(default=None, ge=0, le=24 * 60)
 
 
 class TeamHabitIn(BaseModel):
@@ -4542,6 +6070,22 @@ class TeamHabitIn(BaseModel):
     category: str = "non_negotiable"
     target_time: str | None = Field(default=None, max_length=5)
     remind_at: str | None = Field(default=None, max_length=5)
+    timer_minutes: int | None = Field(default=None, ge=0, le=24 * 60)
+    start: str | None = Field(default=None, max_length=10)
+
+
+class TeamHabitPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    schedule: str | None = Field(default=None, max_length=24)
+    category: str | None = Field(default=None, max_length=16)
+    target_time: str | None = Field(default=None, max_length=5)
+    remind_at: str | None = Field(default=None, max_length=5)
+    timer_minutes: int | None = Field(default=None, ge=0, le=24 * 60)
+    paused: bool | None = None
+    #: With `paused`: "today" or "tomorrow".
+    from_day: str | None = Field(default=None, alias="from", max_length=10)
+
+    model_config = {"populate_by_name": True}
 
 
 async def notify_teammates(team_id: int, actor_id: int, key: str,
@@ -4564,17 +6108,17 @@ async def notify_teammates(team_id: int, actor_id: int, key: str,
     told = 0
     try:
         with SessionLocal() as s:
-            others = svc.teammates_of(s, team_id, actor_id)
+            # Each member's own language, and only members whose notification
+            # level for this team still hears changes.
+            recipients = svc.team_recipients(s, team_id, actor_id, "change")
             actor = s.get(User, actor_id)
             actor_name = (actor.first_name or "").strip() if actor else ""
-            langs = {uid: (s.get(User, uid).language if s.get(User, uid) else "uz")
-                     for uid in others}
     except Exception:
         log.exception("could not work out who to tell about team %s", team_id)
         return 0
 
-    for uid in others:
-        lang = langs.get(uid) or "uz"
+    for uid, lang in recipients:
+        lang = lang or "uz"
         try:
             await telegram_app.bot.send_message(
                 uid,
@@ -4594,26 +6138,249 @@ def api_teams(init=Header(default=None, alias="X-Telegram-Init-Data")):
     """Every team this account is in, each with today's state for both sides."""
     user, _ = auth(init)
     tz = svc.user_tz(user)
+    uid = user.telegram_id
     with SessionLocal() as s:
         out = []
-        for team in svc.teams_for(s, user.telegram_id):
+        for team in svc.teams_for(s, uid):
+            perms = svc.team_permissions(s, team.id, uid)
             out.append({
                 "id": team.id, "name": team.name,
-                "is_owner": team.owner_id == user.telegram_id,
-                "invite_link": svc.team_invite_link(team, BOT_USERNAME),
+                "is_owner": team.owner_id == uid,
+                "role": perms["role"], "permissions": perms,
+                # The link is handed only to those who may invite; the rest
+                # see that there is one and who to ask.
+                "invite_link": (svc.team_invite_link(team, BOT_USERNAME)
+                                if perms["invite"] else None),
+                "invite": svc.invite_info(team),
+                "ownership_offer": team.pending_owner_id == uid,
+                "pending_owner_id": team.pending_owner_id,
+                "notify": svc.member_notify(s, team.id, uid),
+                "requests": (len(svc.list_join_requests(s, uid, team.id))
+                             if perms["approve"] else 0),
                 "members": [
-                    {**m, "is_you": m["user_id"] == user.telegram_id,
+                    {**m, "is_you": m["user_id"] == uid,
                      "joined_at": m["joined_at"].isoformat()}
                     for m in svc.team_members(s, team.id)],
                 "summary": svc.team_day_summary(s, team.id, tz=tz),
-                "tasks": svc.list_team_tasks(s, user.telegram_id, team.id, tz=tz),
-                "habits": svc.list_team_habits(s, user.telegram_id, team.id, tz=tz),
-                "stats": svc.team_stats(s, user.telegram_id, team.id,
-                                        period="week", tz=tz),
-                "projects": svc.list_team_projects(s, user.telegram_id, team.id),
-                "board": svc.team_scoreboard(s, user.telegram_id, team.id, tz=tz),
+                "tasks": svc.list_team_tasks(s, uid, team.id, tz=tz),
+                "habits": svc.list_team_habits(s, uid, team.id, tz=tz),
+                "stats": svc.team_stats(s, uid, team.id, period="week", tz=tz),
+                "projects": svc.list_team_projects(s, uid, team.id),
+                "board": svc.team_scoreboard(s, uid, team.id, tz=tz),
+                "countdowns": svc.list_team_countdowns(s, uid, team.id, tz=tz,
+                                                       include_past=False),
             })
-    return {"teams": out, "max_members": svc.MAX_TEAM_MEMBERS}
+    return {"teams": out, "max_members": svc.MAX_TEAM_MEMBERS,
+            "max_teams": svc.MAX_TEAMS_PER_USER,
+            "completion_policies": list(svc.COMPLETION_POLICIES),
+            "notify_levels": list(svc.NOTIFY_LEVELS)}
+
+
+class RoleIn(BaseModel):
+    role: str = Field(max_length=10)
+
+
+class TransferIn(BaseModel):
+    user_id: int
+
+
+class AnswerIn(BaseModel):
+    accept: bool
+
+
+class ApprovalIn(BaseModel):
+    on: bool
+
+
+class NotifyIn(BaseModel):
+    level: str = Field(max_length=10)
+
+
+class JoinIn(BaseModel):
+    code: str = Field(min_length=1, max_length=64)
+
+
+@app.get("/api/teams/invite/{code}")
+def api_team_invite_preview(code: str,
+                            init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """What an invite is for, before anybody joins anything (#29)."""
+    user, _ = auth(init, require_onboarded=False)
+    with SessionLocal() as s:
+        info = svc.preview_invite(s, code)
+        if info is None:
+            raise HTTPException(status_code=404, detail="not_found")
+        info["already"] = svc.team_for(s, user.telegram_id, info["team_id"]) is not None
+        info.pop("code", None)
+        return info
+
+
+@app.post("/api/teams/join")
+async def api_team_join(body: JoinIn,
+                        init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        team, outcome = svc.join_team(s, user.telegram_id, body.code)
+        name = team.name if team else ""
+        team_id = team.id if team else None
+        recipients = (svc.team_recipients(s, team_id, user.telegram_id, "join")
+                      if outcome == "joined" else [])
+    joiner = esc(user.first_name or str(user.telegram_id))
+    if telegram_app is not None:
+        for member_id, member_lang in recipients:
+            try:
+                await telegram_app.bot.send_message(
+                    member_id, t(member_lang, "team_member_joined", who=joiner,
+                                 name=esc(name)), parse_mode=ParseMode.HTML)
+            except TelegramError as e:
+                log.info("could not tell %s about a new member: %s", member_id, e)
+    return {"outcome": outcome, "team_id": team_id, "name": name}
+
+
+@app.get("/api/teams/{team_id}/activity")
+def api_team_activity(team_id: int,
+                      init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Who changed what, newest first — and what can still be undone (#26)."""
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        return {"activity": svc.list_team_activity(s, user.telegram_id, team_id)}
+
+
+@app.put("/api/teams/{team_id}/members/{member_id}/role")
+def api_team_role(team_id: int, member_id: int, body: RoleIn,
+                  init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        try:
+            return svc.set_member_role(s, user.telegram_id, team_id, member_id,
+                                       body.role)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.delete("/api/teams/{team_id}/members/{member_id}")
+def api_team_remove_member(team_id: int, member_id: int,
+                           init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        try:
+            if not svc.remove_member(s, user.telegram_id, team_id, member_id):
+                raise HTTPException(status_code=404, detail="not_found")
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    return {"ok": True}
+
+
+@app.post("/api/teams/{team_id}/transfer")
+async def api_team_transfer(team_id: int, body: TransferIn,
+                            init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Offer the team to a member; it moves only when they accept."""
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        try:
+            team = svc.offer_ownership(s, user.telegram_id, team_id, body.user_id)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        target = s.get(User, body.user_id)
+        target_lang = target.language if target else "uz"
+        name = team.name
+    if telegram_app is not None:
+        try:
+            await telegram_app.bot.send_message(
+                body.user_id, t(target_lang, "team_owner_offer", name=esc(name)),
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton(t(target_lang, "accept"),
+                                         callback_data=f"town:a:{team_id}"),
+                    InlineKeyboardButton(t(target_lang, "decline"),
+                                         callback_data=f"town:d:{team_id}")]]))
+        except TelegramError as e:
+            log.info("could not offer ownership to %s: %s", body.user_id, e)
+    return {"ok": True, "pending_owner_id": body.user_id}
+
+
+@app.post("/api/teams/{team_id}/transfer/answer")
+def api_team_transfer_answer(team_id: int, body: AnswerIn,
+                             init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        try:
+            team = svc.answer_ownership(s, user.telegram_id, team_id, body.accept)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        return {"ok": True, "owner_id": team.owner_id}
+
+
+@app.post("/api/teams/{team_id}/invite/renew")
+def api_team_invite_renew(team_id: int,
+                          init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        team = svc.renew_invite(s, user.telegram_id, team_id)
+        return {"invite_link": svc.team_invite_link(team, BOT_USERNAME),
+                "invite": svc.invite_info(team)}
+
+
+@app.post("/api/teams/{team_id}/invite/revoke")
+def api_team_invite_revoke(team_id: int,
+                           init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        team = svc.revoke_invite(s, user.telegram_id, team_id)
+        return {"invite": svc.invite_info(team)}
+
+
+@app.put("/api/teams/{team_id}/invite/approval")
+def api_team_invite_approval(team_id: int, body: ApprovalIn,
+                             init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        team = svc.set_invite_approval(s, user.telegram_id, team_id, body.on)
+        return {"invite": svc.invite_info(team)}
+
+
+@app.get("/api/teams/{team_id}/requests")
+def api_team_requests(team_id: int,
+                      init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        return {"requests": svc.list_join_requests(s, user.telegram_id, team_id)}
+
+
+@app.post("/api/teams/requests/{request_id}")
+async def api_team_request_answer(request_id: int, body: AnswerIn,
+                                  init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        try:
+            request, team, outcome = svc.decide_join_request(
+                s, user.telegram_id, request_id, body.accept)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        joiner = s.get(User, request.user_id)
+        joiner_lang = joiner.language if joiner else "uz"
+        joiner_id, name = request.user_id, team.name
+    if telegram_app is not None:
+        key = {"approved": "team_joined", "declined": "team_request_declined",
+               "full": "team_full"}.get(outcome, "team_already")
+        try:
+            await telegram_app.bot.send_message(
+                joiner_id, t(joiner_lang, key, name=esc(name)), parse_mode=ParseMode.HTML)
+        except TelegramError as e:
+            log.info("could not answer join request %s: %s", request_id, e)
+    return {"outcome": outcome}
+
+
+@app.put("/api/teams/{team_id}/notify")
+def api_team_notify(team_id: int, body: NotifyIn,
+                    init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """How much this team may message me. My setting only (#30)."""
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        try:
+            return {"notify": svc.set_team_notify(s, user.telegram_id, team_id,
+                                                  body.level)}
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
 
 
 @app.post("/api/teams")
@@ -4636,8 +6403,8 @@ async def api_team_rename(team_id: int, body: TeamIn,
     with SessionLocal() as s:
         try:
             team = svc.rename_team(s, user.telegram_id, team_id, body.name)
-        except PermissionError:
-            raise HTTPException(status_code=404, detail="not_found")
+        except PermissionError as e:
+            raise _perm(e)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
         out = {"id": team.id, "name": team.name}
@@ -4651,8 +6418,12 @@ def api_team_leave(team_id: int,
                    init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, _ = auth(init)
     with SessionLocal() as s:
-        if not svc.leave_team(s, user.telegram_id, team_id):
-            raise HTTPException(status_code=404, detail="not_found")
+        try:
+            if not svc.leave_team(s, user.telegram_id, team_id):
+                raise HTTPException(status_code=404, detail="not_found")
+        except ValueError as e:
+            # The owner hands the team on before walking out of it.
+            raise HTTPException(status_code=422, detail=str(e))
     return {"ok": True}
 
 
@@ -4673,8 +6444,8 @@ async def api_task_move(task_id: int, body: MoveHabitIn,
         try:
             moved = svc.move_task(s, user.telegram_id, task_id=task_id,
                                   to_team=team_id)
-        except PermissionError:
-            raise HTTPException(status_code=404, detail="not_found")
+        except PermissionError as e:
+            raise _perm(e)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
         team = svc.team_for(s, user.telegram_id, team_id)
@@ -4697,8 +6468,8 @@ async def api_team_task_move(task_id: int, body: MoveHabitIn,
         team_id, label = (row.team_id, row.title) if row else (None, "")
         try:
             moved = svc.move_task(s, user.telegram_id, team_task_id=task_id)
-        except PermissionError:
-            raise HTTPException(status_code=404, detail="not_found")
+        except PermissionError as e:
+            raise _perm(e)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
         team = (svc.team_for(s, user.telegram_id, team_id)
@@ -4722,8 +6493,8 @@ async def api_project_move(project_id: int, body: MoveHabitIn,
     with SessionLocal() as s:
         try:
             moved = svc.move_project(s, user.telegram_id, project_id, to_team)
-        except PermissionError:
-            raise HTTPException(status_code=404, detail="not_found")
+        except PermissionError as e:
+            raise _perm(e)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
         team_id = to_team if to_team is not None else None
@@ -4745,8 +6516,8 @@ def api_team_habit_history(habit_id: int,
         try:
             return svc.team_habit_history(s, user.telegram_id, habit_id,
                                           tz=svc.user_tz(user))
-        except PermissionError:
-            raise HTTPException(status_code=404, detail="not_found")
+        except PermissionError as e:
+            raise _perm(e)
         except ValueError:
             raise HTTPException(status_code=404, detail="not_found")
 
@@ -4763,8 +6534,8 @@ async def api_habit_move(habit_id: int, body: MoveHabitIn,
         try:
             moved = svc.move_habit(s, user.telegram_id, habit_id=habit_id,
                                    to_team=team_id)
-        except PermissionError:
-            raise HTTPException(status_code=404, detail="not_found")
+        except PermissionError as e:
+            raise _perm(e)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
         team = svc.team_for(s, user.telegram_id, team_id)
@@ -4792,8 +6563,8 @@ async def api_team_habit_move(habit_id: int, body: MoveHabitIn,
         try:
             moved = svc.move_habit(s, user.telegram_id,
                                    team_habit_id=habit_id, to_team=None)
-        except PermissionError:
-            raise HTTPException(status_code=404, detail="not_found")
+        except PermissionError as e:
+            raise _perm(e)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
         team = (svc.team_for(s, user.telegram_id, team_id)
@@ -4819,8 +6590,8 @@ def api_team_projects(team_id: int,
         try:
             return {"projects": svc.list_team_projects(s, user.telegram_id,
                                                        team_id)}
-        except PermissionError:
-            raise HTTPException(status_code=404, detail="not_found")
+        except PermissionError as e:
+            raise _perm(e)
 
 
 @app.post("/api/teams/{team_id}/projects")
@@ -4832,8 +6603,8 @@ async def api_team_project_add(team_id: int, body: TeamProjectIn,
             made = svc.add_team_project(s, user.telegram_id, team_id, body.name,
                                         description=body.description,
                                         deadline=body.deadline)
-        except PermissionError:
-            raise HTTPException(status_code=404, detail="not_found")
+        except PermissionError as e:
+            raise _perm(e)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
         team = svc.team_for(s, user.telegram_id, team_id)
@@ -4857,8 +6628,8 @@ def api_team_project_tasks(project_id: int,
             rows = svc.list_team_tasks(s, user.telegram_id, project.team_id,
                                        project_id=project_id,
                                        tz=svc.user_tz(user))
-        except PermissionError:
-            raise HTTPException(status_code=404, detail="not_found")
+        except PermissionError as e:
+            raise _perm(e)
         return {"project": {"id": project.id, "name": project.name,
                             "team_id": project.team_id, "source": "team"},
                 "tasks": rows}
@@ -4873,8 +6644,8 @@ def api_team_scoreboard(team_id: int,
         try:
             return svc.team_scoreboard(s, user.telegram_id, team_id,
                                        tz=svc.user_tz(user))
-        except PermissionError:
-            raise HTTPException(status_code=404, detail="not_found")
+        except PermissionError as e:
+            raise _perm(e)
 
 
 @app.get("/api/teams/{team_id}/stats")
@@ -4888,8 +6659,8 @@ def api_team_stats(team_id: int, period: str = "week",
                                   period=period if period in
                                   ("week", "month", "year") else "week",
                                   tz=svc.user_tz(user))
-        except PermissionError:
-            raise HTTPException(status_code=404, detail="not_found")
+        except PermissionError as e:
+            raise _perm(e)
 
 
 @app.post("/api/teams/{team_id}/tasks")
@@ -4903,9 +6674,10 @@ async def api_team_task_add(team_id: int, body: TeamTaskIn,
                 deadline=body.deadline, priority=body.priority,
                 description=body.description, due_time=_time(body.due_time),
                 remind_before=body.remind_before, recurrence=body.recurrence,
-                project_id=body.project_id)
-        except PermissionError:
-            raise HTTPException(status_code=404, detail="not_found")
+                project_id=body.project_id, completion=body.completion,
+                assignees=body.assignees, timer_minutes=body.timer_minutes)
+        except PermissionError as e:
+            raise _perm(e)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
         team = svc.team_for(s, user.telegram_id, team_id)
@@ -4928,19 +6700,17 @@ def api_team_task_get(task_id: int,
 
 
 @app.patch("/api/teams/tasks/{task_id}")
-async def api_team_task_edit(task_id: int, body: TeamTaskIn,
+async def api_team_task_edit(task_id: int, body: TeamTaskPatch,
                              init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, _ = auth(init)
+    fields = body.model_dump(exclude_unset=True)
+    if "due_time" in fields:
+        fields["due_time"] = _time(fields["due_time"])
     with SessionLocal() as s:
         try:
-            updated = svc.edit_team_task(
-                s, user.telegram_id, task_id, title=body.title,
-                description=body.description, deadline=body.deadline,
-                due_time=_time(body.due_time), remind_before=body.remind_before,
-                recurrence=body.recurrence, priority=body.priority,
-                project_id=body.project_id)
-        except PermissionError:
-            raise HTTPException(status_code=404, detail="not_found")
+            updated = svc.edit_team_task(s, user.telegram_id, task_id, **fields)
+        except PermissionError as e:
+            raise _perm(e)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
     return updated
@@ -4955,11 +6725,55 @@ def api_team_task_toggle(task_id: int,
         try:
             done = svc.toggle_team_task(s, user.telegram_id, task_id,
                                         tz=svc.user_tz(user))
-        except PermissionError:
-            raise HTTPException(status_code=404, detail="not_found")
-        except ValueError:
+        except PermissionError as e:
+            raise _perm(e)
+        except ValueError as e:
+            # A timed task opens its timer; a task named for others is not yours.
+            if str(e) in ("timer_required", "not_assigned"):
+                raise HTTPException(status_code=409, detail=str(e))
             raise HTTPException(status_code=404, detail="not_found")
     return {"done": done}
+
+
+@app.post("/api/teams/tasks/{task_id}/restore")
+def api_team_task_restore(task_id: int,
+                          init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Undo taking a task off the team's list."""
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        try:
+            return svc.restore_team_task(s, user.telegram_id, task_id)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="not_found")
+
+
+@app.post("/api/teams/habits/{habit_id}/restore")
+def api_team_habit_restore(habit_id: int,
+                           init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        try:
+            return svc.restore_team_habit(s, user.telegram_id, habit_id)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="not_found")
+
+
+@app.patch("/api/teams/habits/{habit_id}")
+def api_team_habit_edit(habit_id: int, body: TeamHabitPatch,
+                        init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Rename, re-tier, reschedule, pause or time a shared habit."""
+    user, _ = auth(init)
+    fields = body.model_dump(exclude_unset=True, by_alias=False)
+    for key in ("remind_at", "target_time"):
+        if key in fields:
+            fields[key] = _time(fields[key])
+    with SessionLocal() as s:
+        try:
+            return svc.edit_team_habit(s, user.telegram_id, habit_id, **fields)
+        except ValueError as e:
+            if str(e) == "unknown_habit":
+                raise HTTPException(status_code=404, detail="not_found")
+            raise HTTPException(status_code=422, detail=str(e))
 
 
 @app.delete("/api/teams/tasks/{task_id}")
@@ -4973,8 +6787,8 @@ async def api_team_task_archive(task_id: int,
         team_id = row.team_id if row else None
         try:
             ok = svc.archive_team_task(s, user.telegram_id, task_id)
-        except PermissionError:
-            raise HTTPException(status_code=404, detail="not_found")
+        except PermissionError as e:
+            raise _perm(e)
         team = (svc.team_for(s, user.telegram_id, team_id)
                 if team_id is not None else None)
         name = team.name if team else ""
@@ -4995,9 +6809,11 @@ async def api_team_habit_add(team_id: int, body: TeamHabitIn,
                 s, user.telegram_id, team_id, body.name,
                 schedule=body.schedule, category=body.category,
                 target_time=_time(body.target_time),
-                remind_at=_time(body.remind_at))
-        except PermissionError:
-            raise HTTPException(status_code=404, detail="not_found")
+                remind_at=_time(body.remind_at),
+                timer_minutes=body.timer_minutes, start=body.start,
+                tz=svc.user_tz(user))
+        except PermissionError as e:
+            raise _perm(e)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
         team = svc.team_for(s, user.telegram_id, team_id)
@@ -5015,9 +6831,13 @@ def api_team_habit_toggle(habit_id: int,
         try:
             done = svc.toggle_team_habit(s, user.telegram_id, habit_id,
                                          tz=svc.user_tz(user))
-        except PermissionError:
-            raise HTTPException(status_code=404, detail="not_found")
-        except ValueError:
+        except PermissionError as e:
+            raise _perm(e)
+        except ValueError as e:
+            # Mirrored rituals are ticked in the member's own list; a timed
+            # habit is finished by its timer.
+            if str(e) in ("mirrored", "timer_required"):
+                raise HTTPException(status_code=409, detail=str(e))
             raise HTTPException(status_code=404, detail="not_found")
     return {"done": done}
 
@@ -5033,8 +6853,8 @@ async def api_team_habit_archive(habit_id: int,
         team_id = row.team_id if row else None
         try:
             ok = svc.archive_team_habit(s, user.telegram_id, habit_id)
-        except PermissionError:
-            raise HTTPException(status_code=404, detail="not_found")
+        except PermissionError as e:
+            raise _perm(e)
         except ValueError:
             raise HTTPException(status_code=422, detail="protected")
         team = (svc.team_for(s, user.telegram_id, team_id)
@@ -5057,12 +6877,22 @@ async def telegram_webhook(request: Request):
     """
     if not WEBHOOK_URL or telegram_app is None:
         raise HTTPException(status_code=404, detail="not_found")
-    if WEBHOOK_SECRET and request.headers.get(
-            "x-telegram-bot-api-secret-token") != WEBHOOK_SECRET:
+    # No secret configured means no way to tell Telegram from anybody else,
+    # so nothing is accepted — the process refuses to start like this in
+    # production, and a development instance refuses the update instead.
+    given = request.headers.get("x-telegram-bot-api-secret-token", "")
+    if not WEBHOOK_SECRET or not hmac.compare_digest(given.encode(),
+                                                     WEBHOOK_SECRET.encode()):
         # Wrong secret is somebody who found the path, not Telegram.
         raise HTTPException(status_code=403, detail="forbidden")
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_BODY_BYTES:
+        raise HTTPException(status_code=413, detail="payload_too_large")
+    raw = await request.body()
+    if len(raw) > MAX_BODY_BYTES:
+        raise HTTPException(status_code=413, detail="payload_too_large")
     try:
-        update = Update.de_json(await request.json(), telegram_app.bot)
+        update = Update.de_json(json.loads(raw), telegram_app.bot)
     except Exception:
         log.warning("undecodable webhook payload")
         raise HTTPException(status_code=400, detail="bad_update")
@@ -5108,8 +6938,17 @@ async def api_subscription(init=Header(default=None, alias="X-Telegram-Init-Data
 @app.get("/api/home")
 def api_home(init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, ws = auth(init)
+    tz = svc.user_tz(user)
     with SessionLocal() as s:
-        return svc.home(s, ws, s.get(User, user.telegram_id))
+        data = svc.home(s, ws, s.get(User, user.telegram_id))
+        # Today's shared tasks, beside today's own. The day's number already
+        # counts them; a list that left them out would disagree with it (#16).
+        today = svc.today_local(tz).isoformat()
+        data["team_today"] = [
+            x for x in svc.team_items_for_day(s, user.telegram_id, tz=tz)["tasks"]
+            if x.get("owed", True) and x.get("deadline")
+            and (x["deadline"] == today or (x["deadline"] < today and not x["done"]))]
+        return data
 
 
 @app.get("/api/habits")
@@ -5137,12 +6976,13 @@ def api_habits(day: str | None = None, init=Header(default=None, alias="X-Telegr
 
 @app.post("/api/habits")
 def api_habit_add(body: HabitIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
-    _, ws = auth(init)
+    user, ws = auth(init)
     with SessionLocal() as s:
         habit = svc.add_habit(s, ws, body.name, body.category,
                               schedule=body.schedule,
                               remind_at=_time(body.remind_at),
-                              timer_minutes=body.timer_minutes)
+                              timer_minutes=body.timer_minutes,
+                              start=body.start, tz=svc.user_tz(user))
     return {"ok": True, "id": habit.id}
 
 
@@ -5158,6 +6998,11 @@ class HabitPatch(BaseModel):
 
 class HabitPauseIn(BaseModel):
     paused: bool
+    #: "today" (default) takes today out as well; "tomorrow" keeps today
+    #: owed. The screen offers both and says which one today's number shows.
+    from_day: str = Field(default="today", alias="from", max_length=10)
+
+    model_config = {"populate_by_name": True}
 
 
 @app.post("/api/habits/{habit_id}/pause")
@@ -5166,7 +7011,8 @@ def api_habit_pause(habit_id: int, body: HabitPauseIn,
     """Pause or resume a habit. Every past log survives either way."""
     _, ws = auth(init)
     with SessionLocal() as s:
-        habit = svc.set_habit_paused(s, ws, habit_id, body.paused)
+        habit = svc.set_habit_paused(s, ws, habit_id, body.paused,
+                                     from_day=body.from_day)
     return {"ok": True, "paused": habit.paused_at is not None}
 
 
@@ -5278,6 +7124,20 @@ def api_timer_active(init=Header(default=None, alias="X-Telegram-Init-Data")):
         return {"timer": svc.active_timer(s, ws)}
 
 
+@app.get("/api/timers/candidates/{kind}")
+def api_timer_candidates(kind: str,
+                         init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Everything a timer can go on — private and shared — for the Time
+    countdown screen. `kind` is habit or task."""
+    user, ws = auth(init)
+    if kind not in ("habit", "task"):
+        raise HTTPException(status_code=404, detail="not_found")
+    with SessionLocal() as s:
+        return {"items": svc.timer_candidates(s, ws, user.telegram_id, kind,
+                                              tz=svc.user_tz(user)),
+                "active": svc.active_timer(s, ws)}
+
+
 @app.get("/api/timers/{kind}/{item_id}")
 def api_timer_get(kind: str, item_id: int,
                   init=Header(default=None, alias="X-Telegram-Init-Data")):
@@ -5338,6 +7198,12 @@ class CountdownIn(BaseModel):
     #: ISO date from the date picker; typed forms ("15 noyabr", "30 kun") are
     #: accepted too, the same ones the bot reads.
     date: str = Field(min_length=1, max_length=40)
+    #: general | task | habit — what it is counting down to.
+    scope: str = Field(default="general", max_length=10)
+    #: The task or habit it belongs to, when it belongs to one.
+    item_id: int | None = None
+    #: A team's countdown: every member sees it.
+    team_id: int | None = None
 
 
 class CountdownPatch(BaseModel):
@@ -5356,7 +7222,10 @@ def _countdown_date(value: str, tz) -> date:
 def api_countdowns(init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, ws = auth(init)
     with SessionLocal() as s:
-        return {"countdowns": svc.list_countdowns(s, ws, tz=svc.user_tz(user))}
+        # Private and shared together, soonest first; each says whose it is.
+        return {"countdowns": svc.countdowns_for_user(s, ws, user.telegram_id,
+                                                      tz=svc.user_tz(user)),
+                "scopes": list(svc.COUNTDOWN_SCOPES)}
 
 
 @app.post("/api/countdowns")
@@ -5366,10 +7235,13 @@ def api_countdown_add(body: CountdownIn,
     tz = svc.user_tz(user)
     with SessionLocal() as s:
         try:
-            return svc.add_countdown(s, ws, body.title,
-                                     _countdown_date(body.date, tz), tz=tz)
+            made = svc.add_countdown(s, ws, body.title,
+                                     _countdown_date(body.date, tz), tz=tz,
+                                     scope=body.scope, item_id=body.item_id,
+                                     team_id=body.team_id, user_id=user.telegram_id)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
+    return made
 
 
 @app.patch("/api/countdowns/{countdown_id}")
@@ -5394,6 +7266,7 @@ def api_countdown_delete(countdown_id: int,
     with SessionLocal() as s:
         svc.delete_countdown(s, ws, countdown_id)
     return {"ok": True}
+
 
 
 @app.get("/api/prayers")
@@ -5642,7 +7515,8 @@ def api_focus_add(body: FocusIn, init=Header(default=None, alias="X-Telegram-Ini
     with SessionLocal() as s:
         try:
             row = svc.add_focus(s, ws, body.title,
-                                priority=body.priority or svc.DEFAULT_MISSION_PRIORITY)
+                                priority=body.priority or svc.DEFAULT_MISSION_PRIORITY,
+                                task_id=body.task_id)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
     return {"ok": True, "id": row.id}
@@ -5970,7 +7844,11 @@ def api_focus_edit(focus_id: int, body: FocusIn,
     _, ws = auth(init)
     with SessionLocal() as s:
         try:
-            svc.edit_focus(s, ws, focus_id, body.title, priority=body.priority)
+            if "task_id" in body.model_fields_set:
+                svc.edit_focus(s, ws, focus_id, body.title, priority=body.priority,
+                               task_id=body.task_id)
+            else:
+                svc.edit_focus(s, ws, focus_id, body.title, priority=body.priority)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
     return {"ok": True}
@@ -6055,17 +7933,29 @@ async def api_avatar(token: str | None = None, tgdata: str | None = None,
                     headers={"Cache-Control": "private, max-age=300"})
 
 
+class WakeupIn(BaseModel):
+    #: When somebody actually got up, entered afterwards ("HH:MM", today).
+    at: str | None = Field(default=None, max_length=5)
+
+
 @app.post("/api/wakeup")
-def api_wakeup(init=Header(default=None, alias="X-Telegram-Init-Data")):
+def api_wakeup(body: WakeupIn | None = None,
+               init=Header(default=None, alias="X-Telegram-Init-Data")):
     """The Mini App's own "Turdim" button.
 
     Identical to the bot's, through the same service function, so the button on
     Home is the real thing rather than an instruction to go and use the chat.
+    With `at`, the time is the one somebody got up rather than the one they
+    remembered to press the button.
     """
     user, ws = auth(init)
     tz = svc.user_tz(user)
+    at = _time(body.at) if body and body.at else None
     with SessionLocal() as s:
-        result = svc.mark_wakeup(s, ws, tz=tz)
+        try:
+            result = svc.mark_wakeup(s, ws, tz=tz, at=at)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
         # The habit counters move with it, so Home can settle in one request.
         habits_done, habits_total = svc.habit_progress(s, ws, svc.today_local(tz))
         return {**result,
