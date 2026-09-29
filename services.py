@@ -2970,9 +2970,18 @@ def looks_like_money(text: str) -> bool:
     """Whether a free message is about money rather than a task with a number.
 
     "Tushlik 45 ming" is money; "call mum at 10" is not — a number alone is
-    never enough, it needs a money word, a unit or a spending/earning verb.
+    never enough. It needs a money word, a unit or a spending/earning verb, or
+    a spending category ("kommunal", "dorixona") with an amount of at least a
+    thousand: nobody pays 3 so'm for anything, but plenty of tasks say "3".
     """
-    return parse_money_amount(text) is not None and bool(_MONEY_HINT.search(text or ""))
+    amount = parse_money_amount(text)
+    if amount is None:
+        return False
+    if _MONEY_HINT.search(text or ""):
+        return True
+    lowered = (text or "").lower()
+    return amount >= 1000 and any(re.search(pattern, lowered)
+                                  for _cat, pattern in _MONEY_WORDS)
 
 
 def _money_dict(row: MoneyEntry) -> dict:

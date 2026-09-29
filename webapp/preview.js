@@ -8,7 +8,7 @@
    and nothing here writes to a real account.
 
    URL options (all optional):
-     ?preview&screen=home|habits|tasks|team|stats
+     ?preview&screen=home|habits|tasks|team|stats|money
             &tab=prayer|journal|open|projects|done|calendar|work|results
             &mode=light|dark   &lang=uz|en|ru   &theme=ocean|midnight|aurora|bento|spatial
             &sheet=task|habit|settings|look|notify|timer
@@ -183,11 +183,36 @@
                components:{tasks:EMPTY ? null : 57, habits:EMPTY ? null : 67,
                            focus:EMPTY ? null : 50, prayer:EMPTY ? null : 60}},
       habits:{done:due.filter(h => h.done).length, total:due.length},
-      focus:{done:EMPTY ? 0 : 1, total:EMPTY ? 0 : 2},
+      counts:{tasks:{done:EMPTY ? 0 : 1, total:EMPTY ? 0 : today.length + 1},
+              habits:{done:due.filter(h => h.done).length, total:due.length},
+              prayer:{done:EMPTY ? 0 : 3, total:5, excused:false, owed:true}},
+      streak:EMPTY ? 0 : 6,
       prayer:{performed:EMPTY ? 0 : 3, required:5, excused:false},
       modules:DB.me.modules, active_timer:null,
     };
   };
+  const PRESETS = [["wakeup","non_negotiable",s.h1,true], ["prayer","non_negotiable",s.h2,true],
+    ["journal","non_negotiable",s.h6,true], ["plan","target","Plan",false],
+    ["deep","target",s.h4,false], ["sport","target",s.h7,false], ["read","target",s.h3,false],
+    ["water","bonus","2 L",false], ["language","bonus",s.lang,false], ["sleep","bonus","23:00",false]];
+  const money = () => ({month:TODAY.slice(0, 7), year:now.getFullYear(), month_no:now.getMonth() + 1,
+    is_current:true, income:EMPTY ? 0 : 5000000, expense:EMPTY ? 0 : 1395000,
+    saved:EMPTY ? 0 : 3605000, balance:EMPTY ? 0 : 3605000, count:EMPTY ? 0 : 4,
+    categories:[["food","🍔",2000000,45000],["transport","🚕",800000,30000],
+      ["home","🏠",1500000,0],["health","💊",500000,120000],["fun","🎮",1000000,0],
+      ["business","💼",0,1200000],["other","📦",500000,0]].map(([id, icon, limit, spent]) =>
+      ({id, icon, limit, spent:EMPTY ? 0 : spent, percent:limit ? Math.round(spent / limit * 100) : null,
+        over:false})),
+    entries:EMPTY ? [] : [
+      {id:1, kind:"expense", amount:1200000, category:"business", note:"Reklama", source:"manual", day:TODAY},
+      {id:2, kind:"income", amount:5000000, category:"salary", note:"", source:"voice", day:TODAY},
+      {id:3, kind:"expense", amount:120000, category:"health", note:"Dorixona", source:"manual", day:day(-1)},
+      {id:4, kind:"expense", amount:45000, category:"food", note:"Tushlik", source:"manual", day:day(-2)}],
+    category_ids:["food","transport","home","health","fun","business","other","salary","sales","other_in"],
+    kinds:{food:"expense", transport:"expense", home:"expense", health:"expense", fun:"expense",
+           business:"expense", other:"expense", salary:"income", sales:"income", other_in:"income"},
+    icons:{food:"🍔", transport:"🚕", home:"🏠", health:"💊", fun:"🎮", business:"💼", other:"📦",
+           salary:"💰", sales:"📈", other_in:"➕"}});
   const summary = () => {
     const today = DB.tasks.filter(x => x.deadline === TODAY);
     const due = DB.habits.filter(h => h.due);
@@ -245,6 +270,12 @@
       {who:"Gulyora", action:"done", subject:s.bill, at:new Date(now - 36e5).toISOString()}]})],
     [/^\/api\/teams$/, () => ({teams:team()})],
     [/^\/api\/habits$/, habitsPayload],
+    [/^\/api\/habits\/presets$/, () => ({presets:PRESETS.map(([key, category, name, system], i) =>
+      ({key, category, name, system, added:!EMPTY && i < 7, habit_id:null}))})],
+    [/^\/api\/habits\/archived$/, () => ({habits:[]})],
+    [/^\/api\/money$/, money],
+    [/^\/api\/teams\/\d+\/stats$/, () => ({together:EMPTY ? null : 71, series:EMPTY ? [] :
+      Array.from({length:7}, (_, i) => ({label:day(i - 6).slice(8), team:40 + (i * 9) % 55}))})],
     [/^\/api\/prayers$/, () => ({prayers:DB.prayers, statuses:["jamaat","on_time","qaza","missed"],
       performed:Object.values(DB.prayers).filter(v => v && v !== "missed").length, required:5,
       score:7, max:15, complete:false, excused:false})],

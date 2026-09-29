@@ -955,9 +955,11 @@ def test_no_ai_or_money_code_remains(term):
         assert term not in source, f"{name} still mentions {term!r}"
 
 
-def test_frontend_has_no_ai_or_money_ui():
+def test_frontend_has_no_ai_ui():
+    """v9.1 brought money back on the owner's request — as its own section,
+    not an AI feature and not a currency converter."""
     html = (ROOT / "webapp" / "index.html").read_text().lower()
-    for term in ("anthropic", "claude", "currency", "/api/money"):
+    for term in ("anthropic", "claude", "currency"):
         assert term not in html, f"index.html still mentions {term!r}"
 
 
@@ -1063,8 +1065,9 @@ def test_goals_are_unreachable_from_either_surface():
         assert term not in html, f"index.html still exposes {term!r}"
 
 
-def test_the_mini_app_navigation_is_the_five_launch_screens():
-    """Home, the two things you do, the shared list, and the numbers.
+def test_the_mini_app_navigation_is_five_screens_and_money_apart():
+    """Home, the two things you do, the shared list, and the numbers — then
+    Money, last and set apart, because it is not part of the productive day.
 
     Team sits between Tasks and Statistics deliberately: it is work, not a
     report, and putting it after the numbers would file a shared goal as
@@ -1074,7 +1077,8 @@ def test_the_mini_app_navigation_is_the_five_launch_screens():
     nav = html[html.index("const NAV = ["):html.index("const NAV_OF")]
     assert [line.split('id:"')[1].split('"')[0]
             for line in nav.splitlines() if 'id:"' in line] == \
-        ["home", "habits", "tasks", "team", "stats"]
+        ["home", "habits", "tasks", "team", "stats", "money"]
+    assert 'id:"money",  icon:"wallet",   key:"money", apart:true' in nav
 
 
 def test_the_privacy_line_is_said_once_on_home():
@@ -4364,42 +4368,46 @@ def test_a_form_control_saves_on_change_and_never_on_click():
     assert "prefSave({[el.dataset.key]: el.value}, false)" in html
 
 
-def test_home_reads_the_day_as_four_separate_blocks():
-    """Greeting and now, then today's work, then the numbers about it.
+def test_home_answers_now_then_counts_then_today():
+    """v9.1 items 1 and 2: opening the app answers "what do I do right now?".
 
-    Tasks, habits and prayer used to be three cells inside the overall card,
-    which made them look like a footnote to the percentage above them. They are
-    what the percentage is made of, and they are three different things — so
-    each is its own block, in its own colour, opening its own screen.
-
-    Work now comes before the numbers. The Now card names one task and the
-    question that immediately follows is "what else is there today?"; the
-    answer used to be two blocks of percentages further down the scroll. A
-    score is a reading of the day's work, so it is placed after the work.
+    One dominant Now card, then one line of counts (never a percentage) that
+    opens Statistics, then today's work. The score block, the four weighted
+    tiles, the countdowns and the level card are gone from Home — the formula
+    and the level live on Statistics, the countdowns on Tasks → Calendar.
     """
     html = (ROOT / "webapp" / "index.html").read_text()
     home = html[html.index("SCREENS.home = () => {"):html.index("function privacyNote(")]
     order = [home.index(f"{fn}(d)") for fn in
-             ("headBlock", "nowBlock", "tasksBlock", "scoreBlock", "todayBlock")]
+             ("headBlock", "nowBlock", "countsRow", "tasksBlock")]
     assert order == sorted(order), "Home's blocks are out of order"
-
-    score = html[html.index("function scoreBlock(d){"):html.index("function todayBlock(d){")]
-    for period in ("period_day", "period_week", "period_month"):
-        assert f't("{period}")' in score, f"the score block dropped {period}"
-    assert 't("habits")' not in score, "the three parts are back inside the score"
-
-    today = html[html.index("function todayBlock(d){"):html.index("function tasksBlock(d){")]
-    for key in ("tasks", "habits", "prayer", "week_focus"):
-        assert f't("{key}")' in today, f"today's block is missing {key}"
-    # Each in a hue of its own, from the one table the whole app reads.
-    tones = html[html.index("const COMPONENT_TONE = {"):]
-    tones = tones[:tones.index("};") + 2]
-    assert len(set(re.findall(r"tone-\d", tones))) == 4, \
-        "two of the four parts share a colour"
-    assert 'data-screen="tasks"' in today and 'data-tab="prayer"' in today
-    # And each carries what it is worth, or the tiles contradict the headline.
-    assert "WEIGHTS[key]" in today
+    for gone in ("scoreBlock", "todayBlock", "progressCard", "countdownBlock",
+                 "weekFocusBlock", "mission_main"):
+        assert gone not in home, f"{gone} is back on Home"
+    counts = html[html.index("function countsRow(d){"):html.index("function privacyNote(")]
+    assert "%" not in counts.split("return `")[1], "the counts row prints a percentage"
+    assert 'data-screen="stats"' in counts, "the counts row must open Statistics"
+    # The weights still exist — for Statistics, which still prints them.
     assert "const WEIGHTS = {tasks:40, habits:25, focus:20, prayer:15};" in html
+    stats = html[html.index("SCREENS.stats = () => {"):]
+    assert "WEIGHTS[key]" in stats and "progressCard()" in stats
+
+
+def test_the_week_goal_lives_on_tasks_and_mission_is_never_said():
+    """Item 1: the week goal renders on Tasks only, and "mission" / "missiya" /
+    "миссия" is gone from every visible string on both surfaces."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    tasks = html[html.index("function mainTab(){"):html.index("function searchBox(")]
+    assert "weekFocusBlock()" in tasks
+    for lang in ("uz", "en", "ru"):
+        body = re.search(r"\n %s:\{(.*?)\n \},\n" % lang, html, re.S).group(1)
+        values = " ".join(re.findall(r'"([^"]*)"', body)).lower()
+        for word in ("missiya", "mission", "миссия", "миссию", "миссии"):
+            assert word not in values, f"{lang} still says {word!r}"
+    for lang in ("uz", "en", "ru"):
+        for value in application.T[lang].values():
+            low = str(value).lower()
+            assert "missiya" not in low and "mission" not in low and "миссия" not in low
 
 
 def test_a_tinted_block_never_names_a_colour():
@@ -4636,12 +4644,22 @@ def test_the_brand_surface_control_is_visible_on_it():
     assert ".hero .check{border-color:color-mix(in srgb, var(--hero-text)" in styled
 
 
-def test_page_content_clears_the_floating_button():
-    """The ＋ button is fixed, so the last row of every screen has to be able
-    to scroll out from under it — it covered the reorder button once."""
-    styled = (ROOT / "webapp" / "index.html").read_text()
-    assert "--fab-clear:" in styled
-    assert "var(--fab-clear)" in styled.split("padding-bottom:calc(var(--shell-b")[1][:80]
+def test_no_floating_button_covers_the_page():
+    """v9.1: the floating ＋ covered the last row of whatever was under it —
+    the first thing the app showed on opening — and sat over a blank page
+    while the first request was in flight. Every screen's add is now in its
+    own header, and the tab bar is not drawn until the screen has data."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert 'id="fab"' not in html and 'class="fab"' not in html
+    assert ".fab{" not in html and "fabAction" not in html
+    assert "nav:empty{display:none}" in html
+    head = html[html.index("function headBlock(d){"):html.index("function nowBlock(d){")]
+    assert 'class="iconbtn add"' in head, "Home has no add in its header"
+    for screen in ("SCREENS.habits", "SCREENS.tasks",
+                   "SCREENS.team", "SCREENS.money", "SCREENS.project"):
+        block = html[html.index(screen + " = () => {"):]
+        block = block[:block.index("\n};")]
+        assert 'class="iconbtn add"' in block, f"{screen} has no add in its header"
 
 
 def test_a_prayer_write_refreshes_the_derived_habit():
@@ -4890,47 +4908,34 @@ def test_a_late_wake_up_is_regretful_not_punitive(alice):
 
 
 def test_home_carries_only_the_numbers_it_shows():
-    """Home is a glance: what to do now, how today is going, today's tasks.
+    """Home is a glance: what to do now, today in counts, today's tasks.
 
-    Four blocks. The month grid was the fifth and the tallest — forty-two
-    cells about the rest of the month on the one screen whose whole job is
-    today — and it now opens from the date in the header instead.
+    The month grid opens from the date in the header; the score block and the
+    day/week/month percentages moved to Statistics (v9.1 item 2).
     """
     html = (ROOT / "webapp" / "index.html").read_text()
     home = html[html.index("SCREENS.home = () => {"):html.index("function privacyNote")]
-    for block in ("headBlock", "nowBlock", "scoreBlock", "tasksBlock"):
+    for block in ("headBlock", "nowBlock", "countsRow", "tasksBlock"):
         assert block in home, f"Home no longer renders {block}"
     assert "homeCalendar" not in html, "the month grid is back on Home"
     # The blocks that moved off it must not have come back.
     assert "top3Block" not in html and "weekBlock" not in html
     assert "focusBlock" not in html, "the week's focus belongs on Tasks"
+    assert "function scoreBlock(" not in html and "function todayBlock(" not in html
+    # Home loads one request: the percentages it no longer shows are not fetched.
+    home_load = html.split('if(screen === "home")')[1][:600]
+    assert 'api("/api/summary")' not in home_load
+    assert 'api("/api/progress/me")' not in home_load
+    assert 'api("/api/home")' in home_load
 
 
-def test_the_score_block_shows_day_week_and_month_at_once():
-    """The comparison people actually want is between the three windows.
-
-    Behind a switch it took two taps and remembering the first number; three
-    rows answer it by being read. The switch is gone, so nothing may bring
-    back a "current period" for this block to be in.
-    """
+def test_statistics_still_compares_today_with_yesterday():
+    """The percentage and its change live on Statistics now; yesterday only
+    counts when it had something to measure — otherwise it is absent."""
     html = (ROOT / "webapp" / "index.html").read_text()
-    assert 'data-act="score-period"' not in html, "the switch is back"
-    assert "scorePeriod" not in html, "the block has a current period again"
-    block = html[html.index("function scoreBlock("):html.index("function tasksBlock(")]
-    for period in ("period_day", "period_week", "period_month"):
-        assert f't("{period}")' in block
-    # Each row carries its own change, and the arrow means the direction
-    # survives a screen where the colour does not.
-    assert "deltaTag(" in block
-    assert "state.summary" in block, "the week and month are not read"
-
-
-def test_todays_change_is_measured_against_yesterday():
-    """A delta on the day panel needs a comparison, and yesterday only counts
-    when it had something to measure — otherwise it is absent, not a fall."""
-    html = (ROOT / "webapp" / "index.html").read_text()
-    assert "d.overall.yesterday" in html
-    assert "d.overall.value - d.overall.yesterday" in html
+    stats = html[html.index("SCREENS.stats = () => {"):]
+    assert "today.yesterday" in stats
+    assert "today.overall - yesterday" in stats
 
 
 def test_the_calendar_opens_from_the_date_on_home(alice):
@@ -4964,8 +4969,9 @@ def test_the_now_card_decides_and_says_why():
     reason and the card prints it.
     """
     html = (ROOT / "webapp" / "index.html").read_text()
-    block = html[html.index("function nowBlock("):html.index("function scoreBlock(")]
+    block = html[html.index("function nowBlock("):html.index("function tasksBlock(")]
     assert "d.now" in block, "the card is not reading the computed answer"
+    assert "now-rail" not in block, "the card grades the day with a percentage again"
     assert 't("now")' in block, "the card is still titled something else"
     assert 'data-act="mission-pick"' in block, "the suggestion cannot be changed"
     for reason in ("pinned", "overdue", "due_today", "habit", "wake",
@@ -5755,23 +5761,29 @@ def test_the_three_default_habits_are_not_offered_a_day_picker():
     assert html.count("habit_always_daily:") == 3
 
 
-def test_each_habit_tier_shows_what_it_is_worth():
-    """The badge comes from the API's applied weight, not a second formula."""
+def test_the_habits_screen_is_the_list_first_and_the_dashboard_last():
+    """The user's words: "at the top only the habits, in one column; the edit
+    things go to the dashboard at the bottom". Tiers are an edge colour on the
+    row, not headings between rows; add, the ready-made ten, reorder and
+    restore live in one dashboard under the list."""
     html = (ROOT / "webapp" / "index.html").read_text()
     tab = html[html.index("function habitsTab(){"):html.index("function habitRow(")]
-    assert "data.tiers?.[cat]" in tab
-    assert "tier.applied" in tab
-    assert "sectionHead(TIER_TONE[cat]" in tab and ", badge)" in tab
+    rows_at = tab.index("habitRow(x, cat, data.wake)")
+    dash_at = tab.index('<div class="dash">')
+    assert rows_at < dash_at, "the controls are above the habits again"
+    assert "sectionHead(" not in tab, "tier headings are back between the rows"
+    dash = tab[dash_at:]
+    for act in ("habit-add", "presets-open", "reorder-on", "habit-archive-open"):
+        assert f'data-act="{act}"' in dash, f"{act} left the dashboard"
+    row = html[html.index("function habitRow("):html.index("function scheduleLabel(")]
+    assert "hrow-tier" in row
 
 
-def test_home_puts_the_work_before_the_numbers():
-    """Now → today's tasks → the score. Complements the block-order test."""
+def test_home_puts_the_work_after_the_counts():
+    """Now → one line of counts → today's tasks; nothing numeric after them."""
     html = (ROOT / "webapp" / "index.html").read_text()
     home = html[html.index("SCREENS.home = () => {"):html.index("function privacyNote(")]
-    assert home.index("tasksBlock(d)") < home.index("scoreBlock(d)")
-    # And the lower half is introduced as a section rather than a loose card.
-    assert 't("overall_section")' in html
-    assert html.count("overall_section:") == 3
+    assert home.index("nowBlock(d)") < home.index("countsRow(d)") < home.index("tasksBlock(d)")
 
 
 # ==========================================================================
@@ -9769,3 +9781,345 @@ async def test_a_menu_tap_during_sign_in_is_not_taken_as_the_password():
     with SessionLocal() as s:
         row = accounts.credential_for(s, owner)
         assert row.failed_attempts == 0, "no password was tried"
+
+
+# ==========================================================================
+# v9.1 — money, the ready-made ten, rituals personal ↔ team, a fast Home,
+# the calendar that does not plan the past, and the move that moves
+# ==========================================================================
+
+@pytest.mark.parametrize("text,kind,amount,category", [
+    ("Tushlikka 45 ming so'm sarfladim", "expense", 45_000, "food"),
+    ("Taxi uchun 30 ming to'ladim", "expense", 30_000, "transport"),
+    ("Maosh 5 million keldi", "income", 5_000_000, "salary"),
+    ("Reklama uchun 1,5 mln", "expense", 1_500_000, "business"),
+    ("Kommunal 180 000", "expense", 180_000, "home"),
+    ("Dorixona 45,000", "expense", 45_000, "health"),
+    ("Обед 450 тыс", "expense", 450_000, "food"),
+    ("Lunch 45k", "expense", 45_000, "food"),
+    ("Sotdim 2 mln foyda", "income", 2_000_000, "sales"),
+    ("2 ta non 8 ming", "expense", 8_000, "food"),
+])
+def test_a_money_line_is_read_as_people_type_it(text, kind, amount, category):
+    parsed = svc.parse_money_text(text)
+    assert parsed and (parsed["kind"], parsed["amount"], parsed["category"]) == \
+        (kind, amount, category), parsed
+    assert svc.looks_like_money(text)
+
+
+@pytest.mark.parametrize("text", ["call mum at 10", "Kitob 20 bet o'qish",
+                                  "Hisobot 3 bo'lim", "salom"])
+def test_a_task_with_a_number_is_not_money(text):
+    assert not svc.looks_like_money(text)
+
+
+def test_money_is_recorded_summed_and_kept_apart_from_the_score(fresh):
+    before = fresh.get("/api/overall").json()
+    assert fresh.post("/api/money/text", {"text": "Tushlik 45 ming"}).status_code == 200
+    assert fresh.post("/api/money/text", {"text": "Maosh 5 mln keldi"}).status_code == 200
+    made = fresh.post("/api/money", {"kind": "expense", "amount": 120000,
+                                     "category": "health", "note": "Dorixona"})
+    assert made.status_code == 200 and made.json()["category"] == "health"
+    m = fresh.get("/api/money").json()
+    assert (m["income"], m["expense"]) == (5_000_000, 165_000)
+    assert m["saved"] == m["balance"] == 4_835_000
+    food = next(c for c in m["categories"] if c["id"] == "food")
+    assert food["spent"] == 45_000 and food["limit"] == 2_000_000
+    assert [e["amount"] for e in m["entries"]][:1] == [120000]
+    # Nothing productive moved: not the day's number, not its parts.
+    after = fresh.get("/api/overall").json()
+    assert after["value"] == before["value"] and after["parts"] == before["parts"]
+    assert "money" not in fresh.get("/api/home").json()
+
+
+def test_money_rejects_what_it_cannot_read_and_future_days(fresh):
+    assert fresh.post("/api/money/text", {"text": "salom"}).status_code == 422
+    assert fresh.post("/api/money", {"kind": "expense", "amount": 0}).status_code == 422
+    assert fresh.post("/api/money", {"kind": "gift", "amount": 5}).status_code == 422
+    tomorrow = (svc.today_local() + timedelta(days=1)).isoformat()
+    assert fresh.post("/api/money", {"kind": "expense", "amount": 5,
+                                     "day": tomorrow}).status_code == 422
+    # An expense filed under an income category is re-read from its note.
+    row = fresh.post("/api/money", {"kind": "expense", "amount": 30000,
+                                    "category": "salary", "note": "taxi"}).json()
+    assert row["category"] == "transport"
+
+
+def test_money_delete_can_be_undone_on_the_same_day(fresh):
+    made = fresh.post("/api/money/text", {"text": "Kino 60 ming"}).json()
+    gone = fresh.delete(f"/api/money/{made['id']}").json()["entry"]
+    assert gone["category"] == "fun"
+    back = fresh.post("/api/money", {k: gone[k] for k in
+                                     ("kind", "amount", "category", "note", "day")})
+    assert back.status_code == 200 and back.json()["day"] == gone["day"]
+
+
+def test_money_budgets_are_per_category_and_can_be_switched_off(fresh):
+    assert fresh.put("/api/money/budgets/food", {"limit": 100000}).status_code == 200
+    fresh.post("/api/money/text", {"text": "Restoran 150 ming"})
+    food = next(c for c in fresh.get("/api/money").json()["categories"]
+                if c["id"] == "food")
+    assert food["limit"] == 100000 and food["over"] is True
+    assert fresh.put("/api/money/budgets/food", {"limit": 0}).status_code == 200
+    food = next(c for c in fresh.get("/api/money").json()["categories"]
+                if c["id"] == "food")
+    assert food["limit"] == 0 and food["over"] is False
+    assert fresh.put("/api/money/budgets/salary", {"limit": 5}).status_code == 422
+
+
+def test_money_is_private_to_its_workspace(client):
+    a = Caller(client, {"id": next(_next_id), "first_name": "A"})
+    b = Caller(client, {"id": next(_next_id), "first_name": "B"})
+    made = a.post("/api/money/text", {"text": "Taxi 30 ming"}).json()
+    assert b.delete(f"/api/money/{made['id']}").status_code == 404
+    assert b.get("/api/money").json()["expense"] == 0
+    assert a.get("/api/money").json()["expense"] == 30000
+
+
+def test_money_is_exported_and_wiped_with_the_workspace(fresh):
+    fresh.post("/api/money/text", {"text": "Taxi 30 ming"})
+    fresh.put("/api/money/budgets/transport", {"limit": 700000})
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        data = svc.export_workspace(s, ws, s.get(User, fresh.user["id"]))
+        assert data["money"][0]["amount"] == 30000
+        assert data["money_budgets"]["transport"] == 700000
+        svc.wipe_workspace(s, fresh.user["id"])
+    assert fresh.get("/api/money").json()["count"] == 0
+
+
+def test_the_ready_made_list_is_ten_and_brings_history_back(fresh):
+    presets = fresh.get("/api/habits/presets").json()["presets"]
+    assert len(presets) == 10
+    assert [p["key"] for p in presets if p["system"]] == ["wakeup", "prayer", "journal"]
+    assert all(p["added"] for p in presets if p["system"])
+    assert not any(p["added"] for p in presets if not p["system"])
+
+    r = fresh.post("/api/habits/presets", {"key": "sport", "on": True})
+    sport = next(p for p in r.json()["presets"] if p["key"] == "sport")
+    assert sport["added"] and sport["name"] == "Sport"
+    fresh.post(f"/api/habits/{sport['habit_id']}/toggle")
+    fresh.post("/api/habits/presets", {"key": "sport", "on": False})
+    names = [h["name"] for h in fresh.get("/api/habits").json()["habits"]]
+    assert "Sport" not in names
+    back = fresh.post("/api/habits/presets", {"key": "sport", "on": True}).json()
+    again = next(p for p in back["presets"] if p["key"] == "sport")
+    assert again["habit_id"] == sport["habit_id"], "the same habit came back"
+    row = next(h for h in fresh.get("/api/habits").json()["habits"]
+               if h["id"] == again["habit_id"])
+    assert row["done"] is True, "today's tick came back with it"
+    assert fresh.post("/api/habits/presets", {"key": "nope"}).status_code == 422
+
+
+def test_a_preset_added_in_one_language_reads_as_added_in_another(fresh):
+    fresh.post("/api/settings", {"language": "ru"})
+    fresh.post("/api/habits/presets", {"key": "read", "on": True})
+    fresh.post("/api/settings", {"language": "uz"})
+    presets = fresh.get("/api/habits/presets").json()["presets"]
+    read = next(p for p in presets if p["key"] == "read")
+    assert read["added"] and read["name"] == "Чтение книги"
+
+
+def test_the_ready_made_names_never_start_a_timer():
+    for key in svc.ORDINARY_PRESET_KEYS:
+        for lang in ("uz", "en", "ru"):
+            name = svc.preset_name(key, lang)
+            assert svc.parse_duration_minutes(name) is None, name
+
+
+def test_archived_habits_can_be_restored_from_the_mini_app(fresh):
+    made = fresh.post("/api/habits", {"name": "Meditatsiya"}).json()["id"]
+    fresh.delete(f"/api/habits/{made}")
+    gone = fresh.get("/api/habits/archived").json()["habits"]
+    assert [h["name"] for h in gone] == ["Meditatsiya"]
+    assert fresh.post(f"/api/habits/{made}/restore").status_code == 200
+    assert "Meditatsiya" in [h["name"] for h in fresh.get("/api/habits").json()["habits"]]
+
+
+def test_a_ritual_is_shared_into_a_team_and_taken_back(client):
+    one, two, team_id = _pair(client)
+    a = Caller(client, {"id": one, "first_name": "Ernest"})
+    before = a.get("/api/home").json()["counts"]
+    r = a.post("/api/rituals/share", {"key": "prayer", "team_id": team_id, "on": True})
+    assert r.status_code == 200 and r.json()["shared"]["prayer"] == [team_id]
+    with SessionLocal() as s:
+        mirrored = [h for h in svc.list_team_habits(s, two, team_id)
+                    if h["system_key"] == "prayer"]
+        assert mirrored and mirrored[0]["mirrored"] is True
+    # Personal day is untouched: a mirrored ritual is never scored twice.
+    assert a.get("/api/home").json()["counts"] == before
+    # A plain member may not take out what someone else shared.
+    b = Caller(client, {"id": two, "first_name": "Gulyora"})
+    assert b.post("/api/rituals/share", {"key": "prayer", "team_id": team_id,
+                                         "on": False}).status_code == 403
+    off = a.post("/api/rituals/share", {"key": "prayer", "team_id": team_id, "on": False})
+    assert off.status_code == 200 and off.json()["shared"]["prayer"] == []
+    names = [h["name"] for h in a.get("/api/habits").json()["habits"]]
+    assert "5x namoz" in names, "the personal ritual stays"
+    assert a.post("/api/rituals/share", {"key": "sport", "team_id": team_id}).status_code == 422
+
+
+def test_the_team_graph_is_one_line_for_the_whole_team(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        task = svc.add_team_task(s, one, team_id, "Birga", deadline=svc.today_local())
+        svc.toggle_team_task(s, one, task["id"])
+        data = svc.team_stats(s, one, team_id, period="week")
+    today = data["series"][-1]
+    assert today["team_total"] == 2 and today["team_done"] == 1
+    assert today["team"] == 50
+    assert all("team" in p for p in data["series"])
+
+
+def test_summary_skips_the_days_before_anything_existed(client):
+    """The slow Home: /api/summary recomputed sixty days per open, ~45 queries
+    each, for a new account that had existed for one of them."""
+    from sqlalchemy import event
+    uid = next(_next_id)
+    _onboard(uid)
+    count = [0]
+
+    def seen(*_a, **_k):
+        count[0] += 1
+    event.listen(db.engine, "before_cursor_execute", seen)
+    try:
+        with SessionLocal() as s:
+            svc.summary(s, svc.workspace_id_for(s, uid))
+    finally:
+        event.remove(db.engine, "before_cursor_execute", seen)
+    assert count[0] < 200, f"summary sent {count[0]} queries for a new account"
+
+
+def test_the_read_memo_never_answers_from_before_a_write():
+    uid = next(_next_id)
+    _onboard(uid)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        today = svc.today_local()
+        # Get up and the journal; prayer is scored in its own section.
+        assert svc.habit_progress(s, ws, today) == (0, 2)
+        habit = svc.add_habit(s, ws, "Yangi")
+        assert svc.habit_progress(s, ws, today) == (0, 3)
+        svc.toggle_habit(s, ws, habit.id)
+        assert svc.habit_progress(s, ws, today) == (1, 3)
+        svc.set_habit_paused(s, ws, habit.id, True)
+        assert svc.habit_progress(s, ws, today) == (0, 2)
+        with SessionLocal() as other:
+            assert svc.habit_progress(other, ws, today) == \
+                svc.habit_progress(s, ws, today), "the memo and a fresh read disagree"
+
+
+def test_home_opens_on_one_request():
+    html = (ROOT / "webapp" / "index.html").read_text()
+    boot = html[html.index("async function boot(){"):]
+    assert 'api("/api/teams")' not in boot, "start-up waits on the team boards again"
+    assert "me.teams" in boot
+    assert "/api/summary" not in html.split('if(screen === "home")')[1][:400].split("*/")[-1]
+
+
+def test_every_action_name_is_defined_once():
+    """"Ko'chirish" did nothing: two actions shared the name `task-move` and the
+    later silently replaced the earlier, so the overdue chips posted to the
+    team-move endpoint with no team."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    body = html[html.index("const A = {"):html.index("async function teamWrite(")]
+    keys = re.findall(r'^  "?([a-z][\w-]*)"?\s*:', body, re.M)
+    dupes = sorted({k for k in keys if keys.count(k) > 1})
+    assert not dupes, f"action names defined twice: {dupes}"
+    row = html[html.index("function taskRow("):html.index("function projectsTab(")]
+    assert 'data-act="task-reschedule"' in row and 'data-act="task-move"' not in row
+
+
+def test_an_overdue_task_moves_to_today_from_the_chip(fresh):
+    yesterday = (svc.today_local() - timedelta(days=1)).isoformat()
+    task_id = fresh.post("/api/tasks", {"title": "LATE", "when": "pick",
+                                        "deadline": yesterday}).json()["id"]
+    assert fresh.post(f"/api/tasks/{task_id}/reschedule",
+                      {"when": "today"}).status_code == 200
+    tasks = fresh.get("/api/tasks?days=365").json()
+    assert task_id not in [x["id"] for x in tasks["overdue"]]
+
+
+def test_the_calendar_plans_only_today_and_later():
+    """A past day shows what was done and offers nothing to add; today and the
+    days ahead open even when empty, and that is where a task is planned."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    grid = html[html.index("function calendarBlock(){"):html.index("const TREND_ICON")]
+    assert "const past = iso < c.today;" in grid
+    assert "const opens = events.length || !past;" in grid
+    assert 'class="cal-day pad"' in grid and "cal-day empty" not in grid
+    sheet = html[html.index("function daySheet("):html.index("function birthdaySheet(")]
+    assert 'const add = past ? ""' in sheet
+    add = html[html.index('"task-add-on": el => {'):]
+    assert "el.dataset.date < todayISO() ? todayISO()" in add[:300]
+
+
+def test_a_project_is_asked_personal_or_team_when_it_is_made():
+    html = (ROOT / "webapp" / "index.html").read_text()
+    sheet = html[html.index('"project-add": el =>'):html.index('"project-open":')]
+    assert "destPicker()" in sheet
+    assert "/api/teams/${dest.id}/projects" in sheet
+    assert '"team-project-save"' not in html
+
+
+async def test_the_bot_keeps_money_typed_in_the_chat():
+    uid = next(_next_id)
+    _onboard(uid)
+    ctx = _Ctx()
+    await application.on_text(_TextUpdate(uid, "Tushlik 45 ming"), ctx)
+    capture = ctx.user_data["capture"]
+    assert capture["money"]["amount"] == 45000
+    update = _CbUpdate(uid, f"cap:{capture['id']}:m")
+    await application.on_callback(update, ctx)
+    with SessionLocal() as s:
+        m = svc.money_overview(s, svc.workspace_id_for(s, uid))
+    assert m["expense"] == 45000 and m["entries"][0]["source"] == "bot"
+
+
+async def test_the_bot_money_screen_and_its_add_flow():
+    uid = next(_next_id)
+    _onboard(uid)
+    ctx = _Ctx()
+    await application.on_text(_TextUpdate(uid, application.t("uz", "menu_money")), ctx)
+    await application.on_callback(_CbUpdate(uid, "money:add:income"), ctx)
+    assert application.current_flow(ctx, "money_entry")["kind"] == "income"
+    await application.on_text(_TextUpdate(uid, "Bonus 2 mln"), ctx)
+    with SessionLocal() as s:
+        m = svc.money_overview(s, svc.workspace_id_for(s, uid))
+    assert m["income"] == 2_000_000
+    text = application.render_money(m, "uz")
+    assert "2 000 000 so'm" in text and "%" not in text
+
+
+async def test_the_bot_ready_made_list_flips_one_habit_per_tap():
+    uid = next(_next_id)
+    _onboard(uid)
+    ctx = _Ctx()
+    update = _CbUpdate(uid, "habit:preset:water")
+    await application.on_callback(update, ctx)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        assert "2 litr suv ichish" in [h["name"] for h in svc.list_habits(s, ws)]
+    await application.on_callback(_CbUpdate(uid, "habit:preset:water"), ctx)
+    with SessionLocal() as s:
+        assert "2 litr suv ichish" not in [h["name"] for h in svc.list_habits(s, ws)]
+
+
+async def test_setup_offers_the_seven_and_adds_what_stays_ticked():
+    uid = next(_next_id)
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, uid)
+        user = s.get(User, uid)
+        user.onboarding_step = "presets"
+        s.commit()
+    ctx = _Ctx()
+    ctx.user_data["setup"] = {}
+    await application.on_callback(_CbUpdate(uid, "setup:pre:language"), ctx)
+    assert "language" not in ctx.user_data["setup"]["presets"]
+    await application.on_callback(_CbUpdate(uid, "setup:pre_done"), ctx)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        names = [h["name"] for h in svc.list_habits(s, ws)]
+        assert s.get(User, uid).onboarded is True
+    assert len(names) == 3 + 6
+    assert "Til o'rganish" not in names and "Sport" in names

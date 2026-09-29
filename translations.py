@@ -162,7 +162,7 @@ T: dict[str, dict[str, str]] = {
         "menu_app": "🚀 ErnestOS",
         "home_title": "🏠 {name}ning shaxsiy tizimi",
         "home_title_plain": "🏠 ErnestOS",
-        "home_mission": "🎯 Missiya", "home_today": "⚡ Bugun",
+        "home_mission": "🎯 Hafta maqsadi", "home_today": "⚡ Bugun",
         "home_now": "⚡ HOZIR",
         "home_top3": "🎯 Kun tanlovi",
         "now_wake": "Turdim — belgilang",
@@ -539,7 +539,7 @@ T: dict[str, dict[str, str]] = {
         "menu_app": "🚀 ErnestOS",
         "home_title": "🏠 {name}'s personal system",
         "home_title_plain": "🏠 ErnestOS",
-        "home_mission": "🎯 Mission", "home_today": "⚡ Today",
+        "home_mission": "🎯 Week goal", "home_today": "⚡ Today",
         "home_now": "⚡ NOW",
         "home_top3": "🎯 The day's pick",
         "now_wake": "Mark that you are up",
@@ -754,7 +754,7 @@ T: dict[str, dict[str, str]] = {
         "r_habits_today": "Habits",
         "r_prayer_today": "Prayer — five times",
         "r_nothing_planned": "Nothing is on today yet. Write one thing down — that is where the day starts.",
-        "r_mission": "This week's mission",
+        "r_mission": "This week's goal",
         "r_today_plan": "Tasks",
         "r_overdue_hint": "Moving them to today takes ten seconds — see Tasks.",
         "r_start_now": "Start with the smallest one. Pick the first task and give it 25 minutes.",
@@ -764,7 +764,7 @@ T: dict[str, dict[str, str]] = {
         "coach_blank": "Nothing was logged yesterday. That is fine — one task and one habit today is enough. Starting does not require much.",
         "r_evening_close": "Tomorrow, close one of these first.",
         "r_evening_clear": "✅ Everything is closed. Hold this — you have earned the rest.",
-        "r_focus": "🎯 Weekly missions",
+        "r_focus": "🎯 Week goals",
         "days_short": "days",
     },
     "ru": {
@@ -903,7 +903,7 @@ T: dict[str, dict[str, str]] = {
         "menu_app": "🚀 ErnestOS",
         "home_title": "🏠 Личная система — {name}",
         "home_title_plain": "🏠 ErnestOS",
-        "home_mission": "🎯 Миссия", "home_today": "⚡ Сегодня",
+        "home_mission": "🎯 Цель недели", "home_today": "⚡ Сегодня",
         "home_now": "⚡ СЕЙЧАС",
         "home_top3": "🎯 Выбор дня",
         "now_wake": "Отметьте подъём",
@@ -1558,7 +1558,6 @@ T["ru"].update({
 # ---------------------------------------------------------------------------
 
 T["uz"].update({
-    "home_mission": "🎯 Hafta maqsadi",
     "home_now": "👉 Hozir",
     "cnt_tasks": "Vazifa", "cnt_habits": "Odat", "cnt_prayer": "Namoz",
     "btn_presets": "📋 Tayyor odatlar (10 ta)",
@@ -1596,9 +1595,6 @@ T["uz"].update({
 })
 
 T["en"].update({
-    "home_mission": "🎯 Week goal",
-    "r_mission": "This week's goal",
-    "r_focus": "🎯 Week goals",
     "home_now": "👉 Now",
     "cnt_tasks": "Tasks", "cnt_habits": "Habits", "cnt_prayer": "Prayer",
     "btn_presets": "📋 Ready-made habits (10)",
@@ -1635,7 +1631,6 @@ T["en"].update({
 })
 
 T["ru"].update({
-    "home_mission": "🎯 Цель недели",
     "home_now": "👉 Сейчас",
     "cnt_tasks": "Задачи", "cnt_habits": "Привычки", "cnt_prayer": "Намаз",
     "btn_presets": "📋 Готовые привычки (10)",

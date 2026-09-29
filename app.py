@@ -6437,8 +6437,11 @@ BOT_COMMANDS = [
     ("ertalabki", lambda u, c: send_report_now(u, c, "morning")),
     ("tekshir", lambda u, c: show_report_health(u, c)),
     ("jamoa", lambda u, c: show_teams(u, c)),
+    ("pul", lambda u, c: show_money(u, c)),
+    ("money", lambda u, c: show_money(u, c)),
     # The running timer, or the list to start one; and the dates being
-    # counted down to.
+    # counted down to. Typed only: no keyboard offers them any more — both
+    # countdowns live in the Mini App.
     ("timer", lambda u, c: show_active_timer(u, c)),
     ("countdown", lambda u, c: show_countdowns(u, c)),
 ]
@@ -8313,6 +8316,23 @@ def api_habit_presets(init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, ws = auth(init)
     with SessionLocal() as s:
         return {"presets": svc.habit_presets(s, ws, user.language)}
+
+
+@app.get("/api/habits/archived")
+def api_habits_archived(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Removed habits that can come back, history and all — the Mini App's ♻️."""
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        return {"habits": svc.archived_habits(s, ws)}
+
+
+@app.post("/api/habits/{habit_id}/restore")
+def api_habit_restore(habit_id: int,
+                      init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        habit = svc.restore_habit(s, ws, habit_id)
+        return {"ok": True, "id": habit.id, "name": habit.name}
 
 
 class RitualShareIn(BaseModel):
