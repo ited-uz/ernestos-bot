@@ -1352,7 +1352,7 @@ const DICT = {
   pause_today:"Bugundan", pause_tomorrow:"Ertadan", pause_when:"Qachondan to'xtatamiz?",
   pause_note:"Bugundan desangiz, bugungi hisobdan ham chiqadi",
   pts:"p.", team_join_hint:"Taklif havolasini bosing — jamoani ko'rib, keyin qo'shilasiz",
-  nav_home:"Asosiy", money:"Pul", money_add:"Pul yozuvi",
+  nav_home:"Asosiy", nav_stats:"Statistika", money:"Pul", money_add:"Pul yozuvi",
   money_apart:"Alohida bo'lim — hech qanday foiz, streak yoki reytingga qo'shilmaydi.",
   money_balance:"Umumiy balans", money_income:"Kirim", money_expense:"Chiqim",
   money_saved:"Shu oy tejaldi", money_unit:"so'm",
@@ -1713,7 +1713,7 @@ const DICT = {
   pause_today:"From today", pause_tomorrow:"From tomorrow", pause_when:"Pause from when?",
   pause_note:"From today takes today out of the count as well",
   pts:"pts", team_join_hint:"Open an invite link — you see the team first, then join",
-  nav_home:"Home", money:"Money", money_add:"Money entry",
+  nav_home:"Home", nav_stats:"Stats", money:"Money", money_add:"Money entry",
   money_apart:"A separate section — never counted in any percentage, streak or rank.",
   money_balance:"Balance", money_income:"Income", money_expense:"Spent",
   money_saved:"Saved this month", money_unit:"UZS",
@@ -2074,7 +2074,7 @@ const DICT = {
   pause_today:"С сегодня", pause_tomorrow:"С завтра", pause_when:"С какого дня пауза?",
   pause_note:"С сегодня — сегодняшний день тоже не считается",
   pts:"п.", team_join_hint:"Откройте ссылку-приглашение — сначала увидите команду, потом вступите",
-  nav_home:"Главная", money:"Деньги", money_add:"Запись о деньгах",
+  nav_home:"Главная", nav_stats:"Итоги", money:"Деньги", money_add:"Запись о деньгах",
   money_apart:"Отдельный раздел — не входит ни в какие проценты, серии и рейтинги.",
   money_balance:"Баланс", money_income:"Доход", money_expense:"Расход",
   money_saved:"Сэкономлено за месяц", money_unit:"сум",
@@ -2658,6 +2658,9 @@ function tasksBlock(d){
     + items.map(x => taskRow(x, {hideDate: true})).join("")).join("");
 
   if(!rows.length && shared) return h + shared;
+  // Today's only task is the one on the Now card: "no tasks yet" under it
+  // would contradict the card, so the heading and its + are all there is.
+  if(!rows.length && d.now?.kind === "task") return h;
   if(!rows.length){
     return h + `<div class="empty">${t("no_tasks_yet")}
       <button class="btn secondary sm" data-act="task-add">
@@ -6170,7 +6173,7 @@ const NAV = [
   {id:"habits", icon:"check",    key:"habits"},
   {id:"tasks",  icon:"list",     key:"tasks"},
   {id:"team",   icon:"users",    key:"team"},
-  {id:"stats",  icon:"chart",    key:"stats"},
+  {id:"stats",  icon:"chart",    key:"nav_stats"},
   {id:"money",  icon:"wallet",   key:"money", apart:true},
 ];
 //: A project opens from Tasks, so the Tasks tab stays lit while inside one.

@@ -1019,13 +1019,23 @@ def render_home(data: dict, lang: str) -> str:
         if line:
             lines.append(f"\n{line}")
 
-    lines.append(f"\n<b>{t(lang, 'home_today')}</b>")
-    # The pinned task first — it is the day's main one — then the rest.
+    # The pinned task first — it is the day's main one — then the rest. The
+    # task already named under "Hozir" is not printed a second time, exactly
+    # as the Mini App's Home leaves it out of its list.
+    now = data.get("now") or {}
+    shown = now.get("id") if now.get("kind") == "task" else None
     pinned = [x for x in (data.get("top3") or []) if x.get("status") != "done"]
-    rows = pinned + [task for group in data["tasks_today"] for task in group["tasks"]]
+    rows = [x for x in pinned + [task for group in data["tasks_today"]
+                                 for task in group["tasks"]]
+            if x.get("id") != shown]
     # Shared work due today is today's work too; marked 👥 so it is clear
     # whose list it came from, and ticked per person.
     shared = [x for x in (data.get("team_today") or []) if x.get("owed", True)]
+    if not rows and not shared and shown is not None:
+        # Today's one task is the one above; "Today: none" under it would be
+        # the screen contradicting itself.
+        return "\n".join(lines)
+    lines.append(f"\n<b>{t(lang, 'home_today')}</b>")
     if rows or shared:
         for task in rows[:8]:
             when = f" · {task['due_time']}" if task.get("due_time") else ""

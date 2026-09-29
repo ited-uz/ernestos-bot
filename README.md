@@ -12,16 +12,18 @@ Mahsulotning asosiy sikli:
 
 | Bo'lim | Mazmuni |
 |---|---|
-| 🏠 Bosh sahifa | **Hozir** (avtomatik tanlanadi), bugungi vazifalar (jamoanikilar bilan), 📅 Date countdown va ⏱ Time countdown, kun/hafta/oy foizi |
-| ✅ Odatlar | Odatlar (Majburiy / Maqsadli / Qo'shimcha, jadval, pauza, tarix) + namoz + kundalik (modul yoqilgan bo'lsa) |
-| ⚡ Vazifalar | **Bugun / Reja / Taqvim** — Reja ichida Ochiq · Loyihalar · Bajarilgan; Taqvim'da oy va countdownlar |
+| 🏠 Bosh sahifa | **Hozir** (avtomatik tanlanadi), bir qator sanoq (`Vazifa 1/3 · Odat 2/6 · Namoz 3/5`, foizsiz), bugungi vazifalar (jamoanikilar bilan) |
+| ✅ Odatlar | Tepada faqat odatlar (bitta ustun), pastda boshqaruv paneli: qo'shish, 📋 Tayyor odatlar (10 ta), tartib, qaytarish; + namoz + kundalik |
+| ⚡ Vazifalar | **Bugun / Reja / Taqvim** — Hafta maqsadi faqat shu yerda; Reja ichida Ochiq · Loyihalar · Bajarilgan; Taqvim'da Date countdown, oy va ⏱ Time countdown |
 | 👥 Jamoa | **Bugun / Ishlar / Natija**, rollar (egasi / admin / a'zo), taklif havolasi, so'rovlar, bildirishnoma darajasi, faollik tarixi va qaytarish |
-| 📊 Statistika | Umumiy % + Vazifalar / Odatlar / Namoz, o'zgarish (punktda), jamoa natijalari (kun/hafta/oy) |
+| 📊 Statistika | Umumiy % + Vazifalar / Odatlar / Namoz, o'zgarish (punktda), jamoa natijalari, daraja/XP |
+| 💰 Pul | **Alohida** — balans, kirim/chiqim, kategoriya byudjeti, yozuvlar; hech qanday foiz yoki reytingga kirmaydi |
 
+> **v9.1** (Hozir + sanoq, Pul, tayyor 10 odat, ko'chirish tuzatildi, tezlik) — [docs/V9_1_OZGARISHLAR.md](docs/V9_1_OZGARISHLAR.md).
 > **v8 da nima o'zgardi** (login/parol, saqlash/bekor qilish, loyihalar) — [docs/V8_OZGARISHLAR.md](docs/V8_OZGARISHLAR.md).
 > **v7** — [docs/V7_OZGARISHLAR.md](docs/V7_OZGARISHLAR.md).
 
-Pastdagi navigatsiya aynan shu beshta. Qolgan hamma narsa — kalendar,
+Pastdagi navigatsiya — shu beshta va chiziq bilan ajratilgan 💰 Pul. Qolgan hamma narsa — kalendar,
 tug'ilgan kunlar, haftalik yakun, sozlamalar, export — kerakli joydan
 ochiladi, alohida tab sifatida emas.
 
@@ -30,16 +32,18 @@ uslubi × yorug'/qorong'i rejim.
 
 ## Bosh sahifa — bir ochishda ko'rinadigan narsa
 
-Bosh sahifa faqat to'rt blok, shu tartibda:
+Ilova ochilganda bitta savolga javob beradi: **hozir nima qilaman?**
 
-1. salom, sana, quote, sozlamalar va rasm;
+1. salom, sana, ➕ (tez qo'shish) va rasm;
 2. **Hozir** — ayni damda qilinadigan bitta ish, avtomatik tanlanadi;
-3. **kun / hafta / oy** foizi **yonma-yon**, har birida o'zgarish belgisi
-   (↑↓), pastida bitta qatorda vazifa / odat / namoz;
+3. bitta qator **sanoq** — `Vazifa 1/3 · Odat 2/6 · Namoz 3/5`, **foizsiz**;
+   bosilsa Statistika ochiladi;
 4. loyihalarga bo'lingan **bugungi vazifalar**.
 
-Boshqa hamma narsa — haftaning fokusi, tug'ilgan kunlar, haftalik yakun —
-o'ziga tegishli ekranda. Maqsad: ochish bilan kerakli narsani ko'rish.
+Foizlar, daraja/XP va hafta maqsadi Bosh sahifada yo'q — ular Statistika va
+Vazifalar ekranida. Formula o'zgarmagan. Bosh sahifa **bitta** so'rov bilan
+yuklanadi (ilgari uchta, jumladan har ochishda bir oylik ballni qayta
+hisoblaydigan `/api/summary`).
 
 ## Hozir
 
@@ -63,23 +67,29 @@ tanlovni o'zgartiradi, tanlangan vazifa esa tartibning eng tepasiga chiqadi.
 
 ## Odatlar
 
-Yangi hisob **uchta** odat bilan ochiladi, boshqa hech narsa bilan emas:
+**Tayyor 10 ta odat** — eng keraklilari:
 
-| Kategoriya | Standart odatlar |
+| Kategoriya | Tayyor odatlar |
 |---|---|
-| 🔴 Non-negotiable | **Get up** · **5x namoz** · **Kundalik** |
-| 🟡 Target | *(bo'sh — o'zingiz qo'shasiz)* |
-| 🟢 Bonus | *(bo'sh — o'zingiz qo'shasiz)* |
+| 🔴 Majburiy | **Get up** · **5x namoz** · **Kundalik** (avtomatik) |
+| 🟡 Maqsadli | Kunni rejalashtirish · Deep work · Sport · Kitob o'qish |
+| 🟢 Qo'shimcha | 2 litr suv ichish · Til o'rganish · 23:00 gacha uxlash |
 
-Sabab: bu uchtasi — ErnestOS nima haqidaligi. Deep flow, sport, kitob yoki
-podcast — bular qanday yashash haqidagi **shaxsiy tanlov**, va ularni oldindan
-qo'shib qo'yish yangi foydalanuvchiga o'zi tanlamagan ro'yxatni berish
-demakdir. Birinchi «o'z» odatingizni siz qo'shasiz.
+Setup'da uchta marosim (modullar), keyin qolgan yettitasi — **hammasi
+belgilangan** holda chiqadi; keraksizini olib tashlaysiz. Keyin istalgan payt:
+Odatlar → **📋 Tayyor odatlar** — bir bosishda qo'shiladi yoki olib
+tashlanadi. Olib tashlangan odat **tarixi bilan** saqlanadi va qaytarilganda
+tarixi ham qaytadi.
 
-> **Eski foydalanuvchilar uchun hech narsa o'zgarmaydi.** Agar hisobingizda
-> allaqachon Deep flow, Sport, Podcast yoki Read bo'lsa — ular tarixi bilan
-> birga joyida qoladi. Standart ro'yxat faqat **yangi** workspace yaratilganda
-> ishlatiladi.
+**Get up, 5x namoz, Kundalik** ham boshqa odatlar kabi: nomini, darajasini,
+eslatmasini o'zgartirish, pauza qilish va o'chirish mumkin (o'chirish modulni
+o'chiradi, tarix saqlanadi). Faqat jadvali har kuni va katakchasi avtomatik
+qoladi. Har biri **shaxsiy** bo'lib qoladi va xohlasangiz **jamoada ham**
+ko'rinadi (odat sahifasida «Qayerda ko'rinadi»): har a'zo o'zinikini belgilaydi,
+ball ikki marta hisoblanmaydi.
+
+> **Eski foydalanuvchilar uchun hech narsa avtomatik qo'shilmaydi** — tayyor
+> ro'yxatdan bir bosishda qo'shasiz.
 
 Uchtasi **avtomatik hisoblanadi** — qo'lda bosib bo'lmaydi:
 
@@ -112,8 +122,9 @@ Odatni o'chirish odatning o'z sahifasida, tasdiqlash bilan.
 
 Odat sahifasida **uyg'onish vaqti** belgilanadi (default 05:00).
 
-«Turdim» tugmasi bot klaviaturasida, **ErnestOS tugmasi ustida** turadi —
-ertalab barmoq birinchi tegadigan joy.
+«Turdim» tugmasi **Odatlar ekranida** — botda ham, Mini App'da ham — faqat
+hali belgilash mumkin bo'lgan vaqtda chiqadi. Doimiy klaviaturadan olib
+tashlandi; botga «Turdim» deb yozish ishlashda davom etadi.
 
 O'sha vaqtdan **bir soat** kutiladi. Shu oraliqda bosilsa:
 `☀️ Xayrli tong! 04:53 da turdingiz.` Kechiksa:
@@ -221,8 +232,8 @@ ham).
 bosilsa taymer ekrani ochiladi (▶️ Boshlash · ⏸ Pauza · ⏹ To'xtatish ·
 ⚙️ Vaqtni o'zgartirish · 🚫 O'chirish). Ishlayotgan taymer xabari har
 daqiqada yangilanib turadi, tugaganda alohida xabar keladi (telefon
-jiringlaydi). `Odatlar → ⏱ Taymer` va `Vazifalar → ⏱ Taymer` ro'yxatidan
-istalgan elementga taymer qo'yiladi. `/timer` — hozir ishlayotgan taymer.
+jiringlaydi). Taymerlar ro'yxati tugmasi botdan olib tashlandi (v9.1) —
+Mini App'da Vazifalar → Taqvim → ⏱ Time countdown. `/timer` — hozir ishlayotgan taymer.
 
 **Mini App'da:** taymerli qatorning katakchasi o'rnida ⏱ — bosilsa katta
 soat (soniyalar bilan) ochiladi. Ishlayotgan taymer Bosh sahifa, Odatlar va
@@ -241,8 +252,7 @@ va kechqurungi hisobotda** necha kun qolganini aytadi:
 `⏳ IELTS imtihoni — 49 kun qoldi · 15-noyabr`. Ertaga bo'lsa `ertaga!`,
 bugun bo'lsa `bugun! 🎉`; o'tib ketgan sana hisobotda chiqmaydi.
 
-* **Botda:** Bosh sahifa yoki Vazifalar ostidagi `⏳ Countdown` tugmasi yoki
-  `/countdown`. Qo'shish ikki savol: nomi, keyin sana — `15.11.2026`,
+* **Botda:** tugma yo'q (v9.1) — faqat `/countdown` buyrug'i. Qo'shish ikki savol: nomi, keyin sana — `15.11.2026`,
   `15 noyabr`, `2026-11-15`, `31.12`, `30 kun`, `3 hafta`, `2 oy`, `ertaga`.
 * **Mini App'da:** Vazifalar → Asosiy (kalendar tepasida), va bo'sh
   bo'lmasa Bosh sahifada.
@@ -260,7 +270,9 @@ Mini App'da jamoaga qo'shilgan odat va vazifalar botda ham chiqadi:
   `👥 Jamoa vazifalari` tugmasi: ✅/⬜ bosib o'z ulushingizni belgilaysiz.
 * **Bosh sahifa** — bugungi jamoa vazifalari ham ro'yxatda.
 
-## Haftaning fokusi
+## Hafta maqsadi
+
+(Oldingi nomi «Haftaning fokusi / missiya» — v9.1 da «missiya» so'zi hamma joydan olib tashlandi.)
 
 **Vazifalar** bo'limining tepasida — bu rejalashtirish qarori, va shu yer
 rejalashtirish ekrani. Bosh sahifa bugun haqida qoladi.
