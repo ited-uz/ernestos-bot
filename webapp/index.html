@@ -7,445 +7,336 @@
 <meta name="color-scheme" content="dark light" />
 <title>ErnestOS</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script>
+/* Design preview only. With ?preview in the URL, preview.js (a sibling file
+   the server never serves) answers /api/* with clearly-labelled sample data,
+   so the interface can be reviewed without Telegram or a backend. Production
+   opens the app without the parameter and never reaches this branch. */
+if(/[?&]preview(=|&|$)/.test(location.search))
+  document.write('<script src="preview.js"><\/script>');
+</script>
 <style>
 /* ==================================================================
-   ErnestOS design system.
+   ErnestOS design system — Soft Minimalism (v9).
 
-   One set of semantic tokens; five themes that redefine them. No
-   component below this block names a colour — they all reference
-   semantics, which is what lets a theme change the whole visual system
-   without duplicating a single component:
+   Calm by default: a soft grey ground, white surfaces, dark readable ink
+   and one restrained accent. Colour is spent on meaning — the primary
+   action, the active place, and state — never on decoration.
+
+   One set of semantic tokens; five accent themes redefine them. No
+   component below the theme blocks names a colour:
 
      --bg / --surface / --surface-2   ground and panels
-     --text / --text-2 / --text-3     primary, secondary, tertiary
-     --primary / --primary-2          the brand and its pressed state
-     --accent / --accent-2            analytics, progress, highlights
+     --text / --text-2 / --text-3     primary, secondary, tertiary (all AA)
+     --primary                        accent as text/icon (AA on surfaces)
+     --primary-fill / --on-primary    accent as a filled control + its label
+     --accent / --accent-2            analytics, charts
      --border / --border-2            hairlines and stronger dividers
-     --ok / --warn / --danger         state
+     --ok / --warn / --danger         state — always paired with a word or
+                                      a glyph, never colour alone
 
-   Each theme also sets its own structure — radius, shadow depth, border
-   weight, gradient policy, type weight — because a theme that only
-   changes hue is a palette, not a design.
+   The five themes share one structure (radius, spacing, type, motion);
+   they differ in accent and in the faint temperature of the ground, so
+   switching theme changes the mood without changing how the app works.
 
    Spacing is an 8px scale (--s1..--s6) with 4px available as --s0.
    ================================================================== */
 /* ------------------------------------------------------------------
-   Structure. Shared by every theme and every mode; only the values a
-   theme overrides below differ. Colour lives in the theme blocks.
+   Structure. Shared by every theme and every mode.
    ------------------------------------------------------------------ */
 :root{
-  --radius-sm:10px;
+  --radius-sm:12px;
   --radius:16px;
   --radius-lg:20px;
   --radius-pill:999px;
   --border-w:1px;
-  /* Shadows are composed from the mode's own tint and strength, so one
-     definition covers both light and dark. */
   --shadow-1:0 1px 2px rgba(var(--shadow-rgb), calc(.05 * var(--shadow-k)));
-  --shadow-2:0 8px 24px rgba(var(--shadow-rgb), calc(.08 * var(--shadow-k)));
-  --shadow-3:0 16px 40px rgba(var(--shadow-rgb), calc(.12 * var(--shadow-k)));
-  /* A theme opts into gradient here, once, instead of per component. */
+  --shadow-2:0 1px 2px rgba(var(--shadow-rgb), calc(.04 * var(--shadow-k))),
+             0 6px 20px rgba(var(--shadow-rgb), calc(.06 * var(--shadow-k)));
+  --shadow-3:0 16px 40px rgba(var(--shadow-rgb), calc(.14 * var(--shadow-k)));
   --primary-fill:var(--primary);
-  --hero-fill:linear-gradient(135deg,var(--c1),var(--c3));
-  --hero-text:#FFFFFF;
-  --ring:0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent);
-  --title-w:680;
-  --display-w:700;
-  --motion:200ms;
-  /* Glass is a theme decision, made once here. A theme that wants frosted
-     panels sets --card-bg to a translucent mix and --blur to a filter; the
-     opaque themes leave both alone and pay nothing for the feature. */
+  --hero-fill:var(--surface);
+  --hero-text:var(--text);
+  --hero-border:var(--border);
+  --ring:0 0 0 3px color-mix(in srgb, var(--primary) 28%, transparent);
+  --line:var(--border);
+  --title-w:650;
+  --display-w:680;
+  --motion:180ms;
+  /* No frosted glass anywhere: surfaces are opaque, so text contrast is
+     what the tokens say it is, on every phone. */
   --card-bg:var(--surface);
   --card-2-bg:var(--surface-2);
   --blur:none;
-  /* The ground behind everything. Themes that want light behind the glass
-     paint it here rather than inside a component. */
   --backdrop:none;
 
   /* ---- 8px spacing scale ---- */
   --s0:4px; --s1:8px; --s2:12px; --s3:16px; --s4:24px; --s5:32px; --s6:48px;
   --pad:var(--s3);
-  /* Height of the floating create button plus its offset, so page content
-     can always scroll clear of it. */
   --fab-clear:76px;
 }
 
 /* ------------------------------------------------------------------
-   Themes: five identities, each in a light and a dark mode.
+   Themes: five accents, each in a light and a dark mode.
 
-   Every block below sets the same token names, so no combination can
-   inherit another one's surfaces — that bug shipped once and is now
-   impossible by construction. Structure (radius, type weight, motion)
-   is keyed on the theme alone, further down; only colour depends on
-   the mode.
+   The five brand colours --c1..--c5 are Apple system colours (charts,
+   calendar dots, icon tiles). The accent used for text and filled
+   controls is a calmer, contrast-checked shade of --c1, set separately
+   as --primary / --primary-fill, so a vivid swatch never ends up as
+   unreadable body text.
    ------------------------------------------------------------------ */
 
-/* Every hue below is an Apple system colour, in its light or dark variant,
-   and every grey is from Apple's own neutral ramp (systemGray..systemGray6,
-   label/secondaryLabel/tertiaryLabel, separator). That is not decoration: the
-   set is contrast-tested at both ends, the light and dark variants of a hue
-   are calibrated to feel like the same colour rather than merely to share a
-   name, and the greys are the exact values a native list sits on. Picking
-   hexes by eye is how an interface ends up looking almost right.
-
-   Where a hue is used for *text or an icon* on a light ground, the darker
-   accessible variant is used instead of the vivid one — systemGreen #34C759
-   is 1.9:1 on white and unreadable as a label. The vivid one stays for fills,
-   which is what it is for. */
-
-/* ---- OCEAN GLASS — the default. systemBlue under frosted glass, over a
-   softly lit ground. Universal, premium, safe to open on. ---- */
+/* ---- CALM BLUE — the default. ---- */
 
 :root[data-theme="ocean"][data-mode="light"]{
-  --bg:#F1F4F9; --surface:#FFFFFF; --surface-2:#E8ECF3;
-  --text:#06070A; --text-2:#6C7280; --text-3:#A2A7B2;
-  --border:#DCE0E8; --border-2:#C6CBD4;
-  /* five vivid brand colours; c1 leads, c2 carries analytics */
+  --bg:#F3F4F6; --surface:#FFFFFF; --surface-2:#EEF0F3;
+  --text:#15171C; --text-2:#4F5561; --text-3:#666C78;
+  --border:#E2E5EA; --border-2:#CBD0D8;
   --c1:#007AFF; --c2:#30B0C7; --c3:#5856D6; --c4:#FF9500; --c5:#34C759;
-  --primary:var(--c1);
-  --primary-2:color-mix(in srgb, var(--c1) 78%, #000);
+  --primary:#2B66D6; --primary-2:#1F52B5; --primary-fill:#2B66D6;
   --on-primary:#FFFFFF;
   --accent:var(--c2); --accent-2:var(--c3);
   --ok:#248A3D; --warn:#B25000; --danger:#D70015;
-  --shadow-rgb:9,30,66; --shadow-k:1.2;
-  --card-bg:color-mix(in srgb, #FFFFFF 78%, transparent);
-  --card-2-bg:color-mix(in srgb, var(--surface-2) 72%, transparent);
-  --backdrop:
-    radial-gradient(58% 40% at 6% 0%, rgba(0,122,255,.15), transparent 70%),
-    radial-gradient(50% 36% at 98% 4%, rgba(48,176,199,.13), transparent 72%),
-    radial-gradient(70% 44% at 50% 100%, rgba(88,86,214,.08), transparent 72%);
+  --shadow-rgb:20,28,45; --shadow-k:1;
 }
 
 :root[data-theme="ocean"][data-mode="dark"]{
-  --bg:#060A12; --surface:#111621; --surface-2:#1A2130;
-  --text:#FFFFFF; --text-2:#98A0AE; --text-3:#6C7280;
-  --border:#232B3A; --border-2:#333B4D;
-  /* five vivid brand colours; c1 leads, c2 carries analytics */
+  --bg:#111215; --surface:#1A1C20; --surface-2:#24272C;
+  --text:#F1F2F4; --text-2:#B3B8C1; --text-3:#8E949E;
+  --border:#2A2D33; --border-2:#3A3E46;
   --c1:#0A84FF; --c2:#40C8E0; --c3:#5E5CE6; --c4:#FF9F0A; --c5:#30D158;
-  --primary:var(--c1);
-  --primary-2:color-mix(in srgb, var(--c1) 78%, #fff);
+  --primary:#79A6FF; --primary-2:#9BBDFF; --primary-fill:#3569D6;
   --on-primary:#FFFFFF;
   --accent:var(--c2); --accent-2:var(--c3);
   --ok:#30D158; --warn:#FF9F0A; --danger:#FF453A;
-  --shadow-rgb:0,0,0; --shadow-k:8;
-  --card-bg:color-mix(in srgb, var(--surface) 68%, transparent);
-  --card-2-bg:color-mix(in srgb, var(--surface-2) 64%, transparent);
-  --backdrop:
-    radial-gradient(58% 40% at 6% 0%, rgba(10,132,255,.20), transparent 70%),
-    radial-gradient(50% 36% at 98% 4%, rgba(64,200,224,.13), transparent 72%),
-    radial-gradient(72% 46% at 50% 100%, rgba(94,92,230,.14), transparent 74%);
+  --shadow-rgb:0,0,0; --shadow-k:3;
 }
 
-/* ---- MIDNIGHT MINIMAL — the native-looking one. Apple's exact grouped
-   backgrounds and separators, one systemBlue accent, true black in the dark.
-   No gradient, no blur, almost no shadow. ---- */
+/* ---- INDIGO ---- */
 
 :root[data-theme="midnight"][data-mode="light"]{
-  --bg:#F2F2F7; --surface:#FFFFFF; --surface-2:#E5E5EA;
-  --text:#000000; --text-2:#6C6C70; --text-3:#AEAEB2;
-  --border:#D8D8DC; --border-2:#C6C6C8;
-  /* five vivid brand colours; c1 leads, c2 carries analytics */
-  --c1:#5856D6; --c2:#8E8E93; --c3:#5AC8FA; --c4:#FF9500; --c5:#34C759;
-  --primary:var(--c1);
-  --primary-2:color-mix(in srgb, var(--c1) 78%, #000);
+  --bg:#F3F3F7; --surface:#FFFFFF; --surface-2:#EEEEF4;
+  --text:#16161D; --text-2:#52525F; --text-3:#686876;
+  --border:#E3E3EB; --border-2:#CCCCD8;
+  --c1:#5856D6; --c2:#32ADE6; --c3:#AF52DE; --c4:#FF9500; --c5:#34C759;
+  --primary:#5250C8; --primary-2:#413FB0; --primary-fill:#5250C8;
   --on-primary:#FFFFFF;
   --accent:var(--c2); --accent-2:var(--c3);
   --ok:#248A3D; --warn:#B25000; --danger:#D70015;
-  --shadow-rgb:0,0,0; --shadow-k:.5;
+  --shadow-rgb:24,22,60; --shadow-k:1;
 }
 
 :root[data-theme="midnight"][data-mode="dark"]{
-  --bg:#000000; --surface:#1C1C1E; --surface-2:#2C2C2E;
-  --text:#FFFFFF; --text-2:#98989F; --text-3:#6C6C70;
-  --border:#38383A; --border-2:#48484A;
-  /* five vivid brand colours; c1 leads, c2 carries analytics */
-  --c1:#5E5CE6; --c2:#98989D; --c3:#64D2FF; --c4:#FF9F0A; --c5:#30D158;
-  --primary:var(--c1);
-  --primary-2:color-mix(in srgb, var(--c1) 78%, #fff);
+  --bg:#121218; --surface:#1B1B23; --surface-2:#25252F;
+  --text:#F1F1F5; --text-2:#B5B5C3; --text-3:#9090A0;
+  --border:#2C2C38; --border-2:#3C3C4A;
+  --c1:#5E5CE6; --c2:#64D2FF; --c3:#BF5AF2; --c4:#FF9F0A; --c5:#30D158;
+  --primary:#A4A3FF; --primary-2:#BDBCFF; --primary-fill:#5552D0;
   --on-primary:#FFFFFF;
   --accent:var(--c2); --accent-2:var(--c3);
   --ok:#30D158; --warn:#FF9F0A; --danger:#FF453A;
-  --shadow-rgb:0,0,0; --shadow-k:4;
+  --shadow-rgb:0,0,0; --shadow-k:3;
 }
 
-/* ---- AURORA GLASS — systemIndigo into systemPurple into systemCyan, seen
-   through glass. The most expressive of the five; the gradient stays on the
-   headline surface and the primary button, never on a reading surface. ---- */
+/* ---- LILAC ---- */
 
 :root[data-theme="aurora"][data-mode="light"]{
-  --bg:#F3F2F9; --surface:#FFFFFF; --surface-2:#EBE9F6;
-  --text:#0C0A18; --text-2:#615F74; --text-3:#9997AB;
-  --border:#DEDBEC; --border-2:#C7C3DE;
-  /* five vivid brand colours; c1 leads, c2 carries analytics */
-  --c1:#AF52DE; --c2:#32ADE6; --c3:#5856D6; --c4:#FF2D55; --c5:#00C7BE;
-  --primary:var(--c1);
-  --primary-2:color-mix(in srgb, var(--c1) 78%, #000);
+  --bg:#F5F3F7; --surface:#FFFFFF; --surface-2:#F0EDF3;
+  --text:#18151C; --text-2:#554F5D; --text-3:#6B6474;
+  --border:#E6E1EB; --border-2:#D0C9D8;
+  --c1:#AF52DE; --c2:#5856D6; --c3:#32ADE6; --c4:#FF2D55; --c5:#00C7BE;
+  --primary:#8A3FBF; --primary-2:#7432A3; --primary-fill:#8A3FBF;
   --on-primary:#FFFFFF;
   --accent:var(--c2); --accent-2:var(--c3);
   --ok:#248A3D; --warn:#B25000; --danger:#D70015;
-  --shadow-rgb:40,26,90; --shadow-k:1.4;
-  --card-bg:color-mix(in srgb, #FFFFFF 76%, transparent);
-  --card-2-bg:color-mix(in srgb, var(--surface-2) 70%, transparent);
-  --backdrop:
-    radial-gradient(46% 32% at 0% 0%, rgba(88,86,214,.22), transparent 70%),
-    radial-gradient(44% 30% at 100% 8%, rgba(50,173,230,.20), transparent 70%),
-    radial-gradient(52% 34% at 78% 92%, rgba(175,82,222,.16), transparent 72%);
+  --shadow-rgb:40,20,60; --shadow-k:1;
 }
 
 :root[data-theme="aurora"][data-mode="dark"]{
-  --bg:#08060F; --surface:#151228; --surface-2:#1F1B3A;
-  --text:#FFFFFF; --text-2:#A3A0C0; --text-3:#726F8E;
-  --border:#292350; --border-2:#38316B;
-  /* five vivid brand colours; c1 leads, c2 carries analytics */
-  --c1:#BF5AF2; --c2:#64D2FF; --c3:#5E5CE6; --c4:#FF375F; --c5:#66D4CF;
-  --primary:var(--c1);
-  --primary-2:color-mix(in srgb, var(--c1) 78%, #fff);
+  --bg:#151218; --surface:#1E1A22; --surface-2:#28232D;
+  --text:#F3F1F5; --text-2:#BBB3C3; --text-3:#968D9F;
+  --border:#302A36; --border-2:#413946;
+  --c1:#BF5AF2; --c2:#5E5CE6; --c3:#64D2FF; --c4:#FF375F; --c5:#66D4CF;
+  --primary:#D2A3F5; --primary-2:#E0BDF8; --primary-fill:#8A3FBF;
   --on-primary:#FFFFFF;
   --accent:var(--c2); --accent-2:var(--c3);
   --ok:#30D158; --warn:#FF9F0A; --danger:#FF453A;
-  --shadow-rgb:0,0,0; --shadow-k:9;
-  --card-bg:color-mix(in srgb, var(--surface) 66%, transparent);
-  --card-2-bg:color-mix(in srgb, var(--surface-2) 62%, transparent);
-  --backdrop:
-    radial-gradient(46% 32% at 0% 0%, rgba(94,92,230,.32), transparent 70%),
-    radial-gradient(44% 30% at 100% 8%, rgba(100,210,255,.20), transparent 70%),
-    radial-gradient(54% 36% at 80% 94%, rgba(191,90,242,.24), transparent 72%);
+  --shadow-rgb:0,0,0; --shadow-k:3;
 }
 
-/* ---- PURE BENTO — a structured grouped list. Apple's own greys, label
-   black as the brand, systemBlue as the single accent. No blur, no shadow,
-   no gradient: the blocks and their hairlines are the design. ---- */
+/* ---- INK — monochrome; the accent is the ink itself. ---- */
 
 :root[data-theme="bento"][data-mode="light"]{
-  --bg:#F2F2F0; --surface:#FFFFFF; --surface-2:#EAEAE6;
-  --text:#111110; --text-2:#6B6B66; --text-3:#ADADA6;
-  --border:#DEDED9; --border-2:#C6C6C0;
-  /* five vivid brand colours; c1 leads, c2 carries analytics */
+  --bg:#F4F4F2; --surface:#FFFFFF; --surface-2:#EFEFEC;
+  --text:#141413; --text-2:#52524D; --text-3:#696963;
+  --border:#E3E3DF; --border-2:#CDCDC7;
   --c1:#1C1C1A; --c2:#007AFF; --c3:#00C7BE; --c4:#FF9500; --c5:#AF52DE;
-  --primary:var(--c1);
-  --primary-2:color-mix(in srgb, var(--c1) 82%, #fff);
+  --primary:#2A2A27; --primary-2:#111110; --primary-fill:#2A2A27;
   --on-primary:#FFFFFF;
   --accent:var(--c2); --accent-2:var(--c3);
   --ok:#248A3D; --warn:#B25000; --danger:#D70015;
-  --shadow-rgb:0,0,0; --shadow-k:0;
+  --shadow-rgb:20,20,18; --shadow-k:1;
 }
 
 :root[data-theme="bento"][data-mode="dark"]{
-  --bg:#0B0B0A; --surface:#1A1A18; --surface-2:#262622;
-  --text:#FFFFFF; --text-2:#99998F; --text-3:#6D6D65;
-  --border:#333330; --border-2:#45453F;
-  /* five vivid brand colours; c1 leads, c2 carries analytics */
+  --bg:#121211; --surface:#1B1B19; --surface-2:#252522;
+  --text:#F2F2ED; --text-2:#B6B6AE; --text-3:#909088;
+  --border:#2D2D2A; --border-2:#3D3D39;
   --c1:#F2F2ED; --c2:#0A84FF; --c3:#66D4CF; --c4:#FF9F0A; --c5:#BF5AF2;
-  --primary:var(--c1);
-  --primary-2:color-mix(in srgb, var(--c1) 82%, #000);
-  --on-primary:#111110;
+  --primary:#ECECE6; --primary-2:#FFFFFF; --primary-fill:#ECECE6;
+  --on-primary:#141413;
   --accent:var(--c2); --accent-2:var(--c3);
   --ok:#30D158; --warn:#FF9F0A; --danger:#FF453A;
-  --shadow-rgb:0,0,0; --shadow-k:0;
+  --shadow-rgb:0,0,0; --shadow-k:3;
 }
 
-/* ---- SPATIAL LAYERED — depth instead of decoration. systemIndigo leads,
-   cards sit on visible planes above the ground, radii are generous and the
-   shadows are long and soft rather than dark. ---- */
+/* ---- TEAL ---- */
 
 :root[data-theme="spatial"][data-mode="light"]{
-  --bg:#EDEFF5; --surface:#FFFFFF; --surface-2:#E3E6EF;
-  --text:#0A0A14; --text-2:#5D6270; --text-3:#8F94A3;
-  --border:#DDE0E9; --border-2:#C5C9D6;
-  /* five vivid brand colours; c1 leads, c2 carries analytics */
+  --bg:#F1F5F5; --surface:#FFFFFF; --surface-2:#EBF0F1;
+  --text:#121819; --text-2:#4B5759; --text-3:#616E70;
+  --border:#DEE5E6; --border-2:#C6D0D2;
   --c1:#30B0C7; --c2:#007AFF; --c3:#5856D6; --c4:#FF9500; --c5:#34C759;
-  --primary:var(--c1);
-  --primary-2:color-mix(in srgb, var(--c1) 78%, #000);
-  /* Teal is light enough that white on it is unreadable, so the label is
-     dark. Apple does the same on its yellow and mint fills. */
-  --on-primary:#00252E;
+  --primary:#0E7385; --primary-2:#0A5E6D; --primary-fill:#0E7385;
+  --on-primary:#FFFFFF;
   --accent:var(--c2); --accent-2:var(--c3);
   --ok:#248A3D; --warn:#B25000; --danger:#D70015;
-  --shadow-rgb:14,20,45; --shadow-k:2;
+  --shadow-rgb:14,36,40; --shadow-k:1;
 }
 
 :root[data-theme="spatial"][data-mode="dark"]{
-  --bg:#08090F; --surface:#161825; --surface-2:#1F2233;
-  --text:#FFFFFF; --text-2:#9BA0B2; --text-3:#6B7082;
-  --border:#262A3A; --border-2:#353A4D;
-  /* five vivid brand colours; c1 leads, c2 carries analytics */
-  --c1:#40C8E0; --c2:#0A84FF; --c3:#5E5CE6; --c4:#FF9F0A; --c5:#30D158;
-  --primary:var(--c1);
-  --primary-2:color-mix(in srgb, var(--c1) 78%, #fff);
-  --on-primary:#00252E;
+  --bg:#101516; --surface:#182021; --surface-2:#212A2C;
+  --text:#EEF3F3; --text-2:#AFBDBF; --text-3:#8A9A9C;
+  --border:#283234; --border-2:#384447;
+  --c1:#32ADE6; --c2:#0A84FF; --c3:#5E5CE6; --c4:#FF9F0A; --c5:#30D158;
+  --primary:#6FD0DE; --primary-2:#95DDE7; --primary-fill:#117A8C;
+  --on-primary:#FFFFFF;
   --accent:var(--c2); --accent-2:var(--c3);
   --ok:#30D158; --warn:#FF9F0A; --danger:#FF453A;
-  --shadow-rgb:0,0,0; --shadow-k:10;
+  --shadow-rgb:0,0,0; --shadow-k:3;
 }
 
-
 /* ------------------------------------------------------------------
-   Per-theme structure. Keyed on the theme alone: geometry, weight, blur
-   and shadow depth are part of a theme's identity and do not change with
-   the mode.
-
-   The radii follow Apple's own: a grouped list cell is 10–12, a card is
-   14–16, a sheet is 26–28. Bigger than that reads as a toy, smaller as a
-   web form.
+   Per-theme structure. Deliberately close to one another: the accent
+   carries the identity, the geometry stays familiar.
    ------------------------------------------------------------------ */
 [data-theme="ocean"]{
   --radius-sm:12px; --radius:16px; --radius-lg:20px;
-  --blur:blur(20px) saturate(170%);
-  /* White sits on this, so it is built from fixed dark stops rather than
-     from --c1/--c2, which lighten in dark mode and would take the headline
-     from readable to white-on-cyan. */
-  --hero-fill:linear-gradient(135deg,#0060DF,#0E7490);
-  --shadow-2:0 6px 22px rgba(var(--shadow-rgb), calc(.08 * var(--shadow-k)));
+  --title-w:650; --display-w:680; --motion:180ms;
+  --hero-fill:color-mix(in srgb, var(--primary) 7%, var(--surface));
+  --hero-border:color-mix(in srgb, var(--primary) 22%, var(--border));
 }
 [data-theme="midnight"]{
-  --radius-sm:10px; --radius:12px; --radius-lg:14px;
-  --title-w:600; --display-w:640;
-  /* No gradient anywhere. The headline surface is a panel with a hairline,
-     and colour appears only where something is actionable. */
-  --hero-fill:var(--surface);
-  --hero-text:var(--text);
-  --hero-border:var(--border);
-  --shadow-1:none;
-  --shadow-2:0 1px 3px rgba(var(--shadow-rgb), calc(.10 * var(--shadow-k)));
-  --shadow-3:0 8px 24px rgba(var(--shadow-rgb), calc(.14 * var(--shadow-k)));
-  --motion:170ms;
+  --radius-sm:12px; --radius:16px; --radius-lg:20px;
+  --title-w:650; --display-w:680; --motion:180ms;
+  --hero-fill:color-mix(in srgb, var(--primary) 7%, var(--surface));
+  --hero-border:color-mix(in srgb, var(--primary) 22%, var(--border));
 }
 [data-theme="aurora"]{
-  --radius-sm:14px; --radius:20px; --radius-lg:26px;
-  --title-w:650;
-  --blur:blur(24px) saturate(180%);
-  --primary-fill:linear-gradient(135deg,var(--c1),var(--c2));
-  --hero-fill:linear-gradient(135deg,#4B49C6 0%,#8E43D6 50%,#1187A8 100%);
-  --shadow-2:0 8px 28px rgba(var(--shadow-rgb), calc(.09 * var(--shadow-k)));
+  --radius-sm:14px; --radius:18px; --radius-lg:22px;
+  --title-w:640; --display-w:670; --motion:200ms;
+  --hero-fill:color-mix(in srgb, var(--primary) 7%, var(--surface));
+  --hero-border:color-mix(in srgb, var(--primary) 22%, var(--border));
 }
 [data-theme="bento"]{
-  --radius-sm:10px; --radius:12px; --radius-lg:14px;
-  --title-w:680; --display-w:720;
-  /* No wash of colour anywhere: bento is about the grid, not the paint. */
+  --radius-sm:10px; --radius:14px; --radius-lg:18px;
+  --title-w:680; --display-w:720; --motion:160ms;
   --hero-fill:var(--surface);
-  --hero-text:var(--text);
   --hero-border:var(--border-2);
-  --shadow-1:none; --shadow-2:none; --shadow-3:none;
-  --motion:150ms;
 }
-/* Bento has no shadow to separate a block from the ground, so the hairline
-   does that job instead — which is also what makes it read as a grid. */
-[data-theme="bento"] .item,
-[data-theme="bento"] .trow,
-[data-theme="bento"] .metric{border:var(--border-w) solid var(--border)}
-[data-theme="bento"] .item + .item,
-[data-theme="bento"] .trow + .trow{margin-top:var(--s0)}
-[data-theme="bento"] .metrics{gap:var(--s0)}
-[data-theme="bento"] .trow{border-left-width:3px}
 [data-theme="spatial"]{
-  --radius-sm:14px; --radius:20px; --radius-lg:28px;
-  --title-w:650; --display-w:690;
-  --hero-fill:linear-gradient(150deg,#3F3DB8,#7C33C4 68%,#0E7490);
-  /* Depth is the whole idea, so every plane is lifted further than the
-     shared scale would lift it — and lifted with a wide, soft, low-opacity
-     shadow rather than a dark one, which is the difference between a card
-     floating and a card with a border drawn under it. */
-  --shadow-1:0 1px 4px rgba(var(--shadow-rgb), calc(.05 * var(--shadow-k)));
-  --shadow-2:0 10px 30px -8px rgba(var(--shadow-rgb), calc(.09 * var(--shadow-k)));
-  --shadow-3:0 24px 56px -12px rgba(var(--shadow-rgb), calc(.12 * var(--shadow-k)));
-  --motion:230ms;
+  --radius-sm:12px; --radius:16px; --radius-lg:20px;
+  --title-w:650; --display-w:680; --motion:180ms;
+  --hero-fill:color-mix(in srgb, var(--primary) 7%, var(--surface));
+  --hero-border:color-mix(in srgb, var(--primary) 22%, var(--border));
 }
-/* Spatial's whole argument is that things sit on planes. Rows are lifted off
-   the ground and spaced far enough apart that the lift is legible; the card
-   is lifted further still, so the two read as different heights rather than
-   as the same box drawn twice. */
-[data-theme="spatial"] .item,
-[data-theme="spatial"] .trow,
-[data-theme="spatial"] .metric{box-shadow:var(--shadow-2)}
-[data-theme="spatial"] .item + .item,
-[data-theme="spatial"] .trow + .trow{margin-top:var(--s1)}
-[data-theme="spatial"] .metrics{gap:var(--s1)}
-[data-theme="spatial"] .card{box-shadow:var(--shadow-2)}
-[data-theme="spatial"] .card + .card{margin-top:var(--s2)}
-[data-theme="spatial"] .item.pressable:active,
-[data-theme="spatial"] .card:active{transform:translateY(1px) scale(.995)}
 
 /* ==================================================================
    Base
    ================================================================== */
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{overflow-x:hidden;width:100%}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{
   background:var(--bg);
   color:var(--text);
-  font:15px/1.47 -apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display",
-       Inter,"Segoe UI",Roboto,sans-serif;
-  font-feature-settings:"cv11","ss01";
+  font:16px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",
+       Roboto,"Noto Sans",Inter,"Helvetica Neue",Arial,sans-serif;
   -webkit-font-smoothing:antialiased;
   text-rendering:optimizeLegibility;
-  /* Telegram reports its own usable height; 100vh is wrong inside the
-     in-app browser, so --vh is kept in sync from JS. */
   min-height:var(--vh, 100dvh);
   padding-bottom:calc(var(--shell-b, 58px) + var(--fab-clear) + var(--s2))}
-/* The theme's own light, behind every screen. `none` on the themes that do
-   not use it, so the layer costs nothing there. */
-body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
-             background:var(--backdrop)}
-#app{padding:calc(var(--s2) + var(--safe-t, 0px)) var(--pad) var(--s2);
+#app{padding:calc(var(--s3) + var(--safe-t, 0px)) var(--pad) var(--s2);
      max-width:640px;margin:0 auto;width:100%}
+@media (max-width:359px){ :root{--pad:12px} }
+a{color:var(--primary);text-decoration:none}
+a:hover{color:var(--primary-2);text-decoration:underline}
+button{font:inherit;color:inherit}
 
-/* Type scale. One family, five sizes, and no bold below 15px. */
-h1{font-size:26px;font-weight:var(--title-w);letter-spacing:-.6px;line-height:1.16;
-   overflow-wrap:anywhere}
-/* Home's title is a greeting, and a greeting is the least informative thing
-   on the screen. At the screen-title size "Assalomu alaykum, Ernest" wrapped
-   to two lines and took the top fifth of the page before the day's mission —
-   the thing Home exists to show — appeared. */
-h1.greet{font-size:19px;letter-spacing:-.35px}
-h2{font-size:12px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;
-   color:var(--text-3);margin:var(--s4) 0 var(--s1);
-   display:flex;align-items:center;justify-content:space-between;gap:var(--s1)}
-h2 .act{text-transform:none;letter-spacing:0;font-size:13px;font-weight:550;
-        color:var(--primary);display:inline-flex;align-items:center;gap:4px;
-        position:relative;cursor:pointer}
-h2 .act::after{content:"";position:absolute;inset:-10px}
-h3{font-size:17px;font-weight:600;letter-spacing:-.4px}
-.display{font-size:34px;font-weight:var(--display-w);letter-spacing:-1.1px;
+/* Type scale: 24 / 20 / 17 / 16 / 14 / 13. Sentence case everywhere —
+   uppercase labels are the first thing to become unreadable in Russian. */
+h1{font-size:24px;font-weight:var(--title-w);letter-spacing:-.4px;line-height:1.2;
+   overflow-wrap:anywhere;text-wrap:balance}
+h1.greet{font-size:20px;letter-spacing:-.3px}
+h2{font-size:16px;font-weight:620;letter-spacing:-.1px;color:var(--text);
+   margin:var(--s5) 0 var(--s2);line-height:1.3;
+   display:flex;align-items:center;justify-content:space-between;gap:var(--s2)}
+h2 .act{font-size:14px;font-weight:600;color:var(--primary);
+        display:inline-flex;align-items:center;gap:4px;
+        position:relative;cursor:pointer;white-space:nowrap;
+        min-height:32px;padding:0 2px}
+h2 .act::after{content:"";position:absolute;inset:-8px -6px}
+h3{font-size:18px;font-weight:640;letter-spacing:-.3px;line-height:1.3;
+   display:flex;align-items:center;gap:var(--s1);overflow-wrap:anywhere}
+.display{font-size:34px;font-weight:var(--display-w);letter-spacing:-1px;
          line-height:1}
 .t2{color:var(--text-2)} .t3{color:var(--text-3)}
-.small{font-size:13px} .tiny{font-size:12px}
-/* The small uppercase label above a number or a title. It was written
-   inline in five places, each with its own letter-spacing; one class means
-   one look. */
-.eyebrow{font-size:11px;font-weight:600;letter-spacing:.42px;
-         text-transform:uppercase;color:var(--text-3)}
-.hero .eyebrow{color:color-mix(in srgb, var(--hero-text) 66%, transparent)}
+.small{font-size:14px} .tiny{font-size:13px;line-height:1.4}
+.eyebrow{font-size:12.5px;font-weight:620;letter-spacing:.3px;
+         text-transform:uppercase;color:var(--text-2)}
+.hero .eyebrow{color:var(--primary)}
 .num{font-variant-numeric:tabular-nums}
 .row{display:flex;align-items:center;gap:var(--s2)}
 .grow{flex:1;min-width:0}
 .ellipsis{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wrap{overflow-wrap:anywhere}
 .strike{text-decoration:line-through;color:var(--text-2)}
-.i{flex:none;vertical-align:-2px}
+.i{flex:none;vertical-align:-3px}
 .hide{display:none}
 
 /* ==================================================================
    Surfaces
    ================================================================== */
-/* A card is a panel with a hairline. No nesting: hierarchy comes from
-   whitespace and type, not from boxes inside boxes. */
-.card{background:var(--card-bg);border:var(--border-w) solid var(--border);
-      border-radius:var(--radius);padding:var(--s3);box-shadow:var(--shadow-1);
-      backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur)}
-.card + .card{margin-top:var(--s1)}
+.card{background:var(--surface);border:var(--border-w) solid var(--border);
+      border-radius:var(--radius);padding:var(--s3);box-shadow:var(--shadow-1)}
+.card + .card{margin-top:var(--s2)}
 .card.tight{padding:var(--s2) var(--s3)}
 .card.plain{background:none;border-color:transparent;box-shadow:none;padding:0}
+.card.flat{box-shadow:none}
 
-/* The one surface per screen that carries the brand. */
-/* The themes that do not fill the hero with colour need its edge back, or
-   the block dissolves into the page. */
+/* The one surface per screen that carries the accent: Home's "Now" and the
+   day's score on Statistics. A whisper of the accent, not a gradient. */
 .hero{background:var(--hero-fill);color:var(--hero-text);
-      border:var(--border-w) solid var(--hero-border, transparent);
+      border:var(--border-w) solid var(--hero-border);
       border-radius:var(--radius-lg);
-      padding:var(--s3);box-shadow:var(--shadow-2);position:relative;
-      overflow:hidden;backdrop-filter:var(--blur);
-      -webkit-backdrop-filter:var(--blur)}
-.hero .t2,.hero .t3{color:color-mix(in srgb, var(--hero-text) 66%, transparent)}
+      padding:var(--s3) var(--s3) var(--s3);box-shadow:var(--shadow-2);
+      position:relative;overflow:hidden}
+.hero .t2{color:var(--text-2)} .hero .t3{color:var(--text-3)}
+/* The ErnestOS signature: the Now card sits on a hairline of today's
+   progress, so the one thing to do next is always read against how far the
+   day has come. */
+.now-rail{position:absolute;left:0;right:0;bottom:0;height:3px;
+          background:color-mix(in srgb, var(--primary) 12%, transparent)}
+.now-rail > span{display:block;height:100%;background:var(--primary);
+                 border-radius:0 var(--radius-pill) var(--radius-pill) 0;
+                 transition:width var(--motion)}
+.now-title{font-size:19px;font-weight:640;line-height:1.3;letter-spacing:-.2px;
+           margin-top:var(--s1);overflow-wrap:anywhere}
+.now-meta{display:flex;flex-wrap:wrap;gap:4px var(--s2);margin-top:var(--s1);
+          font-size:14px;color:var(--text-2);align-items:center}
+.now-why{font-size:13px;color:var(--text-3);margin-top:4px}
+.now-acts{display:flex;gap:var(--s1);margin-top:var(--s3);flex-wrap:wrap}
+.now-acts .btn{flex:1 1 160px}
 
 .stack{display:flex;flex-direction:column;gap:var(--s1)}
 .divide > * + *{border-top:var(--border-w) solid var(--border);
@@ -454,341 +345,321 @@ h3{font-size:17px;font-weight:600;letter-spacing:-.4px}
 /* ==================================================================
    Controls
    ================================================================== */
-.check{width:24px;height:24px;border-radius:var(--radius-pill);flex:none;
+/* The tick. A 26px ring with a 46px hit area. */
+.check{width:26px;height:26px;border-radius:var(--radius-pill);flex:none;
        display:grid;place-items:center;position:relative;cursor:pointer;
-       border:2px solid var(--border-2);color:transparent;background:none;
+       border:2px solid var(--border-2);color:transparent;background:var(--surface);
        transition:transform var(--motion),background var(--motion),
                   border-color var(--motion)}
-.check::after{content:"";position:absolute;inset:-11px}
+.check::after{content:"";position:absolute;inset:-10px}
+.check:hover{border-color:var(--primary)}
 .check.on{background:var(--ok);border-color:var(--ok);color:var(--surface)}
-.check:active{transform:scale(.86)}
-.check.lock{opacity:.45;cursor:default}
-.check.sq{border-radius:var(--radius-sm)}
-/* Done by a timer: the box shows a clock, and tapping it opens the timer. */
-.check.timed{color:var(--primary);border-color:var(--primary)}
-/* On the brand surface the ordinary border disappears, so it is keyed to
-   the surface's own foreground instead. */
-.hero .check{border-color:color-mix(in srgb, var(--hero-text) 55%, transparent)}
-.hero .check.timed{color:var(--hero-text)}
-.hero .check.on{background:var(--hero-text);border-color:var(--hero-text);
-                color:var(--primary)}
+.check:active{transform:scale(.9)}
+.check.lock{opacity:.5;cursor:default;border-style:dashed}
+.check.lock.on{border-style:solid}
+.check.sq{border-radius:8px}
+.check.timed{color:var(--primary);border-color:color-mix(in srgb, var(--primary) 55%, var(--border))}
+.hero .check{border-color:color-mix(in srgb, var(--hero-text) 32%, transparent)}
+.hero .check.timed{color:var(--primary)}
+.hero .check.on{background:var(--ok);border-color:var(--ok);color:var(--surface)}
 
 .btn{background:var(--primary-fill);color:var(--on-primary);border:0;
      border-radius:var(--radius-sm);padding:var(--s2) var(--s3);font:inherit;
-     font-size:15px;font-weight:600;cursor:pointer;min-height:46px;width:100%;
+     font-size:16px;font-weight:620;cursor:pointer;min-height:48px;width:100%;
      display:inline-flex;align-items:center;justify-content:center;gap:var(--s1);
+     text-align:center;line-height:1.25;position:relative;
      box-shadow:var(--shadow-1);transition:filter var(--motion),
-                transform var(--motion)}
-.btn:active{filter:brightness(.93);transform:scale(.995)}
+                transform var(--motion),background var(--motion)}
+.btn:hover{filter:brightness(1.04)}
+.btn:active{filter:brightness(.94);transform:scale(.99)}
 .btn:focus-visible{outline:0;box-shadow:var(--ring)}
 .btn[disabled]{opacity:.45;pointer-events:none}
-.btn.secondary{background:var(--surface-2);color:var(--text);
-               border:var(--border-w) solid var(--border);box-shadow:none}
+.btn.secondary{background:var(--surface);color:var(--text);
+               border:var(--border-w) solid var(--border-2);box-shadow:none}
+.btn.secondary:hover{background:var(--surface-2);filter:none}
 .btn.quiet{background:none;border:var(--border-w) solid var(--border-2);
            color:var(--text);box-shadow:none}
-.btn.danger{background:none;border:var(--border-w) solid var(--danger);
+.btn.danger{background:none;border:var(--border-w) solid
+              color-mix(in srgb, var(--danger) 45%, var(--border));
             color:var(--danger);box-shadow:none}
 .btn.text{background:none;border:0;box-shadow:none;color:var(--primary);
-          width:auto;min-height:40px;padding:var(--s0) 2px;font-weight:550}
-.btn.sm{width:auto;padding:var(--s1) var(--s2);font-size:13.5px;min-height:38px}
-.btns{display:flex;gap:var(--s1);margin-top:var(--s2);flex-wrap:wrap}
-.btns .btn{flex:1;min-width:132px}
+          width:auto;min-height:44px;padding:var(--s0) var(--s1);font-weight:600}
+.btn.sm{width:auto;padding:var(--s1) var(--s3);font-size:14.5px;min-height:44px}
+/* Saving: the pressed button keeps its size, dims its label and shows a
+   small ring, so a slow network reads as "working", not "broken". */
+.btn.busy{pointer-events:none;color:transparent}
+.btn.busy::after{content:"";position:absolute;width:18px;height:18px;
+  top:calc(50% - 9px);left:calc(50% - 9px);border-radius:50%;
+  border:2px solid color-mix(in srgb, var(--on-primary) 35%, transparent);
+  border-top-color:var(--on-primary);animation:spin .7s linear infinite}
+.btn.secondary.busy::after,.btn.quiet.busy::after,.btn.danger.busy::after{
+  border-color:var(--border-2);border-top-color:var(--text)}
+.btns{display:flex;gap:var(--s1);margin-top:var(--s3);flex-wrap:wrap}
+.btns .btn{flex:1 1 140px}
 
 input,textarea,select{width:100%;background:var(--surface);
   border:var(--border-w) solid var(--border-2);color:var(--text);
-  border-radius:var(--radius-sm);padding:var(--s2);font:inherit;min-height:46px;
+  border-radius:var(--radius-sm);padding:var(--s2) 14px;font:inherit;
+  font-size:16px;min-height:48px;
   -webkit-appearance:none;appearance:none;transition:box-shadow var(--motion),
   border-color var(--motion)}
 select{background-image:linear-gradient(45deg,transparent 50%,var(--text-2) 50%),
        linear-gradient(135deg,var(--text-2) 50%,transparent 50%);
-       background-position:calc(100% - 18px) 21px,calc(100% - 13px) 21px;
+       background-position:calc(100% - 20px) 22px,calc(100% - 15px) 22px;
        background-size:5px 5px,5px 5px;background-repeat:no-repeat;
-       padding-right:38px}
-textarea{min-height:88px;resize:vertical;line-height:1.5}
+       padding-right:40px}
+textarea{min-height:96px;resize:vertical;line-height:1.5}
 input:focus,textarea:focus,select:focus{outline:0;border-color:var(--primary);
   box-shadow:var(--ring)}
 input::placeholder,textarea::placeholder{color:var(--text-3)}
-label{display:block;font-size:12px;color:var(--text-2);margin:var(--s3) 0 var(--s0);
-      font-weight:550}
+label{display:block;font-size:14px;color:var(--text-2);margin:var(--s3) 0 6px;
+      font-weight:600}
+.sheet h3 + input,.sheet h3 + .hint{margin-top:var(--s3)}
 
-.chip{display:inline-flex;align-items:center;gap:var(--s0);
+.chip{display:inline-flex;align-items:center;gap:6px;position:relative;
       background:var(--surface);border:var(--border-w) solid var(--border-2);
-      border-radius:var(--radius-pill);padding:var(--s1) var(--s2);font-size:13px;
-      font-weight:550;white-space:nowrap;cursor:pointer;color:var(--text-2);
+      border-radius:var(--radius-pill);padding:var(--s1) 14px;font-size:14.5px;
+      font-weight:560;white-space:nowrap;cursor:pointer;color:var(--text);
+      min-height:40px;
       transition:background var(--motion),color var(--motion),
                  border-color var(--motion)}
+.chip::after{content:"";position:absolute;inset:-3px}
+.chip:hover{border-color:var(--text-3)}
 .chip.on{background:var(--primary-fill);border-color:transparent;
          color:var(--on-primary)}
-.chip.sm{padding:6px var(--s1);font-size:12.5px}
-.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip.sm{padding:6px 12px;font-size:14px;min-height:36px}
+.chips{display:flex;gap:var(--s1);flex-wrap:wrap}
 .chips.scroll{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
               margin:0 calc(var(--pad) * -1);padding:0 var(--pad) 2px}
 .chips.scroll::-webkit-scrollbar{display:none}
 
-/* Segmented control: the selected cell is filled, not merely tinted. */
+/* Segmented control: a quiet track and a raised white cell. */
 .seg{display:flex;background:var(--surface-2);
-     border:var(--border-w) solid var(--border);border-radius:var(--radius-pill);
-     padding:3px;gap:2px}
-.seg > *{flex:1;text-align:center;padding:var(--s1) 6px;
-         border-radius:var(--radius-pill);font-size:13px;font-weight:550;
+     border-radius:var(--radius-sm);padding:3px;gap:2px}
+.seg > *{flex:1;text-align:center;padding:var(--s1) 6px;min-height:38px;
+         display:flex;align-items:center;justify-content:center;
+         border-radius:calc(var(--radius-sm) - 3px);font-size:14.5px;font-weight:580;
          cursor:pointer;color:var(--text-2);white-space:nowrap;overflow:hidden;
-         text-overflow:ellipsis;transition:background var(--motion),
+         text-overflow:ellipsis;min-width:0;transition:background var(--motion),
          color var(--motion)}
 .seg > *.on{background:var(--surface);color:var(--text);box-shadow:var(--shadow-1)}
-.hero .seg{background:color-mix(in srgb, var(--hero-text) 14%, transparent);
-           border-color:transparent}
-.hero .seg > *{color:color-mix(in srgb, var(--hero-text) 70%, transparent)}
-.hero .seg > *.on{background:color-mix(in srgb, var(--hero-text) 92%, transparent);
-                  color:var(--primary)}
+.hero .seg{background:color-mix(in srgb, var(--hero-text) 7%, transparent)}
 
-.sw{width:44px;height:26px;border-radius:var(--radius-pill);flex:none;
-    position:relative;background:var(--surface-2);
-    border:var(--border-w) solid var(--border-2);cursor:pointer;
-    transition:background var(--motion),border-color var(--motion)}
-.sw::before{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;
-  border-radius:50%;background:var(--text-3);
+.sw{width:48px;height:28px;border-radius:var(--radius-pill);flex:none;
+    position:relative;background:var(--border-2);border:0;cursor:pointer;
+    transition:background var(--motion)}
+.sw::before{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;
+  border-radius:50%;background:var(--surface);box-shadow:var(--shadow-1);
   transition:transform var(--motion),background var(--motion)}
-.sw.on{background:var(--primary);border-color:transparent}
-.sw.on::before{transform:translateX(18px);background:var(--on-primary)}
+.sw::after{content:"";position:absolute;inset:-8px}
+.sw.on{background:var(--primary-fill)}
+.sw.on::before{transform:translateX(20px);background:var(--on-primary)}
 .setrow{display:flex;align-items:center;gap:var(--s2);padding:var(--s2) 0;
-        border-bottom:var(--border-w) solid var(--border)}
+        min-height:52px;border-bottom:var(--border-w) solid var(--border)}
 .setrow:last-child{border-bottom:0}
+.lbl{font-size:15.5px}
 
 .dot{width:8px;height:8px;border-radius:50%;flex:none;display:inline-block}
 .p-high{background:var(--danger)} .p-medium{background:var(--warn)}
-.p-low{background:var(--ok)}
-.tag{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;
-     font-weight:550;color:var(--text-2);
-     border:var(--border-w) solid var(--border);border-radius:var(--radius-pill);
-     padding:3px var(--s1)}
+.p-low{background:var(--text-3)}
+.tag{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;
+     font-weight:600;color:var(--text-2);background:var(--surface-2);
+     border-radius:var(--radius-pill);padding:2px var(--s1);line-height:1.5}
 .tag.hot{color:var(--danger);
-         border-color:color-mix(in srgb,var(--danger) 40%,transparent)}
-.hero .tag{color:inherit;background:color-mix(in srgb,var(--hero-text) 14%,transparent);
-           border-color:color-mix(in srgb,var(--hero-text) 28%,transparent)}
+         background:color-mix(in srgb,var(--danger) 10%,transparent)}
+.tag.warn{color:var(--warn);
+          background:color-mix(in srgb,var(--warn) 12%,transparent)}
+.tag.ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 12%,transparent)}
 
 /* ==================================================================
    Progress
    ================================================================== */
 .bar{height:6px;background:var(--surface-2);border-radius:var(--radius-pill);
      overflow:hidden}
-.bar > span{display:block;height:100%;border-radius:var(--radius-pill);
-            background:var(--primary-fill);transition:width var(--motion)}
-.bar.accent > span{background:var(--accent)}
-.hero .bar{background:color-mix(in srgb, var(--hero-text) 22%, transparent)}
-.hero .bar > span{background:var(--hero-text)}
+.bar > span,.bar > i{display:block;height:100%;border-radius:var(--radius-pill);
+            background:var(--primary);transition:width var(--motion)}
+.bar.accent > span{background:var(--primary)}
+.hero .bar{background:color-mix(in srgb, var(--primary) 14%, transparent)}
 
-/* Three numbers on one line, divided rather than boxed: three separate
-   cards for three small facts is three containers too many. */
-/* Day, week and month, side by side. Three cells of identical shape on one
-   line, so the eye compares the numbers rather than the layouts; a hairline
-   divides them, because three boxes for three facts about the same score is
-   three boxes too many. Same grid as the trio underneath, on purpose — the
-   card then reads as two rows of three rather than as two different ideas. */
-.scores{display:grid;grid-template-columns:repeat(3,1fr);align-items:start}
-.scores > div{padding:0 var(--s1);min-width:0}
+/* Day, week and month on one line; today leads because it is the only one
+   the user can still change. Hairlines divide, boxes do not. */
+.scores{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:start}
+.scores > div{padding:0 var(--s2);min-width:0}
 .scores > div + div{border-left:var(--border-w) solid var(--border)}
-.score-cell .k{font-size:11px;color:var(--text-3);font-weight:550;
-               text-transform:uppercase;letter-spacing:.4px}
-/* The delta sits on the same line as the number and wraps under it on a
-   narrow phone rather than pushing the percentage out of the cell. */
-.score-cell .v{font-size:20px;font-weight:660;letter-spacing:-.4px;
-               margin-top:2px;display:flex;align-items:baseline;gap:var(--s0);
-               flex-wrap:wrap}
-/* Today leads: it is the only one of the three the user can still change. */
-.score-cell.lead .k{color:var(--text-2)}
-.score-cell.lead .v{font-size:25px;font-weight:700;letter-spacing:-.7px}
 .scores > div:first-child{padding-left:0}
+.score-cell .k{font-size:13px;color:var(--text-2);font-weight:560;
+               overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.score-cell .v{font-size:20px;font-weight:660;letter-spacing:-.4px;
+               margin-top:2px;display:flex;align-items:baseline;gap:6px;
+               flex-wrap:wrap;line-height:1.2}
+.score-cell.lead .k{color:var(--text)}
+.score-cell.lead .v{font-size:24px;font-weight:700;letter-spacing:-.6px}
 
-.trio{display:grid;grid-template-columns:repeat(3,1fr);align-items:center}
+.trio{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:center}
 .trio > div{padding:0 var(--s1);text-align:center;min-width:0}
 .trio > div + div{border-left:var(--border-w) solid var(--border)}
-.trio .k{font-size:11px;color:var(--text-3);font-weight:550;
-         text-transform:uppercase;letter-spacing:.4px}
-.trio .v{font-size:17px;font-weight:600;margin-top:2px;letter-spacing:-.3px}
-.hero .trio > div + div{border-left-color:color-mix(in srgb,
-                        var(--hero-text) 24%, transparent)}
+.trio .k{font-size:12.5px;color:var(--text-2);font-weight:560;
+         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trio .v{font-size:17px;font-weight:640;margin-top:2px;letter-spacing:-.3px}
+@media (max-width:380px){
+  .trio[style*="repeat(5"]{grid-template-columns:repeat(3,minmax(0,1fr))!important;
+                           row-gap:var(--s2)}
+  .trio[style*="repeat(5"] > div:nth-child(4){border-left:0}
+}
 
-.metrics{display:grid;grid-template-columns:1fr 1fr;gap:2px}
-.metric{background:var(--card-bg);border:0;
-        backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
-        border-radius:var(--radius);padding:var(--s2) var(--s3);min-width:0}
-.metric .k{font-size:11px;color:var(--text-3);text-transform:uppercase;
-           letter-spacing:.4px;font-weight:550}
-.metric .v{font-size:20px;font-weight:600;letter-spacing:-.4px;margin-top:2px;
+.metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s1)}
+.metric{background:var(--surface-2);border:0;
+        border-radius:var(--radius-sm);padding:var(--s2) var(--s3);min-width:0}
+.metric .k{font-size:13px;color:var(--text-2);font-weight:560}
+.metric .v{font-size:20px;font-weight:640;letter-spacing:-.4px;margin-top:2px;
            display:flex;align-items:baseline;gap:var(--s0);flex-wrap:wrap}
 .metric.wide{grid-column:1 / -1;display:flex;align-items:center;
              justify-content:space-between;gap:var(--s2)}
 .metric.wide .v{margin-top:0}
-/* Score bands. One place, so the colour a number is shown in and the
-   meaning behind it cannot drift apart. Mirrors services.SCORE_BANDS. */
-/* "good" borrows the theme's own primary rather than a literal blue, so the
-   bands stay inside the token layer and a theme change carries them along. */
+/* Score bands. Mirrors services.SCORE_BANDS. A band is always printed next
+   to its number, so the colour only repeats what the digits already say. */
 .band-great{color:var(--ok)} .band-good{color:var(--primary)}
 .band-fair{color:var(--warn)} .band-low{color:var(--danger)}
 .band-none{color:var(--text-3)}
 .bar i.band-great{background:var(--ok)}
 .bar i.band-good{background:var(--primary)}
 .bar i.band-fair{background:var(--warn)} .bar i.band-low{background:var(--danger)}
-.delta{font-size:12.5px;font-weight:600}
+.bar i.band-none{background:var(--border-2)}
+.delta{font-size:13px;font-weight:620;white-space:nowrap}
+.delta small{font-size:12px;font-weight:560}
 .delta.up{color:var(--ok)} .delta.down{color:var(--danger)}
 .delta.flat{color:var(--text-3)}
+.count-line{font-size:13.5px;color:var(--text-2);margin-top:var(--s1)}
 
 /* ==================================================================
    Tinted blocks
    ==================================================================
-   Three facts about the same day used to be three cells of one grey card,
-   and the eye read them as one object. A block now carries a hue of its
-   own — one of the theme's five brand colours, set once in `--tint` — so
-   tasks, habits and prayer are three things on the screen rather than one
-   paragraph of numbers.
-
-   The tint paints the frame: the wash the block sits on, its hairline, its
-   icon tile and its bar. It never paints body text. systemGreen is 1.9:1 on
-   white, and legibility is not where a palette gets spent — so a glyph is
-   the tint pushed a little towards the foreground colour, which darkens it
-   on a light ground and lightens it on a dark one without either mode
-   needing a rule of its own.
-
-   Nothing here names a colour, so the whole set repaints with the theme. */
+   Blocks are plain white panels now. The theme hue survives in one place
+   only — the small icon tile in front of a title — where it helps a list
+   of blocks be scanned without painting whole surfaces. */
 .tinted{--tint:var(--c1);
-  background:
-    linear-gradient(180deg,
-      color-mix(in srgb, var(--tint) 13%, transparent),
-      color-mix(in srgb, var(--tint) 4%, transparent)),
-    var(--card-bg);
-  border:var(--border-w) solid color-mix(in srgb, var(--tint) 30%, var(--border));
+  background:var(--surface);
+  border:var(--border-w) solid var(--border);
   border-radius:var(--radius);
-  box-shadow:var(--shadow-1);
-  backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur)}
-/* The five hues, named by position rather than by colour: a screen asks for
-   "the second tone", not "the teal one", and a theme decides what that is. */
+  box-shadow:var(--shadow-1)}
 .tone-1{--tint:var(--c1)} .tone-2{--tint:var(--c2)} .tone-3{--tint:var(--c3)}
 .tone-4{--tint:var(--c4)} .tone-5{--tint:var(--c5)}
 
-/* The rounded icon tile in front of a block's title — the one shape that
-   makes a list of blocks scannable without reading a word of it. */
-/* The fallback matters: a tile is also used on its own, outside a tinted
-   block, where there is no `--tint` to inherit. */
-.itile{width:30px;height:30px;border-radius:9px;flex:none;display:grid;
+.itile{width:32px;height:32px;border-radius:10px;flex:none;display:grid;
   place-items:center;
-  background:color-mix(in srgb, var(--tint, var(--c1)) 18%, transparent);
-  color:color-mix(in srgb, var(--tint, var(--c1)) 84%, var(--text))}
-.itile.lg{width:34px;height:34px;border-radius:10px}
+  background:color-mix(in srgb, var(--tint, var(--c1)) 11%, var(--surface));
+  color:color-mix(in srgb, var(--tint, var(--c1)) 55%, var(--text))}
+.itile.lg{width:36px;height:36px;border-radius:11px}
+.itile.sm{width:24px;height:24px;border-radius:8px;font-size:12px}
 
-/* Today in three tiles: one per measurable part of the day, each its own
-   object, each opening the screen that owns it. */
-.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s1)}
-/* Four parts read better two by two than as four slivers on one line. */
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s2)}
 .tiles.two{grid-template-columns:repeat(2,minmax(0,1fr))}
-/* What this part is worth in the score, on the block itself. */
-.wt{font-size:10.5px;font-weight:650;color:var(--text-3);
-    background:color-mix(in srgb, var(--tint, var(--c1)) 14%, transparent);
-    border-radius:var(--radius-pill);padding:2px 7px;flex:none}
-.tile{padding:var(--s2);min-width:0;cursor:pointer;
-      transition:transform var(--motion)}
+@media (max-width:340px){ .tiles{grid-template-columns:repeat(2,minmax(0,1fr))} }
+.wt{font-size:12px;font-weight:600;color:var(--text-2);
+    background:var(--surface-2);
+    border-radius:var(--radius-pill);padding:2px 8px;flex:none;white-space:nowrap}
+.tile{padding:14px;min-width:0;cursor:pointer;
+      transition:transform var(--motion),border-color var(--motion)}
+.tile:hover{border-color:var(--border-2)}
 .tile:active{transform:scale(.985)}
-.tile .k{font-size:10.5px;font-weight:600;letter-spacing:.36px;
-         text-transform:uppercase;color:var(--text-2);margin-top:var(--s1)}
-.tile .v{font-size:20px;font-weight:670;letter-spacing:-.5px;margin-top:1px;
-         line-height:1.15}
-.tile .sub{font-size:11.5px;color:var(--text-3);margin-top:1px}
-.tile .bar{margin-top:var(--s1);height:5px;
-           background:color-mix(in srgb, var(--tint) 15%, var(--surface-2))}
-.tile .bar > span{background:var(--tint)}
+.tile .k{font-size:14px;font-weight:580;color:var(--text-2);margin-top:var(--s2);
+         line-height:1.3}
+.tile .v{font-size:22px;font-weight:680;letter-spacing:-.5px;margin-top:2px;
+         line-height:1.15;overflow-wrap:anywhere}
+.tile .sub{font-size:13px;color:var(--text-2);margin-top:2px;min-height:18px}
+.tile .bar{margin-top:var(--s2);height:5px}
 
-/* A tinted block used as a full-width panel: the icon tile, a title, and
-   whatever the block is about underneath. */
 .block{padding:var(--s3)}
-.block + .block{margin-top:var(--s1)}
-.tinted.off{opacity:.6}
-.tinted[data-act]{cursor:pointer;transition:transform var(--motion)}
+.block + .block{margin-top:var(--s2)}
+.tinted.off{opacity:.62}
+.tinted[data-act]{cursor:pointer;transition:transform var(--motion),
+                  border-color var(--motion)}
+.tinted[data-act]:hover{border-color:var(--border-2)}
 .tinted[data-act]:active{transform:scale(.995)}
 .block .bh{display:flex;align-items:center;gap:var(--s2)}
-.block .bt{font-size:15px;font-weight:620;letter-spacing:-.2px}
-.block .bar > span{background:var(--tint)}
+.block .bt{font-size:16px;font-weight:620;letter-spacing:-.15px;line-height:1.3}
 
-/* A section heading that carries the same hue as the blocks under it, so a
-   screen reads as a few labelled groups instead of one long scroll. */
-.sechead{display:flex;align-items:center;gap:var(--s1);
-         margin:var(--s4) 0 var(--s1)}
-.sechead .lbl{font-size:12px;font-weight:600;letter-spacing:.4px;
-              text-transform:uppercase;color:var(--text-3);flex:1;min-width:0}
-.sechead .act{text-transform:none;letter-spacing:0;font-size:13px;
-              font-weight:550;color:var(--primary);display:inline-flex;
-              align-items:center;gap:4px;position:relative;cursor:pointer}
+.sechead{display:flex;align-items:center;gap:var(--s2);
+         margin:var(--s4) 0 var(--s2)}
+.sechead .itile{width:28px;height:28px;border-radius:9px}
+.sechead .lbl{font-size:16px;font-weight:620;color:var(--text);flex:1;min-width:0;
+              overflow-wrap:anywhere;line-height:1.3}
+.sechead .act{font-size:14px;font-weight:600;color:var(--primary);
+              display:inline-flex;align-items:center;gap:4px;position:relative;
+              cursor:pointer;white-space:nowrap}
 .sechead .act::after{content:"";position:absolute;inset:-10px}
-.sechead .dotline{width:22px;height:3px;border-radius:2px;flex:none;
-                  background:var(--tint, var(--primary))}
+.sechead .dotline{display:none}
 
 /* ==================================================================
    Rows
    ================================================================== */
-/* A row is carried by its own surface, not by an outline. Eight tasks used
-   to be eight outlined boxes stacked six pixels apart — sixteen horizontal
-   lines for eight facts. The fill already separates the row from the ground,
-   so the border is a second separator doing the same job, and the rows sit
-   close enough to read as one list. */
-.item{background:var(--card-bg);border:0;
-      backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
+/* Consecutive rows join into one grouped list: a single rounded surface
+   divided by hairlines, instead of a stack of little cards. */
+.item,.trow{background:var(--surface);
+      border:var(--border-w) solid var(--border);
       border-radius:var(--radius);padding:var(--s2) var(--s3);
-      display:flex;align-items:center;gap:var(--s2);min-height:52px}
-.item + .item{margin-top:2px}
-.item .meta{font-size:12.5px;color:var(--text-2);margin-top:2px;display:flex;
-            align-items:center;gap:6px;flex-wrap:wrap}
-.item.off{opacity:.55}
-.item.pressable{cursor:pointer;transition:transform var(--motion)}
-.item.pressable:active{transform:scale(.995)}
+      display:flex;gap:var(--s2);min-width:0}
+.item{align-items:center;min-height:56px}
+:is(.item,.trow) + :is(.item,.trow){margin-top:var(--s1)}
+@supports selector(:has(+ *)){
+  :is(.item,.trow):has(+ :is(.item,.trow)){
+    border-bottom-left-radius:0;border-bottom-right-radius:0;
+    border-bottom-color:transparent}
+  :is(.item,.trow) + :is(.item,.trow){margin-top:0;
+    border-top-left-radius:0;border-top-right-radius:0}
+}
+.item .meta{font-size:13.5px;color:var(--text-2);margin-top:2px;display:flex;
+            align-items:center;gap:4px 8px;flex-wrap:wrap;line-height:1.35}
+.item.off{opacity:.6}
+.item.pressable{cursor:pointer;transition:background var(--motion)}
+.item.pressable:hover{background:var(--surface-2)}
+.item.pressable:active{background:var(--surface-2)}
 
-/* A task row's only decoration is the priority edge. */
-.trow{background:var(--card-bg);border:0;
-      backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
-      border-left:3px solid transparent;border-radius:var(--radius);
-      padding:var(--s2) var(--s3);display:flex;align-items:flex-start;
-      gap:var(--s2)}
-.trow + .trow{margin-top:2px}
-/* The edge carries the priority, as a colour: red is urgent, amber is the
-   ordinary middle, and low is left unpainted so the list still has somewhere
-   quiet to rest. Amber sits at 55% alpha rather than full strength — "medium"
-   is what every task is born with, so a full-strength stripe on all of them
-   would drown the red one it exists to set off. Full red still reads as the
-   only saturated edge on the screen. */
+/* A task row. Priority is written on the row (a tag for High) and echoed
+   by a quiet edge; urgent work is never signalled by colour alone. */
+.trow{align-items:flex-start;border-left-width:3px}
 .trow.pri-high{border-left-color:var(--danger)}
-.trow.pri-medium{border-left-color:color-mix(in srgb,var(--warn) 55%,transparent)}
+.trow.pri-medium{border-left-color:color-mix(in srgb,var(--warn) 30%,var(--border))}
 .trow.pri-low{border-left-color:var(--border)}
-.trow .tt{font-weight:550;line-height:1.35;overflow-wrap:anywhere;cursor:pointer}
-.trow .td{font-size:12.5px;color:var(--text-2);margin-top:3px;display:flex;
-          align-items:center;gap:6px;flex-wrap:wrap}
-.trow .quick{display:flex;gap:5px;margin-top:var(--s1);flex-wrap:wrap}
-.group{font-size:12.5px;font-weight:600;color:var(--text-2);
-       margin:var(--s3) 0 6px;display:flex;align-items:center;gap:6px}
+.trow > .check{margin-top:1px}
+.trow .tt{font-weight:560;line-height:1.4;overflow-wrap:anywhere;cursor:pointer;
+          min-height:28px;display:flex;align-items:center}
+.trow .td{font-size:13.5px;color:var(--text-2);margin-top:2px;display:flex;
+          align-items:center;gap:4px 8px;flex-wrap:wrap;line-height:1.35}
+.trow .quick{display:flex;gap:6px;margin-top:var(--s2);flex-wrap:wrap;
+             align-items:center}
+.trow .quick .qlbl{font-size:13px;color:var(--text-2);margin-right:2px}
+.group{font-size:14px;font-weight:600;color:var(--text-2);
+       margin:var(--s3) 0 var(--s1);display:flex;align-items:center;gap:6px}
 
 /* Week strip */
-.strip{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
+.strip{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
 .strip .d{border-radius:var(--radius-sm);background:var(--surface);
           border:var(--border-w) solid var(--border);padding:6px 2px;
           text-align:center;min-width:0;cursor:pointer}
 .strip .d.now{border-color:var(--primary);
-              background:color-mix(in srgb, var(--primary) 10%, var(--surface))}
-.strip .dow{font-size:9.5px;font-weight:600;color:var(--text-3);
-            text-transform:uppercase}
-.strip .dd{font-size:14px;font-weight:600;margin-top:2px}
+              background:color-mix(in srgb, var(--primary) 8%, var(--surface))}
+.strip .dow{font-size:11px;font-weight:600;color:var(--text-2)}
+.strip .dd{font-size:15px;font-weight:620;margin-top:2px}
 .strip .mk{height:4px;margin-top:3px;display:flex;justify-content:center;gap:2px}
 .strip .mk i{width:4px;height:4px;border-radius:50%;background:var(--primary)}
 
 /* Calendar */
 .cal-head{display:flex;align-items:center;justify-content:space-between;
           margin-bottom:var(--s2);gap:var(--s1)}
-.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;
+.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;
           width:100%}
-.cal-dow{text-align:center;font-size:9.5px;color:var(--text-3);padding:2px 0;
-         font-weight:600;min-width:0;overflow:hidden;text-transform:uppercase}
+.cal-dow{text-align:center;font-size:12px;color:var(--text-2);padding:4px 0;
+         font-weight:600;min-width:0;overflow:hidden}
 .cal-day{aspect-ratio:1;min-width:0;border-radius:var(--radius-sm);
-         background:var(--surface-2);border:var(--border-w) solid transparent;
+         background:transparent;border:var(--border-w) solid transparent;
          display:flex;flex-direction:column;align-items:center;
-         justify-content:center;font-size:12.5px;gap:3px}
+         justify-content:center;font-size:14px;gap:3px}
 .cal-day.empty{background:transparent}
-.cal-day.today{border-color:var(--primary);color:var(--primary);font-weight:600}
-.cal-day.has{cursor:pointer}
+.cal-day.today{border-color:var(--primary);color:var(--primary);font-weight:680;
+               background:color-mix(in srgb, var(--primary) 7%, transparent)}
+.cal-day.has{cursor:pointer;font-weight:600}
+.cal-day.has:hover{background:var(--surface-2)}
 .cal-dots{display:flex;gap:2px;height:4px}
 .cal-dots i{width:4px;height:4px;border-radius:50%}
 .k-task{background:var(--c1)} .k-project{background:var(--c2)}
@@ -796,34 +667,32 @@ label{display:block;font-size:12px;color:var(--text-2);margin:var(--s3) 0 var(--
 
 /* Habit history grid */
 .hgrid{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:4px}
-.hgrid i{aspect-ratio:1;border-radius:3px;background:var(--surface-2)}
+.hgrid i{aspect-ratio:1;border-radius:4px;background:var(--surface-2)}
 .hgrid i.due{background:var(--border-2)}
 .hgrid i.done{background:var(--ok)}
 
-/* Prayer: name on its own line, states in one strip that scrolls. */
-.prow{padding:var(--s1) 0;border-bottom:var(--border-w) solid var(--border)}
+/* Prayer: the name, then its states in one strip. */
+.prow{padding:var(--s2) 0;border-bottom:var(--border-w) solid var(--border)}
 .prow:last-of-type{border-bottom:0}
-.prow .pn{font-size:14.5px;font-weight:550;display:flex;align-items:center;
-          gap:6px;margin-bottom:6px}
-.prow .ps{display:flex;gap:5px;overflow-x:auto;scrollbar-width:none;
+.prow .pn{font-size:15.5px;font-weight:600;display:flex;align-items:center;
+          gap:6px;margin-bottom:var(--s1)}
+.prow .ps{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;
           margin:0 calc(var(--s3) * -1);padding:1px var(--s3)}
 .prow .ps::-webkit-scrollbar{display:none}
-@media (min-width:480px){
+@media (min-width:520px){
   .prow{display:flex;align-items:center;gap:var(--s2)}
-  .prow .pn{width:100px;flex:none;margin-bottom:0}
+  .prow .pn{width:96px;flex:none;margin-bottom:0}
   .prow .ps{flex:1;justify-content:flex-end;overflow:visible;margin:0;padding:0}
 }
 .st{border-radius:var(--radius-pill);
     border:var(--border-w) solid var(--border-2);background:var(--surface);
-    padding:6px var(--s1);font-size:12.5px;font-weight:550;cursor:pointer;
+    padding:6px 12px;font-size:14px;font-weight:560;cursor:pointer;min-height:36px;
+    display:inline-flex;align-items:center;gap:4px;
     white-space:nowrap;color:var(--text-2);transition:background var(--motion),
     color var(--motion)}
-/* Each state keeps its own colour when chosen, so a day reads at a glance. */
-/* Text on a filled state chip. Every theme's --on-primary is the
-   readable foreground for its own filled surfaces. */
-.st.on{color:var(--on-primary);border-color:transparent}
+.st.on{color:var(--bg);border-color:transparent;font-weight:640}
 .st.jamaat.on{background:var(--ok)}
-.st.on_time.on{background:color-mix(in srgb, var(--ok) 82%, var(--surface))}
+.st.on_time.on{background:color-mix(in srgb, var(--ok) 80%, var(--text))}
 .st.qaza.on{background:var(--warn)}
 .st.missed.on{background:var(--danger)}
 
@@ -831,166 +700,185 @@ label{display:block;font-size:12px;color:var(--text-2);margin:var(--s3) 0 var(--
    Chrome
    ================================================================== */
 nav{position:fixed;left:0;right:0;bottom:0;z-index:40;display:grid;
-    /* One column per tab, however many there are. It was a hard 4;
-       adding Team made the fifth wrap onto a second row and doubled
-       the height of the bar on a phone. */
-    grid-auto-flow:column;grid-auto-columns:1fr;
-    background:color-mix(in srgb, var(--surface) 88%, transparent);
-    backdrop-filter:saturate(140%) blur(18px);
-    -webkit-backdrop-filter:saturate(140%) blur(18px);
+    grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);
+    background:var(--surface);
     border-top:var(--border-w) solid var(--border);
-    padding-bottom:var(--safe-b, 0px)}
-@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
-  nav{background:var(--surface)}
-  .sheet-inner{background:var(--surface)}
-}
-nav button{background:0;border:0;color:var(--text-3);padding:7px 2px 8px;
-           font-size:10px;font-weight:550;cursor:pointer;display:grid;gap:2px;
-           min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-           justify-items:center;min-height:52px;
+    padding:4px max(4px, env(safe-area-inset-left, 0px)) var(--safe-b, 0px)}
+nav button{background:0;border:0;color:var(--text-2);padding:6px 2px 8px;
+           font-size:11.5px;font-weight:600;cursor:pointer;display:grid;gap:3px;
+           min-width:0;justify-items:center;align-content:center;min-height:56px;
            transition:color var(--motion)}
+nav button > span:last-child{max-width:100%;overflow:hidden;text-overflow:ellipsis;
+           white-space:nowrap;padding:0 2px}
 nav button.on{color:var(--primary)}
-nav button .ic{display:grid;place-items:center;height:24px}
+nav button .ic{display:grid;place-items:center;height:28px;width:52px;
+               border-radius:var(--radius-pill);transition:background var(--motion)}
+nav button.on .ic{background:color-mix(in srgb, var(--primary) 13%, transparent)}
+nav button:focus-visible{outline:2px solid var(--primary);outline-offset:-4px;
+                         border-radius:var(--radius-sm)}
+/* The on-screen keyboard: while a field on the page has focus, the bar and
+   the button step aside instead of riding up over what is being typed. */
+body:has(#app input:focus, #app textarea:focus) :is(nav, .fab){visibility:hidden}
 
 .fab{position:fixed;right:calc(var(--pad) + 2px);z-index:41;
      bottom:calc(var(--shell-b, 58px) + var(--s3));
-     width:52px;height:52px;border-radius:50%;border:0;cursor:pointer;
+     width:56px;height:56px;border-radius:18px;border:0;cursor:pointer;
      background:var(--primary-fill);color:var(--on-primary);
      box-shadow:var(--shadow-3);display:grid;place-items:center;
      transition:transform var(--motion),filter var(--motion)}
-.fab:active{transform:scale(.94);filter:brightness(.94)}
+.fab:active{transform:scale(.95);filter:brightness(.94)}
+.fab:focus-visible{outline:0;box-shadow:var(--ring),var(--shadow-3)}
 
-/* The privacy promise, once, at the foot of Home — in the page, not welded
-   above the navigation on every screen. As fixed chrome it cost a bar and a
-   second hairline above the tab bar on all four screens, forever, to repeat
-   a sentence that is read once. It is still in the app on the first screen
-   the user lands on, and again in Settings under "About privacy". */
-.privacy-strip{margin:var(--s4) 0 var(--s1);text-align:center;
-  font-size:11px;line-height:1.35;color:var(--text-3)}
+.privacy-strip{margin:var(--s5) auto var(--s1);text-align:center;max-width:420px;
+  font-size:12.5px;line-height:1.45;color:var(--text-3);text-wrap:pretty}
 
-.sheet{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;
        align-items:flex-end;z-index:50}
 .sheet.show{display:flex}
 .sheet-inner{background:var(--surface);width:100%;max-width:640px;margin:0 auto;
-             border-radius:calc(var(--radius-lg) + 6px)
-                           calc(var(--radius-lg) + 6px) 0 0;
-             border-top:var(--border-w) solid var(--border);
+             border-radius:24px 24px 0 0;
              box-shadow:var(--shadow-3);
              padding:var(--s1) var(--pad) calc(var(--s4) + var(--safe-b, 0px));
-             max-height:calc(var(--vh, 100dvh) - 32px);overflow-y:auto;
+             max-height:calc(var(--vh, 100dvh) - 24px);overflow-y:auto;
+             overscroll-behavior:contain;
              -webkit-overflow-scrolling:touch;
-             animation:sheet-in var(--motion) ease-out}
-@keyframes sheet-in{from{transform:translateY(12px);opacity:.6}
+             animation:sheet-in 220ms cubic-bezier(.2,.8,.2,1)}
+@keyframes sheet-in{from{transform:translateY(16px);opacity:.4}
                     to{transform:none;opacity:1}}
-.grabber{width:36px;height:4px;border-radius:2px;background:var(--border-2);
-         margin:0 auto var(--s2)}
-.sheet .hint{font-size:13px;color:var(--text-2);margin-top:var(--s0);
-             line-height:1.45}
+.grabber{width:40px;height:5px;border-radius:3px;background:var(--border-2);
+         margin:2px auto var(--s3)}
+.sheet .hint{font-size:14px;color:var(--text-2);margin-top:var(--s1);
+             line-height:1.5}
+.sheet .item,.sheet .trow{background:var(--surface)}
+.sheet .btn + .btn{margin-top:var(--s1)}
 details{margin-top:var(--s3);border-top:var(--border-w) solid var(--border);
-        padding-top:var(--s0)}
-details > summary{list-style:none;cursor:pointer;font-size:13.5px;font-weight:550;
+        padding-top:var(--s1)}
+details > summary{list-style:none;cursor:pointer;font-size:15px;font-weight:600;
                   color:var(--primary);padding:var(--s1) 0;display:flex;
-                  align-items:center;gap:6px}
+                  align-items:center;gap:6px;min-height:44px}
 details > summary::-webkit-details-marker{display:none}
-details[open] > summary .chev{transform:rotate(90deg)}
+details > summary .i{transition:transform var(--motion)}
+details[open] > summary .i{transform:rotate(90deg)}
 .chev{transition:transform var(--motion)}
 
-.toast{position:fixed;left:50%;transform:translateX(-50%);
+.toast{position:fixed;left:50%;transform:translate(-50%, 8px);
        bottom:calc(var(--shell-b, 58px) + var(--s4));
        background:var(--text);color:var(--surface);
        padding:var(--s2) var(--s3);border-radius:var(--radius-sm);z-index:60;
        opacity:0;transition:opacity var(--motion),transform var(--motion);
-       pointer-events:none;font-size:14px;font-weight:500;
-       box-shadow:var(--shadow-3);max-width:86vw;text-align:center;
-       display:flex;align-items:center;gap:var(--s2)}
-.toast.show{opacity:1;pointer-events:auto}
+       pointer-events:none;font-size:15px;font-weight:540;
+       box-shadow:var(--shadow-3);max-width:calc(100vw - 32px);text-align:left;
+       display:flex;align-items:center;gap:var(--s3);min-height:48px}
+.toast.show{opacity:1;pointer-events:auto;transform:translate(-50%, 0)}
 .toast .undo{color:var(--surface);font-weight:700;cursor:pointer;flex:none;
-             text-decoration:underline}
+             text-decoration:underline;text-underline-offset:3px;
+             padding:var(--s1) 0}
 
-/* A timer's clock: the one large number on its sheet, in digits that do not
-   jitter sideways as they change. */
-.clock-big{font-size:46px;font-weight:700;text-align:center;line-height:1.1;
-           font-variant-numeric:tabular-nums;letter-spacing:.5px;
-           margin:var(--s3) 0 var(--s1)}
+.clock-big{font-size:48px;font-weight:680;text-align:center;line-height:1.1;
+           font-variant-numeric:tabular-nums;letter-spacing:-.5px;
+           margin:var(--s4) 0 var(--s2)}
 .num-live{font-variant-numeric:tabular-nums}
 
-/* An empty state names the next step. "Nothing yet" alone is a dead end. */
-.empty{text-align:center;color:var(--text-2);padding:var(--s4) var(--s2);
-       font-size:13.5px}
+/* An empty state names the next step. */
+.empty{text-align:center;color:var(--text-2);padding:var(--s4) var(--s3);
+       font-size:15px;background:var(--surface);border:var(--border-w) dashed var(--border-2);
+       border-radius:var(--radius);text-wrap:pretty}
 .empty .btn{margin:var(--s2) auto 0;display:flex}
-.spin{width:22px;height:22px;border:2.5px solid var(--border);
+/* Loading: a small ring that fades in, so fast answers never flash it. */
+.spin{width:24px;height:24px;border:2.5px solid var(--border);
       border-top-color:var(--primary);border-radius:50%;
-      animation:spin .7s linear infinite;margin:var(--s6) auto}
+      animation:spin .7s linear infinite, fade-in .3s ease .15s both;
+      margin:var(--s6) auto}
+.card .spin{margin:var(--s3) auto}
 @keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fade-in{from{opacity:0}to{opacity:1}}
 .chart{width:100%;height:auto;display:block}
-.legend{display:flex;gap:var(--s2);justify-content:center;font-size:12px;
-        color:var(--text-2);margin-top:var(--s1);flex-wrap:wrap}
-.legend span{cursor:pointer;display:inline-flex;align-items:center;gap:5px}
-.legend span.off{opacity:.35}
-.legend i{width:11px;height:3px;border-radius:2px;display:inline-block}
+.legend{display:flex;gap:6px var(--s3);justify-content:center;font-size:13.5px;
+        color:var(--text-2);margin-top:var(--s2);flex-wrap:wrap}
+.legend span{cursor:pointer;display:inline-flex;align-items:center;gap:6px;
+             min-height:32px;padding:0 4px;border-radius:var(--radius-sm)}
+.legend span.off{opacity:.45;text-decoration:line-through}
+.legend i{width:12px;height:4px;border-radius:2px;display:inline-block}
 .scrollx{overflow-x:auto;scrollbar-width:none}
 .scrollx::-webkit-scrollbar{display:none}
 
-/* Theme preview cards in Settings. */
-.tcard{display:flex;align-items:center;gap:var(--s2);padding:var(--s2);
-       border-radius:var(--radius);border:2px solid var(--border);
-       background:var(--surface);cursor:pointer;
-       transition:border-color var(--motion)}
-.tcard.on{border-color:var(--primary)}
-.tcard .swatches{display:flex;flex:none;box-shadow:var(--shadow-1);
-                 border-radius:8px;overflow:hidden}
-.tcard .swatches i{width:15px;height:34px;display:block}
+/* Theme cards in Settings. */
+.tcard{display:flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s3);
+       border-radius:var(--radius);border:var(--border-w) solid var(--border);
+       background:var(--surface);cursor:pointer;min-height:60px;
+       transition:border-color var(--motion),box-shadow var(--motion)}
+.tcard.on{border-color:var(--primary);box-shadow:var(--ring)}
+.tcard.on > .i{color:var(--primary)}
+.tcard .swatches{display:flex;flex:none;gap:3px}
+.tcard .swatches i{width:14px;height:14px;display:block;border-radius:50%}
+.tcard .swatches i:first-child{width:22px;height:22px;margin-right:2px}
+.tcard .swatches{align-items:center}
 
-
-/* ---- header row: greeting, settings, avatar ---- */
-.head{display:flex;align-items:center;gap:var(--s2)}
-.avatar{width:42px;height:42px;border-radius:var(--radius-sm);flex:none;
-        display:grid;place-items:center;font-weight:600;font-size:16px;
-        color:var(--on-primary);overflow:hidden;background:var(--primary-fill)}
+/* ---- header: greeting, date, profile ---- */
+.head{display:flex;align-items:center;gap:var(--s2);min-height:48px}
+.avatar{width:44px;height:44px;border-radius:50%;flex:none;border:0;padding:0;
+        display:grid;place-items:center;font-weight:640;font-size:17px;
+        color:var(--on-primary);overflow:hidden;background:var(--primary-fill);
+        cursor:pointer;box-shadow:0 0 0 2px var(--surface), 0 0 0 3px var(--border)}
+.avatar:focus-visible{outline:0;box-shadow:var(--ring)}
 .avatar img{width:100%;height:100%;object-fit:cover;display:block}
-/* An icon button is a target, not a boxed object. Outlined and filled, every
-   gear, chevron and star read as a control competing with the content beside
-   it — a list of six tasks came with six grey squares down its right edge.
-   The glyph and a 38px target are enough; the fill is kept for the one case
-   that needs to stand off a coloured surface. */
-.iconbtn{width:38px;height:38px;min-width:38px;border-radius:var(--radius-sm);
+.datebtn{display:inline-flex;align-items:center;gap:6px;margin-top:2px;
+         font-size:14.5px;color:var(--text-2);cursor:pointer;background:none;
+         border:0;padding:4px 0;min-height:32px;position:relative}
+.datebtn::after{content:"";position:absolute;inset:-6px -4px}
+.datebtn:hover{color:var(--text)}
+.iconbtn{width:44px;height:44px;min-width:44px;border-radius:var(--radius-sm);
          flex:none;display:grid;place-items:center;background:none;
-         border:0;color:var(--text-3);
+         border:0;color:var(--text-2);
          position:relative;cursor:pointer;
          transition:color var(--motion),background var(--motion)}
-.iconbtn::after{content:"";position:absolute;inset:-4px}
+.iconbtn:hover{background:var(--surface-2);color:var(--text)}
 .iconbtn:active{color:var(--primary);background:var(--surface-2)}
-.iconbtn.sm{width:32px;height:32px;min-width:32px}
-.iconbtn.bare{background:none;border-color:transparent;color:var(--text-3)}
+.iconbtn.sm{width:40px;height:40px;min-width:40px}
+.iconbtn.sm::after{content:"";position:absolute;inset:-2px}
+.iconbtn.bare{background:none;border-color:transparent;color:var(--text-2)}
+.iconbtn.on{color:var(--primary)}
+.iconbtn.on svg{fill:currentColor}
 .iconbtn[disabled]{opacity:.35;pointer-events:none}
-.hero .iconbtn{background:color-mix(in srgb, var(--hero-text) 14%, transparent);
-               border-color:transparent;color:inherit}
-.card.flat{box-shadow:none}
-/* Drag handle for reordering. */
+.hero .iconbtn{color:var(--text-2)}
 .handle{cursor:grab;touch-action:none;color:var(--text-3);flex:none;padding:0 2px}
 
 @media (prefers-reduced-motion:reduce){
-  *{animation:none!important;transition:none!important}
+  *{animation-duration:1ms!important;animation-iteration-count:1!important;
+    transition:none!important}
+  .spin,.btn.busy::after{animation:none!important;
+    border-color:var(--border-2);border-top-color:var(--primary)}
 }
 
-/* v7 — classes the team screen used without ever defining, and the new parts */
+/* shared-work pieces (team screen) */
 .muted{color:var(--text-2)}
-.sm{font-size:12.5px}
-.card-t{font-weight:650;margin-bottom:var(--s1)}
+.sm{font-size:13.5px}
+.card-t{font-weight:640;margin-bottom:var(--s1);font-size:16px}
 .done{text-decoration:line-through;color:var(--text-2)}
-.ghost{background:none;border:0;color:var(--text-2);font-size:20px;min-width:40px;
-  min-height:40px;cursor:pointer;border-radius:10px}
-.tabs{display:flex;gap:6px;overflow-x:auto;margin:var(--s2) 0;scrollbar-width:none}
-.tab{padding:7px 13px;border-radius:var(--radius-pill);background:var(--surface-2);
-  white-space:nowrap;cursor:pointer;font-size:13.5px}
-.tab.on{background:var(--primary-fill);color:var(--on-primary)}
+.ghost{background:none;border:0;color:var(--text-2);font-size:20px;min-width:44px;
+  min-height:44px;cursor:pointer;border-radius:var(--radius-sm);
+  display:grid;place-items:center}
+.ghost:hover{background:var(--surface-2);color:var(--text)}
+.tabs{display:flex;gap:var(--s1);overflow-x:auto;margin:var(--s3) 0 0;
+      scrollbar-width:none;padding-bottom:2px}
+.tabs::-webkit-scrollbar{display:none}
+.tab{padding:var(--s1) 14px;border-radius:var(--radius-pill);background:var(--surface);
+  border:var(--border-w) solid var(--border-2);min-height:40px;
+  display:inline-flex;align-items:center;
+  white-space:nowrap;cursor:pointer;font-size:14.5px;font-weight:560}
+.tab.on{background:var(--primary-fill);border-color:transparent;color:var(--on-primary)}
 .banner{display:flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s3);
-  border-radius:12px;background:var(--surface-2);margin:var(--s2) 0;font-size:13.5px;
-  cursor:pointer}
-.hub{display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);margin-top:var(--s2)}
-.hub .btn{min-height:48px}
+  border-radius:var(--radius);background:var(--surface);
+  border:var(--border-w) solid var(--border);margin:var(--s2) 0;font-size:14.5px;
+  cursor:pointer;min-height:52px;flex-wrap:wrap}
+.hub{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s2);
+     margin-top:var(--s3)}
+.hub .btn{min-height:48px;font-size:15px}
+.state-ico{width:56px;height:56px;border-radius:18px;margin:0 auto;display:grid;
+  place-items:center;background:var(--surface);border:var(--border-w) solid var(--border);
+  color:var(--text-2)}
 [data-act][tabindex]:focus-visible,.check:focus-visible,.chip:focus-visible,
-.tab:focus-visible,.seg>div:focus-visible,.sw:focus-visible{
+.tab:focus-visible,.seg>div:focus-visible,.sw:focus-visible,.tcard:focus-visible{
   outline:2px solid var(--primary);outline-offset:2px}
 </style>
 </head>
@@ -1151,6 +1039,7 @@ const DICT = {
   mark_done:"Tugallandi deb belgilash", mark_active:"Faolga qaytarish",
   archive:"Arxivlash", unarchive:"Arxivdan chiqarish",
   of_tasks:"{total} ta vazifadan {done} tasi bajarilgan",
+  of_habits:"{total} ta odatdan {done} tasi bajarilgan",
   remaining:"Qolgan", completed:"Bajarilgan",
   no_projects:"Hozircha loyiha yo'q", add_first_project:"Birinchi loyihani qo'shish",
   pr_active:"Faol", pr_open_tasks:"Ochiq ish", pr_average:"O'rtacha",
@@ -1212,11 +1101,11 @@ const DICT = {
   settings:"Sozlamalar", language:"Til", gender:"Jins", theme:"Tema",
   appearance:"Ko'rinish", auto:"Avto", light:"Yorug'", dark:"Qorong'i",
   mode:"Rejim", account:"Hisob", back:"Orqaga",
-  theme_ocean:"Shaffof shisha, chuqur ko'k — universal",
-  theme_midnight:"Sokin qorong'i, chalg'itmaydigan minimalizm",
-  theme_aurora:"Shisha va aurora gradient — futuristik",
-  theme_bento:"Yorug' va tartibli bloklar — eng tez o'qiladi",
-  theme_spatial:"Qatlamli chuqurlik, suzuvchi kartalar",
+  theme_ocean:"Tinch ko'k — standart, hamma uchun qulay",
+  theme_midnight:"Chuqur indigo — sokin va diqqatli",
+  theme_aurora:"Yumshoq binafsha — iliq va nafis",
+  theme_bento:"Siyoh — faqat qora va oq, eng kam rang",
+  theme_spatial:"Moviy-yashil — tiniq va yangi",
   theme_fixed:"Bu tema o'z ko'rinishida ishlaydi",
   timezone:"Vaqt mintaqasi", tz_common:"Tez-tez ishlatiladigan", notifications:"Eslatmalar va hisobotlar",
   morning_report:"Ertalabki hisobot", evening_report:"Kechqurungi hisobot",
@@ -1487,6 +1376,7 @@ const DICT = {
   mark_done:"Mark as completed", mark_active:"Make active again",
   archive:"Archive", unarchive:"Restore from archive",
   of_tasks:"{done} of {total} tasks done",
+  of_habits:"{done} of {total} habits done",
   remaining:"Remaining", completed:"Completed",
   no_projects:"No projects yet", add_first_project:"Add your first project",
   pr_active:"Active", pr_open_tasks:"Open work", pr_average:"Average",
@@ -1542,11 +1432,11 @@ const DICT = {
   settings:"Settings", language:"Language", gender:"Gender", theme:"Theme",
   appearance:"Appearance", auto:"Auto", light:"Light", dark:"Dark",
   mode:"Mode", account:"Account", back:"Back",
-  theme_ocean:"Frosted glass over deep blue — universal",
-  theme_midnight:"Calm dark, distraction-free minimalism",
-  theme_aurora:"Glass with aurora gradients — futuristic",
-  theme_bento:"Light, structured blocks — fastest to read",
-  theme_spatial:"Layered depth and floating cards",
+  theme_ocean:"Calm blue — the default, easy for everyone",
+  theme_midnight:"Deep indigo — quiet and focused",
+  theme_aurora:"Soft lilac — warm and gentle",
+  theme_bento:"Ink — black and white, the least colour",
+  theme_spatial:"Teal — clear and fresh",
   theme_fixed:"This theme keeps its own appearance",
   timezone:"Time zone", tz_common:"Common", notifications:"Reminders and reports",
   morning_report:"Morning report", evening_report:"Evening report",
@@ -1814,6 +1704,7 @@ const DICT = {
   mark_done:"Отметить завершённым", mark_active:"Вернуть в активные",
   archive:"В архив", unarchive:"Вернуть из архива",
   of_tasks:"{done} из {total} задач выполнено",
+  of_habits:"{done} из {total} привычек выполнено",
   remaining:"Осталось", completed:"Выполнено",
   no_projects:"Проектов пока нет", add_first_project:"Добавить первый проект",
   pr_active:"Активные", pr_open_tasks:"Открытых дел", pr_average:"В среднем",
@@ -1869,11 +1760,11 @@ const DICT = {
   settings:"Настройки", language:"Язык", gender:"Пол", theme:"Тема",
   appearance:"Оформление", auto:"Авто", light:"Светлое", dark:"Тёмное",
   mode:"Режим", account:"Аккаунт", back:"Назад",
-  theme_ocean:"Матовое стекло на глубоком синем — универсальная",
-  theme_midnight:"Спокойная тёмная, минимум отвлечений",
-  theme_aurora:"Стекло и аврора-градиенты — футуристичная",
-  theme_bento:"Светлые структурные блоки — читается быстрее всех",
-  theme_spatial:"Слои, глубина и парящие карточки",
+  theme_ocean:"Спокойный синий — по умолчанию, удобно всем",
+  theme_midnight:"Глубокий индиго — тихо и сосредоточенно",
+  theme_aurora:"Мягкая сирень — тепло и деликатно",
+  theme_bento:"Чернила — только чёрное и белое",
+  theme_spatial:"Бирюза — чисто и свежо",
   theme_fixed:"Эта тема сохраняет своё оформление",
   timezone:"Часовой пояс", tz_common:"Частые", notifications:"Напоминания и отчёты",
   morning_report:"Утренний отчёт", evening_report:"Вечерний отчёт",
@@ -2050,14 +1941,13 @@ const DICT = {
    nothing here needs to know what they are. */
 const THEMES = [
   {id:"ocean",    c:["#007AFF","#30B0C7","#5856D6","#FF9500","#34C759"]},
-  {id:"midnight", c:["#5856D6","#8E8E93","#5AC8FA","#FF9500","#34C759"]},
-  {id:"aurora",   c:["#AF52DE","#32ADE6","#5856D6","#FF2D55","#00C7BE"]},
+  {id:"midnight", c:["#5856D6","#32ADE6","#AF52DE","#FF9500","#34C759"]},
+  {id:"aurora",   c:["#AF52DE","#5856D6","#32ADE6","#FF2D55","#00C7BE"]},
   {id:"bento",    c:["#1C1C1A","#007AFF","#00C7BE","#FF9500","#AF52DE"]},
   {id:"spatial",  c:["#30B0C7","#007AFF","#5856D6","#FF9500","#34C759"]},
 ];
-const THEME_NAMES = {ocean:"Ocean Glass", midnight:"Midnight Minimal",
-                     aurora:"Aurora Glass", bento:"Pure Bento",
-                     spatial:"Spatial Layered"};
+const THEME_NAMES = {ocean:"Calm Blue", midnight:"Indigo", aurora:"Lilac",
+                     bento:"Ink", spatial:"Teal"};
 //: An account holding an unknown theme renders as the default and shows the
 //: default ticked, rather than a picker with nothing selected.
 const DEFAULT_THEME = "ocean";
@@ -2131,6 +2021,7 @@ const ICONS = {
   book:'<path d="M5 4.5h9a3 3 0 0 1 3 3v12H8a3 3 0 0 1-3-3v-12Z"/><path d="M17 7.5h2v12H8"/>',
   flame:'<path d="M12 3.5s4.5 4 4.5 8a4.5 4.5 0 0 1-9 0c0-1.6.8-3 1.6-4 .3 1.2 1 1.9 1.7 1.9 1.2 0 1.6-1.4 1.2-5.9Z"/>',
   x:'<path d="M6 6l12 12M18 6 6 18"/>',
+  star:'<path d="M12 3.8l2.5 5.1 5.6.8-4 3.9.9 5.6-5-2.6-5 2.6.9-5.6-4-3.9 5.6-.8Z"/>',
   /* Two bulbs meeting at a waist, capped top and bottom: a countdown. */
   hourglass:'<path d="M6.5 3.5h11M6.5 20.5h11"/>'
     + '<path d="M8 3.5c0 4.4 8 4.6 8 8.5s-8 4.1-8 8.5M16 3.5c0 4.4-8 4.6-8 8.5s8 4.1 8 8.5"/>',
@@ -2379,9 +2270,9 @@ SCREENS.home = () => {
        + timerBanner(d.active_timer)
        + nowBlock(d)
        + tasksBlock(d)
-       + countdownBlock(d.countdowns)
        + scoreBlock(d)
        + todayBlock(d)
+       + countdownBlock(d.countdowns)
        + progressCard()
        + privacyNote();
 };
@@ -2417,13 +2308,12 @@ function headBlock(d){
     <div class="head">
       <div class="grow">
         <h1 class="greet">${t("greet")}, ${esc(d.name)}</h1>
-        <div class="t2 small row" style="margin-top:2px;gap:4px;display:inline-flex;
-             cursor:pointer" data-act="calendar-open">
-          ${esc(d.date_label)} ${icon("calendar", 14)}</div>
+        <button class="datebtn" data-act="calendar-open"
+                aria-label="${t("calendar")} · ${esc(d.date_label)}">
+          ${icon("calendar", 15)}<span>${esc(d.date_label)}</span></button>
       </div>
-      <button class="iconbtn" data-act="settings"
-              aria-label="${t("settings")}">${icon("settings")}</button>
-      <div class="avatar" aria-hidden="true">${avatar}</div>
+      <button class="avatar" data-act="settings"
+              aria-label="${t("settings")}">${avatar}</button>
     </div>`;
 
   // The quote is one quiet line, and an empty one is a link rather than an
@@ -2483,56 +2373,61 @@ function nowBlock(d){
   };
   const kind = KINDS[n.kind];
 
-  const head = `<div class="row">
+  const head = `<div class="row" style="gap:var(--s1)">
       <div class="grow eyebrow">${t("now")}</div>
       <button class="iconbtn sm bare" data-act="mission-pick"
-              aria-label="${t("mission_change")}"
-              style="color:inherit;opacity:.75">${icon("edit", 15)}</button>
+              aria-label="${t("mission_change")}">${icon("edit", 17)}</button>
     </div>`;
+  /* The hairline under the card is today's overall score: the next action,
+     read against how far the day has already come. */
+  const dayPct = d.overall?.measured === false ? 0 : (d.overall?.value || 0);
+  const rail = `<div class="now-rail" aria-hidden="true"><span
+      style="width:${Math.max(0, Math.min(100, dayPct))}%"></span></div>`;
 
-  // Nothing left. Not an empty state — a finished one, which is worth saying
-  // plainly rather than showing a blank card with a plus in it.
+  // Nothing left. Not an empty state — a finished one, with the one useful
+  // next step offered rather than a blank card.
   if(!kind){
     return `<div class="hero" style="margin-top:var(--s3)">
         ${head}
-        <div style="font-size:18px;font-weight:600;margin-top:var(--s1)">
-          ${t("now_clear")}</div>
+        <div class="now-title">${t("now_clear")}</div>
         <div class="t2 small" style="margin-top:2px">${t("now_clear_hint")}</div>
+        <div class="now-acts"><button class="btn secondary" data-act="task-add">
+          ${icon("plus", 17)} ${t("add_task")}</button></div>
+        ${rail}
       </div>`;
   }
 
-  /* Why this one. Kept to a single short line: the value is in knowing the
-     card did not pick at random, not in a paragraph of justification. */
+  /* Why this one. Kept to a single short line. */
   const REASONS = {pinned:"why_pinned", overdue:"why_overdue",
                    due_today:"why_due_today", habit:"why_habit",
                    wake:"why_wake", prayer:"why_prayer", evening:"why_evening"};
   const why = REASONS[n.reason];
 
-  // Time and project, when the payload carries them. A high-priority task
-  // says so; medium is what every task is born with and marking it would
-  // mark everything.
   const meta = [];
-  if(n.due_time) meta.push(`${icon("clock", 12)} ${esc(n.due_time)}`);
-  else if(n.meta && n.kind !== "task") meta.push(esc(n.meta));
-  if(n.priority === "high") meta.push(t("high"));
-  if(n.project) meta.push(esc(n.project));
+  if(n.due_time) meta.push(`<span class="num">${icon("clock", 14)} ${esc(n.due_time)}</span>`);
+  else if(n.meta && n.kind !== "task") meta.push(`<span>${esc(n.meta)}</span>`);
+  if(n.priority === "high") meta.push(`<span class="tag hot">${t("high")}</span>`);
+  if(n.project) meta.push(`<span>${icon("folder", 14)} ${esc(n.project)}</span>`);
+
+  /* One clear action, named for what it does. A timed item starts its clock;
+     prayer and the journal open their screen; everything else is finished. */
+  const timed = Boolean(n.timer_minutes);
+  const opens = n.kind === "prayer" || n.kind === "journal";
+  const label = n.kind === "wake" ? t("wake_btn") : opens ? t("now_open")
+    : timed ? t("timer_start") : t("now_done");
+  const glyph = timed ? "play" : opens ? "chevron" : n.kind === "wake" ? "sun" : "check";
 
   return `<div class="hero" style="margin-top:var(--s3)">
       ${head}
-      <div class="row" style="margin-top:var(--s1);align-items:flex-start">
-        <div class="check ${n.timer_minutes ? "timed" : ""}" style="margin-top:2px"
-             data-act="${kind.act}" ${kind.data || ""}
-             ${n.id ? `data-id="${n.id}"` : ""}
-             aria-label="${t(n.timer_minutes ? "timer" : "now_done")}">${
-               icon(n.timer_minutes ? "clock" : "check", 14)}</div>
-        <div class="grow">
-          <div class="wrap" style="font-size:18px;font-weight:600;line-height:1.3">
-            ${esc(kind.title)}</div>
-          ${meta.length ? `<div class="t2 tiny row" style="margin-top:4px;gap:8px">
-            ${meta.join(" · ")}</div>` : ""}
-          ${why ? `<div class="t3 tiny" style="margin-top:4px">${t(why)}</div>` : ""}
-        </div>
-      </div></div>`;
+      <div class="now-title">${esc(kind.title)}</div>
+      ${meta.length ? `<div class="now-meta">${meta.join("")}</div>` : ""}
+      ${why ? `<div class="now-why">${t(why)}</div>` : ""}
+      <div class="now-acts">
+        <button class="btn" data-act="${kind.act}" ${kind.data || ""}
+                ${n.id ? `data-id="${n.id}"` : ""}>${icon(glyph, 17)} ${label}</button>
+      </div>
+      ${rail}
+    </div>`;
 }
 
 /* ---------- the score block ----------
@@ -2593,6 +2488,10 @@ function scoreBlock(d){
                 aria-label="${t("how_calculated")}">${icon("info", 17)}</button>
       </div>
       <div class="scores">${rows.map(line).join("")}</div>
+      ${s?.today?.tasks_total || s?.today?.habits_total ? `<div class="count-line">${
+        [s.today.tasks_total ? t("of_tasks", {done: s.today.tasks_done, total: s.today.tasks_total}) : "",
+         s.today.habits_total ? t("of_habits", {done: s.today.habits_done, total: s.today.habits_total}) : ""]
+        .filter(Boolean).join(" · ")}</div>` : ""}
     </div>`;
 }
 
@@ -2609,37 +2508,43 @@ function scoreBlock(d){
 function todayBlock(d){
   const c = d.overall.components;
   const focus = d.focus || {};
+  const today = state.summary?.today || {};
   const ratio = (done, total) => total ? Math.round(done / total * 100) : 0;
   const prayer = d.prayer.excused ? 100
     : ratio(d.prayer.performed, d.prayer.required);
+  const tasksCounted = typeof today.tasks_total === "number" && today.tasks_total > 0;
 
-  /* Four blocks, two by two. Each carries the weight it weighs in the score,
-     because a screen that shows four equal-looking tiles behind an unequal
-     formula is a screen that cannot be reconciled with its own headline. */
-  const tile = (key, label, value, percent, act) => `
-    <div class="tinted tile ${COMPONENT_TONE[key]}" ${act}>
+  /* Four blocks, two by two. Each shows a count first — "4/7" is something a
+     person can check by hand — then the percentage it scores, then the weight
+     it carries in the headline number. */
+  const tile = (key, label, value, sub, percent, act) => `
+    <div class="tinted tile ${COMPONENT_TONE[key]}" ${act} role="button" tabindex="0">
       <div class="row" style="gap:var(--s1)">
         <span class="itile">${icon(COMPONENT_ICON[key], 17)}</span>
         <div class="grow"></div>
-        <span class="wt num" title="${t("weight")}">⚖ ${WEIGHTS[key]}%</span>
+        <span class="wt num" title="${t("weight")}">${t("weight")} ${WEIGHTS[key]}%</span>
       </div>
       <div class="k ellipsis">${label}</div>
       <div class="v num">${value}</div>
+      <div class="sub num">${sub}</div>
       ${bar(percent)}
     </div>`;
 
   return `<h2>${t("today_parts")}</h2>
     <div class="tiles two">
-      ${tile("tasks", t("tasks"), pct(c.tasks), c.tasks || 0,
+      ${tile("tasks", t("tasks"),
+             tasksCounted ? `${today.tasks_done}/${today.tasks_total}` : pct(c.tasks),
+             tasksCounted ? pct(c.tasks) : "", c.tasks || 0,
              `data-act="nav" data-screen="tasks"`)}
       ${tile("habits", t("habits"), `${d.habits.done}/${d.habits.total}`,
-             ratio(d.habits.done, d.habits.total),
+             pct(c.habits), ratio(d.habits.done, d.habits.total),
              `data-act="go-tab" data-tab="habits"`)}
       ${tile("focus", t("week_focus"), `${focus.done || 0}/${focus.total || 0}`,
-             ratio(focus.done, focus.total),
+             pct(c.focus), ratio(focus.done, focus.total),
              `data-act="nav" data-screen="tasks"`)}
       ${d.modules?.prayer === false ? "" : tile("prayer", t("prayer"),
              d.prayer.excused ? "✓" : `${d.prayer.performed}/${d.prayer.required}`,
+             d.prayer.excused ? t("excused") : pct(c.prayer),
              prayer, `data-act="go-tab" data-tab="prayer"`)}
     </div>`;
 }
@@ -2671,7 +2576,7 @@ function tasksBlock(d){
   for(const x of (d.team_today || []))
     (byTeam[x.team_name || ""] ||= []).push({...x, source:"team"});
   const shared = Object.entries(byTeam).map(([name, items]) =>
-    `<div class="group">👥 ${esc(name)}</div>`
+    `<div class="group">${icon("users", 14)} ${esc(name)}</div>`
     + items.map(x => taskRow(x, {hideDate: true})).join("")).join("");
 
   if(!rows.length && shared) return h + shared;
@@ -2775,7 +2680,7 @@ SCREENS.team = () => {
   if(!teams.length) return `
     <div class="head"><div class="grow"><h1>${t("team")}</h1></div></div>
     <div class="card" style="text-align:center;padding:28px 18px">
-      <div style="font-size:30px">👥</div>
+      <div class="state-ico">${icon("users", 26)}</div>
       <h3 style="margin:8px 0 6px">${t("team_empty_title")}</h3>
       <p class="muted" style="margin:0 0 16px">${t("team_empty")}</p>
       <button class="btn" data-act="team-new">${t("team_new")}</button>
@@ -2803,12 +2708,12 @@ SCREENS.team = () => {
     ${pick}`;
 
   if(team.ownership_offer) h += `<div class="banner">
-      <div class="grow">👑 ${t("owner_offer", {name: esc(team.name)})}</div>
+      <div class="grow">${t("owner_offer", {name: esc(team.name)})}</div>
       <button class="btn sm" data-act="team-owner-answer" data-value="1">${t("accept")}</button>
       <button class="btn sm secondary" data-act="team-owner-answer" data-value="0">${t("decline")}</button>
     </div>`;
   if(team.requests) h += `<div class="banner" data-act="team-menu" role="button" tabindex="0">
-      ✋ <div class="grow">${t("requests_title")} · ${team.requests}</div>${icon("chevron", 15)}</div>`;
+      ${icon("user", 16)} <div class="grow">${t("requests_title")} · ${team.requests}</div>${icon("chevron", 15)}</div>`;
 
   h += `<div class="seg" role="tablist" style="margin:12px 0">
       ${TEAM_TABS.map(([id, key]) => `<div class="${tab === id ? "on" : ""}" role="tab"
@@ -2860,12 +2765,12 @@ function teamTodayTab(team, board){
         done: (x.done_by || []).includes(me)};
   const open = (board.open || []).map(x => `<div class="row" style="padding:6px 0">
       ${teamBox({...full(x), mirrored: x.mirrored}, x.kind)}
-      <div class="grow">${x.kind === "task" ? "⚡" : "✅"} ${esc(x.title)}
+      <div class="grow">${icon(x.kind === "task" ? "list" : "check", 15)} ${esc(x.title)}
         <div class="muted sm">${(x.missing || []).map(nameOf).join(" · ")}</div></div>
     </div>`).join("");
   const done = (board.done || []).map(x => `
     <div class="row" style="opacity:.55;padding:4px 0">
-      <span class="itile sm">✔️</span>
+      <span class="itile sm">${icon("check", 13)}</span>
       <div class="grow done">${esc(x.title)}</div>
     </div>`).join("");
   const work = `<div class="card">
@@ -2878,13 +2783,13 @@ function teamTodayTab(team, board){
     </div>`;
 
   const cds = team.countdowns || [];
-  const countdowns = `<h2>📅 ${t("date_cd")}
+  const countdowns = `<h2>${icon("calendar", 16)} ${t("date_cd")}
       <span class="act" data-act="cd-add" data-team="${team.id}">${icon("plus", 15)}
         ${t("add")}</span></h2>
     ${cds.length ? countdownRows(cds) : `<div class="empty">${t("countdown_empty")}</div>`}
     <div class="hub">
-      <button class="btn secondary" data-act="tc-open">⏱ ${t("time_cd")}</button>
-      <button class="btn secondary" data-act="dc-open">📅 ${t("date_cd")}</button>
+      <button class="btn secondary" data-act="tc-open">${icon("clock", 16)} ${t("time_cd")}</button>
+      <button class="btn secondary" data-act="dc-open">${icon("calendar", 16)} ${t("date_cd")}</button>
     </div>`;
   return head + work + countdowns;
 }
@@ -3036,7 +2941,7 @@ function teamItemMeta(x, kind){
     if(x.deadline) meta.push(`<span class="num">${isoToLabel(x.deadline)}</span>`);
     if(x.owed === false) meta.push(t("not_assigned"));
   }
-  if(x.mirrored) meta.push("🔒");
+  if(x.mirrored) meta.push(icon("shield", 12));
   if(x.timer_minutes) meta.push(timerMeta(x));
   if(x.countdown && x.countdown.days_left >= 0) meta.push(`⏳ ${cdLeft(x.countdown)}`);
   return meta;
@@ -3127,7 +3032,7 @@ function habitsTab(){
           <div class="t2 tiny">${done}/${due.length} · ${percent}%</div></div>
         ${data.streak ? `<div style="text-align:right">
           <div class="num" style="font-size:19px;font-weight:700">
-            🔥 ${data.streak}</div>
+            ${icon("flame", 17)} ${data.streak}</div>
           <div class="t3 tiny">${t("streak")}</div></div>` : ""}
       </div>
       <div style="margin-top:var(--s2)">${bar(percent)}</div>
@@ -3192,7 +3097,7 @@ function habitRow(x, cat, wake){
   // A wake-up that has not happened yet gets the button; once it has, the
   // row shows the time it actually happened.
   const wakeBtn = isWake && wake && !wake.logged
-    ? `<button class="btn sm" data-act="wake">☀️ ${t("wake_btn")}</button>
+    ? `<button class="btn sm" data-act="wake">${icon("sun", 16)} ${t("wake_btn")}</button>
        <button class="iconbtn sm" data-act="wake-at"
                aria-label="${t("wake_enter")}">${icon("clock", 15)}</button>` : "";
   const wakeMeta = isWake && wake && wake.logged
@@ -3206,7 +3111,7 @@ function habitRow(x, cat, wake){
      Labelling just one kind makes the other look like the default and the
      shared one like an exception, which is the opposite of the point: they
      are the same kind of commitment and they score the same. */
-  meta.push(x.source === "team" ? `👥 ${esc(x.team_name || "")}`
+  meta.push(x.source === "team" ? `${icon("users", 14)} ${esc(x.team_name || "")}`
                                 : t("src_personal"));
   if(wakeMeta) meta.push(wakeMeta);
   else if(!x.due) meta.push(t("not_today"));
@@ -3315,7 +3220,7 @@ function prayerTab(){
   if(female){
     h += `<div class="item" data-act="excused" style="min-height:46px">
         <div class="check ${p.excused ? "on" : ""}">${icon("check", 14)}</div>
-        <div class="grow">🌸 ${t("excused")}</div></div>`;
+        <div class="grow">${t("excused")}</div></div>`;
   }
 
   /* One quiet line, above the five rows rather than under them, because it is
@@ -3331,8 +3236,7 @@ function prayerTab(){
   ["bomdod","peshin","asr","shom","xufton"].forEach(name => {
     const cur = p.prayers[name];
     h += `<div class="prow">
-        <div class="pn"><span>${ICON[name]}</span>
-          <span class="ellipsis">${t(name)}</span></div>
+        <div class="pn"><span class="ellipsis">${t(name)}</span></div>
         <div class="ps">${p.statuses.map(st =>
           `<div class="st ${st} ${cur === st ? "on" : ""}" data-act="prayer"
             data-prayer="${name}" data-status="${st}">${t(st)}</div>`).join("")}
@@ -3555,8 +3459,8 @@ function liveBar(run){
 /* The short timer note on a row. */
 function timerMeta(x){
   const run = x.timer;
-  if(run && run.status === "running") return `▶ ${liveClock(run)}`;
-  if(run && run.status === "paused") return `⏸ ${fmtClock(run.remaining_sec)}`;
+  if(run && run.status === "running") return `${icon("play", 12)} ${liveClock(run)}`;
+  if(run && run.status === "paused") return `${icon("pause", 12)} ${fmtClock(run.remaining_sec)}`;
   return x.timer_minutes ? `${icon("clock", 12)} ${fmtMinutes(x.timer_minutes)}` : "";
 }
 
@@ -3745,7 +3649,7 @@ function cdLeft(x){
   return t("cd_days_left", {n: x.days_left});
 }
 
-const CD_ICON = {general:"📅", task:"⚡", habit:"✅"};
+const CD_ICON = {general:icon("calendar", 16), task:icon("list", 16), habit:icon("check", 16)};
 
 function countdownRows(list){
   return list.map(x => `<div class="item" style="min-height:48px"
@@ -3755,7 +3659,7 @@ function countdownRows(list){
       <div class="grow"><div class="ellipsis">${esc(x.title)}</div>
         <div class="meta num">${isoToLabel(x.date)}${
           x.item_title && x.item_title !== x.title ? ` · ${esc(x.item_title)}` : ""}${
-          x.team_name ? ` · 👥 ${esc(x.team_name)}` : ""}</div></div>
+          x.team_name ? ` · ${icon("users", 14)} ${esc(x.team_name)}` : ""}</div></div>
       <div class="num" style="font-weight:700;white-space:nowrap">${cdLeft(x)}</div>
     </div>`).join("");
 }
@@ -3764,14 +3668,14 @@ function countdownRows(list){
    counted down to, and a clock on a habit or a task. */
 function countdownHub(){
   return `<div class="hub">
-      <button class="btn secondary" data-act="dc-open">📅 ${t("date_cd")}</button>
-      <button class="btn secondary" data-act="tc-open">⏱ ${t("time_cd")}</button>
+      <button class="btn secondary" data-act="dc-open">${icon("calendar", 16)} ${t("date_cd")}</button>
+      <button class="btn secondary" data-act="tc-open">${icon("clock", 16)} ${t("time_cd")}</button>
     </div>`;
 }
 
 function countdownBlock(list){
   list = list || [];
-  return `<h2>📅 ${t("date_cd")}
+  return `<h2>${icon("calendar", 16)} ${t("date_cd")}
       <span class="act" data-act="cd-add">${icon("plus", 15)} ${t("add")}</span></h2>
     ${countdownRows(list.slice(0, 3))}
     ${list.length > 3 ? `<div class="t2 small" data-act="dc-open" role="button" tabindex="0"
@@ -3792,8 +3696,8 @@ function countdownHubSheet(list){
   const byTeam = {};
   for(const x of list.filter(x => x.team_id)) (byTeam[x.team_name || ""] ||= []).push(x);
   const teams = Object.entries(byTeam).map(([name, rows]) =>
-    `<div class="group">👥 ${esc(name)}</div>` + countdownRows(rows)).join("");
-  return `<h3>📅 ${t("date_cd")}</h3>
+    `<div class="group">${icon("users", 14)} ${esc(name)}</div>` + countdownRows(rows)).join("");
+  return `<h3>${icon("calendar", 16)} ${t("date_cd")}</h3>
     ${groups || teams ? groups + teams : `<div class="empty">${t("countdown_empty")}</div>`}
     <button class="btn" data-act="cd-add" style="margin-top:12px">${icon("plus", 16)}
       ${t("countdown_add")}</button>
@@ -3852,7 +3756,7 @@ function countdownSheet(){
       chip("cd-scope", s, f.scope, `${CD_ICON[s]} ${t("cd_scope_" + s)}`)).join("")}</div>
     ${teams.length ? `<label>${t("cd_whose")}</label><div class="chips">
       ${chip("cd-dest", "personal", f.dest, t("dest_personal"))}
-      ${teams.map(x => chip("cd-dest", "team:" + x.id, f.dest, "👥 " + esc(x.name))).join("")}
+      ${teams.map(x => chip("cd-dest", "team:" + x.id, f.dest, icon("users", 14) + " " + esc(x.name))).join("")}
       </div>` : ""}
     ${f.scope !== "general" ? `<label>${t("cd_link")}</label>
       <select id="cd-link" data-act="cd-link">
@@ -3896,10 +3800,10 @@ function timeHubSheet(r){
          role="button" tabindex="0" style="min-height:50px">
       <span class="itile">${icon("clock", 16)}</span>
       <div class="grow"><div class="ellipsis">${esc(x.title)}</div>
-        <div class="meta">${x.team_name ? `👥 ${esc(x.team_name)}` : t("src_personal")}${
+        <div class="meta">${x.team_name ? `${icon("users", 14)} ${esc(x.team_name)}` : t("src_personal")}${
           x.timer_minutes || x.timer ? " · " + timerMeta(x) : ""}</div></div>
       ${icon("chevron", 15)}</div>`).join("");
-  return `<h3>⏱ ${t("time_cd")}</h3>
+  return `<h3>${icon("clock", 16)} ${t("time_cd")}</h3>
     ${r?.active ? timerBanner(r.active) : ""}
     ${seg}
     <div class="t3 tiny" style="margin-bottom:8px">${t("tc_hint")}</div>
@@ -4196,9 +4100,12 @@ function taskRow(task, opts){
   const meta = [];
   // Where it lives, on every row. See `habitRow` for why both kinds are
   // labelled rather than only the shared one.
-  meta.push(shared ? `👥 ${esc(task.team_name || "")}` : t("src_personal"));
+  meta.push(shared ? `${icon("users", 14)} ${esc(task.team_name || "")}` : t("src_personal"));
   // Under a project heading the name is already on screen; repeating it in
   // every row is noise that pushes the useful details off the line.
+  // Urgency is written, not only painted: the edge colour repeats the word.
+  if(task.priority === "high" && task.status !== "done")
+    meta.unshift(`<span class="tag hot">${t("high")}</span>`);
   if(task.project && !opts?.hideProject) meta.push(esc(task.project));
   // Same reasoning for the date under a heading that already says "today":
   // six rows each reading "13 August" beneath "Today's tasks" is a second
@@ -4221,6 +4128,7 @@ function taskRow(task, opts){
      for least and it is still in the task's own sheet. */
   const quick = task.overdue ? `
       <div class="quick">
+        <span class="qlbl">${t("reschedule")}:</span>
         <div class="chip sm" data-act="task-move" data-id="${task.id}"
              data-when="today">${t("when_today")}</div>
         <div class="chip sm" data-act="task-move" data-id="${task.id}"
@@ -4248,9 +4156,9 @@ function taskRow(task, opts){
         ? `<button class="iconbtn sm plain" data-act="team-task-open"
                    data-id="${task.id}"
                    aria-label="${t("edit")}">${icon("chevron", 16)}</button>`
-        : `<button class="iconbtn sm plain" data-act="task-top3" data-id="${task.id}"
+        : `<button class="iconbtn sm plain ${task.top3 ? "on" : ""}" aria-pressed="${task.top3 ? "true" : "false"}" data-act="task-top3" data-id="${task.id}"
               aria-label="${task.top3 ? t("top3_unpick") : t("top3_pick")}"
-              >${task.top3 ? "★" : "☆"}</button>`}
+              >${icon("star", 18)}</button>`}
     </div>`;
 }
 
@@ -4474,24 +4382,29 @@ SCREENS.stats = () => {
      three, in the same three colours, as on Home, so the two screens teach one
      vocabulary instead of two. Each carries the period's change underneath,
      which is the number this screen exists for. */
-  const tile = (key, label, value, percent, delta) => `
+  /* A percentage never stands alone: under it, the counts it came from
+     ("4 of 7 tasks done") when the summary has them, then the change. */
+  const sum = state.summary?.today || {};
+  const tile = (key, label, value, percent, delta, count) => `
     <div class="tinted tile ${COMPONENT_TONE[key]}">
       <div class="row" style="gap:var(--s1)">
         <span class="itile">${icon(COMPONENT_ICON[key], 17)}</span>
         <div class="grow"></div>
-        <span class="wt num" title="${t("weight")}">⚖ ${WEIGHTS[key]}%</span>
+        <span class="wt num" title="${t("weight")}">${t("weight")} ${WEIGHTS[key]}%</span>
       </div>
       <div class="k ellipsis">${label}</div>
       <div class="v num">${value}</div>
-      <div class="sub num">${teamDelta(delta)}</div>
+      <div class="sub num">${count ? `<div>${count}</div>` : ""}${teamDelta(delta)}</div>
       ${bar(percent)}
     </div>`;
 
   h += `<div class="tiles two" style="margin-top:var(--s2)">
       ${tile("tasks", t("tasks"), pct(today.tasks),
-             today.tasks || 0, st.deltas.tasks)}
+             today.tasks || 0, st.deltas.tasks,
+             sum.tasks_total ? t("of_tasks", {done: sum.tasks_done, total: sum.tasks_total}) : "")}
       ${tile("habits", t("habits"), pct(today.habits),
-             today.habits || 0, st.deltas.habits)}
+             today.habits || 0, st.deltas.habits,
+             sum.habits_total ? t("of_habits", {done: sum.habits_done, total: sum.habits_total}) : "")}
       ${tile("focus", t("week_focus"), pct(today.focus),
              today.focus || 0, st.deltas.focus)}
       ${tile("prayer", t("prayer"),
@@ -4976,7 +4889,7 @@ function habitSheet(h){
     <label>${t("history")}</label>
     <div class="metrics">
       <div class="metric"><div class="k">${t("streak")}</div>
-        <div class="v num">🔥 ${h.streak}</div></div>
+        <div class="v num">${icon("flame", 17)} ${h.streak}</div></div>
       <div class="metric"><div class="k">${t("completion")}</div>
         <div class="v num">${h.percent}%</div></div>
       <div class="metric wide"><div class="k">${t("last7")} · ${t("last30")}</div>
@@ -5015,12 +4928,12 @@ function habitSheet(h){
 function partnerRecords(h){
   const others = (h.members || []).filter(m => !m.is_you);
   if(!others.length) return "";
-  return `<label>👥 ${esc(h.team_name || "")}</label>
+  return `<label>${icon("users", 14)} ${esc(h.team_name || "")}</label>
     ${others.map(m => `
       <div class="row">
         <div class="grow"><b>${esc(m.name)}</b>
           <div class="muted sm">${m.last30_done}/${m.last30_due} · ${m.percent}%
-            ${m.streak ? ` · 🔥 ${m.streak}` : ""}</div>
+            ${m.streak ? ` · ${icon("flame", 13)} ${m.streak}` : ""}</div>
         </div>
         <div class="${m.done_today ? "check on" : "check"}"
              style="pointer-events:none">${m.done_today ? icon("check", 14) : ""}</div>
@@ -5316,10 +5229,10 @@ function modulesSheet(){
       <div class="sw ${mods[key] ? "on" : ""}" data-act="mod-toggle" data-key="${key}"
            role="switch" tabindex="0" aria-checked="${mods[key] ? "true" : "false"}"></div>
     </div>`;
-  return `<h3>🧩 ${t("modules")}</h3>
-    ${row("wake", "☀️ " + t("mod_wake"))}
-    ${row("prayer", "🕌 " + t("mod_prayer"))}
-    ${row("journal", "📔 " + t("mod_journal"))}
+  return `<h3>${icon("check", 18)} ${t("modules")}</h3>
+    ${row("wake", t("mod_wake"))}
+    ${row("prayer", t("mod_prayer"))}
+    ${row("journal", t("mod_journal"))}
     <div class="t3 tiny" style="margin-top:8px">${t("modules_note")}</div>
     <button class="btn secondary" data-act="settings" style="margin-top:14px">
       ${t("back")}</button>`;
@@ -5567,7 +5480,7 @@ function progressCard(){
         <div class="score-cell lead"><div class="k">${t("today")}</div>
           <div class="v num">${p.daily.grade} · ${p.daily.score}</div></div>
         <div class="score-cell"><div class="k">${t("streak")}</div>
-          <div class="v num">🔥 ${p.streak.current}</div></div>
+          <div class="v num">${icon("flame", 17)} ${p.streak.current}</div></div>
         ${rankCell}
       </div>
       ${rank.eligible && rank.top_percent !== null
@@ -5630,13 +5543,13 @@ function progressSheet(){
         ? `<div class="t2 tiny" style="margin-top:var(--s2)">
              ${t("to_perfect_day", {n: d.to_perfect})}</div>` : ""}
       ${d.perfect_day ? `<div class="t2 tiny" style="margin-top:var(--s2)">
-        ✨ ${t("perfect_day")}</div>` : ""}
+        ${icon("check", 14)} ${t("perfect_day")}</div>` : ""}
     </div>`;
 
   h += `<label>${t("consistency")}</label>
     <div class="metrics">
       <div class="metric"><div class="k">${t("streak")}</div>
-        <div class="v num">🔥 ${p.streak.current}</div></div>
+        <div class="v num">${icon("flame", 17)} ${p.streak.current}</div></div>
       <div class="metric"><div class="k">${t("best")}</div>
         <div class="v num">${p.streak.best}</div></div>
       <div class="metric"><div class="k">${t("perfect_days")}</div>
@@ -5889,7 +5802,7 @@ const NAV_OF = {project:"tasks"};
 function blockedScreen(){
   const b = state.blocked || {};
   return `<div style="padding:40px 0 0;text-align:center">
-      <div style="font-size:34px">🔒</div>
+      <div class="state-ico">${icon("shield", 26)}</div>
       <h1 style="margin-top:12px">${t("sub_title")}</h1>
       <div class="t2 small" style="margin-top:8px;max-width:340px;
            margin-left:auto;margin-right:auto">${t("sub_body")}</div>
@@ -5906,7 +5819,7 @@ function blockedScreen(){
 function blockedSheet(){
   const b = state.subInfo || {};
   return `<div style="text-align:center">
-      <div style="font-size:30px">🔒</div>
+      <div class="state-ico">${icon("shield", 26)}</div>
       <h3 style="margin-top:8px">${t("sub_title")}</h3>
       <div class="t2 small" style="margin-top:6px">${t("read_only")}</div>
       ${b.note ? `<div class="tag hot" style="margin-top:12px">${esc(b.note)}</div>` : ""}
@@ -5922,7 +5835,7 @@ function blockedSheet(){
    to a 409 here before. */
 function setupScreen(){
   return `<div style="padding:40px 0 0;text-align:center">
-      <div style="font-size:34px">👋</div>
+      <div class="state-ico">${icon("user", 26)}</div>
       <h1 style="margin-top:12px">${t("setup_title")}</h1>
       <div class="t2 small" style="margin-top:8px;max-width:340px;margin-left:auto;
            margin-right:auto">${t("setup_body")}</div>
@@ -5935,7 +5848,7 @@ function setupScreen(){
 
 function readOnlyBanner(){
   return state.readOnly ? `<div class="banner" data-act="sub-open" role="button" tabindex="0">
-      🔒 <div class="grow">${t("read_only")}</div>${icon("chevron", 15)}</div>` : "";
+      ${icon("shield", 16)} <div class="grow">${t("read_only")}</div>${icon("chevron", 15)}</div>` : "";
 }
 
 /* The FAB adds whatever the screen is about (#19). */
@@ -5952,7 +5865,7 @@ function fabAction(){
    that could fix it. */
 function errorScreen(){
   return `<div style="padding:40px 0 0;text-align:center">
-      <div style="font-size:30px">⚠️</div>
+      <div class="state-ico">${icon("info", 26)}</div>
       <h1 style="margin-top:12px">${esc(state.error)}</h1>
       <div style="margin-top:20px;text-align:left">
         <button class="btn" data-act="reload">${t("retry")}</button>
@@ -6105,14 +6018,17 @@ async function refreshHabits(){
 
 async function loadStats(period){
   try{
-    const [stats, team] = await Promise.all([
+    const [stats, team, summary] = await Promise.all([
       api("/api/stats?period=" + period),
       // The shared record is drawn here too; a failure costs that block
       // rather than the screen.
       state.team ? Promise.resolve(state.team)
                  : api("/api/teams").catch(() => null),
+      // The counts behind today's percentages; a failure only drops them.
+      api("/api/summary").catch(() => null),
     ]);
-    setState({stats, statsPeriod: period, team: team || state.team});
+    setState({stats, statsPeriod: period, team: team || state.team,
+              summary: summary || state.summary});
   }catch(e){ handleError(e); }
 }
 
@@ -6195,6 +6111,9 @@ async function save(request, reload, quiet, message, draft){
   // One key per submission; a retry of the same draft sends the same key.
   const key = draft?.key || newKey();
   idemKey = key;
+  const busy = pressedBtn && document.contains(pressedBtn) ? pressedBtn : null;
+  pressedBtn = null;
+  busy?.classList.add("busy"); busy?.setAttribute("aria-busy", "true");
   try{
     await request();
     idemKey = null;
@@ -6211,6 +6130,8 @@ async function save(request, reload, quiet, message, draft){
     idemKey = null;
     closeSheet();
     handleError(e, draft && {...draft, request, reload, key});
+  }finally{
+    busy?.classList.remove("busy"); busy?.removeAttribute("aria-busy");
   }
 }
 
@@ -6390,7 +6311,7 @@ const A = {
     try{
       const d = await api(`/api/teams/projects/${el.dataset.id}/tasks`);
       openSheet(`
-        <h3>📁 ${esc(d.project.name)}</h3>
+        <h3>${icon("folder", 18)} ${esc(d.project.name)}</h3>
         ${d.tasks.map(x => `
           <div class="row">
             <div class="check ${x.done ? "on" : ""}" data-act="team-toggle"
@@ -6402,7 +6323,7 @@ const A = {
         <button class="btn" data-act="team-project-rename" data-id="${d.project.id}"
                 style="margin-top:8px">${t("save")}</button>
         <button class="btn secondary" data-act="team-project-delete"
-                data-id="${d.project.id}" style="margin-top:8px">🗑 ${t("delete")}</button>
+                data-id="${d.project.id}" style="margin-top:8px">${icon("trash", 15)} ${t("delete")}</button>
         <button class="btn secondary" data-act="close" style="margin-top:8px">
           ${t("close")}</button>`);
     }catch(e){ handleError(e); }
@@ -6976,7 +6897,7 @@ const A = {
   "task-top3": el => {
     haptic();
     const id = el.dataset.id;
-    const picked = el.textContent.trim() === "★";
+    const picked = el.classList.contains("on");
     save(() => api(`/api/tasks/${id}/top3`,
       {method:"POST", body:{picked: !picked}}), state.screen, true);
   },
@@ -7475,7 +7396,7 @@ function teamMenuSheet(team){
         <button class="btn sm secondary" data-act="team-request" data-id="${r.id}"
                 data-value="0">${t("decline")}</button></div>`).join("");
   }
-  h += `<label>🔔 ${t("notify_title")}</label>
+  h += `<label>${icon("bell", 13)} ${t("notify_title")}</label>
     <div class="stack">${["all", "important", "assigned", "off"].map(level => `
       <div class="item pressable" data-act="team-notify" data-value="${level}"
            role="radio" tabindex="0" aria-checked="${team.notify === level}">
@@ -7701,6 +7622,8 @@ const CHANGE_TAGS = new Set(["INPUT", "SELECT", "TEXTAREA"]);
 /* One delegated listener: rebuilt HTML never loses its handlers because
    the handler lives on document, not on the nodes. */
 const lastTap = new WeakMap();
+//: The button that started the current action, so a save can show it working.
+let pressedBtn = null;
 document.addEventListener("click", e => {
   const el = e.target.closest("[data-act]");
   if(!el) return;
@@ -7714,7 +7637,13 @@ document.addEventListener("click", e => {
   const now = Date.now();
   if(el.tagName === "BUTTON" && now - (lastTap.get(el) || 0) < 700) return;
   lastTap.set(el, now);
-  action(el);
+  pressedBtn = el.tagName === "BUTTON" ? el : null;
+  const out = action(el);
+  // An async action shows its button as busy until it settles.
+  if(el.tagName === "BUTTON" && out && typeof out.then === "function"){
+    el.classList.add("busy"); el.setAttribute("aria-busy", "true");
+    out.finally(() => { el.classList.remove("busy"); el.removeAttribute("aria-busy"); });
+  }
 });
 /* Enter and Space act on anything focusable that has an action, so every
    box and row works from a keyboard as well as a finger (#20). */

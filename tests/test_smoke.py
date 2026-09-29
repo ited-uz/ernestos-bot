@@ -5130,7 +5130,7 @@ def test_the_app_renders_in_the_system_face_where_there_is_one():
     native" turns out to mean.
     """
     styled = (ROOT / "webapp" / "index.html").read_text()
-    stack = styled[styled.index("font:15px/"):][:200]
+    stack = styled[styled.index("font:16px/"):][:200]
     assert stack.index("-apple-system") < stack.index("Inter")
 
 
