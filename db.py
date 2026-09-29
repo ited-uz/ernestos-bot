@@ -345,6 +345,10 @@ class Project(Base):
     #: archived one is `archived_at IS NOT NULL` rather than a third status, so
     #: "hidden" and "finished" stay independent.
     status: Mapped[str] = mapped_column(String(10), default="active")
+    #: Who opened it. Read only for a shared project, where its creator may
+    #: rename or remove it as well as the team's admins. NULL on rows from
+    #: before the column existed, which only admins may then manage.
+    created_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
@@ -934,6 +938,53 @@ class IdempotencyKey(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "key", name="uq_idempotency_key"),
     )
+
+
+# ---------------------------------------------------------------------------
+# ErnestOS accounts — a login and a password on top of the Telegram id
+# ---------------------------------------------------------------------------
+#
+# Every account is still keyed by the Telegram id that created it, and every
+# row in every table still hangs off that id. What the login adds is a second
+# door: another Telegram account that signs in with the login and password is
+# *linked* to the account, and from then on every message and Mini App request
+# it sends is served as the account's owner. Nothing is copied — there is one
+# account and several Telegrams looking at it.
+
+class Credential(Base):
+    """An account's login and password. One per account."""
+
+    __tablename__ = "credentials"
+
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"),
+        primary_key=True)
+    #: Lower case, `[a-z0-9_]`, unique across ErnestOS.
+    login: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    #: `pbkdf2_sha256$<iterations>$<salt>$<hash>` — never the password itself.
+    password_hash: Mapped[str] = mapped_column(String(200))
+    #: Wrong passwords in a row, and when the account opens again after too
+    #: many. Held on the account rather than on the Telegram guessing, so a
+    #: guesser cannot reset the count by switching Telegram accounts.
+    failed_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class LinkedTelegram(Base):
+    """A Telegram account signed in to somebody else's ErnestOS account."""
+
+    __tablename__ = "linked_telegrams"
+
+    #: The Telegram account that signed in.
+    telegram_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    #: The ErnestOS account it now acts as.
+    account_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), index=True)
+    first_name: Mapped[str] = mapped_column(String(200), default="")
+    username: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 # ---------------------------------------------------------------------------

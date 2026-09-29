@@ -18,7 +18,8 @@ Mahsulotning asosiy sikli:
 | 👥 Jamoa | **Bugun / Ishlar / Natija**, rollar (egasi / admin / a'zo), taklif havolasi, so'rovlar, bildirishnoma darajasi, faollik tarixi va qaytarish |
 | 📊 Statistika | Umumiy % + Vazifalar / Odatlar / Namoz, o'zgarish (punktda), jamoa natijalari (kun/hafta/oy) |
 
-> **v7 da nima o'zgardi** — [docs/V7_OZGARISHLAR.md](docs/V7_OZGARISHLAR.md).
+> **v8 da nima o'zgardi** (login/parol, saqlash/bekor qilish, loyihalar) — [docs/V8_OZGARISHLAR.md](docs/V8_OZGARISHLAR.md).
+> **v7** — [docs/V7_OZGARISHLAR.md](docs/V7_OZGARISHLAR.md).
 
 Pastdagi navigatsiya aynan shu beshta. Qolgan hamma narsa — kalendar,
 tug'ilgan kunlar, haftalik yakun, sozlamalar, export — kerakli joydan

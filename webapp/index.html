@@ -6397,9 +6397,31 @@ const A = {
                  data-kind="task" data-id="${x.id}"></div>
             <div class="grow ${x.done ? "done" : ""}">${esc(x.title)}</div>
           </div>`).join("") || `<div class="muted">${t("team_nothing")}</div>`}
-        <button class="btn secondary" data-act="close" style="margin-top:12px">
+        <input id="team-project-name" maxlength="200" style="margin-top:12px"
+               value="${esc(d.project.name)}" placeholder="${t("team_project_ph")}">
+        <button class="btn" data-act="team-project-rename" data-id="${d.project.id}"
+                style="margin-top:8px">${t("save")}</button>
+        <button class="btn secondary" data-act="team-project-delete"
+                data-id="${d.project.id}" style="margin-top:8px">🗑 ${t("delete")}</button>
+        <button class="btn secondary" data-act="close" style="margin-top:8px">
           ${t("close")}</button>`);
     }catch(e){ handleError(e); }
+  },
+
+  /* A shared project is renamed or removed by whoever opened it, an admin
+     or the owner; anybody else gets the server's 403 explained. Removing it
+     keeps its tasks in the team, unfiled. */
+  "team-project-rename": el => {
+    const name = val("team-project-name");
+    if(!name.trim()) return;
+    save(() => api(`/api/teams/projects/${el.dataset.id}`,
+                   {method:"PATCH", body:{name}}), "team");
+  },
+
+  "team-project-delete": el => {
+    haptic();
+    save(() => api(`/api/teams/projects/${el.dataset.id}`, {method:"DELETE"}),
+         "team", false, t("deleted"));
   },
 
   "team-habit-open": async el => {

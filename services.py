@@ -976,6 +976,102 @@ def delete_habit(s: Session, ws: int, habit_id: int) -> str:
     return habit.name
 
 
+def _module_of(system_key: str) -> str | None:
+    return next((name for name, key in MODULES.items() if key == system_key), None)
+
+
+def remove_habit(s: Session, ws: int, habit_id: int) -> str:
+    """Remove any habit the user has — the derived ones included.
+
+    `delete_habit` refuses the three rituals, because each one is driven by a
+    module. Removing one here switches its module off instead, which archives
+    the same row and keeps every log it had: the person asked for the habit to
+    go, and it goes, with nothing lost if they change their mind.
+    """
+    habit = _owned_habit(s, ws, habit_id)
+    if habit.archived_at is not None:
+        return habit.name
+    module = _module_of(habit.system_key) if habit.system_key else None
+    if module is None:
+        if habit.is_protected:
+            habit.is_protected = False
+        return delete_habit(s, ws, habit_id)
+    live = {name for name, on in modules_for(s, ws).items() if on}
+    owner = workspace_owner(s, ws)
+    set_modules(s, ws, live - {module},
+                user=s.get(User, owner) if owner is not None else None)
+    return habit.name
+
+
+def archived_habits(s: Session, ws: int, *, limit: int = 15) -> list[dict]:
+    """Removed habits that can be brought back, newest first, one per name.
+
+    A habit whose name is live again — re-added by hand — is left out, so
+    restoring can never produce two of the same thing.
+    """
+    live = _active_habits(s, ws)
+    live_names = {h.name.strip().lower() for h in live}
+    live_keys = {h.system_key for h in live if h.system_key}
+    rows = s.scalars(select(Habit).where(
+        Habit.workspace_id == ws, Habit.archived_at.is_not(None))
+        .order_by(Habit.archived_at.desc(), Habit.id.desc())).all()
+    logged = set(s.scalars(select(HabitLog.habit_id).where(
+        HabitLog.workspace_id == ws,
+        HabitLog.habit_id.in_([h.id for h in rows if h.system_key] or [0]))).all())
+    seen: set[str] = set()
+    out: list[dict] = []
+    for habit in rows:
+        key = habit.system_key or habit.name.strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        if habit.system_key and habit.system_key in live_keys:
+            continue
+        if (habit.system_key and habit.id not in logged
+                and habit.archived_at - (habit.created_at or habit.archived_at)
+                < timedelta(days=1)):
+            # A ritual switched off at setup, never used: not something the
+            # person removed, just something they did not pick. Settings →
+            # Modules is where it is switched on.
+            continue
+        if not habit.system_key and habit.name.strip().lower() in live_names:
+            continue
+        out.append({"id": habit.id, "name": habit.name,
+                    "category": habit.category, "system_key": habit.system_key})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def restore_habit(s: Session, ws: int, habit_id: int) -> Habit:
+    """Bring a removed habit back, history and all.
+
+    The days it was away are not owed — `_reactivate` files them as a closed
+    pause — so bringing a habit back never turns into a string of misses.
+    """
+    habit = _owned_habit(s, ws, habit_id)
+    if habit.archived_at is None:
+        return habit
+    module = _module_of(habit.system_key) if habit.system_key else None
+    if module is not None:
+        live = {name for name, on in modules_for(s, ws).items() if on}
+        owner = workspace_owner(s, ws)
+        set_modules(s, ws, live | {module},
+                    user=s.get(User, owner) if owner is not None else None)
+        return s.scalar(select(Habit).where(
+            Habit.workspace_id == ws, Habit.system_key == habit.system_key,
+            Habit.archived_at.is_(None))) or habit
+    tz = _habit_tz(s, ws)
+    _reactivate(s, ws, habit, today_local(tz), tz)
+    top = s.scalar(select(func.max(Habit.position))
+                   .where(Habit.workspace_id == ws,
+                          Habit.archived_at.is_(None),
+                          Habit.id != habit.id)) or 0
+    habit.position = top + 1
+    s.commit()
+    return habit
+
+
 def wake_habit(s: Session, ws: int) -> Habit | None:
     return s.scalar(select(Habit).where(
         Habit.workspace_id == ws, Habit.system_key == SYSTEM_WAKEUP,
@@ -1514,7 +1610,8 @@ def add_project(s: Session, ws: int, name: str, *, description: str = "",
     if not name:
         raise ValueError("empty project name")
     project = Project(workspace_id=ws, name=name,
-                      description=description.strip()[:2000], deadline=deadline)
+                      description=description.strip()[:2000], deadline=deadline,
+                      created_by=workspace_owner(s, ws))
     s.add(project)
     s.commit()
     return project
@@ -1882,6 +1979,57 @@ def delete_task(s: Session, ws: int, task_id: int) -> str:
         countdown.archived_at = utcnow()
     s.commit()
     return task.title
+
+
+#: How far back a deleted task can still be brought back from the bot.
+RESTORE_WINDOW = timedelta(days=30)
+
+
+def archived_tasks(s: Session, ws: int, *, limit: int = 10) -> list[dict]:
+    """Tasks deleted in the last month, newest first, that can come back.
+
+    A task moved into a team is archived here too — the team holds the live
+    copy — so a title that is live in one of the owner's teams, or live again
+    in this workspace, is left out rather than offered twice.
+    """
+    since = utcnow() - RESTORE_WINDOW
+    rows = s.scalars(select(Task).where(
+        Task.workspace_id == ws, Task.archived_at.is_not(None),
+        Task.archived_at >= since)
+        .order_by(Task.archived_at.desc(), Task.id.desc()).limit(limit * 3)).all()
+    live = {x.strip().lower() for x in s.scalars(select(Task.title).where(
+        Task.workspace_id == ws, Task.archived_at.is_(None))).all()}
+    owner = workspace_owner(s, ws)
+    team_ids = [team.id for team in teams_for(s, owner)] if owner else []
+    if team_ids:
+        live |= {x.strip().lower() for x in s.scalars(select(TeamTask.title).where(
+            TeamTask.team_id.in_(team_ids), TeamTask.archived_at.is_(None))).all()}
+    out, seen = [], set()
+    for task in rows:
+        key = task.title.strip().lower()
+        if key in live or key in seen:
+            continue
+        seen.add(key)
+        out.append({"id": task.id, "title": task.title,
+                    "deadline": task.deadline.isoformat() if task.deadline else None})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def restore_task(s: Session, ws: int, task_id: int) -> Task:
+    """Bring a deleted task back, into its project if that is still there."""
+    task = _owned_task(s, ws, task_id)
+    if task.archived_at is None:
+        return task
+    task.archived_at = None
+    if task.project_id:
+        project = s.get(Project, task.project_id)
+        if project is None or project.archived_at is not None or project.team_id is not None:
+            task.project_id = None
+    task.reminder_sent_at = None
+    s.commit()
+    return task
 
 
 def update_task(s: Session, ws: int, task_id: int, **fields) -> Task:
@@ -3726,6 +3874,9 @@ def delete_account(s: Session, telegram_id: int) -> bool:
     s.execute(sql_delete(TeamHabitLog).where(TeamHabitLog.user_id == telegram_id))
     s.execute(sql_delete(TeamDayScore).where(TeamDayScore.user_id == telegram_id))
     s.execute(sql_delete(TeamJoinRequest).where(TeamJoinRequest.user_id == telegram_id))
+    # The login, the password, and every Telegram signed in to the account.
+    import accounts
+    accounts.forget_account(s, telegram_id)
 
     s.delete(user)
     s.commit()
@@ -5725,6 +5876,20 @@ def leave_team(s: Session, user_id: int, team_id: int) -> bool:
     return True
 
 
+def delete_team(s: Session, owner_id: int, team_id: int) -> str:
+    """The owner closing a team for everybody.
+
+    Archived, not erased: every member's history in it — the days they owed
+    and the days they did — stays as it was, because a team that disappears
+    must not rewrite anybody's past statistics.
+    """
+    team = _require_role(s, owner_id, team_id, "owner")
+    team.archived_at = utcnow()
+    _log_team(s, team.id, owner_id, "delete", team.name)
+    s.commit()
+    return team.name
+
+
 def set_member_role(s: Session, actor_id: int, team_id: int, member_id: int,
                     role: str) -> dict:
     """The owner makes a member an admin, or an admin a member again."""
@@ -7022,7 +7187,7 @@ def add_team_project(s: Session, user_id: int, team_id: int, name: str, *,
     project = Project(workspace_id=workspace_id_for(s, user_id),
                       team_id=team_id, name=name,
                       description=(description or "").strip()[:2000],
-                      deadline=deadline)
+                      deadline=deadline, created_by=user_id)
     s.add(project)
     s.flush()
     _log_team(s, team_id, user_id, "project_add", name, "project", project.id)
@@ -7030,6 +7195,75 @@ def add_team_project(s: Session, user_id: int, team_id: int, name: str, *,
     return {"id": project.id, "name": project.name, "team_id": team_id,
             "source": "team", "status": project.status,
             "tasks_total": 0, "tasks_done": 0, "percent": 0}
+
+
+def _team_project(s: Session, user_id: int, project_id: int) -> Project:
+    """A live shared project this person is a member of, or NotFound.
+
+    NotFound rather than PermissionError for somebody outside the team: a
+    stranger must not learn that a project with this number exists.
+    """
+    project = s.get(Project, project_id)
+    if (project is None or project.team_id is None
+            or project.archived_at is not None
+            or team_for(s, user_id, project.team_id) is None):
+        raise NotFound("project")
+    return project
+
+
+def team_project_for(s: Session, user_id: int, project_id: int) -> dict:
+    """One shared project, its progress, and whether this member may manage it."""
+    project = _team_project(s, user_id, project_id)
+    team = team_for(s, user_id, project.team_id)
+    row = next((p for p in list_team_projects(s, user_id, project.team_id)
+                if p["id"] == project.id), None) or {}
+    return {**row, "id": project.id, "name": project.name,
+            "description": project.description or "",
+            "deadline": project.deadline.isoformat() if project.deadline else None,
+            "status": project.status if project.status in PROJECT_STATUSES else "active",
+            "team_id": project.team_id, "team_name": team.name if team else "",
+            "source": "team",
+            "can_manage": _may_manage(s, user_id, project.team_id,
+                                      project.created_by)}
+
+
+def update_team_project(s: Session, user_id: int, project_id: int,
+                        **fields) -> dict:
+    """Rename a shared project or change its note, deadline or status.
+
+    Its creator, an admin or the owner may — the same rule as a shared task.
+    """
+    project = _team_project(s, user_id, project_id)
+    _require_manage(s, user_id, project.team_id, project.created_by)
+    if fields.get("name") is not None:
+        name = str(fields["name"]).strip()[:200]
+        if not name:
+            raise ValueError("empty_name")
+        project.name = name
+    if "description" in fields:
+        project.description = str(fields["description"] or "").strip()[:2000]
+    if "deadline" in fields:
+        project.deadline = fields["deadline"]
+    if fields.get("status") in PROJECT_STATUSES:
+        project.status = fields["status"]
+    _log_team(s, project.team_id, user_id, "project_edit", project.name,
+              "project", project.id)
+    s.commit()
+    return team_project_for(s, user_id, project.id)
+
+
+def delete_team_project(s: Session, user_id: int, project_id: int) -> str:
+    """Archive a shared project. Its tasks stay in the team, just unfiled."""
+    project = _team_project(s, user_id, project_id)
+    _require_manage(s, user_id, project.team_id, project.created_by)
+    for task in s.scalars(select(TeamTask).where(
+            TeamTask.project_id == project.id)).all():
+        task.project_id = None
+    project.archived_at = utcnow()
+    _log_team(s, project.team_id, user_id, "project_archive", project.name,
+              "project", project.id)
+    s.commit()
+    return project.name
 
 
 def _team_project_or_none(s: Session, team_id: int,

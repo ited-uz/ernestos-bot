@@ -37,6 +37,7 @@ from telegram.ext import (
     ContextTypes, MessageHandler, filters,
 )
 
+import accounts
 import config
 import db
 import dependencies as deps
@@ -198,25 +199,23 @@ async def guard(update: Update, ctx: ContextTypes.DEFAULT_TYPE, *,
     day — their data never becomes a hostage — and only changing it asks for
     the channel first.
     """
-    tg_user = update.effective_user
-    if tg_user is None:
+    uid = account_of(update)
+    if uid is None:
         return None
 
     with SessionLocal() as s:
-        user, _ = svc.get_or_create_user(
-            s, tg_user.id, first_name=tg_user.first_name or "",
-            last_name=tg_user.last_name or "", username=tg_user.username or "")
-        svc.touch_activity(s, tg_user.id)
+        user, _ = svc.get_or_create_user(s, uid, **_profile(update, uid))
+        svc.touch_activity(s, uid)
         s.commit()
         lang = user.language
         onboarded = user.onboarded
-        ws = svc.workspace_id_for(s, tg_user.id)
+        ws = svc.workspace_id_for(s, uid)
 
     if not onboarded:
         await start(update, ctx)
         return None
 
-    verdict = await deps.check_subscription(tg_user.id, ctx.bot)
+    verdict = await deps.check_subscription(uid, ctx.bot)
     target = update.effective_message
     if verdict not in deps.ALLOWED and write:
         if target:
@@ -229,7 +228,7 @@ async def guard(update: Update, ctx: ContextTypes.DEFAULT_TYPE, *,
         return None
 
     with SessionLocal() as s:
-        user = s.get(User, tg_user.id)
+        user = s.get(User, uid)
         return user, ws
 
 
@@ -247,6 +246,19 @@ async def count_action(telegram_id: int, ctx: ContextTypes.DEFAULT_TYPE | None =
         progress = outcome["progress"]
         user = s.get(User, telegram_id)
         trial = deps.trial_state(user)
+        stage_now = ui_stage(user)
+        stage_before = (stage_for(max((user.actions_count or 0) - 1, 0),
+                                  user.created_at) if user else stage_now)
+
+    # The menu grows as the account is used; say what appeared, once.
+    if message is not None and stage_now > stage_before:
+        what = (t(lang, "menu_stats") if stage_now == 2 else
+                f"{t(lang, 'menu_teams')} · {t(lang, 'menu_feedback')}")
+        try:
+            await message.reply_text(t(lang, "unlocked", what=what),
+                                     reply_markup=menu_for(telegram_id, lang))
+        except TelegramError:
+            log.info("could not show the grown menu to %s", telegram_id)
 
     if inviter is not None and ctx is not None:
         await notify_referral_qualified(ctx.bot, inviter)
@@ -272,8 +284,36 @@ async def count_action(telegram_id: int, ctx: ContextTypes.DEFAULT_TYPE | None =
 # Keyboards
 # ---------------------------------------------------------------------------
 
-def main_menu(lang: str) -> ReplyKeyboardMarkup:
-    """The persistent menu, in a fixed order.
+#: How much of the product a new account is shown, by actions taken.
+#:
+#:   1 — Home, Habits, Tasks, Settings: the four things a first day needs.
+#:   2 — + Statistics, once there is something to count (5 actions).
+#:   3 — + Team and Feedback: the whole menu (15 actions, or a week in).
+#:
+#: Nothing is locked: every screen still opens by its command, and typing a
+#: hidden menu label still routes. The menu only stops shouting about things
+#: a newcomer has no use for yet.
+STAGE_ACTIONS = (5, 15)
+STAGE_FULL_AFTER = timedelta(days=7)
+
+
+def stage_for(actions: int, created_at: datetime | None) -> int:
+    if actions >= STAGE_ACTIONS[1]:
+        return 3
+    if created_at is not None and db.utcnow() - created_at >= STAGE_FULL_AFTER:
+        return 3
+    return 2 if actions >= STAGE_ACTIONS[0] else 1
+
+
+def ui_stage(user: User | None) -> int:
+    if user is None:
+        return 3
+    return stage_for(user.actions_count or 0, user.created_at)
+
+
+def main_menu(lang: str, stage: int = 3, *, wake: bool = True,
+              team: bool = False) -> ReplyKeyboardMarkup:
+    """The persistent menu, in a fixed order, as much of it as `stage` allows.
 
     Home, Habits, Tasks and Statistics are the four screens the Mini App also
     has, so a feature found in one surface is findable in the other.
@@ -281,17 +321,51 @@ def main_menu(lang: str) -> ReplyKeyboardMarkup:
     "Turdim" gets its own full-width row directly above the Mini App button —
     the two rows a thumb reaches first, at the bottom of the keyboard. It is the
     one action that expires, so telling someone to type it, or to go two screens
-    in to find it, is how a wake-up habit stops being recorded.
+    in to find it, is how a wake-up habit stops being recorded. It is left out
+    for somebody who does not keep the wake-up habit at all.
     """
-    rows = [
-        [t(lang, "menu_home"), t(lang, "menu_habits")],
-        [t(lang, "menu_tasks"), t(lang, "menu_stats")],
-        [t(lang, "menu_teams"), t(lang, "menu_settings"), t(lang, "menu_feedback")],
-        [t(lang, "menu_wake")],
-    ]
+    if stage >= 3:
+        rows = [
+            [t(lang, "menu_home"), t(lang, "menu_habits")],
+            [t(lang, "menu_tasks"), t(lang, "menu_stats")],
+            [t(lang, "menu_teams"), t(lang, "menu_settings"), t(lang, "menu_feedback")],
+        ]
+    elif stage == 2:
+        rows = [
+            [t(lang, "menu_home"), t(lang, "menu_habits")],
+            [t(lang, "menu_tasks"), t(lang, "menu_stats")],
+            ([t(lang, "menu_teams"), t(lang, "menu_settings")] if team
+             else [t(lang, "menu_settings")]),
+        ]
+    else:
+        rows = [
+            [t(lang, "menu_home"), t(lang, "menu_habits")],
+            [t(lang, "menu_tasks"), t(lang, "menu_settings")],
+        ]
+        if team:
+            rows.append([t(lang, "menu_teams")])
+    if wake:
+        rows.append([t(lang, "menu_wake")])
     if WEBAPP_URL:
         rows.append([t(lang, "menu_app")])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
+
+
+def menu_for(uid: int | None, lang: str | None = None) -> ReplyKeyboardMarkup:
+    """`main_menu` as this account should see it today."""
+    try:
+        with SessionLocal() as s:
+            user = s.get(User, uid) if uid is not None else None
+            if user is None:
+                return main_menu(lang or "uz")
+            ws = svc.workspace_id_for(s, uid)
+            wake = svc.modules_for(s, ws).get("wake", False)
+            team = bool(svc.teams_for(s, uid))
+            return main_menu(lang or user.language, ui_stage(user),
+                             wake=wake, team=team)
+    except Exception:
+        log.exception("could not build the menu for %s", uid)
+        return main_menu(lang or "uz")
 
 
 def webapp_button(lang: str) -> InlineKeyboardMarkup | None:
@@ -304,6 +378,34 @@ def webapp_button(lang: str) -> InlineKeyboardMarkup | None:
 def cancel_keyboard(lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [[InlineKeyboardButton(t(lang, "cancel"), callback_data="flow:cancel")]])
+
+
+def account_of(update: Update) -> int | None:
+    """The ErnestOS account this update speaks for.
+
+    Usually the sender's own Telegram id. A Telegram that signed in with a
+    login and password (`accounts.sign_in`) is served as the account it
+    signed in to — every handler reads the account from here, never from
+    `effective_user.id` directly.
+    """
+    tg_user = update.effective_user
+    if tg_user is None:
+        return None
+    return accounts.resolve_id(tg_user.id)
+
+
+def _profile(update: Update, uid: int) -> dict:
+    """Telegram profile fields to refresh — only on the sender's own account.
+
+    A linked Telegram must not overwrite the owner's name and username with
+    its own every time it sends a message.
+    """
+    tg_user = update.effective_user
+    if tg_user is None or tg_user.id != uid:
+        return {}
+    return {"first_name": tg_user.first_name or "",
+            "last_name": tg_user.last_name or "",
+            "username": tg_user.username or ""}
 
 
 # ---------------------------------------------------------------------------
@@ -420,23 +522,23 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     # `/start ref_xxxx` — Telegram hands the payload over as the first argument.
     # Only the first one is read; a start parameter is a single opaque token.
     payload = ctx.args[0] if getattr(ctx, "args", None) else None
+    uid = account_of(update)
 
     with SessionLocal() as s:
-        user, created = svc.get_or_create_user(
-            s, tg_user.id, first_name=tg_user.first_name or "",
-            last_name=tg_user.last_name or "", username=tg_user.username or "")
+        user, created = svc.get_or_create_user(s, uid, **_profile(update, uid))
         s.commit()
         # Attribution is attempted only for an account that did not exist a
         # moment ago. That single condition is what stops an existing user from
         # being claimed by anybody who can persuade them to open a link.
         if created:
-            svc.claim_referral(s, tg_user.id, payload,
+            svc.claim_referral(s, uid, payload,
                                source="bot", newly_created=True)
     team_code = svc.parse_team_payload(payload)
 
     with SessionLocal() as s:
-        user = s.get(User, tg_user.id)
+        user = s.get(User, uid)
         lang, step, onboarded = user.language, user.onboarding_step, user.onboarded
+        name = user.first_name or tg_user.first_name or ""
         snapshot = user
 
     if created:
@@ -454,8 +556,11 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             return
 
     if onboarded:
-        await message.reply_text(t(lang, "hello_named", name=tg_user.first_name or ""),
-                                 reply_markup=main_menu(lang))
+        await message.reply_text(t(lang, "hello_named", name=esc(name)),
+                                 parse_mode=ParseMode.HTML,
+                                 reply_markup=menu_for(uid))
+        # Accounts from before logins existed get theirs on the next /start.
+        await issue_credentials(message, uid, lang)
         await show_home(update, ctx)
         return
 
@@ -464,31 +569,22 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 #: The order onboarding walks, and the only place it is written down.
 #:
-#:   language → intro → name → modules → goal → tasks → habits → done
+#:   language → account → name → modules → done
 #:
-#: `modules` is where somebody says what they actually want to keep: getting
-#: up, prayer, the journal, a team. Nothing is handed to them that they did
-#: not pick — a new account used to start in debt to three rituals it never
-#: chose, some of which could not even be removed.
+#: Four taps and one short answer. `account` is where somebody who already
+#: has ErnestOS on another Telegram signs in instead of starting again; a new
+#: account is handed its login and password on that same screen.
 #:
-#: Six taps and four short answers, and every one of them builds something the
-#: user then sees. That is the whole design: onboarding is not a form standing
-#: between somebody and the product, it *is* the product's first use. They
-#: finish it holding a real week's goal, three real tasks for today and their
-#: habits — so the last screen can be their actual day rather than a tour of
-#: an empty one.
+#: Everything else the old setup asked for — a weekly goal, three tasks,
+#: three habits — is one tap away on the screens themselves, with ten
+#: suggestions under each Add button. A new user sees the smallest possible
+#: product first and more of it as they use it (`ui_stage`).
 #:
 #: What is deliberately not here:
-#:   * the channel. It used to be step two, asked before the user had seen a
-#:     single thing the product does, which is a toll booth at the door. It is
-#:     now asked after `FREE_ACTIONS` real actions, when the answer is
-#:     "obviously, this is useful" instead of a gamble.
-#:   * the phone number, which was the most personal thing the app ever asked
-#:     for and bought the user nothing they could feel. Not asked anywhere.
-#:   * gender, which only the prayer module needs, so it is asked the first
-#:     time prayer is opened and explained when it is asked.
-ONBOARDING_STEPS = ["language", "intro", "name", "modules", "goal", "tasks",
-                    "habits", "done"]
+#:   * the channel, asked after `FREE_ACTIONS` real actions instead;
+#:   * the phone number, not asked anywhere;
+#:   * gender, asked the first time prayer is opened.
+ONBOARDING_STEPS = ["language", "account", "name", "modules", "done"]
 
 #: The choices on the modules step, in the order they are shown. Three are the
 #: rituals `services.MODULES` drives; "team" is a promise to offer a team at
@@ -508,9 +604,11 @@ def modules_keyboard(lang: str, chosen: set[str], *, prefix: str = "setup:mod",
     rows.append([InlineKeyboardButton(t(lang, "mod_continue"), callback_data=done)])
     return InlineKeyboardMarkup(rows)
 
-#: Steps from older builds. Anybody parked on one is moved into the new flow
-#: rather than shown a question that no longer exists.
-LEGACY_STEPS = {"phone", "gender", "subscribe"}
+#: Steps from older builds, and where somebody parked on one continues. The
+#: long setup's questions are gone; anybody half-way through it is finished.
+LEGACY_STEPS = {"phone": "name", "gender": "name", "subscribe": "name",
+                "intro": "account", "goal": "done", "tasks": "done",
+                "habits": "done"}
 
 
 def setup_data(ctx: ContextTypes.DEFAULT_TYPE) -> dict:
@@ -525,16 +623,17 @@ async def resume_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     tg_user = update.effective_user
     if message is None or tg_user is None:
         return
+    uid = account_of(update)
 
     with SessionLocal() as s:
-        user = s.get(User, tg_user.id)
+        user = s.get(User, uid)
         lang = user.language if user else "uz"
         name = (user.first_name if user else "") or tg_user.first_name or ""
 
     if step in LEGACY_STEPS:
-        step = "name"
+        step = LEGACY_STEPS[step]
         with SessionLocal() as s:
-            user = s.get(User, tg_user.id)
+            user = s.get(User, uid)
             if user is not None:
                 user.onboarding_step = step
                 s.commit()
@@ -549,8 +648,10 @@ async def resume_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                 [InlineKeyboardButton("🇷🇺 Русский", callback_data="lang:ru")],
             ]))
 
-    elif step == "intro":
-        await send_intro(message, lang)
+    elif step == "account":
+        await message.reply_text(t(lang, "acc_ask"), reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton(t(lang, "acc_new"), callback_data="acc:new")],
+            [InlineKeyboardButton(t(lang, "acc_have"), callback_data="acc:have")]]))
 
     elif step == "name":
         rows = []
@@ -566,45 +667,16 @@ async def resume_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         await message.reply_text(t(lang, "ask_modules"), parse_mode=ParseMode.HTML,
                                  reply_markup=modules_keyboard(lang, chosen))
 
-    elif step == "goal":
-        await message.reply_text(t(lang, "ask_goal"), parse_mode=ParseMode.HTML,
-                                 reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton(t(lang, "skip_step"), callback_data="setup:skip")]]))
-
-    elif step == "tasks":
-        await message.reply_text(t(lang, "ask_tasks"), parse_mode=ParseMode.HTML,
-                                 reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton(t(lang, "skip_step"), callback_data="setup:skip")]]))
-
-    elif step == "habits":
-        await message.reply_text(t(lang, "ask_habits"), parse_mode=ParseMode.HTML,
-                                 reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton(t(lang, "habits_keep"), callback_data="setup:skip")]]))
-
     else:
         await finish_onboarding(update, ctx)
-
-
-async def send_intro(message, lang: str) -> None:
-    """The hook: what this is, in the fewest words that can carry it.
-
-    One screen, one promise, one button. The old guide was eleven paragraphs
-    sent to somebody who had not yet done anything — a manual for a machine
-    they had not been shown. It still exists behind /guide, for the moment
-    somebody actually wants it.
-    """
-    await message.reply_text(t(lang, "intro"), parse_mode=ParseMode.HTML,
-                             disable_web_page_preview=True,
-                             reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton(t(lang, "intro_go"), callback_data="setup:go")]]))
 
 
 async def advance_setup(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                         step: str) -> None:
     """Write the next step down, then ask it."""
-    tg_user = update.effective_user
+    uid = account_of(update)
     with SessionLocal() as s:
-        user = s.get(User, tg_user.id)
+        user = s.get(User, uid)
         if user is not None:
             user.onboarding_step = step
             s.commit()
@@ -616,86 +688,53 @@ async def advance_setup(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 
 async def handle_setup_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                               step: str, text: str) -> None:
-    """A typed answer during setup. Each step writes something real.
-
-    Nothing is stored in limbo: the goal becomes the week's mission the moment
-    it is typed, the tasks become tasks. If somebody walks away at step five,
-    what they entered in steps three and four is already theirs.
-    """
-    tg_user = update.effective_user
-    message = update.effective_message
+    """A typed answer during setup. Only the name is typed; it is written at once."""
+    uid = account_of(update)
     with SessionLocal() as s:
-        user = s.get(User, tg_user.id)
+        user = s.get(User, uid)
         if user is None:
             return
-        lang = user.language
-        ws = svc.workspace_id_for(s, tg_user.id)
-        tz = svc.user_tz(user)
 
     if step == "name":
         with SessionLocal() as s:
-            user = s.get(User, tg_user.id)
+            user = s.get(User, uid)
             user.first_name = text.strip()[:200]
             s.commit()
         return await advance_setup(update, ctx, "modules")
-
-    if step == "goal":
-        with SessionLocal() as s:
-            try:
-                svc.add_focus(s, ws, text, tz=tz, priority="high")
-            except ValueError:
-                pass                     # empty or a full week — move on either way
-        await message.reply_text(t(lang, "goal_set", goal=esc(text.strip()[:200])),
-                                 parse_mode=ParseMode.HTML)
-        return await advance_setup(update, ctx, "tasks")
-
-    if step == "tasks":
-        # One per line, so three tasks is one message rather than three rounds
-        # of question and answer. That is most of the sixty seconds.
-        titles = [line.strip(" -•\t") for line in text.splitlines()]
-        titles = [x for x in titles if x][:SETUP_MAX_TASKS]
-        today = svc.today_local(tz)
-        with SessionLocal() as s:
-            for title in titles:
-                try:
-                    svc.add_task(s, ws, title, deadline=today)
-                except ValueError:
-                    continue
-        if titles:
-            await message.reply_text(
-                t(lang, "tasks_set", n=len(titles)), parse_mode=ParseMode.HTML)
-        return await advance_setup(update, ctx, "habits")
-
-    if step == "habits":
-        names = [line.strip(" -•\t") for line in text.splitlines()]
-        names = [x for x in names if x][:SETUP_MAX_HABITS]
-        with SessionLocal() as s:
-            for name in names:
-                try:
-                    svc.add_habit(s, ws, name, "target")
-                except ValueError:
-                    continue
-        if names:
-            await message.reply_text(t(lang, "habits_set", n=len(names)),
-                                     parse_mode=ParseMode.HTML)
-        return await advance_setup(update, ctx, "done")
 
     # Any other step takes no typed answer; re-ask rather than swallow it.
     await resume_onboarding(update, ctx, step)
 
 
-#: Three tasks and three habits. The caps are the product's opinion: a first
-#: day with nine things on it is a first day that does not get finished, and
-#: the number somebody can actually hold is three.
-SETUP_MAX_TASKS = 3
-SETUP_MAX_HABITS = 3
+async def issue_credentials(message, uid: int, lang: str) -> bool:
+    """Give an account its login and password, once. True if issued now.
+
+    The password is shown in a spoiler with a button that deletes the
+    message: it is the only time it is ever readable, and a chat history is
+    not where it should stay.
+    """
+    try:
+        with SessionLocal() as s:
+            login, password = accounts.ensure_credentials(s, uid)
+    except Exception:
+        log.exception("could not issue credentials for %s", uid)
+        return False
+    if password is None or message is None:
+        return False
+    await message.reply_text(
+        t(lang, "acc_issued", login=esc(login), password=esc(password)),
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
+            t(lang, "acc_saved_btn"), callback_data="acc:hide")]]))
+    return True
+
 
 #: Callback actions that change the day, and therefore spend a free action.
 #: `set` and `theme` are settings, not use — the same reasoning as
 #: `UNCOUNTED_PATHS` on the API side.
 COUNTED_CALLBACKS = {"habit", "task", "taskday", "taskproj", "project", "habitcat",
                      "thabit", "ttask", "cap", "ted", "tep", "tem", "tex",
-                     "hec", "hem", "hex", "cdq"}
+                     "hec", "hem", "hex", "cdq", "pjd", "pjdest"}
 
 #: Buttons that only open a screen. They work for an account the channel gate
 #: has stopped, because reading your own data is never what the gate is for.
@@ -703,7 +742,9 @@ READ_CALLBACKS = {("habit", "back"), ("habit", "noop"),
                   ("habit", "mirrored"), ("task", "back"), ("task", "noop"),
                   ("tmr", "home"), ("tmr", "list"), ("tmr", "back"),
                   ("cd", "list"), ("cd", "back"), ("team", "list"),
-                  ("team", "open"), ("team", "stats")}
+                  ("team", "open"), ("team", "stats"),
+                  ("pj", "list"), ("pj", "open"), ("habit", "restorelist"),
+                  ("task", "restorelist")}
 
 
 def is_read_callback(action: str, parts: list[str]) -> bool:
@@ -722,16 +763,16 @@ async def on_contact(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     clears that stale keyboard and says why.
     """
     message = update.effective_message
-    tg_user = update.effective_user
-    if message is None or message.contact is None or tg_user is None:
+    uid = account_of(update)
+    if message is None or message.contact is None or uid is None:
         return
 
     with SessionLocal() as s:
-        user = s.get(User, tg_user.id)
+        user = s.get(User, uid)
         lang = user.language if user else "uz"
 
     await message.reply_text(t(lang, "phone_not_needed"),
-                             reply_markup=main_menu(lang))
+                             reply_markup=menu_for(uid))
 
 
 async def on_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -741,8 +782,8 @@ async def on_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     never holds binary blobs.
     """
     message = update.effective_message
-    tg_user = update.effective_user
-    if message is None or not message.photo or tg_user is None:
+    uid = account_of(update)
+    if message is None or not message.photo or uid is None:
         return
     # `current_flow` rather than a raw dictionary read, because only it honours
     # the TTL. Without it a "send me a photo" prompt opened yesterday was still
@@ -753,7 +794,7 @@ async def on_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
     file_id = message.photo[-1].file_id          # highest resolution
     with SessionLocal() as s:
-        user = s.get(User, tg_user.id)
+        user = s.get(User, uid)
         if user is None:
             return
         user.photo_file_id = file_id
@@ -761,7 +802,7 @@ async def on_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         lang, snapshot = user.language, user
 
     ctx.user_data.pop("flow", None)
-    await message.reply_text(t(lang, "photo_saved"), reply_markup=main_menu(lang))
+    await message.reply_text(t(lang, "photo_saved"), reply_markup=menu_for(uid))
     await log_event(ctx.bot, snapshot, "🖼 PHOTO UPDATED")
 
 
@@ -792,13 +833,13 @@ async def finish_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> N
     at the end, which is the worst possible place to put a wall. It is now
     asked after `FREE_ACTIONS` real actions instead.
     """
-    tg_user = update.effective_user
+    uid = account_of(update)
     message = update.effective_message
-    if tg_user is None or message is None:
+    if uid is None or message is None:
         return
 
     with SessionLocal() as s:
-        user = s.get(User, tg_user.id)
+        user = s.get(User, uid)
         if user is None:
             return
         user.onboarding_step = "done"
@@ -808,20 +849,23 @@ async def finish_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> N
         # itself creates tasks and habits — so somebody can arrive here with
         # the actions already banked and only this flag missing. Same central
         # check as the action path; it is a no-op for everybody else.
-        qualified_inviter = svc.maybe_qualify_referral(s, tg_user.id)
+        qualified_inviter = svc.maybe_qualify_referral(s, uid)
         lang, snapshot = user.language, user
-        ws = svc.workspace_id_for(s, tg_user.id)
+        ws = svc.workspace_id_for(s, uid)
         data = svc.home(s, ws, user)
 
     # Same reasoning as the referral check above, for the other progression
     # system: onboarding has already created habits and a task, so the day has
     # a score before the user's next tap.
-    await finish_onboarding_progress(tg_user.id)
+    await finish_onboarding_progress(uid)
 
     wants_team = bool((ctx.user_data.get("setup") or {}).get("team"))
     ctx.user_data.pop("setup", None)
+    # Anybody who reached the end without the account screen — an older
+    # build's setup, or the channel check finishing it — gets theirs here.
+    await issue_credentials(message, uid, lang)
     await message.reply_text(render_day_ready(data, lang), parse_mode=ParseMode.HTML,
-                             reply_markup=main_menu(lang))
+                             reply_markup=menu_for(uid))
     markup = webapp_button(lang)
     if markup:
         await message.reply_text(t(lang, "day_ready_app"), reply_markup=markup)
@@ -862,7 +906,7 @@ def render_day_ready(data: dict, lang: str) -> str:
     tasks += [x for group in groups for x in group["tasks"]]
     if tasks:
         lines.append(f"⚡ <b>{t(lang, 'r_today_plan')}</b>")
-        for task in tasks[:SETUP_MAX_TASKS]:
+        for task in tasks[:3]:
             lines.append(f"• {esc(task['title'])}")
         lines.append("")
 
@@ -984,13 +1028,20 @@ def countdown_line(item: dict, lang: str) -> str:
             f" <i>· {short_date(item['date'], lang)}</i>")
 
 
-def home_keyboard(lang: str) -> InlineKeyboardMarkup:
+def home_keyboard(lang: str, stage: int = 3) -> InlineKeyboardMarkup:
     """Home's ways onward: the two countdowns — to a date, and on a clock —
-    and the full app."""
-    rows = [[InlineKeyboardButton(t(lang, "btn_countdown"),
-                                  callback_data="cd:list"),
-             InlineKeyboardButton(t(lang, "btn_timers"),
-                                  callback_data="tmr:home")]]
+    and the full app. A brand-new account gets the two Add buttons instead:
+    on the first day, adding something is the only thing worth a tap."""
+    if stage >= 2:
+        rows = [[InlineKeyboardButton(t(lang, "btn_countdown"),
+                                      callback_data="cd:list"),
+                 InlineKeyboardButton(t(lang, "btn_timers"),
+                                      callback_data="tmr:home")]]
+    else:
+        rows = [[InlineKeyboardButton(t(lang, "home_add_habit"),
+                                      callback_data="habit:add"),
+                 InlineKeyboardButton(t(lang, "home_add_task"),
+                                      callback_data="task:add")]]
     if WEBAPP_URL:
         rows.append([InlineKeyboardButton(
             t(lang, "menu_app"), web_app=WebAppInfo(url=WEBAPP_URL))])
@@ -1163,7 +1214,8 @@ async def show_home(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if message:
         await message.reply_text(render_home(data, user.language),
                                  parse_mode=ParseMode.HTML,
-                                 reply_markup=home_keyboard(user.language))
+                                 reply_markup=home_keyboard(user.language,
+                                                            ui_stage(user)))
 
 
 # ---------------------------------------------------------------------------
@@ -1207,7 +1259,8 @@ def _timer_badge(item: dict, lang: str) -> str:
     return ""
 
 
-def habits_keyboard(grouped: dict, lang: str) -> InlineKeyboardMarkup:
+def habits_keyboard(grouped: dict, lang: str, *, stage: int = 3,
+                    restorable: int = 0) -> InlineKeyboardMarkup:
     """One section per tier, so the three categories stay visible at a glance.
 
     Shared habits sit in their tier beside private ones, marked 👥, and tick
@@ -1278,10 +1331,15 @@ def habits_keyboard(grouped: dict, lang: str) -> InlineKeyboardMarkup:
         InlineKeyboardButton(t(lang, "btn_add_habit"), callback_data="habit:add"),
         InlineKeyboardButton(t(lang, "btn_edit_habit"), callback_data="habit:editlist"),
     ])
-    rows.append([InlineKeyboardButton(t(lang, "btn_timers"),
-                                      callback_data="tmr:list:h"),
-                 InlineKeyboardButton(t(lang, "btn_countdown"),
-                                      callback_data="cd:list")])
+    if restorable:
+        rows.append([InlineKeyboardButton(f"{t(lang, 'btn_restore')} ({restorable})",
+                                          callback_data="habit:restorelist")])
+    # The two countdowns wait until the account has found its feet.
+    if stage >= 2:
+        rows.append([InlineKeyboardButton(t(lang, "btn_timers"),
+                                          callback_data="tmr:list:h"),
+                     InlineKeyboardButton(t(lang, "btn_countdown"),
+                                          callback_data="cd:list")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -1295,11 +1353,13 @@ async def show_habits(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     with SessionLocal() as s:
         grouped = svc.habits_by_category(s, ws, tz=tz)
         streak = svc.habit_streak(s, ws, tz=tz)
+        restorable = len(svc.archived_habits(s, ws))
 
     text = f"<b>{t(user.language, 'habits_title')}</b>"
     if streak:
         text += f"   {t(user.language, 'streak')}: {streak}"
-    markup = habits_keyboard(grouped, user.language)
+    markup = habits_keyboard(grouped, user.language, stage=ui_stage(user),
+                             restorable=restorable)
     if edit and update.callback_query:
         await update.callback_query.edit_message_text(
             text, parse_mode=ParseMode.HTML, reply_markup=markup)
@@ -1439,24 +1499,19 @@ def render_tasks(data: dict, lang: str) -> str:
 
 def tasks_keyboard(lang: str, *, projects: list[dict],
                    open_tasks: int, editable: int,
-                   team_tasks: int = 0) -> InlineKeyboardMarkup:
+                   team_tasks: int = 0, stage: int = 3,
+                   restorable: int = 0) -> InlineKeyboardMarkup:
     """Only buttons that lead somewhere.
 
     A "Bajarildi" button on an empty task list opens a chooser with nothing in
     it — the user taps, gets an alert, and learns the app is lying about what
     it can do. So each control appears only when it has something to act on:
-    with no data at all, the screen is two Add buttons and nothing else.
-    Completing still replaces deleting, so finished work keeps its history.
+    with no data at all, the screen is Add and Projects and nothing else.
+    Deleting lives inside ✏️, one confirmation away, and ♻️ brings it back.
     """
-    rows = []
-    for project in projects[:6]:
-        rows.append([InlineKeyboardButton(
-            f"📁 {project['name'][:32]}", callback_data=f"project:open:{project['id']}")])
-
-    rows.append([
-        InlineKeyboardButton(t(lang, "btn_add_task"), callback_data="task:add"),
-        InlineKeyboardButton(t(lang, "btn_add_project"), callback_data="project:add"),
-    ])
+    projects_label = t(lang, "btn_projects") + (f" ({len(projects)})" if projects else "")
+    rows = [[InlineKeyboardButton(t(lang, "btn_add_task"), callback_data="task:add"),
+             InlineKeyboardButton(projects_label, callback_data="pj:list")]]
 
     action_row = []
     if open_tasks:
@@ -1467,29 +1522,23 @@ def tasks_keyboard(lang: str, *, projects: list[dict],
                                                callback_data="task:editlist"))
     if action_row:
         rows.append(action_row)
-
-    delete_row = []
-    if open_tasks:
-        delete_row.append(InlineKeyboardButton(t(lang, "btn_del_task"),
-                                               callback_data="task:dellist"))
-    if projects:
-        delete_row.append(InlineKeyboardButton(t(lang, "btn_del_project"),
-                                               callback_data="project:dellist"))
-    if delete_row:
-        rows.append(delete_row)
+    if restorable:
+        rows.append([InlineKeyboardButton(f"{t(lang, 'btn_restore')} ({restorable})",
+                                          callback_data="task:restorelist")])
 
     if team_tasks:
         rows.append([InlineKeyboardButton(t(lang, "btn_team_tasks"),
                                           callback_data="ttask:list")])
     # The timer list needs something to put a timer on; the countdowns are
-    # a screen of their own and always have somewhere to go.
-    extra = []
-    if open_tasks:
-        extra.append(InlineKeyboardButton(t(lang, "btn_timers"),
-                                          callback_data="tmr:list:t"))
-    extra.append(InlineKeyboardButton(t(lang, "btn_countdown"),
-                                      callback_data="cd:list"))
-    rows.append(extra)
+    # a screen of their own. Both wait until the account has found its feet.
+    if stage >= 2:
+        extra = []
+        if open_tasks:
+            extra.append(InlineKeyboardButton(t(lang, "btn_timers"),
+                                              callback_data="tmr:list:t"))
+        extra.append(InlineKeyboardButton(t(lang, "btn_countdown"),
+                                          callback_data="cd:list"))
+        rows.append(extra)
 
     return InlineKeyboardMarkup(rows)
 
@@ -1511,67 +1560,20 @@ async def show_tasks(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         open_tasks = len(_all_open_tasks(s, ws))
         data["team_tasks"] = svc.team_items_for_day(
             s, user.telegram_id, tz=svc.user_tz(user))["tasks"]
+        restorable = len(svc.archived_tasks(s, ws))
 
     text = render_tasks(data, user.language)
     markup = tasks_keyboard(user.language, projects=projects,
                             open_tasks=open_tasks,
                             editable=open_tasks + len(data["team_tasks"]),
-                            team_tasks=len(data["team_tasks"]))
+                            team_tasks=len(data["team_tasks"]),
+                            stage=ui_stage(user), restorable=restorable)
     if edit and update.callback_query:
         await update.callback_query.edit_message_text(
             text, parse_mode=ParseMode.HTML, reply_markup=markup)
     elif update.effective_message:
         await update.effective_message.reply_text(
             text, parse_mode=ParseMode.HTML, reply_markup=markup)
-
-
-def render_project(project: dict, tasks: list[dict], lang: str) -> str:
-    """One project and the work inside it."""
-    marks = {"high": "🔴", "medium": "🟡", "low": "🟢"}
-    lines = [f"<b>📁 {esc(project['name'])}</b>"]
-    if project.get("description"):
-        lines.append(esc(project["description"]))
-    if project.get("deadline"):
-        lines.append(f"📅 {project['deadline']}")
-    lines.append(f"{project['tasks_done']} / {project['tasks_total']} · "
-                 f"{project['progress']}%")
-
-    lines.append(f"\n<b>{t(lang, 'project_tasks')}</b>")
-    if tasks:
-        for task in tasks:
-            mark = "✅" if task["status"] == "done" else marks.get(task["priority"], "▫️")
-            when = f" · 📅 {task['deadline']}" if task["deadline"] else ""
-            lines.append(f"{mark} {esc(task['title'])}{when}")
-    else:
-        lines.append(t(lang, "none"))
-    return "\n".join(lines)
-
-
-async def show_project(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
-                       project_id: int) -> None:
-    got = await guard(update, ctx)
-    if got is None:
-        return
-    user, ws = got
-    lang = user.language
-    with SessionLocal() as s:
-        project = next((p for p in svc.list_projects(s, ws)
-                        if p["id"] == project_id), None)
-        if project is None:
-            raise svc.NotFound("project")
-        tasks = svc.project_tasks(s, ws, project_id)
-
-    markup = InlineKeyboardMarkup([
-        [InlineKeyboardButton(t(lang, "btn_rename_project"),
-                              callback_data=f"project:rename:{project_id}")],
-        [InlineKeyboardButton(t(lang, "btn_del_project"),
-                              callback_data=f"project:del:{project_id}")],
-        [InlineKeyboardButton(t(lang, "back"), callback_data="task:back")],
-    ])
-    if update.callback_query:
-        await update.callback_query.edit_message_text(
-            render_project(project, tasks, lang),
-            parse_mode=ParseMode.HTML, reply_markup=markup)
 
 
 # ---------------------------------------------------------------------------
@@ -1807,6 +1809,21 @@ async def show_active_timer(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> N
                          edit=False)
         return
     await show_timer_home(update, ctx, user, ws, edit=False)
+
+
+async def _toast(update: Update, text: str) -> None:
+    """A small confirmation, if Telegram still takes one for this tap.
+
+    Unlike `_notice` it never falls back to a message: the screen redrawn
+    right after it already shows what changed.
+    """
+    query = update.callback_query
+    if query is None:
+        return
+    try:
+        await query.answer(text)
+    except TelegramError:
+        pass
 
 
 async def _notice(update: Update, text: str) -> None:
@@ -2283,12 +2300,14 @@ async def show_settings(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             f"🎨 {THEME_NAMES.get(theme_of(user.theme), theme_of(user.theme))}\n"
             f"🖼 {'✓' if user.photo_file_id else '—'}")
     markup = InlineKeyboardMarkup([
-        [InlineKeyboardButton(t(lang, "btn_lang"), callback_data="set:lang")],
-        [InlineKeyboardButton(t(lang, "btn_gender"), callback_data="set:gender")],
-        [InlineKeyboardButton(t(lang, "btn_theme"), callback_data="set:theme")],
-        [InlineKeyboardButton(t(lang, "btn_photo"), callback_data="set:photo")],
-        [InlineKeyboardButton(t(lang, "wake_time_btn"), callback_data="set:waketime")],
-        [InlineKeyboardButton(t(lang, "btn_modules"), callback_data="set:modules")],
+        # The account first: it is the one setting that is about getting in.
+        [InlineKeyboardButton(t(lang, "acc_btn"), callback_data="acc:show")],
+        [InlineKeyboardButton(t(lang, "btn_lang"), callback_data="set:lang"),
+         InlineKeyboardButton(t(lang, "btn_modules"), callback_data="set:modules")],
+        [InlineKeyboardButton(t(lang, "btn_theme"), callback_data="set:theme"),
+         InlineKeyboardButton(t(lang, "btn_photo"), callback_data="set:photo")],
+        [InlineKeyboardButton(t(lang, "btn_gender"), callback_data="set:gender"),
+         InlineKeyboardButton(t(lang, "wake_time_btn"), callback_data="set:waketime")],
         # One row, at the bottom, where it is findable without competing with
         # the settings somebody actually opened this screen to change.
         [InlineKeyboardButton(t(lang, "ref_menu"), callback_data="ref:show")],
@@ -2302,6 +2321,219 @@ async def show_settings(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 
 
 # ---------------------------------------------------------------------------
+# Account — login, password, and the other Telegrams signed in to it
+# ---------------------------------------------------------------------------
+
+#: What `accounts` refuses a login or a password for, and how that is said.
+ACCOUNT_ERRORS = {"login_bad": "acc_login_bad", "login_taken": "acc_login_taken",
+                  "password_short": "acc_password_short",
+                  "password_bad": "acc_password_bad"}
+
+
+async def show_account(update: Update, ctx: ContextTypes.DEFAULT_TYPE, *,
+                       edit: bool = False) -> None:
+    got = await guard(update, ctx, write=False)
+    if got is None:
+        return
+    user, _ = got
+    lang = user.language
+    here = update.effective_user.id
+    with SessionLocal() as s:
+        login, issued = accounts.ensure_credentials(s, user.telegram_id)
+        others = [row for row in accounts.linked_telegrams(s, user.telegram_id)
+                  if row.telegram_id != here]
+        linked_here = accounts.is_linked(s, here)
+
+    lines = [t(lang, "acc_title"), "", t(lang, "acc_login_line", login=esc(login))]
+    if issued:
+        lines.append(t(lang, "acc_new_password", password=esc(issued)))
+    if linked_here:
+        lines.append(t(lang, "acc_linked_here"))
+    if others:
+        lines.append(t(lang, "acc_devices_line", n=len(others)))
+    rows = [[InlineKeyboardButton(t(lang, "acc_btn_login"), callback_data="acc:login"),
+             InlineKeyboardButton(t(lang, "acc_btn_pass"), callback_data="acc:pass")],
+            [InlineKeyboardButton(t(lang, "acc_btn_newpass"), callback_data="acc:newpass")]]
+    if others:
+        rows.append([InlineKeyboardButton(f"{t(lang, 'acc_btn_devices')} ({len(others)})",
+                                          callback_data="acc:devices")])
+    rows.append([InlineKeyboardButton(t(lang, "acc_btn_signin"), callback_data="acc:signin")])
+    if linked_here:
+        rows.append([InlineKeyboardButton(t(lang, "acc_btn_logout"),
+                                          callback_data="acc:logout")])
+    rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="set:back")])
+    await _show(update, "\n".join(lines), InlineKeyboardMarkup(rows), edit=edit)
+
+
+async def ask_login(update: Update, ctx: ContextTypes.DEFAULT_TYPE, lang: str, *,
+                    edit: bool = False) -> None:
+    """Open the two-message sign-in: login, then password."""
+    start_flow(ctx, "login_user")
+    await _show(update, t(lang, "acc_ask_login"), cancel_keyboard(lang), edit=edit)
+
+
+async def cmd_login(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    uid = account_of(update)
+    if uid is None or update.effective_message is None:
+        return
+    with SessionLocal() as s:
+        user = s.get(User, uid)
+        lang = user.language if user else "uz"
+    await ask_login(update, ctx, lang)
+
+
+async def cmd_logout(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    tg_user, message = update.effective_user, update.effective_message
+    if tg_user is None or message is None:
+        return
+    with SessionLocal() as s:
+        was_linked = accounts.sign_out(s, tg_user.id)
+        user = s.get(User, tg_user.id)
+        lang = user.language if user else "uz"
+    await message.reply_text(t(lang, "acc_logout_ok" if was_linked else "acc_logout_none"))
+    if was_linked:
+        await start(update, ctx)
+
+
+async def handle_login_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                            flow: dict, text: str, lang: str) -> None:
+    """The two typed answers of signing in."""
+    message = update.effective_message
+    tg_user = update.effective_user
+    if flow["name"] == "login_user":
+        start_flow(ctx, "login_pass", login=text.strip()[:64])
+        await message.reply_text(t(lang, "acc_ask_password"),
+                                 reply_markup=cancel_keyboard(lang))
+        return
+
+    # The password should not sit in the chat. Deleting somebody's own
+    # message in a private chat is allowed; if it fails, nothing is lost.
+    try:
+        await message.delete()
+    except Exception:
+        pass
+    ctx.user_data.pop("flow", None)
+    with SessionLocal() as s:
+        outcome, account_id = accounts.sign_in(
+            s, tg_user.id, flow.get("login", ""), text,
+            first_name=tg_user.first_name or "", username=tg_user.username or "")
+        account = (s.get(User, account_id)
+                   if outcome in ("ok", "self") and account_id else None)
+        onboarded = bool(account and account.onboarded)
+        lang = account.language if account else lang
+        name = (account.first_name if account else "") or ""
+        snapshot = account
+
+    if outcome == "bad":
+        await message.reply_text(t(lang, "acc_signin_bad"), reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton(t(lang, "acc_have"), callback_data="acc:have")],
+            [InlineKeyboardButton(t(lang, "cancel"), callback_data="flow:cancel")]]))
+        return
+    if outcome == "locked":
+        await message.reply_text(t(lang, "acc_signin_locked", n=account_id))
+        return
+
+    ctx.user_data.pop("setup", None)
+    key = "acc_signin_self" if outcome == "self" else "acc_signin_ok"
+    await message.reply_text(t(lang, key, name=esc(name)), parse_mode=ParseMode.HTML,
+                             reply_markup=menu_for(account_id) if onboarded else None)
+    if outcome == "ok" and snapshot is not None:
+        await log_event(ctx.bot, snapshot, "🔐 SIGNED IN FROM ANOTHER TELEGRAM",
+                        f"Telegram: <code>{tg_user.id}</code>")
+    if onboarded:
+        await show_home(update, ctx)
+    else:
+        await start(update, ctx)
+
+
+async def route_account(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                        parts: list[str]) -> None:
+    """acc:* — everything on the account screen, and signing in and out."""
+    query = update.callback_query
+    what = parts[1] if len(parts) > 1 else ""
+    uid = account_of(update)
+    here = update.effective_user.id
+    with SessionLocal() as s:
+        user = s.get(User, uid)
+        lang = user.language if user else "uz"
+        onboarded = bool(user and user.onboarded)
+
+    if what == "hide":
+        # "I saved it" — the message holding the password goes.
+        try:
+            await query.message.delete()
+        except Exception:
+            await query.edit_message_text(t(lang, "saved"))
+        return
+
+    if what == "new":
+        # Setup: a fresh account, handed its login right here. A stale button
+        # tapped on an account that is already set up only opens it.
+        await query.edit_message_reply_markup(reply_markup=None)
+        if onboarded:
+            await show_home(update, ctx)
+            return
+        await issue_credentials(update.effective_message, uid, lang)
+        await advance_setup(update, ctx, "name")
+        return
+
+    if what in ("have", "signin"):
+        await ask_login(update, ctx, lang, edit=True)
+        return
+
+    if what == "logout":
+        with SessionLocal() as s:
+            was_linked = accounts.sign_out(s, here)
+            own = s.get(User, here)
+            own_lang = own.language if own else lang
+        await query.edit_message_text(
+            t(own_lang, "acc_logout_ok" if was_linked else "acc_logout_none"))
+        if was_linked:
+            await start(update, ctx)
+        return
+
+    if not onboarded:
+        await start(update, ctx)
+        return
+
+    if what == "show":
+        await show_account(update, ctx, edit=True)
+    elif what == "login":
+        start_flow(ctx, "acc_login")
+        await _show(update, t(lang, "acc_ask_new_login"), cancel_keyboard(lang), edit=True)
+    elif what == "pass":
+        start_flow(ctx, "acc_pass")
+        await _show(update, t(lang, "acc_ask_new_password"), cancel_keyboard(lang), edit=True)
+    elif what == "newpass":
+        with SessionLocal() as s:
+            password, removed = accounts.set_password(
+                s, uid, None, keep=here if here != uid else None)
+        body = t(lang, "acc_new_password", password=esc(password))
+        if removed:
+            body += "\n" + t(lang, "acc_signed_out_others", n=removed)
+        await _show(update, body, InlineKeyboardMarkup([[InlineKeyboardButton(
+            t(lang, "acc_saved_btn"), callback_data="acc:hide")]]), edit=True)
+    elif what == "devices":
+        with SessionLocal() as s:
+            others = [(row.telegram_id, row.first_name, row.username)
+                      for row in accounts.linked_telegrams(s, uid) if row.telegram_id != here]
+        if not others:
+            await _show(update, t(lang, "acc_devices_none"), InlineKeyboardMarkup([[
+                InlineKeyboardButton(t(lang, "back"), callback_data="acc:show")]]), edit=True)
+            return
+        rows = [[InlineKeyboardButton(
+            f"❌ {(first or '').strip() or tid}" + (f" @{username}" if username else ""),
+            callback_data=f"acc:unlink:{tid}")] for tid, first, username in others[:20]]
+        rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="acc:show")])
+        await _show(update, t(lang, "acc_devices_title"), InlineKeyboardMarkup(rows), edit=True)
+    elif what == "unlink" and len(parts) > 2:
+        with SessionLocal() as s:
+            accounts.remove_link(s, uid, int(parts[2]))
+        await _toast(update, t(lang, "acc_device_removed"))
+        await show_account(update, ctx, edit=True)
+
+
+# ---------------------------------------------------------------------------
 # Multi-step flows
 #
 # `ctx.user_data["flow"]` holds only the in-progress step. Losing it on restart
@@ -2310,19 +2542,30 @@ async def show_settings(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 
 async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
-    tg_user = update.effective_user
-    if message is None or tg_user is None or not message.text:
+    uid = account_of(update)
+    if message is None or uid is None or not message.text:
         return
     text = message.text.strip()
 
     with SessionLocal() as s:
-        user = s.get(User, tg_user.id)
-        if user is None:
-            await start(update, ctx)
+        user = s.get(User, uid)
+        lang = user.language if user else "uz"
+        onboarded = bool(user and user.onboarded)
+        step = user.onboarding_step if user else "language"
+
+    # Signing in is typed, and can happen before this Telegram has an
+    # account of its own — so it is answered ahead of setup. A menu button
+    # tapped half-way is leaving it, never a login or a password.
+    login_flow = current_flow(ctx, "login_user", "login_pass")
+    if login_flow is not None:
+        if menu_route(text) is None:
+            await handle_login_text(update, ctx, login_flow, text, lang)
             return
-        lang = user.language
-        onboarded = user.onboarded
-        step = user.onboarding_step
+        ctx.user_data.pop("flow", None)
+
+    if user is None:
+        await start(update, ctx)
+        return
 
     if not onboarded:
         # Setup is mostly typed now — a name, a goal, three tasks, some habits
@@ -2441,32 +2684,84 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                                      reply_markup=category_keyboard(lang))
 
         elif name == "habit_rename":
-            with SessionLocal() as s:
-                if flow.get("kind") == "t":
-                    svc.edit_team_habit(s, user.telegram_id, int(flow["target_id"]),
-                                        name=text)
-                else:
-                    svc.update_habit(s, ws, int(flow["target_id"]), name=text)
+            # Held in the draft until 💾 — the edit screen comes back with it.
+            kind = flow.get("kind") or "p"
+            draft_set(ctx, _draft_key("h", kind, int(flow["target_id"])),
+                      name=text.strip()[:120])
             ctx.user_data.pop("flow", None)
-            await message.reply_text(t(lang, "saved"))
-            await show_habit_edit(update, ctx, user, ws, flow.get("kind") or "p",
-                                  int(flow["target_id"]))
+            await show_habit_edit(update, ctx, user, ws, kind,
+                                  int(flow["target_id"]), edit=False)
+
+        elif name == "habit_remind":
+            value = _parse_hhmm(text)
+            if value is None:
+                await message.reply_text(t(lang, "bad_time"))
+                return
+            kind = flow.get("kind") or "p"
+            draft_set(ctx, _draft_key("h", kind, int(flow["target_id"])),
+                      remind_at=value.strftime("%H:%M"))
+            ctx.user_data.pop("flow", None)
+            await show_habit_edit(update, ctx, user, ws, kind,
+                                  int(flow["target_id"]), edit=False)
+
+        elif name == "task_edit_time":
+            value = _parse_hhmm(text)
+            if value is None:
+                await message.reply_text(t(lang, "bad_time"))
+                return
+            kind = flow.get("kind") or "p"
+            draft_set(ctx, _draft_key("t", kind, int(flow["target_id"])),
+                      due_time=value.strftime("%H:%M"))
+            ctx.user_data.pop("flow", None)
+            await show_task_edit(update, ctx, user, ws, kind,
+                                 int(flow["target_id"]), edit=False)
+
+        elif name == "acc_login":
+            try:
+                with SessionLocal() as s:
+                    login = accounts.set_login(s, user.telegram_id, text)
+            except ValueError as e:
+                await message.reply_text(t(lang, ACCOUNT_ERRORS.get(str(e), "error")),
+                                         reply_markup=cancel_keyboard(lang))
+                return
+            ctx.user_data.pop("flow", None)
+            await message.reply_text(t(lang, "acc_login_set", login=esc(login)),
+                                     parse_mode=ParseMode.HTML)
+            await show_account(update, ctx)
+
+        elif name == "acc_pass":
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            here = update.effective_user.id
+            try:
+                with SessionLocal() as s:
+                    _, removed = accounts.set_password(
+                        s, user.telegram_id, text,
+                        keep=here if here != user.telegram_id else None)
+            except ValueError as e:
+                await message.reply_text(t(lang, ACCOUNT_ERRORS.get(str(e), "error")),
+                                         reply_markup=cancel_keyboard(lang))
+                return
+            ctx.user_data.pop("flow", None)
+            body = t(lang, "acc_password_set")
+            if removed:
+                body += "\n" + t(lang, "acc_signed_out_others", n=removed)
+            await message.reply_text(body)
+            await show_account(update, ctx)
 
         elif name == "task_edit_date":
             target = svc.parse_countdown_date(text, svc.today_local(svc.user_tz(user)))
             if target is None:
                 await message.reply_text(t(lang, "cd_bad_date"), parse_mode=ParseMode.HTML)
                 return
-            with SessionLocal() as s:
-                if flow.get("kind") == "t":
-                    svc.edit_team_task(s, user.telegram_id, int(flow["target_id"]),
-                                       deadline=target)
-                else:
-                    svc.update_task(s, ws, int(flow["target_id"]), deadline=target)
+            kind = flow.get("kind") or "p"
+            draft_set(ctx, _draft_key("t", kind, int(flow["target_id"])),
+                      deadline=target.isoformat())
             ctx.user_data.pop("flow", None)
-            await message.reply_text(t(lang, "saved"))
-            await show_task_edit(update, ctx, user, ws, flow.get("kind") or "p",
-                                 int(flow["target_id"]))
+            await show_task_edit(update, ctx, user, ws, kind,
+                                 int(flow["target_id"]), edit=False)
 
         elif name == "wake_time":
             try:
@@ -2480,22 +2775,24 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             ctx.user_data.pop("flow", None)
             await message.reply_text(
                 t(lang, "wake_time_set", time=value.strftime("%H:%M")),
-                reply_markup=main_menu(lang))
+                reply_markup=menu_for(user.telegram_id))
 
         elif name == "task_edit":
             kind = flow.get("kind") or "p"
-            with SessionLocal() as s:
-                if kind == "t":
-                    row = svc.edit_team_task(s, user.telegram_id,
-                                             int(flow["target_id"]), title=text)
-                    title = row["title"]
-                else:
-                    title = svc.update_task(s, ws, int(flow["target_id"]), title=text).title
+            draft_set(ctx, _draft_key("t", kind, int(flow["target_id"])),
+                      title=text.strip()[:300])
             ctx.user_data.pop("flow", None)
-            await message.reply_text(t(lang, "task_updated", title=title))
-            await show_task_edit(update, ctx, user, ws, kind, int(flow["target_id"]))
+            await show_task_edit(update, ctx, user, ws, kind,
+                                 int(flow["target_id"]), edit=False)
 
         elif name == "task_title":
+            if flow.get("project_id"):
+                # Added from inside a project: where it goes is already known.
+                start_flow(ctx, "task_days", title=text[:300], dest=flow.get("dest") or "p",
+                           project_id=flow["project_id"])
+                await message.reply_text(t(lang, "ask_task_days"),
+                                         reply_markup=days_keyboard(lang))
+                return
             # Yours, or one of your teams'? Asked only when there is a team.
             with SessionLocal() as s:
                 teams = svc.teams_for(s, user.telegram_id)
@@ -2557,25 +2854,41 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             # tomorrow, so the task landed a day early.
             deadline = svc.today_local(svc.user_tz(user)) + timedelta(days=days)
             await ask_task_project(update, ctx, flow["title"], deadline,
-                                   flow.get("dest") or "p")
+                                   flow.get("dest") or "p",
+                                   project_id=flow.get("project_id"))
 
         elif name == "project_add":
+            title = text.strip()[:200]
+            # Yours, or one of your teams'? Asked only when there is a team.
             with SessionLocal() as s:
-                project = svc.add_project(s, ws, text)
-            ctx.user_data.pop("flow", None)
-            await message.reply_text(t(lang, "project_added", name=project.name))
-            await log_event(ctx.bot, user, "📁 PROJECT ADDED", f"Project: {esc(project.name)}")
-            await show_tasks(update, ctx)
+                teams = svc.teams_for(s, user.telegram_id)
+            if teams:
+                start_flow(ctx, "project_dest", title=title)
+                await message.reply_text(t(lang, "ask_dest_project", title=esc(title)),
+                                         parse_mode=ParseMode.HTML,
+                                         reply_markup=dest_keyboard(lang, teams, "pjdest"))
+                return
+            await create_project(update, ctx, user, ws, title, "p")
 
-        elif name == "project_rename":
+        elif name in ("project_rename", "project_desc", "project_deadline"):
+            kind = flow.get("kind") or "p"
+            project_id = int(flow["target_id"])
+            if name == "project_rename":
+                fields = {"name": text}
+            elif name == "project_desc":
+                fields = {"description": "" if text.strip() == "-" else text}
+            else:
+                target = svc.parse_countdown_date(text, svc.today_local(svc.user_tz(user)))
+                if target is None:
+                    await message.reply_text(t(lang, "cd_bad_date"), parse_mode=ParseMode.HTML)
+                    return
+                fields = {"deadline": target}
             with SessionLocal() as s:
-                project = svc.update_project(s, ws, flow["target_id"], name=text)
-                name_after = project.name
+                name_after = _update_project(s, user, ws, kind, project_id, **fields)
             ctx.user_data.pop("flow", None)
-            await message.reply_text(t(lang, "project_updated", name=name_after))
-            await log_event(ctx.bot, user, "✏️ PROJECT RENAMED",
-                            f"Project: {esc(name_after)}")
-            await show_tasks(update, ctx)
+            await message.reply_text(t(lang, "project_updated", name=esc(name_after)),
+                                     parse_mode=ParseMode.HTML)
+            await show_project(update, ctx, project_id, kind, edit=False)
 
         elif name == "timer_custom":
             minutes = _typed_minutes(text)
@@ -2643,16 +2956,22 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 
 async def ask_task_project(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                            title: str, deadline: date | None,
-                           dest: str = "p") -> None:
+                           dest: str = "p", *, project_id: int | None = None) -> None:
     """Which project, if any — the team's own shelves for a shared task.
 
     With no project to choose from there is no question: the task is made.
+    Neither is there when it is being added from inside a project.
     """
     got = await guard(update, ctx)
     if got is None:
         return
     user, ws = got
     lang = user.language
+    if project_id:
+        start_flow(ctx, "task_project", title=title,
+                   deadline=deadline.isoformat() if deadline else "", dest=dest)
+        await create_task_from_flow(update, ctx, user, ws, int(project_id))
+        return
     with SessionLocal() as s:
         if dest == "p":
             projects = svc.list_projects(s, ws)
@@ -2780,11 +3099,68 @@ def _dest_label(lang: str, dest: str, teams: dict[int, str]) -> str:
 # Callback data carries the kind in one letter — `p` a private item, `t` a
 # team item — and the id, so every edit button fits in Telegram's 64 bytes.
 
-def _task_edit_view(s, user: User, ws: int, kind: str, item_id: int) -> tuple[str, InlineKeyboardMarkup] | None:
-    """The edit menu for one task: what it is now, and what can be changed."""
+# --- The draft: edits wait for 💾 Save or ✖️ Cancel ---------------------------
+#
+# A change made on the edit screen is held here, per Telegram, until the
+# person saves it or throws it away. One draft at a time: opening another
+# item's editor starts a new one, and an untouched draft is simply forgotten.
+# Deleting, pausing, moving and the timer are actions rather than fields, so
+# they happen at once (deleting after a confirmation).
+
+def _draft_key(what: str, kind: str, item_id: int) -> str:
+    return f"{what}{kind}:{item_id}"
+
+
+def draft_changes(ctx: ContextTypes.DEFAULT_TYPE, key: str) -> dict:
+    draft = ctx.user_data.get("draft")
+    if not draft or draft.get("key") != key:
+        return {}
+    return draft.get("changes") or {}
+
+
+def draft_set(ctx: ContextTypes.DEFAULT_TYPE, key: str, **changes) -> None:
+    draft = ctx.user_data.get("draft")
+    if not draft or draft.get("key") != key:
+        draft = {"key": key, "changes": {}}
+        ctx.user_data["draft"] = draft
+    draft["changes"].update(changes)
+
+
+def draft_drop(ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    ctx.user_data.pop("draft", None)
+
+
+def _remind_label(minutes: int | None, lang: str) -> str:
+    if minutes is None:
+        return t(lang, "remind_off")
+    if minutes == 0:
+        return t(lang, "remind_at_time")
+    if minutes == 60:
+        return t(lang, "remind_hour")
+    if minutes == 1440:
+        return t(lang, "remind_day")
+    return t(lang, "remind_min", n=minutes)
+
+
+#: The reminder choices a task offers, in minutes before it is due.
+TASK_REMIND_CHOICES = (0, 10, 30, 60, 1440)
+#: The hours a habit reminder is offered at before somebody types their own.
+HABIT_REMIND_CHOICES = ("06:00", "08:00", "12:00", "18:00", "21:00")
+
+
+def _save_cancel_rows(lang: str, prefix: str, code: str) -> list:
+    return [[InlineKeyboardButton(t(lang, "edit_save"), callback_data=f"{prefix}:{code}:sv"),
+             InlineKeyboardButton(t(lang, "edit_cancel"), callback_data=f"{prefix}:{code}:cx")]]
+
+
+def _task_edit_view(s, user: User, ws: int, kind: str, item_id: int,
+                    draft: dict | None = None) -> tuple[str, InlineKeyboardMarkup] | None:
+    """The edit menu for one task: what it is now — with any unsaved change
+    shown in place — and what can be changed."""
     lang = user.language
     tz = svc.user_tz(user)
     teams = svc.teams_for(s, user.telegram_id)
+    draft = draft or {}
     if kind == "p":
         task = s.get(db.Task, item_id)
         if task is None or task.workspace_id != ws or task.archived_at is not None:
@@ -2798,34 +3174,57 @@ def _task_edit_view(s, user: User, ws: int, kind: str, item_id: int) -> tuple[st
             return None
         where = f"👥 {esc(row['team_name'])}"
         can_manage = row.get("can_manage", False)
-    lines = [f"✏️ <b>{esc(row['title'])}</b>",
-             f"📅 {short_date(row['deadline'], lang) if row.get('deadline') else t(lang, 'no_deadline')}"
-             f"{' · ' + row['due_time'] if row.get('due_time') else ''}"
-             f" · {PRIORITY_MARK.get(row['priority'], '▫️')} {t(lang, 'prio_' + row['priority'])}",
+    view = {**row, **draft}
+    deadline = view.get("deadline")
+    lines = [f"✏️ <b>{esc(view['title'])}</b>",
+             f"📅 {short_date(deadline, lang) if deadline else t(lang, 'no_deadline')}"
+             f" · 🕐 {view.get('due_time') or '—'}",
+             f"{PRIORITY_MARK.get(view['priority'], '▫️')} {t(lang, 'prio_' + view['priority'])}"
+             f" · 🔔 {_remind_label(view.get('remind_before'), lang)}",
              f"📍 {where}"]
+    if row.get("project"):
+        lines.append(f"📁 {esc(row['project'])}")
     if kind == "t" and row.get("completion") != "all":
         lines.append(f"👤 {t(lang, 'completion_' + row['completion'])}")
     if not can_manage:
         lines.append(f"<i>{t(lang, 'team_only_creator')}</i>")
+    if draft:
+        lines += ["", t(lang, "edit_unsaved")]
     code = f"{kind}:{item_id}"
+    timer_code = f"tmr:open:{'t' if kind == 'p' else 'T'}:{item_id}"
     rows = []
     if can_manage:
         rows.append([InlineKeyboardButton(t(lang, "edit_name"), callback_data=f"te:{code}:n"),
                      InlineKeyboardButton(t(lang, "edit_date"), callback_data=f"te:{code}:d")])
-        rows.append([InlineKeyboardButton(t(lang, "edit_priority"), callback_data=f"te:{code}:p")])
-        if teams:
+        rows.append([InlineKeyboardButton(t(lang, "edit_time"), callback_data=f"te:{code}:t"),
+                     InlineKeyboardButton(t(lang, "edit_remind"), callback_data=f"te:{code}:r")])
+        rows.append([InlineKeyboardButton(t(lang, "edit_priority"), callback_data=f"te:{code}:p"),
+                     InlineKeyboardButton(t(lang, "btn_timers"), callback_data=timer_code)])
+        if teams and not draft:
             rows.append([InlineKeyboardButton(t(lang, "edit_move"), callback_data=f"te:{code}:m")])
-    rows.append([InlineKeyboardButton(t(lang, "btn_timers"),
-                                      callback_data=f"tmr:open:{'t' if kind == 'p' else 'T'}:{item_id}")])
-    if can_manage:
-        rows.append([InlineKeyboardButton(t(lang, "edit_delete"), callback_data=f"te:{code}:x")])
-    rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="task:back")])
+    else:
+        rows.append([InlineKeyboardButton(t(lang, "btn_timers"), callback_data=timer_code)])
+    if not draft:
+        last = []
+        if kind == "p" and row.get("status") != "done":
+            last.append(InlineKeyboardButton(t(lang, "edit_done"),
+                                             callback_data=f"task:done:{item_id}"))
+        if can_manage:
+            last.append(InlineKeyboardButton(t(lang, "edit_delete"),
+                                             callback_data=f"te:{code}:x"))
+        if last:
+            rows.append(last)
+        rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="task:back")])
+    else:
+        rows += _save_cancel_rows(lang, "te", code)
     return "\n".join(lines), InlineKeyboardMarkup(rows)
 
 
-def _habit_edit_view(s, user: User, ws: int, kind: str, item_id: int) -> tuple[str, InlineKeyboardMarkup] | None:
+def _habit_edit_view(s, user: User, ws: int, kind: str, item_id: int,
+                     draft: dict | None = None) -> tuple[str, InlineKeyboardMarkup] | None:
     lang = user.language
     teams = svc.teams_for(s, user.telegram_id)
+    draft = draft or {}
     if kind == "p":
         habit = s.get(db.Habit, item_id)
         if habit is None or habit.workspace_id != ws or habit.archived_at is not None:
@@ -2841,8 +3240,11 @@ def _habit_edit_view(s, user: User, ws: int, kind: str, item_id: int) -> tuple[s
             return None
         where = f"👥 {esc(info['team_name'])}"
         can_manage, protected = info["can_manage"], info["mirrored"]
-    lines = [f"✏️ <b>{esc(info['name'])}</b>",
-             f"🗂 {t(lang, CATEGORY_KEYS[info['category']])} · 📍 {where}",
+    view = {**info, **draft}
+    remind = view.get("remind_at")
+    lines = [f"✏️ <b>{esc(view['name'])}</b>",
+             f"🗂 {t(lang, CATEGORY_KEYS[view['category']])} · 📍 {where}",
+             f"🔔 {remind or t(lang, 'remind_off')}",
              f"🔥 {info.get('streak', 0)} · {info.get('last7_done', 0)}/{info.get('last7_due', 0)}"]
     if info.get("paused"):
         lines.append(f"⏸ {t(lang, 'habit_paused')}")
@@ -2850,54 +3252,118 @@ def _habit_edit_view(s, user: User, ws: int, kind: str, item_id: int) -> tuple[s
         lines.append(f"⏸ {t(lang, 'habit_pause_from', day=short_date(info['pause_from'], lang))}")
     if protected:
         lines.append(f"<i>{t(lang, 'habit_protected_edit')}</i>")
+    if draft:
+        lines += ["", t(lang, "edit_unsaved")]
     code = f"{kind}:{item_id}"
     rows = []
     if can_manage and not protected:
         rows.append([InlineKeyboardButton(t(lang, "edit_name"), callback_data=f"he:{code}:n"),
                      InlineKeyboardButton(t(lang, "edit_category"), callback_data=f"he:{code}:c")])
-        if teams:
-            rows.append([InlineKeyboardButton(t(lang, "edit_move"), callback_data=f"he:{code}:m")])
-        if info.get("paused") or info.get("pause_from"):
-            rows.append([InlineKeyboardButton(t(lang, "habit_resume_btn"),
-                                              callback_data=f"he:{code}:r")])
-        else:
-            rows.append([InlineKeyboardButton(t(lang, "pause_tomorrow"), callback_data=f"he:{code}:pt"),
-                         InlineKeyboardButton(t(lang, "pause_today"), callback_data=f"he:{code}:pd")])
-        rows.append([InlineKeyboardButton(
-            t(lang, "btn_timers"),
-            callback_data=f"tmr:open:{'h' if kind == 'p' else 'H'}:{item_id}")])
-        rows.append([InlineKeyboardButton(t(lang, "edit_delete"), callback_data=f"he:{code}:x")])
-    rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="habit:back")])
+    if can_manage:
+        remind_row = [InlineKeyboardButton(t(lang, "edit_remind"), callback_data=f"he:{code}:rm")]
+        if not protected:
+            remind_row.append(InlineKeyboardButton(
+                t(lang, "btn_timers"),
+                callback_data=f"tmr:open:{'h' if kind == 'p' else 'H'}:{item_id}"))
+        rows.append(remind_row)
+    if not draft:
+        if can_manage and not protected:
+            if teams:
+                rows.append([InlineKeyboardButton(t(lang, "edit_move"), callback_data=f"he:{code}:m")])
+            if info.get("paused") or info.get("pause_from"):
+                rows.append([InlineKeyboardButton(t(lang, "habit_resume_btn"),
+                                                  callback_data=f"he:{code}:r")])
+            else:
+                rows.append([InlineKeyboardButton(t(lang, "pause_tomorrow"), callback_data=f"he:{code}:pt"),
+                             InlineKeyboardButton(t(lang, "pause_today"), callback_data=f"he:{code}:pd")])
+        # Every habit can go — a ritual by switching its module off — and
+        # come back from ♻️ with its history.
+        if can_manage and (kind == "p" or not protected):
+            rows.append([InlineKeyboardButton(t(lang, "edit_delete"), callback_data=f"he:{code}:x")])
+        rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="habit:back")])
+    else:
+        rows += _save_cancel_rows(lang, "he", code)
     return "\n".join(lines), InlineKeyboardMarkup(rows)
 
 
 async def show_task_edit(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
-                         user: User, ws: int, kind: str, item_id: int) -> None:
+                         user: User, ws: int, kind: str, item_id: int, *,
+                         edit: bool = True) -> None:
+    draft = draft_changes(ctx, _draft_key("t", kind, item_id))
     with SessionLocal() as s:
-        view = _task_edit_view(s, user, ws, kind, item_id)
+        view = _task_edit_view(s, user, ws, kind, item_id, draft)
     if view is None:
         await _notice(update, t(user.language, "not_found"))
         return
-    await _show(update, view[0], view[1], edit=True)
+    await _show(update, view[0], view[1], edit=edit)
 
 
 async def show_habit_edit(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
-                          user: User, ws: int, kind: str, item_id: int) -> None:
+                          user: User, ws: int, kind: str, item_id: int, *,
+                          edit: bool = True) -> None:
+    draft = draft_changes(ctx, _draft_key("h", kind, item_id))
     with SessionLocal() as s:
-        view = _habit_edit_view(s, user, ws, kind, item_id)
+        view = _habit_edit_view(s, user, ws, kind, item_id, draft)
     if view is None:
         await _notice(update, t(user.language, "not_found"))
         return
-    await _show(update, view[0], view[1], edit=True)
+    await _show(update, view[0], view[1], edit=edit)
+
+
+def _save_task_draft(s, user: User, ws: int, kind: str, item_id: int,
+                     changes: dict) -> None:
+    fields: dict = {}
+    if changes.get("title"):
+        fields["title"] = changes["title"]
+    if "deadline" in changes:
+        fields["deadline"] = (date.fromisoformat(changes["deadline"])
+                              if changes["deadline"] else None)
+    if "due_time" in changes:
+        fields["due_time"] = (_parse_hhmm(changes["due_time"])
+                              if changes["due_time"] else None)
+    if "remind_before" in changes:
+        fields["remind_before"] = changes["remind_before"]
+    if changes.get("priority") in svc.PRIORITIES:
+        fields["priority"] = changes["priority"]
+    if not fields:
+        return
+    if kind == "p":
+        svc.update_task(s, ws, item_id, **fields)
+    else:
+        svc.edit_team_task(s, user.telegram_id, item_id, **fields)
+
+
+def _save_habit_draft(s, user: User, ws: int, kind: str, item_id: int,
+                      changes: dict) -> None:
+    fields: dict = {}
+    if changes.get("name"):
+        fields["name"] = changes["name"]
+    if changes.get("category") in svc.HABIT_CATEGORIES:
+        fields["category"] = changes["category"]
+    if "remind_at" in changes:
+        fields["remind_at"] = (_parse_hhmm(changes["remind_at"])
+                               if changes["remind_at"] else None)
+    if not fields:
+        return
+    if kind == "p":
+        svc.update_habit(s, ws, item_id, **fields)
+    else:
+        svc.edit_team_habit(s, user.telegram_id, item_id, **fields)
 
 
 async def route_task_edit(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                           action: str, parts: list[str], user: User, ws: int) -> None:
-    """te / ted / tep / tem / tex — every change to a task, from the chat."""
+    """te / ted / tet / ter / tep / tem / tex — every change to a task, from the chat.
+
+    Fields (name, date, time, reminder, priority) go into the draft and are
+    written on 💾; moving and deleting happen at once.
+    """
     lang = user.language
     kind, item_id = parts[1], int(parts[2])
     tz = svc.user_tz(user)
     code = f"{kind}:{item_id}"
+    key = _draft_key("t", kind, item_id)
+    back = [InlineKeyboardButton(t(lang, "back"), callback_data=f"tedit:{code}")]
 
     if action == "te":
         op = parts[3]
@@ -2911,15 +3377,27 @@ async def route_task_edit(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                 [InlineKeyboardButton(t(lang, "days_7"), callback_data=f"ted:{code}:7"),
                  InlineKeyboardButton(t(lang, "days_none"), callback_data=f"ted:{code}:none")],
                 [InlineKeyboardButton(t(lang, "days_custom"), callback_data=f"ted:{code}:custom")],
-                [InlineKeyboardButton(t(lang, "back"), callback_data=f"tedit:{code}")],
-            ]), edit=True)
+                back]), edit=True)
+        elif op == "t":
+            start_flow(ctx, "task_edit_time", target_id=item_id, kind=kind)
+            await _show(update, t(lang, "ask_task_time"), InlineKeyboardMarkup([
+                [InlineKeyboardButton(v, callback_data=f"tet:{code}:{v.replace(':', '')}")
+                 for v in ("09:00", "12:00", "15:00", "18:00")],
+                [InlineKeyboardButton(t(lang, "time_none"), callback_data=f"tet:{code}:none")],
+                back]), edit=True)
+        elif op == "r":
+            choices = [InlineKeyboardButton(_remind_label(m, lang),
+                                            callback_data=f"ter:{code}:{m}")
+                       for m in TASK_REMIND_CHOICES]
+            await _show(update, t(lang, "ask_remind"), InlineKeyboardMarkup(
+                [choices[:3], choices[3:],
+                 [InlineKeyboardButton(t(lang, "remind_off"), callback_data=f"ter:{code}:off")],
+                 back]), edit=True)
         elif op == "p":
             await _show(update, t(lang, "ask_priority"), InlineKeyboardMarkup([
                 [InlineKeyboardButton(f"{PRIORITY_MARK[p]} {t(lang, 'prio_' + p)}",
                                       callback_data=f"tep:{code}:{p[0]}")]
-                for p in ("high", "medium", "low")] + [
-                [InlineKeyboardButton(t(lang, "back"), callback_data=f"tedit:{code}")]]),
-                edit=True)
+                for p in ("high", "medium", "low")] + [back]), edit=True)
         elif op == "m":
             with SessionLocal() as s:
                 teams = svc.teams_for(s, user.telegram_id)
@@ -2928,33 +3406,47 @@ async def route_task_edit(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         elif op == "x":
             await _show(update, t(lang, "confirm_delete"), InlineKeyboardMarkup([
                 [InlineKeyboardButton(t(lang, "edit_delete"), callback_data=f"tex:{code}")],
-                [InlineKeyboardButton(t(lang, "back"), callback_data=f"tedit:{code}")]]),
-                edit=True)
+                back]), edit=True)
+        elif op == "sv":
+            changes = draft_changes(ctx, key)
+            try:
+                with SessionLocal() as s:
+                    _save_task_draft(s, user, ws, kind, item_id, changes)
+            finally:
+                draft_drop(ctx)
+            await _toast(update, t(lang, "edit_saved"))
+            await show_task_edit(update, ctx, user, ws, kind, item_id)
+        elif op == "cx":
+            draft_drop(ctx)
+            ctx.user_data.pop("flow", None)
+            await _toast(update, t(lang, "edit_discarded"))
+            await show_task_edit(update, ctx, user, ws, kind, item_id)
         return
 
     try:
-        with SessionLocal() as s:
-            if action == "ted":
-                value = parts[3]
-                if value == "custom":
-                    start_flow(ctx, "task_edit_date", target_id=item_id, kind=kind)
-                    await _show(update, t(lang, "cd_ask_date", title=""),
-                                cancel_keyboard(lang), edit=True)
-                    return
-                today = svc.today_local(tz)
-                new = None if value == "none" else today + timedelta(days=int(value))
-                if kind == "p":
-                    svc.update_task(s, ws, item_id, deadline=new)
-                else:
-                    svc.edit_team_task(s, user.telegram_id, item_id, deadline=new)
-            elif action == "tep":
-                priority = {"h": "high", "m": "medium", "l": "low"}[parts[3]]
-                if kind == "p":
-                    svc.update_task(s, ws, item_id, priority=priority)
-                else:
-                    svc.edit_team_task(s, user.telegram_id, item_id, priority=priority)
-            elif action == "tem":
-                target = parts[3]
+        if action == "ted":
+            value = parts[3]
+            if value == "custom":
+                start_flow(ctx, "task_edit_date", target_id=item_id, kind=kind)
+                await _show(update, t(lang, "cd_ask_date", title=""),
+                            cancel_keyboard(lang), edit=True)
+                return
+            today = svc.today_local(tz)
+            new = None if value == "none" else today + timedelta(days=int(value))
+            draft_set(ctx, key, deadline=new.isoformat() if new else None)
+        elif action == "tet":
+            value = parts[3]
+            ctx.user_data.pop("flow", None)
+            draft_set(ctx, key, due_time=None if value == "none"
+                      else f"{value[:2]}:{value[2:]}")
+        elif action == "ter":
+            value = parts[3]
+            draft_set(ctx, key, remind_before=None if value == "off" else int(value))
+        elif action == "tep":
+            draft_set(ctx, key, priority={"h": "high", "m": "medium", "l": "low"}[parts[3]])
+        elif action == "tem":
+            target = parts[3]
+            with SessionLocal() as s:
                 if kind == "p" and target != "p":
                     moved = svc.move_task(s, user.telegram_id, task_id=item_id,
                                           to_team=int(target))
@@ -2973,7 +3465,9 @@ async def route_task_edit(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                 if kind == "t" and target != "p":
                     await _notice(update, t(lang, "move_between_teams"))
                     return
-            elif action == "tex":
+        elif action == "tex":
+            draft_drop(ctx)
+            with SessionLocal() as s:
                 if kind == "p":
                     title = svc.delete_task(s, ws, item_id)
                 else:
@@ -2986,9 +3480,9 @@ async def route_task_edit(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                         await notify_teammates(team_id, user.telegram_id,
                                                "team_ev_task_del", title,
                                                team.name if team else "")
-                await _show(update, t(lang, "task_deleted", title=esc(title)), None, edit=True)
-                await show_tasks(update, ctx)
-                return
+            await _show(update, t(lang, "task_deleted", title=esc(title)), None, edit=True)
+            await show_tasks(update, ctx)
+            return
     except PermissionError:
         await _notice(update, t(lang, "team_only_creator"))
         return
@@ -3000,10 +3494,12 @@ async def route_task_edit(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 
 async def route_habit_edit(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                            action: str, parts: list[str], user: User, ws: int) -> None:
-    """he / hec / hem / hex — every change to a habit, from the chat."""
+    """he / hec / her / hem / hex — every change to a habit, from the chat."""
     lang = user.language
     kind, item_id = parts[1], int(parts[2])
     code = f"{kind}:{item_id}"
+    key = _draft_key("h", kind, item_id)
+    back = [InlineKeyboardButton(t(lang, "back"), callback_data=f"hedit:{code}")]
     try:
         with SessionLocal() as s:
             if action == "he":
@@ -3017,9 +3513,17 @@ async def route_habit_edit(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                     await _show(update, t(lang, "ask_habit_cat"), InlineKeyboardMarkup(
                         [[InlineKeyboardButton(t(lang, CATEGORY_KEYS[c]),
                                                callback_data=f"hec:{code}:{c[0]}")]
-                         for c in svc.HABIT_CATEGORIES] + [
-                        [InlineKeyboardButton(t(lang, "back"), callback_data=f"hedit:{code}")]]),
-                        edit=True)
+                         for c in svc.HABIT_CATEGORIES] + [back]), edit=True)
+                    return
+                if op == "rm":
+                    start_flow(ctx, "habit_remind", target_id=item_id, kind=kind)
+                    presets = [InlineKeyboardButton(v, callback_data=f"her:{code}:{v.replace(':', '')}")
+                               for v in HABIT_REMIND_CHOICES]
+                    await _show(update, t(lang, "ask_habit_remind"), InlineKeyboardMarkup(
+                        [presets[:3], presets[3:],
+                         [InlineKeyboardButton(t(lang, "remind_off"),
+                                               callback_data=f"her:{code}:off")],
+                         back]), edit=True)
                     return
                 if op == "m":
                     teams = svc.teams_for(s, user.telegram_id)
@@ -3029,10 +3533,18 @@ async def route_habit_edit(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                 if op == "x":
                     await _show(update, t(lang, "confirm_delete_habit"), InlineKeyboardMarkup([
                         [InlineKeyboardButton(t(lang, "edit_delete"), callback_data=f"hex:{code}")],
-                        [InlineKeyboardButton(t(lang, "back"), callback_data=f"hedit:{code}")]]),
-                        edit=True)
+                        back]), edit=True)
                     return
-                if op in ("pt", "pd", "r"):
+                if op == "sv":
+                    changes = draft_changes(ctx, key)
+                    draft_drop(ctx)
+                    _save_habit_draft(s, user, ws, kind, item_id, changes)
+                    await _toast(update, t(lang, "edit_saved"))
+                elif op == "cx":
+                    draft_drop(ctx)
+                    ctx.user_data.pop("flow", None)
+                    await _toast(update, t(lang, "edit_discarded"))
+                elif op in ("pt", "pd", "r"):
                     paused = op != "r"
                     start = "tomorrow" if op == "pt" else "today"
                     if kind == "p":
@@ -3041,11 +3553,13 @@ async def route_habit_edit(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                         svc.edit_team_habit(s, user.telegram_id, item_id,
                                             paused=paused, from_day=start)
             elif action == "hec":
-                category = {"n": "non_negotiable", "t": "target", "b": "bonus"}[parts[3]]
-                if kind == "p":
-                    svc.update_habit(s, ws, item_id, category=category)
-                else:
-                    svc.edit_team_habit(s, user.telegram_id, item_id, category=category)
+                draft_set(ctx, key, category={"n": "non_negotiable", "t": "target",
+                                              "b": "bonus"}[parts[3]])
+            elif action == "her":
+                value = parts[3]
+                ctx.user_data.pop("flow", None)
+                draft_set(ctx, key, remind_at=None if value == "off"
+                          else f"{value[:2]}:{value[2:]}")
             elif action == "hem":
                 target = parts[3]
                 if kind == "p" and target != "p":
@@ -3067,8 +3581,9 @@ async def route_habit_edit(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                     await _notice(update, t(lang, "move_between_teams"))
                     return
             elif action == "hex":
+                draft_drop(ctx)
                 if kind == "p":
-                    name = svc.delete_habit(s, ws, item_id)
+                    name = svc.remove_habit(s, ws, item_id)
                 else:
                     row = s.get(db.TeamHabit, item_id)
                     name, team_id = (row.name, row.team_id) if row else ("", None)
@@ -3079,6 +3594,7 @@ async def route_habit_edit(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                                                "team_ev_habit_del", name,
                                                team.name if team else "")
                 await log_event(ctx.bot, user, "🗑 HABIT DELETED", f"Habit: {esc(name)}")
+                await _toast(update, t(lang, "habit_removed", name=name))
                 await show_habits(update, ctx, edit=True)
                 return
     except PermissionError:
@@ -3091,6 +3607,257 @@ async def route_habit_edit(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         await _notice(update, t(lang, "not_found"))
         return
     await show_habit_edit(update, ctx, user, ws, kind, item_id)
+
+
+# ---------------------------------------------------------------------------
+# Projects — your own and your teams', side by side
+# ---------------------------------------------------------------------------
+#
+# Callback data is `pj:<verb>:<p|t>:<id>` — `p` a personal project, `t` a
+# team's. A team project is managed by whoever opened it, an admin or the
+# owner; anybody in the team may file tasks on it.
+
+def _project_row_line(project: dict) -> str:
+    done = project.get("status") == "done"
+    total, finished = project.get("tasks_total", 0), project.get("tasks_done", 0)
+    return (f"{'✅' if done else '•'} {esc(project['name'])}"
+            + (f" — {finished}/{total}" if total else ""))
+
+
+async def show_projects(update: Update, ctx: ContextTypes.DEFAULT_TYPE, *,
+                        edit: bool = False) -> None:
+    got = await guard(update, ctx, write=False)
+    if got is None:
+        return
+    user, ws = got
+    lang = user.language
+    with SessionLocal() as s:
+        personal = svc.list_projects(s, ws)
+        shared = [(team.id, team.name, svc.list_team_projects(s, user.telegram_id, team.id))
+                  for team in svc.teams_for(s, user.telegram_id)]
+
+    lines = [t(lang, "projects_title")]
+    buttons = []
+    if personal:
+        lines += ["", f"<b>{t(lang, 'dest_personal')}</b>"]
+        lines += [_project_row_line(p) for p in personal]
+        buttons += [(f"📁 {p['name'][:32]}", f"pj:open:p:{p['id']}") for p in personal]
+    for _team_id, team_name, rows in shared:
+        if not rows:
+            continue
+        lines += ["", f"<b>👥 {esc(team_name)}</b>"]
+        lines += [_project_row_line(p) for p in rows]
+        buttons += [(f"👥 {p['name'][:30]}", f"pj:open:t:{p['id']}") for p in rows]
+    if not buttons:
+        lines += ["", t(lang, "projects_none")]
+
+    rows = [[InlineKeyboardButton(label, callback_data=data)] for label, data in buttons[:14]]
+    rows.append([InlineKeyboardButton(t(lang, "btn_add_project"), callback_data="pj:new")])
+    rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="task:back")])
+    await _show(update, "\n".join(lines), InlineKeyboardMarkup(rows), edit=edit)
+
+
+def _project_view(s, user: User, ws: int, kind: str,
+                  project_id: int) -> tuple[str, InlineKeyboardMarkup] | None:
+    lang = user.language
+    tz = svc.user_tz(user)
+    if kind == "p":
+        project = next((p for p in svc.list_projects(s, ws) if p["id"] == project_id), None)
+        if project is None:
+            return None
+        tasks = svc.project_tasks(s, ws, project_id, tz=tz)
+        for task in tasks:
+            task["done"] = task["status"] == "done"
+        where, can_manage = t(lang, "dest_personal"), True
+        percent = project.get("progress", 0)
+    else:
+        try:
+            project = svc.team_project_for(s, user.telegram_id, project_id)
+        except svc.NotFound:
+            return None
+        tasks = svc.list_team_tasks(s, user.telegram_id, project["team_id"],
+                                    project_id=project_id, tz=tz)
+        where, can_manage = f"👥 {esc(project['team_name'])}", project["can_manage"]
+        percent = project.get("percent", 0)
+
+    done = project.get("status") == "done"
+    lines = [f"📁 <b>{esc(project['name'])}</b>", f"📍 {where}"]
+    if project.get("description"):
+        lines.append(f"<i>{esc(project['description'])}</i>")
+    lines.append(
+        f"📅 {short_date(project['deadline'], lang) if project.get('deadline') else '—'}"
+        f" · {t(lang, 'project_status_done' if done else 'project_status_active')}")
+    total = project.get("tasks_total", 0)
+    lines.append(f"{_bar(percent)} {project.get('tasks_done', 0)}/{total} · {percent}%")
+    lines += ["", f"<b>{t(lang, 'project_tasks')}</b>"]
+    if tasks:
+        for task in tasks[:12]:
+            mark = "✅" if task.get("done") else PRIORITY_MARK.get(task["priority"], "▫️")
+            when = f" · {short_date(task['deadline'], lang)}" if task.get("deadline") else ""
+            lines.append(f"{mark} {esc(task['title'])}{when}")
+    else:
+        lines.append(t(lang, "none"))
+    if not can_manage:
+        lines += ["", f"<i>{t(lang, 'proj_only_manager')}</i>"]
+
+    code = f"{kind}:{project_id}"
+    rows = [[InlineKeyboardButton(
+        f"{'✅' if task.get('done') else '⬜'} {task['title'][:36]}",
+        callback_data=f"tedit:{kind}:{task['id']}")]
+        for task in tasks[:8] if not task.get("done")]
+    rows.append([InlineKeyboardButton(t(lang, "proj_btn_add_task"), callback_data=f"pj:task:{code}")])
+    if can_manage:
+        rows.append([
+            InlineKeyboardButton(t(lang, "proj_btn_reopen" if done else "proj_btn_done"),
+                                 callback_data=f"pj:st:{code}:{'active' if done else 'done'}"),
+            InlineKeyboardButton(t(lang, "proj_btn_rename"), callback_data=f"pj:ren:{code}")])
+        rows.append([
+            InlineKeyboardButton(t(lang, "proj_btn_desc"), callback_data=f"pj:desc:{code}"),
+            InlineKeyboardButton(t(lang, "proj_btn_deadline"), callback_data=f"pj:dl:{code}")])
+        rows.append([InlineKeyboardButton(t(lang, "proj_btn_delete"), callback_data=f"pj:x:{code}")])
+    rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="pj:list")])
+    return "\n".join(lines), InlineKeyboardMarkup(rows)
+
+
+async def show_project(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                       project_id: int, kind: str = "p", *, edit: bool = True) -> None:
+    got = await guard(update, ctx, write=False)
+    if got is None:
+        return
+    user, ws = got
+    with SessionLocal() as s:
+        view = _project_view(s, user, ws, kind, project_id)
+    if view is None:
+        await _notice(update, t(user.language, "not_found"))
+        return
+    await _show(update, view[0], view[1], edit=edit)
+
+
+def _update_project(s, user: User, ws: int, kind: str, project_id: int,
+                    **fields) -> str:
+    if kind == "p":
+        return svc.update_project(s, ws, project_id, **fields).name
+    return svc.update_team_project(s, user.telegram_id, project_id, **fields)["name"]
+
+
+async def create_project(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                         user: User, ws: int, title: str, dest: str) -> None:
+    ctx.user_data.pop("flow", None)
+    with SessionLocal() as s:
+        if dest == "p":
+            project_id, kind = svc.add_project(s, ws, title).id, "p"
+            team_name = None
+        else:
+            made = svc.add_team_project(s, user.telegram_id, int(dest), title)
+            project_id, kind = made["id"], "t"
+            team = svc.team_for(s, user.telegram_id, int(dest))
+            team_name = team.name if team else ""
+    await log_event(ctx.bot, user, "📁 PROJECT ADDED", f"Project: {esc(title)}")
+    if team_name is not None:
+        await notify_teammates(int(dest), user.telegram_id, "team_ev_project_add",
+                               title, team_name)
+    await show_project(update, ctx, project_id, kind,
+                       edit=update.callback_query is not None)
+
+
+async def route_project(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                        action: str, parts: list[str], user: User, ws: int) -> None:
+    """pj:* and pjd / pjdest — projects, personal and shared."""
+    lang = user.language
+    verb = parts[1] if len(parts) > 1 else "list"
+
+    if action == "pjdest":
+        flow = current_flow(ctx, "project_dest") or {}
+        if not flow.get("title"):
+            await _notice(update, t(lang, "flow_expired"))
+            return
+        await create_project(update, ctx, user, ws, flow["title"], parts[1])
+        return
+
+    if action == "pjd":
+        kind, project_id, value = parts[1], int(parts[2]), parts[3]
+        if value == "custom":
+            start_flow(ctx, "project_deadline", kind=kind, target_id=project_id)
+            await _show(update, t(lang, "ask_project_deadline"), cancel_keyboard(lang), edit=True)
+            return
+        today = svc.today_local(svc.user_tz(user))
+        new = None if value == "none" else today + timedelta(days=int(value))
+        with SessionLocal() as s:
+            _update_project(s, user, ws, kind, project_id, deadline=new)
+        await show_project(update, ctx, project_id, kind)
+        return
+
+    if verb == "list":
+        await show_projects(update, ctx, edit=True)
+        return
+    if verb == "new":
+        start_flow(ctx, "project_add")
+        await _show(update, t(lang, "ask_project_name"), cancel_keyboard(lang), edit=False)
+        return
+
+    kind, project_id = parts[2], int(parts[3])
+    code = f"{kind}:{project_id}"
+    back = [InlineKeyboardButton(t(lang, "back"), callback_data=f"pj:open:{code}")]
+    if verb == "open":
+        await show_project(update, ctx, project_id, kind)
+    elif verb == "task":
+        dest = "p"
+        if kind == "t":
+            with SessionLocal() as s:
+                dest = str(svc.team_project_for(s, user.telegram_id, project_id)["team_id"])
+        start_flow(ctx, "task_title", dest=dest, project_id=project_id)
+        await update.effective_message.reply_text(
+            t(lang, "ask_task_name"), reply_markup=suggest_keyboard(lang, "t"))
+    elif verb == "st":
+        with SessionLocal() as s:
+            _update_project(s, user, ws, kind, project_id, status=parts[4])
+        await show_project(update, ctx, project_id, kind)
+    elif verb == "ren":
+        start_flow(ctx, "project_rename", kind=kind, target_id=project_id)
+        await _show(update, t(lang, "ask_project_rename"), cancel_keyboard(lang), edit=True)
+    elif verb == "desc":
+        start_flow(ctx, "project_desc", kind=kind, target_id=project_id)
+        await _show(update, t(lang, "ask_project_desc"), cancel_keyboard(lang), edit=True)
+    elif verb == "dl":
+        await _show(update, t(lang, "ask_project_deadline"), InlineKeyboardMarkup([
+            [InlineKeyboardButton(t(lang, "days_7"), callback_data=f"pjd:{code}:7"),
+             InlineKeyboardButton("30", callback_data=f"pjd:{code}:30"),
+             InlineKeyboardButton("90", callback_data=f"pjd:{code}:90")],
+            [InlineKeyboardButton(t(lang, "days_none"), callback_data=f"pjd:{code}:none"),
+             InlineKeyboardButton(t(lang, "days_custom"), callback_data=f"pjd:{code}:custom")],
+            back]), edit=True)
+    elif verb == "x":
+        await _show(update, t(lang, "proj_confirm_delete"), InlineKeyboardMarkup([
+            [InlineKeyboardButton(t(lang, "proj_btn_delete"), callback_data=f"pj:xx:{code}")],
+            back]), edit=True)
+    elif verb == "xx":
+        with SessionLocal() as s:
+            if kind == "p":
+                name = svc.delete_project(s, ws, project_id)
+            else:
+                name = svc.delete_team_project(s, user.telegram_id, project_id)
+        await log_event(ctx.bot, user, "🗑 PROJECT DELETED", f"Project: {esc(name)}")
+        await _toast(update, t(lang, "project_deleted", name=name))
+        await show_projects(update, ctx, edit=True)
+
+
+# ---------------------------------------------------------------------------
+# Ten suggestions under every "type a name" prompt
+# ---------------------------------------------------------------------------
+
+def suggestions(lang: str, what: str) -> list[str]:
+    """The ten habits (`h`) or tasks (`t`) offered for this language."""
+    return [x for x in t(lang, "sug_habits" if what == "h" else "sug_tasks").split("|") if x]
+
+
+def suggest_keyboard(lang: str, what: str) -> InlineKeyboardMarkup:
+    """Small, two to a row, with Cancel under them — a hint, not a pitch."""
+    items = suggestions(lang, what)
+    buttons = [InlineKeyboardButton(label, callback_data=f"sug:{what}:{i}")
+               for i, label in enumerate(items)]
+    rows = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
+    rows.append([InlineKeyboardButton(t(lang, "cancel"), callback_data="flow:cancel")])
+    return InlineKeyboardMarkup(rows)
 
 
 # ---------------------------------------------------------------------------
@@ -3209,17 +3976,17 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
     # Subscription check is available before onboarding completes.
     if action == "sub" and parts[1] == "check":
-        tg_user = update.effective_user
-        state = await is_subscribed(ctx.bot, tg_user.id)
+        uid = account_of(update)
+        state = await is_subscribed(ctx.bot, uid)
         with SessionLocal() as s:
-            user = s.get(User, tg_user.id)
+            user = s.get(User, uid)
             lang = user.language if user else "uz"
             if state is not True:
                 await query.edit_message_text(
                     t(lang, "sub_missing" if state is False else "sub_unknown"),
                     reply_markup=subscribe_keyboard(lang))
                 return
-            changed = record_membership(s, tg_user.id, True, "api")
+            changed = record_membership(s, uid, True, "api")
             first_time = not user.onboarded
             if first_time:
                 user.onboarding_step = "done"
@@ -3227,7 +3994,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             s.commit()
             # Onboarding can also finish here, on the far side of the channel
             # check — so the same referral question has to be asked.
-            qualified_inviter = svc.maybe_qualify_referral(s, tg_user.id) \
+            qualified_inviter = svc.maybe_qualify_referral(s, uid) \
                 if first_time else None
             snapshot, name = user, user.first_name or ""
         if changed:
@@ -3235,22 +4002,26 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if qualified_inviter is not None:
             await notify_referral_qualified(ctx.bot, qualified_inviter)
         if first_time:
-            await finish_onboarding_progress(tg_user.id)
+            await finish_onboarding_progress(uid)
         # Joining and checking lands the user inside — never back at /start.
         await query.edit_message_text(t(lang, "sub_restored"))
         await update.effective_message.reply_text(
             t(lang, "welcome_in", name=esc(name)) if first_time else t(lang, "saved"),
-            parse_mode=ParseMode.HTML, reply_markup=main_menu(lang))
+            parse_mode=ParseMode.HTML, reply_markup=menu_for(uid))
         await show_home(update, ctx)
         return
 
     if action == "lang":
-        tg_user = update.effective_user
+        uid = account_of(update)
+        if parts[1] not in ("uz", "en", "ru"):
+            return
         with SessionLocal() as s:
-            user = s.get(User, tg_user.id)
+            user = s.get(User, uid)
+            if user is None:
+                return
             user.language = parts[1]
             if not user.onboarded:
-                user.onboarding_step = "intro"
+                user.onboarding_step = "account"
             s.commit()
             lang, onboarded = user.language, user.onboarded
             snapshot = user
@@ -3258,27 +4029,33 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
         if not onboarded:
             # First words in the language they just picked, by name — then the
-            # pitch, before a single question is asked.
+            # one question that matters: new here, or signing in?
             await query.edit_message_text(
-                t(lang, "hello_named", name=esc(tg_user.first_name or "")),
+                t(lang, "hello_named", name=esc(update.effective_user.first_name or "")),
                 parse_mode=ParseMode.HTML)
-            await resume_onboarding(update, ctx, "intro")
+            await resume_onboarding(update, ctx, "account")
         else:
             # A settings change says what it changed, not just "saved".
             await query.edit_message_text(t(lang, "lang_changed"))
             await update.effective_message.reply_text(t(lang, "lang_changed"),
-                                                      reply_markup=main_menu(lang))
+                                                      reply_markup=menu_for(uid))
+        return
+
+    # The account screen, signing in and out. Above the guard: somebody who
+    # has not set up an account of their own can still sign in to one.
+    if action == "acc":
+        await route_account(update, ctx, parts)
         return
 
     # Setup runs before onboarding completes, so it sits above the guard.
     if action == "setup":
-        tg_user = update.effective_user
+        uid = account_of(update)
         with SessionLocal() as s:
-            user = s.get(User, tg_user.id)
+            user = s.get(User, uid)
             if user is None:
                 return
             lang, step = user.language, user.onboarding_step
-            telegram_name = user.first_name or tg_user.first_name or ""
+            telegram_name = user.first_name or update.effective_user.first_name or ""
 
         if parts[1] == "go":
             await query.edit_message_reply_markup(reply_markup=None)
@@ -3306,15 +4083,15 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if parts[1] == "mod_done":
             chosen = set(setup_data(ctx).get("modules") or [])
             with SessionLocal() as s:
-                user = s.get(User, tg_user.id)
-                ws = svc.workspace_id_for(s, tg_user.id)
+                user = s.get(User, uid)
+                ws = svc.workspace_id_for(s, uid)
                 svc.set_modules(s, ws, chosen, user=user)
             setup_data(ctx)["team"] = "team" in chosen
             labels = [t(lang, MODULE_LABELS[n]) for n in SETUP_MODULES if n in chosen]
             await query.edit_message_text(
                 t(lang, "modules_set", list=", ".join(labels) if labels
                   else t(lang, "modules_none")), parse_mode=ParseMode.HTML)
-            return await advance_setup(update, ctx, "goal")
+            return await advance_setup(update, ctx, "done")
 
         if parts[1] == "skip":
             await query.edit_message_reply_markup(reply_markup=None)
@@ -3331,9 +4108,8 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     if action == "gender":
-        tg_user = update.effective_user
         with SessionLocal() as s:
-            user = s.get(User, tg_user.id)
+            user = s.get(User, account_of(update))
             user.gender = parts[1]
             s.commit()
             lang = user.language
@@ -3348,9 +4124,15 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if action == "flow" and parts[1] == "cancel":
         ctx.user_data.pop("flow", None)
         with SessionLocal() as s:
-            user = s.get(User, update.effective_user.id)
+            user = s.get(User, account_of(update))
             lang = user.language if user else "uz"
+            onboarded = bool(user and user.onboarded)
+            step = user.onboarding_step if user else "language"
         await query.edit_message_text(t(lang, "cancelled"))
+        if not onboarded:
+            # Backing out of signing in during setup lands on the setup step
+            # it came from, not on a dead end.
+            await resume_onboarding(update, ctx, step)
         return
 
     # The invite screen, from Settings and from the "invite again" button on a
@@ -3407,7 +4189,25 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         elif sub == "add":
             start_flow(ctx, "habit_name")
             await message.reply_text(t(lang, "ask_habit_name"),
-                                     reply_markup=cancel_keyboard(lang))
+                                     reply_markup=suggest_keyboard(lang, "h"))
+        elif sub == "restorelist":
+            with SessionLocal() as s:
+                gone = svc.archived_habits(s, ws)
+            if not gone:
+                await _notice(update, t(lang, "empty"))
+                return
+            rows = [[InlineKeyboardButton(f"♻️ {h['name'][:40]}",
+                                          callback_data=f"habit:restore:{h['id']}")]
+                    for h in gone]
+            rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="habit:back")])
+            await query.edit_message_text(t(lang, "restore_title"),
+                                          reply_markup=InlineKeyboardMarkup(rows))
+        elif sub == "restore":
+            with SessionLocal() as s:
+                name = svc.restore_habit(s, ws, int(parts[2])).name
+            await log_event(ctx.bot, user, "♻️ HABIT RESTORED", f"Habit: {esc(name)}")
+            await _toast(update, t(lang, "restored", name=name))
+            await show_habits(update, ctx, edit=True)
         elif sub == "dellist":
             with SessionLocal() as s:
                 habits = [h for h in svc.list_habits(s, ws) if not h["protected"]]
@@ -3440,8 +4240,9 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             # Private and shared habits together; a shared one is edited by
             # its creator, an admin or the owner, and says so if you are not.
             with SessionLocal() as s:
-                mine = [h for h in svc.list_habits(s, ws, tz=svc.user_tz(user))
-                        if not h["protected"]]
+                # Every habit, the automatic ones too: each can be deleted
+                # and given a reminder, even where it cannot be renamed.
+                mine = svc.list_habits(s, ws, tz=svc.user_tz(user))
                 shared = svc.team_items_for_day(s, user.telegram_id,
                                                 tz=svc.user_tz(user))["habits"]
                 shared = [h for h in shared if not h.get("mirrored")]
@@ -3469,7 +4270,24 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         if sub == "add":
             start_flow(ctx, "task_title")
             await message.reply_text(t(lang, "ask_task_name"),
-                                     reply_markup=cancel_keyboard(lang))
+                                     reply_markup=suggest_keyboard(lang, "t"))
+        elif sub == "restorelist":
+            with SessionLocal() as s:
+                gone = svc.archived_tasks(s, ws)
+            if not gone:
+                await _notice(update, t(lang, "empty"))
+                return
+            rows = [[InlineKeyboardButton(f"♻️ {x['title'][:40]}",
+                                          callback_data=f"task:restore:{x['id']}")]
+                    for x in gone]
+            rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="task:back")])
+            await query.edit_message_text(t(lang, "restore_title"),
+                                          reply_markup=InlineKeyboardMarkup(rows))
+        elif sub == "restore":
+            with SessionLocal() as s:
+                title = svc.restore_task(s, ws, int(parts[2])).title
+            await _toast(update, t(lang, "task_restored", title=title))
+            await show_tasks(update, ctx, edit=True)
         elif sub in ("donelist", "editlist", "dellist"):
             with SessionLocal() as s:
                 tasks = _all_open_tasks(s, ws)
@@ -3528,13 +4346,13 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     elif action == "tedit":
         await show_task_edit(update, ctx, user, ws, parts[1], int(parts[2]))
 
-    elif action in ("te", "ted", "tep", "tem", "tex"):
+    elif action in ("te", "ted", "tet", "ter", "tep", "tem", "tex"):
         await route_task_edit(update, ctx, action, parts, user, ws)
 
     elif action == "hedit":
         await show_habit_edit(update, ctx, user, ws, parts[1], int(parts[2]))
 
-    elif action in ("he", "hec", "hem", "hex"):
+    elif action in ("he", "hec", "her", "hem", "hex"):
         await route_habit_edit(update, ctx, action, parts, user, ws)
 
     elif action == "cap":
@@ -3620,17 +4438,19 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             await _notice(update, t(lang, "flow_expired"))
             return
         dest = flow.get("dest") or "p"
+        project_id = flow.get("project_id")
         if parts[1] == "custom":
-            start_flow(ctx, "task_custom_days", title=title, dest=dest)
+            start_flow(ctx, "task_custom_days", title=title, dest=dest,
+                       project_id=project_id)
             await query.edit_message_text(t(lang, "ask_custom_days"))
             return
         if parts[1] == "none":
             await query.edit_message_text(t(lang, "no_deadline"))
-            await ask_task_project(update, ctx, title, None, dest)
+            await ask_task_project(update, ctx, title, None, dest, project_id=project_id)
             return
         deadline = svc.today_local(svc.user_tz(user)) + timedelta(days=int(parts[1]))
         await query.edit_message_text(f"📅 {short_date(deadline.isoformat(), lang)}")
-        await ask_task_project(update, ctx, title, deadline, dest)
+        await ask_task_project(update, ctx, title, deadline, dest, project_id=project_id)
 
     elif action == "taskproj":
         if current_flow(ctx, "task_project") is None:
@@ -3639,35 +4459,35 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         await create_task_from_flow(update, ctx, user, ws, int(parts[1]))
 
     # --- projects ---
+    elif action in ("pj", "pjd", "pjdest"):
+        await route_project(update, ctx, action, parts, user, ws)
+
     elif action == "project":
+        # Buttons from keyboards drawn before projects had a screen of their
+        # own: each lands on the matching place in it.
         sub = parts[1]
         if sub == "add":
-            start_flow(ctx, "project_add")
-            await message.reply_text(t(lang, "ask_project_name"),
-                                     reply_markup=cancel_keyboard(lang))
-        elif sub == "dellist":
-            with SessionLocal() as s:
-                projects = svc.list_projects(s, ws)
-            if not projects:
-                await query.answer(t(lang, "empty"), show_alert=True)
-                return
-            rows = [[InlineKeyboardButton(p["name"][:40],
-                                          callback_data=f"project:del:{p['id']}")]
-                    for p in projects[:15]]
-            rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="task:back")])
-            await query.edit_message_text(t(lang, "choose_delete"),
-                                          reply_markup=InlineKeyboardMarkup(rows))
-        elif sub == "open":
-            await show_project(update, ctx, int(parts[2]))
-        elif sub == "rename":
-            start_flow(ctx, "project_rename", target_id=int(parts[2]))
-            await query.edit_message_text(t(lang, "ask_project_rename"),
-                                          reply_markup=cancel_keyboard(lang))
-        elif sub == "del":
-            with SessionLocal() as s:
-                name = svc.delete_project(s, ws, int(parts[2]))
-            await log_event(ctx.bot, user, "🗑 PROJECT DELETED", f"Project: {esc(name)}")
-            await show_tasks(update, ctx, edit=True)
+            await route_project(update, ctx, "pj", ["pj", "new"], user, ws)
+        elif sub in ("open", "rename", "del") and len(parts) > 2:
+            verb = {"open": "open", "rename": "ren", "del": "x"}[sub]
+            await route_project(update, ctx, "pj", ["pj", verb, "p", parts[2]], user, ws)
+        else:
+            await show_projects(update, ctx, edit=True)
+
+    elif action == "sug":
+        # A suggestion tapped under "type a name": exactly as if it were typed.
+        what = parts[1] if len(parts) > 1 else ""
+        flow = current_flow(ctx, "habit_name" if what == "h" else "task_title")
+        items = suggestions(lang, what)
+        index = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else -1
+        if flow is None or not 0 <= index < len(items):
+            await _notice(update, t(lang, "flow_expired"))
+            return
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except BadRequest:
+            pass
+        await handle_flow(update, ctx, flow, items[index])
 
     elif action == "habitcat":
         flow = current_flow(ctx, "habit_cat") or {}
@@ -3824,7 +4644,7 @@ async def on_chat_member(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None
     try:
         if subscribed:
             await ctx.bot.send_message(telegram_id, t(lang, "sub_restored"),
-                                       reply_markup=main_menu(lang))
+                                       reply_markup=menu_for(telegram_id))
             await log_event(ctx.bot, snapshot, "🔓 SUBSCRIPTION RESTORED")
         else:
             await ctx.bot.send_message(telegram_id, t(lang, "sub_lost"),
@@ -4311,6 +5131,45 @@ async def _send_team_summaries(bot, telegram_id: int, lang: str,
     return sent
 
 
+class AccountFanOut:
+    """A bot whose `send_message` also reaches every Telegram signed in to
+    the account it is addressed to.
+
+    Reports, reminders and team news are addressed to the account — its
+    owner's Telegram id. Somebody who signed in from a second Telegram with
+    the login and password is using the same account there, and should hear
+    what it hears. The first send behaves exactly as before, errors and all;
+    the copies are best-effort and never fail the job.
+    """
+
+    def __init__(self, bot):
+        self._bot = bot
+
+    def __getattr__(self, name):
+        return getattr(self._bot, name)
+
+    async def send_message(self, *args, **kwargs):
+        result = await self._bot.send_message(*args, **kwargs)
+        chat_id = kwargs.get("chat_id", args[0] if args else None)
+        try:
+            with SessionLocal() as s:
+                others = accounts.linked_ids(s, int(chat_id))
+        except (TypeError, ValueError):
+            return result
+        except Exception:
+            log.exception("could not look up the Telegrams signed in to %s", chat_id)
+            return result
+        for other in others:
+            try:
+                if "chat_id" in kwargs:
+                    await self._bot.send_message(*args, **{**kwargs, "chat_id": other})
+                else:
+                    await self._bot.send_message(other, *args[1:], **kwargs)
+            except Exception as e:
+                log.info("copy to signed-in Telegram %s failed: %s", other, e)
+        return result
+
+
 async def send_reports(bot, report_type: str) -> None:
     """Deliver one report to every user whose chosen time has just arrived.
 
@@ -4330,7 +5189,7 @@ async def send_reports(bot, report_type: str) -> None:
         with svc.JobLock(SessionLocal, f"report:{report_type}") as lock:
             if not lock.acquired:
                 return
-            await _send_reports_locked(bot, report_type, None)
+            await _send_reports_locked(AccountFanOut(bot), report_type, None)
     except Exception:
         log.exception("%s report job failed before any recipient", report_type)
 
@@ -4507,6 +5366,7 @@ async def send_reminders(bot) -> None:
                 recipients = svc.active_recipients(s)
 
             sent = failed = 0
+            bot = AccountFanOut(bot)
             for telegram_id, ws, lang in recipients:
                 try:
                     sent += await _send_user_reminders(bot, telegram_id, ws, lang)
@@ -4867,10 +5727,11 @@ async def show_team(update: Update, ctx: ContextTypes.DEFAULT_TYPE, user: User,
         rows.append([InlineKeyboardButton(f"✅ {request['name'][:24]}",
                                           callback_data=f"treq:a:{request['id']}"),
                      InlineKeyboardButton("✖️", callback_data=f"treq:d:{request['id']}")])
-    rows.append([InlineKeyboardButton(t(lang, "team_notify_btn"),
-                                      callback_data=f"team:notify:{team_id}"),
+    rows.append([InlineKeyboardButton(t(lang, "btn_projects"), callback_data="pj:list"),
                  InlineKeyboardButton(t(lang, "team_stats_btn"),
                                       callback_data=f"team:stats:{team_id}")])
+    rows.append([InlineKeyboardButton(t(lang, "team_notify_btn"),
+                                      callback_data=f"team:notify:{team_id}")])
     if perms["roles"] or perms["remove_members"]:
         rows.append([InlineKeyboardButton(t(lang, "team_members_btn"),
                                           callback_data=f"team:members:{team_id}")])
@@ -4879,6 +5740,9 @@ async def show_team(update: Update, ctx: ContextTypes.DEFAULT_TYPE, user: User,
                                           callback_data=f"team:rename:{team_id}")])
     rows.append([InlineKeyboardButton(t(lang, "team_leave_btn"),
                                       callback_data=f"team:leave:{team_id}")])
+    if perms["role"] == "owner":
+        rows.append([InlineKeyboardButton(t(lang, "team_delete_btn"),
+                                          callback_data=f"team:del:{team_id}")])
     rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="team:list")])
     await _show(update, "\n".join(lines), InlineKeyboardMarkup(rows), edit=edit)
 
@@ -4928,13 +5792,13 @@ async def preview_team_invite(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                               code: str) -> None:
     """What opening an invite shows: the team, who runs it, how full it is —
     and a button to join. Nobody is added to anything by opening a link."""
-    tg_user = update.effective_user
+    uid = account_of(update)
     message = update.effective_message
     with SessionLocal() as s:
-        user = s.get(User, tg_user.id)
+        user = s.get(User, uid)
         lang = user.language if user else "uz"
         info = svc.preview_invite(s, code)
-        already = bool(info and svc.team_for(s, tg_user.id, info["team_id"]))
+        already = bool(info and svc.team_for(s, uid, info["team_id"]))
     if info is None:
         await message.reply_text(t(lang, "team_unknown", name=""), parse_mode=ParseMode.HTML)
         return
@@ -4962,24 +5826,24 @@ async def preview_team_invite(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 async def answer_team_invite(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                              answer: str) -> None:
     """The tap on the invite preview: join (or ask to), or not."""
-    tg_user = update.effective_user
+    uid = account_of(update)
     query = update.callback_query
     code = ctx.user_data.pop("team_invite", None)
     with SessionLocal() as s:
-        user = s.get(User, tg_user.id)
+        user = s.get(User, uid)
         lang = user.language if user else "uz"
         onboarded = bool(user and user.onboarded)
+        joiner = ((user.first_name if user else "") or "").strip() or str(uid)
     if answer != "y" or not code:
         await query.edit_message_text(t(lang, "cancelled") if answer != "y"
                                       else t(lang, "flow_expired"))
         return
 
     with SessionLocal() as s:
-        team, outcome = svc.join_team(s, tg_user.id, code)
+        team, outcome = svc.join_team(s, uid, code)
         name = team.name if team else ""
         team_id = team.id if team else None
-        joiner = (tg_user.first_name or "").strip() or str(tg_user.id)
-        recipients = (svc.team_recipients(s, team_id, tg_user.id, "join")
+        recipients = (svc.team_recipients(s, team_id, uid, "join")
                       if team and outcome == "joined" else [])
         approvers = ([(m["user_id"], m["language"]) for m in svc.team_members(s, team_id)
                       if m["role"] in ("owner", "admin")]
@@ -5136,6 +6000,28 @@ async def route_team(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             with SessionLocal() as s:
                 svc.leave_team(s, uid, int(parts[2]))
             await _show(update, t(lang, "team_left"), None, edit=True)
+        elif what == "del":
+            await _show(update, t(lang, "team_delete_confirm"), InlineKeyboardMarkup([
+                [InlineKeyboardButton(t(lang, "team_delete_btn"),
+                                      callback_data=f"team:dely:{parts[2]}")],
+                [InlineKeyboardButton(t(lang, "back"),
+                                      callback_data=f"team:open:{parts[2]}")]]), edit=True)
+        elif what == "dely":
+            team_id = int(parts[2])
+            with SessionLocal() as s:
+                # Everybody hears this one, whatever their level: the team
+                # itself is going.
+                recipients = [(m["user_id"], m["language"])
+                              for m in svc.team_members(s, team_id) if m["user_id"] != uid]
+                name = svc.delete_team(s, uid, team_id)
+            await _show(update, t(lang, "team_deleted", name=esc(name)), None, edit=True)
+            for member_id, member_lang in recipients:
+                try:
+                    await ctx.bot.send_message(
+                        member_id, t(member_lang or "uz", "team_deleted", name=esc(name)),
+                        parse_mode=ParseMode.HTML)
+                except TelegramError as e:
+                    log.info("could not tell %s the team was deleted: %s", member_id, e)
     except PermissionError:
         await _notice(update, t(lang, "team_admin_only"))
     except ValueError as e:
@@ -5285,6 +6171,12 @@ async def show_report_health(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
 
 
 BOT_COMMANDS = [
+    # Signing in with a login from another Telegram, signing out of it, and
+    # the account screen itself.
+    ("login", lambda u, c: cmd_login(u, c)),
+    ("logout", lambda u, c: cmd_logout(u, c)),
+    ("account", lambda u, c: show_account(u, c)),
+    ("projects", lambda u, c: show_projects(u, c)),
     ("tasks", lambda u, c: show_tasks(u, c)),
     ("habits", lambda u, c: show_habits(u, c)),
     ("stats", lambda u, c: show_stats(u, c)),
@@ -5462,6 +6354,10 @@ async def guard_requests(request: Request, call_next):
             key = int(verify_init_data(init)["id"])
         except HTTPException:
             key = 0
+    if key:
+        # A Telegram signed in with a login counts, spends and is limited as
+        # the account it signed in to — the same account `auth` will serve.
+        key = accounts.resolve_id(key)
     if not key:
         host = request.client.host if request.client else "unknown"
         # Offset by one: `hash(host) % 10_000_000 == 0` would produce key 0,
@@ -5925,7 +6821,15 @@ def api_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
             # Read-only mode: the channel gate stops writes, never reading.
             "gated": deps.trial_state(user).gated,
             "onboarding_step": user.onboarding_step,
-            "modules": _modules_of(user)}
+            "modules": _modules_of(user),
+            # The ErnestOS login, for signing in from another Telegram.
+            "login": _login_of(user.telegram_id)}
+
+
+def _login_of(uid: int) -> str | None:
+    with SessionLocal() as s:
+        row = accounts.credential_for(s, uid)
+        return row.login if row else None
 
 
 def _modules_of(user: User) -> dict:
@@ -6117,10 +7021,11 @@ async def notify_teammates(team_id: int, actor_id: int, key: str,
         log.exception("could not work out who to tell about team %s", team_id)
         return 0
 
+    bot = AccountFanOut(telegram_app.bot)
     for uid, lang in recipients:
         lang = lang or "uz"
         try:
-            await telegram_app.bot.send_message(
+            await bot.send_message(
                 uid,
                 t(lang, key, who=esc(actor_name or "?"), what=esc(what))
                 + "\n" + t(lang, "team_ev_in", name=esc(team_name)),
@@ -6635,6 +7540,45 @@ def api_team_project_tasks(project_id: int,
                 "tasks": rows}
 
 
+class TeamProjectPatch(BaseModel):
+    name: str | None = Field(default=None, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+    deadline: date | None = None
+    clear_deadline: bool = False
+    status: str | None = Field(default=None, max_length=10)
+
+
+@app.patch("/api/teams/projects/{project_id}")
+def api_team_project_edit(project_id: int, body: TeamProjectPatch,
+                          init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Rename a shared project, or change its note, deadline or status."""
+    user, _ = auth(init)
+    fields = {k: v for k, v in body.model_dump(exclude_unset=True).items()
+              if k != "clear_deadline"}
+    if body.clear_deadline:
+        fields["deadline"] = None
+    with SessionLocal() as s:
+        try:
+            return svc.update_team_project(s, user.telegram_id, project_id, **fields)
+        except PermissionError as e:
+            raise _perm(e)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.delete("/api/teams/projects/{project_id}")
+def api_team_project_delete(project_id: int,
+                            init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Archive a shared project; its tasks stay in the team, unfiled."""
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        try:
+            name = svc.delete_team_project(s, user.telegram_id, project_id)
+        except PermissionError as e:
+            raise _perm(e)
+    return {"ok": True, "name": name}
+
+
 @app.get("/api/teams/{team_id}/scoreboard")
 def api_team_scoreboard(team_id: int,
                         init=Header(default=None, alias="X-Telegram-Init-Data")):
@@ -6910,7 +7854,7 @@ async def api_subscription(init=Header(default=None, alias="X-Telegram-Init-Data
     needs to call it — but still behind a valid signature.
     """
     tg_user = verify_init_data(init or "")
-    telegram_id = int(tg_user["id"])
+    telegram_id = accounts.resolve_id(int(tg_user["id"]))
 
     if not deps.REQUIRED_CHANNEL_ID:
         return {"subscribed": True, "state": "subscribed"}

@@ -1529,13 +1529,13 @@ def _task_buttons(**kwargs) -> list[str]:
     return [button.text for row in markup.inline_keyboard for button in row]
 
 
-def test_an_empty_workspace_offers_only_the_two_add_buttons():
-    """Plus the countdowns, which are a screen of their own with their own
-    Add — never a chooser with nothing in it. The timer list, which would be
-    one, stays hidden until there is a task to put a timer on."""
+def test_an_empty_workspace_offers_only_add_and_projects():
+    """With nothing in it, the screen is Add and Projects — never a chooser
+    with nothing in it. The timer list, which would be one, stays hidden until
+    there is a task to put a timer on; the countdowns have their own Add."""
     labels = _task_buttons(projects=[], open_tasks=0, editable=0)
     assert labels == [application.t("uz", "btn_add_task"),
-                      application.t("uz", "btn_add_project"),
+                      application.t("uz", "btn_projects"),
                       application.t("uz", "btn_countdown")]
     assert application.t("uz", "btn_timers") not in labels
 
@@ -1544,16 +1544,28 @@ def test_the_done_and_edit_buttons_appear_once_there_are_tasks():
     labels = _task_buttons(projects=[], open_tasks=2, editable=2)
     assert application.t("uz", "btn_done_task") in labels
     assert application.t("uz", "btn_edit_task") in labels
-    assert application.t("uz", "btn_del_project") not in labels
 
 
-def test_the_project_delete_button_needs_a_project():
+def test_projects_are_one_button_with_their_count():
+    """Projects left the task screen for a screen of their own."""
     without = _task_buttons(projects=[], open_tasks=1, editable=1)
-    with_one = _task_buttons(projects=[{"id": 1, "name": "P"}],
+    with_two = _task_buttons(projects=[{"id": 1, "name": "P"}, {"id": 2, "name": "Q"}],
                              open_tasks=1, editable=1)
-    assert application.t("uz", "btn_del_project") not in without
-    assert application.t("uz", "btn_del_project") in with_one
-    assert "📁 P" in with_one
+    assert application.t("uz", "btn_projects") in without
+    assert f"{application.t('uz', 'btn_projects')} (2)" in with_two
+    assert "📁 P" not in with_two
+
+
+def test_a_new_account_sees_the_smallest_task_screen():
+    """Stage 1: no timers, no countdowns — just Add and Projects."""
+    labels = _task_buttons(projects=[], open_tasks=0, editable=0, stage=1)
+    assert labels == [application.t("uz", "btn_add_task"),
+                      application.t("uz", "btn_projects")]
+
+
+def test_deleted_tasks_can_be_restored_from_the_task_screen():
+    labels = _task_buttons(projects=[], open_tasks=0, editable=0, restorable=3)
+    assert f"{application.t('uz', 'btn_restore')} (3)" in labels
 
 
 # --------------------------------------------------------------------------
@@ -2836,67 +2848,40 @@ def test_onboarding_starts_at_language():
         assert s.get(User, 808001).onboarding_step == "language"
 
 
-def test_setup_builds_a_day_instead_of_filling_a_form():
-    """Language, the pitch, then four questions that each create something.
+def test_setup_is_four_taps_and_one_answer():
+    """Language, new-or-sign-in, a name, what to track — then the product.
 
-    Every step of setup writes a real row — the goal becomes the week's
-    mission, the tasks become today's tasks — so the last screen can show the
-    user their actual day. A form that collects answers and shows a tour at the
-    end has taught nobody anything.
+    The old setup asked for a weekly goal, three tasks and three habits before
+    the user had seen a screen. Those are now one tap away on the screens
+    themselves, with ten suggestions under each Add button.
 
-    What must not come back: the channel as step two, and the phone number
-    between them. Both were tolls charged before the user had seen a single
-    thing the product does.
+    What must not come back: the channel as step two, and the phone number.
     """
     assert application.ONBOARDING_STEPS == [
-        "language", "intro", "name", "modules", "goal", "tasks", "habits", "done"]
+        "language", "account", "name", "modules", "done"]
     source = (ROOT / "app.py").read_text()
     assert 'user.onboarding_step = "phone"' not in source
     assert 'user.onboarding_step = "subscribe"' not in source, \
         "the channel is back in onboarding"
-    # Legacy accounts parked on a retired step are moved on, not re-asked.
-    assert application.LEGACY_STEPS == {"phone", "gender", "subscribe"}
+    # Accounts parked on a retired step are moved on, not re-asked.
+    assert set(application.LEGACY_STEPS) == {
+        "phone", "gender", "subscribe", "intro", "goal", "tasks", "habits"}
+    assert all(step in application.ONBOARDING_STEPS
+               for step in application.LEGACY_STEPS.values())
 
 
-def test_setup_writes_each_answer_as_it_is_given():
-    """Nothing is held in limbo until the end.
-
-    Somebody who walks away after the goal keeps the goal. Buffering the whole
-    setup and committing it on the last screen means an abandoned setup leaves
-    the account exactly as empty as it started.
-    """
+def test_setup_writes_the_name_as_it_is_given():
     source = (ROOT / "app.py").read_text()
     handler = source[source.index("async def handle_setup_answer("):
-                     source.index("#: Three tasks and three habits.")]
-    assert "svc.add_focus(" in handler, "the goal is not written"
-    assert "svc.add_task(" in handler, "the tasks are not written"
-    assert "svc.add_habit(" in handler, "the habits are not written"
+                     source.index("async def issue_credentials(")]
     assert "user.first_name = " in handler, "the name is not written"
 
 
-@pytest.mark.parametrize("lang", ["uz", "en", "ru"])
-def test_every_setup_question_carries_an_example(lang):
-    """"What is your main goal?" is a question somebody stalls on.
-
-    An example is the difference between a prompt and a blank page, and it is
-    also how the answer arrives in the shape the product can use.
-    """
-    for key in ("ask_goal", "ask_tasks", "ask_habits"):
-        text = application.t(lang, key)
-        assert "<i>" in text, f"{lang}/{key} gives no example"
-        assert len(text) < 400, f"{lang}/{key} is a paragraph, not a question"
-
-
-@pytest.mark.parametrize("lang", ["uz", "en", "ru"])
-def test_the_intro_makes_a_promise_before_it_asks_anything(lang):
-    """One screen, one promise, one button — shown before any question."""
-    intro = application.t(lang, "intro")
-    assert 200 < len(intro) < 800, f"{lang} intro is the wrong size for a hook"
-    assert intro.count("<b>") >= 2
-    assert application.t(lang, "intro_go")
+def test_the_account_step_comes_straight_after_the_language():
     source = (ROOT / "app.py").read_text()
-    assert 'user.onboarding_step = "intro"' in source, \
-        "the pitch does not come straight after the language"
+    assert 'user.onboarding_step = "account"' in source
+    for lang in ("uz", "en", "ru"):
+        assert application.t(lang, "acc_new") and application.t(lang, "acc_have")
 
 
 def test_gender_is_not_an_onboarding_step():
@@ -2928,9 +2913,8 @@ def test_the_phone_number_is_never_asked_for():
 def test_the_guide_is_on_demand_rather_than_pushed_at_a_new_account():
     """Eleven paragraphs are not a welcome.
 
-    The guide used to be sent automatically on the way in — a manual for a
-    machine the reader had not been shown yet. The way in is now the intro and
-    the setup; the guide stays for the moment somebody actually wants it.
+    The guide is sent only when asked for, and it is short: one line per
+    part of the product, nothing a newcomer has to read twice.
     """
     source = (ROOT / "app.py").read_text()
     assert 'CommandHandler("guide", show_guide)' in source
@@ -2939,13 +2923,8 @@ def test_the_guide_is_on_demand_rather_than_pushed_at_a_new_account():
     assert 't(lang, "guide")' not in finish, "the guide is pushed again"
     for lang in ("uz", "en", "ru"):
         guide = application.t(lang, "guide")
-        # Four features, each with a concrete example rather than a category:
-        # "track your habits" describes a genre, "wake up at 6:00" describes a
-        # Tuesday.
-        assert len(guide) > 400, f"{lang} guide is a sentence, not a guide"
-        assert guide.count("<b>") >= 5, f"{lang} guide has no structure"
-        assert "<i>" in guide, f"{lang} guide gives no examples"
-        for emoji in ("🎯", "✅", "🔁", "📊"):
+        assert 150 < len(guide) < 600, f"{lang} guide is not short"
+        for emoji in ("✅", "⚡", "📁", "🔐"):
             assert emoji in guide, f"{lang} guide is missing {emoji}"
 
 
@@ -8959,15 +8938,22 @@ async def test_a_task_is_edited_from_the_chat():
     await application.on_callback(_CbUpdate(uid, f"ted:p:{task_id}:1"), ctx)
     with SessionLocal() as s:
         task = s.get(db.Task, task_id)
+        assert task.priority == "medium", "nothing is written before 💾"
+    await application.on_callback(_CbUpdate(uid, f"te:p:{task_id}:sv"), ctx)
+    with SessionLocal() as s:
+        task = s.get(db.Task, task_id)
         assert task.priority == "high"
         assert task.deadline == svc.today_local() + timedelta(days=1)
+    assert "draft" not in ctx.user_data
 
 
 async def test_a_member_cannot_edit_somebody_elses_shared_task_from_the_chat():
     a, b, team_id = _bot_pair()
     with SessionLocal() as s:
         task = svc.add_team_task(s, a, team_id, "Owner's task")
-    await application.on_callback(_CbUpdate(b, f"tep:t:{task['id']}:h"), _Ctx())
+    ctx = _Ctx()
+    await application.on_callback(_CbUpdate(b, f"tep:t:{task['id']}:h"), ctx)
+    await application.on_callback(_CbUpdate(b, f"te:t:{task['id']}:sv"), ctx)
     with SessionLocal() as s:
         assert s.get(db.TeamTask, task["id"]).priority == "medium"
 
@@ -9191,3 +9177,508 @@ def test_the_bot_team_report_never_ticks_a_half_done_item():
     assert application.team_item_mark({"owed_by": [1, 2], "finished_for": [1]}) == "🔸"
     assert application.team_item_mark({"owed_by": [1, 2], "finished_for": [1, 2]}) == "✅"
     assert application.team_item_mark({"owed_by": [1, 2], "finished_for": []}) == "◻️"
+
+
+# ==========================================================================
+# v8 — logins, save/cancel editing, restore, suggestions, projects, stages
+# ==========================================================================
+
+import accounts  # noqa: E402
+
+
+class _TextMsg(_Msg):
+    """A typed message: the text, a place to reply, and a delete that works."""
+
+    def __init__(self, text: str):
+        super().__init__()
+        self.text = text
+        self.deleted = False
+
+    async def delete(self):
+        self.deleted = True
+
+
+class _TextUpdate(_Update):
+    def __init__(self, telegram_id: int, text: str, first_name: str = "Other"):
+        super().__init__(telegram_id)
+        self.effective_user.first_name = first_name
+        self.effective_message = _TextMsg(text)
+
+
+def _account_with_password(uid: int) -> tuple[str, str]:
+    _onboard(uid)
+    with SessionLocal() as s:
+        login, password = accounts.ensure_credentials(s, uid)
+    assert password, "a new account is handed its password once"
+    return login, password
+
+
+# --- accounts: issued once, hashed, checked -------------------------------
+
+def test_every_account_gets_a_login_and_a_password_exactly_once():
+    uid = next(_next_id)
+    login, password = _account_with_password(uid)
+    with SessionLocal() as s:
+        again_login, again_password = accounts.ensure_credentials(s, uid)
+        row = accounts.credential_for(s, uid)
+    assert again_login == login and again_password is None, \
+        "the password is shown once and never again"
+    assert password not in row.password_hash, "the password is stored hashed"
+    assert accounts.check_password(password, row.password_hash)
+    assert not accounts.check_password(password + "x", row.password_hash)
+
+
+def test_a_login_can_be_changed_but_not_to_one_that_is_taken():
+    a, b = next(_next_id), next(_next_id)
+    login_a, _ = _account_with_password(a)
+    _account_with_password(b)
+    with SessionLocal() as s:
+        assert accounts.set_login(s, b, "  My.Name_1 ") == "my.name_1"
+        with pytest.raises(ValueError, match="login_taken"):
+            accounts.set_login(s, b, login_a)
+        with pytest.raises(ValueError, match="login_bad"):
+            accounts.set_login(s, b, "a b")
+        with pytest.raises(ValueError, match="login_bad"):
+            accounts.set_login(s, b, "abc")
+
+
+def test_signing_in_links_a_second_telegram_to_the_account():
+    owner, other = next(_next_id), next(_next_id)
+    login, password = _account_with_password(owner)
+    with SessionLocal() as s:
+        assert accounts.sign_in(s, other, login.upper(), password) == ("ok", owner)
+        assert accounts.resolve(s, other) == owner
+        assert accounts.linked_ids(s, owner) == [other]
+        assert accounts.sign_out(s, other) is True
+        assert accounts.resolve(s, other) == other
+
+
+def test_five_wrong_passwords_lock_the_login_for_a_while():
+    owner, guesser = next(_next_id), next(_next_id)
+    login, password = _account_with_password(owner)
+    with SessionLocal() as s:
+        for _ in range(accounts.MAX_FAILED):
+            assert accounts.sign_in(s, guesser, login, "wrong-one")[0] == "bad"
+        outcome, minutes = accounts.sign_in(s, guesser, login, password)
+        assert outcome == "locked" and minutes >= 1, \
+            "even the right password waits out the lock"
+        assert accounts.resolve(s, guesser) == guesser
+
+
+def test_signing_in_to_your_own_account_is_not_a_link():
+    owner = next(_next_id)
+    login, password = _account_with_password(owner)
+    with SessionLocal() as s:
+        assert accounts.sign_in(s, owner, login, password) == ("self", owner)
+        assert accounts.linked_ids(s, owner) == []
+
+
+def test_a_new_password_signs_out_every_other_telegram():
+    owner, phone, laptop = next(_next_id), next(_next_id), next(_next_id)
+    login, password = _account_with_password(owner)
+    with SessionLocal() as s:
+        accounts.sign_in(s, phone, login, password)
+        accounts.sign_in(s, laptop, login, password)
+        new, removed = accounts.set_password(s, owner, "brand-new-1", keep=phone)
+        assert (new, removed) == ("brand-new-1", 1)
+        assert accounts.linked_ids(s, owner) == [phone], "the one changing it stays"
+        assert accounts.sign_in(s, laptop, login, password)[0] == "bad"
+        assert accounts.sign_in(s, laptop, login, "brand-new-1")[0] == "ok"
+        with pytest.raises(ValueError, match="password_short"):
+            accounts.set_password(s, owner, "123")
+
+
+def test_deleting_an_account_removes_its_login_and_its_links():
+    owner, other = next(_next_id), next(_next_id)
+    login, password = _account_with_password(owner)
+    with SessionLocal() as s:
+        accounts.sign_in(s, other, login, password)
+        svc.delete_account(s, owner)
+        assert accounts.credential_for(s, owner) is None
+        assert accounts.resolve(s, other) == other
+
+
+# --- a linked Telegram is served as the account --------------------------
+
+async def test_the_bot_serves_a_signed_in_telegram_as_the_account():
+    owner, other = next(_next_id), next(_next_id)
+    login, password = _account_with_password(owner)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, owner)
+        habit_id = svc.add_habit(s, ws, "Shared by login", "target").id
+        accounts.sign_in(s, other, login, password)
+
+    await application.on_callback(_CbUpdate(other, f"habit:toggle:{habit_id}"), _Ctx())
+    with SessionLocal() as s:
+        assert any(h["done"] for h in svc.list_habits(s, ws) if h["id"] == habit_id), \
+            "the tap from the second Telegram ticked the owner's habit"
+        assert s.get(User, other) is None, "no second account was made"
+
+
+async def test_login_by_chat_signs_the_telegram_in_and_hides_the_password():
+    owner, other = next(_next_id), next(_next_id)
+    login, password = _account_with_password(owner)
+    ctx = _Ctx()
+    await application.cmd_login(_TextUpdate(other, "/login"), ctx)
+    await application.on_text(_TextUpdate(other, login), ctx)
+    typed = _TextUpdate(other, password)
+    await application.on_text(typed, ctx)
+    assert typed.effective_message.deleted, "the typed password is removed from the chat"
+    with SessionLocal() as s:
+        assert accounts.resolve(s, other) == owner
+    assert any("✅" in reply for reply in typed.effective_message.replies)
+
+
+async def test_a_wrong_password_by_chat_links_nothing():
+    owner, other = next(_next_id), next(_next_id)
+    login, _ = _account_with_password(owner)
+    ctx = _Ctx()
+    await application.cmd_login(_TextUpdate(other, "/login"), ctx)
+    await application.on_text(_TextUpdate(other, login), ctx)
+    typed = _TextUpdate(other, "not-the-password")
+    await application.on_text(typed, ctx)
+    with SessionLocal() as s:
+        assert accounts.resolve(s, other) == other
+    assert application.t("uz", "acc_signin_bad") in typed.effective_message.replies
+
+
+def test_the_mini_app_serves_a_signed_in_telegram_as_the_account(client):
+    owner = {"id": next(_next_id), "first_name": "Owner"}
+    other = {"id": next(_next_id), "first_name": "Phone"}
+    alice_like = Caller(client, owner)
+    alice_like.post("/api/tasks", json={"title": "Only the owner's"})
+    with SessionLocal() as s:
+        login, password = accounts.ensure_credentials(s, owner["id"])
+        accounts.sign_in(s, other["id"], login, password)
+    headers = {"X-Telegram-Init-Data": init_data(other)}
+    body = client.get("/api/tasks?days=30", headers=headers).text
+    assert "Only the owner's" in body
+    with SessionLocal() as s:
+        assert s.get(User, owner["id"]).first_name == "Owner", \
+            "the second Telegram's profile must not overwrite the owner's"
+
+
+async def test_reminders_reach_every_telegram_signed_in_to_the_account():
+    owner, other = next(_next_id), next(_next_id)
+    login, password = _account_with_password(owner)
+    with SessionLocal() as s:
+        accounts.sign_in(s, other, login, password)
+    bot = _FakeBot()
+    await application.AccountFanOut(bot).send_message(owner, "⏰ hello")
+    assert bot.sent == [owner, other]
+
+
+# --- habits: every one can go, and come back -----------------------------
+
+def test_an_automatic_habit_can_be_deleted_and_restored():
+    uid = next(_next_id)
+    _onboard(uid)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        prayer = next(h for h in svc.list_habits(s, ws) if h["system_key"] == "prayer")
+        # A ritual in use for a while, not one switched off at setup.
+        s.get(db.Habit, prayer["id"]).created_at = db.utcnow() - timedelta(days=3)
+        s.commit()
+        svc.remove_habit(s, ws, prayer["id"])
+        assert svc.modules_for(s, ws)["prayer"] is False
+        gone = svc.archived_habits(s, ws)
+        assert [h["name"] for h in gone] == ["5x namoz"]
+        svc.restore_habit(s, ws, gone[0]["id"])
+        assert svc.modules_for(s, ws)["prayer"] is True
+        assert svc.archived_habits(s, ws) == []
+
+
+def test_a_deleted_habit_comes_back_with_its_history():
+    uid = next(_next_id)
+    _onboard(uid)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        habit_id = svc.add_habit(s, ws, "Kitob", "target").id
+        svc.toggle_habit(s, ws, habit_id)
+        svc.remove_habit(s, ws, habit_id)
+        assert habit_id not in [h["id"] for h in svc.list_habits(s, ws)]
+        svc.restore_habit(s, ws, habit_id)
+        row = next(h for h in svc.list_habits(s, ws) if h["id"] == habit_id)
+        assert row["done"], "today's tick survived the round trip"
+
+
+def test_a_habit_added_again_by_hand_is_not_offered_for_restore():
+    uid = next(_next_id)
+    _onboard(uid)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        svc.remove_habit(s, ws, svc.add_habit(s, ws, "Suv", "target").id)
+        svc.add_habit(s, ws, "Suv", "target")
+        assert "Suv" not in [h["name"] for h in svc.archived_habits(s, ws)]
+
+
+async def test_the_bot_deletes_an_automatic_habit_after_a_confirmation():
+    uid = next(_next_id)
+    _onboard(uid)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        wake = next(h for h in svc.list_habits(s, ws) if h["system_key"] == "wakeup")
+    ctx = _Ctx()
+    await application.on_callback(_CbUpdate(uid, f"he:p:{wake['id']}:x"), ctx)
+    with SessionLocal() as s:
+        assert svc.modules_for(s, ws)["wake"] is True, "asking is not deleting"
+    await application.on_callback(_CbUpdate(uid, f"hex:p:{wake['id']}"), ctx)
+    with SessionLocal() as s:
+        assert svc.modules_for(s, ws)["wake"] is False
+
+
+def test_a_deleted_task_can_be_restored():
+    uid = next(_next_id)
+    _onboard(uid)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        task_id = svc.add_task(s, ws, "Qaytadigan").id
+        svc.delete_task(s, ws, task_id)
+        assert [x["id"] for x in svc.archived_tasks(s, ws)] == [task_id]
+        svc.restore_task(s, ws, task_id)
+        assert svc.archived_tasks(s, ws) == []
+        assert s.get(db.Task, task_id).archived_at is None
+
+
+# --- editing waits for 💾 or ✖️ ---------------------------------------------
+
+async def test_cancel_throws_the_draft_away():
+    uid = next(_next_id)
+    _onboard(uid)
+    with SessionLocal() as s:
+        task_id = svc.add_task(s, svc.workspace_id_for(s, uid), "Keep me").id
+    ctx = _Ctx()
+    await application.on_callback(_CbUpdate(uid, f"tep:p:{task_id}:h"), ctx)
+    update = _CbUpdate(uid, f"te:p:{task_id}:cx")
+    await application.on_callback(update, ctx)
+    with SessionLocal() as s:
+        assert s.get(db.Task, task_id).priority == "medium"
+    assert "draft" not in ctx.user_data
+    assert application.t("uz", "edit_unsaved") not in update.callback_query.edits[-1]
+
+
+async def test_the_edit_screen_shows_an_unsaved_change_with_save_and_cancel():
+    uid = next(_next_id)
+    _onboard(uid)
+    with SessionLocal() as s:
+        task_id = svc.add_task(s, svc.workspace_id_for(s, uid), "Draft me").id
+    update = _CbUpdate(uid, f"ter:p:{task_id}:60")
+    await application.on_callback(update, _Ctx())
+    shown = update.callback_query.edits[-1]
+    assert application.t("uz", "edit_unsaved") in shown
+    assert application.t("uz", "remind_hour") in shown
+
+
+async def test_a_task_reminder_and_time_are_saved_together():
+    uid = next(_next_id)
+    _onboard(uid)
+    with SessionLocal() as s:
+        task_id = svc.add_task(s, svc.workspace_id_for(s, uid), "Timed").id
+    ctx = _Ctx()
+    for data in (f"tet:p:{task_id}:1500", f"ter:p:{task_id}:10", f"te:p:{task_id}:sv"):
+        await application.on_callback(_CbUpdate(uid, data), ctx)
+    with SessionLocal() as s:
+        task = s.get(db.Task, task_id)
+        assert task.due_time == dtime(15, 0)
+        assert task.remind_before == 10
+    await application.on_callback(_CbUpdate(uid, f"ter:p:{task_id}:off"), ctx)
+    await application.on_callback(_CbUpdate(uid, f"te:p:{task_id}:sv"), ctx)
+    with SessionLocal() as s:
+        assert s.get(db.Task, task_id).remind_before is None, "the reminder can be turned off"
+
+
+async def test_a_habit_rename_and_reminder_wait_for_save():
+    uid, ws, habit_id = _bot_user_with_habit("Old name")
+    ctx = _Ctx()
+    await application.on_callback(_CbUpdate(uid, f"he:p:{habit_id}:n"), ctx)
+    await application.on_text(_TextUpdate(uid, "New name"), ctx)
+    await application.on_callback(_CbUpdate(uid, f"her:p:{habit_id}:0730"), ctx)
+    with SessionLocal() as s:
+        habit = s.get(db.Habit, habit_id)
+        assert habit.name == "Old name" and habit.remind_at is None
+    await application.on_callback(_CbUpdate(uid, f"he:p:{habit_id}:sv"), ctx)
+    with SessionLocal() as s:
+        habit = s.get(db.Habit, habit_id)
+        assert habit.name == "New name" and habit.remind_at == dtime(7, 30)
+
+
+# --- ten suggestions, small ------------------------------------------------
+
+@pytest.mark.parametrize("lang", ["uz", "en", "ru"])
+def test_ten_habits_and_ten_tasks_are_suggested(lang):
+    for what in ("h", "t"):
+        items = application.suggestions(lang, what)
+        assert len(items) == 10 and len(set(items)) == 10
+        assert all(len(x) <= 24 for x in items), "a suggestion is a word, not a pitch"
+        markup = application.suggest_keyboard(lang, what)
+        assert all(len(row) <= 2 for row in markup.inline_keyboard)
+
+
+async def test_tapping_a_suggestion_is_the_same_as_typing_it():
+    uid = next(_next_id)
+    _onboard(uid)
+    ctx = _Ctx()
+    application.start_flow(ctx, "habit_name")
+    await application.on_callback(_CbUpdate(uid, "sug:h:1"), ctx)
+    await application.on_callback(_CbUpdate(uid, "habitcat:target"), ctx)
+    with SessionLocal() as s:
+        names = [h["name"] for h in svc.list_habits(s, svc.workspace_id_for(s, uid))]
+    assert application.suggestions("uz", "h")[1] in names
+
+
+# --- projects, personal and shared ---------------------------------------
+
+def test_a_team_project_is_managed_by_its_creator_or_an_admin():
+    a, b, team_id = _bot_pair()
+    outsider = next(_next_id)
+    _onboard(outsider)
+    with SessionLocal() as s:
+        made = svc.add_team_project(s, b, team_id, "Launch")
+        task = svc.add_team_task(s, a, team_id, "Filed", project_id=made["id"])
+        assert svc.update_team_project(s, b, made["id"], name="Launch v2")["name"] == "Launch v2"
+        assert svc.update_team_project(s, a, made["id"], status="done")["status"] == "done", \
+            "the owner may manage what a member opened"
+        with pytest.raises(svc.NotFound):
+            svc.team_project_for(s, outsider, made["id"])
+        other = svc.add_team_project(s, a, team_id, "Owner's")
+        with pytest.raises(PermissionError):
+            svc.update_team_project(s, b, other["id"], name="Mine now")
+        assert svc.delete_team_project(s, b, made["id"]) == "Launch v2"
+        assert s.get(db.TeamTask, task["id"]).project_id is None, "its tasks stay, unfiled"
+        assert made["id"] not in [p["id"] for p in svc.list_team_projects(s, a, team_id)]
+
+
+def test_team_projects_are_edited_and_deleted_over_the_api(client):
+    owner = {"id": next(_next_id), "first_name": "O"}
+    mate = {"id": next(_next_id), "first_name": "M"}
+    o, m = Caller(client, owner), Caller(client, mate)
+    with SessionLocal() as s:
+        team_id = _team_of_two(owner["id"], mate["id"])
+    project = o.post(f"/api/teams/{team_id}/projects", json={"name": "Shelf"}).json()
+    assert m.patch(f"/api/teams/projects/{project['id']}",
+                   json={"name": "Taken"}).status_code == 403
+    r = o.patch(f"/api/teams/projects/{project['id']}",
+                json={"name": "Shelf 2", "description": "note"})
+    assert r.status_code == 200 and r.json()["name"] == "Shelf 2"
+    assert o.delete(f"/api/teams/projects/{project['id']}").json()["ok"] is True
+
+
+async def test_a_project_is_created_opened_finished_and_deleted_in_the_bot():
+    uid = next(_next_id)
+    _onboard(uid)
+    ctx = _Ctx()
+    application.start_flow(ctx, "project_add")
+    await application.on_text(_TextUpdate(uid, "Diplom"), ctx)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        project = next(p for p in svc.list_projects(s, ws) if p["name"] == "Diplom")
+    await application.on_callback(_CbUpdate(uid, f"pj:st:p:{project['id']}:done"), ctx)
+    with SessionLocal() as s:
+        assert svc.list_projects(s, ws)[0]["status"] == "done"
+    await application.on_callback(_CbUpdate(uid, f"pj:x:p:{project['id']}"), ctx)
+    with SessionLocal() as s:
+        assert svc.list_projects(s, ws), "asking is not deleting"
+    await application.on_callback(_CbUpdate(uid, f"pj:xx:p:{project['id']}"), ctx)
+    with SessionLocal() as s:
+        assert svc.list_projects(s, ws) == []
+
+
+async def test_a_task_added_inside_a_project_lands_in_it():
+    uid = next(_next_id)
+    _onboard(uid)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        project_id = svc.add_project(s, ws, "Inside").id
+    ctx = _Ctx()
+    await application.on_callback(_CbUpdate(uid, f"pj:task:p:{project_id}"), ctx)
+    await application.on_text(_TextUpdate(uid, "Chapter 2"), ctx)
+    await application.on_callback(_CbUpdate(uid, "taskday:1"), ctx)
+    with SessionLocal() as s:
+        titles = [x["title"] for x in svc.project_tasks(s, ws, project_id)]
+    assert titles == ["Chapter 2"]
+
+
+async def test_a_team_project_is_offered_when_there_is_a_team():
+    a, b, team_id = _bot_pair()
+    ctx = _Ctx()
+    application.start_flow(ctx, "project_add")
+    await application.on_text(_TextUpdate(a, "Shared shelf"), ctx)
+    await application.on_callback(_CbUpdate(a, f"pjdest:{team_id}"), ctx)
+    with SessionLocal() as s:
+        names = [p["name"] for p in svc.list_team_projects(s, b, team_id)]
+    assert names == ["Shared shelf"]
+
+
+def test_only_the_owner_can_delete_a_team():
+    a, b, team_id = _bot_pair()
+    with SessionLocal() as s:
+        with pytest.raises(PermissionError):
+            svc.delete_team(s, b, team_id)
+        assert svc.delete_team(s, a, team_id) == "Juftlik"
+        assert svc.team_for(s, b, team_id) is None
+
+
+# --- a new account sees little, then more ----------------------------------
+
+def test_the_menu_grows_with_use():
+    now = db.utcnow()
+    assert application.stage_for(0, now) == 1
+    assert application.stage_for(application.STAGE_ACTIONS[0], now) == 2
+    assert application.stage_for(application.STAGE_ACTIONS[1], now) == 3
+    assert application.stage_for(0, now - timedelta(days=8)) == 3
+    application.WEBAPP_URL = ""
+    first = [b.text for row in application.main_menu("uz", 1, wake=False).keyboard
+             for b in row]
+    assert first == [application.t("uz", k) for k in
+                     ("menu_home", "menu_habits", "menu_tasks", "menu_settings")]
+    second = [b.text for row in application.main_menu("uz", 2, wake=False).keyboard
+              for b in row]
+    assert application.t("uz", "menu_stats") in second
+    assert application.t("uz", "menu_feedback") not in second
+
+
+def test_a_new_account_home_offers_the_two_add_buttons():
+    labels = [b.text for row in application.home_keyboard("uz", 1).inline_keyboard
+              for b in row]
+    assert labels[:2] == [application.t("uz", "home_add_habit"),
+                          application.t("uz", "home_add_task")]
+
+
+async def test_setup_issues_the_login_on_the_account_step():
+    uid = next(_next_id)
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, uid)
+        user = s.get(User, uid)
+        user.onboarding_step = "account"
+        s.commit()
+    update = _CbUpdate(uid, "acc:new")
+    await application.on_callback(update, _Ctx())
+    with SessionLocal() as s:
+        assert accounts.credential_for(s, uid) is not None
+        assert s.get(User, uid).onboarding_step == "name"
+
+
+def test_rituals_not_picked_at_setup_are_not_offered_for_restore():
+    """They were never removed — just not chosen. Modules switch them on."""
+    uid = next(_next_id)
+    _onboard(uid)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        svc.set_modules(s, ws, {"wake"})
+        assert svc.archived_habits(s, ws) == []
+
+
+async def test_a_menu_tap_during_sign_in_is_not_taken_as_the_password():
+    owner, other = next(_next_id), next(_next_id)
+    login, _ = _account_with_password(owner)
+    _onboard(other)
+    ctx = _Ctx()
+    await application.cmd_login(_TextUpdate(other, "/login"), ctx)
+    await application.on_text(_TextUpdate(other, login), ctx)
+    tap = _TextUpdate(other, application.t("uz", "menu_home"))
+    await application.on_text(tap, ctx)
+    assert not tap.effective_message.deleted
+    assert application.current_flow(ctx, "login_pass") is None
+    with SessionLocal() as s:
+        row = accounts.credential_for(s, owner)
+        assert row.failed_attempts == 0, "no password was tried"
