@@ -324,10 +324,25 @@ def test_protected_habit_cannot_be_toggled(alice):
     assert alice.post(f"/api/habits/{protected['id']}/toggle").status_code == 400
 
 
-def test_protected_habit_cannot_be_deleted(alice):
-    habits = alice.get("/api/habits").json()["habits"]
-    protected = next(h for h in habits if h["protected"])
-    assert alice.delete(f"/api/habits/{protected['id']}").status_code == 400
+def test_a_ritual_can_be_removed_and_comes_back_from_the_ready_made_list(fresh):
+    """v9.1: every habit can go — the rituals too — and the ready-made list
+    brings one back with its history. Removing a ritual switches its module
+    off; nothing is erased."""
+    habits = fresh.get("/api/habits").json()["habits"]
+    wake = next(h for h in habits if h["system_key"] == "wakeup")
+    assert fresh.delete(f"/api/habits/{wake['id']}").status_code == 200
+    names = [h["name"] for h in fresh.get("/api/habits").json()["habits"]]
+    assert "Get up" not in names
+    assert fresh.get("/api/me").json()["modules"]["wake"] is False
+
+    presets = fresh.get("/api/habits/presets").json()["presets"]
+    assert len(presets) == 10
+    assert next(p for p in presets if p["key"] == "wakeup")["added"] is False
+    back = fresh.post("/api/habits/presets", {"key": "wakeup", "on": True})
+    assert back.status_code == 200
+    again = next(h for h in fresh.get("/api/habits").json()["habits"]
+                 if h["system_key"] == "wakeup")
+    assert again["id"] == wake["id"], "the same habit came back, history and all"
 
 
 def test_normal_habit_toggles(alice):
@@ -664,7 +679,8 @@ def test_the_primary_mission_is_the_first_slot(alice):
     week = alice.get("/api/focus").json()["week"]
     assert week["primary"]["title"] == "primary"
     assert [x["title"] for x in week["supporting"]] == ["supporting"]
-    assert alice.get("/api/home").json()["mission"]["title"] == "primary"
+    # The week goal lives on Tasks only; Home no longer carries it.
+    assert "mission" not in alice.get("/api/home").json()
 
 
 def test_a_mission_defaults_to_medium_importance(alice):
@@ -693,10 +709,10 @@ def test_a_mission_written_before_the_column_existed_reads_as_medium(alice):
         s.add(db.WeeklyFocus(workspace_id=ws, week_start=svc.week_start(svc.today_local()),
                              slot=1, title="legacy row", priority=None))
         s.commit()
-    assert alice.get("/api/home").json()["mission"]["priority"] == "medium"
+    assert alice.get("/api/focus").json()["week"]["primary"]["priority"] == "medium"
 
 
-def test_home_shows_one_mission_even_for_a_legacy_week(alice):
+def test_the_week_goal_is_one_even_for_a_legacy_week(alice):
     """Weeks written under the old three-slot rule still resolve to one."""
     _clear_missions(ALICE["id"])
     with SessionLocal() as s:
@@ -706,7 +722,7 @@ def test_home_shows_one_mission_even_for_a_legacy_week(alice):
             s.add(db.WeeklyFocus(workspace_id=ws, week_start=start, slot=slot,
                                  title=f"legacy {slot}"))
         s.commit()
-    assert alice.get("/api/home").json()["mission"]["title"] == "legacy 1"
+    assert alice.get("/api/focus").json()["week"]["primary"]["title"] == "legacy 1"
 
 
 def test_bad_date_is_rejected_without_leaking_internals(alice):
@@ -956,15 +972,17 @@ def _menu_labels(lang: str) -> list[str]:
 
 
 @pytest.mark.parametrize("lang", ["uz", "en", "ru"])
-def test_the_menu_puts_the_wake_button_above_the_mini_app(lang):
-    """Turdim gets its own row directly above the Mini App button — the two
-    rows a thumb reaches first, and the one action that expires."""
+def test_the_menu_has_money_and_no_wake_button(lang):
+    """v9.1: "Turdim" left the persistent keyboard — it lives on the Habits
+    screen, only while it can still be recorded — and Money has its own
+    button, kept apart from the productivity screens."""
     labels = _menu_labels(lang)
     assert len(labels) == 9
     assert labels == [application.t(lang, key) for key in (
         "menu_home", "menu_habits", "menu_tasks", "menu_stats",
-        "menu_teams", "menu_settings", "menu_feedback",
-        "menu_wake", "menu_app")]
+        "menu_money", "menu_teams", "menu_settings", "menu_feedback",
+        "menu_app")]
+    assert application.t(lang, "menu_wake") not in labels
 
 
 @pytest.mark.parametrize("lang", ["uz", "en", "ru"])
@@ -996,10 +1014,32 @@ def test_wake_up_is_offered_on_the_habits_screen_while_it_can_be_recorded():
 
 
 def test_wake_up_disappears_from_the_habits_screen_once_recorded():
-    """On that screen it would only be able to say "already done". The keyboard
-    button stays regardless, because that one is the morning entry point."""
+    """On that screen it would only be able to say "already done", and the
+    keyboard no longer carries it either — typing "Turdim" still works."""
     assert application.t("uz", "menu_wake") not in _habit_buttons(done=True)
-    assert application.t("uz", "menu_wake") in _menu_labels("uz")
+    assert application.t("uz", "menu_wake") not in _menu_labels("uz")
+
+
+def test_the_habits_screen_lists_habits_first_and_controls_last():
+    """One habit per row at the top, no tier headers between them; add, edit,
+    the ready-made list and restore underneath; no timer or countdown."""
+    grouped = {"non_negotiable": [{"id": 1, "name": "Get up", "protected": True,
+                                   "system_key": "wakeup", "done": False}],
+               "target": [{"id": 2, "name": "Sport", "protected": False,
+                           "done": False}],
+               "bonus": [{"id": 3, "name": "Suv", "protected": False,
+                          "done": True}]}
+    markup = application.habits_keyboard(grouped, "uz", restorable=2)
+    rows = [[b.text for b in row] for row in markup.inline_keyboard]
+    assert all(len(row) == 1 for row in rows[:3]), "habits are one column"
+    assert [row[0] for row in rows[:3]] == ["⬜ Get up 🔒", "⬜ Sport", "✅ Suv"]
+    tail = [label for row in rows[3:] for label in row]
+    assert tail[0] == application.t("uz", "menu_wake")
+    assert application.t("uz", "btn_add_habit") in tail
+    assert application.t("uz", "btn_presets") in tail
+    flat = " ".join(label for row in rows for label in row)
+    for gone in ("btn_timers", "btn_countdown", "cat_non_negotiable"):
+        assert application.t("uz", gone) not in flat
 
 
 def test_a_late_wake_up_is_answered_with_a_joke_not_a_verdict():
@@ -1425,29 +1465,30 @@ def _home_text(telegram_id: int, lang: str = "uz") -> str:
 
 
 def test_bot_home_stays_compact(alice):
-    """The date, the mission, today, the four numbers — and nothing else.
+    """The date, what to do now, one line of counts, today — nothing else.
 
         🗓️ 28-sentabr, Dushanba
 
-        🎯 Missiya
-        — yo'q
+        👉 Hozir
+        ⚡ Q4 rejasini tayyorlash
+
+        Vazifa 1/3 · Odat 2/6 · Namoz 3/5
 
         ⚡ Bugun
         — yo'q
 
-        ✅  0/9
-        🕌 0/5
-        🔥0
-        📊 ▪️ 0%
+    No percentage and no week goal: the goal lives on Tasks, the numbers on
+    Statistics (v9.1, items 1 and 2).
     """
     _clear_tasks(ALICE["id"])
     text = _home_text(ALICE["id"])
     assert text.startswith("🗓️ ")
-    assert application.t("uz", "home_mission") in text
+    assert application.t("uz", "home_now") in text
     assert application.t("uz", "home_today") in text
-    for mark in ("\n✅  ", "\n🕌 ", "\n🔥", "\n📊 "):
-        assert mark in text
+    assert f"{application.t('uz', 'cnt_habits')} " in text
+    assert "%" not in text
     for gone in ("Loyihalar", "Tug'ilgan kunlar", "Kechikkan", "Maqsadlar",
+                 "Missiya", application.t("uz", "home_mission"),
                  "shaxsiy tizimi", application.t("uz", "privacy_line")):
         assert gone not in text
 
@@ -1465,7 +1506,7 @@ def test_bot_home_shows_only_todays_tasks(alice):
 def test_bot_home_says_none_rather_than_nothing(alice):
     _clear_tasks(ALICE["id"])
     _clear_missions(ALICE["id"])
-    assert _home_text(ALICE["id"]).count(application.t("uz", "none")) == 2
+    assert _home_text(ALICE["id"]).count(application.t("uz", "none")) == 1
 
 
 def test_bot_home_escapes_a_hostile_task_title(alice):
@@ -1479,17 +1520,34 @@ def test_bot_home_escapes_a_hostile_task_title(alice):
 def test_bot_home_uses_the_language_of_the_reader(alice):
     for lang in ("uz", "en", "ru"):
         text = _home_text(ALICE["id"], lang)
-        assert application.t(lang, "home_mission") in text
+        assert application.t(lang, "home_now") in text
         assert svc.MONTHS[lang][svc.today_local().month - 1] in text
 
 
-def test_bot_statistics_reports_the_same_overall_as_home(alice):
+def test_bot_statistics_reports_the_same_overall_as_the_explanation(alice):
+    """Home shows counts now; the percentage lives on Statistics, and the
+    bot's statistics and the Mini App's ⓘ read the same number."""
     with SessionLocal() as s:
         ws = svc.workspace_id_for(s, ALICE["id"])
         data = svc.summary(s, ws)
     text = application.render_stats(data, "uz")
     assert f"{data['today']['overall']}%" in text
-    assert alice.get("/api/home").json()["overall"]["value"] == data["today"]["overall"]
+    assert alice.get("/api/overall").json()["value"] == data["today"]["overall"]
+
+
+def test_bot_home_and_mini_app_home_show_the_same_now_and_counts(alice):
+    """Item 1: both surfaces read one `now` and one `counts` payload."""
+    home = alice.get("/api/home").json()
+    assert "now" in home and "counts" in home
+    assert set(home["counts"]) == {"tasks", "habits", "prayer"}
+    for gone in ("overall", "mission", "focus", "birthdays", "week"):
+        assert gone not in home, f"Home still computes {gone}"
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, ALICE["id"])
+        data = svc.home(s, ws, s.get(User, ALICE["id"]))
+    assert data["now"] == home["now"]
+    assert application.render_now(home["now"], "uz") in \
+        application.render_home(data, "uz")
 
 
 def test_bot_statistics_compares_today_with_the_week_and_the_month(alice):
@@ -1531,13 +1589,26 @@ def _task_buttons(**kwargs) -> list[str]:
 
 def test_an_empty_workspace_offers_only_add_and_projects():
     """With nothing in it, the screen is Add and Projects — never a chooser
-    with nothing in it. The timer list, which would be one, stays hidden until
-    there is a task to put a timer on; the countdowns have their own Add."""
+    with nothing in it. The date and time countdowns are not bot buttons at
+    all any more (v9.1): they live in the Mini App."""
     labels = _task_buttons(projects=[], open_tasks=0, editable=0)
     assert labels == [application.t("uz", "btn_add_task"),
-                      application.t("uz", "btn_projects"),
-                      application.t("uz", "btn_countdown")]
-    assert application.t("uz", "btn_timers") not in labels
+                      application.t("uz", "btn_projects")]
+
+
+def test_no_bot_keyboard_offers_a_countdown_or_timer_button():
+    """Home, Habits and Tasks: the two countdowns are Mini App only."""
+    grouped = {"non_negotiable": [], "target": [{"id": 1, "name": "Gym",
+                                                 "protected": False, "done": False}],
+               "bonus": []}
+    labels = [b.text for markup in (
+        application.home_keyboard("uz", 3), application.home_keyboard("uz", 1),
+        application.habits_keyboard(grouped, "uz", stage=3),
+        application.tasks_keyboard("uz", projects=[], open_tasks=3, editable=3,
+                                   stage=3))
+        for row in markup.inline_keyboard for b in row]
+    for key in ("btn_countdown", "btn_timers"):
+        assert application.t("uz", key) not in labels
 
 
 def test_the_done_and_edit_buttons_appear_once_there_are_tasks():
@@ -2603,7 +2674,7 @@ def test_home_answers_what_now_before_anything_else(alice):
     assert body["now"]["kind"] in {"wake", "task", "habit", "prayer",
                                    "journal", "clear"}
     # And the pieces the screen is built from, each deliberately singular.
-    for key in ("top3", "focus", "week", "wake", "break"):
+    for key in ("top3", "counts", "wake", "break"):
         assert key in body, f"Home is missing {key}"
 
 
@@ -2719,10 +2790,13 @@ def test_the_backlog_does_not_drag_todays_number(alice):
 
 
 def test_every_surface_reports_the_same_overall(alice):
-    """Home, Statistics and the evening report read one function."""
+    """Statistics, the ⓘ explanation and the evening report read one function.
+
+    Home stopped printing the percentage (v9.1 item 2) — it shows counts — so
+    the parity that matters is between the places that still print it."""
     today = svc.today_local().isoformat()
     alice.post("/api/tasks", json={"title": "PARITY", "deadline": today})
-    home = alice.get("/api/home").json()["overall"]["value"]
+    home = alice.get("/api/overall").json()["value"]
     stats = alice.get("/api/stats").json()["today"]["overall"]
     with SessionLocal() as s:
         ws = svc.workspace_id_for(s, ALICE["id"])
@@ -2857,8 +2931,10 @@ def test_setup_is_four_taps_and_one_answer():
 
     What must not come back: the channel as step two, and the phone number.
     """
+    # v9.1: after the three rituals, the seven ordinary ready-made habits —
+    # all ticked, one tap each to drop — so an account starts with ten.
     assert application.ONBOARDING_STEPS == [
-        "language", "account", "name", "modules", "done"]
+        "language", "account", "name", "modules", "presets", "done"]
     source = (ROOT / "app.py").read_text()
     assert 'user.onboarding_step = "phone"' not in source
     assert 'user.onboarding_step = "subscribe"' not in source, \
@@ -3063,12 +3139,21 @@ def test_a_habit_can_be_renamed_and_rescheduled(fresh):
     assert row["remind_at"] == "07:30"
 
 
-def test_a_derived_habit_cannot_be_renamed(fresh):
-    """Its name is the contract with the module that drives it."""
+def test_a_ritual_can_be_renamed_and_keeps_its_module(fresh):
+    """v9.1: the module finds its habit by system_key, so the name is the
+    user's. The schedule stays daily and the box stays derived."""
     habits = fresh.get("/api/habits").json()["habits"]
     prayer = next(h for h in habits if h["system_key"] == "prayer")
     assert fresh.patch(f"/api/habits/{prayer['id']}",
-                       json={"name": "anything"}).status_code == 400
+                       json={"name": "Namoz 5 vaqt", "category": "target",
+                             "schedule": "weekdays"}).status_code == 200
+    row = next(h for h in fresh.get("/api/habits").json()["habits"]
+               if h["id"] == prayer["id"])
+    assert row["name"] == "Namoz 5 vaqt"
+    assert row["category"] == "target"
+    assert row["system_key"] == "prayer" and row["protected"] is True
+    assert row["schedule"] == "daily", "a ritual keeps its daily schedule"
+    assert fresh.get("/api/me").json()["modules"]["prayer"] is True
 
 
 def test_habit_history_counts_only_the_days_it_was_due(fresh):
@@ -3744,9 +3829,9 @@ def test_the_explanation_prints_the_weights_that_actually_applied(alice):
     assert body["task_priority_weights"] == {"high": 3, "medium": 2, "low": 1}
 
 
-def test_the_explanation_matches_the_number_home_shows(alice):
+def test_the_explanation_matches_the_number_statistics_shows(alice):
     assert alice.get("/api/overall").json()["value"] == \
-        alice.get("/api/home").json()["overall"]["value"]
+        alice.get("/api/stats").json()["today"]["overall"]
 
 
 def test_a_component_with_nothing_due_is_named_as_absent(alice):
@@ -8577,7 +8662,8 @@ def test_the_bot_opens_the_timer_instead_of_ticking_a_timed_habit():
     data = {b.text: b.callback_data for row in markup.inline_keyboard for b in row}
     assert data["5h deep flow · ⏱ 5 soat"] == "tmr:open:h:7"
     assert data["⬜ Suv"] == "habit:toggle:8"
-    assert application.t("uz", "btn_timers") in data
+    # The timer list button left the bot (v9.1); the row itself still opens it.
+    assert application.t("uz", "btn_timers") not in data
 
 
 def test_every_timer_button_fits_telegrams_callback_limit():
@@ -9627,13 +9713,14 @@ def test_the_menu_grows_with_use():
     assert application.stage_for(application.STAGE_ACTIONS[1], now) == 3
     assert application.stage_for(0, now - timedelta(days=8)) == 3
     application.WEBAPP_URL = ""
-    first = [b.text for row in application.main_menu("uz", 1, wake=False).keyboard
+    first = [b.text for row in application.main_menu("uz", 1).keyboard
              for b in row]
     assert first == [application.t("uz", k) for k in
                      ("menu_home", "menu_habits", "menu_tasks", "menu_settings")]
-    second = [b.text for row in application.main_menu("uz", 2, wake=False).keyboard
+    second = [b.text for row in application.main_menu("uz", 2).keyboard
               for b in row]
     assert application.t("uz", "menu_stats") in second
+    assert application.t("uz", "menu_money") in second
     assert application.t("uz", "menu_feedback") not in second
 
 

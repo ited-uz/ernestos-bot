@@ -1,0 +1,33 @@
+name: tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      # Unused imports and undefined names only. Nothing stylistic, so this
+      # gate fails on real mistakes and never on taste.
+      - name: Lint
+        run: python -m pyflakes app.py services.py db.py migrations.py dependencies.py ratelimit.py
+
+      # The suite runs against SQLite: ENVIRONMENT=test keeps it off Telegram
+      # and out of the rate limiter, and tests/test_smoke.py points
+      # DATABASE_URL at a temporary file of its own.
+      - name: Tests
+        run: python -m pytest -q

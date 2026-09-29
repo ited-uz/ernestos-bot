@@ -14,6 +14,7 @@ domain row carries `workspace_id`, so one user can never reach another's data.
                        ├─ WeeklyFocus
                        ├─ JournalEntry
                        ├─ Birthday
+                       ├─ MoneyEntry / MoneyBudget  (kept out of every score)
                        ├─ Feedback
                        └─ DailyReportLog
 
@@ -583,6 +584,44 @@ class Birthday(Base):
     birth_date: Mapped[date] = mapped_column(Date)
     note: Mapped[str] = mapped_column(String(300), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class MoneyEntry(Base):
+    """One movement of money: spent (`expense`) or received (`income`).
+
+    Kept apart from everything productive on purpose. No score, streak, XP or
+    report reads this table — what somebody spent is not a measure of how
+    well their day went. Amounts are whole so'm; nothing here converts.
+    """
+
+    __tablename__ = "money_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(8))            # expense | income
+    amount: Mapped[int] = mapped_column(BigInteger)
+    category: Mapped[str] = mapped_column(String(24))       # a MONEY_CATEGORIES id
+    note: Mapped[str] = mapped_column(String(200), default="")
+    #: manual | voice | bot — where it was entered, shown as a small mark.
+    source: Mapped[str] = mapped_column(String(8), default="manual")
+    #: The user's local day it belongs to, so a month is the user's month.
+    day: Mapped[date] = mapped_column(Date, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class MoneyBudget(Base):
+    """A monthly limit for one expense category. No row: the default limit."""
+
+    __tablename__ = "money_budgets"
+    __table_args__ = (UniqueConstraint("workspace_id", "category",
+                                       name="uq_money_budget"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    category: Mapped[str] = mapped_column(String(24))
+    monthly_limit: Mapped[int] = mapped_column(BigInteger)
 
 
 class Feedback(Base):
