@@ -31,6 +31,7 @@ from urllib.parse import parse_qsl
 
 from fastapi import HTTPException
 
+import accounts
 import config
 import dependencies as deps
 import services as svc
@@ -152,11 +153,15 @@ def auth(init_data: str | None, *, require_onboarded: bool = True) -> tuple[User
     payload = verify_init_payload(init_data or "")
     tg_user = payload["user"]
     with SessionLocal() as s:
-        user, created = svc.get_or_create_user(
-            s, int(tg_user["id"]),
-            first_name=tg_user.get("first_name", ""),
-            last_name=tg_user.get("last_name", ""),
-            username=tg_user.get("username", ""))
+        # A Telegram that signed in with a login is served as that account;
+        # its own profile fields are not written over the owner's.
+        sender = int(tg_user["id"])
+        account = accounts.resolve(s, sender)
+        profile = ({"first_name": tg_user.get("first_name", ""),
+                    "last_name": tg_user.get("last_name", ""),
+                    "username": tg_user.get("username", "")}
+                   if account == sender else {})
+        user, created = svc.get_or_create_user(s, account, **profile)
         svc.touch_activity(s, user.telegram_id)
         s.commit()
         # First touch, from a `?startapp=ref_…` link. `start_param` is read
