@@ -1559,7 +1559,7 @@ T["ru"].update({
 
 T["uz"].update({
     "home_now": "👉 Hozir",
-    "cnt_tasks": "Vazifa", "cnt_habits": "Odat", "cnt_prayer": "Namoz",
+    "cnt_tasks": "Vazifa", "cnt_habits": "Odat", "cnt_prayer": "Namoz", "cnt_team": "Jamoa",
     "btn_presets": "📋 Tayyor odatlar (10 ta)",
     "presets_title": "📋 Tayyor odatlar",
     "presets_hint": ("Eng kerakli 10 ta odat. ✅ — ro'yxatingizda, ➕ — yo'q. "
@@ -1572,8 +1572,8 @@ T["uz"].update({
     "menu_money": "💰 Pul",
     "money_title": "Pul",
     "money_unit": "so'm",
-    "money_balance": "Balans", "money_income": "Kirim",
-    "money_expense": "Chiqim", "money_saved_line": "Tejaldi",
+    "money_balance": "Umumiy balans", "money_income": "Kirim",
+    "money_expense": "Chiqim",
     "money_by_category": "Kategoriyalar", "money_latest": "So'nggi yozuvlar",
     "money_empty": "Hali yozuv yo'q.",
     "money_hint": ("Shunchaki yozing: «Tushlik 45 ming» yoki «Maosh 5 mln keldi». "
@@ -1584,9 +1584,7 @@ T["uz"].update({
     "money_ask_income": "➕ <b>Kirim</b>\nSumma va izoh: <i>Maosh 5 mln</i>",
     "money_no_amount": "Summani tushunmadim. Masalan: 45 ming, 45000 yoki 1,5 mln.",
     "money_saved": "✅ Saqlandi: {amount}",
-    "money_capture_ask": "Pul sifatida saqlaymi?",
-    "money_save_expense": "➖ Chiqim sifatida saqlash",
-    "money_save_income": "➕ Kirim sifatida saqlash",
+    "money_capture_ask": "Chiqimmi yoki kirim?",
     "money_as_task": "📥 Vazifa sifatida",
     "mcat_food": "Ovqat", "mcat_transport": "Transport", "mcat_home": "Uy",
     "mcat_health": "Sog'liq", "mcat_fun": "Ko'ngil ochar", "mcat_business": "Biznes",
@@ -1596,7 +1594,7 @@ T["uz"].update({
 
 T["en"].update({
     "home_now": "👉 Now",
-    "cnt_tasks": "Tasks", "cnt_habits": "Habits", "cnt_prayer": "Prayer",
+    "cnt_tasks": "Tasks", "cnt_habits": "Habits", "cnt_prayer": "Prayer", "cnt_team": "Team",
     "btn_presets": "📋 Ready-made habits (10)",
     "presets_title": "📋 Ready-made habits",
     "presets_hint": ("The ten most useful habits. ✅ — on your list, ➕ — not yet. "
@@ -1609,7 +1607,7 @@ T["en"].update({
     "money_title": "Money",
     "money_unit": "UZS",
     "money_balance": "Balance", "money_income": "Income",
-    "money_expense": "Spent", "money_saved_line": "Saved",
+    "money_expense": "Spent",
     "money_by_category": "By category", "money_latest": "Latest",
     "money_empty": "Nothing recorded yet.",
     "money_hint": ("Just type: “Lunch 45k” or “Salary 5 mln received”. "
@@ -1620,9 +1618,7 @@ T["en"].update({
     "money_ask_income": "➕ <b>Income</b>\nAmount and note: <i>Salary 5 mln</i>",
     "money_no_amount": "I could not read the amount. For example: 45k, 45000 or 1.5 mln.",
     "money_saved": "✅ Saved: {amount}",
-    "money_capture_ask": "Save it as money?",
-    "money_save_expense": "➖ Save as spending",
-    "money_save_income": "➕ Save as income",
+    "money_capture_ask": "Spent or income?",
     "money_as_task": "📥 As a task",
     "mcat_food": "Food", "mcat_transport": "Transport", "mcat_home": "Home",
     "mcat_health": "Health", "mcat_fun": "Fun", "mcat_business": "Business",
@@ -1632,7 +1628,7 @@ T["en"].update({
 
 T["ru"].update({
     "home_now": "👉 Сейчас",
-    "cnt_tasks": "Задачи", "cnt_habits": "Привычки", "cnt_prayer": "Намаз",
+    "cnt_tasks": "Задачи", "cnt_habits": "Привычки", "cnt_prayer": "Намаз", "cnt_team": "Команда",
     "btn_presets": "📋 Готовые привычки (10)",
     "presets_title": "📋 Готовые привычки",
     "presets_hint": ("Десять самых полезных привычек. ✅ — в вашем списке, ➕ — нет. "
@@ -1645,7 +1641,7 @@ T["ru"].update({
     "money_title": "Деньги",
     "money_unit": "сум",
     "money_balance": "Баланс", "money_income": "Доход",
-    "money_expense": "Расход", "money_saved_line": "Сэкономлено",
+    "money_expense": "Расход",
     "money_by_category": "По категориям", "money_latest": "Последние",
     "money_empty": "Пока ничего нет.",
     "money_hint": ("Просто напишите: «Обед 45 тыс» или «Зарплата 5 млн пришла». "
@@ -1656,9 +1652,7 @@ T["ru"].update({
     "money_ask_income": "➕ <b>Доход</b>\nСумма и заметка: <i>Зарплата 5 млн</i>",
     "money_no_amount": "Не понял сумму. Например: 45 тыс, 45000 или 1,5 млн.",
     "money_saved": "✅ Сохранено: {amount}",
-    "money_capture_ask": "Сохранить как деньги?",
-    "money_save_expense": "➖ Сохранить как расход",
-    "money_save_income": "➕ Сохранить как доход",
+    "money_capture_ask": "Расход или доход?",
     "money_as_task": "📥 Как задачу",
     "mcat_food": "Еда", "mcat_transport": "Транспорт", "mcat_home": "Дом",
     "mcat_health": "Здоровье", "mcat_fun": "Развлечения", "mcat_business": "Бизнес",
@@ -1771,7 +1765,7 @@ T["uz"].update({
     "habit_removed": "🗑 O'chirildi: {name}",
     "restore_title": "♻️ Qaysi birini qaytaramiz?",
     "restored": "♻️ Qaytdi: {name}",
-    "confirm_delete_habit": "O'chirilsinmi? Tarix saqlanadi, ♻️ bilan qaytarasiz.",
+    "confirm_delete_habit": "Odat o'chirilsinmi? O'tgan kunlar natijasi o'zgarmaydi.",
     "habit_protected_edit": "Avtomatik hisoblanadi. O'chirsangiz, shu modul o'chadi.",
     "habit_protected": "Bu odat avtomatik belgilanadi.",
     "choose_edit": "Qaysi birini?",
@@ -1921,7 +1915,7 @@ T["en"].update({
     "habit_removed": "🗑 Deleted: {name}",
     "restore_title": "♻️ Which one should come back?",
     "restored": "♻️ Restored: {name}",
-    "confirm_delete_habit": "Delete it? History stays; ♻️ brings it back.",
+    "confirm_delete_habit": "Delete this habit? Past days stay as they were.",
     "habit_protected_edit": "Counted automatically. Deleting it turns its module off.",
     "habit_protected": "This habit is ticked automatically.",
     "choose_edit": "Which one?",
@@ -2063,7 +2057,7 @@ T["ru"].update({
     "habit_removed": "🗑 Удалено: {name}",
     "restore_title": "♻️ Что вернуть?",
     "restored": "♻️ Вернули: {name}",
-    "confirm_delete_habit": "Удалить? История сохранится, ♻️ вернёт.",
+    "confirm_delete_habit": "Удалить привычку? Прошлые дни не изменятся.",
     "habit_protected_edit": "Считается автоматически. Удаление выключит модуль.",
     "habit_protected": "Эта привычка отмечается автоматически.",
     "choose_edit": "Какую?",

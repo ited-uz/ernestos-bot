@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select, text as sql_text
 from sqlalchemy.exc import DBAPIError, OperationalError
 from telegram import (
-    InlineKeyboardButton, InlineKeyboardMarkup, InputFile,
+    InlineKeyboardButton, InlineKeyboardMarkup, InputFile, MenuButtonWebApp,
     ReplyKeyboardMarkup, Update, WebAppInfo,
 )
 from telegram.constants import ParseMode
@@ -246,19 +246,6 @@ async def count_action(telegram_id: int, ctx: ContextTypes.DEFAULT_TYPE | None =
         progress = outcome["progress"]
         user = s.get(User, telegram_id)
         trial = deps.trial_state(user)
-        stage_now = ui_stage(user)
-        stage_before = (stage_for(max((user.actions_count or 0) - 1, 0),
-                                  user.created_at) if user else stage_now)
-
-    # The menu grows as the account is used; say what appeared, once.
-    if message is not None and stage_now > stage_before:
-        what = (t(lang, "menu_stats") if stage_now == 2 else
-                f"{t(lang, 'menu_teams')} · {t(lang, 'menu_feedback')}")
-        try:
-            await message.reply_text(t(lang, "unlocked", what=what),
-                                     reply_markup=menu_for(telegram_id, lang))
-        except TelegramError:
-            log.info("could not show the grown menu to %s", telegram_id)
 
     if inviter is not None and ctx is not None:
         await notify_referral_qualified(ctx.bot, inviter)
@@ -313,41 +300,24 @@ def ui_stage(user: User | None) -> int:
 
 def main_menu(lang: str, stage: int = 3, *,
               team: bool = False) -> ReplyKeyboardMarkup:
-    """The persistent menu, in a fixed order, as much of it as `stage` allows.
+    """The persistent menu: six buttons, two columns, the same for everybody.
 
-    Home, Habits, Tasks and Statistics are the four screens the Mini App also
-    has, so a feature found in one surface is findable in the other. Money
-    sits on a row of its own with Teams: it is kept apart from the
-    productivity screens and never counts towards any of their numbers.
+        🏠 Home       💰 Pul
+        ✅ Odatlar    ⚡ Vazifalar
+        👥 Jamoa      ⚙️ Sozlamalar
 
-    "Turdim" is not in this keyboard. It lives on the Habits screen, beside
-    the habit it records, and only while it can still be recorded — a button
-    that stays on the keyboard all day was one more thing to read at every
-    glance. Typing "Turdim" still works.
+    Statistics opens from Home (and /stats), suggestions from Settings, and
+    the Mini App from Telegram's own menu button beside the text field — a
+    second "🚀 ErnestOS" row under the keyboard only repeated it. "Turdim"
+    lives on the Habits screen; typing it still works. `stage` and `team`
+    are accepted for older callers and no longer change the layout: one
+    keyboard nobody has to relearn is simpler than one that grows.
     """
-    if stage >= 3:
-        rows = [
-            [t(lang, "menu_home"), t(lang, "menu_habits")],
-            [t(lang, "menu_tasks"), t(lang, "menu_stats")],
-            [t(lang, "menu_money"), t(lang, "menu_teams")],
-            [t(lang, "menu_settings"), t(lang, "menu_feedback")],
-        ]
-    elif stage == 2:
-        rows = [
-            [t(lang, "menu_home"), t(lang, "menu_habits")],
-            [t(lang, "menu_tasks"), t(lang, "menu_stats")],
-            ([t(lang, "menu_money"), t(lang, "menu_teams"), t(lang, "menu_settings")]
-             if team else [t(lang, "menu_money"), t(lang, "menu_settings")]),
-        ]
-    else:
-        rows = [
-            [t(lang, "menu_home"), t(lang, "menu_habits")],
-            [t(lang, "menu_tasks"), t(lang, "menu_settings")],
-        ]
-        if team:
-            rows.append([t(lang, "menu_teams")])
-    if WEBAPP_URL:
-        rows.append([t(lang, "menu_app")])
+    rows = [
+        [t(lang, "menu_home"), t(lang, "menu_money")],
+        [t(lang, "menu_habits"), t(lang, "menu_tasks")],
+        [t(lang, "menu_teams"), t(lang, "menu_settings")],
+    ]
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
 
@@ -767,7 +737,7 @@ READ_CALLBACKS = {("habit", "back"), ("habit", "noop"),
                   ("tmr", "home"), ("tmr", "list"), ("tmr", "back"),
                   ("cd", "list"), ("cd", "back"), ("team", "list"),
                   ("team", "open"), ("team", "stats"),
-                  ("pj", "list"), ("pj", "open"), ("habit", "restorelist"),
+                  ("pj", "list"), ("pj", "open"),
                   ("task", "restorelist"), ("habit", "presets"),
                   ("money", "show")}
 
@@ -1069,19 +1039,15 @@ def countdown_line(item: dict, lang: str) -> str:
 
 
 def home_keyboard(lang: str, stage: int = 3) -> InlineKeyboardMarkup:
-    """Home's ways onward: add something, or open the full app.
+    """Home's ways onward: add something, or read the numbers.
 
-    The date and time countdowns are not here any more — they live in the
-    Mini App (Tasks → Calendar), which is where a date is planned. The chat
-    keeps the two actions that are faster typed than tapped through."""
-    rows = [[InlineKeyboardButton(t(lang, "home_add_habit"),
-                                  callback_data="habit:add"),
-             InlineKeyboardButton(t(lang, "home_add_task"),
-                                  callback_data="task:add")]]
-    if WEBAPP_URL:
-        rows.append([InlineKeyboardButton(
-            t(lang, "menu_app"), web_app=WebAppInfo(url=WEBAPP_URL))])
-    return InlineKeyboardMarkup(rows)
+    Statistics left the main keyboard and opens from here, under the one line
+    of counts it explains. The Mini App opens from Telegram's menu button, so
+    no "🚀 ErnestOS" row is repeated under Home."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(t(lang, "home_add_habit"), callback_data="habit:add"),
+         InlineKeyboardButton(t(lang, "home_add_task"), callback_data="task:add")],
+        [InlineKeyboardButton(t(lang, "menu_stats"), callback_data="home:stats")]])
 
 
 def _bar(percent: int, width: int = 10) -> str:
@@ -1121,6 +1087,8 @@ def render_stats(data: dict, lang: str) -> str:
     if today.get("prayer_owed", True):
         parts.append(f"{t(lang, 'st_prayer')}: {today['prayer_performed']}/"
                      f"{today['prayer_required']}")
+    if today.get("team") is not None:
+        parts.append(f"{t(lang, 'cnt_team')}: {pct(today['team'])}")
     lines.append(" · ".join(parts))
 
     # Then the two longer windows, each with its own overall.
@@ -1264,9 +1232,9 @@ def fmt_money(amount: int, lang: str) -> str:
 
 
 def money_capture_text(money: dict, lang: str) -> str:
-    sign = "−" if money["kind"] == "expense" else "+"
-    return (f"💰 <b>{sign}{fmt_money(money['amount'], lang)}</b>"
-            f" · {t(lang, 'mcat_' + money['category'])}\n"
+    """The amount as read and the words it came from — no sign: which way the
+    money went is the person's one tap, not the parser's guess."""
+    return (f"💰 <b>{fmt_money(money['amount'], lang)}</b>\n"
             f"<i>{esc(money['note'])}</i>\n\n{t(lang, 'money_capture_ask')}")
 
 
@@ -1291,8 +1259,7 @@ def render_money(data: dict, lang: str) -> str:
     lines = [f"💰 <b>{t(lang, 'money_title')}</b> · {month}", "",
              f"💼 {t(lang, 'money_balance')}: <b>{fmt_money(data['balance'], lang)}</b>",
              f"📈 {t(lang, 'money_income')}: {fmt_money(data['income'], lang)}",
-             f"📉 {t(lang, 'money_expense')}: {fmt_money(data['expense'], lang)}",
-             f"🐷 {t(lang, 'money_saved_line')}: {fmt_money(data['saved'], lang)}"]
+             f"📉 {t(lang, 'money_expense')}: {fmt_money(data['expense'], lang)}"]
     used = [c for c in data["categories"] if c["spent"]]
     if used:
         lines += ["", f"<b>{t(lang, 'money_by_category')}</b>"]
@@ -1368,22 +1335,22 @@ def _timer_badge(item: dict, lang: str) -> str:
     return ""
 
 
-def habits_keyboard(grouped: dict, lang: str, *, stage: int = 3,
-                    restorable: int = 0) -> InlineKeyboardMarkup:
-    """The habits first, one per row, and the controls under them.
+def habits_keyboard(grouped: dict, lang: str, *,
+                    stage: int = 3) -> InlineKeyboardMarkup:
+    """The habits first, two to a row, and the controls under them.
 
-    Top of the message: nothing but the habits, in one column, in tier order
-    (non-negotiable, then target, then bonus) — the thing opened this screen
-    to tick. Bottom: "Turdim" while it can still be recorded, then add, edit,
-    the ready-made list and restore. Timers and countdowns are not here; they
-    live in the Mini App.
+    Top of the message: nothing but the habits, in tier order (non-negotiable,
+    then target, then bonus), two columns so ten habits fit one screen — the
+    thing opened this screen to tick. Bottom: "Turdim" while it can still be
+    recorded, then add, edit and the ready-made list. There is no restore:
+    the ready-made list brings a removed one back with its history.
 
     Shared habits sit beside private ones, marked 👥, and tick through the
     team's own toggle — each member ticks only their own share. A habit with a
     timer opens its timer instead of ticking: it is done by the clock running
     out, not by the box.
     """
-    rows = []
+    buttons = []
     for category in svc.HABIT_CATEGORIES:
         habits = grouped.get(category, [])
         for h in habits:
@@ -1391,45 +1358,50 @@ def habits_keyboard(grouped: dict, lang: str, *, stage: int = 3,
                 mark = "✅" if h.get("done") else "⬜"
                 if h.get("mirrored"):
                     # Read from the member's own ritual; nothing to tick here.
-                    rows.append([InlineKeyboardButton(
+                    buttons.append(InlineKeyboardButton(
                         f"{mark} 👥 {h['name']} 🔒",
-                        callback_data="habit:mirrored")])
+                        callback_data="habit:mirrored"))
                 elif not h.get("due", True):
-                    rows.append([InlineKeyboardButton(
-                        f"⏸ 👥 {h['name']}", callback_data="habit:noop")])
+                    buttons.append(InlineKeyboardButton(
+                        f"⏸ 👥 {h['name']}",
+                        callback_data="habit:noop"))
                 elif h.get("timer_minutes") and not h.get("done"):
-                    rows.append([InlineKeyboardButton(
+                    buttons.append(InlineKeyboardButton(
                         f"👥 {h['name']} · {_timer_badge(h, lang)}",
-                        callback_data=f"tmr:open:H:{h['id']}")])
+                        callback_data=f"tmr:open:H:{h['id']}"))
                 else:
-                    rows.append([InlineKeyboardButton(
+                    buttons.append(InlineKeyboardButton(
                         f"{mark} 👥 {h['name']}",
-                        callback_data=f"thabit:toggle:{h['id']}")])
+                        callback_data=f"thabit:toggle:{h['id']}"))
                 continue
             if h.get("paused"):
                 # A paused habit is shown, greyed by its label, with resume as
                 # the only thing it can do. Hiding it would mean it can never
                 # come back.
-                rows.append([InlineKeyboardButton(
-                    f"⏸ {h['name']}", callback_data=f"habit:resume:{h['id']}")])
+                buttons.append(InlineKeyboardButton(
+                    f"⏸ {h['name']}",
+                    callback_data=f"habit:resume:{h['id']}"))
                 continue
             if not h.get("due", True):
                 # Not scheduled today: listed without a checkbox, so an off-day
                 # never looks like something the user skipped.
-                rows.append([InlineKeyboardButton(
-                    f"·  {h['name']}", callback_data="habit:noop")])
+                buttons.append(InlineKeyboardButton(
+                    f"·  {h['name']}",
+                    callback_data="habit:noop"))
                 continue
             if h.get("timer_minutes") and not h["done"]:
-                rows.append([InlineKeyboardButton(
+                buttons.append(InlineKeyboardButton(
                     f"{h['name']} · {_timer_badge(h, lang)}",
-                    callback_data=f"tmr:open:h:{h['id']}")])
+                    callback_data=f"tmr:open:h:{h['id']}"))
                 continue
             mark = "✅" if h["done"] else "⬜"
             lock = " 🔒" if h["protected"] else ""
-            clock = f" ⏰{h['target_time']}" if h.get("target_time") else ""
-            rows.append([InlineKeyboardButton(
-                f"{mark} {h['name']}{clock}{lock}",
-                callback_data=f"habit:toggle:{h['id']}")])
+            buttons.append(InlineKeyboardButton(
+                f"{mark} {h['name']}{lock}",
+                callback_data=f"habit:toggle:{h['id']}"))
+    # Two columns: a long name is cut short by Telegram, never wrapped into
+    # a third line, so the list still reads at a glance.
+    rows = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
     # "Turdim" left the persistent menu, so it lives here, where the habit it
     # belongs to is — and only while it can still be recorded today.
     wake = next((h for group in grouped.values() for h in group
@@ -1444,9 +1416,6 @@ def habits_keyboard(grouped: dict, lang: str, *, stage: int = 3,
     ])
     rows.append([InlineKeyboardButton(t(lang, "btn_presets"),
                                       callback_data="habit:presets")])
-    if restorable:
-        rows.append([InlineKeyboardButton(f"{t(lang, 'btn_restore')} ({restorable})",
-                                          callback_data="habit:restorelist")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -1487,7 +1456,6 @@ async def show_habits(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     with SessionLocal() as s:
         grouped = svc.habits_by_category(s, ws, tz=tz)
         streak = svc.habit_streak(s, ws, tz=tz)
-        restorable = len(svc.archived_habits(s, ws))
 
     text = f"<b>{t(user.language, 'habits_title')}</b>"
     due = [h for group in grouped.values() for h in group
@@ -1497,8 +1465,7 @@ async def show_habits(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         text += f"   ✅ {sum(1 for h in due if h.get('done'))}/{len(due)}"
     if streak:
         text += f"   🔥 {streak}"
-    markup = habits_keyboard(grouped, user.language, stage=ui_stage(user),
-                             restorable=restorable)
+    markup = habits_keyboard(grouped, user.language, stage=ui_stage(user))
     if edit and update.callback_query:
         await update.callback_query.edit_message_text(
             text, parse_mode=ParseMode.HTML, reply_markup=markup)
@@ -2441,6 +2408,8 @@ async def show_settings(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         # One row, at the bottom, where it is findable without competing with
         # the settings somebody actually opened this screen to change.
         [InlineKeyboardButton(t(lang, "ref_menu"), callback_data="ref:show")],
+        # Suggestions live here now rather than on the main keyboard.
+        [InlineKeyboardButton(t(lang, "menu_feedback"), callback_data="set:feedback")],
     ])
     if edit and update.callback_query:
         await update.callback_query.edit_message_text(
@@ -4079,10 +4048,12 @@ async def offer_capture(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         await message.reply_text(
             money_capture_text(money, lang), parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(t(lang, "money_save_expense"
-                                        if money["kind"] == "expense"
-                                        else "money_save_income"),
-                                      callback_data=f"cap:{capture_id}:m")],
+                # Both directions, one tap each: the guess is only the label
+                # at the top, never a decision the person has to undo.
+                [InlineKeyboardButton(t(lang, "money_btn_expense"),
+                                      callback_data=f"cap:{capture_id}:me"),
+                 InlineKeyboardButton(t(lang, "money_btn_income"),
+                                      callback_data=f"cap:{capture_id}:mi")],
                 [InlineKeyboardButton(t(lang, "money_as_task"),
                                       callback_data=f"cap:{capture_id}:p"),
                  InlineKeyboardButton(t(lang, "capture_skip"),
@@ -4130,8 +4101,11 @@ async def save_capture(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     if target == "x":
         await update.callback_query.edit_message_text(t(lang, "cancelled"))
         return
-    if target == "m" and capture.get("money"):
+    if target in ("m", "me", "mi") and capture.get("money"):
         money = capture["money"]
+        kind = {"me": "expense", "mi": "income"}.get(target, money["kind"])
+        if kind != money["kind"]:
+            money = svc.parse_money_text(money["note"], kind) or money
         with SessionLocal() as s:
             svc.add_money(s, ws, money["kind"], money["amount"], money["category"],
                           note=money["note"], source="bot", tz=svc.user_tz(user))
@@ -4423,24 +4397,6 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             start_flow(ctx, "habit_name")
             await message.reply_text(t(lang, "ask_habit_name"),
                                      reply_markup=suggest_keyboard(lang, "h"))
-        elif sub == "restorelist":
-            with SessionLocal() as s:
-                gone = svc.archived_habits(s, ws)
-            if not gone:
-                await _notice(update, t(lang, "empty"))
-                return
-            rows = [[InlineKeyboardButton(f"♻️ {h['name'][:40]}",
-                                          callback_data=f"habit:restore:{h['id']}")]
-                    for h in gone]
-            rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="habit:back")])
-            await query.edit_message_text(t(lang, "restore_title"),
-                                          reply_markup=InlineKeyboardMarkup(rows))
-        elif sub == "restore":
-            with SessionLocal() as s:
-                name = svc.restore_habit(s, ws, int(parts[2])).name
-            await log_event(ctx.bot, user, "♻️ HABIT RESTORED", f"Habit: {esc(name)}")
-            await _toast(update, t(lang, "restored", name=name))
-            await show_habits(update, ctx, edit=True)
         elif sub == "dellist":
             with SessionLocal() as s:
                 habits = [h for h in svc.list_habits(s, ws) if not h["protected"]]
@@ -4618,7 +4574,10 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         await save_capture(update, ctx, parts, user, ws)
 
     elif action == "home":
-        await show_home(update, ctx)
+        if len(parts) > 1 and parts[1] == "stats":
+            await show_stats(update, ctx)
+        else:
+            await show_home(update, ctx)
 
     elif action == "tmr":
         await route_timer(update, ctx, parts, user, ws, lang)
@@ -4794,6 +4753,8 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 
         if sub == "back":
             await show_settings(update, ctx, edit=True)
+        elif sub == "feedback":
+            await _menu_feedback(update, ctx, lang)
         elif sub == "lang":
             await query.edit_message_text(t(lang, "ask_lang"),
                                           reply_markup=InlineKeyboardMarkup([
@@ -6515,6 +6476,14 @@ async def lifespan(_: FastAPI):
 
         await telegram_app.initialize()
         await telegram_app.start()
+        if WEBAPP_URL:
+            # The keyboard has no Mini App button any more: the chat's own
+            # menu button (next to the text field) opens it instead.
+            try:
+                await telegram_app.bot.set_chat_menu_button(
+                    menu_button=MenuButtonWebApp("ErnestOS", WebAppInfo(url=WEBAPP_URL)))
+            except TelegramError:
+                log.warning("could not set the Mini App menu button")
         if WEBHOOK_URL:
             # One HTTP call per update instead of a permanent long-poll. Worth
             # it once there are enough users that polling is the process's main
@@ -8328,23 +8297,6 @@ def api_habit_presets(init=Header(default=None, alias="X-Telegram-Init-Data")):
         return {"presets": svc.habit_presets(s, ws, user.language)}
 
 
-@app.get("/api/habits/archived")
-def api_habits_archived(init=Header(default=None, alias="X-Telegram-Init-Data")):
-    """Removed habits that can come back, history and all — the Mini App's ♻️."""
-    _, ws = auth(init)
-    with SessionLocal() as s:
-        return {"habits": svc.archived_habits(s, ws)}
-
-
-@app.post("/api/habits/{habit_id}/restore")
-def api_habit_restore(habit_id: int,
-                      init=Header(default=None, alias="X-Telegram-Init-Data")):
-    _, ws = auth(init)
-    with SessionLocal() as s:
-        habit = svc.restore_habit(s, ws, habit_id)
-        return {"ok": True, "id": habit.id, "name": habit.name}
-
-
 class RitualShareIn(BaseModel):
     key: str = Field(min_length=1, max_length=16)
     team_id: int
@@ -9222,6 +9174,8 @@ class MoneyIn(BaseModel):
 class MoneyTextIn(BaseModel):
     text: str = Field(min_length=1, max_length=300)
     source: str = Field(default="manual", max_length=8)
+    #: The Chiqim / Kirim button that was pressed; empty lets the words decide.
+    kind: str = Field(default="", max_length=8)
 
 
 class MoneyBudgetIn(BaseModel):
@@ -9267,7 +9221,7 @@ def api_money_text(body: MoneyTextIn,
                    init=Header(default=None, alias="X-Telegram-Init-Data")):
     """"Tushlikka 45 ming sarfladim" — typed or spoken — straight to an entry."""
     user, ws = auth(init)
-    parsed = svc.parse_money_text(body.text)
+    parsed = svc.parse_money_text(body.text, body.kind or None)
     if parsed is None:
         raise HTTPException(status_code=422, detail="no_amount")
     with SessionLocal() as s:

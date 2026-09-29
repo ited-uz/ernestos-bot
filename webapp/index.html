@@ -909,6 +909,19 @@ details[open] > summary .i{transform:rotate(90deg)}
 .counts:hover{border-color:var(--border-2)}
 
 /* ---- Habits: the list, then a dashboard of controls under it ---- */
+/* Habits in a grid: two columns on a phone, three when there is room.
+   Each habit is its own tile, so the joined-list corners are undone. */
+.hgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s2)}
+@media (min-width:560px){.hgrid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.hgrid > .item{margin:0 !important;border-radius:var(--radius) !important;
+  border-color:var(--border) !important;align-items:flex-start;min-height:64px}
+.hgrid > .item .grow{min-width:0}
+.hgrid > .item{padding:var(--s2);gap:var(--s1)}
+.hgrid > .item .ellipsis{white-space:normal;overflow-wrap:anywhere;line-height:1.25;
+  font-size:15px;font-weight:560}
+.hgrid > .item .meta{font-size:12px;gap:2px 6px}
+.hgrid > .item .iconbtn.plain{display:none}
+.hgrid > .item.wide{grid-column:1 / -1;align-items:center}
 .hrow-tier{width:4px;align-self:stretch;border-radius:2px;flex:none;margin:-2px 0}
 .hrow-tier.t1{background:var(--danger)}
 .hrow-tier.t2{background:var(--warn)}
@@ -935,6 +948,14 @@ details[open] > summary .i{transform:rotate(90deg)}
 .pos{color:var(--ok)} .neg{color:var(--danger)}
 .mquick{display:flex;gap:var(--s1);margin-top:var(--s3)}
 .mquick input{flex:1}
+.tcols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s2);
+       margin-top:var(--s3)}
+.tcols > .card{margin:0;min-width:0}
+.mkind{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s1);
+       margin-top:var(--s1)}
+.mkind .btn{min-height:44px;font-weight:650}
+.mkind .btn.neg{color:var(--danger)}
+.mkind .btn.pos{color:var(--ok)}
 .mic{width:48px;min-width:48px;height:48px;border-radius:50%;border:0;cursor:pointer;
      background:var(--primary-fill);color:var(--on-primary);display:grid;
      place-items:center}
@@ -1168,7 +1189,7 @@ const DICT = {
   week:"Hafta", month:"Oy", year:"Yil", average:"O'rtacha",
   best_day:"Eng yaxshi kun", vs_prev:"oldingi davrga nisbatan",
   how_calculated:"Bu qanday hisoblandi?",
-  overall_rule:"Umumiy — har bo'limning o'z og'irligi bilan hisoblanadi — vazifa 40%, odat 25%, fokus 20%, namoz 15%.",
+  overall_rule:"Umumiy — har bo'limning o'z og'irligi bilan hisoblanadi — vazifa 40%, odat 25%, jamoa 20%, namoz 15%. Bugun umumiy ish bo'lmasa, jamoa ulushi qolganlariga bo'linadi.",
   focus:"Fokus", weight:"og'irlik",
   weighted_note:"Og'irlik bo'yicha hisoblanadi",
   weight_shift:"Bugun bo'sh bo'lgan bo'limning og'irligi qolganlariga nisbatan taqsimlandi.",
@@ -1355,9 +1376,9 @@ const DICT = {
   nav_home:"Asosiy", nav_stats:"Statistika", money:"Pul", money_add:"Pul yozuvi",
   money_apart:"Alohida bo'lim — hech qanday foiz, streak yoki reytingga qo'shilmaydi.",
   money_balance:"Umumiy balans", money_income:"Kirim", money_expense:"Chiqim",
-  money_saved:"Shu oy tejaldi", money_unit:"so'm",
+  money_unit:"so'm",
   money_quick_ph:"Tushlik 45 ming · Maosh 5 mln keldi",
-  money_quick_hint:"Yozing va Enter bosing — summa, kirim yoki chiqim va kategoriya o'zi aniqlanadi.",
+  money_quick_hint:"Yozing va Chiqim yoki Kirim'ni bosing. Summa va kategoriya o'zi aniqlanadi.",
   money_voice:"Ovoz bilan kiritish", money_voice_none:"Bu qurilmada ovozli kiritish yo'q",
   money_voice_denied:"Mikrofonga ruxsat berilmagan", money_voice_fail:"Ovozni tushunib bo'lmadi, qayta urinib ko'ring",
   money_spend_split:"Xarajatlar taqsimoti", money_no_spend:"Bu oy hali xarajat yo'q",
@@ -1373,16 +1394,15 @@ const DICT = {
   presets:"Tayyor odatlar",
   presets_hint:"Eng kerakli 10 ta odat. Olib tashlangani tarixi bilan saqlanadi va qaytarsangiz, tarixi ham qaytadi",
   preset_add:"Qo'shish", preset_remove:"Olib tashlash", preset_added:"Qo'shildi",
-  auto_short:"avtomatik", restore_empty:"Qaytariladigan odat yo'q",
-  restore_hint:"O'chirilgan odatlar tarixi bilan qaytadi", restored_toast:"Qaytarildi",
-  habit_remove_sure:"«{name}» olib tashlansinmi? Tarixi saqlanadi — Tayyor odatlar yoki Qaytarish orqali qaytadi",
+  auto_short:"avtomatik",
+  habit_remove_sure:"«{name}» olib tashlansinmi? Tarixi saqlanadi — Tayyor odatlardan qaytadi",
   habit_removed_toast:"Olib tashlandi — tarixi saqlandi",
   no_habits_yet:"Hali odat yo'q. Tayyor ro'yxatdan tanlang yoki o'zingiz qo'shing.",
   ritual_where:"Qayerda ko'rinadi",
   ritual_share_hint:"Doim sizniki bo'lib qoladi. Jamoani yoqsangiz, u yerda ham ko'rinadi — har kim o'zinikini belgilaydi.",
   day_past_hint:"O'tgan kun — faqat qilingan ishlar ko'rsatiladi", day_past_empty:"Bu kunda hech narsa yo'q edi",
   day_free:"Bu kun hozircha bo'sh", moved_toast:"Ko'chirildi",
-  team_graph:"Jamoa natijasi", team_graph_hint:"Bitta chiziq — butun jamoa. Davr bo'yicha {n}",
+  team_graph:"Jamoa natijasi", team_graph_hint:"Har a'zo — o'z rangida, ko'k — o'rtacha. Davr bo'yicha {n}", team_avg:"O'rtacha",
   team_graph_empty:"Grafik uchun kamida ikki kunlik ma'lumot kerak",
   cnt_tasks:"Vazifa", cnt_habits:"Odat", cnt_prayer:"Namoz",
   dow:["Du","Se","Ch","Pa","Ju","Sh","Ya"],
@@ -1533,7 +1553,7 @@ const DICT = {
   week:"Week", month:"Month", year:"Year", average:"Average",
   best_day:"Best day", vs_prev:"vs the previous period",
   how_calculated:"How was this calculated?",
-  overall_rule:"Overall weighs each part — tasks 40%, habits 25%, focus 20%, prayer 15%.",
+  overall_rule:"Overall weighs each part — tasks 40%, habits 25%, team 20%, prayer 15%. With no shared work today, the team share is spread over the rest.",
   focus:"Focus", weight:"weight",
   weighted_note:"Weighted, not averaged",
   weight_shift:"A part with nothing in it today had its weight split across the rest, in proportion.",
@@ -1716,9 +1736,9 @@ const DICT = {
   nav_home:"Home", nav_stats:"Stats", money:"Money", money_add:"Money entry",
   money_apart:"A separate section — never counted in any percentage, streak or rank.",
   money_balance:"Balance", money_income:"Income", money_expense:"Spent",
-  money_saved:"Saved this month", money_unit:"UZS",
+  money_unit:"UZS",
   money_quick_ph:"Lunch 45k · Salary 5 mln received",
-  money_quick_hint:"Type and press Enter — the amount, in or out, and the category are read for you.",
+  money_quick_hint:"Type it and tap Spent or Income. The amount and category are read for you.",
   money_voice:"Speak it", money_voice_none:"Voice entry is not available on this device",
   money_voice_denied:"Microphone access was not allowed", money_voice_fail:"Could not make that out — try again",
   money_spend_split:"Where it went", money_no_spend:"Nothing spent this month yet",
@@ -1734,16 +1754,15 @@ const DICT = {
   presets:"Ready-made habits",
   presets_hint:"The ten most useful habits. A removed one keeps its history, and it comes back with it",
   preset_add:"Add", preset_remove:"Remove", preset_added:"Added",
-  auto_short:"automatic", restore_empty:"Nothing to bring back",
-  restore_hint:"Removed habits come back with their history", restored_toast:"Brought back",
-  habit_remove_sure:"Remove “{name}”? Its history is kept — it comes back from Ready-made habits or Restore",
+  auto_short:"automatic",
+  habit_remove_sure:"Remove “{name}”? Its history is kept — it comes back from Ready-made habits",
   habit_removed_toast:"Removed — history kept",
   no_habits_yet:"No habits yet. Pick from the ready-made list or add your own.",
   ritual_where:"Where it shows",
   ritual_share_hint:"It always stays yours. Switch a team on and it shows there too — each member ticks their own.",
   day_past_hint:"A day gone by — only what was done is shown", day_past_empty:"Nothing happened on this day",
   day_free:"Nothing planned for this day yet", moved_toast:"Moved",
-  team_graph:"Team result", team_graph_hint:"One line — the whole team. For the period {n}",
+  team_graph:"Team result", team_graph_hint:"Each member in their own colour, blue is the average. For the period {n}", team_avg:"Average",
   team_graph_empty:"The graph needs at least two days of data",
   cnt_tasks:"Tasks", cnt_habits:"Habits", cnt_prayer:"Prayer",
   dow:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
@@ -1894,7 +1913,7 @@ const DICT = {
   week:"Неделя", month:"Месяц", year:"Год", average:"Среднее",
   best_day:"Лучший день", vs_prev:"к прошлому периоду",
   how_calculated:"Как это посчитано?",
-  overall_rule:"Общий считается с весами — задачи 40%, привычки 25%, фокус 20%, намаз 15%.",
+  overall_rule:"Общий считается с весами — задачи 40%, привычки 25%, команда 20%, намаз 15%. Если общих дел сегодня нет, доля команды делится между остальными.",
   focus:"Фокус", weight:"вес",
   weighted_note:"Считается с весами",
   weight_shift:"Вес пустого сегодня раздела распределён между остальными пропорционально.",
@@ -2077,9 +2096,9 @@ const DICT = {
   nav_home:"Главная", nav_stats:"Итоги", money:"Деньги", money_add:"Запись о деньгах",
   money_apart:"Отдельный раздел — не входит ни в какие проценты, серии и рейтинги.",
   money_balance:"Баланс", money_income:"Доход", money_expense:"Расход",
-  money_saved:"Сэкономлено за месяц", money_unit:"сум",
+  money_unit:"сум",
   money_quick_ph:"Обед 45 тыс · Зарплата 5 млн пришла",
-  money_quick_hint:"Напишите и нажмите Enter — сумма, доход или расход и категория определятся сами.",
+  money_quick_hint:"Напишите и нажмите Расход или Доход. Сумма и категория определятся сами.",
   money_voice:"Голосом", money_voice_none:"Голосовой ввод на этом устройстве недоступен",
   money_voice_denied:"Нет доступа к микрофону", money_voice_fail:"Не удалось разобрать — попробуйте ещё раз",
   money_spend_split:"Куда ушли деньги", money_no_spend:"В этом месяце расходов пока нет",
@@ -2095,16 +2114,15 @@ const DICT = {
   presets:"Готовые привычки",
   presets_hint:"Десять самых полезных привычек. Убранная хранит историю и возвращается вместе с ней",
   preset_add:"Добавить", preset_remove:"Убрать", preset_added:"Добавлено",
-  auto_short:"автоматически", restore_empty:"Возвращать нечего",
-  restore_hint:"Удалённые привычки возвращаются с историей", restored_toast:"Возвращено",
-  habit_remove_sure:"Убрать «{name}»? История сохранится — вернуть можно из Готовых привычек или Вернуть",
+  auto_short:"автоматически",
+  habit_remove_sure:"Убрать «{name}»? История сохранится — вернуть можно из Готовых привычек",
   habit_removed_toast:"Убрано — история сохранена",
   no_habits_yet:"Привычек пока нет. Выберите из готового списка или добавьте свою.",
   ritual_where:"Где видно",
   ritual_share_hint:"Всегда остаётся вашей. Включите команду — будет видно и там, каждый отмечает своё.",
   day_past_hint:"Прошедший день — показано только сделанное", day_past_empty:"В этот день ничего не было",
   day_free:"На этот день пока ничего нет", moved_toast:"Перенесено",
-  team_graph:"Результат команды", team_graph_hint:"Одна линия — вся команда. За период {n}",
+  team_graph:"Результат команды", team_graph_hint:"Каждый участник своим цветом, синяя — среднее. За период {n}", team_avg:"Среднее",
   team_graph_empty:"Для графика нужно хотя бы два дня данных",
   cnt_tasks:"Задачи", cnt_habits:"Привычки", cnt_prayer:"Намаз",
   dow:["Пн","Вт","Ср","Чт","Пт","Сб","Вс"],
@@ -2222,7 +2240,7 @@ const state = {
   statsPeriod:"week", summary:null,
   /* One line to open with. Three overlapping lines is a picture nobody reads
      first; the legend adds the others when a comparison is actually wanted. */
-  statsSeries:{overall:true, tasks:false, habits:false, focus:false, prayer:false},
+  statsSeries:{overall:true, tasks:false, habits:false, team:false, prayer:false},
   lang:"uz", appearance:"auto",
   reorderMode:false,
   taskQuery:"", taskFilter:"", doneQuery:"",
@@ -2393,15 +2411,21 @@ function lineChart(series, keys){
        stroke-width="1" stroke-dasharray="2 5"/>
      <text x="0" y="${y(v)+3}" font-size="8" fill="var(--text-3)">${v}</text>`).join("");
 
+  /* A key may skip the days it has no value (`gaps`) instead of drawing
+     them as zero, set its own `width`, and leave out the area (`area:false`). */
   const paths = keys.map((k, n) => {
-    const pts = series.map((p, i) => `${x(i)},${y(p[k.field] ?? 0)}`).join(" ");
-    const area = `${L},${y(0)} ${pts} ${x(series.length-1)},${y(0)}`;
+    const idx = series.map((p, i) => i)
+      .filter(i => !k.gaps || (series[i][k.field] !== null && series[i][k.field] !== undefined));
+    if(!idx.length) return "";
+    const pts = idx.map(i => `${x(i)},${y(series[i][k.field] ?? 0)}`).join(" ");
+    const area = `${x(idx[0])},${y(0)} ${pts} ${x(idx[idx.length-1])},${y(0)}`;
     const dots = series.length <= 12
-      ? series.map((p, i) => `<circle cx="${x(i)}" cy="${y(p[k.field] ?? 0)}" r="2.5"
-          fill="${k.color}"/>`).join("") : "";
-    return `<polygon points="${area}" fill="${k.color}" opacity="${n === 0 ? .10 : .05}"/>
-      <polyline points="${pts}" fill="none" stroke="${k.color}" stroke-width="2.3"
-        stroke-linejoin="round" stroke-linecap="round"/>${dots}`;
+      ? idx.map(i => `<circle cx="${x(i)}" cy="${y(series[i][k.field] ?? 0)}"
+          r="${k.width > 2.5 ? 3 : 2.5}" fill="${k.color}"/>`).join("") : "";
+    return (k.area === false ? "" : `<polygon points="${area}" fill="${k.color}"
+        opacity="${n === 0 ? .10 : .05}"/>`)
+      + `<polyline points="${pts}" fill="none" stroke="${k.color}"
+        stroke-width="${k.width || 2.3}" stroke-linejoin="round" stroke-linecap="round"/>${dots}`;
   }).join("");
 
   // Anchor the first and last labels inward so they are not clipped by
@@ -2748,8 +2772,8 @@ function memberLine(row, opts){
   const band = bandOf(row.percent);
   return `<div style="margin-top:${opts?.tight ? 8 : 12}px">
       <div class="row" style="padding:0 0 4px">
-        <div class="grow"><b>${esc(row.name)}</b></div>
-        ${teamDelta(row.delta)}
+        <div class="grow ellipsis"><b>${esc(row.name)}</b></div>
+        ${opts?.tight ? "" : teamDelta(row.delta)}
         <div style="width:52px;text-align:right">
           <b class="band-${band}">${
             row.percent === null || row.percent === undefined
@@ -2918,13 +2942,15 @@ function teamResultsTab(team, board){
           <b class="band-${bandOf(pct)}">${pct === null ? "—" : pct + "%"}</b></div>
       </div>`;
   }).join("");
-  const members = ["week", "month"].map(key => {
+  /* Week and month side by side, one row: each member's result in both. */
+  const cols = ["week", "month"].map(key => {
     const rows = board.periods?.[key] || [];
     if(!rows.length) return "";
     return `<div class="card"><div class="card-t">${
       t(key === "week" ? "team_p_week" : "team_p_month")}</div>
-      ${rows.map(r => memberLine(r)).join("")}</div>`;
-  }).join("");
+      ${rows.map(r => memberLine(r, {tight: true})).join("")}</div>`;
+  }).filter(Boolean);
+  const members = cols.length ? `<div class="tcols">${cols.join("")}</div>` : "";
   const log = state.teamActivity?.[team.id];
   if(!log) loadTeamActivity(team.id);
   const activity = `<h2>${t("activity")}</h2>` + (log
@@ -2936,10 +2962,11 @@ function teamResultsTab(team, board){
       ${periods}</div>` + teamGraph(team) + members + activity;
 }
 
-/* The team as one line: every confirmation owed each day, and how many came
-   in. One line on one graph — the question is "how are we doing together",
-   and a line per person answers a different one (the bars above do that). A
-   day nothing was owed is left out rather than drawn as a zero. */
+/* Each member as their own coloured line, and the average of them as the
+   main blue line on top. A day someone owed nothing is left out of their
+   line rather than drawn as a zero. */
+const MEMBER_COLORS = ["#FF9500", "#34C759", "#AF52DE", "#FF2D55", "#00C7BE"];
+const AVG_COLOR = "#0A84FF";
 function teamGraph(team){
   const period = state.teamGraphPeriod || "week";
   const key = team.id + ":" + period;
@@ -2953,9 +2980,16 @@ function teamGraph(team){
   let body;
   if(data === undefined || data === null) body = `<div class="spin"></div>`;
   else{
-    const points = (data.series || []).filter(p => p.team !== null && p.team !== undefined);
+    const points = (data.series || []).filter(p => p.avg !== null && p.avg !== undefined);
+    const people = (data.members || []).map((m, i) => ({field: String(m.user_id),
+      color: MEMBER_COLORS[i % MEMBER_COLORS.length], label: m.name,
+      width: 1.8, area: false, gaps: true}));
+    const avg = {field:"avg", color: AVG_COLOR, label: t("team_avg"), width: 3.2, gaps: true};
+    const legend = [...people, avg].map(k =>
+      `<span><i style="background:${k.color}"></i>${esc(k.label || "")}</span>`).join("");
     body = points.length >= 2
-      ? lineChart(points, [{field:"team", color:"var(--c1)", label:t("team")}])
+      ? lineChart(points, [...people, avg])
+        + `<div class="legend" style="margin-top:var(--s1)">${legend}</div>`
         + `<div class="t2 tiny" style="margin-top:var(--s1)">${t("team_graph_hint",
             {n: data.together === null || data.together === undefined ? "—" : data.together + "%"})}</div>`
       : `<div class="empty">${t("team_graph_empty")}</div>`;
@@ -3136,21 +3170,21 @@ function habitsTab(){
     .filter(x => x.due && x.scored !== false);
   const done = due.filter(x => x.done).length;
 
-  /* Top of the screen: the habits and nothing else, one column, in tier
-     order — non-negotiable, target, bonus. The tier is the coloured edge of
-     the row rather than a heading between rows, so the list reads as one
-     list. The wake-up control ("Turdim") sits in the habit it belongs to. */
+  /* Top of the screen: the habits and nothing else, in a 2–3 column grid,
+     in tier order — non-negotiable, target, bonus. The tier is the coloured
+     edge of the tile rather than a heading, so the grid reads as one list.
+     The wake-up control ("Turdim") sits in the habit it belongs to. */
   let h = timerBanner(data.active_timer);
   const rows = data.categories.map(cat =>
     (data.grouped[cat] || []).map(x => habitRow(x, cat, data.wake)).join("")).join("");
-  h += rows || `<div class="empty">${t("no_habits_yet")}
+  h += rows ? `<div class="hgrid">${rows}</div>` : `<div class="empty">${t("no_habits_yet")}
       <button class="btn secondary sm" data-act="presets-open">
         ${icon("tiles", 16)} ${t("presets")}</button></div>`;
   if(rows && !due.length) h += `<div class="t2 small" style="margin-top:var(--s2)">
       ${t("no_habits_today")}</div>`;
 
   /* Bottom: the dashboard. Today's count and the streak, then every control
-     that changes the list — add, the ready-made ten, reorder, restore.
+     that changes the list — add, the ready-made ten, reorder.
      Editing, pausing and deleting one habit live in its own sheet, one tap
      in, so nothing here can remove a habit by a mis-tap. */
   const ratio = due.length ? Math.round(done / due.length * 100) : 0;
@@ -3168,10 +3202,8 @@ function habitsTab(){
           ${icon("plus", 16)} ${t("add_habit")}</button>
         <button class="btn secondary" data-act="presets-open">
           ${icon("tiles", 16)} ${t("presets")}</button>
-        <button class="btn secondary" data-act="reorder-on">
+        <button class="btn secondary" data-act="reorder-on" style="grid-column:1 / -1">
           ${icon("drag", 16)} ${t("reorder")}</button>
-        <button class="btn secondary" data-act="habit-archive-open">
-          ${icon("repeat", 16)} ${t("restore")}</button>
       </div>
     </div>`;
   return h;
@@ -3180,7 +3212,7 @@ function habitsTab(){
 function habitRow(x, cat, wake){
   const edge = `<span class="hrow-tier ${TIERS[cat] || "t2"}" title="${t(cat)}"></span>`;
   if(x.paused){
-    return `<div class="item ${TIERS[cat]} off">${edge}
+    return `<div class="item ${TIERS[cat]} off wide">${edge}
         <div class="grow"><div class="ellipsis">${esc(x.name)}</div>
           <div class="meta">${t("paused")}</div></div>
         <button class="btn secondary sm" data-act="habit-resume" data-id="${x.id}">
@@ -3250,7 +3282,7 @@ function habitRow(x, cat, wake){
   // not asked and lost the one they had: how is this habit going.
   const open = shared ? `data-act="team-habit-open" data-id="${x.id}"`
                       : `data-act="habit-open" data-id="${x.id}"`;
-  return `<div class="item ${TIERS[cat]} ${x.due ? "" : "off"}">
+  return `<div class="item ${TIERS[cat]} ${x.due ? "" : "off"} ${wakeBtn ? "wide" : ""}">
       ${edge}${box}
       <div class="grow" ${open}>
         <div class="ellipsis">${esc(x.name)}</div>
@@ -4518,10 +4550,6 @@ SCREENS.money = () => {
         <div class="v pos">+${moneyFmt(m.income)}</div></div>
       <div class="mtile"><div class="k">${icon("down", 15)} ${t("money_expense")}</div>
         <div class="v neg">−${moneyFmt(m.expense)}</div></div>
-      <div class="mtile lead" style="padding-top:10px;padding-bottom:10px">
-        <div class="row"><div class="k grow">${t("money_saved")}</div>
-        <div class="v ${m.saved < 0 ? "neg" : "pos"}" style="font-size:16px;margin:0">
-          ${m.saved < 0 ? "−" : ""}${moneyFmt(m.saved)}</div></div></div>
     </div>`;
 
   if(m.is_current) h += `<div class="mquick">
@@ -4529,6 +4557,12 @@ SCREENS.money = () => {
              enterkeyhint="done" data-search="money-text-save" />
       ${SpeechRec ? `<button class="mic ${state.listening ? "on" : ""}" data-act="money-voice"
           aria-label="${t("money_voice")}">${icon("mic", 20)}</button>` : ""}
+    </div>
+    <div class="mkind">
+      <button class="btn secondary neg" data-act="money-text-save" data-kind="expense">
+        − ${t("money_expense")}</button>
+      <button class="btn secondary pos" data-act="money-text-save" data-kind="income">
+        + ${t("money_income")}</button>
     </div>
     <div class="t3 tiny" style="margin-top:6px">${t("money_quick_hint")}</div>`;
 
@@ -4626,11 +4660,12 @@ function moneyVoice(){
 
 /* One line to one entry: the server reads the amount, the direction and the
    category, and the toast says back what it understood. */
-async function moneyText(text, source){
+async function moneyText(text, source, kind){
   if(!text) return;
   haptic();
   try{
-    const e = await api("/api/money/text", {method:"POST", body:{text, source}});
+    const e = await api("/api/money/text", {method:"POST",
+                                            body:{text, source, kind: kind || ""}});
     const el = document.getElementById("money-text");
     if(el) el.value = "";
     notify("success");
@@ -4706,8 +4741,8 @@ SCREENS.stats = () => {
       ${tile("habits", t("habits"), pct(today.habits),
              today.habits || 0, st.deltas.habits,
              sum.habits_total ? t("of_habits", {done: sum.habits_done, total: sum.habits_total}) : "")}
-      ${tile("focus", t("week_focus"), pct(today.focus),
-             today.focus || 0, st.deltas.focus)}
+      ${tile("team", t("team"), pct(today.team),
+             today.team || 0, st.deltas.team)}
       ${tile("prayer", t("prayer"),
              `${today.prayer_performed}/${today.prayer_required}`,
              today.prayer || 0, st.deltas.prayer)}
@@ -4731,7 +4766,7 @@ SCREENS.stats = () => {
     {field:"overall", color:"var(--c1)", label:t("overall")},
     {field:"tasks",   color:"var(--c2)", label:t("tasks")},
     {field:"habits",  color:"var(--c3)", label:t("habits")},
-    {field:"focus",   color:"var(--c5)", label:t("week_focus")},
+    {field:"team",    color:"var(--c5)", label:t("team")},
     {field:"prayer",  color:"var(--c4)", label:t("prayer")},
   ];
   const active = SERIES.filter(k => state.statsSeries[k.field]);
@@ -4755,8 +4790,8 @@ SCREENS.stats = () => {
         <div class="v num">${pct(st.averages.tasks)}</div></div>
       <div><div class="k">${t("habits")}</div>
         <div class="v num">${pct(st.averages.habits)}</div></div>
-      <div><div class="k">${t("focus")}</div>
-        <div class="v num">${pct(st.averages.focus)}</div></div>
+      <div><div class="k">${t("team")}</div>
+        <div class="v num">${pct(st.averages.team)}</div></div>
       <div><div class="k">${t("prayer")}</div>
         <div class="v num">${pct(st.averages.prayer)}</div></div>
     </div></div>`;
@@ -5273,22 +5308,6 @@ function presetsSheet(list){
     <button class="btn secondary" data-act="close" style="margin-top:12px">${t("close")}</button>`;
 }
 
-/* Removed habits that can come back — history and all. */
-function archivedSheet(list){
-  const body = !list ? `<div class="spin"></div>`
-    : list.length ? list.map(x => `
-      <div class="item">
-        <div class="grow ellipsis">${esc(x.name)}</div>
-        <button class="btn sm secondary" data-act="habit-restore" data-id="${x.id}">
-          ${icon("repeat", 15)} ${t("restore")}</button>
-      </div>`).join("")
-    : `<div class="empty">${t("restore_empty")}</div>`;
-  return `<h3>${icon("repeat", 18)} ${t("restore")}</h3>
-    <div class="hint">${t("restore_hint")}</div>
-    <div style="margin-top:var(--s2)">${body}</div>
-    <button class="btn secondary" data-act="close" style="margin-top:12px">${t("close")}</button>`;
-}
-
 /* Get up, prayer and the journal: personal, and — per team — shown there too.
 
    A ritual is each person's own and is recorded once, in their own list, so
@@ -5443,12 +5462,12 @@ function overallSheet(x){
 /* One hue and one glyph per component, everywhere in the app: the tile on
    Home, the block on Statistics and the row in this sheet are the same three
    — now four — things, and they teach one vocabulary by never changing. */
-const COMPONENT_TONE = {tasks:"tone-1", habits:"tone-5", focus:"tone-3",
+const COMPONENT_TONE = {tasks:"tone-1", habits:"tone-5", team:"tone-3",
                         prayer:"tone-2"};
 /* The nominal weights, for display on Statistics only. The score itself is
    computed on the server — there is no second copy of the formula here. */
-const WEIGHTS = {tasks:40, habits:25, focus:20, prayer:15};
-const COMPONENT_ICON = {tasks:"list", habits:"check", focus:"target",
+const WEIGHTS = {tasks:40, habits:25, team:20, prayer:15};
+const COMPONENT_ICON = {tasks:"list", habits:"check", team:"users",
                         prayer:"moon"};
 
 /* ---------- day detail ----------
@@ -6833,7 +6852,7 @@ const A = {
     save(() => api("/api/money", {method:"POST", body}), "money", false,
          t("money_saved_toast"), {body});
   },
-  "money-text-save": () => moneyText(trimmed("money-text"), "manual"),
+  "money-text-save": el => moneyText(trimmed("money-text"), "manual", el?.dataset?.kind),
   "money-voice": () => moneyVoice(),
   "money-month": el => {
     const m = state.money;
@@ -7201,17 +7220,6 @@ const A = {
       loadScreen("habits");
     }catch(e){ handleError(e); }
   },
-  "habit-archive-open": async () => {
-    haptic();
-    openSheet(archivedSheet(null), "archived");
-    try{
-      const r = await api("/api/habits/archived");
-      if(state.sheetView === "archived") openSheet(archivedSheet(r.habits), "archived");
-    }catch(e){ handleError(e); }
-  },
-  "habit-restore": el => save(() => api(`/api/habits/${el.dataset.id}/restore`,
-    {method:"POST"}), "habits", false, t("restored_toast")),
-
   /* ---- a ritual, personal and also shown in a team ---- */
   "ritual-share": async el => {
     haptic();
