@@ -30,20 +30,66 @@ from collections import defaultdict
 from datetime import date, datetime, time as dtime, timedelta, timezone as _utc
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, or_, select, text as sql_text, update as sql_update
+from sqlalchemy import event, func, or_, select, text as sql_text, update as sql_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from db import (
     Birthday, Countdown, DailyReportLog, DailyScore, Feedback, Habit, HabitLog,
     HabitPauseInterval, HabitScheduleVersion, IdempotencyKey, JobRun,
-    JournalEntry, PrayerDay, PrayerLog, Project, Referral, ReferralCode, Task,
+    JournalEntry, MoneyBudget, MoneyEntry, PrayerDay, PrayerLog, Project,
+    Referral, ReferralCode, Task,
     Team, TeamActivity, TeamDayScore, TeamHabit, TeamHabitLog, TeamJoinRequest,
     TeamMember, TeamTask, TeamTaskDone, TimerRun, User, UserAchievement,
     UserProgress, WeeklyFocus, WeeklyReview, Workspace, XPEvent, utcnow,
 )
 
 log = logging.getLogger("ernestos")
+
+
+# ---------------------------------------------------------------------------
+# Read memo — one transaction's worth of repeated lookups
+# ---------------------------------------------------------------------------
+#
+# Scoring a day asks the same handful of questions many times over: whose
+# workspace is this, which zone is it in, which habits could have been owed,
+# which teams was the owner in. Scoring a month asked them thousands of times,
+# one database round trip each — /api/summary sent ~3,600 queries for a
+# thirty-day account, and on a networked PostgreSQL that is the several
+# seconds Home used to wait before it drew anything.
+#
+# The answers are kept on the session for as long as nothing has been written:
+# any flush, commit or rollback throws the memo away, and so does a session
+# holding a new or deleted object that has not been flushed yet. A write can
+# therefore never be answered from before itself.
+
+_MEMO_KEY = "_ernestos_memo"
+
+
+def _memo(s: Session) -> dict | None:
+    """This session's memo, or None while it holds unflushed adds/deletes."""
+    if s.new or s.deleted:
+        s.info.pop(_MEMO_KEY, None)
+        return None
+    return s.info.setdefault(_MEMO_KEY, {})
+
+
+def _forget(session, *_args) -> None:
+    session.info.pop(_MEMO_KEY, None)
+
+
+for _name in ("after_flush", "after_commit", "after_rollback",
+              "after_soft_rollback"):
+    event.listen(Session, _name, _forget)
+
+
+def _memoized(s: Session, key: tuple, compute):
+    memo = _memo(s)
+    if memo is None:
+        return compute()
+    if key not in memo:
+        memo[key] = compute()
+    return memo[key]
 
 #: The default zone, used by every workspace that never chose one.
 TZ = ZoneInfo("Asia/Tashkent")
@@ -600,7 +646,9 @@ def calendar_for(s: Session, habits, tz: ZoneInfo | None = None) -> DueCalendar:
     items: dict[str, list[int]] = {HABIT_KIND: [], TEAM_HABIT_KIND: []}
     for habit in habits:
         items[DueCalendar.kind_of(habit)].append(habit.id)
-    return DueCalendar.load(s, items, tz)
+    key = ("calendar", str(tz or TZ), tuple(sorted(items[HABIT_KIND])),
+           tuple(sorted(items[TEAM_HABIT_KIND])))
+    return _memoized(s, key, lambda: DueCalendar.load(s, items, tz))
 
 
 def habit_is_due(habit, day: date, cal: DueCalendar | None = None) -> bool:
@@ -618,8 +666,10 @@ def habit_is_due(habit, day: date, cal: DueCalendar | None = None) -> bool:
 
 
 def _habit_tz(s: Session, ws: int) -> ZoneInfo:
-    owner = workspace_owner(s, ws)
-    return user_tz(s.get(User, owner)) if owner else TZ
+    def compute():
+        owner = workspace_owner(s, ws)
+        return user_tz(s.get(User, owner)) if owner else TZ
+    return _memoized(s, ("tz", ws), compute)
 
 
 def _record_schedule_change(s: Session, kind: str, habit, new_schedule: str, *,
@@ -739,11 +789,15 @@ def _habits_owed_candidates(s: Session, ws: int, first: date) -> list[Habit]:
     an archived habit still counts on the days before it was archived.
     """
     start, _ = utc_window(first - timedelta(days=1), first - timedelta(days=1))
-    return list(s.scalars(
-        select(Habit).where(Habit.workspace_id == ws,
-                            or_(Habit.archived_at.is_(None),
-                                Habit.archived_at >= start))
-        .order_by(Habit.position, Habit.id)).all())
+    return [h for h in _workspace_habits(s, ws)
+            if h.archived_at is None or h.archived_at >= start]
+
+
+def _workspace_habits(s: Session, ws: int) -> list[Habit]:
+    """Every habit the workspace ever had, archived ones included, in order."""
+    return _memoized(s, ("habits", ws), lambda: list(s.scalars(
+        select(Habit).where(Habit.workspace_id == ws)
+        .order_by(Habit.position, Habit.id)).all()))
 
 
 def list_habits(s: Session, ws: int, day: date | None = None, *,
@@ -833,10 +887,11 @@ def update_habit(s: Session, ws: int, habit_id: int, **fields) -> Habit:
     recreate, which throws away every log it had. So an ordinary habit's name,
     tier, schedule and reminder are all the user's to set.
 
-    The derived habits keep their names and their daily schedule: the name is
-    the contract with the module that drives them, and "5x namoz on Mondays"
-    would not mean "I pray on Mondays", it would mean the other six days stop
-    counting.
+    The three rituals can be renamed, moved to another tier and given a
+    reminder like any other habit — the module finds its habit by
+    `system_key`, never by name. They keep their daily schedule and never take
+    a timer: "5x namoz on Mondays" would not mean "I pray on Mondays", it
+    would mean the other six days stop counting.
 
     A schedule change is a new version, effective tomorrow: the days that
     already happened keep the schedule they were lived under.
@@ -845,8 +900,6 @@ def update_habit(s: Session, ws: int, habit_id: int, **fields) -> Habit:
     tz = _habit_tz(s, ws)
 
     if "name" in fields and fields["name"] is not None:
-        if habit.is_protected:
-            raise ValueError("protected")
         name = str(fields["name"]).strip()[:120]
         if not name:
             raise ValueError("empty habit name")
@@ -1072,6 +1125,115 @@ def restore_habit(s: Session, ws: int, habit_id: int) -> Habit:
     return habit
 
 
+# ---------------------------------------------------------------------------
+# The ready-made ten
+# ---------------------------------------------------------------------------
+#
+# Ten habits most people starting a system like this actually keep: the three
+# rituals the app can record on its own, and seven ordinary ones. They are a
+# list to pick from, not a regime — every one can be removed and put back, and
+# putting one back brings its history with it rather than starting over.
+
+#: (key, category, {lang: name}). A system key names a ritual; the others are
+#: matched to a live habit by name, in any of the three languages, so a preset
+#: added in Uzbek still reads as "added" after switching to English.
+HABIT_PRESETS = [
+    (SYSTEM_WAKEUP, "non_negotiable", {}),
+    (SYSTEM_PRAYER, "non_negotiable", {}),
+    (SYSTEM_JOURNAL, "non_negotiable", {}),
+    ("plan", "target", {"uz": "Kunni rejalashtirish", "en": "Plan the day",
+                        "ru": "Планировать день"}),
+    ("deep", "target", {"uz": "Deep work", "en": "Deep work",
+                        "ru": "Глубокая работа"}),
+    ("sport", "target", {"uz": "Sport", "en": "Exercise", "ru": "Спорт"}),
+    ("read", "target", {"uz": "Kitob o'qish", "en": "Read a book",
+                        "ru": "Чтение книги"}),
+    ("water", "bonus", {"uz": "2 litr suv ichish", "en": "Drink 2 litres of water",
+                        "ru": "Выпить 2 литра воды"}),
+    ("language", "bonus", {"uz": "Til o'rganish", "en": "Learn a language",
+                           "ru": "Изучение языка"}),
+    ("sleep", "bonus", {"uz": "23:00 gacha uxlash", "en": "In bed by 23:00",
+                        "ru": "Спать до 23:00"}),
+]
+PRESET_KEYS = [key for key, _c, _n in HABIT_PRESETS]
+#: The seven ordinary presets, which setup offers after the three rituals.
+ORDINARY_PRESET_KEYS = [key for key in PRESET_KEYS if key not in SYSTEM_KEYS]
+
+
+def _preset(key: str) -> tuple[str, str, dict]:
+    for row in HABIT_PRESETS:
+        if row[0] == key:
+            return row
+    raise ValueError("unknown_preset")
+
+
+def preset_name(key: str, lang: str = "uz") -> str:
+    """The preset's name as it is created in `lang`."""
+    key, _category, names = _preset(key)
+    if key in SYSTEM_KEYS:
+        return next(d[0] for d in DEFAULT_HABITS if d[2] == key)
+    return names.get(lang) or names["uz"]
+
+
+def _preset_names(key: str) -> set[str]:
+    _key, _category, names = _preset(key)
+    return {n.strip().casefold() for n in names.values()}
+
+
+def _preset_habit(s: Session, ws: int, key: str, *, live: bool = True) -> Habit | None:
+    """The habit that is this preset — the live one, or the newest archived one."""
+    rows = [h for h in _active_habits(s, ws)] if live else list(s.scalars(
+        select(Habit).where(Habit.workspace_id == ws,
+                            Habit.archived_at.is_not(None))
+        .order_by(Habit.archived_at.desc(), Habit.id.desc())).all())
+    if key in SYSTEM_KEYS:
+        return next((h for h in rows if h.system_key == key), None)
+    names = _preset_names(key)
+    return next((h for h in rows if not h.system_key
+                 and h.name.strip().casefold() in names), None)
+
+
+def habit_presets(s: Session, ws: int, lang: str = "uz") -> list[dict]:
+    """The ten, each with whether it is on this list right now."""
+    out = []
+    for key, category, _names in HABIT_PRESETS:
+        habit = _preset_habit(s, ws, key)
+        out.append({"key": key, "name": habit.name if habit else preset_name(key, lang),
+                    "category": category, "system": key in SYSTEM_KEYS,
+                    "added": habit is not None,
+                    "habit_id": habit.id if habit else None})
+    return out
+
+
+def add_preset(s: Session, ws: int, key: str, lang: str = "uz", *,
+               tz: ZoneInfo | None = None) -> Habit:
+    """Put one of the ten on the list. Bringing one back keeps its history."""
+    key, category, _names = _preset(key)
+    habit = _preset_habit(s, ws, key)
+    if habit is not None:
+        return habit
+    old = _preset_habit(s, ws, key, live=False)
+    if old is not None:
+        return restore_habit(s, ws, old.id)
+    if key in SYSTEM_KEYS:
+        module = _module_of(key)
+        live = {name for name, on in modules_for(s, ws).items() if on}
+        owner = workspace_owner(s, ws)
+        set_modules(s, ws, live | {module},
+                    user=s.get(User, owner) if owner is not None else None)
+        return _preset_habit(s, ws, key)
+    return add_habit(s, ws, preset_name(key, lang), category, tz=tz)
+
+
+def remove_preset(s: Session, ws: int, key: str) -> str | None:
+    """Take one of the ten off the list — archived, never erased."""
+    _preset(key)
+    habit = _preset_habit(s, ws, key)
+    if habit is None:
+        return None
+    return remove_habit(s, ws, habit.id)
+
+
 def wake_habit(s: Session, ws: int) -> Habit | None:
     return s.scalar(select(Habit).where(
         Habit.workspace_id == ws, Habit.system_key == SYSTEM_WAKEUP,
@@ -1170,7 +1332,8 @@ def mark_wakeup(s: Session, ws: int, now: datetime | None = None, *,
 def workspace_owner(s: Session, ws: int) -> int | None:
     """Whose workspace this is. The bridge between workspace-scoped scoring
     and team membership, which is keyed on the person rather than the box."""
-    return s.scalar(select(Workspace.user_id).where(Workspace.id == ws))
+    return _memoized(s, ("owner", ws), lambda: s.scalar(
+        select(Workspace.user_id).where(Workspace.id == ws)))
 
 
 # --- Shared work inside the personal day ------------------------------------
@@ -1190,9 +1353,11 @@ def due_team_habits(s: Session, ws: int, day: date) -> list[tuple]:
     tz = _habit_tz(s, ws)
     rows: list[tuple] = []
     for team in teams_for_on(s, owner, day, tz=tz):
-        habits = [h for h in s.scalars(select(TeamHabit).where(
-            TeamHabit.team_id == team.id)).all()
-            if not (h.system_key or "")]
+        habits = [h for h in _memoized(s, ("team_habits", team.id),
+                                       lambda team_id=team.id: list(s.scalars(
+                                           select(TeamHabit).where(
+                                               TeamHabit.team_id == team_id)).all()))
+                  if not (h.system_key or "")]
         if not habits:
             continue
         cal = calendar_for(s, habits, tz)
@@ -2645,6 +2810,312 @@ def delete_birthday(s: Session, ws: int, birthday_id: int) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Money — kept apart from everything productive
+# ---------------------------------------------------------------------------
+#
+# What came in and what went out, by category, against a monthly limit. None
+# of it feeds a score, a streak, XP or a report: spending is not a measure of
+# how well a day went, and mixing the two would make both harder to read.
+# Amounts are whole so'm.
+
+MONEY_KINDS = ("expense", "income")
+
+#: (id, icon, colour, default monthly limit, kind). The limit is a starting
+#: point the user overrides per category; 0 means "no limit".
+MONEY_CATEGORIES = [
+    ("food", "🍔", "#EF4444", 2_000_000, "expense"),
+    ("transport", "🚕", "#F59E0B", 800_000, "expense"),
+    ("home", "🏠", "#3B82F6", 1_500_000, "expense"),
+    ("health", "💊", "#10B981", 500_000, "expense"),
+    ("fun", "🎮", "#8B5CF6", 1_000_000, "expense"),
+    ("business", "💼", "#0EA5E9", 0, "expense"),
+    ("other", "📦", "#6B7280", 500_000, "expense"),
+    ("salary", "💰", "#22C55E", 0, "income"),
+    ("sales", "📈", "#14B8A6", 0, "income"),
+    ("other_in", "➕", "#84CC16", 0, "income"),
+]
+MONEY_CATEGORY_IDS = [c[0] for c in MONEY_CATEGORIES]
+_MONEY_KIND_OF = {c[0]: c[4] for c in MONEY_CATEGORIES}
+MONEY_MAX_AMOUNT = 10 ** 12
+
+#: Words that name a category, in Uzbek, Russian and English. The first match
+#: wins, so the more specific groups come first.
+_MONEY_WORDS = [
+    ("food", r"tushlik|ovqat|nonushta|kechki ovqat|oziq|kafe|restoran|non\b|go'sht|"
+             r"обед|еда|завтрак|ужин|продукт|кафе|ресторан|lunch|food|dinner|breakfast|"
+             r"grocer|cafe|restaurant"),
+    ("transport", r"taxi|taksi|transport|avtobus|metro|benzin|yoqilg'i|"
+                  r"такси|автобус|метро|бензин|bus|fuel|uber|yandex"),
+    ("home", r"\buy\b|ijara|kommunal|\bgaz\b|svet|elektr|\bsuv\b|internet|"
+             r"аренд|коммунал|свет|интернет|rent|utilit|electric"),
+    ("health", r"dori|shifokor|kasalxona|dorixona|klinika|stomatolog|"
+               r"лекар|аптек|врач|клиник|pharmacy|doctor|clinic|medicine"),
+    ("fun", r"kino|o'yin|oyin|ko'ngil|kongil|sayohat|dam olish|"
+            r"кино|игр|развлеч|путешеств|movie|game|travel|trip"),
+    ("business", r"reklama|tovar|biznes|sklad|yetkazib|dropship|target|"
+                 r"реклам|товар|бизнес|склад|доставк|ads|stock|business|shipping"),
+]
+_INCOME_WORDS = (r"keldi|tushdi|maosh|oylik|daromad|kirim|bonus|sotdim|foyda|"
+                 r"зарплат|доход|пришл|получил|продал|прибыл|"
+                 r"salary|income|earned|received|sold|profit")
+_EXPENSE_WORDS = (r"sarfladim|sarflad|to'ladim|toladim|to'lov|ketdi|xarajat|"
+                  r"sotib oldim|ishlatdim|berdim|"
+                  r"потратил|заплатил|купил|расход|spent|paid|bought")
+_AMOUNT_RE = re.compile(
+    r"(\d+(?:[  ]\d{3})*(?:[.,]\d+)?)\s*"
+    r"(mlrd|milliard|млрд|billion|bn|million|millon|mln|млн|миллион\w*|"
+    r"ming|минг|тыс\w*|thousand|k\b|к\b)?", re.IGNORECASE)
+_MULTIPLIERS = {"mlrd": 10 ** 9, "milliard": 10 ** 9, "млрд": 10 ** 9,
+                "billion": 10 ** 9, "bn": 10 ** 9,
+                "million": 10 ** 6, "millon": 10 ** 6, "mln": 10 ** 6,
+                "млн": 10 ** 6, "миллион": 10 ** 6,
+                "ming": 1000, "минг": 1000, "тыс": 1000, "thousand": 1000,
+                "k": 1000, "к": 1000}
+_THOUSANDS_SEP = re.compile(r"^\d{1,3}(?:[.,]\d{3})+$")
+
+
+def money_category_kind(category: str) -> str | None:
+    return _MONEY_KIND_OF.get(category)
+
+
+def clean_money_amount(value) -> int:
+    """A positive whole amount, or ValueError."""
+    try:
+        amount = int(round(float(value)))
+    except (TypeError, ValueError):
+        raise ValueError("bad_amount")
+    if amount <= 0 or amount > MONEY_MAX_AMOUNT:
+        raise ValueError("bad_amount")
+    return amount
+
+
+def _unit_factor(unit: str) -> int:
+    unit = (unit or "").lower()
+    if not unit:
+        return 1
+    if unit.startswith("тыс"):
+        return 1000
+    if unit.startswith("миллион"):
+        return 10 ** 6
+    return _MULTIPLIERS.get(unit, 1)
+
+
+def parse_money_amount(text: str) -> int | None:
+    """`45 ming` → 45000, `1,5 mln` → 1500000, `45 000` → 45000, else None.
+
+    A number with a unit beats a bare one, so "2 ta non 8 ming" is 8 000 and
+    not 2. Without a unit, `45,000` and `45.000` are thousands separators.
+    """
+    found: list[tuple[bool, int]] = []
+    for number, unit in _AMOUNT_RE.findall(text or ""):
+        raw = number.replace(" ", "").replace(" ", "")
+        factor = _unit_factor(unit)
+        if factor == 1 and _THOUSANDS_SEP.match(raw):
+            raw = raw.replace(",", "").replace(".", "")
+        try:
+            value = float(raw.replace(",", "."))
+        except ValueError:
+            continue
+        amount = int(round(value * factor))
+        if 0 < amount <= MONEY_MAX_AMOUNT:
+            found.append((factor != 1, amount))
+    if not found:
+        return None
+    with_unit = [amount for has_unit, amount in found if has_unit]
+    return with_unit[0] if with_unit else found[0][1]
+
+
+def detect_money_category(text: str, kind: str = "expense") -> str:
+    lowered = (text or "").lower()
+    if kind == "income":
+        if re.search(r"sotdim|savdo|sotuv|продал|продаж|sold|sales", lowered):
+            return "sales"
+        if re.search(r"maosh|oylik|зарплат|salary", lowered):
+            return "salary"
+        return "other_in"
+    for category, pattern in _MONEY_WORDS:
+        if re.search(pattern, lowered):
+            return category
+    return "other"
+
+
+def parse_money_text(text: str) -> dict | None:
+    """"Tushlikka 45 ming sarfladim" → an expense of 45 000 on food.
+
+    Spending words win over income words ("sotib oldim" is spending even
+    though it contains "oldim"). With no word either way, an amount is taken
+    as spending — that is what people type far more often.
+    """
+    amount = parse_money_amount(text)
+    if amount is None:
+        return None
+    lowered = (text or "").lower()
+    if re.search(_EXPENSE_WORDS, lowered):
+        kind = "expense"
+    elif re.search(_INCOME_WORDS, lowered):
+        kind = "income"
+    else:
+        kind = "expense"
+    return {"kind": kind, "amount": amount,
+            "category": detect_money_category(text, kind),
+            "note": (text or "").strip()[:200]}
+
+
+_MONEY_HINT = re.compile(r"so'?m\b|сум|\bsum\b|ming\b|mln\b|million|млн|тыс|"
+                         r"\d\s*k\b|" + _EXPENSE_WORDS + "|" + _INCOME_WORDS,
+                         re.IGNORECASE)
+
+
+def looks_like_money(text: str) -> bool:
+    """Whether a free message is about money rather than a task with a number.
+
+    "Tushlik 45 ming" is money; "call mum at 10" is not — a number alone is
+    never enough. It needs a money word, a unit or a spending/earning verb, or
+    a spending category ("kommunal", "dorixona") with an amount of at least a
+    thousand: nobody pays 3 so'm for anything, but plenty of tasks say "3".
+    """
+    amount = parse_money_amount(text)
+    if amount is None:
+        return False
+    if _MONEY_HINT.search(text or ""):
+        return True
+    lowered = (text or "").lower()
+    return amount >= 1000 and any(re.search(pattern, lowered)
+                                  for _cat, pattern in _MONEY_WORDS)
+
+
+def _money_dict(row: MoneyEntry) -> dict:
+    return {"id": row.id, "kind": row.kind, "amount": int(row.amount),
+            "category": row.category, "note": row.note or "",
+            "source": row.source or "manual", "day": row.day.isoformat(),
+            "created_at": (row.created_at.replace(tzinfo=_utc.utc).isoformat()
+                           if row.created_at else None)}
+
+
+def add_money(s: Session, ws: int, kind: str, amount, category: str = "", *,
+              note: str = "", source: str = "manual", day: date | None = None,
+              tz: ZoneInfo | None = None) -> dict:
+    if kind not in MONEY_KINDS:
+        raise ValueError("bad_kind")
+    amount = clean_money_amount(amount)
+    if money_category_kind(category) != kind:
+        category = detect_money_category(note, kind)
+    tz = tz or _habit_tz(s, ws)
+    row = MoneyEntry(workspace_id=ws, kind=kind, amount=amount, category=category,
+                     note=str(note or "").strip()[:200],
+                     source=source if source in ("manual", "voice", "bot") else "manual",
+                     day=day or today_local(tz))
+    s.add(row)
+    s.commit()
+    return _money_dict(row)
+
+
+def delete_money(s: Session, ws: int, entry_id: int) -> dict:
+    row = s.get(MoneyEntry, entry_id)
+    if row is None or row.workspace_id != ws:
+        raise NotFound("money")
+    out = _money_dict(row)
+    s.delete(row)
+    s.commit()
+    return out
+
+
+def restore_money(s: Session, ws: int, data: dict) -> dict:
+    """Undo a delete: the same entry, back on the day it was."""
+    return add_money(s, ws, data["kind"], data["amount"], data["category"],
+                     note=data.get("note", ""), source=data.get("source", "manual"),
+                     day=date.fromisoformat(data["day"]))
+
+
+def money_budgets(s: Session, ws: int) -> dict[str, int]:
+    limits = {c[0]: c[3] for c in MONEY_CATEGORIES if c[4] == "expense"}
+    for row in s.scalars(select(MoneyBudget).where(MoneyBudget.workspace_id == ws)).all():
+        if row.category in limits:
+            limits[row.category] = int(row.monthly_limit)
+    return limits
+
+
+def set_money_budget(s: Session, ws: int, category: str, limit) -> int:
+    if money_category_kind(category) != "expense":
+        raise ValueError("bad_category")
+    try:
+        limit = max(0, min(int(limit), MONEY_MAX_AMOUNT))
+    except (TypeError, ValueError):
+        raise ValueError("bad_amount")
+    row = s.scalar(select(MoneyBudget).where(MoneyBudget.workspace_id == ws,
+                                             MoneyBudget.category == category))
+    if row is None:
+        s.add(MoneyBudget(workspace_id=ws, category=category, monthly_limit=limit))
+    else:
+        row.monthly_limit = limit
+    s.commit()
+    return limit
+
+
+def _month_bounds(month: date) -> tuple[date, date]:
+    first = month.replace(day=1)
+    nxt = (first + timedelta(days=32)).replace(day=1)
+    return first, nxt - timedelta(days=1)
+
+
+def money_overview(s: Session, ws: int, *, month: date | None = None,
+                   tz: ZoneInfo | None = None, limit: int = 100) -> dict:
+    """One month of money: the four totals, each category against its limit,
+    and the entries themselves, newest first.
+
+    `balance` is everything ever recorded, in minus out; the other three are
+    the month's own.
+    """
+    tz = tz or _habit_tz(s, ws)
+    today = today_local(tz)
+    first, last = _month_bounds(month or today)
+    rows = s.execute(select(MoneyEntry.kind, MoneyEntry.category,
+                            func.sum(MoneyEntry.amount)).where(
+        MoneyEntry.workspace_id == ws, MoneyEntry.day >= first,
+        MoneyEntry.day <= last).group_by(MoneyEntry.kind, MoneyEntry.category)).all()
+    spent: dict[str, int] = defaultdict(int)
+    income = expense = 0
+    for kind, category, total in rows:
+        total = int(total or 0)
+        if kind == "income":
+            income += total
+        else:
+            expense += total
+            spent[category] += total
+    balance_rows = dict(s.execute(select(MoneyEntry.kind, func.sum(MoneyEntry.amount))
+                                  .where(MoneyEntry.workspace_id == ws)
+                                  .group_by(MoneyEntry.kind)).all())
+    balance = int(balance_rows.get("income") or 0) - int(balance_rows.get("expense") or 0)
+    limits = money_budgets(s, ws)
+    categories = []
+    for cid, icon, colour, _default, kind in MONEY_CATEGORIES:
+        if kind != "expense":
+            continue
+        cap = limits.get(cid, 0)
+        used = spent.get(cid, 0)
+        categories.append({"id": cid, "icon": icon, "color": colour,
+                           "spent": used, "limit": cap,
+                           "percent": min(100, round(used / cap * 100)) if cap else None,
+                           "over": bool(cap) and used > cap})
+    entries = s.scalars(select(MoneyEntry).where(
+        MoneyEntry.workspace_id == ws, MoneyEntry.day >= first,
+        MoneyEntry.day <= last)
+        .order_by(MoneyEntry.day.desc(), MoneyEntry.id.desc()).limit(limit)).all()
+    count = s.scalar(select(func.count(MoneyEntry.id)).where(
+        MoneyEntry.workspace_id == ws, MoneyEntry.day >= first,
+        MoneyEntry.day <= last)) or 0
+    return {"month": first.strftime("%Y-%m"), "year": first.year,
+            "month_no": first.month, "is_current": first <= today <= last,
+            "income": income, "expense": expense, "saved": income - expense,
+            "balance": balance, "categories": categories,
+            "entries": [_money_dict(r) for r in entries], "count": int(count),
+            "category_ids": MONEY_CATEGORY_IDS,
+            "kinds": {c[0]: c[4] for c in MONEY_CATEGORIES},
+            "icons": {c[0]: c[1] for c in MONEY_CATEGORIES},
+            "colors": {c[0]: c[2] for c in MONEY_CATEGORIES}}
+
+
+# ---------------------------------------------------------------------------
 # Statistics — streaks
 # ---------------------------------------------------------------------------
 
@@ -3020,6 +3491,43 @@ def _closed_scores(s: Session, ws: int, first: date, last: date) -> dict[date, D
         DailyScore.day <= last, DailyScore.closed.is_(True))).all()}
 
 
+def _first_owed_day(s: Session, ws: int) -> date | None:
+    """The earliest day anything in this workspace could have been owed.
+
+    Every part of the day's score has a start: a habit its first day, a task
+    its deadline, a week's goal its Monday, a shared item the day its owner
+    joined the team. Before the earliest of them every component is absent,
+    so those days are unmeasured by definition. None when no bound is known.
+    """
+    def compute():
+        tz = _habit_tz(s, ws)
+        starts: list[date] = []
+        cal = DueCalendar(tz)
+        for habit in _workspace_habits(s, ws):
+            start = cal.start_of(habit)
+            if start is None:
+                return None
+            starts.append(start)
+        deadline = s.scalar(select(func.min(Task.deadline)).where(
+            Task.workspace_id == ws, Task.archived_at.is_(None)))
+        if deadline is not None:
+            starts.append(deadline)
+        focus = s.scalar(select(func.min(WeeklyFocus.week_start)).where(
+            WeeklyFocus.workspace_id == ws))
+        if focus is not None:
+            starts.append(focus)
+        owner = workspace_owner(s, ws)
+        if owner is not None:
+            for joined in s.scalars(select(TeamMember.joined_at).where(
+                    TeamMember.user_id == owner)).all():
+                joined_day = local_date_of(joined, tz)
+                if joined_day is None:
+                    return None
+                starts.append(joined_day)
+        return min(starts) if starts else date.max
+    return _memoized(s, ("first_owed", ws), compute)
+
+
 def _day_point(s: Session, ws: int, day: date,
                snapshots: dict[date, DailyScore] | None = None,
                today: date | None = None) -> dict:
@@ -3032,6 +3540,14 @@ def _day_point(s: Session, ws: int, day: date,
     snap = (snapshots or {}).get(day) if day < today else None
     if snap is None and day < today and snapshots is None:
         snap = _closed_score(s, ws, day)
+    if snap is None and day < today:
+        first = _first_owed_day(s, ws)
+        if first is not None and day < first:
+            # Before anything in this workspace existed nothing was owed, so
+            # the formula would answer "unmeasured" after forty queries.
+            return {"habits": 0, "prayer": 0, "tasks": 0, "focus": 0,
+                    "overall": EMPTY_OVERALL, "measured": False,
+                    "present": {k: False for k in OVERALL_COMPONENTS}}
     if snap is not None:
         parts = _components_of(snap)
         measured = snap.measured if snap.measured is not None else True
@@ -3647,8 +4163,39 @@ def week_strip(s: Session, ws: int, *, tz: ZoneInfo | None = None) -> dict:
     return {"start": start.isoformat(), "days": days}
 
 
+def home_counts(s: Session, ws: int, user: User, day: date | None = None, *,
+                habits: tuple[int, int] | None = None,
+                prayer: dict | None = None) -> dict:
+    """Today as plain counts — "3 of 5" — and never as a percentage.
+
+    The one line Home shows about how the day is going. A count is something a
+    person can check against their own list; a percentage first thing in the
+    morning is a grade for a day that has not happened yet. The formula behind
+    the percentage is untouched and lives on the Statistics screen.
+    """
+    tz = user_tz(user)
+    day = day or today_local(tz)
+    tasks_done, tasks_total = today_task_progress(s, ws, day, tz=tz)
+    habits_done, habits_total = habits or habit_progress(s, ws, day)
+    prayer = prayer or prayer_state(s, ws, day, user.gender)
+    return {
+        "tasks": {"done": tasks_done, "total": tasks_total},
+        "habits": {"done": habits_done, "total": habits_total},
+        "prayer": {"done": prayer["performed"], "total": PRAYER_REQUIRED,
+                   "excused": prayer["excused"],
+                   "owed": prayer_owed(s, ws, day)},
+    }
+
+
 def home(s: Session, ws: int, user: User) -> dict:
-    """Everything Home shows, and nothing else."""
+    """Everything Home shows, and nothing else.
+
+    Home answers "what do I do right now?" — the Now card — then lists
+    today's work under one line of counts. The week goal lives on Tasks, the
+    percentages on Statistics and the countdowns on Tasks → Calendar, so none
+    of them is computed here: every field below is drawn by Home in the Mini
+    App or by the bot's Home.
+    """
     tz = user_tz(user)
     today = today_local(tz)
     done, total = habit_progress(s, ws, today)
@@ -3674,11 +4221,10 @@ def home(s: Session, ws: int, user: User) -> dict:
                    "complete": prayer["complete"], "excused": prayer["excused"],
                    "owed": prayer_owed(s, ws, today)},
         "streak": habit_streak(s, ws, tz=tz),
-        "overall": overall_state(s, ws, today),
+        "counts": home_counts(s, ws, user, today, habits=(done, total),
+                              prayer=prayer),
         "now": now_next(s, ws, user, tz=tz),
         "wake": wake_state(s, ws, tz=tz),
-        "focus": week_focus(s, ws, tz=tz),
-        "mission": primary_focus(s, ws, tz=tz),
         "top3": top3,
         "top3_max": MAX_TOP3,
         "tasks_today": today_tasks_by_project(
@@ -3690,11 +4236,7 @@ def home(s: Session, ws: int, user: User) -> dict:
         "journal_full": bool(journal and journal["complete"]),
         "journal_answered": journal["answered"] if journal else 0,
         "journal_total": len(JOURNAL_KEYS),
-        "birthdays": list_birthdays(s, ws, within_days=7, tz=tz),
-        "countdowns": countdowns_for_user(s, ws, user.telegram_id, tz=tz,
-                                          include_past=False),
         "active_timer": active_timer(s, ws),
-        "week": week_strip(s, ws, tz=tz),
         "break": break_state(s, ws, user, tz=tz),
     }
 
@@ -3800,6 +4342,13 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
              "note": r.note}
             for r in s.scalars(select(Birthday)
                                .where(Birthday.workspace_id == ws)).all()],
+        "money": [
+            {"day": r.day.isoformat(), "kind": r.kind, "amount": int(r.amount),
+             "category": r.category, "note": r.note, "source": r.source}
+            for r in s.scalars(select(MoneyEntry)
+                               .where(MoneyEntry.workspace_id == ws)
+                               .order_by(MoneyEntry.day, MoneyEntry.id)).all()],
+        "money_budgets": money_budgets(s, ws),
         "daily_scores": [
             {"day": r.day.isoformat(), "score": r.total_score, "grade": r.grade,
              "closed": bool(r.closed)}
@@ -3815,7 +4364,7 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
 WORKSPACE_TABLES = [TimerRun, HabitLog, HabitScheduleVersion, HabitPauseInterval,
                     Habit, PrayerLog, PrayerDay, Task,
                     Project, WeeklyFocus, WeeklyReview, JournalEntry, Birthday,
-                    Countdown, Feedback, DailyReportLog]
+                    Countdown, Feedback, DailyReportLog, MoneyEntry, MoneyBudget]
 
 
 def wipe_workspace(s: Session, telegram_id: int) -> bool:
@@ -5549,11 +6098,11 @@ def teams_for_on(s: Session, user_id: int, day: date, *,
     """Every team this user was a member of on `day` — including ones since left."""
     if user_id is None:
         return []
-    rows = s.execute(
+    rows = _memoized(s, ("memberships", user_id), lambda: s.execute(
         select(Team, TeamMember)
         .join(TeamMember, TeamMember.team_id == Team.id)
         .where(TeamMember.user_id == user_id)
-        .order_by(Team.created_at)).all()
+        .order_by(Team.created_at)).all())
     out = []
     for team, member in rows:
         joined = local_date_of(member.joined_at, tz)
@@ -6742,12 +7291,19 @@ def team_stats(s: Session, user_id: int, team_id: int, *, period: str = "week",
     for offset in range(days):
         day = start + timedelta(days=offset)
         point = {"date": day.isoformat(), "label": day.strftime("%d.%m")}
+        day_done = day_total = 0
         for member in active:
             uid = member["user_id"]
             done, total = ledger.member_day(uid, day, today)
             point[str(uid)] = round(done / total * 100) if total else None
             totals[uid][0] += done
             totals[uid][1] += total
+            day_done += done
+            day_total += total
+        # The whole team as one line: every confirmation owed that day, and
+        # how many of them came in. None on a day nothing was owed.
+        point["team"] = round(day_done / day_total * 100) if day_total else None
+        point["team_done"], point["team_total"] = day_done, day_total
         series.append(point)
 
     people = []
@@ -7140,6 +7696,86 @@ def move_habit(s: Session, user_id: int, *, habit_id: int | None = None,
               "habit", shared.id)
     s.commit()
     return {"id": habit.id, "name": habit.name, "source": "personal"}
+
+
+def share_ritual(s: Session, user_id: int, team_id: int, system_key: str) -> dict:
+    """Show one of the three rituals in a team as well as on your own list.
+
+    A ritual is not moved the way an ordinary habit is: getting up, praying
+    and writing the journal are each person's own, recorded once in their own
+    workspace. Sharing one puts a mirrored row into the team — each member's
+    tick is read from their own ritual — so the team sees who has done it
+    without anybody ticking anything twice. It is never scored twice either:
+    mirrored rows stay out of the personal day's number.
+    """
+    if system_key not in SYSTEM_KEYS:
+        raise ValueError("not_a_ritual")
+    _require_team(s, user_id, team_id)
+    live = s.scalar(select(TeamHabit).where(
+        TeamHabit.team_id == team_id, TeamHabit.system_key == system_key,
+        TeamHabit.archived_at.is_(None)))
+    if live is not None:
+        return team_habit_row(live, user_id, set())
+    name, category, _key = next(d for d in DEFAULT_TEAM_HABITS if d[2] == system_key)
+    position = (s.scalar(select(func.max(TeamHabit.position))
+                         .where(TeamHabit.team_id == team_id)) or 0) + 1
+    # A fresh row from today rather than an archived one brought back: the
+    # days it was not shared must not turn into days the team missed it.
+    habit = TeamHabit(team_id=team_id, name=name, category=category,
+                      system_key=system_key, is_protected=True,
+                      position=position, schedule=SCHEDULE_DAILY,
+                      created_by=user_id,
+                      active_from=today_local(user_tz(s.get(User, user_id))))
+    s.add(habit)
+    s.flush()
+    _log_team(s, team_id, user_id, "habit_add", name, "habit", habit.id)
+    s.commit()
+    return team_habit_row(habit, user_id, set())
+
+
+def unshare_ritual(s: Session, user_id: int, team_habit_id: int) -> bool:
+    """Take a shared ritual out of the team. Each member's own ritual stays.
+
+    Whoever shared it, or an admin or the owner, may take it out — the same
+    rule as any shared item. The personal ritual underneath is untouched.
+    """
+    habit = s.get(TeamHabit, team_habit_id)
+    if habit is None or habit.archived_at is not None or not habit.system_key:
+        raise ValueError("unknown_habit")
+    _require_team(s, user_id, habit.team_id)
+    _require_manage(s, user_id, habit.team_id, habit.created_by)
+    habit.archived_at = utcnow()
+    _log_team(s, habit.team_id, user_id, "habit_archive", habit.name,
+              "habit", habit.id)
+    s.commit()
+    return True
+
+
+def unshare_ritual_in(s: Session, user_id: int, team_id: int,
+                      system_key: str) -> str | None:
+    """`unshare_ritual` by team and ritual. Returns its name, or None if not shared."""
+    _require_team(s, user_id, team_id)
+    live = s.scalar(select(TeamHabit).where(
+        TeamHabit.team_id == team_id, TeamHabit.system_key == system_key,
+        TeamHabit.archived_at.is_(None)))
+    if live is None:
+        return None
+    name = live.name
+    unshare_ritual(s, user_id, live.id)
+    return name
+
+
+def shared_rituals(s: Session, user_id: int) -> dict[str, list[int]]:
+    """{system_key: [team ids]} — where each of this person's rituals is shared."""
+    out: dict[str, list[int]] = {key: [] for key in SYSTEM_KEYS}
+    teams = [team.id for team in teams_for(s, user_id)]
+    if not teams:
+        return out
+    for team_id, key in s.execute(select(TeamHabit.team_id, TeamHabit.system_key).where(
+            TeamHabit.team_id.in_(teams), TeamHabit.archived_at.is_(None),
+            TeamHabit.system_key.in_(SYSTEM_KEYS))).all():
+        out.setdefault(key, []).append(team_id)
+    return out
 
 
 # --- Team projects ----------------------------------------------------------

@@ -162,7 +162,7 @@ T: dict[str, dict[str, str]] = {
         "menu_app": "🚀 ErnestOS",
         "home_title": "🏠 {name}ning shaxsiy tizimi",
         "home_title_plain": "🏠 ErnestOS",
-        "home_mission": "🎯 Missiya", "home_today": "⚡ Bugun",
+        "home_mission": "🎯 Hafta maqsadi", "home_today": "⚡ Bugun",
         "home_now": "⚡ HOZIR",
         "home_top3": "🎯 Kun tanlovi",
         "now_wake": "Turdim — belgilang",
@@ -539,7 +539,7 @@ T: dict[str, dict[str, str]] = {
         "menu_app": "🚀 ErnestOS",
         "home_title": "🏠 {name}'s personal system",
         "home_title_plain": "🏠 ErnestOS",
-        "home_mission": "🎯 Mission", "home_today": "⚡ Today",
+        "home_mission": "🎯 Week goal", "home_today": "⚡ Today",
         "home_now": "⚡ NOW",
         "home_top3": "🎯 The day's pick",
         "now_wake": "Mark that you are up",
@@ -754,7 +754,7 @@ T: dict[str, dict[str, str]] = {
         "r_habits_today": "Habits",
         "r_prayer_today": "Prayer — five times",
         "r_nothing_planned": "Nothing is on today yet. Write one thing down — that is where the day starts.",
-        "r_mission": "This week's mission",
+        "r_mission": "This week's goal",
         "r_today_plan": "Tasks",
         "r_overdue_hint": "Moving them to today takes ten seconds — see Tasks.",
         "r_start_now": "Start with the smallest one. Pick the first task and give it 25 minutes.",
@@ -764,7 +764,7 @@ T: dict[str, dict[str, str]] = {
         "coach_blank": "Nothing was logged yesterday. That is fine — one task and one habit today is enough. Starting does not require much.",
         "r_evening_close": "Tomorrow, close one of these first.",
         "r_evening_clear": "✅ Everything is closed. Hold this — you have earned the rest.",
-        "r_focus": "🎯 Weekly missions",
+        "r_focus": "🎯 Week goals",
         "days_short": "days",
     },
     "ru": {
@@ -903,7 +903,7 @@ T: dict[str, dict[str, str]] = {
         "menu_app": "🚀 ErnestOS",
         "home_title": "🏠 Личная система — {name}",
         "home_title_plain": "🏠 ErnestOS",
-        "home_mission": "🎯 Миссия", "home_today": "⚡ Сегодня",
+        "home_mission": "🎯 Цель недели", "home_today": "⚡ Сегодня",
         "home_now": "⚡ СЕЙЧАС",
         "home_top3": "🎯 Выбор дня",
         "now_wake": "Отметьте подъём",
@@ -1549,6 +1549,121 @@ T["ru"].update({
     "team_owner_declined": "Предложение владения отклонено.",
     "team_owner_must_transfer": "Перед выходом владелец должен передать команду другому участнику.",
     "team_leave_confirm": "Выйти из команды? Добавленное вами останется в команде.",
+})
+
+# ---------------------------------------------------------------------------
+# v9.1 — Home says what to do now, in counts; the ready-made ten; rituals
+# personal ↔ team; money as a place of its own. "Mission" is gone from every
+# visible string: the week has a goal, and today has one thing chosen for it.
+# ---------------------------------------------------------------------------
+
+T["uz"].update({
+    "home_now": "👉 Hozir",
+    "cnt_tasks": "Vazifa", "cnt_habits": "Odat", "cnt_prayer": "Namoz",
+    "btn_presets": "📋 Tayyor odatlar (10 ta)",
+    "presets_title": "📋 Tayyor odatlar",
+    "presets_hint": ("Eng kerakli 10 ta odat. ✅ — ro'yxatingizda, ➕ — yo'q. "
+                     "Bossangiz qo'shiladi yoki olib tashlanadi; olib tashlangani "
+                     "tarixi bilan saqlanadi."),
+    "setup_presets": ("📋 <b>Tayyor odatlar</b>\n\nEng kerakli yettitasi belgilab "
+                      "qo'yilgan. Keraksizini olib tashlang — keyin Odatlar → "
+                      "📋 Tayyor odatlar'dan istalgan payt qaytarasiz."),
+    "presets_set": "✅ Odatlar tayyor: {n} ta.",
+    "menu_money": "💰 Pul",
+    "money_title": "Pul",
+    "money_unit": "so'm",
+    "money_balance": "Balans", "money_income": "Kirim",
+    "money_expense": "Chiqim", "money_saved_line": "Tejaldi",
+    "money_by_category": "Kategoriyalar", "money_latest": "So'nggi yozuvlar",
+    "money_empty": "Hali yozuv yo'q.",
+    "money_hint": ("Shunchaki yozing: «Tushlik 45 ming» yoki «Maosh 5 mln keldi». "
+                   "Pul bo'limi hech qanday foiz yoki reytingga qo'shilmaydi."),
+    "money_btn_expense": "➖ Chiqim", "money_btn_income": "➕ Kirim",
+    "money_btn_refresh": "🔄 Yangilash",
+    "money_ask_expense": "➖ <b>Chiqim</b>\nSumma va izoh: <i>Tushlik 45 ming</i>",
+    "money_ask_income": "➕ <b>Kirim</b>\nSumma va izoh: <i>Maosh 5 mln</i>",
+    "money_no_amount": "Summani tushunmadim. Masalan: 45 ming, 45000 yoki 1,5 mln.",
+    "money_saved": "✅ Saqlandi: {amount}",
+    "money_capture_ask": "Pul sifatida saqlaymi?",
+    "money_save_expense": "➖ Chiqim sifatida saqlash",
+    "money_save_income": "➕ Kirim sifatida saqlash",
+    "money_as_task": "📥 Vazifa sifatida",
+    "mcat_food": "Ovqat", "mcat_transport": "Transport", "mcat_home": "Uy",
+    "mcat_health": "Sog'liq", "mcat_fun": "Ko'ngil ochar", "mcat_business": "Biznes",
+    "mcat_other": "Boshqa", "mcat_salary": "Maosh", "mcat_sales": "Savdo",
+    "mcat_other_in": "Boshqa kirim",
+})
+
+T["en"].update({
+    "home_now": "👉 Now",
+    "cnt_tasks": "Tasks", "cnt_habits": "Habits", "cnt_prayer": "Prayer",
+    "btn_presets": "📋 Ready-made habits (10)",
+    "presets_title": "📋 Ready-made habits",
+    "presets_hint": ("The ten most useful habits. ✅ — on your list, ➕ — not yet. "
+                     "A tap adds or removes one; a removed one keeps its history."),
+    "setup_presets": ("📋 <b>Ready-made habits</b>\n\nThe seven most useful are "
+                      "ticked. Untick what you do not need — Habits → 📋 "
+                      "Ready-made habits brings any of them back later."),
+    "presets_set": "✅ Habits ready: {n}.",
+    "menu_money": "💰 Money",
+    "money_title": "Money",
+    "money_unit": "UZS",
+    "money_balance": "Balance", "money_income": "Income",
+    "money_expense": "Spent", "money_saved_line": "Saved",
+    "money_by_category": "By category", "money_latest": "Latest",
+    "money_empty": "Nothing recorded yet.",
+    "money_hint": ("Just type: “Lunch 45k” or “Salary 5 mln received”. "
+                   "Money never counts towards any percentage or rank."),
+    "money_btn_expense": "➖ Spent", "money_btn_income": "➕ Income",
+    "money_btn_refresh": "🔄 Refresh",
+    "money_ask_expense": "➖ <b>Spent</b>\nAmount and note: <i>Lunch 45k</i>",
+    "money_ask_income": "➕ <b>Income</b>\nAmount and note: <i>Salary 5 mln</i>",
+    "money_no_amount": "I could not read the amount. For example: 45k, 45000 or 1.5 mln.",
+    "money_saved": "✅ Saved: {amount}",
+    "money_capture_ask": "Save it as money?",
+    "money_save_expense": "➖ Save as spending",
+    "money_save_income": "➕ Save as income",
+    "money_as_task": "📥 As a task",
+    "mcat_food": "Food", "mcat_transport": "Transport", "mcat_home": "Home",
+    "mcat_health": "Health", "mcat_fun": "Fun", "mcat_business": "Business",
+    "mcat_other": "Other", "mcat_salary": "Salary", "mcat_sales": "Sales",
+    "mcat_other_in": "Other income",
+})
+
+T["ru"].update({
+    "home_now": "👉 Сейчас",
+    "cnt_tasks": "Задачи", "cnt_habits": "Привычки", "cnt_prayer": "Намаз",
+    "btn_presets": "📋 Готовые привычки (10)",
+    "presets_title": "📋 Готовые привычки",
+    "presets_hint": ("Десять самых полезных привычек. ✅ — в вашем списке, ➕ — нет. "
+                     "Нажатие добавляет или убирает; убранная хранит историю."),
+    "setup_presets": ("📋 <b>Готовые привычки</b>\n\nСемь самых полезных уже "
+                      "отмечены. Снимите лишние — вернуть можно в любой момент: "
+                      "Привычки → 📋 Готовые привычки."),
+    "presets_set": "✅ Привычки готовы: {n}.",
+    "menu_money": "💰 Деньги",
+    "money_title": "Деньги",
+    "money_unit": "сум",
+    "money_balance": "Баланс", "money_income": "Доход",
+    "money_expense": "Расход", "money_saved_line": "Сэкономлено",
+    "money_by_category": "По категориям", "money_latest": "Последние",
+    "money_empty": "Пока ничего нет.",
+    "money_hint": ("Просто напишите: «Обед 45 тыс» или «Зарплата 5 млн пришла». "
+                   "Деньги не входят ни в какие проценты и рейтинги."),
+    "money_btn_expense": "➖ Расход", "money_btn_income": "➕ Доход",
+    "money_btn_refresh": "🔄 Обновить",
+    "money_ask_expense": "➖ <b>Расход</b>\nСумма и заметка: <i>Обед 45 тыс</i>",
+    "money_ask_income": "➕ <b>Доход</b>\nСумма и заметка: <i>Зарплата 5 млн</i>",
+    "money_no_amount": "Не понял сумму. Например: 45 тыс, 45000 или 1,5 млн.",
+    "money_saved": "✅ Сохранено: {amount}",
+    "money_capture_ask": "Сохранить как деньги?",
+    "money_save_expense": "➖ Сохранить как расход",
+    "money_save_income": "➕ Сохранить как доход",
+    "money_as_task": "📥 Как задачу",
+    "mcat_food": "Еда", "mcat_transport": "Транспорт", "mcat_home": "Дом",
+    "mcat_health": "Здоровье", "mcat_fun": "Развлечения", "mcat_business": "Бизнес",
+    "mcat_other": "Другое", "mcat_salary": "Зарплата", "mcat_sales": "Продажи",
+    "mcat_other_in": "Другой доход",
 })
 
 PRAYER_LABELS = {

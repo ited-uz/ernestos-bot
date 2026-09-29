@@ -311,31 +311,33 @@ def ui_stage(user: User | None) -> int:
     return stage_for(user.actions_count or 0, user.created_at)
 
 
-def main_menu(lang: str, stage: int = 3, *, wake: bool = True,
+def main_menu(lang: str, stage: int = 3, *,
               team: bool = False) -> ReplyKeyboardMarkup:
     """The persistent menu, in a fixed order, as much of it as `stage` allows.
 
     Home, Habits, Tasks and Statistics are the four screens the Mini App also
-    has, so a feature found in one surface is findable in the other.
+    has, so a feature found in one surface is findable in the other. Money
+    sits on a row of its own with Teams: it is kept apart from the
+    productivity screens and never counts towards any of their numbers.
 
-    "Turdim" gets its own full-width row directly above the Mini App button —
-    the two rows a thumb reaches first, at the bottom of the keyboard. It is the
-    one action that expires, so telling someone to type it, or to go two screens
-    in to find it, is how a wake-up habit stops being recorded. It is left out
-    for somebody who does not keep the wake-up habit at all.
+    "Turdim" is not in this keyboard. It lives on the Habits screen, beside
+    the habit it records, and only while it can still be recorded — a button
+    that stays on the keyboard all day was one more thing to read at every
+    glance. Typing "Turdim" still works.
     """
     if stage >= 3:
         rows = [
             [t(lang, "menu_home"), t(lang, "menu_habits")],
             [t(lang, "menu_tasks"), t(lang, "menu_stats")],
-            [t(lang, "menu_teams"), t(lang, "menu_settings"), t(lang, "menu_feedback")],
+            [t(lang, "menu_money"), t(lang, "menu_teams")],
+            [t(lang, "menu_settings"), t(lang, "menu_feedback")],
         ]
     elif stage == 2:
         rows = [
             [t(lang, "menu_home"), t(lang, "menu_habits")],
             [t(lang, "menu_tasks"), t(lang, "menu_stats")],
-            ([t(lang, "menu_teams"), t(lang, "menu_settings")] if team
-             else [t(lang, "menu_settings")]),
+            ([t(lang, "menu_money"), t(lang, "menu_teams"), t(lang, "menu_settings")]
+             if team else [t(lang, "menu_money"), t(lang, "menu_settings")]),
         ]
     else:
         rows = [
@@ -344,8 +346,6 @@ def main_menu(lang: str, stage: int = 3, *, wake: bool = True,
         ]
         if team:
             rows.append([t(lang, "menu_teams")])
-    if wake:
-        rows.append([t(lang, "menu_wake")])
     if WEBAPP_URL:
         rows.append([t(lang, "menu_app")])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
@@ -358,11 +358,8 @@ def menu_for(uid: int | None, lang: str | None = None) -> ReplyKeyboardMarkup:
             user = s.get(User, uid) if uid is not None else None
             if user is None:
                 return main_menu(lang or "uz")
-            ws = svc.workspace_id_for(s, uid)
-            wake = svc.modules_for(s, ws).get("wake", False)
             team = bool(svc.teams_for(s, uid))
-            return main_menu(lang or user.language, ui_stage(user),
-                             wake=wake, team=team)
+            return main_menu(lang or user.language, ui_stage(user), team=team)
     except Exception:
         log.exception("could not build the menu for %s", uid)
         return main_menu(lang or "uz")
@@ -584,7 +581,7 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 #:   * the channel, asked after `FREE_ACTIONS` real actions instead;
 #:   * the phone number, not asked anywhere;
 #:   * gender, asked the first time prayer is opened.
-ONBOARDING_STEPS = ["language", "account", "name", "modules", "done"]
+ONBOARDING_STEPS = ["language", "account", "name", "modules", "presets", "done"]
 
 #: The choices on the modules step, in the order they are shown. Three are the
 #: rituals `services.MODULES` drives; "team" is a promise to offer a team at
@@ -603,6 +600,28 @@ def modules_keyboard(lang: str, chosen: set[str], *, prefix: str = "setup:mod",
         for name in (SETUP_MODULES if prefix.startswith("setup") else list(svc.MODULES))]
     rows.append([InlineKeyboardButton(t(lang, "mod_continue"), callback_data=done)])
     return InlineKeyboardMarkup(rows)
+
+
+def setup_presets_keyboard(lang: str, chosen: set[str]) -> InlineKeyboardMarkup:
+    """The seven ordinary ready-made habits, all ticked to start with.
+
+    The three rituals were the step before; together they make the ten. An
+    account starts with the list a person would most likely build anyway and
+    takes away what does not fit, rather than facing an empty screen.
+    """
+    rows = [[InlineKeyboardButton(
+        f"{'✅' if key in chosen else '⬜'} {svc.preset_name(key, lang)}",
+        callback_data=f"setup:pre:{key}")] for key in svc.ORDINARY_PRESET_KEYS]
+    rows.append([InlineKeyboardButton(t(lang, "mod_continue"),
+                                      callback_data="setup:pre_done")])
+    return InlineKeyboardMarkup(rows)
+
+
+def _setup_presets(ctx: ContextTypes.DEFAULT_TYPE) -> set[str]:
+    data = setup_data(ctx)
+    if "presets" not in data:
+        data["presets"] = list(svc.ORDINARY_PRESET_KEYS)
+    return set(data["presets"])
 
 #: Steps from older builds, and where somebody parked on one continues. The
 #: long setup's questions are gone; anybody half-way through it is finished.
@@ -666,6 +685,11 @@ async def resume_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         chosen = set(setup_data(ctx).setdefault("modules", []))
         await message.reply_text(t(lang, "ask_modules"), parse_mode=ParseMode.HTML,
                                  reply_markup=modules_keyboard(lang, chosen))
+
+    elif step == "presets":
+        await message.reply_text(t(lang, "setup_presets"), parse_mode=ParseMode.HTML,
+                                 reply_markup=setup_presets_keyboard(
+                                     lang, _setup_presets(ctx)))
 
     else:
         await finish_onboarding(update, ctx)
@@ -744,7 +768,8 @@ READ_CALLBACKS = {("habit", "back"), ("habit", "noop"),
                   ("cd", "list"), ("cd", "back"), ("team", "list"),
                   ("team", "open"), ("team", "stats"),
                   ("pj", "list"), ("pj", "open"), ("habit", "restorelist"),
-                  ("task", "restorelist")}
+                  ("task", "restorelist"), ("habit", "presets"),
+                  ("money", "show")}
 
 
 def is_read_callback(action: str, parts: list[str]) -> bool:
@@ -892,13 +917,6 @@ def render_day_ready(data: dict, lang: str) -> str:
     lines = [f"<b>{t(lang, 'day_ready', name=esc(name)) if name else t(lang, 'day_ready_plain')}</b>",
              ""]
 
-    focus = data.get("focus") or {}
-    primary = focus.get("primary")
-    if primary:
-        lines.append(f"🎯 <b>{t(lang, 'r_mission')}</b>")
-        lines.append(esc(primary["title"]))
-        lines.append("")
-
     groups = data.get("tasks_today") or []
     # Whatever was pinned leads, then the rest of today — the same order the
     # app itself shows them in.
@@ -952,40 +970,72 @@ def render_now(now: dict, lang: str) -> str:
     return f"{icon} {t(lang, 'now_' + kind)}"
 
 
+def home_counts_line(counts: dict, lang: str, streak: int = 0) -> str:
+    """`Vazifa 1/3 · Odat 2/6 · Namoz 3/5 · 🔥 4` — counts, never a percentage.
+
+    The same line the Mini App draws under its Now card, from the same
+    `counts` payload, so the two Homes cannot disagree about the day.
+    """
+    parts = []
+    tasks, habits, prayer = counts["tasks"], counts["habits"], counts["prayer"]
+    if tasks["total"]:
+        parts.append(f"{t(lang, 'cnt_tasks')} {tasks['done']}/{tasks['total']}")
+    if habits["total"]:
+        parts.append(f"{t(lang, 'cnt_habits')} {habits['done']}/{habits['total']}")
+    if prayer.get("owed", True):
+        parts.append(f"{t(lang, 'cnt_prayer')} "
+                     + ("✓" if prayer.get("excused")
+                        else f"{prayer['done']}/{prayer['total']}"))
+    if streak:
+        parts.append(f"🔥 {streak}")
+    return " · ".join(parts)
+
+
 def render_home(data: dict, lang: str) -> str:
-    """Home in one screenful: the date, the mission, today's work, the numbers.
+    """Home in one screenful: the date, what to do now, the counts, today.
 
         🗓️ 28-sentabr, Dushanba
 
-        🎯 Missiya
-        — yo'q
+        👉 Hozir
+        ⚡ Q4 rejasini tayyorlash
+
+        Vazifa 1/3 · Odat 2/6 · Namoz 3/5 · 🔥 4
 
         ⚡ Bugun
         — 👥 Speaking | 30mins (Miro*)
 
-        ✅  0/9
-        🕌 0/5
-        🔥0
-        📊 ▪️ 0%
-
-    No title line — the chat is already this bot's, and a heading naming whose
-    system it is was the one line nobody read. The four numbers get a line
-    each, so they read as a column rather than a sentence. The countdowns and
-    the privacy note live one tap away (the buttons, and Settings).
+    The same order as the Mini App's Home: one action first, one line of
+    counts, then the rest of today. No percentages and no week goal here —
+    the goal lives on Tasks and the numbers on Statistics.
     """
     lines = [f"🗓️ {data['date_label']}"]
 
-    mission = data.get("mission")
-    lines.append(f"\n<b>{t(lang, 'home_mission')}</b>")
-    lines.append(esc(mission["title"]) if mission else t(lang, "none"))
+    lines.append(f"\n<b>{t(lang, 'home_now')}</b>")
+    lines.append(render_now(data.get("now") or {}, lang))
 
-    lines.append(f"\n<b>{t(lang, 'home_today')}</b>")
-    # The pinned task first — it is the day's main one — then the rest.
+    counts = data.get("counts")
+    if counts:
+        line = home_counts_line(counts, lang, data.get("streak") or 0)
+        if line:
+            lines.append(f"\n{line}")
+
+    # The pinned task first — it is the day's main one — then the rest. The
+    # task already named under "Hozir" is not printed a second time, exactly
+    # as the Mini App's Home leaves it out of its list.
+    now = data.get("now") or {}
+    shown = now.get("id") if now.get("kind") == "task" else None
     pinned = [x for x in (data.get("top3") or []) if x.get("status") != "done"]
-    rows = pinned + [task for group in data["tasks_today"] for task in group["tasks"]]
+    rows = [x for x in pinned + [task for group in data["tasks_today"]
+                                 for task in group["tasks"]]
+            if x.get("id") != shown]
     # Shared work due today is today's work too; marked 👥 so it is clear
     # whose list it came from, and ticked per person.
     shared = [x for x in (data.get("team_today") or []) if x.get("owed", True)]
+    if not rows and not shared and shown is not None:
+        # Today's one task is the one above; "Today: none" under it would be
+        # the screen contradicting itself.
+        return "\n".join(lines)
+    lines.append(f"\n<b>{t(lang, 'home_today')}</b>")
     if rows or shared:
         for task in rows[:8]:
             when = f" · {task['due_time']}" if task.get("due_time") else ""
@@ -998,16 +1048,6 @@ def render_home(data: dict, lang: str) -> str:
                          f" ({esc(task.get('team_name') or '')})")
     else:
         lines.append(t(lang, "none"))
-
-    habits, prayer, overall = data["habits"], data["prayer"], data["overall"]
-    lines.append("")
-    lines.append(f"✅  {habits['done']}/{habits['total']}")
-    if prayer.get("owed", True):
-        lines.append(f"🕌 {prayer['performed']}/{prayer['required']}")
-    lines.append(f"🔥{data['streak']}")
-    # A day with nothing in it to measure says so, rather than "0%".
-    value = (f"{overall['value']}%" if overall.get("measured", True) else "—")
-    lines.append(f"📊 {TREND_MARK.get(overall['trend'], '▪️')} {value}")
     return "\n".join(lines)
 
 
@@ -1029,19 +1069,15 @@ def countdown_line(item: dict, lang: str) -> str:
 
 
 def home_keyboard(lang: str, stage: int = 3) -> InlineKeyboardMarkup:
-    """Home's ways onward: the two countdowns — to a date, and on a clock —
-    and the full app. A brand-new account gets the two Add buttons instead:
-    on the first day, adding something is the only thing worth a tap."""
-    if stage >= 2:
-        rows = [[InlineKeyboardButton(t(lang, "btn_countdown"),
-                                      callback_data="cd:list"),
-                 InlineKeyboardButton(t(lang, "btn_timers"),
-                                      callback_data="tmr:home")]]
-    else:
-        rows = [[InlineKeyboardButton(t(lang, "home_add_habit"),
-                                      callback_data="habit:add"),
-                 InlineKeyboardButton(t(lang, "home_add_task"),
-                                      callback_data="task:add")]]
+    """Home's ways onward: add something, or open the full app.
+
+    The date and time countdowns are not here any more — they live in the
+    Mini App (Tasks → Calendar), which is where a date is planned. The chat
+    keeps the two actions that are faster typed than tapped through."""
+    rows = [[InlineKeyboardButton(t(lang, "home_add_habit"),
+                                  callback_data="habit:add"),
+             InlineKeyboardButton(t(lang, "home_add_task"),
+                                  callback_data="task:add")]]
     if WEBAPP_URL:
         rows.append([InlineKeyboardButton(
             t(lang, "menu_app"), web_app=WebAppInfo(url=WEBAPP_URL))])
@@ -1219,6 +1255,79 @@ async def show_home(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Money — its own screen, outside every productivity number
+# ---------------------------------------------------------------------------
+
+def fmt_money(amount: int, lang: str) -> str:
+    """`1 250 000 so'm` — grouped by thousands with a thin space."""
+    return f"{int(amount):,}".replace(",", " ") + " " + t(lang, "money_unit")
+
+
+def money_capture_text(money: dict, lang: str) -> str:
+    sign = "−" if money["kind"] == "expense" else "+"
+    return (f"💰 <b>{sign}{fmt_money(money['amount'], lang)}</b>"
+            f" · {t(lang, 'mcat_' + money['category'])}\n"
+            f"<i>{esc(money['note'])}</i>\n\n{t(lang, 'money_capture_ask')}")
+
+
+def money_keyboard(lang: str) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(t(lang, "money_btn_expense"),
+                                  callback_data="money:add:expense"),
+             InlineKeyboardButton(t(lang, "money_btn_income"),
+                                  callback_data="money:add:income")],
+            [InlineKeyboardButton(t(lang, "money_btn_refresh"),
+                                  callback_data="money:show")]]
+    if WEBAPP_URL:
+        rows.append([InlineKeyboardButton(
+            t(lang, "menu_app"), web_app=WebAppInfo(url=WEBAPP_URL + "?s=money"))])
+    return InlineKeyboardMarkup(rows)
+
+
+def render_money(data: dict, lang: str) -> str:
+    """This month's money: the balance, in and out, the categories that were
+    used against their limits, and the latest entries."""
+    month = f"{svc.MONTHS[lang][data['month_no'] - 1]} {data['year']}" \
+        if lang in svc.MONTHS else data["month"]
+    lines = [f"💰 <b>{t(lang, 'money_title')}</b> · {month}", "",
+             f"💼 {t(lang, 'money_balance')}: <b>{fmt_money(data['balance'], lang)}</b>",
+             f"📈 {t(lang, 'money_income')}: {fmt_money(data['income'], lang)}",
+             f"📉 {t(lang, 'money_expense')}: {fmt_money(data['expense'], lang)}",
+             f"🐷 {t(lang, 'money_saved_line')}: {fmt_money(data['saved'], lang)}"]
+    used = [c for c in data["categories"] if c["spent"]]
+    if used:
+        lines += ["", f"<b>{t(lang, 'money_by_category')}</b>"]
+        for c in sorted(used, key=lambda x: -x["spent"]):
+            cap = f" / {fmt_money(c['limit'], lang)}" if c["limit"] else ""
+            warn = " ⚠️" if c["over"] else ""
+            lines.append(f"{c['icon']} {t(lang, 'mcat_' + c['id'])} — "
+                         f"{fmt_money(c['spent'], lang)}{cap}{warn}")
+    if data["entries"]:
+        lines += ["", f"<b>{t(lang, 'money_latest')}</b>"]
+        for e in data["entries"][:8]:
+            sign = "−" if e["kind"] == "expense" else "+"
+            icon = data["icons"].get(e["category"], "•")
+            note = f" · {esc(e['note'][:40])}" if e["note"] else ""
+            lines.append(f"{sign}{fmt_money(e['amount'], lang)} {icon}{note}"
+                         f" <i>· {short_date(e['day'], lang)}</i>")
+    else:
+        lines += ["", t(lang, "money_empty")]
+    lines += ["", f"<i>{t(lang, 'money_hint')}</i>"]
+    return "\n".join(lines)
+
+
+async def show_money(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
+                     edit: bool = False) -> None:
+    got = await guard(update, ctx, write=False)
+    if got is None:
+        return
+    user, ws = got
+    with SessionLocal() as s:
+        data = svc.money_overview(s, ws, tz=svc.user_tz(user), limit=8)
+    await _show(update, render_money(data, user.language),
+                money_keyboard(user.language), edit=edit)
+
+
+# ---------------------------------------------------------------------------
 # Habits
 # ---------------------------------------------------------------------------
 
@@ -1261,20 +1370,22 @@ def _timer_badge(item: dict, lang: str) -> str:
 
 def habits_keyboard(grouped: dict, lang: str, *, stage: int = 3,
                     restorable: int = 0) -> InlineKeyboardMarkup:
-    """One section per tier, so the three categories stay visible at a glance.
+    """The habits first, one per row, and the controls under them.
 
-    Shared habits sit in their tier beside private ones, marked 👥, and tick
-    through the team's own toggle — each member ticks only their own share.
-    A habit with a timer opens its timer instead of ticking: it is done by the
-    clock running out, not by the box.
+    Top of the message: nothing but the habits, in one column, in tier order
+    (non-negotiable, then target, then bonus) — the thing opened this screen
+    to tick. Bottom: "Turdim" while it can still be recorded, then add, edit,
+    the ready-made list and restore. Timers and countdowns are not here; they
+    live in the Mini App.
+
+    Shared habits sit beside private ones, marked 👥, and tick through the
+    team's own toggle — each member ticks only their own share. A habit with a
+    timer opens its timer instead of ticking: it is done by the clock running
+    out, not by the box.
     """
     rows = []
     for category in svc.HABIT_CATEGORIES:
         habits = grouped.get(category, [])
-        if not habits:
-            continue
-        rows.append([InlineKeyboardButton(t(lang, CATEGORY_KEYS[category]),
-                                          callback_data="habit:noop")])
         for h in habits:
             if h.get("source") == "team":
                 mark = "✅" if h.get("done") else "⬜"
@@ -1331,16 +1442,39 @@ def habits_keyboard(grouped: dict, lang: str, *, stage: int = 3,
         InlineKeyboardButton(t(lang, "btn_add_habit"), callback_data="habit:add"),
         InlineKeyboardButton(t(lang, "btn_edit_habit"), callback_data="habit:editlist"),
     ])
+    rows.append([InlineKeyboardButton(t(lang, "btn_presets"),
+                                      callback_data="habit:presets")])
     if restorable:
         rows.append([InlineKeyboardButton(f"{t(lang, 'btn_restore')} ({restorable})",
                                           callback_data="habit:restorelist")])
-    # The two countdowns wait until the account has found its feet.
-    if stage >= 2:
-        rows.append([InlineKeyboardButton(t(lang, "btn_timers"),
-                                          callback_data="tmr:list:h"),
-                     InlineKeyboardButton(t(lang, "btn_countdown"),
-                                          callback_data="cd:list")])
     return InlineKeyboardMarkup(rows)
+
+
+def presets_keyboard(presets: list[dict], lang: str) -> InlineKeyboardMarkup:
+    """The ready-made ten: ✅ on the list, ➕ not yet. A tap flips it."""
+    rows = [[InlineKeyboardButton(
+        f"{'✅' if p['added'] else '➕'} {p['name'][:40]}",
+        callback_data=f"habit:preset:{p['key']}")] for p in presets]
+    rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="habit:back")])
+    return InlineKeyboardMarkup(rows)
+
+
+async def show_presets(update: Update, ws: int, lang: str) -> None:
+    with SessionLocal() as s:
+        presets = svc.habit_presets(s, ws, lang)
+    text = f"<b>{t(lang, 'presets_title')}</b>\n{t(lang, 'presets_hint')}"
+    markup = presets_keyboard(presets, lang)
+    query = update.callback_query
+    if query is not None:
+        try:
+            await query.edit_message_text(text, parse_mode=ParseMode.HTML,
+                                          reply_markup=markup)
+            return
+        except BadRequest:
+            pass
+    if update.effective_message:
+        await update.effective_message.reply_text(text, parse_mode=ParseMode.HTML,
+                                                  reply_markup=markup)
 
 
 async def show_habits(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
@@ -1356,8 +1490,13 @@ async def show_habits(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         restorable = len(svc.archived_habits(s, ws))
 
     text = f"<b>{t(user.language, 'habits_title')}</b>"
+    due = [h for group in grouped.values() for h in group
+           if h.get("due", True) and not h.get("paused")
+           and h.get("scored", True) and h.get("owed", True)]
+    if due:
+        text += f"   ✅ {sum(1 for h in due if h.get('done'))}/{len(due)}"
     if streak:
-        text += f"   {t(user.language, 'streak')}: {streak}"
+        text += f"   🔥 {streak}"
     markup = habits_keyboard(grouped, user.language, stage=ui_stage(user),
                              restorable=restorable)
     if edit and update.callback_query:
@@ -1529,17 +1668,8 @@ def tasks_keyboard(lang: str, *, projects: list[dict],
     if team_tasks:
         rows.append([InlineKeyboardButton(t(lang, "btn_team_tasks"),
                                           callback_data="ttask:list")])
-    # The timer list needs something to put a timer on; the countdowns are
-    # a screen of their own. Both wait until the account has found its feet.
-    if stage >= 2:
-        extra = []
-        if open_tasks:
-            extra.append(InlineKeyboardButton(t(lang, "btn_timers"),
-                                              callback_data="tmr:list:t"))
-        extra.append(InlineKeyboardButton(t(lang, "btn_countdown"),
-                                          callback_data="cd:list"))
-        rows.append(extra)
-
+    # No timer or countdown buttons: both live in the Mini App now. A task
+    # with a timer still opens its clock from its own row.
     return InlineKeyboardMarkup(rows)
 
 
@@ -2616,6 +2746,7 @@ MENU_ROUTES = {
     "menu_stats": lambda u, c, _l: show_stats(u, c),
     "menu_settings": lambda u, c, _l: show_settings(u, c),
     "menu_teams": lambda u, c, _l: show_teams(u, c),
+    "menu_money": lambda u, c, _l: show_money(u, c),
     "menu_feedback": _menu_feedback,
     "menu_app": _menu_app,
 }
@@ -2703,6 +2834,23 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             ctx.user_data.pop("flow", None)
             await show_habit_edit(update, ctx, user, ws, kind,
                                   int(flow["target_id"]), edit=False)
+
+        elif name == "money_entry":
+            kind = flow.get("kind") if flow.get("kind") in svc.MONEY_KINDS else "expense"
+            amount = svc.parse_money_amount(text)
+            if amount is None:
+                await message.reply_text(t(lang, "money_no_amount"),
+                                         reply_markup=cancel_keyboard(lang))
+                return
+            ctx.user_data.pop("flow", None)
+            with SessionLocal() as s:
+                svc.add_money(s, ws, kind, amount,
+                              svc.detect_money_category(text, kind),
+                              note=text.strip()[:200], source="bot",
+                              tz=svc.user_tz(user))
+            await message.reply_text(t(lang, "money_saved",
+                                       amount=fmt_money(amount, lang)))
+            await show_money(update, ctx)
 
         elif name == "task_edit_time":
             value = _parse_hhmm(text)
@@ -3232,6 +3380,9 @@ def _habit_edit_view(s, user: User, ws: int, kind: str, item_id: int,
         info = svc.habit_history(s, ws, item_id, days=7, tz=svc.user_tz(user))
         where = t(lang, "dest_personal")
         can_manage, protected = True, info["protected"]
+        ritual = habit.system_key if habit.system_key in svc.SYSTEM_KEYS else None
+        shared_in = (svc.shared_rituals(s, user.telegram_id).get(ritual, [])
+                     if ritual else [])
     else:
         try:
             info = svc.team_habit_history(s, user.telegram_id, item_id, days=7,
@@ -3240,6 +3391,7 @@ def _habit_edit_view(s, user: User, ws: int, kind: str, item_id: int,
             return None
         where = f"👥 {esc(info['team_name'])}"
         can_manage, protected = info["can_manage"], info["mirrored"]
+        ritual, shared_in = None, []
     view = {**info, **draft}
     remind = view.get("remind_at")
     lines = [f"✏️ <b>{esc(view['name'])}</b>",
@@ -3252,13 +3404,24 @@ def _habit_edit_view(s, user: User, ws: int, kind: str, item_id: int,
         lines.append(f"⏸ {t(lang, 'habit_pause_from', day=short_date(info['pause_from'], lang))}")
     if protected:
         lines.append(f"<i>{t(lang, 'habit_protected_edit')}</i>")
+    if shared_in:
+        names = [x.name for x in teams if x.id in shared_in]
+        lines.append(f"👥 {esc(', '.join(names))}")
     if draft:
         lines += ["", t(lang, "edit_unsaved")]
     code = f"{kind}:{item_id}"
     rows = []
-    if can_manage and not protected:
+    # A personal ritual is renamed and re-tiered like any habit; only a
+    # team's mirrored copy of one stays as it is.
+    if can_manage and (not protected or kind == "p"):
         rows.append([InlineKeyboardButton(t(lang, "edit_name"), callback_data=f"he:{code}:n"),
                      InlineKeyboardButton(t(lang, "edit_category"), callback_data=f"he:{code}:c")])
+    if ritual and teams and not draft:
+        # Personal ↔ team for a ritual: it stays yours and is also shown in
+        # the team, each member's tick read from their own record.
+        rows += [[InlineKeyboardButton(
+            f"{'✅' if x.id in shared_in else '➕'} 👥 {x.name[:30]}",
+            callback_data=f"he:{code}:sh:{x.id}")] for x in teams[:5]]
     if can_manage:
         remind_row = [InlineKeyboardButton(t(lang, "edit_remind"), callback_data=f"he:{code}:rm")]
         if not protected:
@@ -3552,6 +3715,22 @@ async def route_habit_edit(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                     else:
                         svc.edit_team_habit(s, user.telegram_id, item_id,
                                             paused=paused, from_day=start)
+                elif op == "sh" and kind == "p" and len(parts) > 4:
+                    # A ritual shown in a team, or taken back out of it.
+                    habit = s.get(db.Habit, item_id)
+                    if habit is None or habit.workspace_id != ws \
+                            or habit.system_key not in svc.SYSTEM_KEYS:
+                        raise svc.NotFound("habit")
+                    team_id = int(parts[4])
+                    shared = team_id in svc.shared_rituals(
+                        s, user.telegram_id).get(habit.system_key, [])
+                    if shared:
+                        svc.unshare_ritual_in(s, user.telegram_id, team_id,
+                                              habit.system_key)
+                    else:
+                        svc.share_ritual(s, user.telegram_id, team_id,
+                                         habit.system_key)
+                    await _toast(update, t(lang, "saved"))
             elif action == "hec":
                 draft_set(ctx, key, category={"n": "non_negotiable", "t": "target",
                                               "b": "bonus"}[parts[3]])
@@ -3889,6 +4068,26 @@ async def offer_capture(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     if text.lower().strip(" !.") in GREETINGS or len(text.strip()) < 3:
         await show_home(update, ctx)
         return
+    money = svc.parse_money_text(text[:300]) if svc.looks_like_money(text[:300]) else None
+    if money is not None:
+        # "Tushlik 45 ming" is spending, not a task: offered as money first,
+        # with "as a task" still one tap away.
+        capture_id = uuid.uuid4().hex[:6]
+        ctx.user_data["capture"] = {"id": capture_id, "title": text.strip()[:300],
+                                    "deadline": "", "due_time": "", "money": money,
+                                    "expires": time.time() + CAPTURE_TTL}
+        await message.reply_text(
+            money_capture_text(money, lang), parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(t(lang, "money_save_expense"
+                                        if money["kind"] == "expense"
+                                        else "money_save_income"),
+                                      callback_data=f"cap:{capture_id}:m")],
+                [InlineKeyboardButton(t(lang, "money_as_task"),
+                                      callback_data=f"cap:{capture_id}:p"),
+                 InlineKeyboardButton(t(lang, "capture_skip"),
+                                      callback_data=f"cap:{capture_id}:x")]]))
+        return
     with SessionLocal() as s:
         parsed = svc.parse_quick_capture(text[:300], svc.today_local(svc.user_tz(user)))
         teams = svc.teams_for(s, user.telegram_id)
@@ -3930,6 +4129,15 @@ async def save_capture(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     target = parts[2]
     if target == "x":
         await update.callback_query.edit_message_text(t(lang, "cancelled"))
+        return
+    if target == "m" and capture.get("money"):
+        money = capture["money"]
+        with SessionLocal() as s:
+            svc.add_money(s, ws, money["kind"], money["amount"], money["category"],
+                          note=money["note"], source="bot", tz=svc.user_tz(user))
+        await update.callback_query.edit_message_text(
+            t(lang, "money_saved", amount=fmt_money(money["amount"], lang)),
+            reply_markup=money_keyboard(lang))
         return
     deadline = date.fromisoformat(capture["deadline"]) if capture["deadline"] else None
     due = _parse_hhmm(capture["due_time"]) if capture["due_time"] else None
@@ -4091,6 +4299,31 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             await query.edit_message_text(
                 t(lang, "modules_set", list=", ".join(labels) if labels
                   else t(lang, "modules_none")), parse_mode=ParseMode.HTML)
+            return await advance_setup(update, ctx, "presets")
+
+        if parts[1] == "pre" and len(parts) > 2:
+            chosen = _setup_presets(ctx)
+            if parts[2] in svc.ORDINARY_PRESET_KEYS:
+                chosen ^= {parts[2]}
+            setup_data(ctx)["presets"] = sorted(chosen)
+            try:
+                await query.edit_message_reply_markup(
+                    reply_markup=setup_presets_keyboard(lang, chosen))
+            except BadRequest:
+                pass
+            return
+
+        if parts[1] == "pre_done":
+            chosen = _setup_presets(ctx)
+            with SessionLocal() as s:
+                user = s.get(User, uid)
+                ws = svc.workspace_id_for(s, uid)
+                for key in svc.ORDINARY_PRESET_KEYS:
+                    if key in chosen:
+                        svc.add_preset(s, ws, key, lang, tz=svc.user_tz(user))
+                total = len(svc.list_habits(s, ws, tz=svc.user_tz(user)))
+            await query.edit_message_text(t(lang, "presets_set", n=total),
+                                          parse_mode=ParseMode.HTML)
             return await advance_setup(update, ctx, "done")
 
         if parts[1] == "skip":
@@ -4257,12 +4490,38 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="habit:back")])
             await query.edit_message_text(t(lang, "choose_edit"),
                                           reply_markup=InlineKeyboardMarkup(rows))
+        elif sub == "presets":
+            await show_presets(update, ws, lang)
+        elif sub == "preset" and len(parts) > 2 and parts[2] in svc.PRESET_KEYS:
+            # One tap puts it on the list or takes it off; taking it off only
+            # archives it, so a mis-tap costs nothing — the next tap brings it
+            # back with its history.
+            with SessionLocal() as s:
+                current = next(p for p in svc.habit_presets(s, ws, lang)
+                               if p["key"] == parts[2])
+                if current["added"]:
+                    svc.remove_preset(s, ws, parts[2])
+                else:
+                    svc.add_preset(s, ws, parts[2], lang, tz=svc.user_tz(user))
+            await show_presets(update, ws, lang)
         elif sub == "mirrored":
             await _notice(update, t(lang, "habit_mirrored"))
         elif sub == "back":
             await show_habits(update, ctx, edit=True)
         elif sub == "noop":
             pass
+
+    # --- money ---
+    elif action == "money":
+        sub = parts[1] if len(parts) > 1 else "show"
+        if sub == "add" and len(parts) > 2 and parts[2] in svc.MONEY_KINDS:
+            start_flow(ctx, "money_entry", kind=parts[2])
+            ask = "money_ask_expense" if parts[2] == "expense" else "money_ask_income"
+            await message.reply_text(t(lang, ask),
+                                     parse_mode=ParseMode.HTML,
+                                     reply_markup=cancel_keyboard(lang))
+        else:
+            await show_money(update, ctx, edit=True)
 
     # --- tasks ---
     elif action == "task":
@@ -6108,7 +6367,6 @@ async def show_report_health(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
     if not got:
         return
     user, ws = got
-    lang = user.language
     message = update.effective_message
 
     with SessionLocal() as s:
@@ -6189,8 +6447,11 @@ BOT_COMMANDS = [
     ("ertalabki", lambda u, c: send_report_now(u, c, "morning")),
     ("tekshir", lambda u, c: show_report_health(u, c)),
     ("jamoa", lambda u, c: show_teams(u, c)),
+    ("pul", lambda u, c: show_money(u, c)),
+    ("money", lambda u, c: show_money(u, c)),
     # The running timer, or the list to start one; and the dates being
-    # counted down to.
+    # counted down to. Typed only: no keyboard offers them any more — both
+    # countdowns live in the Mini App.
     ("timer", lambda u, c: show_active_timer(u, c)),
     ("countdown", lambda u, c: show_countdowns(u, c)),
 ]
@@ -6823,7 +7084,17 @@ def api_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
             "onboarding_step": user.onboarding_step,
             "modules": _modules_of(user),
             # The ErnestOS login, for signing in from another Telegram.
-            "login": _login_of(user.telegram_id)}
+            "login": _login_of(user.telegram_id),
+            # Names only, for the "personal or which team?" pickers on every
+            # add sheet. The full team payload is fetched by the Team screen;
+            # asking for it at start-up made the first screen wait on it.
+            "teams": _team_names_of(user.telegram_id)}
+
+
+def _team_names_of(uid: int) -> list[dict]:
+    with SessionLocal() as s:
+        return [{"id": team.id, "name": team.name}
+                for team in svc.teams_for(s, uid)]
 
 
 def _login_of(uid: int) -> str | None:
@@ -7915,7 +8186,10 @@ def api_habits(day: str | None = None, init=Header(default=None, alias="X-Telegr
                 "tiers": svc.habit_tier_progress(s, ws, target or svc.today_local(tz)),
                 "wake": svc.wake_state(s, ws, tz=tz),
                 "active_timer": svc.active_timer(s, ws),
-                "streak": svc.habit_streak(s, ws, tz=tz)}
+                "streak": svc.habit_streak(s, ws, tz=tz),
+                # Which teams each ritual is also shown in, for the habit's
+                # own sheet to offer personal ↔ team.
+                "shared_rituals": svc.shared_rituals(s, user.telegram_id)}
 
 
 @app.post("/api/habits")
@@ -8034,13 +8308,99 @@ def api_habit_toggle(habit_id: int, init=Header(default=None, alias="X-Telegram-
 
 @app.delete("/api/habits/{habit_id}")
 def api_habit_delete(habit_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Remove any habit, the three rituals included.
+
+    Nothing is erased: the habit is archived with every log it had, and
+    "Odatlar ro'yxati" (the ready-made ten) or Restore brings it back with
+    its history. Removing a ritual switches its module off.
+    """
     _, ws = auth(init)
     with SessionLocal() as s:
-        try:
-            svc.delete_habit(s, ws, habit_id)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="protected_habit")
+        svc.remove_habit(s, ws, habit_id)
     return {"ok": True}
+
+
+@app.get("/api/habits/presets")
+def api_habit_presets(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """The ready-made ten, each marked with whether it is on the list."""
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        return {"presets": svc.habit_presets(s, ws, user.language)}
+
+
+@app.get("/api/habits/archived")
+def api_habits_archived(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Removed habits that can come back, history and all — the Mini App's ♻️."""
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        return {"habits": svc.archived_habits(s, ws)}
+
+
+@app.post("/api/habits/{habit_id}/restore")
+def api_habit_restore(habit_id: int,
+                      init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        habit = svc.restore_habit(s, ws, habit_id)
+        return {"ok": True, "id": habit.id, "name": habit.name}
+
+
+class RitualShareIn(BaseModel):
+    key: str = Field(min_length=1, max_length=16)
+    team_id: int
+    #: True shows the ritual in the team, False takes it out again.
+    on: bool = True
+
+
+@app.post("/api/rituals/share")
+async def api_ritual_share(body: RitualShareIn,
+                           init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Get up, prayer or the journal: personal, and also shown in a team."""
+    user, _ = auth(init)
+    if body.key not in svc.SYSTEM_KEYS:
+        raise HTTPException(status_code=422, detail="not_a_ritual")
+    with SessionLocal() as s:
+        try:
+            if body.on:
+                label = svc.share_ritual(s, user.telegram_id, body.team_id,
+                                         body.key)["name"]
+            else:
+                label = svc.unshare_ritual_in(s, user.telegram_id, body.team_id,
+                                              body.key)
+                if label is None:
+                    return {"ok": True,
+                            "shared": svc.shared_rituals(s, user.telegram_id)}
+        except PermissionError as e:
+            raise _perm(e)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        team = svc.team_for(s, user.telegram_id, body.team_id)
+        name = team.name if team else ""
+        shared = svc.shared_rituals(s, user.telegram_id)
+    await notify_teammates(body.team_id, user.telegram_id,
+                           "team_ev_habit_add" if body.on else "team_ev_habit_del",
+                           label, name)
+    return {"ok": True, "shared": shared}
+
+
+class PresetIn(BaseModel):
+    key: str = Field(min_length=1, max_length=24)
+    #: True puts it on the list, False takes it off.
+    on: bool = True
+
+
+@app.post("/api/habits/presets")
+def api_habit_preset_set(body: PresetIn,
+                         init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, ws = auth(init)
+    if body.key not in svc.PRESET_KEYS:
+        raise HTTPException(status_code=422, detail="unknown_preset")
+    with SessionLocal() as s:
+        if body.on:
+            svc.add_preset(s, ws, body.key, user.language, tz=svc.user_tz(user))
+        else:
+            svc.remove_preset(s, ws, body.key)
+        return {"ok": True, "presets": svc.habit_presets(s, ws, user.language)}
 
 
 # --- timers ------------------------------------------------------------------
@@ -8844,6 +9204,95 @@ def api_birthday_delete(birthday_id: int, init=Header(default=None, alias="X-Tel
     with SessionLocal() as s:
         svc.delete_birthday(s, ws, birthday_id)
     return {"ok": True}
+
+
+# --- money: its own place, outside every productivity number ------------------
+
+class MoneyIn(BaseModel):
+    kind: str = Field(pattern="^(expense|income)$")
+    amount: int = Field(gt=0, le=svc.MONEY_MAX_AMOUNT)
+    category: str = Field(default="", max_length=24)
+    note: str = Field(default="", max_length=200)
+    source: str = Field(default="manual", max_length=8)
+    #: A past day may be named (an undo puts an entry back where it was);
+    #: a future one may not.
+    day: str | None = Field(default=None, max_length=10)
+
+
+class MoneyTextIn(BaseModel):
+    text: str = Field(min_length=1, max_length=300)
+    source: str = Field(default="manual", max_length=8)
+
+
+class MoneyBudgetIn(BaseModel):
+    limit: int = Field(ge=0, le=svc.MONEY_MAX_AMOUNT)
+
+
+def _money_month(value: str | None) -> date | None:
+    if not value:
+        return None
+    try:
+        year, month = (int(x) for x in value.split("-")[:2])
+        return date(year, month, 1)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail="bad_month")
+
+
+@app.get("/api/money")
+def api_money(month: str | None = None,
+              init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        return svc.money_overview(s, ws, month=_money_month(month),
+                                  tz=svc.user_tz(user))
+
+
+@app.post("/api/money")
+def api_money_add(body: MoneyIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, ws = auth(init)
+    tz = svc.user_tz(user)
+    day = _date(body.day)
+    if day is not None and day > svc.today_local(tz):
+        raise HTTPException(status_code=422, detail="future_day")
+    with SessionLocal() as s:
+        try:
+            return svc.add_money(s, ws, body.kind, body.amount, body.category,
+                                 note=body.note, source=body.source, day=day, tz=tz)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.post("/api/money/text")
+def api_money_text(body: MoneyTextIn,
+                   init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """"Tushlikka 45 ming sarfladim" — typed or spoken — straight to an entry."""
+    user, ws = auth(init)
+    parsed = svc.parse_money_text(body.text)
+    if parsed is None:
+        raise HTTPException(status_code=422, detail="no_amount")
+    with SessionLocal() as s:
+        return svc.add_money(s, ws, parsed["kind"], parsed["amount"],
+                             parsed["category"], note=parsed["note"],
+                             source=body.source, tz=svc.user_tz(user))
+
+
+@app.delete("/api/money/{entry_id}")
+def api_money_delete(entry_id: int,
+                     init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        return {"ok": True, "entry": svc.delete_money(s, ws, entry_id)}
+
+
+@app.put("/api/money/budgets/{category}")
+def api_money_budget(category: str, body: MoneyBudgetIn,
+                     init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        try:
+            return {"ok": True, "limit": svc.set_money_budget(s, ws, category, body.limit)}
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
 
 
 @app.get("/api/avatar")

@@ -73,7 +73,6 @@ if(/[?&]preview(=|&|$)/.test(location.search))
   /* ---- 8px spacing scale ---- */
   --s0:4px; --s1:8px; --s2:12px; --s3:16px; --s4:24px; --s5:32px; --s6:48px;
   --pad:var(--s3);
-  --fab-clear:76px;
 }
 
 /* ------------------------------------------------------------------
@@ -265,7 +264,9 @@ body{
   -webkit-font-smoothing:antialiased;
   text-rendering:optimizeLegibility;
   min-height:var(--vh, 100dvh);
-  padding-bottom:calc(var(--shell-b, 58px) + var(--fab-clear) + var(--s2))}
+  /* Only the tab bar is fixed now — there is no floating button to clear —
+     so the last row of every screen scrolls to just above the bar. */
+  padding-bottom:calc(var(--shell-b, 58px) + var(--s4))}
 #app{padding:calc(var(--s3) + var(--safe-t, 0px)) var(--pad) var(--s2);
      max-width:640px;margin:0 auto;width:100%}
 @media (max-width:359px){ :root{--pad:12px} }
@@ -655,11 +656,16 @@ label{display:block;font-size:14px;color:var(--text-2);margin:var(--s3) 0 6px;
          background:transparent;border:var(--border-w) solid transparent;
          display:flex;flex-direction:column;align-items:center;
          justify-content:center;font-size:14px;gap:3px}
-.cal-day.empty{background:transparent}
+/* The days before the 1st. Not `.empty` — that is the dashed empty-state
+   panel, and it drew a dashed box in the corner of every month. */
+.cal-day.pad{pointer-events:none}
+.cal-day.past{color:var(--text-3)}
 .cal-day.today{border-color:var(--primary);color:var(--primary);font-weight:680;
                background:color-mix(in srgb, var(--primary) 7%, transparent)}
-.cal-day.has{cursor:pointer;font-weight:600}
-.cal-day.has:hover{background:var(--surface-2)}
+.cal-day.has{font-weight:600}
+.cal-day.past.has{color:var(--text-2)}
+.cal-day[data-act]{cursor:pointer}
+.cal-day[data-act]:hover{background:var(--surface-2)}
 .cal-dots{display:flex;gap:2px;height:4px}
 .cal-dots i{width:4px;height:4px;border-radius:50%}
 .k-task{background:var(--c1)} .k-project{background:var(--c2)}
@@ -704,30 +710,38 @@ nav{position:fixed;left:0;right:0;bottom:0;z-index:40;display:grid;
     background:var(--surface);
     border-top:var(--border-w) solid var(--border);
     padding:4px max(4px, env(safe-area-inset-left, 0px)) var(--safe-b, 0px)}
-nav button{background:0;border:0;color:var(--text-2);padding:6px 2px 8px;
-           font-size:11.5px;font-weight:600;cursor:pointer;display:grid;gap:3px;
+/* Nothing is drawn in the bar until the first screen has its data: an empty
+   bar with a floating button over a blank page was the first thing the app
+   showed, for as long as the first request took. */
+nav:empty{display:none}
+nav button{background:0;border:0;color:var(--text-2);padding:6px 1px 8px;
+           font-size:11px;font-weight:600;cursor:pointer;display:grid;gap:3px;
            min-width:0;justify-items:center;align-content:center;min-height:56px;
            transition:color var(--motion)}
 nav button > span:last-child{max-width:100%;overflow:hidden;text-overflow:ellipsis;
-           white-space:nowrap;padding:0 2px}
+           white-space:nowrap;padding:0 1px}
 nav button.on{color:var(--primary)}
-nav button .ic{display:grid;place-items:center;height:28px;width:52px;
+nav button .ic{display:grid;place-items:center;height:28px;width:44px;
                border-radius:var(--radius-pill);transition:background var(--motion)}
+/* Money is its own place, not a fifth productivity screen: a hairline sets
+   it apart from the four tabs before it. */
+nav button.apart{position:relative}
+nav button.apart::before{content:"";position:absolute;left:0;top:14px;bottom:18px;
+                         border-left:var(--border-w) solid var(--border)}
 nav button.on .ic{background:color-mix(in srgb, var(--primary) 13%, transparent)}
 nav button:focus-visible{outline:2px solid var(--primary);outline-offset:-4px;
                          border-radius:var(--radius-sm)}
 /* The on-screen keyboard: while a field on the page has focus, the bar and
    the button step aside instead of riding up over what is being typed. */
-body:has(#app input:focus, #app textarea:focus) :is(nav, .fab){visibility:hidden}
+body:has(#app input:focus, #app textarea:focus) nav{visibility:hidden}
 
-.fab{position:fixed;right:calc(var(--pad) + 2px);z-index:41;
-     bottom:calc(var(--shell-b, 58px) + var(--s3));
-     width:56px;height:56px;border-radius:18px;border:0;cursor:pointer;
-     background:var(--primary-fill);color:var(--on-primary);
-     box-shadow:var(--shadow-3);display:grid;place-items:center;
-     transition:transform var(--motion),filter var(--motion)}
-.fab:active{transform:scale(.95);filter:brightness(.94)}
-.fab:focus-visible{outline:0;box-shadow:var(--ring),var(--shadow-3)}
+/* Every screen's "add" lives in its own header, beside its title. A floating
+   button covered the last row of whatever was underneath it — the thing
+   people saw first when the app opened — and did what the header already
+   did. */
+.head .add{background:var(--primary-fill);color:var(--on-primary);
+           border-color:transparent}
+.head .add:active{filter:brightness(.94)}
 
 .privacy-strip{margin:var(--s5) auto var(--s1);text-align:center;max-width:420px;
   font-size:12.5px;line-height:1.45;color:var(--text-3);text-wrap:pretty}
@@ -880,12 +894,78 @@ details[open] > summary .i{transform:rotate(90deg)}
 [data-act][tabindex]:focus-visible,.check:focus-visible,.chip:focus-visible,
 .tab:focus-visible,.seg>div:focus-visible,.sw:focus-visible,.tcard:focus-visible{
   outline:2px solid var(--primary);outline-offset:2px}
+
+/* ---- Home: today as counts, one row, tap for Statistics ---- */
+.counts{display:flex;align-items:center;gap:var(--s1) var(--s3);flex-wrap:wrap;
+        margin-top:var(--s2);padding:var(--s2) 44px var(--s2) var(--s3);min-height:48px;
+        position:relative;
+        background:var(--surface);border:var(--border-w) solid var(--border);
+        border-radius:var(--radius);font-size:14.5px;color:var(--text-2);
+        cursor:pointer}
+.counts b{color:var(--text);font-weight:640;font-variant-numeric:tabular-nums}
+.counts > span{white-space:nowrap}
+.counts > .i{position:absolute;right:var(--s3);top:50%;margin-top:-7.5px}
+.head .iconbtn.add{width:40px;height:40px;min-width:40px;border-radius:12px}
+.counts:hover{border-color:var(--border-2)}
+
+/* ---- Habits: the list, then a dashboard of controls under it ---- */
+.hrow-tier{width:4px;align-self:stretch;border-radius:2px;flex:none;margin:-2px 0}
+.hrow-tier.t1{background:var(--danger)}
+.hrow-tier.t2{background:var(--warn)}
+.hrow-tier.t3{background:var(--ok)}
+.dash{margin-top:var(--s4);padding:var(--s3);background:var(--surface-2);
+      border-radius:var(--radius-lg)}
+.dash .dash-top{display:flex;align-items:center;gap:var(--s2)}
+.dash .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+             gap:var(--s1);margin-top:var(--s3)}
+.dash .grid2 .btn{min-height:46px;font-size:14.5px}
+.preset{display:flex;align-items:center;gap:var(--s2)}
+.preset .ptier{font-size:12.5px;color:var(--text-3)}
+
+/* ---- Money ---- */
+.mtiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s1)}
+.mtile{background:var(--surface);border:var(--border-w) solid var(--border);
+       border-radius:var(--radius);padding:var(--s2) var(--s3);min-width:0}
+.mtile .k{font-size:13px;color:var(--text-2);font-weight:560;display:flex;
+          align-items:center;gap:6px}
+.mtile .v{font-size:17px;font-weight:680;letter-spacing:-.3px;margin-top:2px;
+          font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.mtile.lead{grid-column:1 / -1}
+.mtile.lead .v{font-size:24px}
+.pos{color:var(--ok)} .neg{color:var(--danger)}
+.mquick{display:flex;gap:var(--s1);margin-top:var(--s3)}
+.mquick input{flex:1}
+.mic{width:48px;min-width:48px;height:48px;border-radius:50%;border:0;cursor:pointer;
+     background:var(--primary-fill);color:var(--on-primary);display:grid;
+     place-items:center}
+.mic.on{background:var(--danger);animation:pulse 1.4s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb, var(--danger) 55%, transparent)}
+  70%{box-shadow:0 0 0 14px transparent}100%{box-shadow:0 0 0 0 transparent}}
+.donut{display:flex;align-items:center;gap:var(--s3)}
+.donut svg{flex:none}
+.donut .lg{display:grid;gap:4px;font-size:13.5px;min-width:0}
+.donut .lg i{width:10px;height:10px;border-radius:3px;display:inline-block;
+             margin-right:6px;vertical-align:middle}
+.mcat{padding:var(--s2) 0;border-bottom:var(--border-w) solid var(--border);cursor:pointer}
+.mcat:last-child{border-bottom:0}
+.mcat .row{gap:var(--s1)}
+.mcat .amt{font-size:13.5px;color:var(--text-2);white-space:nowrap;
+           font-variant-numeric:tabular-nums}
+.mcat .amt.over{color:var(--danger);font-weight:640}
+.mbar{height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden;
+      margin-top:6px}
+.mbar > span{display:block;height:100%;border-radius:3px}
+.mrow .amount{font-weight:640;white-space:nowrap;font-variant-numeric:tabular-nums;
+              font-size:15px}
+.mrow .meta{flex-wrap:nowrap;white-space:nowrap;overflow:hidden}
+.mrow .iconbtn{margin-right:-8px}
+.mnav{display:flex;align-items:center;gap:var(--s1);margin-top:var(--s1)}
+.mnav b{flex:1;text-align:center;font-size:15px}
 </style>
 </head>
 <body>
 
 <div id="app"><div class="spin"></div></div>
-<button class="fab" id="fab" data-act="quick-add" aria-label="+"></button>
 <nav id="nav"></nav>
 <div class="sheet" id="sheet"><div class="sheet-inner" id="sheet-body"></div></div>
 <div class="toast" id="toast"></div>
@@ -978,9 +1058,9 @@ const DICT = {
   overall_sub:"Kun · hafta · oy", today_parts:"Bugungi ko'rsatkichlar",
   overall_section:"Umumiy ko'rsatkichlar",
   vs_yesterday:"kechagiga nisbatan", vs_yesterday_none:"Kecha o'lchanmagan",
-  today_mission:"Bugungi missiya",
+  today_mission:"Bugun uchun tanlangan",
   mission_add:"Vazifa tanlang",
-  mission_change:"O'zgartirish",
+  mission_change:"Bugun uchun tanlash",
   why_pinned:"Siz o'zingiz tanlagansiz",
   why_overdue:"Muddati o'tgan — eng oldin shu",
   why_due_today:"Bugun muddati tugaydi",
@@ -991,13 +1071,13 @@ const DICT = {
   period_day:"Kun",
   period_week:"Hafta",
   period_month:"Oy",
-  pick_task:"Bugungi missiyani tanlang",
-  week_focus:"Haftaning fokusi",
+  pick_task:"Bugun uchun bitta vazifani tanlang",
+  week_focus:"Hafta maqsadi",
   top3:"Kun tanlovi", top3_add:"Vazifa tanlash", top3_full:"Bir kunga bitta",
   top3_pick:"Kun tanloviga qo'yish", top3_unpick:"Kun tanlovidan olib tashlash",
   top3_hint:"Bugungi eng muhim bitta ishni tanlang",
-  mission:"Haftaning fokusi", mission_main:"Asosiy", mission_extra:"Qo'shimcha",
-  add_mission:"Asosiy maqsad qo'shish", add_supporting:"Qo'shimcha prioritet",
+  mission:"Hafta maqsadi", mission_main:"Asosiy maqsad", mission_extra:"Qo'shimcha",
+  add_mission:"Hafta maqsadini qo'shish", add_supporting:"Qo'shimcha prioritet",
   mission_full:"Bir haftaga bitta asosiy va ikkita qo'shimcha",
   mission_done:"Bajarildi", mission_carry:"Keyingi haftaga ko'chirish",
   mission_carried:"Keyingi haftaga ko'chirildi",
@@ -1272,6 +1352,39 @@ const DICT = {
   pause_today:"Bugundan", pause_tomorrow:"Ertadan", pause_when:"Qachondan to'xtatamiz?",
   pause_note:"Bugundan desangiz, bugungi hisobdan ham chiqadi",
   pts:"p.", team_join_hint:"Taklif havolasini bosing — jamoani ko'rib, keyin qo'shilasiz",
+  nav_home:"Asosiy", nav_stats:"Statistika", money:"Pul", money_add:"Pul yozuvi",
+  money_apart:"Alohida bo'lim — hech qanday foiz, streak yoki reytingga qo'shilmaydi.",
+  money_balance:"Umumiy balans", money_income:"Kirim", money_expense:"Chiqim",
+  money_saved:"Shu oy tejaldi", money_unit:"so'm",
+  money_quick_ph:"Tushlik 45 ming · Maosh 5 mln keldi",
+  money_quick_hint:"Yozing va Enter bosing — summa, kirim yoki chiqim va kategoriya o'zi aniqlanadi.",
+  money_voice:"Ovoz bilan kiritish", money_voice_none:"Bu qurilmada ovozli kiritish yo'q",
+  money_voice_denied:"Mikrofonga ruxsat berilmagan", money_voice_fail:"Ovozni tushunib bo'lmadi, qayta urinib ko'ring",
+  money_spend_split:"Xarajatlar taqsimoti", money_no_spend:"Bu oy hali xarajat yo'q",
+  money_by_category:"Kategoriyalar va byudjet", money_latest:"So'nggi yozuvlar",
+  money_empty:"Bu oy hali yozuv yo'q.", money_over:"Byudjetdan {n} oshdi",
+  money_amount:"Summa (so'm)", money_note:"Izoh", money_note_ph:"Tushlik, taksi, reklama...",
+  money_saved_toast:"Saqlandi", money_no_amount:"Summani tushunmadim — masalan 45 ming yoki 45000",
+  money_budget_title:"{cat} — oylik byudjet",
+  money_budget_hint:"Oyiga shu kategoriyaga qancha sarflashni rejalashtirasiz. 0 — cheklovsiz.",
+  mcat_food:"Ovqat", mcat_transport:"Transport", mcat_home:"Uy", mcat_health:"Sog'liq",
+  mcat_fun:"Ko'ngil ochar", mcat_business:"Biznes", mcat_other:"Boshqa",
+  mcat_salary:"Maosh", mcat_sales:"Savdo", mcat_other_in:"Boshqa kirim",
+  presets:"Tayyor odatlar",
+  presets_hint:"Eng kerakli 10 ta odat. Olib tashlangani tarixi bilan saqlanadi va qaytarsangiz, tarixi ham qaytadi",
+  preset_add:"Qo'shish", preset_remove:"Olib tashlash", preset_added:"Qo'shildi",
+  auto_short:"avtomatik", restore_empty:"Qaytariladigan odat yo'q",
+  restore_hint:"O'chirilgan odatlar tarixi bilan qaytadi", restored_toast:"Qaytarildi",
+  habit_remove_sure:"«{name}» olib tashlansinmi? Tarixi saqlanadi — Tayyor odatlar yoki Qaytarish orqali qaytadi",
+  habit_removed_toast:"Olib tashlandi — tarixi saqlandi",
+  no_habits_yet:"Hali odat yo'q. Tayyor ro'yxatdan tanlang yoki o'zingiz qo'shing.",
+  ritual_where:"Qayerda ko'rinadi",
+  ritual_share_hint:"Doim sizniki bo'lib qoladi. Jamoani yoqsangiz, u yerda ham ko'rinadi — har kim o'zinikini belgilaydi.",
+  day_past_hint:"O'tgan kun — faqat qilingan ishlar ko'rsatiladi", day_past_empty:"Bu kunda hech narsa yo'q edi",
+  day_free:"Bu kun hozircha bo'sh", moved_toast:"Ko'chirildi",
+  team_graph:"Jamoa natijasi", team_graph_hint:"Bitta chiziq — butun jamoa. Davr bo'yicha {n}",
+  team_graph_empty:"Grafik uchun kamida ikki kunlik ma'lumot kerak",
+  cnt_tasks:"Vazifa", cnt_habits:"Odat", cnt_prayer:"Namoz",
   dow:["Du","Se","Ch","Pa","Ju","Sh","Ya"],
   dow_full:["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba","Yakshanba"],
   months:["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"],
@@ -1318,9 +1431,9 @@ const DICT = {
   overall_sub:"Day · week · month", today_parts:"Today's numbers",
   overall_section:"Overall numbers",
   vs_yesterday:"vs yesterday", vs_yesterday_none:"Nothing measured yesterday",
-  today_mission:"Today's mission",
+  today_mission:"Chosen for today",
   mission_add:"Choose a task",
-  mission_change:"Change",
+  mission_change:"Choose for today",
   why_pinned:"You pinned this one",
   why_overdue:"Late — this comes first",
   why_due_today:"Due today",
@@ -1331,13 +1444,13 @@ const DICT = {
   period_day:"Day",
   period_week:"Week",
   period_month:"Month",
-  pick_task:"Choose today's mission",
-  week_focus:"This week's focus",
+  pick_task:"Choose one task for today",
+  week_focus:"Week goal",
   top3:"The day's pick", top3_add:"Pick a task", top3_full:"One a day",
   top3_pick:"Make it the day's pick", top3_unpick:"Remove the day's pick",
   top3_hint:"Pick the one thing that matters most today",
-  mission:"This week's focus", mission_main:"Primary", mission_extra:"Supporting",
-  add_mission:"Set the primary goal", add_supporting:"Supporting priority",
+  mission:"Week goal", mission_main:"Main goal", mission_extra:"Supporting",
+  add_mission:"Set the week goal", add_supporting:"Supporting priority",
   mission_full:"One primary and two supporting per week",
   mission_done:"Done", mission_carry:"Move to next week",
   mission_carried:"Moved to next week",
@@ -1503,7 +1616,7 @@ const DICT = {
   sessions_body:"ErnestOS signs you in through your Telegram account — there is no separate password. To end a session, use Devices in your Telegram settings.",
   delete_all_data:"Delete all data", wipe_hint:"Keeps the account, empties it",
   delete_hint:"Removes the account and the data",
-  wipe_warn:"Every task, habit, prayer record, journal entry, project and mission is erased for good. This cannot be undone.",
+  wipe_warn:"Every task, habit, prayer record, journal entry, project and week goal is erased for good. This cannot be undone.",
   wipe_keeps:"Your account, language, theme and settings stay. The default habits are put back.",
   wipe_continue:"Yes, erase everything", wipe_done:"Your data was erased",
   privacy_body:"Each user's data lives in its own workspace and is not visible to other users. It is stored in a PostgreSQL database, which an administrator can access for maintenance. Your journal entries are never sent to any external service.",
@@ -1600,6 +1713,39 @@ const DICT = {
   pause_today:"From today", pause_tomorrow:"From tomorrow", pause_when:"Pause from when?",
   pause_note:"From today takes today out of the count as well",
   pts:"pts", team_join_hint:"Open an invite link — you see the team first, then join",
+  nav_home:"Home", nav_stats:"Stats", money:"Money", money_add:"Money entry",
+  money_apart:"A separate section — never counted in any percentage, streak or rank.",
+  money_balance:"Balance", money_income:"Income", money_expense:"Spent",
+  money_saved:"Saved this month", money_unit:"UZS",
+  money_quick_ph:"Lunch 45k · Salary 5 mln received",
+  money_quick_hint:"Type and press Enter — the amount, in or out, and the category are read for you.",
+  money_voice:"Speak it", money_voice_none:"Voice entry is not available on this device",
+  money_voice_denied:"Microphone access was not allowed", money_voice_fail:"Could not make that out — try again",
+  money_spend_split:"Where it went", money_no_spend:"Nothing spent this month yet",
+  money_by_category:"Categories and budget", money_latest:"Latest entries",
+  money_empty:"Nothing recorded this month.", money_over:"Over budget by {n}",
+  money_amount:"Amount (UZS)", money_note:"Note", money_note_ph:"Lunch, taxi, ads...",
+  money_saved_toast:"Saved", money_no_amount:"I could not read the amount — for example 45k or 45000",
+  money_budget_title:"{cat} — monthly budget",
+  money_budget_hint:"How much you plan to spend on this each month. 0 means no limit.",
+  mcat_food:"Food", mcat_transport:"Transport", mcat_home:"Home", mcat_health:"Health",
+  mcat_fun:"Fun", mcat_business:"Business", mcat_other:"Other",
+  mcat_salary:"Salary", mcat_sales:"Sales", mcat_other_in:"Other income",
+  presets:"Ready-made habits",
+  presets_hint:"The ten most useful habits. A removed one keeps its history, and it comes back with it",
+  preset_add:"Add", preset_remove:"Remove", preset_added:"Added",
+  auto_short:"automatic", restore_empty:"Nothing to bring back",
+  restore_hint:"Removed habits come back with their history", restored_toast:"Brought back",
+  habit_remove_sure:"Remove “{name}”? Its history is kept — it comes back from Ready-made habits or Restore",
+  habit_removed_toast:"Removed — history kept",
+  no_habits_yet:"No habits yet. Pick from the ready-made list or add your own.",
+  ritual_where:"Where it shows",
+  ritual_share_hint:"It always stays yours. Switch a team on and it shows there too — each member ticks their own.",
+  day_past_hint:"A day gone by — only what was done is shown", day_past_empty:"Nothing happened on this day",
+  day_free:"Nothing planned for this day yet", moved_toast:"Moved",
+  team_graph:"Team result", team_graph_hint:"One line — the whole team. For the period {n}",
+  team_graph_empty:"The graph needs at least two days of data",
+  cnt_tasks:"Tasks", cnt_habits:"Habits", cnt_prayer:"Prayer",
   dow:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
   dow_full:["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],
   months:["January","February","March","April","May","June","July","August","September","October","November","December"],
@@ -1646,9 +1792,9 @@ const DICT = {
   overall_sub:"День · неделя · месяц", today_parts:"Показатели дня",
   overall_section:"Общие показатели",
   vs_yesterday:"по сравнению со вчера", vs_yesterday_none:"Вчера ничего не измерено",
-  today_mission:"Миссия дня",
+  today_mission:"Выбрано на сегодня",
   mission_add:"Выберите задачу",
-  mission_change:"Изменить",
+  mission_change:"Выбрать на сегодня",
   why_pinned:"Вы выбрали это сами",
   why_overdue:"Просрочено — сначала это",
   why_due_today:"Срок сегодня",
@@ -1659,13 +1805,13 @@ const DICT = {
   period_day:"День",
   period_week:"Неделя",
   period_month:"Месяц",
-  pick_task:"Выберите миссию дня",
-  week_focus:"Фокус недели",
+  pick_task:"Выберите одну задачу на сегодня",
+  week_focus:"Цель недели",
   top3:"Выбор дня", top3_add:"Выбрать задачу", top3_full:"Одна на день",
   top3_pick:"Сделать выбором дня", top3_unpick:"Убрать выбор дня",
   top3_hint:"Выберите одно самое важное дело на сегодня",
-  mission:"Фокус недели", mission_main:"Главное", mission_extra:"Дополнительно",
-  add_mission:"Задать главную цель", add_supporting:"Дополнительный приоритет",
+  mission:"Цель недели", mission_main:"Главная цель", mission_extra:"Дополнительно",
+  add_mission:"Задать цель недели", add_supporting:"Дополнительный приоритет",
   mission_full:"Одна главная и две дополнительные в неделю",
   mission_done:"Выполнено", mission_carry:"Перенести на следующую неделю",
   mission_carried:"Перенесено на следующую неделю",
@@ -1928,6 +2074,39 @@ const DICT = {
   pause_today:"С сегодня", pause_tomorrow:"С завтра", pause_when:"С какого дня пауза?",
   pause_note:"С сегодня — сегодняшний день тоже не считается",
   pts:"п.", team_join_hint:"Откройте ссылку-приглашение — сначала увидите команду, потом вступите",
+  nav_home:"Главная", nav_stats:"Итоги", money:"Деньги", money_add:"Запись о деньгах",
+  money_apart:"Отдельный раздел — не входит ни в какие проценты, серии и рейтинги.",
+  money_balance:"Баланс", money_income:"Доход", money_expense:"Расход",
+  money_saved:"Сэкономлено за месяц", money_unit:"сум",
+  money_quick_ph:"Обед 45 тыс · Зарплата 5 млн пришла",
+  money_quick_hint:"Напишите и нажмите Enter — сумма, доход или расход и категория определятся сами.",
+  money_voice:"Голосом", money_voice_none:"Голосовой ввод на этом устройстве недоступен",
+  money_voice_denied:"Нет доступа к микрофону", money_voice_fail:"Не удалось разобрать — попробуйте ещё раз",
+  money_spend_split:"Куда ушли деньги", money_no_spend:"В этом месяце расходов пока нет",
+  money_by_category:"Категории и бюджет", money_latest:"Последние записи",
+  money_empty:"В этом месяце записей нет.", money_over:"Бюджет превышен на {n}",
+  money_amount:"Сумма (сум)", money_note:"Заметка", money_note_ph:"Обед, такси, реклама...",
+  money_saved_toast:"Сохранено", money_no_amount:"Не понял сумму — например 45 тыс или 45000",
+  money_budget_title:"{cat} — бюджет на месяц",
+  money_budget_hint:"Сколько вы планируете тратить на это в месяц. 0 — без ограничения.",
+  mcat_food:"Еда", mcat_transport:"Транспорт", mcat_home:"Дом", mcat_health:"Здоровье",
+  mcat_fun:"Развлечения", mcat_business:"Бизнес", mcat_other:"Другое",
+  mcat_salary:"Зарплата", mcat_sales:"Продажи", mcat_other_in:"Другой доход",
+  presets:"Готовые привычки",
+  presets_hint:"Десять самых полезных привычек. Убранная хранит историю и возвращается вместе с ней",
+  preset_add:"Добавить", preset_remove:"Убрать", preset_added:"Добавлено",
+  auto_short:"автоматически", restore_empty:"Возвращать нечего",
+  restore_hint:"Удалённые привычки возвращаются с историей", restored_toast:"Возвращено",
+  habit_remove_sure:"Убрать «{name}»? История сохранится — вернуть можно из Готовых привычек или Вернуть",
+  habit_removed_toast:"Убрано — история сохранена",
+  no_habits_yet:"Привычек пока нет. Выберите из готового списка или добавьте свою.",
+  ritual_where:"Где видно",
+  ritual_share_hint:"Всегда остаётся вашей. Включите команду — будет видно и там, каждый отмечает своё.",
+  day_past_hint:"Прошедший день — показано только сделанное", day_past_empty:"В этот день ничего не было",
+  day_free:"На этот день пока ничего нет", moved_toast:"Перенесено",
+  team_graph:"Результат команды", team_graph_hint:"Одна линия — вся команда. За период {n}",
+  team_graph_empty:"Для графика нужно хотя бы два дня данных",
+  cnt_tasks:"Задачи", cnt_habits:"Привычки", cnt_prayer:"Намаз",
   dow:["Пн","Вт","Ср","Чт","Пт","Сб","Вс"],
   dow_full:["Понедельник","Вторник","Среда","Четверг","Пятница","Суббота","Воскресенье"],
   months:["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"],
@@ -2025,6 +2204,12 @@ const ICONS = {
   /* Two bulbs meeting at a waist, capped top and bottom: a countdown. */
   hourglass:'<path d="M6.5 3.5h11M6.5 20.5h11"/>'
     + '<path d="M8 3.5c0 4.4 8 4.6 8 8.5s-8 4.1-8 8.5M16 3.5c0 4.4-8 4.6-8 8.5s8 4.1 8 8.5"/>',
+  /* A wallet: body, flap and the clasp. */
+  wallet:'<path d="M4 7.5a2 2 0 0 1 2-2h11.5v3"/><rect x="4" y="8.5" width="16.5" height="11" rx="2"/>'
+    + '<path d="M20.5 12h-4a2 2 0 0 0 0 4h4"/>',
+  mic:'<rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/>',
+  tiles:'<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/>'
+    + '<rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
 };
 const icon = (name, size = 19) =>
   `<svg class="i" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none"
@@ -2253,29 +2438,49 @@ SCREENS.home = () => {
   const d = state.home;
   if(!d) return `<div class="spin"></div>`;
 
-  /* Four blocks and nothing else, in the order they are needed:
+  /* Opening the app answers one question: what do I do right now? The
+     answer is one thing — the Now card. Reporting is second: one line of
+     counts, never a percentage, that opens Statistics. Planning is third:
+     the rest of today's work.
 
-       who and when   →  the one thing to do today
-                      →  how today is going
+       who and when   →  the one thing to do now
+                      →  today in counts
                       →  the rest of today's work
 
-     Everything that used to live here — the top three, the week's focus,
-     birthdays — is one tap away on the screen that owns it. The month grid
-     went the same way: it is forty-two cells about the rest of the month on
-     a screen whose whole job is today, and it now opens from the date in the
-     header, which is where somebody looking for a month would tap anyway.
-     The point of Home is that opening it answers the question without
-     scrolling. */
+     Everything else — the week goal, the countdowns, the day/week/month
+     percentages, XP — lives on the screen that owns it (Tasks, Statistics).
+     The month grid opens from the date in the header. */
   return headBlock(d)
        + timerBanner(d.active_timer)
        + nowBlock(d)
+       + countsRow(d)
        + tasksBlock(d)
-       + scoreBlock(d)
-       + todayBlock(d)
-       + countdownBlock(d.countdowns)
-       + progressCard()
        + privacyNote();
 };
+
+/* ---------- today, in counts ----------
+   "Vazifa 1/3 · Odat 2/6 · Namoz 3/5" — something a person can check against
+   their own list. A percentage first thing in the morning is a grade for a
+   day that has not happened yet; the formula is untouched and one tap away
+   on Statistics. */
+function countsRow(d){
+  const c = d.counts;
+  if(!c) return "";
+  const parts = [];
+  if(c.tasks.total) parts.push(`${t("cnt_tasks")}
+    <b>${c.tasks.done}/${c.tasks.total}</b>`);
+  if(c.habits.total) parts.push(`${t("cnt_habits")}
+    <b>${c.habits.done}/${c.habits.total}</b>`);
+  if(c.prayer.owed !== false && d.modules?.prayer !== false)
+    parts.push(`${t("cnt_prayer")}
+      <b>${c.prayer.excused ? "✓" : `${c.prayer.done}/${c.prayer.total}`}</b>`);
+  if(d.streak) parts.push(`${icon("flame", 15)} <b>${d.streak}</b>`);
+  if(!parts.length) return "";
+  return `<div class="counts" data-act="nav" data-screen="stats" role="button"
+      tabindex="0" aria-label="${t("stats")}">
+      ${parts.map(p => `<span>${p}</span>`).join("")}
+      ${icon("chevron", 15)}</div>`;
+}
 
 /* The privacy promise, once, at the foot of the first screen — not a fixed
    bar above the tab bar on all four. */
@@ -2312,6 +2517,8 @@ function headBlock(d){
                 aria-label="${t("calendar")} · ${esc(d.date_label)}">
           ${icon("calendar", 15)}<span>${esc(d.date_label)}</span></button>
       </div>
+      <button class="iconbtn add" data-act="quick-add"
+              aria-label="${t("quick_add")}">${icon("plus", 22)}</button>
       <button class="avatar" data-act="settings"
               aria-label="${t("settings")}">${avatar}</button>
     </div>`;
@@ -2373,16 +2580,13 @@ function nowBlock(d){
   };
   const kind = KINDS[n.kind];
 
+  /* The pencil is "choose for today": pin one task, and it stays the answer
+     for the rest of the day (at most one — a second asks to replace it). */
   const head = `<div class="row" style="gap:var(--s1)">
       <div class="grow eyebrow">${t("now")}</div>
       <button class="iconbtn sm bare" data-act="mission-pick"
               aria-label="${t("mission_change")}">${icon("edit", 17)}</button>
     </div>`;
-  /* The hairline under the card is today's overall score: the next action,
-     read against how far the day has already come. */
-  const dayPct = d.overall?.measured === false ? 0 : (d.overall?.value || 0);
-  const rail = `<div class="now-rail" aria-hidden="true"><span
-      style="width:${Math.max(0, Math.min(100, dayPct))}%"></span></div>`;
 
   // Nothing left. Not an empty state — a finished one, with the one useful
   // next step offered rather than a blank card.
@@ -2393,7 +2597,6 @@ function nowBlock(d){
         <div class="t2 small" style="margin-top:2px">${t("now_clear_hint")}</div>
         <div class="now-acts"><button class="btn secondary" data-act="task-add">
           ${icon("plus", 17)} ${t("add_task")}</button></div>
-        ${rail}
       </div>`;
   }
 
@@ -2426,133 +2629,8 @@ function nowBlock(d){
         <button class="btn" data-act="${kind.act}" ${kind.data || ""}
                 ${n.id ? `data-id="${n.id}"` : ""}>${icon(glyph, 17)} ${label}</button>
       </div>
-      ${rail}
     </div>`;
 }
-
-/* ---------- the score block ----------
-   Day, week and month on one card, at the same time, and nothing else on it.
-   They used to sit behind a three-way switch, which meant the only comparison
-   anybody actually wants — is today better or worse than the way I have been
-   going? — required two taps and remembering the first number. Three cells
-   answer it by being read.
-
-   The three sit side by side on one line, not stacked, because that is the
-   shape the comparison has: three numbers in the same units, read left to
-   right. A percentage and its change against the previous window of the same
-   length, and nothing else. The change is a colour *and* an arrow, so the
-   direction survives a monochrome screen and a red/green colour blindness.
-
-   What used to sit underneath — tasks, habits and prayer as three cells of
-   this same card — is now three blocks of its own. Six numbers in one box is
-   one object as far as the eye is concerned, and the whole point of those
-   three is that they are three different things. */
-function scoreBlock(d){
-  const s = state.summary;
-  const rows = [["day", t("period_day")], ["week", t("period_week")],
-                ["month", t("period_month")]];
-
-  /* Today comes from the Home payload, which is already loaded, so the block
-     draws its most important cell immediately and fills the other two in when
-     the summary arrives rather than showing three spinners. */
-  const dayDelta = (d.overall.yesterday === null || d.overall.yesterday === undefined)
-    ? null : d.overall.value - d.overall.yesterday;
-
-  const line = ([id, label]) => {
-    const w = s?.windows?.[id];
-    const value = id === "day"
-      ? (d.overall.measured === false ? null : d.overall.value)
-      : (w && w.measured === false ? null : w?.overall);
-    const delta = id === "day" ? dayDelta : w?.delta;
-    const known = value !== undefined && value !== null;
-
-    return `<div class="score-cell ${id === "day" ? "lead" : ""}">
-        <div class="k">${label}</div>
-        <div class="v num">${known ? value + "%" : "—"}${
-          known ? deltaTag(delta || 0) : ""}</div>
-      </div>`;
-  };
-
-  /* The block now opens the lower half of Home rather than sitting in the
-     middle of it, so it gets a heading of its own. Without one, the score card
-     and the four tiles under it read as two unrelated cards; with one, they
-     read as the section they are — how the day is going, after the list of
-     what the day actually holds. */
-  return `<h2>${t("overall_section")}</h2>
-    <div class="tinted block tone-2">
-      <div class="bh" style="margin-bottom:var(--s2)">
-        <span class="itile">${icon("chart", 17)}</span>
-        <div class="grow"><div class="bt">${t("overall")}</div>
-          <div class="t3 tiny">${t("overall_sub")}</div></div>
-        <button class="iconbtn sm bare" data-act="overall-why"
-                aria-label="${t("how_calculated")}">${icon("info", 17)}</button>
-      </div>
-      <div class="scores">${rows.map(line).join("")}</div>
-      ${s?.today?.tasks_total || s?.today?.habits_total ? `<div class="count-line">${
-        [s.today.tasks_total ? t("of_tasks", {done: s.today.tasks_done, total: s.today.tasks_total}) : "",
-         s.today.habits_total ? t("of_habits", {done: s.today.habits_done, total: s.today.habits_total}) : ""]
-        .filter(Boolean).join(" · ")}</div>` : ""}
-    </div>`;
-}
-
-/* ---------- today, in three blocks ----------
-   Tasks, habits and prayer: the three measurable parts of a day, each in its
-   own tinted block, each opening the screen that owns it. They were three
-   cells of the overall card, which made them look like a footnote to the
-   percentage above them — they are not, they are the three things the
-   percentage is made of, and they are also the three places a tap goes next.
-
-   Each block carries a hue from the theme's palette rather than a shared
-   grey, so the three read apart at a glance, and a bar under each so the
-   ratio is visible without doing the division. */
-function todayBlock(d){
-  const c = d.overall.components;
-  const focus = d.focus || {};
-  const today = state.summary?.today || {};
-  const ratio = (done, total) => total ? Math.round(done / total * 100) : 0;
-  const prayer = d.prayer.excused ? 100
-    : ratio(d.prayer.performed, d.prayer.required);
-  const tasksCounted = typeof today.tasks_total === "number" && today.tasks_total > 0;
-
-  /* Four blocks, two by two. Each shows a count first — "4/7" is something a
-     person can check by hand — then the percentage it scores, then the weight
-     it carries in the headline number. */
-  const tile = (key, label, value, sub, percent, act) => `
-    <div class="tinted tile ${COMPONENT_TONE[key]}" ${act} role="button" tabindex="0">
-      <div class="row" style="gap:var(--s1)">
-        <span class="itile">${icon(COMPONENT_ICON[key], 17)}</span>
-        <div class="grow"></div>
-        <span class="wt num" title="${t("weight")}">${t("weight")} ${WEIGHTS[key]}%</span>
-      </div>
-      <div class="k ellipsis">${label}</div>
-      <div class="v num">${value}</div>
-      <div class="sub num">${sub}</div>
-      ${bar(percent)}
-    </div>`;
-
-  return `<h2>${t("today_parts")}</h2>
-    <div class="tiles two">
-      ${tile("tasks", t("tasks"),
-             tasksCounted ? `${today.tasks_done}/${today.tasks_total}` : pct(c.tasks),
-             tasksCounted ? pct(c.tasks) : "", c.tasks || 0,
-             `data-act="nav" data-screen="tasks"`)}
-      ${tile("habits", t("habits"), `${d.habits.done}/${d.habits.total}`,
-             pct(c.habits), ratio(d.habits.done, d.habits.total),
-             `data-act="go-tab" data-tab="habits"`)}
-      ${tile("focus", t("week_focus"), `${focus.done || 0}/${focus.total || 0}`,
-             pct(c.focus), ratio(focus.done, focus.total),
-             `data-act="nav" data-screen="tasks"`)}
-      ${d.modules?.prayer === false ? "" : tile("prayer", t("prayer"),
-             d.prayer.excused ? "✓" : `${d.prayer.performed}/${d.prayer.required}`,
-             d.prayer.excused ? t("excused") : pct(c.prayer),
-             prayer, `data-act="go-tab" data-tab="prayer"`)}
-    </div>`;
-}
-
-/* The nominal weights, for display only. The score itself is computed on the
-   server — there is no second copy of the formula here, and these numbers are
-   read from the payload wherever the *applied* weight matters. */
-const WEIGHTS = {tasks:40, habits:25, focus:20, prayer:15};
 
 /* Today's work, grouped by the project it belongs to. */
 function tasksBlock(d){
@@ -2580,6 +2658,9 @@ function tasksBlock(d){
     + items.map(x => taskRow(x, {hideDate: true})).join("")).join("");
 
   if(!rows.length && shared) return h + shared;
+  // Today's only task is the one on the Now card: "no tasks yet" under it
+  // would contradict the card, so the heading and its + are all there is.
+  if(!rows.length && d.now?.kind === "task") return h;
   if(!rows.length){
     return h + `<div class="empty">${t("no_tasks_yet")}
       <button class="btn secondary sm" data-act="task-add">
@@ -2599,14 +2680,19 @@ function calendarBlock(){
   if(!c) return `<div class="card"><div class="spin"></div></div>`;
   const dows = D().dow.map(x => `<div class="cal-dow">${x}</div>`).join("");
   let cells = "";
-  for(let i = 0; i < c.first_weekday; i++) cells += `<div class="cal-day empty"></div>`;
+  for(let i = 0; i < c.first_weekday; i++) cells += `<div class="cal-day pad"></div>`;
   for(let day = 1; day <= c.days_in_month; day++){
     const iso = `${c.year}-${String(c.month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
     const events = c.events[iso] || [];
     const kinds = [...new Set(events.map(e => e.kind))].slice(0, 4);
+    /* A past day opens only when something happened on it, and then only to
+       show what was done. Today and every day after open even when empty —
+       that is where a task gets planned. */
+    const past = iso < c.today;
+    const opens = events.length || !past;
     cells += `<div class="cal-day num ${iso === c.today ? "today" : ""}
-      ${events.length ? "has" : ""}"
-      ${events.length ? `data-act="day-open" data-date="${iso}"` : ""}>
+      ${past ? "past" : ""} ${events.length ? "has" : ""}"
+      ${opens ? `data-act="day-open" data-date="${iso}" role="button" tabindex="0"` : ""}>
       <span>${day}</span>
       <span class="cal-dots">${kinds.map(k => `<i class="k-${k}"></i>`).join("")}</span></div>`;
   }
@@ -2704,6 +2790,8 @@ SCREENS.team = () => {
           + (m.role === "owner" ? " 👑" : m.role === "admin" ? " ⭐" : "")).join(" · ")}</div></div>
       <button class="ghost" data-act="team-menu" data-id="${team.id}"
               aria-label="${t("settings")}">⋯</button>
+      <button class="iconbtn add" data-act="team-add" data-kind="task"
+              aria-label="${t("team_add_task")}">${icon("plus", 22)}</button>
     </div>
     ${pick}`;
 
@@ -2782,15 +2870,14 @@ function teamTodayTab(team, board){
       ${done}
     </div>`;
 
+  /* The team's own dates, when it has any. Adding one is on Tasks → Taqvim,
+     with the rest of the planning; this tab is about today. */
   const cds = team.countdowns || [];
-  const countdowns = `<h2>${icon("calendar", 16)} ${t("date_cd")}
-      <span class="act" data-act="cd-add" data-team="${team.id}">${icon("plus", 15)}
-        ${t("add")}</span></h2>
-    ${cds.length ? countdownRows(cds) : `<div class="empty">${t("countdown_empty")}</div>`}
-    <div class="hub">
-      <button class="btn secondary" data-act="tc-open">${icon("clock", 16)} ${t("time_cd")}</button>
-      <button class="btn secondary" data-act="dc-open">${icon("calendar", 16)} ${t("date_cd")}</button>
-    </div>`;
+  const countdowns = cds.length
+    ? sectionHead("tone-4", "hourglass", t("date_cd"),
+        `<span class="act" data-act="cd-add" data-team="${team.id}">${icon("plus", 15)}
+           ${t("add")}</span>`) + countdownRows(cds)
+    : "";
   return head + work + countdowns;
 }
 
@@ -2846,7 +2933,44 @@ function teamResultsTab(team, board){
     : `<div class="card"><div class="spin"></div></div>`);
   return `<div class="card"><div class="card-t">${t("team_results")}</div>
       <div class="muted sm" style="margin-bottom:6px">${teamUnits(board.units)}</div>
-      ${periods}</div>` + members + activity;
+      ${periods}</div>` + teamGraph(team) + members + activity;
+}
+
+/* The team as one line: every confirmation owed each day, and how many came
+   in. One line on one graph — the question is "how are we doing together",
+   and a line per person answers a different one (the bars above do that). A
+   day nothing was owed is left out rather than drawn as a zero. */
+function teamGraph(team){
+  const period = state.teamGraphPeriod || "week";
+  const key = team.id + ":" + period;
+  const data = state.teamGraph?.[key];
+  if(data === undefined) loadTeamGraph(team.id, period);
+  const seg = `<div class="seg" role="tablist" style="margin:0 0 var(--s2)">
+      ${[["week", t("team_p_week")], ["month", t("team_p_month")]].map(([p, label]) =>
+        `<div class="${period === p ? "on" : ""}" role="tab" tabindex="0"
+          aria-selected="${period === p}" data-act="team-graph-period"
+          data-value="${p}">${label}</div>`).join("")}</div>`;
+  let body;
+  if(data === undefined || data === null) body = `<div class="spin"></div>`;
+  else{
+    const points = (data.series || []).filter(p => p.team !== null && p.team !== undefined);
+    body = points.length >= 2
+      ? lineChart(points, [{field:"team", color:"var(--c1)", label:t("team")}])
+        + `<div class="t2 tiny" style="margin-top:var(--s1)">${t("team_graph_hint",
+            {n: data.together === null || data.together === undefined ? "—" : data.together + "%"})}</div>`
+      : `<div class="empty">${t("team_graph_empty")}</div>`;
+  }
+  return sectionHead("tone-1", "chart", t("team_graph")) + `<div class="card">${seg}${body}</div>`;
+}
+
+async function loadTeamGraph(teamId, period){
+  state.teamGraph ||= {};
+  const key = teamId + ":" + period;
+  if(state.teamGraph[key] !== undefined) return;
+  state.teamGraph[key] = null;
+  try{ state.teamGraph[key] = await api(`/api/teams/${teamId}/stats?period=${period}`); }
+  catch(_){ state.teamGraph[key] = {series: []}; }
+  if(state.screen === "team") render();
 }
 
 async function loadTeamActivity(teamId){
@@ -2978,7 +3102,9 @@ SCREENS.habits = () => {
                 ...(mods.prayer === false ? [] : [["prayer","prayer"]]),
                 ...(mods.journal === false ? [] : [["journal","journal"]])];
   if(!tabs.some(([id]) => id === state.tab)) state.tab = "habits";
-  let h = `<h1>${t(state.tab)}</h1>
+  let h = `<div class="head"><h1 class="grow">${t(state.tab)}</h1>
+      ${state.tab === "habits" ? `<button class="iconbtn add" data-act="habit-add"
+          aria-label="${t("add_habit")}">${icon("plus", 22)}</button>` : ""}</div>
     <div class="seg" style="margin:12px 0 14px">
       ${tabs.map(([id, key]) => `<div class="${state.tab === id ? "on" : ""}"
         data-act="tab" data-tab="${id}">${t(key)}</div>`).join("")}
@@ -3001,89 +3127,60 @@ function habitsTab(){
     + `<button class="btn" data-act="reorder-off"
          style="margin-top:14px">${t("finish")}</button>`;
 
-  /* Today's habits and the streak, in one block at the top: the count is the
-     thing being worked on and the streak is why it is worth working on, so
-     they belong to each other rather than to two separate cards. */
   /* Every habit owed today, personal and shared, because that is what the
-     percentage underneath is built from. Counting only the private ones made
-     the card disagree with the score on Home. */
+     count in the dashboard is built from. */
   const everything = Object.values(data.grouped || {}).flat();
-  const due = (everything.length ? everything : data.habits).filter(x => x.due);
+  /* The prayer habit is a shortcut to its own section and is scored there,
+     so it is left out of this count — the same count Home shows. */
+  const due = (everything.length ? everything : data.habits)
+    .filter(x => x.due && x.scored !== false);
   const done = due.filter(x => x.done).length;
-  /* Two different questions, and the card answers both rather than picking
-     one. "4/6" is how many habits are ticked — a count, and the only honest
-     way to describe a list. The percentage is what those ticks are worth once
-     the tiers are weighted, which is the number the overall score on Home is
-     built from. They disagree on purpose: four bonus habits out of six is not
-     67% of a day. The weighted figure comes from the API so there is only ever
-     one copy of the formula. */
-  const tiers = data.tiers || {};
-  const live = Object.values(tiers).reduce(
-    (n, x) => n + (x.due ? x.weight : 0), 0);
-  const percent = live
-    ? Math.round(Object.values(tiers).reduce(
-        (n, x) => n + (x.due ? x.weight * x.done / x.due : 0), 0) / live * 100)
-    : (due.length ? Math.round(done / due.length * 100) : 0);
 
-  let h = timerBanner(data.active_timer) + `<div class="tinted block tone-5">
-      <div class="bh">
-        <span class="itile lg">${icon("check", 18)}</span>
+  /* Top of the screen: the habits and nothing else, one column, in tier
+     order — non-negotiable, target, bonus. The tier is the coloured edge of
+     the row rather than a heading between rows, so the list reads as one
+     list. The wake-up control ("Turdim") sits in the habit it belongs to. */
+  let h = timerBanner(data.active_timer);
+  const rows = data.categories.map(cat =>
+    (data.grouped[cat] || []).map(x => habitRow(x, cat, data.wake)).join("")).join("");
+  h += rows || `<div class="empty">${t("no_habits_yet")}
+      <button class="btn secondary sm" data-act="presets-open">
+        ${icon("tiles", 16)} ${t("presets")}</button></div>`;
+  if(rows && !due.length) h += `<div class="t2 small" style="margin-top:var(--s2)">
+      ${t("no_habits_today")}</div>`;
+
+  /* Bottom: the dashboard. Today's count and the streak, then every control
+     that changes the list — add, the ready-made ten, reorder, restore.
+     Editing, pausing and deleting one habit live in its own sheet, one tap
+     in, so nothing here can remove a habit by a mis-tap. */
+  const ratio = due.length ? Math.round(done / due.length * 100) : 0;
+  h += `<div class="dash">
+      <div class="dash-top">
+        <span class="itile">${icon("check", 17)}</span>
         <div class="grow"><div class="bt">${t("today")}</div>
-          <div class="t2 tiny">${done}/${due.length} · ${percent}%</div></div>
-        ${data.streak ? `<div style="text-align:right">
-          <div class="num" style="font-size:19px;font-weight:700">
-            ${icon("flame", 17)} ${data.streak}</div>
-          <div class="t3 tiny">${t("streak")}</div></div>` : ""}
+          <div class="t2 tiny num">${done}/${due.length}</div></div>
+        ${data.streak ? `<div class="num" style="font-weight:700">
+          ${icon("flame", 16)} ${data.streak}</div>` : ""}
       </div>
-      <div style="margin-top:var(--s2)">${bar(percent)}</div>
-    </div>`;
-
-  // The wake-up control sits in the habit it belongs to, and it is a
-  // real button rather than an instruction to go and use the chat.
-  const anyDue = due.length > 0;
-
-  /* One hue per tier, so the non-negotiable ones are visibly not the bonus
-     ones — which is the entire distinction the three tiers exist to draw. */
-  const TIER_TONE = {non_negotiable:"tone-1", target:"tone-5", bonus:"tone-3"};
-  const TIER_ICON = {non_negotiable:"target", target:"up", bonus:"plus"};
-
-  /* Each tier says what it is worth. The three tiers used to be labels only —
-     a heading that claimed one group mattered more, over a score that counted
-     every habit the same — so the badge is not decoration, it is the screen
-     finally agreeing with its own arithmetic. The number is the *applied*
-     weight from the API, renormalised over the tiers that actually have a
-     habit due today, so three non-negotiable habits and nothing else reads
-     100% rather than a permanently unreachable 50%. */
-  data.categories.forEach(cat => {
-    const items = (data.grouped[cat] || []);
-    if(!items.length) return;
-    const tier = data.tiers?.[cat];
-    const badge = tier && tier.due
-      ? `<span class="wt num">${tier.done}/${tier.due} · ${tier.applied}%</span>`
-      : "";
-    h += sectionHead(TIER_TONE[cat] || "tone-1", TIER_ICON[cat] || "check",
-                     t(cat), badge);
-    h += items.map(x => habitRow(x, cat, data.wake)).join("");
-  });
-
-  if(!anyDue) h += `<div class="empty">${t("no_habits_today")}</div>`;
-
-  // Editing, pausing and deleting a habit all live in the habit's own
-  // sheet, one tap in. A screen-wide "delete mode" made removal as
-  // prominent as ticking, and a mis-tap there costs every log the habit
-  // ever had.
-  h += `<div class="btns">
-      <button class="btn" data-act="habit-add">
-        ${icon("plus", 16)} ${t("add_habit")}</button>
-      <button class="btn secondary" data-act="reorder-on">
-        ${icon("drag", 16)} ${t("reorder")}</button>
+      <div style="margin-top:var(--s2)">${bar(ratio)}</div>
+      <div class="grid2">
+        <button class="btn" data-act="habit-add">
+          ${icon("plus", 16)} ${t("add_habit")}</button>
+        <button class="btn secondary" data-act="presets-open">
+          ${icon("tiles", 16)} ${t("presets")}</button>
+        <button class="btn secondary" data-act="reorder-on">
+          ${icon("drag", 16)} ${t("reorder")}</button>
+        <button class="btn secondary" data-act="habit-archive-open">
+          ${icon("repeat", 16)} ${t("restore")}</button>
+      </div>
     </div>`;
   return h;
 }
 
 function habitRow(x, cat, wake){
+  const edge = `<span class="hrow-tier ${TIERS[cat] || "t2"}" title="${t(cat)}"></span>`;
   if(x.paused){
-    return `<div class="item ${TIERS[cat]} off">
+    return `<div class="item ${TIERS[cat]} off">${edge}
         <div class="grow"><div class="ellipsis">${esc(x.name)}</div>
           <div class="meta">${t("paused")}</div></div>
         <button class="btn secondary sm" data-act="habit-resume" data-id="${x.id}">
@@ -3154,7 +3251,7 @@ function habitRow(x, cat, wake){
   const open = shared ? `data-act="team-habit-open" data-id="${x.id}"`
                       : `data-act="habit-open" data-id="${x.id}"`;
   return `<div class="item ${TIERS[cat]} ${x.due ? "" : "off"}">
-      ${box}
+      ${edge}${box}
       <div class="grow" ${open}>
         <div class="ellipsis">${esc(x.name)}</div>
         ${meta.length ? `<div class="meta">${meta.join(" · ")}</div>` : ""}
@@ -3664,23 +3761,14 @@ function countdownRows(list){
     </div>`).join("");
 }
 
-/* The two countdowns, side by side wherever a day is planned: a date being
-   counted down to, and a clock on a habit or a task. */
-function countdownHub(){
-  return `<div class="hub">
-      <button class="btn secondary" data-act="dc-open">${icon("calendar", 16)} ${t("date_cd")}</button>
-      <button class="btn secondary" data-act="tc-open">${icon("clock", 16)} ${t("time_cd")}</button>
-    </div>`;
-}
-
 function countdownBlock(list){
   list = list || [];
-  return `<h2>${icon("calendar", 16)} ${t("date_cd")}
-      <span class="act" data-act="cd-add">${icon("plus", 15)} ${t("add")}</span></h2>
-    ${countdownRows(list.slice(0, 3))}
-    ${list.length > 3 ? `<div class="t2 small" data-act="dc-open" role="button" tabindex="0"
-        style="margin-top:6px;text-decoration:underline">${t("cd_all")} · ${list.length}</div>` : ""}
-    ${countdownHub()}`;
+  return sectionHead("tone-4", "hourglass", t("date_cd"),
+      `<span class="act" data-act="cd-add">${icon("plus", 15)} ${t("add")}</span>`)
+    + (list.length ? countdownRows(list.slice(0, 5))
+        : `<div class="empty">${t("countdown_empty")}</div>`)
+    + (list.length > 5 ? `<div class="t2 small" data-act="dc-open" role="button" tabindex="0"
+        style="margin-top:6px;text-decoration:underline">${t("cd_all")} · ${list.length}</div>` : "");
 }
 
 /* Every countdown: yours by kind, then each team's. */
@@ -3836,8 +3924,9 @@ SCREENS.tasks = () => {
 
   let h = `<div class="head">
       <h1 class="grow">${t("tasks")}</h1>
-      <button class="iconbtn" data-act="task-add"
-              aria-label="${t("add_task")}">${icon("plus")}</button>
+      <button class="iconbtn add" data-act="${state.taskTab === "projects" ? "project-add" : "task-add"}"
+              aria-label="${state.taskTab === "projects" ? t("add_project") : t("add_task")}"
+              >${icon("plus", 22)}</button>
     </div>
     <div class="seg" role="tablist" style="margin:12px 0 12px">
       ${tabs.map(([id, label]) => `<div class="${active === id ? "on" : ""}" role="tab"
@@ -3859,9 +3948,14 @@ SCREENS.tasks = () => {
   return h + mainTab();
 };
 
+/* Taqvim: the dates being counted down to, then the month. The date
+   countdown lives here — in the planning screen — and nowhere in the chat;
+   the clock on a habit or a task is one button under it. */
 function calendarTab(){
   return countdownBlock(state.countdowns)
-    + sectionHead("tone-2", "calendar", t("calendar")) + calendarBlock();
+    + sectionHead("tone-2", "calendar", t("calendar")) + calendarBlock()
+    + `<button class="btn secondary" data-act="tc-open" style="margin-top:var(--s3)">
+        ${icon("clock", 16)} ${t("time_cd")}</button>`;
 }
 
 /* A section heading that carries a hue, so the screen reads as a few
@@ -3895,11 +3989,12 @@ function mainTab(){
   }));
   const all = [...d.overdue, ...d.upcoming, ...d.undated, ...(d.later || []),
                ...sharedAll];
-  const pinned = all.filter(x => x.top3);
-  const seen = new Set(pinned.map(x => x.id + ":" + (x.source || "personal")));
+  /* No "Pinned" section: the task chosen for today is the Now card on Home,
+     and here it sits in its own place in the list with its star lit. A
+     section of its own printed the same task twice. */
   const key = x => x.id + ":" + (x.source || "personal");
-  const late = all.filter(x => x.overdue && !seen.has(key(x)));
-  late.forEach(x => seen.add(key(x)));
+  const late = all.filter(x => x.overdue);
+  const seen = new Set(late.map(key));
   const now = all.filter(x => x.deadline === today && !seen.has(key(x)));
 
   const section = (tone, ic, label, rows, opts) => rows.length
@@ -3907,8 +4002,7 @@ function mainTab(){
 
   /* One hue per section, and the same hue for the same idea everywhere in the
      app: tasks are the first tone on Home and they are the first tone here. */
-  const body = section("tone-5", "target", t("pinned_tasks"), pinned)
-    + section("tone-4", "clock", t("overdue"), late)
+  const body = section("tone-4", "clock", t("overdue"), late)
     + section("tone-1", "list", t("due_today"), now, {hideDate: true});
 
   h += body || `<div class="empty">${t("nothing_today")}
@@ -3916,9 +4010,8 @@ function mainTab(){
               style="margin:12px auto 0;display:flex">
         ${icon("plus", 16)} ${t("add_first_task")}</button></div>`;
 
-  // The dates and the month are the Taqvim tab now; both countdowns stay a
-  // tap away from Today.
-  return h + countdownHub();
+  // The dates, the month and both countdowns are the Taqvim tab.
+  return h;
 }
 
 function searchBox(id, value, placeholder, action){
@@ -4129,12 +4222,15 @@ function taskRow(task, opts){
   const quick = task.overdue ? `
       <div class="quick">
         <span class="qlbl">${t("reschedule")}:</span>
-        <div class="chip sm" data-act="task-move" data-id="${task.id}"
-             data-when="today">${t("when_today")}</div>
-        <div class="chip sm" data-act="task-move" data-id="${task.id}"
-             data-when="tomorrow">${t("when_tomorrow")}</div>
-        <div class="chip sm" data-act="task-move" data-id="${task.id}"
-             data-when="none">${t("when_none")}</div>
+        <div class="chip sm" data-act="task-reschedule" data-id="${task.id}"
+             data-source="${shared ? "team" : "personal"}"
+             data-when="today" role="button" tabindex="0">${t("when_today")}</div>
+        <div class="chip sm" data-act="task-reschedule" data-id="${task.id}"
+             data-source="${shared ? "team" : "personal"}"
+             data-when="tomorrow" role="button" tabindex="0">${t("when_tomorrow")}</div>
+        <div class="chip sm" data-act="task-reschedule" data-id="${task.id}"
+             data-source="${shared ? "team" : "personal"}"
+             data-when="none" role="button" tabindex="0">${t("when_none")}</div>
       </div>` : "";
 
   return `<div class="trow pri-${task.priority}">
@@ -4284,6 +4380,8 @@ SCREENS.project = () => {
       <h1 class="grow">${esc(p.name)}</h1>
       <button class="iconbtn" data-act="project-edit" data-id="${p.id}"
               aria-label="${t("edit")}">${icon("edit")}</button>
+      <button class="iconbtn add" data-act="task-add" data-project="${p.id}"
+              aria-label="${t("add_task")}">${icon("plus", 22)}</button>
     </div>`;
 
   if(p.description)
@@ -4340,6 +4438,209 @@ SCREENS.project = () => {
             style="margin-top:8px">${icon("trash", 15)} ${t("delete")}</button>`;
   return h;
 };
+
+/* ---------- Money ----------
+   Its own place, deliberately apart from the productivity screens: nothing
+   here feeds a score, a streak, XP or a report, and nothing on those screens
+   reads from here. What came in, what went out, each category against its
+   monthly limit, and the entries themselves. Adding is one line of text —
+   "Tushlik 45 ming" — typed, or spoken where the phone allows it. */
+const MONEY_TONE = {food:"var(--danger)", transport:"var(--warn)", home:"var(--c1)",
+  health:"var(--ok)", fun:"var(--c3)", business:"var(--c2)", other:"var(--text-3)",
+  salary:"var(--ok)", sales:"var(--c2)", other_in:"var(--c5)"};
+const moneyNum = n => String(Math.round(Math.abs(n || 0)))
+  .replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+const moneyFmt = n => moneyNum(n) + " " + t("money_unit");
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+async function loadMoney(month){
+  try{
+    setState({money: await api("/api/money" + (month ? "?month=" + month : ""))});
+  }catch(e){ handleError(e); }
+}
+
+/* Where each category's money went this month, as one ring. */
+function moneyDonut(cats, total){
+  const R = 42, C = 2 * Math.PI * R;
+  let offset = 0;
+  const arcs = cats.map(c => {
+    const len = c.spent / total * C;
+    const arc = `<circle cx="60" cy="60" r="${R}" fill="none" stroke="${MONEY_TONE[c.id]}"
+      stroke-width="18" stroke-dasharray="${len} ${C}" stroke-dashoffset="${-offset}"
+      transform="rotate(-90 60 60)"/>`;
+    offset += len;
+    return arc;
+  }).join("");
+  return `<div class="donut">
+      <svg width="120" height="120" viewBox="0 0 120 120" role="img"
+           aria-label="${t("money_spend_split")}">
+        <circle cx="60" cy="60" r="${R}" fill="none" stroke="var(--surface-2)"
+                stroke-width="18"/>${arcs}</svg>
+      <div class="lg">${cats.map(c => `<div class="ellipsis">
+          <i style="background:${MONEY_TONE[c.id]}"></i>${t("mcat_" + c.id)}
+          <span class="t2 num"> · ${Math.round(c.spent / total * 100)}%</span></div>`).join("")}
+      </div></div>`;
+}
+
+function moneyRow(e, icons){
+  const income = e.kind === "income";
+  const label = e.note || t("mcat_" + e.category);
+  return `<div class="item mrow">
+      <span class="itile" style="font-size:17px">${icons[e.category] || "•"}</span>
+      <div class="grow"><div class="ellipsis">${esc(label)}</div>
+        <div class="meta">${t("mcat_" + e.category)} · <span class="num">${isoToLabel(e.day)}</span>
+          ${e.source === "voice" ? icon("mic", 12) : ""}</div></div>
+      <div class="amount ${income ? "pos" : "neg"}">${income ? "+" : "−"}${moneyNum(e.amount)}</div>
+      <button class="iconbtn sm bare" data-act="money-del" data-id="${e.id}"
+              aria-label="${t("delete")}">${icon("x", 15)}</button>
+    </div>`;
+}
+
+SCREENS.money = () => {
+  const m = state.money;
+  let h = `<div class="head"><h1 class="grow">${t("money")}</h1>
+      <button class="iconbtn add" data-act="money-add"
+              aria-label="${t("money_add")}">${icon("plus", 22)}</button></div>
+    <div class="t3 tiny">${t("money_apart")}</div>`;
+  if(!m) return h + `<div class="spin"></div>`;
+
+  h += `<div class="mnav">
+      <button class="iconbtn sm" data-act="money-month" data-delta="-1"
+              aria-label="‹">${icon("back", 16)}</button>
+      <b>${D().months[m.month_no - 1]} ${m.year}</b>
+      <button class="iconbtn sm" data-act="money-month" data-delta="1" aria-label="›"
+              ${m.is_current ? "disabled" : ""}>${icon("chevron", 16)}</button></div>`;
+
+  h += `<div class="mtiles">
+      <div class="mtile lead"><div class="k">${icon("wallet", 15)} ${t("money_balance")}</div>
+        <div class="v ${m.balance < 0 ? "neg" : ""}">${m.balance < 0 ? "−" : ""}${moneyFmt(m.balance)}</div></div>
+      <div class="mtile"><div class="k">${icon("up", 15)} ${t("money_income")}</div>
+        <div class="v pos">+${moneyFmt(m.income)}</div></div>
+      <div class="mtile"><div class="k">${icon("down", 15)} ${t("money_expense")}</div>
+        <div class="v neg">−${moneyFmt(m.expense)}</div></div>
+      <div class="mtile lead" style="padding-top:10px;padding-bottom:10px">
+        <div class="row"><div class="k grow">${t("money_saved")}</div>
+        <div class="v ${m.saved < 0 ? "neg" : "pos"}" style="font-size:16px;margin:0">
+          ${m.saved < 0 ? "−" : ""}${moneyFmt(m.saved)}</div></div></div>
+    </div>`;
+
+  if(m.is_current) h += `<div class="mquick">
+      <input id="money-text" placeholder="${t("money_quick_ph")}" maxlength="300"
+             enterkeyhint="done" data-search="money-text-save" />
+      ${SpeechRec ? `<button class="mic ${state.listening ? "on" : ""}" data-act="money-voice"
+          aria-label="${t("money_voice")}">${icon("mic", 20)}</button>` : ""}
+    </div>
+    <div class="t3 tiny" style="margin-top:6px">${t("money_quick_hint")}</div>`;
+
+  const spent = m.categories.filter(c => c.spent > 0);
+  h += sectionHead("tone-4", "chart", t("money_spend_split"))
+    + `<div class="card">${spent.length ? moneyDonut(spent, m.expense)
+        : `<div class="t2 small" style="text-align:center;padding:var(--s2) 0">
+             ${t("money_no_spend")}</div>`}</div>`;
+
+  h += sectionHead("tone-2", "tiles", t("money_by_category"))
+    + `<div class="card">${m.categories.map(c => {
+        const pct = c.limit ? Math.min(100, c.spent / c.limit * 100) : 0;
+        return `<div class="mcat" data-act="money-budget" data-cat="${c.id}"
+            data-limit="${c.limit}" role="button" tabindex="0">
+          <div class="row"><span>${c.icon}</span>
+            <div class="grow ellipsis">${t("mcat_" + c.id)}</div>
+            <span class="amt ${c.over ? "over" : ""}">${moneyFmt(c.spent)}${
+              c.limit ? ` / ${moneyFmt(c.limit)}` : ""}</span></div>
+          ${c.limit ? `<div class="mbar"><span style="width:${pct}%;background:${
+              c.over ? "var(--danger)" : MONEY_TONE[c.id]}"></span></div>` : ""}
+          ${c.over ? `<div class="tiny" style="color:var(--danger);margin-top:4px">
+              ${t("money_over", {n: moneyFmt(c.spent - c.limit)})}</div>` : ""}
+        </div>`;}).join("")}</div>`;
+
+  h += sectionHead("tone-1", "list", t("money_latest"),
+      `<span class="t3 tiny num">${m.count}</span>`);
+  h += m.entries.length ? m.entries.map(e => moneyRow(e, m.icons)).join("")
+    : `<div class="empty">${t("money_empty")}
+        <button class="btn secondary sm" data-act="money-add">
+          ${icon("plus", 16)} ${t("money_add")}</button></div>`;
+  return h;
+};
+
+function moneySheet(){
+  const f = state.moneyForm || (state.moneyForm = {kind:"expense", category:"food"});
+  const m = state.money || {};
+  const ids = (m.category_ids || []).filter(id => (m.kinds || {})[id] === f.kind);
+  return `<h3>${icon("wallet", 18)} ${t("money_add")}</h3>
+    <div class="seg" role="tablist" style="margin:var(--s2) 0">
+      ${[["expense", t("money_expense")], ["income", t("money_income")]].map(([k, label]) =>
+        `<div class="${f.kind === k ? "on" : ""}" role="tab" tabindex="0"
+          aria-selected="${f.kind === k}" data-act="money-kind" data-value="${k}">${label}</div>`)
+        .join("")}</div>
+    <label>${t("money_amount")}</label>
+    <input id="money-amount" type="number" inputmode="numeric" min="1" step="1"
+           placeholder="45000" value="${esc(f.amount || "")}" />
+    <label>${t("category")}</label>
+    <div class="chips">${ids.map(id => `<div class="chip sm ${f.category === id ? "on" : ""}"
+        data-act="money-cat" data-value="${id}" role="radio" tabindex="0"
+        aria-checked="${f.category === id}">${(m.icons || {})[id] || ""} ${t("mcat_" + id)}</div>`)
+      .join("")}</div>
+    <label>${t("money_note")} <span class="t3">(${t("optional")})</span></label>
+    <input id="money-note" maxlength="200" value="${esc(f.note || "")}"
+           placeholder="${t("money_note_ph")}" />
+    <button class="btn" data-act="money-save" style="margin-top:16px">${t("save")}</button>
+    <button class="btn secondary" data-act="close" style="margin-top:8px">${t("cancel")}</button>`;
+}
+
+function readMoneyForm(){
+  const f = state.moneyForm || (state.moneyForm = {kind:"expense", category:"food"});
+  const g = id => document.getElementById(id);
+  if(g("money-amount")) f.amount = g("money-amount").value;
+  if(g("money-note")) f.note = g("money-note").value;
+  return f;
+}
+
+let recognition = null;
+function moneyVoice(){
+  if(!SpeechRec) return toast(t("money_voice_none"));
+  if(state.listening){ try{ recognition?.stop(); }catch(_){} return; }
+  recognition = new SpeechRec();
+  recognition.lang = {uz:"uz-UZ", en:"en-US", ru:"ru-RU"}[state.lang] || "uz-UZ";
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+  let heard = "";
+  recognition.onresult = ev => {
+    let text = "";
+    for(const r of ev.results) text += r[0].transcript;
+    heard = text;
+    const input = document.getElementById("money-text");
+    if(input) input.value = text;
+  };
+  recognition.onerror = ev => {
+    state.listening = false; render();
+    toast(ev.error === "not-allowed" ? t("money_voice_denied") : t("money_voice_fail"));
+  };
+  recognition.onend = () => {
+    state.listening = false;
+    render();
+    if(heard.trim()) moneyText(heard.trim(), "voice");
+  };
+  try{ recognition.start(); state.listening = true; render(); }
+  catch(_){ toast(t("money_voice_fail")); }
+}
+
+/* One line to one entry: the server reads the amount, the direction and the
+   category, and the toast says back what it understood. */
+async function moneyText(text, source){
+  if(!text) return;
+  haptic();
+  try{
+    const e = await api("/api/money/text", {method:"POST", body:{text, source}});
+    const el = document.getElementById("money-text");
+    if(el) el.value = "";
+    notify("success");
+    toast(`${e.kind === "income" ? "+" : "−"}${moneyFmt(e.amount)} · ${t("mcat_" + e.category)}`);
+    await loadMoney(state.moneyMonth);
+  }catch(err){
+    if(err.status === 422) return toast(t("money_no_amount"));
+    handleError(err);
+  }
+}
 
 /* ---------- Statistics ----------
    Its own screen, loaded only when opened: Home never pays for chart
@@ -4482,6 +4783,10 @@ SCREENS.stats = () => {
   // reviewing their month should not have to remember that half of it is
   // filed under another tab.
   h += teamStatsOnStats();
+
+  /* Level, XP and rank moved here from Home: they are a reading of how the
+     days have gone, which is what this screen is, and Home is about now. */
+  h += progressCard();
 
   h += `<div class="btns">
       <button class="btn secondary" data-act="stats-download">
@@ -4825,10 +5130,12 @@ function taskBody(){
 function habitSheet(h){
   state.habitSheet = h;
   const team = h.source === "team";
-  /* What may be changed here. A personal ritual is driven by its module; a
-     shared habit is changed by its creator, an admin or the owner, and a
-     mirrored one is read from each member's own habit. */
-  const locked = team ? (h.mirrored || h.can_manage === false) : h.protected;
+  /* What may be changed here. Every personal habit — the three rituals too —
+     can be renamed, re-tiered, given a reminder, paused and removed; a ritual
+     only keeps its daily schedule and its automatic box. A shared habit is
+     changed by its creator, an admin or the owner, and a mirrored one is read
+     from each member's own habit. */
+  const locked = team ? (h.mirrored || h.can_manage === false) : false;
   const days = h.days || [0,1,2,3,4,5,6];
   const custom = h.schedule !== "daily" && h.schedule !== "weekdays";
   const grid = h.grid || [];
@@ -4884,7 +5191,9 @@ function habitSheet(h){
               style="min-width:96px">${t("save")}</button>
     </div>`}
 
-    ${locked ? "" : timerSetting(team ? "thabit" : "habit", h)}
+    ${locked || h.protected ? "" : timerSetting(team ? "thabit" : "habit", h)}
+
+    ${ritualSharePicker(h)}
 
     <label>${t("history")}</label>
     <div class="metrics">
@@ -4913,7 +5222,7 @@ function habitSheet(h){
       </div>
       <button class="btn danger"
               data-act="${h.source === "team" ? "team-habit-delete" : "habit-delete-confirm"}"
-              data-id="${h.id}"
+              data-id="${h.id}" data-name="${esc(h.name)}"
               style="margin-top:8px">${icon("trash", 15)} ${t("delete")}</button>`}
     <button class="btn secondary" data-act="close" style="margin-top:8px">
       ${t("close")}</button>`;
@@ -4938,6 +5247,68 @@ function partnerRecords(h){
         <div class="${m.done_today ? "check on" : "check"}"
              style="pointer-events:none">${m.done_today ? icon("check", 14) : ""}</div>
       </div>`).join("")}`;
+}
+
+/* The ready-made ten: the three rituals and seven ordinary habits most
+   people keep. ✓ on your list, + not yet; a tap flips it. Taking one off
+   archives it with its history, and putting it back brings that history
+   back — so this list is also how a removed ritual returns. */
+function presetsSheet(list){
+  const TIER = {non_negotiable:"t1", target:"t2", bonus:"t3"};
+  const body = !list ? `<div class="spin"></div>` : list.map(p => `
+    <div class="item preset">
+      <span class="hrow-tier ${TIER[p.category] || "t2"}"></span>
+      <div class="grow"><div class="ellipsis">${esc(p.name)}</div>
+        <div class="ptier">${t(p.category)}${p.system ? " · " + t("auto_short") : ""}</div></div>
+      <button class="btn sm ${p.added ? "secondary" : ""}" data-act="preset-toggle"
+              data-key="${esc(p.key)}" data-on="${p.added ? 0 : 1}"
+              style="min-width:112px">
+        ${p.added ? `${icon("x", 15)} ${t("preset_remove")}`
+                  : `${icon("plus", 15)} ${t("preset_add")}`}</button>
+    </div>`).join("");
+  const added = (list || []).filter(p => p.added).length;
+  return `<h3>${icon("tiles", 18)} ${t("presets")}</h3>
+    <div class="hint">${t("presets_hint")}${list ? ` · ${added}/${list.length}` : ""}</div>
+    <div style="margin-top:var(--s2)">${body}</div>
+    <button class="btn secondary" data-act="close" style="margin-top:12px">${t("close")}</button>`;
+}
+
+/* Removed habits that can come back — history and all. */
+function archivedSheet(list){
+  const body = !list ? `<div class="spin"></div>`
+    : list.length ? list.map(x => `
+      <div class="item">
+        <div class="grow ellipsis">${esc(x.name)}</div>
+        <button class="btn sm secondary" data-act="habit-restore" data-id="${x.id}">
+          ${icon("repeat", 15)} ${t("restore")}</button>
+      </div>`).join("")
+    : `<div class="empty">${t("restore_empty")}</div>`;
+  return `<h3>${icon("repeat", 18)} ${t("restore")}</h3>
+    <div class="hint">${t("restore_hint")}</div>
+    <div style="margin-top:var(--s2)">${body}</div>
+    <button class="btn secondary" data-act="close" style="margin-top:12px">${t("close")}</button>`;
+}
+
+/* Get up, prayer and the journal: personal, and — per team — shown there too.
+
+   A ritual is each person's own and is recorded once, in their own list, so
+   it is not moved into a team the way an ordinary habit is. Switching a team
+   on puts a mirrored row there: every member's tick is read from their own
+   ritual, the team sees who has done it, and nothing is counted twice. */
+function ritualSharePicker(h){
+  const teams = state.teams || [];
+  if(h.source === "team" || !h.system_key || !teams.length) return "";
+  const shared = (state.habits?.shared_rituals || {})[h.system_key] || [];
+  return `<label>${t("ritual_where")}</label>
+    <div class="chips">
+      <div class="chip sm on" aria-disabled="true">${icon("user", 14)} ${t("src_personal")}</div>
+      ${teams.map(x => `<div class="chip sm ${shared.includes(x.id) ? "on" : ""}"
+          data-act="ritual-share" data-key="${esc(h.system_key)}" data-team="${x.id}"
+          data-on="${shared.includes(x.id) ? 0 : 1}" role="switch" tabindex="0"
+          aria-checked="${shared.includes(x.id)}">${icon("users", 14)} ${esc(x.name)}</div>`)
+        .join("")}
+    </div>
+    <div class="t3 tiny" style="margin-top:6px">${t("ritual_share_hint")}</div>`;
 }
 
 /* Move a habit between your own list and a team's.
@@ -5074,6 +5445,9 @@ function overallSheet(x){
    — now four — things, and they teach one vocabulary by never changing. */
 const COMPONENT_TONE = {tasks:"tone-1", habits:"tone-5", focus:"tone-3",
                         prayer:"tone-2"};
+/* The nominal weights, for display on Statistics only. The score itself is
+   computed on the server — there is no second copy of the formula here. */
+const WEIGHTS = {tasks:40, habits:25, focus:20, prayer:15};
 const COMPONENT_ICON = {tasks:"list", habits:"check", focus:"target",
                         prayer:"moon"};
 
@@ -5082,22 +5456,26 @@ const COMPONENT_ICON = {tasks:"list", habits:"check", focus:"target",
    cannot be tapped is a calendar nobody taps. */
 function daySheet(iso, events){
   const kind = {task:icon("list", 15), project:icon("target", 15), birthday:"🎂"};
+  /* A day that is over is a record, not a plan: it shows what was done on it
+     and offers nothing to add. Planning — a new task on that date — is for
+     today and the days ahead. */
+  const past = iso < (state.calendar?.today || todayISO());
+  const shown = events;
+  const add = past ? "" : `<button class="btn" data-act="task-add-on" data-date="${iso}"
+            style="margin-top:12px">${icon("plus", 16)} ${t("add_task")}</button>`;
   return `<h3>${icon("calendar", 18)} ${isoToLabel(iso)}</h3>
-    ${events.length ? events.map(e => `
+    ${past ? `<div class="hint">${t("day_past_hint")}</div>` : ""}
+    ${shown.length ? shown.map(e => `
       <div class="item" style="min-height:46px"
            data-act="event-open" data-kind="${e.kind}" data-id="${e.id}">
-        <div>${kind[e.kind] || ""}</div>
-        <div class="grow"><div class="ellipsis ${e.status === "done" ? "strike" : ""}"
+        <div>${e.status === "done" ? icon("check", 15) : kind[e.kind] || ""}</div>
+        <div class="grow"><div class="ellipsis ${e.status === "done" && !past ? "strike" : ""}"
           >${esc(e.title)}</div>
           ${e.due_time ? `<div class="meta num">${e.due_time}</div>` : ""}
           ${e.turning ? `<div class="meta">${e.turning} ${t("turning")}</div>` : ""}
         </div>${icon("chevron", 15)}</div>`).join("")
-      : `<div class="empty">${t("empty")}
-          <button class="btn secondary sm" data-act="task-add-on" data-date="${iso}"
-                  style="margin:12px auto 0;display:flex">
-            ${icon("plus", 16)} ${t("add_task")}</button></div>`}
-    <button class="btn secondary" data-act="task-add-on" data-date="${iso}"
-            style="margin-top:12px">${icon("plus", 16)} ${t("add_task")}</button>
+      : `<div class="empty">${past ? t("day_past_empty") : t("day_free")}</div>`}
+    ${add}
     <button class="btn secondary" data-act="close" style="margin-top:8px">
       ${t("close")}</button>`;
 }
@@ -5787,12 +6165,16 @@ function confirmSheet(action, id, label){
 /* ==================================================================
    Render
    ================================================================== */
+/* Five productivity screens, then Money on its own, after a hairline: what
+   somebody spends is not part of how their day went, and nothing on the
+   first five reads from it. */
 const NAV = [
-  {id:"home",   icon:"home",     key:"home"},
+  {id:"home",   icon:"home",     key:"nav_home"},
   {id:"habits", icon:"check",    key:"habits"},
   {id:"tasks",  icon:"list",     key:"tasks"},
   {id:"team",   icon:"users",    key:"team"},
-  {id:"stats",  icon:"chart",    key:"stats"},
+  {id:"stats",  icon:"chart",    key:"nav_stats"},
+  {id:"money",  icon:"wallet",   key:"money", apart:true},
 ];
 //: A project opens from Tasks, so the Tasks tab stays lit while inside one.
 const NAV_OF = {project:"tasks"};
@@ -5851,16 +6233,6 @@ function readOnlyBanner(){
       ${icon("shield", 16)} <div class="grow">${t("read_only")}</div>${icon("chevron", 15)}</div>` : "";
 }
 
-/* The FAB adds whatever the screen is about (#19). */
-function fabAction(){
-  if(state.screen === "habits") return state.tab === "habits" ? "habit-add" : null;
-  if(state.screen === "tasks" || state.screen === "project") return "task-add";
-  if(state.screen === "team")
-    return (state.team?.teams || []).length ? "team-add-task" : "team-new";
-  if(state.screen === "stats") return null;
-  return "quick-add";
-}
-
 /* An error is never a dead end: every failure screen carries the action
    that could fix it. */
 function errorScreen(){
@@ -5903,16 +6275,12 @@ function render(){
 
   const chromeOff = Boolean(state.blocked || state.error || state.loading
                             || state.needsSetup);
-  const fab = document.getElementById("fab");
-  const fabAct = fabAction();
-  fab.style.display = chromeOff || !fabAct ? "none" : "grid";
-  fab.dataset.act = fabAct || "quick-add";
-  fab.innerHTML = icon("plus", 24);
-  document.getElementById("nav").style.display = chromeOff ? "none" : "grid";
-
   const active = NAV_OF[state.screen] || state.screen;
-  document.getElementById("nav").innerHTML = NAV.map(n => `
-    <button data-act="nav" data-screen="${n.id}" class="${active === n.id ? "on" : ""}"
+  /* An empty bar is hidden by CSS (`nav:empty`), so the tab bar appears with
+     the first screen's content rather than over a blank page. */
+  document.getElementById("nav").innerHTML = chromeOff ? "" : NAV.map(n => `
+    <button data-act="nav" data-screen="${n.id}"
+            class="${active === n.id ? "on" : ""} ${n.apart ? "apart" : ""}"
             aria-current="${active === n.id ? "page" : "false"}">
       <span class="ic">${icon(n.icon, 21)}</span><span>${t(n.key)}</span></button>`).join("");
 
@@ -5937,22 +6305,17 @@ function syncShell(){
 async function loadScreen(screen){
   try{
     if(screen === "home"){
-      /* Two requests, in parallel. The month grid still moved into a sheet and
-         is still fetched when that sheet opens; the summary is here because
-         the score block now shows the week and the month next to today rather
-         than behind a switch, so "on demand" would mean every single time. */
-      /* Progression joins the same parallel batch rather than being fetched
-         when its card scrolls into view: it is one indexed row read on the
-         server — the day is scored when the day changes, not here — and a
-         card that pops in late is worse than one more request in a batch that
-         was already three wide. */
-      const [home, summary, progress] = await Promise.all([
-        api("/api/home"), api("/api/summary"), api("/api/progress/me"),
-      ]);
-      setState({home, summary, progress});
+      /* One request. Home used to wait on /api/summary (a month of scores
+         recomputed per open) and /api/progress/me as well, to draw
+         percentages and a level card that now live on Statistics — the
+         slowest part of opening the app was for blocks it no longer shows. */
+      setState({home: await api("/api/home")});
+    } else if(screen === "money"){
+      await loadMoney(state.moneyMonth);
     } else if(screen === "team"){
       const team = await api("/api/teams");
       state.teamActivity = {};
+      state.teamGraph = {};
       setState({team, teams: (team.teams || []).map(x => ({id:x.id, name:x.name}))});
     } else if(screen === "habits"){
       const [habits, prayer, journal] = await Promise.all([
@@ -6018,17 +6381,21 @@ async function refreshHabits(){
 
 async function loadStats(period){
   try{
-    const [stats, team, summary] = await Promise.all([
+    const [stats, team, summary, progress] = await Promise.all([
       api("/api/stats?period=" + period),
       // The shared record is drawn here too; a failure costs that block
       // rather than the screen.
       state.team ? Promise.resolve(state.team)
-                 : api("/api/teams").catch(() => null),
+                 : ((state.teams || []).length
+                      ? api("/api/teams").catch(() => null) : null),
       // The counts behind today's percentages; a failure only drops them.
       api("/api/summary").catch(() => null),
+      // Level, XP and rank, drawn at the foot of this screen.
+      api("/api/progress/me").catch(() => null),
     ]);
     setState({stats, statsPeriod: period, team: team || state.team,
-              summary: summary || state.summary});
+              summary: summary || state.summary,
+              progress: progress || state.progress});
   }catch(e){ handleError(e); }
 }
 
@@ -6285,25 +6652,12 @@ const A = {
   /* Every action here is scoped to the acting user by the server; the client
      never sends "who". A tap on a row moves that person's own tick and
      nobody else's, which is the whole point of the screen. */
+  /* One project sheet for both places: from a team it opens with that team
+     already chosen, and it still says so, so nothing is filed by surprise. */
   "team-project-new": () => {
     const team = teamCurrent();
     if(!team) return;
-    openSheet(`
-      <h3>${t("team_add_project")}</h3>
-      <input id="team-project" maxlength="200"
-             placeholder="${t("team_project_ph")}">
-      <button class="btn" data-act="team-project-save" style="margin-top:12px">
-        ${t("save")}</button>
-      <button class="btn secondary" data-act="close" style="margin-top:8px">
-        ${t("cancel")}</button>`);
-  },
-
-  "team-project-save": () => {
-    const team = teamCurrent();
-    const name = val("team-project");
-    if(!team || !name.trim()) return;
-    save(() => api(`/api/teams/${team.id}/projects`,
-                   {method:"POST", body:{name}}), "team");
+    A["project-add"]({dataset:{dest: "team:" + team.id}});
   },
 
   "team-project-open": async el => {
@@ -6462,7 +6816,59 @@ const A = {
       }catch(_){}
     }
   },
+  /* ---- money ---- */
+  "money-add": () => { haptic(); state.moneyForm = {kind:"expense", category:"food"};
+    openSheet(moneySheet(), "money"); },
+  "money-kind": el => { readMoneyForm();
+    state.moneyForm.kind = el.dataset.value;
+    state.moneyForm.category = el.dataset.value === "income" ? "salary" : "food";
+    openSheet(moneySheet(), "money"); },
+  "money-cat": el => { readMoneyForm(); state.moneyForm.category = el.dataset.value;
+    openSheet(moneySheet(), "money"); },
+  "money-save": () => {
+    const f = readMoneyForm();
+    const amount = Math.round(Number(f.amount));
+    if(!amount || amount <= 0) return toast(t("money_no_amount"));
+    const body = {kind: f.kind, amount, category: f.category, note: (f.note || "").trim()};
+    save(() => api("/api/money", {method:"POST", body}), "money", false,
+         t("money_saved_toast"), {body});
+  },
+  "money-text-save": () => moneyText(trimmed("money-text"), "manual"),
+  "money-voice": () => moneyVoice(),
+  "money-month": el => {
+    const m = state.money;
+    if(!m) return;
+    const d = new Date(m.year, m.month_no - 1 + Number(el.dataset.delta), 1);
+    state.moneyMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    haptic();
+    loadMoney(state.moneyMonth);
+  },
+  /* Deleting is undoable: the toast puts the same entry back on its day. */
+  "money-del": async el => {
+    haptic("medium");
+    try{
+      const r = await api(`/api/money/${el.dataset.id}`, {method:"DELETE"});
+      await loadMoney(state.moneyMonth);
+      const e = r.entry;
+      toast(t("deleted"), t("undo"), () => save(() => api("/api/money", {method:"POST",
+        body:{kind:e.kind, amount:e.amount, category:e.category, note:e.note,
+              source:e.source, day:e.day}}), "money", true));
+    }catch(e){ handleError(e); }
+  },
+  "money-budget": el => openSheet(`
+    <h3>${t("money_budget_title", {cat: t("mcat_" + el.dataset.cat)})}</h3>
+    <div class="hint">${t("money_budget_hint")}</div>
+    <input id="money-limit" type="number" inputmode="numeric" min="0" step="1000"
+           value="${Number(el.dataset.limit) || ""}" placeholder="0" style="margin-top:10px" />
+    <button class="btn" data-act="money-budget-save" data-cat="${el.dataset.cat}"
+            style="margin-top:14px">${t("save")}</button>
+    <button class="btn secondary" data-act="close" style="margin-top:8px">${t("cancel")}</button>`),
+  "money-budget-save": el => save(() => api(`/api/money/budgets/${el.dataset.cat}`,
+    {method:"PUT", body:{limit: Math.max(0, Math.round(Number(val("money-limit")) || 0))}}),
+    "money"),
+
   "team-tab": el => { haptic(); setState({teamTab: el.dataset.tab}); },
+  "team-graph-period": el => { haptic(); setState({teamGraphPeriod: el.dataset.value}); },
   "team-open": el => goto("team", {teamId: Number(el.dataset.id), teamTab: "results"}),
   "mirrored-note": () => toast(t("habit_mirrored")),
   "team-share": () => {
@@ -6766,10 +7172,59 @@ const A = {
       await loadScreen(state.screen);
     }catch(e){ closeSheet(); handleError(e); }
   },
-  "habit-delete-confirm": el => confirmSheet("habit-delete", el.dataset.id),
+  /* Removing keeps the history: the habit comes back from the ready-made list
+     or from Restore with every day it had, so the question says so. */
+  "habit-delete-confirm": el => confirmSheet("habit-delete", el.dataset.id,
+    t("habit_remove_sure", {name: el.dataset.name || ""})),
   "habit-delete": el => { haptic("medium");
     save(() => api(`/api/habits/${el.dataset.id}`, {method:"DELETE"}),
-         "habits", false, t("deleted")); },
+         "habits", false, t("habit_removed_toast")); },
+
+  /* ---- the ready-made ten, and the removed ones ---- */
+  "presets-open": async () => {
+    haptic();
+    openSheet(presetsSheet(null), "presets");
+    try{
+      const r = await api("/api/habits/presets");
+      if(state.sheetView === "presets") openSheet(presetsSheet(r.presets), "presets");
+    }catch(e){ handleError(e); }
+  },
+  "preset-toggle": async el => {
+    haptic();
+    const on = el.dataset.on === "1";
+    try{
+      const r = await api("/api/habits/presets", {method:"POST",
+        body:{key: el.dataset.key, on}});
+      if(state.sheetView === "presets") openSheet(presetsSheet(r.presets), "presets");
+      toast(on ? t("preset_added") : t("habit_removed_toast"));
+      state.calendarStale = true;
+      loadScreen("habits");
+    }catch(e){ handleError(e); }
+  },
+  "habit-archive-open": async () => {
+    haptic();
+    openSheet(archivedSheet(null), "archived");
+    try{
+      const r = await api("/api/habits/archived");
+      if(state.sheetView === "archived") openSheet(archivedSheet(r.habits), "archived");
+    }catch(e){ handleError(e); }
+  },
+  "habit-restore": el => save(() => api(`/api/habits/${el.dataset.id}/restore`,
+    {method:"POST"}), "habits", false, t("restored_toast")),
+
+  /* ---- a ritual, personal and also shown in a team ---- */
+  "ritual-share": async el => {
+    haptic();
+    try{
+      const r = await api("/api/rituals/share", {method:"POST", body:{
+        key: el.dataset.key, team_id: Number(el.dataset.team),
+        on: el.dataset.on === "1"}});
+      if(state.habits) state.habits.shared_rituals = r.shared;
+      state.team = null;
+      if(state.habitSheet?.id) await reopenHabit(state.habitSheet.id);
+      toast(t("saved"));
+    }catch(e){ handleError(e); }
+  },
   "reorder-on": () => { haptic(); setState({reorderMode:true}); },
   "reorder-off": () => { haptic(); setState({reorderMode:false}); },
   "habit-up": el => moveHabit(Number(el.dataset.index), -1),
@@ -6891,9 +7346,24 @@ const A = {
   "task-reopen": el => { haptic();
     save(() => api(`/api/tasks/${el.dataset.id}`,
       {method:"PATCH", body:{status:"waiting"}}), state.screen, true); },
-  "task-move": el => { haptic();
-    save(() => api(`/api/tasks/${el.dataset.id}/reschedule`,
-      {method:"POST", body:{when: el.dataset.when}}), state.screen, true); },
+  /* "Ko'chirish: Bugun · Ertaga · Sanasiz" on a late task. This handler was
+     once also called "task-move" — the same name as the personal ↔ team move
+     further down — and the later one silently replaced it in this object, so
+     every one of these chips sent the task to a team endpoint with no team
+     and nothing moved. A shared task moves its deadline through the team's
+     own edit, since it has no reschedule endpoint of its own. */
+  "task-reschedule": el => {
+    haptic();
+    const id = el.dataset.id, when = el.dataset.when;
+    if(el.dataset.source === "team"){
+      const deadline = when === "none" ? null
+        : when === "tomorrow" ? shiftISO(todayISO(), 1) : todayISO();
+      return save(() => api(`/api/teams/tasks/${id}`,
+        {method:"PATCH", body:{deadline}}), state.screen, false, t("moved_toast"));
+    }
+    save(() => api(`/api/tasks/${id}/reschedule`,
+      {method:"POST", body:{when}}), state.screen, false, t("moved_toast"));
+  },
   "task-top3": el => {
     haptic();
     const id = el.dataset.id;
@@ -6921,7 +7391,9 @@ const A = {
     openSheet(taskSheet(null, project));
   },
   "task-add-on": el => {
-    state.form = {when:"pick", deadline: el.dataset.date, priority:"medium",
+    // A task is planned for today or later, never into a day already gone.
+    const day = el.dataset.date < todayISO() ? todayISO() : el.dataset.date;
+    state.form = {when:"pick", deadline: day, priority:"medium",
                   remind_before: DEFAULT_REMIND_BEFORE};
     closeSheet();
     openSheet(taskSheet(null));
@@ -7020,9 +7492,13 @@ const A = {
   "task-filter": el => { haptic(); setState({taskFilter: el.dataset.value}); },
 
   /* ---- projects ---- */
-  "project-add": () => openSheet(`
+  /* A project is asked where it lives — yours, or one of your teams' — the
+     same question every other add sheet asks, so a shared project no longer
+     has to be made private first and moved after. */
+  "project-add": el => { state.dest = el?.dataset?.dest || "personal"; openSheet(`
     <h3>${icon("plus", 18)} ${t("add_project")}</h3>
-    <input id="project-name" placeholder="${t("project_name")}" />
+    <input id="project-name" placeholder="${t("project_name")}" maxlength="200" />
+    ${destPicker()}
     <details>
       <summary>${icon("chevron", 15)} ${t("more_options")}</summary>
       <label>${t("task_desc")}</label>
@@ -7033,14 +7509,20 @@ const A = {
     <button class="btn" data-act="project-save" style="margin-top:16px">
       ${t("save")}</button>
     <button class="btn secondary" data-act="close" style="margin-top:8px">
-      ${t("cancel")}</button>`),
+      ${t("cancel")}</button>`); },
   "project-save": () => {
     const name = trimmed("project-name");
     if(!name) return;
-    save(() => api("/api/projects", {method:"POST", body:{
-      name, description: val("project-desc"),
-      deadline: val("project-deadline") || null,
-    }}), "tasks");
+    const body = {name, description: val("project-desc"),
+                  deadline: val("project-deadline") || null};
+    const dest = destOf();
+    if(dest.team){
+      state.team = null;
+      return save(() => api(`/api/teams/${dest.id}/projects`, {method:"POST", body}),
+                  state.screen === "team" ? "team" : "tasks", false, t("saved"), {body});
+    }
+    save(() => api("/api/projects", {method:"POST", body}), "tasks", false,
+         t("saved"), {body});
   },
   "project-open": async el => {
     haptic();
@@ -7675,7 +8157,17 @@ tg?.onEvent?.("viewportChanged", syncShell);
 async function boot(){
   try{ state.appearance = localStorage.getItem("ernestos-appearance") || "auto"; }
   catch(_){}
+  /* A link from the bot can open a screen directly: `?s=money`. */
+  const wanted = new URLSearchParams(location.search).get("s");
+  if(wanted && SCREENS[wanted] && wanted !== "project") state.screen = wanted;
   try{
+    /* The account and the first screen are asked for at the same time, and
+       nothing — not the tab bar either — is drawn until both are in. They
+       used to be three requests in a row (me → teams → home), each waiting
+       on the one before. Home's own request answering 409 for an account
+       still in setup is expected, and settled by /api/me below. */
+    const first = state.screen === "home"
+      ? api("/api/home").catch(e => ({failed: e})) : null;
     const me = await api("/api/me");
     state.lang = me.language || "uz";
     if(!me.onboarded){
@@ -7685,16 +8177,16 @@ async function boot(){
     }
     // The channel gate stops writes, not reading: a banner, not a wall (#15).
     state.readOnly = Boolean(me.gated);
+    /* The destination picker is on every add sheet, so the team names come
+       with the account rather than from a request of their own. */
+    state.teams = me.teams || [];
+    if(first){
+      const home = await first;
+      if(home.failed) throw home.failed;
+      state.home = home;
+    }
     setState({me, loading:false, blocked:null, error:null, needsSetup:false});
-    /* The destination picker appears on every add sheet, including the one
-       behind the FAB on Home, so the team list has to be known before the
-       first tap rather than after the Tasks screen has been visited. One
-       small request, and a failure leaves the picker hidden rather than the
-       app broken. */
-    try{ state.teams = (await api("/api/teams")).teams
-           .map(x => ({id:x.id, name:x.name})); }
-    catch(_){ state.teams = []; }
-    await loadScreen("home");
+    if(!first) await loadScreen(state.screen);
     if(Object.keys(loadDraft()).length) toast(t("draft_restored"));
   }catch(e){
     console.error("ErnestOS boot failed:", e);
