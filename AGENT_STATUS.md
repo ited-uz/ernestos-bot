@@ -10,7 +10,10 @@
 - Faqat profil tili (uz/ru/en) qabul qilinadi; javoblar ham shu tilda.
 - Himoyalar: takroriy tasdiq bitta yozuv, eski tugma ishlamaydi, keyin o‘zgargan
   yozuv ko‘r-ko‘rona o‘zgartirilmaydi, jamoa rollari, bitta tranzaksiya.
-- Groq Free uchun tejamkor: bir buyruq ~2 300 token (~87 buyruq/kun butun bot).
+- Groq Free uchun tejamkor: bir buyruq ~2 300 token. Model limiti tugasa
+  zaxira modelga o‘tadi (gpt-oss-20b, whisper-large-v3-turbo).
+- Qisqa javob: bitta qator + tugmalar; standart qiymatlar ko‘rsatilmaydi va
+  so‘ralmaydi.
 
 ## Olib tashlandi (v11 dan)
 
@@ -20,7 +23,7 @@ oylik byudjet limiti, Gemini va boshqa provayderlar, «Inbox’da qoldirish»,
 
 ## Tekshirilgan
 
-- Python offline testlari: **930 o‘tdi**. AI javoblari testda almashtirilgan —
+- Python offline testlari: **935 o‘tdi**. AI javoblari testda almashtirilgan —
   bu o‘zbekcha nutq aniqligining isboti emas.
 
 ## Hali tekshirilmagan

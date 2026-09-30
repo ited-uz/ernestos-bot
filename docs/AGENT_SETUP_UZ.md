@@ -6,8 +6,14 @@
 2. Groq **Whisper-large-v3** ovozni profil tilingizda matnga aylantiradi.
 3. Groq AI matndan taklif tuzadi: vazifa, odat, loyiha yoki pul yozuvini
    **yaratish, o‘zgartirish yoki o‘chirish** (shaxsiy yoki jamoa).
-4. Bot taklifni ko‘rsatadi: **✅ Tasdiqlash · ✏️ Tahrirlash · ❌ Bekor qilish**.
+4. Bot bitta qisqa qator ko‘rsatadi, masalan `➕ Chiqim: 5 000 so‘m · Oziq-ovqat`,
+   va tugmalar: **✅ Tasdiqlash · ✏️ Tahrirlash · ❌ Bekor qilish**.
    Tasdiqlamaguningizcha hech narsa o‘zgarmaydi. Taklif 24 soatdan keyin eskiradi.
+
+Aytilmagan narsa so‘ralmaydi, o‘zi to‘ldiriladi: pul — bugun, chiqim;
+vaqti aytilgan vazifa — bugun; odat — har kuni. «Soat 8» = 08:00,
+«soat 3» = 15:00, «soat 8 kechqurun» = 20:00. Savol faqat summa yoki nom
+umuman aytilmaganda beriladi.
 
 Misollar: «Ovqatga 5 ming so‘m», «Ertaga soat 10 da Abdulvosid bilan
 uchrashuv», «Hisobot vazifasini jumaga ko‘chir», «Kitob odatini o‘chir».
@@ -36,17 +42,17 @@ u ovozni o‘qish uchun kerak. Bitta servis nusxasi, bitta worker.
 
 ## Groq Free limiti
 
-Free limit **butun bot uchun umumiy** (kalitga emas, hisobga):
+Free limit **butun bot uchun umumiy** va **har bir model uchun alohida**.
+Asosiy model limiti tugasa, bot o‘zi zaxira modelga o‘tadi:
 
-| Model | Limit | Amalda |
+| Ish | Asosiy → zaxira | Amalda |
 |---|---|---|
-| `openai/gpt-oss-120b` | 200 000 token/kun, 8 000 token/daqiqa | **~87 buyruq/kun, ~3/daqiqa** |
-| `whisper-large-v3` | 2 000 so‘rov/kun | ~2 000 ovoz/kun |
+| Matnni tushunish | `gpt-oss-120b` → `gpt-oss-20b` | ~87 + ~87 buyruq/kun |
+| Ovoz → matn | `whisper-large-v3` → `whisper-large-v3-turbo` | ~2 000 + ~2 000 ovoz/kun |
 
-Limit tugasa bot «1 daqiqadan keyin qayta yuboring» (yoki «ertaga») deydi,
-hech narsa yo‘qolmaydi. Developer tarifi ochilganda: console.groq.com →
-Settings → Billing → Developer, xarajat chegarasi qo‘ying. Kod o‘zgarmaydi.
-Narx ≈ $0.0012 (~15 so‘m) bir buyruq uchun.
+Ikkalasi ham tugasa, bot «1 daqiqadan keyin qayta yuboring» (yoki «ertaga»)
+deydi. Zaxira model biroz kuchsizroq. Developer tarifi ochilganda:
+console.groq.com → Settings → Billing → Developer; kod o‘zgarmaydi.
 
 ## Birinchi sinov
 
