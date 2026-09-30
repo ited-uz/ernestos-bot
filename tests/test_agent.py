@@ -86,7 +86,7 @@ def test_unnamed_project_is_standalone_not_a_new_project(person, monkeypatch):
     _, uid, ws = person
     before = count(db.Project, ws)
     draft = capture(person, monkeypatch)
-    assert "Alohida (yakka vazifa)" in draft["preview"]
+    assert draft["preview"] == "➕ Vazifa: Hisobot tayyorlash"  # defaults hidden
     assert count(db.Task, ws) == 0
     result = core.confirm(uid, ws, draft["id"], 1)
     with db.SessionLocal() as s:
@@ -101,9 +101,9 @@ def test_bot_sends_full_proposal_before_confirmation_buttons():
     message = SimpleNamespace(reply_text=AsyncMock())
     asyncio.run(AgentBot(None).show(message, draft, "uz"))
     calls = message.reply_text.await_args_list
-    assert len(calls) > 3
+    assert len(calls) == 3  # 4000+ chars of preview, split safely
     assert all(call.kwargs["reply_markup"] is None for call in calls[:-1])
-    assert draft["transcript"] in "".join(call.args[0] for call in calls)
+    assert draft["transcript"] not in "".join(call.args[0] for call in calls)
     assert draft["preview"] in "".join(call.args[0] for call in calls)
     assert all(len(call.args[0].encode("utf-16-le")) // 2 < 4096 for call in calls)
     assert calls[-1].kwargs["reply_markup"].inline_keyboard[0][0].callback_data == "ag:c:" + "a" * 32 + ":2"
@@ -413,11 +413,11 @@ def test_audio_validation_bounds_and_decoder(monkeypatch):
 
 
 @pytest.mark.parametrize("ui_lang,text,label", [
-    ("uz", "Ertaga hisobot", "Qo‘shish"),
-    ("uz", "Эртага ҳисобот", "Qo‘shish"),
-    ("uz", "ertaga abdulbosid bilan soat 10 am da meetingim bor. bunda hamma problemalarni hal qilamiz.", "Qo‘shish"),
-    ("ru", "Завтра отчёт", "Добавить"),
-    ("en", "Tomorrow report", "Create"),
+    ("uz", "Ertaga hisobot", "➕ Vazifa"),
+    ("uz", "Эртага ҳисобот", "➕ Vazifa"),
+    ("uz", "ertaga abdulbosid bilan soat 10 am da meetingim bor. bunda hamma problemalarni hal qilamiz.", "➕ Vazifa"),
+    ("ru", "Завтра отчёт", "➕ Задача"),
+    ("en", "Tomorrow report", "➕ Task"),
 ])
 def test_profile_language_is_accepted(person, monkeypatch, ui_lang, text, label):
     _, uid, ws = person
@@ -532,3 +532,56 @@ def test_group_refusal_uses_saved_app_language(person):
                              effective_user=SimpleNamespace(id=uid))
     asyncio.run(AgentBot(AsyncMock()).voice(update, SimpleNamespace(user_data={})))
     assert message.reply_text.await_args.args[0] == TEXT["ru"]["private"]
+
+
+def test_short_preview_hides_defaults_and_uses_today(person, monkeypatch):
+    _, uid, ws = person
+    with db.SessionLocal() as s:
+        today = svc.today_local(svc.user_tz(s.get(db.User, uid)))
+    money = capture(person, monkeypatch, plan(action("money", amount=5000, kind="expense", category="food")))
+    assert money["preview"] == "➕ Chiqim: 5 000 so‘m · Oziq-ovqat"
+    task = capture(person, monkeypatch, plan(action(title="Ustun bilan uchrashuv", deadline=today, due_time="08:00")))
+    assert task["preview"] == "➕ Vazifa: Ustun bilan uchrashuv · bugun · 08:00"
+    core.confirm(uid, ws, money["id"], 1)
+    with db.SessionLocal() as s:
+        assert s.scalar(select(db.MoneyEntry).where(db.MoneyEntry.workspace_id == ws)).day == today
+
+
+def test_ready_message_is_preview_and_buttons_only():
+    from agent_bot import AgentBot
+    message = SimpleNamespace(reply_text=AsyncMock())
+    draft = {"id": "c" * 32, "revision": 1, "status": "ready", "transcript": "Beş min so‘m ovqat",
+             "preview": "➕ Chiqim: 5 000 so‘m · Oziq-ovqat", "error": None}
+    asyncio.run(AgentBot(None).show(message, draft, "uz"))
+    assert message.reply_text.await_args.args[0] == draft["preview"]
+
+
+@pytest.mark.parametrize("path,first,second", [
+    ("/chat/completions", "openai/gpt-oss-120b", "openai/gpt-oss-20b"),
+    ("/audio/transcriptions", "whisper-large-v3", "whisper-large-v3-turbo"),
+])
+def test_free_limit_moves_to_the_next_groq_model(monkeypatch, path, first, second):
+    used = []
+    async def fake(p, **kwargs):
+        model = kwargs["json"]["model"] if "json" in kwargs else kwargs["data"]["model"]
+        used.append(model)
+        if model == first:
+            raise actions.AgentError("provider_limit", 429)
+        if "json" in kwargs:
+            return {"choices": [{"finish_reason": "stop", "message": {"content": json.dumps(plan(action(title="T")))}}]}
+        return {"text": "matn"}
+    monkeypatch.setattr(provider, "request", fake)
+    monkeypatch.setattr(provider, "audio_wav", lambda data, mime: b"RIFFwav")
+    if path == "/chat/completions":
+        asyncio.run(provider.plan("T", CTX, []))
+    else:
+        asyncio.run(provider.transcribe(b"OggS", "audio/ogg", CTX))
+    assert used == [first, second]
+
+
+def test_both_groq_models_limited_reports_limit(monkeypatch):
+    async def fake(p, **kwargs):
+        raise actions.AgentError("provider_limit", 429)
+    monkeypatch.setattr(provider, "request", fake)
+    with pytest.raises(actions.AgentError, match="provider_limit"):
+        asyncio.run(provider.plan("T", CTX, []))

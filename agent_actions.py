@@ -342,25 +342,65 @@ VALUES["en"] = {"daily": "Every day", "weekdays": "Monday–Friday", "weekly": "
 WEEKDAYS = {"uz": ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"], "ru": ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"], "en": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]}
 
 
-def preview(actions, lang="uz"):
-    labels = LABELS.get(lang, LABELS["uz"])
-    chunks = []
-    for i, a in enumerate(actions, 1):
-        where = labels[a["scope"]] + (f' · {a["team_name"]}' if a["scope"] == "team" else "")
-        lines = [f'{i}. {labels[a["operation"]]} · {labels[a["entity"]]} · {where}', str(a["name"])]
-        for key, value in a["fields"].items():
-            value = a.get("project_name", value) if key == "project_id" else value
-            if key == "project_id" and value is None:
-                value = {"uz": "Alohida (yakka vazifa)", "ru": "Отдельные (без проекта)", "en": "Standalone (no project)"}.get(lang, "Alohida")
-            value = VALUES.get(lang, {}).get(str(value), value)
-            if key == "schedule" and str(value).startswith("days:"):
+ICONS = {"create": "➕", "update": "✏️", "delete": "🗑"}
+DAY_WORDS = {"uz": ("bugun", "ertaga"), "ru": ("сегодня", "завтра"), "en": ("today", "tomorrow")}
+SOM = {"uz": "so‘m", "ru": "сум", "en": "UZS"}
+# Values the app fills in by itself. Showing them only adds noise.
+HIDDEN = {("priority", "medium"), ("timer_minutes", 0), ("project_id", None), ("category", "target"),
+          ("schedule", "daily"), ("start", "today"), ("recurrence", None), ("remind_before", None)}
+
+
+def _day(value, lang, today):
+    if today:
+        t = date.fromisoformat(str(today))
+        d = date.fromisoformat(str(value))
+        if d == t:
+            return DAY_WORDS.get(lang, DAY_WORDS["uz"])[0]
+        if (d - t).days == 1:
+            return DAY_WORDS.get(lang, DAY_WORDS["uz"])[1]
+        return d.strftime("%d.%m.%Y")
+    return str(value)
+
+
+def _money(fields, before, lang):
+    kind = fields.get("kind") or (before or {}).get("kind") or "expense"
+    words = VALUES.get(lang, VALUES["uz"])
+    return words.get(kind, kind)
+
+
+def preview(actions, lang="uz", today=None):
+    """One short line per action: what happens, to what, and only the details the user gave."""
+    labels, words = LABELS.get(lang, LABELS["uz"]), VALUES.get(lang, {})
+    lines = []
+    for a in actions:
+        f, op = a["fields"], a["operation"]
+        if a["entity"] == "money":
+            head = _money(f, a.get("before"), lang)
+            name = f'{f["amount"]:,} {SOM.get(lang, "so‘m")}'.replace(",", " ") if "amount" in f else str(a["name"])
+        else:
+            head = labels[a["entity"]]
+            name = str(a["name"])
+        parts = [f'{ICONS[op]} {head}: {name}']
+        for key, value in f.items():
+            if key in {"title", "name", "amount", "kind"} and not (op == "update" and key in {"title", "name"}):
+                continue
+            if op == "create" and (key, value) in HIDDEN:
+                continue
+            if a["entity"] == "money" and key == "day" and str(value) == str(today):
+                continue
+            if key in {"deadline", "day"} and value is not None:
+                value = _day(value, lang, today)
+            elif key == "project_id":
+                value = a.get("project_name") or {"uz": "loyihasiz", "ru": "без проекта", "en": "no project"}.get(lang)
+            elif key == "schedule" and str(value).startswith("days:"):
                 value = ", ".join(WEEKDAYS.get(lang, WEEKDAYS["uz"])[int(n)] for n in str(value)[5:].split(","))
-            if key == "amount":
-                value = f'{value:,}'.replace(",", " ")
-            lines.append(f'{labels.get(key, key.replace("_", " ").capitalize())}: {value if value is not None else "—"}')
-        if a["entity"] == "project" and a["operation"] == "delete":
-            lines.append({"uz": "Loyiha arxivlanadi, vazifalari saqlanadi va loyihadan ajratiladi.", "ru": "Проект архивируется, задачи сохраняются без проекта.", "en": "Project is archived; its tasks are kept, detached from the project."}.get(lang, ""))
-        if a["entity"] == "habit" and "schedule" in a["fields"] and a["operation"] == "update":
-            lines.append({"uz": "Yangi jadval ertadan kuchga kiradi.", "ru": "Новое расписание действует с завтрашнего дня.", "en": "The new schedule takes effect tomorrow."}.get(lang, ""))
-        chunks.append("\n".join(lines))
-    return "\n\n".join(chunks)
+            elif value is None:
+                value = "—"
+            else:
+                value = words.get(str(value), value)
+            parts.append(str(value) if key in {"deadline", "due_time", "day", "category", "note"}
+                         else f'{labels.get(key, key.replace("_", " ")).lower()}: {value}')
+        if a["scope"] == "team":
+            parts.append(f'{labels["team"]}: {a["team_name"]}')
+        lines.append(" · ".join(parts))
+    return "\n".join(lines)

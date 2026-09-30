@@ -2,6 +2,7 @@
 import hashlib
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ChatAction
 from telegram.error import TelegramError
 
 import agent_core as core
@@ -51,13 +52,16 @@ class AgentBot:
         await update.effective_message.reply_text(tr(user.language, "welcome"), reply_markup=markup)
 
     async def show(self, message, draft, lang):
+        """Short: only what will happen, then the buttons. No transcript, no filler."""
         status = draft["status"]
-        body = f'{tr(lang, "heard")}:\n{draft["transcript"] or "🎙"}'
-        if draft["preview"]:
-            body += "\n\n" + draft["preview"]
         if draft["error"]:
-            body += "\n\n" + tr(lang, draft["error"])
-        body += "\n\n" + tr(lang, status if status in {"ready", "executed", "cancelled"} else "draft")
+            body = tr(lang, draft["error"])
+        elif status == "executed":
+            body = f'{draft["preview"]}\n\n{tr(lang, "executed")}'
+        elif status == "cancelled":
+            body = tr(lang, "cancelled")
+        else:
+            body = draft["preview"] or tr(lang, "processing")
         key = f'{draft["id"]}:{draft["revision"]}'
         buttons = []
         if status == "ready":
@@ -72,6 +76,14 @@ class AgentBot:
             markup = InlineKeyboardMarkup(buttons) if buttons and i == len(chunks) - 1 else None
             await message.reply_text(chunk, reply_markup=markup)
 
+    @staticmethod
+    async def typing(update):
+        """Telegram's "typing…" indicator instead of an extra message."""
+        try:
+            await update.effective_chat.send_action(ChatAction.TYPING)
+        except (TelegramError, AttributeError):
+            pass
+
     async def text(self, update, ctx):
         identity = await self.identity(update, ctx)
         if not identity:
@@ -84,7 +96,7 @@ class AgentBot:
             correction = core.editing(ws)
             message = update.effective_message
             key = f"tg:{update.effective_chat.id}:{message.message_id}"
-            await message.reply_text(tr(lang, "processing"))
+            await self.typing(update)
             draft = await core.ingest(user.telegram_id, ws, key, text=message.text,
                                       draft_id=correction[0] if correction else None,
                                       revision=correction[1] if correction else None)
@@ -120,7 +132,7 @@ class AgentBot:
                 digest=hashlib.sha256(media.file_unique_id.encode()).hexdigest())
             if is_new:
                 ctx.user_data.pop("flow", None)
-                await message.reply_text(tr(lang, "processing"))
+                await self.typing(update)
                 remote = await media.get_file()
                 content = await remote.download_as_bytearray()
                 if len(content) > config.AGENT_AUDIO_BYTES:

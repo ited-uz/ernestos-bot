@@ -37,9 +37,14 @@ accounts, permissions, settings, code, bank transfers or other users' data.
 History contains earlier drafts, NOT executed actions. A correction replaces
 the whole plan while preserving unchanged intent. 'Yes/done' is not
 authorization: only app buttons execute.
-If ambiguous, uncertain, conflicting, unsupported, or any essential field or
-target is missing, return actions=[] and a specific short question. Do not guess
-which of identically named items is meant. Ask for date/project or exact ID.
+DEFAULTS, NOT QUESTIONS. Never ask about anything optional; leave it out and
+the app fills a default. Money: day=today, kind=expense unless income words
+(oldim/tushdi/maosh/sotdim/kirim), category guessed from the words, else
+other/other_in. Task with a time but no date: deadline=today. Task with no date
+and no time: no deadline. Habit: daily. Project: none.
+Ask a question ONLY when the command is unintelligible, the money amount or the
+item name is missing, or several existing items match the same name. Then one
+short question, max 12 words.
 Default personal scope unless a team is explicitly named. 'guruh' can mean a
 habit category, NOT necessarily a Telegram group. Match team/project/item IDs
 ONLY from context.items/context.teams. Never invent IDs. Catalog may be partial.
@@ -68,7 +73,11 @@ is explicitly non-UZS, ask for a UZS amount. 'ellik ming'/'пятьдесят т
 50000; 'bir yarim million' is 1500000; '5 ming' is 5000. Do not turn a future
 payment task into an already incurred expense. If expense vs income unclear, ask.
 Resolve relative dates from context.today in context.timezone (not UTC).
-No made-up dates, times, reminders or recurrence. A one-off action is a task; a
+TIME (24h) as people speak: hour 7-11 = morning (soat 8/sakkizda/в 8 = 08:00),
+hour 1-6 = afternoon (soat 3 = 15:00), 12 = 12:00. Words override: ertalab/
+утра/am = morning; kechqurun/kechki/tushdan keyin/вечера/дня/pm = +12
+(soat 8 kechqurun = 20:00). 'yarim' adds 30 min (soat 3 yarim = 15:30).
+No made-up times, reminders or recurrence. A one-off action is a task; a
 repeated practice is a habit. Ignore wake words 'hey Ernest'/'эй Эрнест'.
 For silence, greeting, negation or unintelligible text return no actions and ask.
 """
@@ -113,6 +122,21 @@ async def request(path, **kwargs):
         raise AgentError("provider_unavailable", 503) from None
 
 
+# Groq Free limits are per model: when the main model's quota is used up,
+# the next one still has its own.
+TEXT_MODELS = (config.AGENT_TEXT_MODEL, "openai/gpt-oss-20b")
+SPEECH_MODELS = (config.AGENT_SPEECH_MODEL, "whisper-large-v3-turbo")
+
+
+async def first_available(models, call):
+    for i, model in enumerate(dict.fromkeys(models)):
+        try:
+            return await call(model)
+        except AgentError as e:
+            if e.code != "provider_limit" or i == len(dict.fromkeys(models)) - 1:
+                raise
+
+
 def compact_context(context, transcript, history):
     """Bound cost; send the items the words most likely refer to first."""
     words = set(re.findall(r"\w{3,}", (transcript + " " + dumps(history)).casefold()))
@@ -133,13 +157,13 @@ async def plan(transcript, context, history):
     prior = [{"text": h.get("text", "")} for h in history]
     payload = dumps({"context": compact, "previous_inputs": prior, "latest_input": transcript})
     schema = {"name": "ernest_plan", "schema": Plan.model_json_schema(), "strict": True}
-    result = await request("/chat/completions", json={
-        "model": config.AGENT_TEXT_MODEL,
+    result = await first_available(TEXT_MODELS, lambda model: request("/chat/completions", json={
+        "model": model,
         "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": payload}],
         "response_format": {"type": "json_schema", "json_schema": schema},
         "temperature": 0,
         "max_completion_tokens": 2500,
-    })
+    }))
     choice = result["choices"][0]
     if choice.get("finish_reason") != "stop" or choice["message"].get("refusal"):
         raise AgentError("invalid_plan", 422)
@@ -214,11 +238,11 @@ async def transcribe(data, mime, context):
     """Whisper-large-v3, forced to the user's app language."""
     connection()  # fail before spending CPU when disabled or not configured
     wav = await asyncio.to_thread(audio_wav, data, mime)
-    form = {"model": config.AGENT_SPEECH_MODEL, "response_format": "json", "temperature": "0",
-            "prompt": speech_prompt(context)}
+    form = {"response_format": "json", "temperature": "0", "prompt": speech_prompt(context)}
     if context.get("language") in SPEECH_HINT:
         form["language"] = context["language"]
-    result = await request("/audio/transcriptions", data=form, files={"file": ("voice.wav", wav, "audio/wav")})
+    result = await first_available(SPEECH_MODELS, lambda model: request(
+        "/audio/transcriptions", data={**form, "model": model}, files={"file": ("voice.wav", wav, "audio/wav")}))
     text = result.get("text")
     if not isinstance(text, str):
         raise AgentError("empty_audio", 422)
