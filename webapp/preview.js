@@ -197,7 +197,7 @@
     ["water","bonus","2 L",false], ["language","bonus",s.lang,false], ["sleep","bonus","23:00",false]];
   const money = () => ({month:TODAY.slice(0, 7), year:now.getFullYear(), month_no:now.getMonth() + 1,
     is_current:true, income:EMPTY ? 0 : 5000000, expense:EMPTY ? 0 : 1395000,
-    saved:EMPTY ? 0 : 3605000, balance:EMPTY ? 0 : 3605000, count:EMPTY ? 0 : 4,
+    balance:EMPTY ? 0 : 3605000, count:EMPTY ? 0 : 4,
     categories:[["food","🍔",2000000,45000],["transport","🚕",800000,30000],
       ["home","🏠",1500000,0],["health","💊",500000,120000],["fun","🎮",1000000,0],
       ["business","💼",0,1200000],["other","📦",500000,0]].map(([id, icon, limit, spent]) =>
@@ -272,10 +272,14 @@
     [/^\/api\/habits$/, habitsPayload],
     [/^\/api\/habits\/presets$/, () => ({presets:PRESETS.map(([key, category, name, system], i) =>
       ({key, category, name, system, added:!EMPTY && i < 7, habit_id:null}))})],
-    [/^\/api\/habits\/archived$/, () => ({habits:[]})],
     [/^\/api\/money$/, money],
-    [/^\/api\/teams\/\d+\/stats$/, () => ({together:EMPTY ? null : 71, series:EMPTY ? [] :
-      Array.from({length:7}, (_, i) => ({label:day(i - 6).slice(8), team:40 + (i * 9) % 55}))})],
+    [/^\/api\/teams\/\d+\/stats$/, () => ({together:EMPTY ? null : 71,
+      members:[{user_id:1, name:"Ernest"}, {user_id:2, name:"Gulyora"}],
+      series:EMPTY ? [] : Array.from({length:7}, (_, i) => {
+        const a = 40 + (i * 9) % 55, b = 55 + (i * 13) % 40;
+        return {label:day(i - 6).slice(8), 1:a, 2:b, avg:Math.round((a + b) / 2),
+                team:Math.round((a + b) / 2)};
+      })})],
     [/^\/api\/prayers$/, () => ({prayers:DB.prayers, statuses:["jamaat","on_time","qaza","missed"],
       performed:Object.values(DB.prayers).filter(v => v && v !== "missed").length, required:5,
       score:7, max:15, complete:false, excused:false})],

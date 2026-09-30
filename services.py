@@ -2855,7 +2855,9 @@ _MONEY_WORDS = [
     ("business", r"reklama|tovar|biznes|sklad|yetkazib|dropship|target|"
                  r"реклам|товар|бизнес|склад|доставк|ads|stock|business|shipping"),
 ]
-_INCOME_WORDS = (r"keldi|tushdi|maosh|oylik|daromad|kirim|bonus|sotdim|foyda|"
+#: "oylik" is left out on purpose: "oylik ijara" is monthly rent. "Oylik
+#: keldi" is still income through "keldi", and still files under salary.
+_INCOME_WORDS = (r"keldi|tushdi|maosh|daromad|kirim|bonus|sotdim|foyda|"
                  r"зарплат|доход|пришл|получил|продал|прибыл|"
                  r"salary|income|earned|received|sold|profit")
 _EXPENSE_WORDS = (r"sarfladim|sarflad|to'ladim|toladim|to'lov|ketdi|xarajat|"
@@ -2906,7 +2908,7 @@ def parse_money_amount(text: str) -> int | None:
     A number with a unit beats a bare one, so "2 ta non 8 ming" is 8 000 and
     not 2. Without a unit, `45,000` and `45.000` are thousands separators.
     """
-    found: list[tuple[bool, int]] = []
+    found: list[tuple[bool, int, int]] = []
     for number, unit in _AMOUNT_RE.findall(text or ""):
         raw = number.replace(" ", "").replace(" ", "")
         factor = _unit_factor(unit)
@@ -2918,11 +2920,20 @@ def parse_money_amount(text: str) -> int | None:
             continue
         amount = int(round(value * factor))
         if 0 < amount <= MONEY_MAX_AMOUNT:
-            found.append((factor != 1, amount))
+            found.append((factor != 1, amount, factor))
     if not found:
         return None
-    with_unit = [amount for has_unit, amount in found if has_unit]
-    return with_unit[0] if with_unit else found[0][1]
+    with_unit = [(amount, factor) for has_unit, amount, factor in found if has_unit]
+    if not with_unit:
+        return found[0][1]
+    # "1 mln 200 ming" is one amount: units that step down add up. The same
+    # unit twice ("tushlik 45 ming, taksi 20 ming") is two amounts — the first.
+    total, last = with_unit[0]
+    for amount, factor in with_unit[1:]:
+        if factor >= last:
+            break
+        total, last = total + amount, factor
+    return min(total, MONEY_MAX_AMOUNT)
 
 
 def detect_money_category(text: str, kind: str = "expense") -> str:
@@ -2939,18 +2950,21 @@ def detect_money_category(text: str, kind: str = "expense") -> str:
     return "other"
 
 
-def parse_money_text(text: str) -> dict | None:
+def parse_money_text(text: str, kind: str | None = None) -> dict | None:
     """"Tushlikka 45 ming sarfladim" → an expense of 45 000 on food.
 
     Spending words win over income words ("sotib oldim" is spending even
     though it contains "oldim"). With no word either way, an amount is taken
-    as spending — that is what people type far more often.
+    as spending — that is what people type far more often. A `kind` the
+    person chose (the Chiqim / Kirim button) beats every guess.
     """
     amount = parse_money_amount(text)
     if amount is None:
         return None
     lowered = (text or "").lower()
-    if re.search(_EXPENSE_WORDS, lowered):
+    if kind in MONEY_KINDS:
+        pass
+    elif re.search(_EXPENSE_WORDS, lowered):
         kind = "expense"
     elif re.search(_INCOME_WORDS, lowered):
         kind = "income"
@@ -3060,11 +3074,11 @@ def _month_bounds(month: date) -> tuple[date, date]:
 
 def money_overview(s: Session, ws: int, *, month: date | None = None,
                    tz: ZoneInfo | None = None, limit: int = 100) -> dict:
-    """One month of money: the four totals, each category against its limit,
-    and the entries themselves, newest first.
+    """One month of money: the totals, each category against its limit, and
+    the entries themselves, newest first.
 
-    `balance` is everything ever recorded, in minus out; the other three are
-    the month's own.
+    `balance` is everything ever recorded, in minus out; `income` and
+    `expense` are the month's own.
     """
     tz = tz or _habit_tz(s, ws)
     today = today_local(tz)
@@ -3106,8 +3120,7 @@ def money_overview(s: Session, ws: int, *, month: date | None = None,
         MoneyEntry.day <= last)) or 0
     return {"month": first.strftime("%Y-%m"), "year": first.year,
             "month_no": first.month, "is_current": first <= today <= last,
-            "income": income, "expense": expense, "saved": income - expense,
-            "balance": balance, "categories": categories,
+            "income": income, "expense": expense, "balance": balance, "categories": categories,
             "entries": [_money_dict(r) for r in entries], "count": int(count),
             "category_ids": MONEY_CATEGORY_IDS,
             "kinds": {c[0]: c[4] for c in MONEY_CATEGORIES},
@@ -3255,9 +3268,13 @@ def prayer_breakdown(s: Session, ws: int, start: date, end: date,
 #   total       the weighted mean of the components that are present, with the
 #               weights renormalised over them.
 #
-# Shared work sits inside the components with the weight its own kind carries;
-# it does not get a separate half of the day. Rituals a team mirrors from each
-# member's personal habits are counted once, in the personal habit.
+# Shared work is a component of its own (v9.1, formula 3): the 20% the week
+# goal used to carry is the team result — the share of today's shared tasks
+# and habits this person finished. Tasks and habits are the personal ones
+# only, so nothing is counted twice. No shared work today: the component is
+# absent and its 20% is spread over the rest, like any empty part. Rituals a
+# team mirrors from each member's personal habits are counted once, in the
+# personal habit. The week goal is still set on Tasks; it is no longer scored.
 
 #: Shown when the day has nothing measurable in it yet — as a number. The
 #: screens show "—" instead, because `measured` says there was nothing to show.
@@ -3265,10 +3282,10 @@ EMPTY_OVERALL = 0
 
 #: The version of the rules below. Stored on every daily snapshot, so a future
 #: change can tell which rows were scored how.
-SCORE_FORMULA = 2
+SCORE_FORMULA = 3
 
 #: What each part of a day is worth.
-OVERALL_WEIGHTS = {"tasks": 0.40, "habits": 0.25, "focus": 0.20, "prayer": 0.15}
+OVERALL_WEIGHTS = {"tasks": 0.40, "habits": 0.25, "team": 0.20, "prayer": 0.15}
 
 #: What a task is worth inside the tasks component, by its own priority.
 TASK_PRIORITY_WEIGHTS = {"high": 3, "medium": 2, "low": 1}
@@ -3334,12 +3351,12 @@ def overall_components(s: Session, ws: int, day: date | None = None, *,
     """
     day = day or today_local(tz)
 
-    habits_done, habits_total = habit_progress(s, ws, day,
-                                               include_team=include_team)
+    habits_done, habits_total = habit_progress(s, ws, day, include_team=False)
     tasks_earned, tasks_available = today_task_score(
-        s, ws, day, tz=tz, include_team=include_team)
-    habits_scored = habit_percent(s, ws, day, include_team=include_team)
-    focus_done, focus_total = focus_progress(s, ws, day, tz=tz)
+        s, ws, day, tz=tz, include_team=False)
+    habits_scored = habit_percent(s, ws, day, include_team=False)
+    shared = (due_team_habits(s, ws, day) + due_team_tasks(s, ws, day)
+              if include_team else [])
     prayer_row = s.scalar(select(PrayerDay).where(
         PrayerDay.workspace_id == ws, PrayerDay.day == day))
 
@@ -3347,7 +3364,8 @@ def overall_components(s: Session, ws: int, day: date | None = None, *,
         "tasks": (round(tasks_earned / tasks_available * 100)
                   if tasks_available else None),
         "habits": habits_scored if habits_total else None,
-        "focus": round(focus_done / focus_total * 100) if focus_total else None,
+        "team": (round(sum(1 for _, ok in shared if ok) / len(shared) * 100)
+                 if shared else None),
         # Prayer's denominator is the five daily prayers, on every day the
         # prayer module was on — not only on days something was logged.
         "prayer": (round(float(prayer_row.score if prayer_row else 0.0)
@@ -3387,7 +3405,7 @@ def _components_of(row: DailyScore) -> dict:
     def part(value):
         return None if value is None or value < 0 else int(value)
     return {"tasks": part(row.task_score), "habits": part(row.habit_score),
-            "focus": part(row.focus_score), "prayer": part(row.prayer_score)}
+            "team": part(row.team_score), "prayer": part(row.prayer_score)}
 
 
 def day_score(s: Session, ws: int, day: date | None = None, *,
@@ -3478,7 +3496,7 @@ def _overall_percent_for(s: Session, ws: int, day: date) -> int:
 
 
 #: The four series every chart and average is built from, plus the headline.
-SERIES_KEYS = ("habits", "prayer", "tasks", "focus", "overall")
+SERIES_KEYS = ("habits", "prayer", "tasks", "team", "overall")
 
 
 def _closed_scores(s: Session, ws: int, first: date, last: date) -> dict[date, DailyScore]:
@@ -3545,20 +3563,20 @@ def _day_point(s: Session, ws: int, day: date,
         if first is not None and day < first:
             # Before anything in this workspace existed nothing was owed, so
             # the formula would answer "unmeasured" after forty queries.
-            return {"habits": 0, "prayer": 0, "tasks": 0, "focus": 0,
+            return {"habits": 0, "prayer": 0, "tasks": 0, "team": 0,
                     "overall": EMPTY_OVERALL, "measured": False,
                     "present": {k: False for k in OVERALL_COMPONENTS}}
     if snap is not None:
         parts = _components_of(snap)
         measured = snap.measured if snap.measured is not None else True
         return {"habits": parts["habits"] or 0, "prayer": parts["prayer"] or 0,
-                "tasks": parts["tasks"] or 0, "focus": parts["focus"] or 0,
+                "tasks": parts["tasks"] or 0, "team": parts["team"] or 0,
                 "overall": int(snap.total_score or 0), "measured": bool(measured),
                 "present": {k: v is not None for k, v in parts.items()}}
     score = day_score(s, ws, day, live=True)
     parts = score["components"]
     return {"habits": parts["habits"] or 0, "prayer": parts["prayer"] or 0,
-            "tasks": parts["tasks"] or 0, "focus": parts["focus"] or 0,
+            "tasks": parts["tasks"] or 0, "team": parts["team"] or 0,
             "overall": score["value"], "measured": score["measured"],
             "present": {k: v is not None for k, v in parts.items()}}
 
@@ -3601,7 +3619,7 @@ def _range_percent(s: Session, ws: int, start: date, end: date) -> tuple[int, in
 
 #: What each component of the overall number means and where it comes from, so
 #: the info panel is generated from the same place the number is.
-OVERALL_COMPONENTS = ["tasks", "habits", "focus", "prayer"]
+OVERALL_COMPONENTS = ["tasks", "habits", "team", "prayer"]
 
 
 def overall_explain(s: Session, ws: int, user: User,
@@ -3611,9 +3629,8 @@ def overall_explain(s: Session, ws: int, user: User,
     day = day or today_local(tz)
 
     score = day_score(s, ws, day, tz=tz)
-    tasks_done, tasks_total = today_task_progress(s, ws, day)
-    habits_done, habits_total = habit_progress(s, ws, day)
-    focus_done, focus_total = focus_progress(s, ws, day)
+    tasks_done, tasks_total = today_task_progress(s, ws, day, include_team=False)
+    habits_done, habits_total = habit_progress(s, ws, day, include_team=False)
     prayer = prayer_state(s, ws, day, user.gender)
     components = score["components"]
     counted = [k for k in OVERALL_COMPONENTS if components.get(k) is not None]
@@ -3629,15 +3646,12 @@ def overall_explain(s: Session, ws: int, user: User,
         "counted": counted,
         "parts": [
             {"key": "tasks", "percent": components["tasks"],
-             "done": tasks_done, "total": tasks_total,
-             "team_done": sum(1 for _, ok in team_tasks if ok),
-             "team_total": len(team_tasks)},
+             "done": tasks_done, "total": tasks_total},
             {"key": "habits", "percent": components["habits"],
-             "done": habits_done, "total": habits_total,
-             "team_done": sum(1 for _, ok in team_habits if ok),
-             "team_total": len(team_habits)},
-            {"key": "focus", "percent": components["focus"],
-             "done": focus_done, "total": focus_total},
+             "done": habits_done, "total": habits_total},
+            {"key": "team", "percent": components["team"],
+             "done": sum(1 for _, ok in team_tasks + team_habits if ok),
+             "total": len(team_tasks) + len(team_habits)},
             {"key": "prayer", "percent": components["prayer"],
              "done": prayer["score"], "total": PRAYER_MAX_SCORE},
         ],
@@ -3749,7 +3763,7 @@ def stats(s: Session, ws: int, period: str = "week", *,
             "yesterday": overall["yesterday"],
             "tasks": components["tasks"],
             "habits": components["habits"],
-            "focus": components["focus"],
+            "team": components["team"],
             "prayer": components["prayer"],
             "prayer_score": prayer_today["score"],
             "prayer_max": PRAYER_MAX_SCORE,
@@ -3805,7 +3819,7 @@ def summary(s: Session, ws: int, *, gender: str | None = None,
         "measured": state["measured"],
         "trend": state["trend"],
         "tasks": components["tasks"], "habits": components["habits"],
-        "prayer": components["prayer"], "focus": components["focus"],
+        "prayer": components["prayer"], "team": components["team"],
         "tasks_done": tasks_done, "tasks_total": tasks_total,
         "habits_done": habits_done, "habits_total": habits_total,
         "prayer_performed": prayer["performed"],
@@ -4871,7 +4885,11 @@ def recompute_daily_score(s: Session, user_id: int, ws: int,
 
     row.task_score = part("tasks")
     row.habit_score = part("habits")
-    row.focus_score = part("focus")
+    row.team_score = part("team")
+    # The week goal left the score, but the ranking still reads how the week's
+    # goals went (`performance_index`), so its percentage is kept here.
+    focus_done, focus_total = focus_progress(s, ws, day)
+    row.focus_score = round(focus_done / focus_total * 100) if focus_total else -1
     row.prayer_score = part("prayer")
     row.total_score = int(total)
     row.measured = measured
@@ -5318,7 +5336,7 @@ def progress_snapshot(s: Session, user_id: int, *,
                       "perfect_day": False,
                       "to_perfect": PERFECT_DAY_SCORE,
                       "breakdown": {"tasks": None, "habits": None,
-                                    "focus": None, "prayer": None},
+                                    "team": None, "prayer": None},
                       "weights": OVERALL_WEIGHTS},
             "xp": {"total": 0, "today": 0, "cap": XP_DAILY_CAP},
             "level": level,
@@ -5351,7 +5369,7 @@ def progress_snapshot(s: Session, user_id: int, *,
             "breakdown": {
                 "tasks": part(row.task_score if row else None),
                 "habits": part(row.habit_score if row else None),
-                "focus": part(row.focus_score if row else None),
+                "team": part(row.team_score if row else None),
                 "prayer": part(row.prayer_score if row else None),
             },
             "weights": OVERALL_WEIGHTS,
@@ -7304,6 +7322,11 @@ def team_stats(s: Session, user_id: int, team_id: int, *, period: str = "week",
         # how many of them came in. None on a day nothing was owed.
         point["team"] = round(day_done / day_total * 100) if day_total else None
         point["team_done"], point["team_total"] = day_done, day_total
+        # The average member that day — the graph's main line, drawn over
+        # each member's own. Only people who owed something are averaged.
+        owed = [point[str(m["user_id"])] for m in active
+                if point[str(m["user_id"])] is not None]
+        point["avg"] = round(sum(owed) / len(owed)) if owed else None
         series.append(point)
 
     people = []

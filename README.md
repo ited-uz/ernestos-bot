@@ -13,12 +13,13 @@ Mahsulotning asosiy sikli:
 | Bo'lim | Mazmuni |
 |---|---|
 | 🏠 Bosh sahifa | **Hozir** (avtomatik tanlanadi), bir qator sanoq (`Vazifa 1/3 · Odat 2/6 · Namoz 3/5`, foizsiz), bugungi vazifalar (jamoanikilar bilan) |
-| ✅ Odatlar | Tepada faqat odatlar (bitta ustun), pastda boshqaruv paneli: qo'shish, 📋 Tayyor odatlar (10 ta), tartib, qaytarish; + namoz + kundalik |
+| ✅ Odatlar | Tepada faqat odatlar (2–3 ustunli katak), pastda boshqaruv paneli: qo'shish, 📋 Tayyor odatlar (10 ta), tartib; + namoz + kundalik |
 | ⚡ Vazifalar | **Bugun / Reja / Taqvim** — Hafta maqsadi faqat shu yerda; Reja ichida Ochiq · Loyihalar · Bajarilgan; Taqvim'da Date countdown, oy va ⏱ Time countdown |
 | 👥 Jamoa | **Bugun / Ishlar / Natija**, rollar (egasi / admin / a'zo), taklif havolasi, so'rovlar, bildirishnoma darajasi, faollik tarixi va qaytarish |
 | 📊 Statistika | Umumiy % + Vazifalar / Odatlar / Namoz, o'zgarish (punktda), jamoa natijalari, daraja/XP |
-| 💰 Pul | **Alohida** — balans, kirim/chiqim, kategoriya byudjeti, yozuvlar; hech qanday foiz yoki reytingga kirmaydi |
+| 💰 Pul | **Alohida** — umumiy balans, kirim/chiqim (bir qatorli kiritish + ➖ Chiqim / ➕ Kirim tugmasi), kategoriya byudjeti, yozuvlar; hech qanday foiz yoki reytingga kirmaydi |
 
+> **v9.2** (bot menyusi 2×3, jamoa 20% formulada, odatlar katakda, qaytarish yo'q, Pul soddalashdi, jamoa grafigi) — [docs/V9_2_OZGARISHLAR.md](docs/V9_2_OZGARISHLAR.md).
 > **v9.1** (Hozir + sanoq, Pul, tayyor 10 odat, ko'chirish tuzatildi, tezlik) — [docs/V9_1_OZGARISHLAR.md](docs/V9_1_OZGARISHLAR.md).
 > **v8 da nima o'zgardi** (login/parol, saqlash/bekor qilish, loyihalar) — [docs/V8_OZGARISHLAR.md](docs/V8_OZGARISHLAR.md).
 > **v7** — [docs/V7_OZGARISHLAR.md](docs/V7_OZGARISHLAR.md).
@@ -391,7 +392,8 @@ ErnestOS'dan foydalanmaydigan odam yuqori shaxsiy darajaga **chiqmaydi**.
 ### Daily Score — 0..100
 
 Kunlik ball **yangi formula emas**. Bu Bosh sahifada allaqachon turgan umumiy
-foiz: vazifa 40 / odat 25 / fokus 20 / namoz 15. Ikkinchi formula kiritilsa,
+foiz: vazifa 40 / odat 25 / jamoa 20 / namoz 15 (v9.2 dan; jamoa ishi bo'lmasa
+uning 20% i qolganlarga taqsimlanadi). Ikkinchi formula kiritilsa,
 bitta ilovaning ikkita ekranida "bugun qanday o'tdi" degan ikkita raqam bir-
 biriga to'g'ri kelmay qolardi. Bo'sh kategoriya **nol emas, yo'q** — vazifasi
 yo'q kun vazifani bajarmagan kun emas.

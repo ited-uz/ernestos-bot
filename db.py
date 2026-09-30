@@ -769,6 +769,8 @@ class DailyScore(Base):
     task_score: Mapped[int] = mapped_column(Integer, default=-1)
     habit_score: Mapped[int] = mapped_column(Integer, default=-1)
     focus_score: Mapped[int] = mapped_column(Integer, default=-1)
+    #: Formula 3: today's shared work, done/owed %. -1 when nothing was shared.
+    team_score: Mapped[int | None] = mapped_column(Integer, nullable=True, default=-1)
     prayer_score: Mapped[int] = mapped_column(Integer, default=-1)
 
     total_score: Mapped[int] = mapped_column(Integer, default=0, index=True)

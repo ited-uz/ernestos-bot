@@ -975,16 +975,18 @@ def _menu_labels(lang: str) -> list[str]:
 
 @pytest.mark.parametrize("lang", ["uz", "en", "ru"])
 def test_the_menu_has_money_and_no_wake_button(lang):
-    """v9.1: "Turdim" left the persistent keyboard — it lives on the Habits
-    screen, only while it can still be recorded — and Money has its own
-    button, kept apart from the productivity screens."""
-    labels = _menu_labels(lang)
-    assert len(labels) == 9
-    assert labels == [application.t(lang, key) for key in (
-        "menu_home", "menu_habits", "menu_tasks", "menu_stats",
-        "menu_money", "menu_teams", "menu_settings", "menu_feedback",
-        "menu_app")]
-    assert application.t(lang, "menu_wake") not in labels
+    """v9.2: two columns, three rows — Home | Money, Habits | Tasks,
+    Team | Settings. "Turdim" lives on the Habits screen, feedback inside
+    Settings, statistics one tap from Home, and the Mini App opens from the
+    chat's own menu button."""
+    application.WEBAPP_URL = "https://example.test"
+    rows = [[b.text for b in row] for row in application.main_menu(lang).keyboard]
+    assert rows == [[application.t(lang, a), application.t(lang, b)] for a, b in (
+        ("menu_home", "menu_money"), ("menu_habits", "menu_tasks"),
+        ("menu_teams", "menu_settings"))]
+    labels = [label for row in rows for label in row]
+    for gone in ("menu_wake", "menu_feedback", "menu_app", "menu_stats"):
+        assert application.t(lang, gone) not in labels
 
 
 @pytest.mark.parametrize("lang", ["uz", "en", "ru"])
@@ -1023,24 +1025,23 @@ def test_wake_up_disappears_from_the_habits_screen_once_recorded():
 
 
 def test_the_habits_screen_lists_habits_first_and_controls_last():
-    """One habit per row at the top, no tier headers between them; add, edit,
-    the ready-made list and restore underneath; no timer or countdown."""
+    """Habits two to a row at the top, no tier headers between them; add, edit
+    and the ready-made list underneath; no restore, timer or countdown."""
     grouped = {"non_negotiable": [{"id": 1, "name": "Get up", "protected": True,
                                    "system_key": "wakeup", "done": False}],
                "target": [{"id": 2, "name": "Sport", "protected": False,
                            "done": False}],
                "bonus": [{"id": 3, "name": "Suv", "protected": False,
                           "done": True}]}
-    markup = application.habits_keyboard(grouped, "uz", restorable=2)
+    markup = application.habits_keyboard(grouped, "uz")
     rows = [[b.text for b in row] for row in markup.inline_keyboard]
-    assert all(len(row) == 1 for row in rows[:3]), "habits are one column"
-    assert [row[0] for row in rows[:3]] == ["⬜ Get up 🔒", "⬜ Sport", "✅ Suv"]
-    tail = [label for row in rows[3:] for label in row]
+    assert rows[:2] == [["⬜ Get up 🔒", "⬜ Sport"], ["✅ Suv"]], "two columns"
+    tail = [label for row in rows[2:] for label in row]
     assert tail[0] == application.t("uz", "menu_wake")
     assert application.t("uz", "btn_add_habit") in tail
     assert application.t("uz", "btn_presets") in tail
     flat = " ".join(label for row in rows for label in row)
-    for gone in ("btn_timers", "btn_countdown", "cat_non_negotiable"):
+    for gone in ("btn_timers", "btn_countdown", "cat_non_negotiable", "btn_restore"):
         assert application.t("uz", gone) not in flat
 
 
@@ -2710,8 +2711,9 @@ def test_a_category_with_nothing_due_is_left_out_of_the_score(alice):
 
 
 def test_the_weights_are_the_ones_the_product_promises():
+    # v9.1: the 20% the week goal carried is the team result now.
     assert svc.OVERALL_WEIGHTS == {"tasks": 0.40, "habits": 0.25,
-                                   "focus": 0.20, "prayer": 0.15}
+                                   "team": 0.20, "prayer": 0.15}
     assert round(sum(svc.OVERALL_WEIGHTS.values()), 6) == 1.0
 
 
@@ -2730,11 +2732,11 @@ def test_a_missing_category_is_split_in_proportion_not_in_equal_shares():
     split would quietly flatten the weighting the moment anybody stopped using
     one module.
     """
-    # tasks 40, habits 25, focus 20 → renormalised over 85
-    score = svc.weighted_overall({"tasks": 100, "habits": 0, "focus": 0})
+    # tasks 40, habits 25, team 20 → renormalised over 85
+    score = svc.weighted_overall({"tasks": 100, "habits": 0, "team": 0})
     assert score == round(100 * 0.40 / 0.85)
     # and the same three at full marks is still exactly 100
-    assert svc.weighted_overall({"tasks": 100, "habits": 100, "focus": 100}) == 100
+    assert svc.weighted_overall({"tasks": 100, "habits": 100, "team": 100}) == 100
 
 
 def test_tasks_outweigh_habits_in_the_score():
@@ -3815,10 +3817,10 @@ def test_the_overall_number_explains_itself(alice):
     body = alice.get("/api/overall").json()
     assert body["rule"] == "weighted_mean_of_available"
     assert [p["key"] for p in body["parts"]] == \
-        ["tasks", "habits", "focus", "prayer"]
+        ["tasks", "habits", "team", "prayer"]
     parts = {p["key"]: p["percent"] for p in body["parts"]}
     assert body["value"] == svc.weighted_overall(parts)
-    assert set(body["counted"]) <= {"tasks", "habits", "focus", "prayer"}
+    assert set(body["counted"]) <= {"tasks", "habits", "team", "prayer"}
 
 
 def test_the_explanation_prints_the_weights_that_actually_applied(alice):
@@ -3829,7 +3831,7 @@ def test_the_explanation_prints_the_weights_that_actually_applied(alice):
     assert set(weights) == set(body["counted"])
     assert sum(weights.values()) in range(99, 102)     # rounding, not drift
     assert body["nominal_weights"] == {"tasks": 40, "habits": 25,
-                                       "focus": 20, "prayer": 15}
+                                       "team": 20, "prayer": 15}
     assert body["task_priority_weights"] == {"high": 3, "medium": 2, "low": 1}
 
 
@@ -4388,7 +4390,7 @@ def test_home_answers_now_then_counts_then_today():
     assert "%" not in counts.split("return `")[1], "the counts row prints a percentage"
     assert 'data-screen="stats"' in counts, "the counts row must open Statistics"
     # The weights still exist — for Statistics, which still prints them.
-    assert "const WEIGHTS = {tasks:40, habits:25, focus:20, prayer:15};" in html
+    assert "const WEIGHTS = {tasks:40, habits:25, team:20, prayer:15};" in html
     stats = html[html.index("SCREENS.stats = () => {"):]
     assert "WEIGHTS[key]" in stats and "progressCard()" in stats
 
@@ -5762,10 +5764,10 @@ def test_the_three_default_habits_are_not_offered_a_day_picker():
 
 
 def test_the_habits_screen_is_the_list_first_and_the_dashboard_last():
-    """The user's words: "at the top only the habits, in one column; the edit
-    things go to the dashboard at the bottom". Tiers are an edge colour on the
-    row, not headings between rows; add, the ready-made ten, reorder and
-    restore live in one dashboard under the list."""
+    """The user's words: "at the top only the habits; the edit things go to
+    the dashboard at the bottom" — and in v9.2, "2–3 columns, no restore".
+    Tiers are an edge colour on the tile, not headings between tiles; add,
+    the ready-made ten and reorder live in one dashboard under the grid."""
     html = (ROOT / "webapp" / "index.html").read_text()
     tab = html[html.index("function habitsTab(){"):html.index("function habitRow(")]
     rows_at = tab.index("habitRow(x, cat, data.wake)")
@@ -5773,8 +5775,11 @@ def test_the_habits_screen_is_the_list_first_and_the_dashboard_last():
     assert rows_at < dash_at, "the controls are above the habits again"
     assert "sectionHead(" not in tab, "tier headings are back between the rows"
     dash = tab[dash_at:]
-    for act in ("habit-add", "presets-open", "reorder-on", "habit-archive-open"):
+    for act in ("habit-add", "presets-open", "reorder-on"):
         assert f'data-act="{act}"' in dash, f"{act} left the dashboard"
+    assert 'class="hgrid"' in tab, "the habits are no longer a grid"
+    for gone in ("habit-archive-open", "habit-restore", "/api/habits/archived"):
+        assert gone not in html, f"{gone} is back"
     row = html[html.index("function habitRow("):html.index("function scheduleLabel(")]
     assert "hrow-tier" in row
 
@@ -7690,14 +7695,12 @@ def test_shared_work_is_kept_out_of_the_personal_lists(client):
     assert "Umumiy ish" not in personal
 
 
-def test_shared_work_counts_in_the_personal_score(client):
-    """One number for the day, and the shared half is part of it.
+def test_shared_work_is_the_team_component_of_the_day(client):
+    """v9.1 (formula 3): the week goal's 20% goes to the team result.
 
-    This reverses an earlier decision. The two were kept apart so that a quiet
-    team evening could not drag down a day somebody had personally finished —
-    but two people doing the programme together ended up reading two
-    percentages and trusting neither. A shared task is work you owe today, so
-    it is in the day, and finishing it moves the day.
+    A shared task or habit due today is scored in the `team` component — the
+    share of today's shared work this person finished — and not again inside
+    tasks or habits. Finishing it raises the day.
     """
     one, two, team_id = _pair(client)
     with SessionLocal() as s:
@@ -7707,14 +7710,20 @@ def test_shared_work_counts_in_the_personal_score(client):
 
         task = svc.add_team_task(s, one, team_id, "Umumiy ish", deadline=today)
         before = svc.overall_components(s, ws, today, tz=tz)
-        assert before["tasks"] is not None, (
-            "a shared task due today gives the day a task denominator")
+        assert before["team"] == 0 and before["tasks"] is None, before
 
         svc.toggle_team_task(s, one, task["id"])
         after = svc.overall_components(s, ws, today, tz=tz)
+    assert after["team"] == 100, f"finishing shared work must raise the day: {after}"
 
-    assert after["tasks"] > before["tasks"], (
-        f"finishing shared work must raise the day: {before} -> {after}")
+
+def test_no_shared_work_spreads_the_team_twenty_over_the_rest(client):
+    """Nothing shared today: the component is absent, not zero."""
+    uid = next(_next_id)
+    _onboard(uid)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        assert svc.overall_components(s, ws)["team"] is None
 
 
 def test_one_persons_share_is_the_one_that_counts_for_them(client):
@@ -7729,7 +7738,7 @@ def test_one_persons_share_is_the_one_that_counts_for_them(client):
         svc.toggle_team_task(s, two, task["id"])          # she does it
         mine = svc.overall_components(s, ws_one, today, tz=tz)
 
-    assert mine["tasks"] == 0, (
+    assert mine["team"] == 0, (
         "the other member's tick must not score this member's day")
 
 
@@ -8392,15 +8401,9 @@ def test_the_move_endpoints_refuse_a_stranger(client):
 # One number, from two halves
 # ---------------------------------------------------------------------------
 
-def test_the_day_is_one_formula_with_shared_work_inside_it(client):
-    """One shared checkbox is not worth half the day.
-
-    The day used to be the average of a private half and a shared half, so a
-    single shared habit weighed as much as everything else put together, and
-    the headline disagreed with the parts it was explained by. Now the shared
-    item sits in its component with its own tier's weight, and the headline
-    is exactly the weighted mean of the components.
-    """
+def test_the_day_is_one_formula_with_shared_work_beside_it(client):
+    """One shared checkbox is one fifth of a day at most — the team's 20% —
+    and the headline is exactly the weighted mean of the components."""
     one, two, team_id = _pair(client)
     with SessionLocal() as s:
         ws = svc.workspace_id_for(s, one)
@@ -8412,17 +8415,17 @@ def test_the_day_is_one_formula_with_shared_work_inside_it(client):
         shared = svc.add_team_habit(s, one, team_id, "Birga yugurish")
 
         score = svc.day_score(s, ws, today, tz=tz)
-        assert score["team"] == 0
         assert score["value"] == svc.weighted_overall(score["components"])
-        # Three of five personal habits done (two defaults undone) plus one
-        # shared undone: 3 of 6 in the one tier -> 50, not the 50/50 average.
-        assert score["components"]["habits"] == 50
+        # Three of five personal habits (two defaults undone) — the shared
+        # one is not in here any more.
+        assert score["components"]["habits"] == 60
+        assert score["components"]["team"] == 0
 
         svc.toggle_team_habit(s, one, shared["id"])
         after = svc.day_score(s, ws, today, tz=tz)
-    assert after["components"]["habits"] == round(4 / 6 * 100)
+    assert after["components"]["habits"] == 60
+    assert after["components"]["team"] == 100
     assert after["value"] == svc.weighted_overall(after["components"])
-
 
 def test_a_person_with_no_team_is_scored_on_their_own_half(client):
     solo = _named(client, next(_next_id), "Yolg'iz")
@@ -9724,16 +9727,13 @@ def test_the_menu_grows_with_use():
     assert application.stage_for(application.STAGE_ACTIONS[0], now) == 2
     assert application.stage_for(application.STAGE_ACTIONS[1], now) == 3
     assert application.stage_for(0, now - timedelta(days=8)) == 3
+    # The keyboard itself no longer changes with the stage: six buttons from
+    # the first day, so nothing moves under the thumb.
     application.WEBAPP_URL = ""
-    first = [b.text for row in application.main_menu("uz", 1).keyboard
-             for b in row]
-    assert first == [application.t("uz", k) for k in
-                     ("menu_home", "menu_habits", "menu_tasks", "menu_settings")]
-    second = [b.text for row in application.main_menu("uz", 2).keyboard
-              for b in row]
-    assert application.t("uz", "menu_stats") in second
-    assert application.t("uz", "menu_money") in second
-    assert application.t("uz", "menu_feedback") not in second
+    first = [b.text for row in application.main_menu("uz", 1).keyboard for b in row]
+    assert first == [b.text for row in application.main_menu("uz", 3).keyboard
+                     for b in row]
+    assert len(first) == 6
 
 
 def test_a_new_account_home_offers_the_two_add_buttons():
@@ -9822,7 +9822,7 @@ def test_money_is_recorded_summed_and_kept_apart_from_the_score(fresh):
     assert made.status_code == 200 and made.json()["category"] == "health"
     m = fresh.get("/api/money").json()
     assert (m["income"], m["expense"]) == (5_000_000, 165_000)
-    assert m["saved"] == m["balance"] == 4_835_000
+    assert m["balance"] == 4_835_000 and "saved" not in m
     food = next(c for c in m["categories"] if c["id"] == "food")
     assert food["spent"] == 45_000 and food["limit"] == 2_000_000
     assert [e["amount"] for e in m["entries"]][:1] == [120000]
@@ -9927,13 +9927,14 @@ def test_the_ready_made_names_never_start_a_timer():
             assert svc.parse_duration_minutes(name) is None, name
 
 
-def test_archived_habits_can_be_restored_from_the_mini_app(fresh):
+def test_habit_restore_is_gone_from_the_mini_app(fresh):
+    """v9.2: no ♻️ for habits anywhere — a ready-made habit comes back from
+    the ready-made list, anything else is simply added again."""
     made = fresh.post("/api/habits", {"name": "Meditatsiya"}).json()["id"]
     fresh.delete(f"/api/habits/{made}")
-    gone = fresh.get("/api/habits/archived").json()["habits"]
-    assert [h["name"] for h in gone] == ["Meditatsiya"]
-    assert fresh.post(f"/api/habits/{made}/restore").status_code == 200
-    assert "Meditatsiya" in [h["name"] for h in fresh.get("/api/habits").json()["habits"]]
+    assert fresh.get("/api/habits/archived").status_code in (404, 405, 422)
+    assert fresh.post(f"/api/habits/{made}/restore").status_code in (404, 405)
+    assert "Meditatsiya" not in [h["name"] for h in fresh.get("/api/habits").json()["habits"]]
 
 
 def test_a_ritual_is_shared_into_a_team_and_taken_back(client):
@@ -10123,3 +10124,103 @@ async def test_setup_offers_the_seven_and_adds_what_stays_ticked():
         assert s.get(User, uid).onboarded is True
     assert len(names) == 3 + 6
     assert "Til o'rganish" not in names and "Sport" in names
+
+
+# ==========================================================================
+# v9.2 — 2×3 menu, feedback in Settings, habit grid, money in/out, team graph
+# ==========================================================================
+
+class _MarkupMsg(_Msg):
+    """A message that keeps the keyboard it was answered with."""
+
+    def __init__(self, text=""):
+        super().__init__()
+        self.text = text
+        self.markups = []
+
+    async def reply_text(self, text, **kw):
+        self.replies.append(text)
+        self.markups.append(kw.get("reply_markup"))
+
+
+def _buttons(markup) -> list[tuple[str, str]]:
+    return [(b.text, b.callback_data) for row in markup.inline_keyboard for b in row]
+
+
+async def test_feedback_lives_inside_settings():
+    uid = next(_next_id)
+    _onboard(uid)
+    update = _Update(uid)
+    update.effective_message = _MarkupMsg()
+    await application.show_settings(update, _Ctx())
+    buttons = _buttons(update.effective_message.markups[-1])
+    assert (application.t("uz", "menu_feedback"), "set:feedback") in buttons
+
+
+def test_home_opens_statistics_now_that_the_menu_does_not():
+    labels = _buttons(application.home_keyboard("uz", 3))
+    assert (application.t("uz", "menu_stats"), "home:stats") in labels
+
+
+async def test_money_typed_in_the_chat_is_saved_the_way_the_person_taps():
+    """The parser's guess is never the decision: both directions are one tap,
+    and choosing Kirim for "Tushlik 45 ming" files it as income."""
+    uid = next(_next_id)
+    _onboard(uid)
+    ctx = _Ctx()
+    update = _TextUpdate(uid, "Qarz qaytdi 300 ming")
+    update.effective_message = _MarkupMsg("Qarz qaytdi 300 ming")
+    await application.on_text(update, ctx)
+    capture = ctx.user_data["capture"]
+    datas = [d for _, d in _buttons(update.effective_message.markups[-1])]
+    assert f"cap:{capture['id']}:me" in datas and f"cap:{capture['id']}:mi" in datas
+    await application.on_callback(_CbUpdate(uid, f"cap:{capture['id']}:mi"), ctx)
+    with SessionLocal() as s:
+        m = svc.money_overview(s, svc.workspace_id_for(s, uid))
+    assert (m["income"], m["expense"]) == (300_000, 0)
+    assert m["entries"][0]["category"] == "other_in"
+
+
+def test_money_words_are_read_the_way_people_write_them():
+    assert svc.parse_money_amount("1 mln 200 ming") == 1_200_000
+    assert svc.parse_money_amount("Tushlik 45 ming, taksi 20 ming") == 45_000
+    rent = svc.parse_money_text("Oylik ijara 3 mln")
+    assert (rent["kind"], rent["category"]) == ("expense", "home")
+    pay = svc.parse_money_text("Oylik keldi 5 mln")
+    assert (pay["kind"], pay["category"]) == ("income", "salary")
+    chosen = svc.parse_money_text("Tushlik 45 ming", "income")
+    assert (chosen["kind"], chosen["category"]) == ("income", "other_in")
+
+
+def test_the_mini_app_quick_line_takes_the_button_that_was_pressed(fresh):
+    got = fresh.post("/api/money/text", {"text": "Dadamdan 500 ming", "kind": "income"})
+    assert got.status_code == 200 and got.json()["kind"] == "income"
+    guessed = fresh.post("/api/money/text", {"text": "Dadamdan 500 ming"}).json()
+    assert guessed["kind"] == "expense"
+    html = (ROOT / "webapp" / "index.html").read_text()
+    screen = html[html.index("SCREENS.money = () => {"):html.index("function moneySheet(")]
+    assert 'data-kind="expense"' in screen and 'data-kind="income"' in screen
+    assert "m.saved" not in screen and "money_saved:" not in html
+
+
+def test_money_has_no_piggy_bank_line():
+    for lang in ("uz", "en", "ru"):
+        assert "money_saved_line" not in application.T[lang]
+    data = {"month": "2026-09", "month_no": 9, "year": 2026, "balance": 10,
+            "income": 10, "expense": 0, "categories": [], "entries": [], "icons": {}}
+    assert "🐷" not in application.render_money(data, "uz")
+
+
+def test_the_team_graph_draws_each_member_and_the_average(client):
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        task = svc.add_team_task(s, one, team_id, "Birga", deadline=svc.today_local())
+        svc.toggle_team_task(s, one, task["id"])
+        data = svc.team_stats(s, one, team_id, period="week")
+    today = data["series"][-1]
+    assert (today[str(one)], today[str(two)], today["avg"]) == (100, 0, 50)
+    html = (ROOT / "webapp" / "index.html").read_text()
+    graph = html[html.index("function teamGraph(team){"):html.index("async function loadTeamGraph(")]
+    assert 'field:"avg"' in graph and "AVG_COLOR" in graph and "MEMBER_COLORS" in graph
+    tab = html[html.index("function teamResultsTab("):html.index("function teamGraph(team){")]
+    assert 'class="tcols"' in tab
