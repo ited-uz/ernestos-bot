@@ -119,7 +119,7 @@ REQUEST: ContextVar[tuple[str, str]] = ContextVar("request", default=("POST", ""
 #: leaving, feedback, taking their data away. None of them is *use* of the
 #: product, and refusing them would hold somebody's own data hostage.
 UNGATED_WRITES = ("/api/settings", "/api/prefs", "/api/feedback",
-                  "/api/export", "/api/account/", "/api/modules")
+                  "/api/export", "/api/account/", "/api/modules", "/api/agent/history")
 
 
 def gate_allows(method: str, path: str) -> bool:

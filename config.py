@@ -43,6 +43,20 @@ IS_PRODUCTION = ENVIRONMENT == "production"
 #: both step aside, because neither describes the traffic a test generates.
 IS_TEST = ENVIRONMENT == "test"
 
+# Voice agent. Disabled until explicitly enabled; credentials stay server-side.
+AGENT_ENABLED = os.environ.get("AGENT_ENABLED", "false").lower() == "true"
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
+AGENT_PROVIDER = os.environ.get("AGENT_PROVIDER", "groq").lower()
+# This release is free-tier-only by the owner's choice. No paid fallback.
+AGENT_FREE_ONLY = True
+AGENT_TEXT_MODEL = os.environ.get("AGENT_TEXT_MODEL", "openai/gpt-oss-120b" if AGENT_PROVIDER == "groq" else "gpt-5.4-mini")
+AGENT_SPEECH_MODEL = os.environ.get("AGENT_SPEECH_MODEL", "whisper-large-v3" if AGENT_PROVIDER == "groq" else "gpt-transcribe")
+AGENT_DAILY_REQUESTS = max(1, int(os.environ.get("AGENT_DAILY_REQUESTS", "30")))
+AGENT_AUDIO_BYTES = 10 * 1024 * 1024
+AGENT_AUDIO_SECONDS = 120
+AGENT_TIMEOUT = 75
+
 # --- Telegram --------------------------------------------------------------
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()

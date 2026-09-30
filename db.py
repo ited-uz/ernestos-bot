@@ -1537,6 +1537,51 @@ def _rebuild_report_outbox(conn, table: str) -> None:
         f"CREATE INDEX ix_daily_report_logs_report_date ON {table} (report_date)"))
 
 
+class AgentPreference(Base):
+    __tablename__ = "agent_preferences"
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True)
+    consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    edit_draft_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    edit_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    edit_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    usage_day: Mapped[date | None] = mapped_column(Date, nullable=True)
+    usage_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class AgentDraft(Base):
+    __tablename__ = "agent_drafts"
+    __table_args__ = (UniqueConstraint("workspace_id", "request_key", name="uq_agent_request"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    request_key: Mapped[str] = mapped_column(String(80))
+    source: Mapped[str] = mapped_column(String(16))
+    status: Mapped[str] = mapped_column(String(20), default="inbox", index=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    transcript: Mapped[str] = mapped_column(Text, default="")
+    detected_language: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    history: Mapped[str] = mapped_column(Text, default="[]")
+    plan: Mapped[str] = mapped_column(Text, default="{}")
+    preview: Mapped[str] = mapped_column(Text, default="")
+    result: Mapped[str] = mapped_column(Text, default="[]")
+    error: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class AgentAudit(Base):
+    __tablename__ = "agent_audit"
+    __table_args__ = (UniqueConstraint("workspace_id", "request_key", name="uq_agent_receipt"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    draft_id: Mapped[str] = mapped_column(String(32), index=True)
+    revision: Mapped[int] = mapped_column(Integer)
+    event: Mapped[str] = mapped_column(String(24))
+    request_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    detail: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 def init_db() -> None:
     """Create missing tables, then add any missing columns to existing ones.
 
