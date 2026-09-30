@@ -73,10 +73,15 @@ repeated practice is a habit. Ignore wake words 'hey Ernest'/'эй Эрнест'
 For silence, greeting, negation or unintelligible text return no actions and ask.
 """
 
+# Whisper copies the STYLE of its prompt, so the hint is ordinary, correctly
+# spelled speech, not a comma-separated word list.
 SPEECH_HINT = {
-    "uz": "O‘zbekcha buyruq. Vazifa, odat, loyiha, xarajat, kirim, so‘m, ming, million, ertaga, bugun, soat.",
-    "ru": "Команда на русском. Задача, привычка, проект, расход, доход, сум, тысяч, завтра, сегодня.",
-    "en": "Command in English. Task, habit, project, expense, income, UZS, tomorrow, today.",
+    "uz": "Ertaga soat o‘nda mijoz bilan uchrashuvim bor. Ovqatga ellik ming so‘m sarfladim. "
+          "Har kuni ertalab kitob o‘qish odatini qo‘sh. Hisobot vazifasini juma kuniga ko‘chir.",
+    "ru": "Завтра в десять у меня встреча. Потратил пятьдесят тысяч сум на еду. "
+          "Добавь привычку читать книгу каждое утро. Перенеси задачу отчёт на пятницу.",
+    "en": "I have a meeting tomorrow at ten. I spent fifty thousand sum on food. "
+          "Add a habit to read a book every morning. Move the report task to Friday.",
 }
 
 
@@ -193,18 +198,16 @@ def audio_wav(data, mime):
 
 
 def speech_prompt(context):
-    """Whisper hint in the user's language plus their own names (~224 tokens max)."""
+    """A natural sentence in the user's language plus a few of their own names."""
     lang = context.get("language") if context.get("language") in SPEECH_HINT else "uz"
-    text, seen = SPEECH_HINT[lang], set()
+    names, seen = [], set()
     for item in [*context.get("teams", []), *context.get("items", [])]:
         name = re.sub(r"\s+", " ", str(item.get("name") or "")).strip()[:40]
-        if not name or name.casefold() in seen:
-            continue
-        if len(text) + len(name) + 2 > 600:
-            break
-        seen.add(name.casefold())
-        text += " " + name + "."
-    return text
+        if name and name.casefold() not in seen and len(names) < 8:
+            seen.add(name.casefold())
+            names.append(name)
+    label = {"uz": "Yozuvlarim", "ru": "Мои записи", "en": "My items"}[lang]
+    return SPEECH_HINT[lang] + (f" {label}: {', '.join(names)}." if names else "")
 
 
 async def transcribe(data, mime, context):
