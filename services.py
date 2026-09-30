@@ -3810,8 +3810,10 @@ def summary(s: Session, ws: int, *, gender: str | None = None,
                                       else None)
 
     prayer = prayer_state(s, ws, today, gender)
-    habits_done, habits_total = habit_progress(s, ws, today)
-    tasks_done, tasks_total = today_task_progress(s, ws, today)
+    # Counts split exactly as the score is: own work, then the team's.
+    habits_done, habits_total = habit_progress(s, ws, today, include_team=False)
+    tasks_done, tasks_total = today_task_progress(s, ws, today, include_team=False)
+    shared = due_team_habits(s, ws, today) + due_team_tasks(s, ws, today)
     components = state["components"]
 
     out["today"] = {
@@ -3822,6 +3824,7 @@ def summary(s: Session, ws: int, *, gender: str | None = None,
         "prayer": components["prayer"], "team": components["team"],
         "tasks_done": tasks_done, "tasks_total": tasks_total,
         "habits_done": habits_done, "habits_total": habits_total,
+        "team_done": sum(1 for _, ok in shared if ok), "team_total": len(shared),
         "prayer_performed": prayer["performed"],
         "prayer_required": PRAYER_REQUIRED,
         "prayer_score": prayer["score"], "prayer_max": PRAYER_MAX_SCORE,
@@ -4090,12 +4093,15 @@ def now_next(s: Session, ws: int, user: User, *,
       3. anything already late
       4. anything else due today, earliest time first, then by priority
       5. a habit that is due and not done
-      6. today's prayers, once the day is past noon
-      7. close the day, once the evening has started
-      8. otherwise: today's important work is finished
+      6. today's prayers, while any is still unrecorded
+      7. a late wake-up that was never written down — late still counts
+      8. close the day, once the evening has started
+      9. otherwise: today's important work is finished
 
     Every answer carries a `reason`, because a card that decides on the user's
     behalf owes them the sentence explaining why this one and not another.
+    A pinned task beats a late one, but never hides it: the answer then
+    carries `overdue` — how many are late and the first one's title.
     """
     tz = tz or user_tz(user)
     today = today_local(tz)
@@ -4106,13 +4112,19 @@ def now_next(s: Session, ws: int, user: User, *,
         return {"kind": "wake", "title": "", "id": wake["habit_id"],
                 "action": "wakeup", "meta": wake["target"], "reason": "wake"}
 
+    late = [t for t in list_tasks(s, ws, horizon_days=0, tz=tz)["overdue"]
+            if t["status"] != "done"]
     for task in top3_tasks(s, ws, today, tz=tz):
         if task["status"] != "done":
-            return _now_task(task, "pinned")
+            out = _now_task(task, "pinned")
+            others = [t for t in late if t["id"] != task["id"]]
+            if others:
+                out["overdue"] = {"count": len(others), "title": others[0]["title"],
+                                  "id": others[0]["id"]}
+            return out
 
-    for task in list_tasks(s, ws, horizon_days=0, tz=tz)["overdue"]:
-        if task["status"] != "done":
-            return _now_task(task, "overdue")
+    for task in late:
+        return _now_task(task, "overdue")
 
     for task in tasks_due_today(s, ws, tz=tz):
         if task["status"] != "done":
@@ -4128,11 +4140,16 @@ def now_next(s: Session, ws: int, user: User, *,
 
     if prayer_owed(s, ws, today):
         prayer = prayer_state(s, ws, today, user.gender)
-        if not prayer["complete"] and prayer["performed"] < PRAYER_REQUIRED \
-                and now.hour >= 12:
+        # From the morning on: bomdod is the first thing owed in the day, so
+        # waiting for noon left the card saying "all done" at dawn.
+        if not prayer["complete"] and prayer["performed"] < PRAYER_REQUIRED:
             return {"kind": "prayer", "title": "", "id": None, "action": "prayer",
                     "meta": f"{prayer['performed']}/{PRAYER_REQUIRED}",
                     "reason": "prayer"}
+
+    if wake and not wake["logged"]:
+        return {"kind": "wake", "title": "", "id": wake["habit_id"],
+                "action": "wakeup", "meta": wake["target"], "reason": "wake_late"}
 
     journal_on = s.scalar(select(Habit.id).where(
         Habit.workspace_id == ws, Habit.system_key == SYSTEM_JOURNAL,
@@ -4186,15 +4203,23 @@ def home_counts(s: Session, ws: int, user: User, day: date | None = None, *,
     person can check against their own list; a percentage first thing in the
     morning is a grade for a day that has not happened yet. The formula behind
     the percentage is untouched and lives on the Statistics screen.
+
+    The same split as the score and as Statistics: Vazifa and Odat are your
+    own, Jamoa is the shared work owed today — so "Vazifa 1/3" here is the
+    very count under the Tasks tile there. `habits` is ignored (kept for
+    older callers): it used to arrive with the team's habits mixed in.
     """
     tz = user_tz(user)
     day = day or today_local(tz)
-    tasks_done, tasks_total = today_task_progress(s, ws, day, tz=tz)
-    habits_done, habits_total = habits or habit_progress(s, ws, day)
+    tasks_done, tasks_total = today_task_progress(s, ws, day, tz=tz,
+                                                  include_team=False)
+    habits_done, habits_total = habit_progress(s, ws, day, include_team=False)
+    shared = due_team_habits(s, ws, day) + due_team_tasks(s, ws, day)
     prayer = prayer or prayer_state(s, ws, day, user.gender)
     return {
         "tasks": {"done": tasks_done, "total": tasks_total},
         "habits": {"done": habits_done, "total": habits_total},
+        "team": {"done": sum(1 for _, ok in shared if ok), "total": len(shared)},
         "prayer": {"done": prayer["performed"], "total": PRAYER_REQUIRED,
                    "excused": prayer["excused"],
                    "owed": prayer_owed(s, ws, day)},
@@ -8875,6 +8900,18 @@ def parse_quick_capture(text: str, today: date) -> dict:
     raw = " ".join((text or "").split())
     deadline, due = None, None
 
+    # A date with its year is read first: otherwise "12.05.2030" loses
+    # "12.05" to the clock ("12:05") and "2030-05-12" is read as 5 December.
+    for pattern in (r"\b(\d{4}[-./]\d{1,2}[-./]\d{1,2})\b",
+                    r"\b(\d{1,2}[-./]\d{1,2}[-./]\d{4})\b"):
+        m = re.search(pattern, raw)
+        if m:
+            found = parse_countdown_date(m.group(1), today)
+            if found is not None:
+                deadline = found
+                raw = (raw[:m.start()] + raw[m.end():]).strip()
+                break
+
     m = _TIME_RE.search(raw)
     if m:
         due = dtime(int(m.group(1)), int(m.group(2)))
@@ -8898,7 +8935,7 @@ def parse_quick_capture(text: str, today: date) -> dict:
         for pattern in (r"\b(\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?)\b",
                         r"\b(\d{1,2}[-\s](?:yan|fev|mar|apr|may|iyun|iyul|avg|sen|okt|noy|dek|"
                         r"jan|feb|jun|jul|aug|sep|oct|nov|dec|янв|фев|мар|апр|мая|июн|июл|авг|"
-                        r"сен|окт|ноя|дек)[^\s,]*)"):
+                        r"сен|окт|ноя|дек)[^\s,]*(?:,?\s+\d{4}\b)?)"):
             m = re.search(pattern, raw, re.IGNORECASE)
             if m:
                 found = parse_countdown_date(m.group(1), today)

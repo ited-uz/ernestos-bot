@@ -300,23 +300,23 @@ def ui_stage(user: User | None) -> int:
 
 def main_menu(lang: str, stage: int = 3, *,
               team: bool = False) -> ReplyKeyboardMarkup:
-    """The persistent menu: six buttons, two columns, the same for everybody.
+    """The persistent menu: seven buttons, the same for everybody.
 
         🏠 Home       💰 Pul
         ✅ Odatlar    ⚡ Vazifalar
-        👥 Jamoa      ⚙️ Sozlamalar
+        👥 Jamoa      📊 Statistika
+        ⚙️ Sozlamalar
 
-    Statistics opens from Home (and /stats), suggestions from Settings, and
-    the Mini App from Telegram's own menu button beside the text field — a
-    second "🚀 ErnestOS" row under the keyboard only repeated it. "Turdim"
-    lives on the Habits screen; typing it still works. `stage` and `team`
-    are accepted for older callers and no longer change the layout: one
-    keyboard nobody has to relearn is simpler than one that grows.
+    Suggestions ("Taklif") open from Settings, and the Mini App from
+    Telegram's own menu button beside the text field. "Turdim" lives on the
+    Habits screen; typing it still works. `stage` and `team` are accepted for
+    older callers and no longer change the layout.
     """
     rows = [
         [t(lang, "menu_home"), t(lang, "menu_money")],
         [t(lang, "menu_habits"), t(lang, "menu_tasks")],
-        [t(lang, "menu_teams"), t(lang, "menu_settings")],
+        [t(lang, "menu_teams"), t(lang, "menu_stats")],
+        [t(lang, "menu_settings")],
     ]
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
@@ -739,7 +739,7 @@ READ_CALLBACKS = {("habit", "back"), ("habit", "noop"),
                   ("team", "open"), ("team", "stats"),
                   ("pj", "list"), ("pj", "open"),
                   ("task", "restorelist"), ("habit", "presets"),
-                  ("money", "show")}
+                  ("money", "show"), ("money", "limits")}
 
 
 def is_read_callback(action: str, parts: list[str]) -> bool:
@@ -936,12 +936,19 @@ def render_now(now: dict, lang: str) -> str:
     icon = NOW_ICON.get(kind, "▫️")
     if kind == "task" or kind == "habit":
         meta = f" — {now['meta']}" if now.get("meta") else ""
-        return f"{icon} {esc(now.get('title') or '')}{meta}"
+        line = f"{icon} {esc(now.get('title') or '')}{meta}"
+        late = now.get("overdue")
+        if late:
+            # A pinned task never hides a late one.
+            more = f" (+{late['count'] - 1})" if late["count"] > 1 else ""
+            line += f"\n⏰ {t(lang, 'now_also_late')}: {esc(late['title'])}{more}"
+        return line
     return f"{icon} {t(lang, 'now_' + kind)}"
 
 
 def home_counts_line(counts: dict, lang: str, streak: int = 0) -> str:
-    """`Vazifa 1/3 · Odat 2/6 · Namoz 3/5 · 🔥 4` — counts, never a percentage.
+    """`Vazifa 1/3 · Odat 2/6 · Jamoa 1/2 · Namoz 3/5 · 🔥 4` — counts, never a
+    percentage.
 
     The same line the Mini App draws under its Now card, from the same
     `counts` payload, so the two Homes cannot disagree about the day.
@@ -952,6 +959,9 @@ def home_counts_line(counts: dict, lang: str, streak: int = 0) -> str:
         parts.append(f"{t(lang, 'cnt_tasks')} {tasks['done']}/{tasks['total']}")
     if habits["total"]:
         parts.append(f"{t(lang, 'cnt_habits')} {habits['done']}/{habits['total']}")
+    team = counts.get("team") or {}
+    if team.get("total"):
+        parts.append(f"{t(lang, 'cnt_team')} {team['done']}/{team['total']}")
     if prayer.get("owed", True):
         parts.append(f"{t(lang, 'cnt_prayer')} "
                      + ("✓" if prayer.get("excused")
@@ -1039,15 +1049,12 @@ def countdown_line(item: dict, lang: str) -> str:
 
 
 def home_keyboard(lang: str, stage: int = 3) -> InlineKeyboardMarkup:
-    """Home's ways onward: add something, or read the numbers.
-
-    Statistics left the main keyboard and opens from here, under the one line
-    of counts it explains. The Mini App opens from Telegram's menu button, so
-    no "🚀 ErnestOS" row is repeated under Home."""
+    """Home's ways onward: add a habit or a task. Statistics has its own
+    keyboard button again, so it is not repeated here (an old message's
+    `home:stats` still opens it)."""
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(t(lang, "home_add_habit"), callback_data="habit:add"),
-         InlineKeyboardButton(t(lang, "home_add_task"), callback_data="task:add")],
-        [InlineKeyboardButton(t(lang, "menu_stats"), callback_data="home:stats")]])
+         InlineKeyboardButton(t(lang, "home_add_task"), callback_data="task:add")]])
 
 
 def _bar(percent: int, width: int = 10) -> str:
@@ -1243,7 +1250,9 @@ def money_keyboard(lang: str) -> InlineKeyboardMarkup:
                                   callback_data="money:add:expense"),
              InlineKeyboardButton(t(lang, "money_btn_income"),
                                   callback_data="money:add:income")],
-            [InlineKeyboardButton(t(lang, "money_btn_refresh"),
+            [InlineKeyboardButton(t(lang, "money_btn_limits"),
+                                  callback_data="money:limits"),
+             InlineKeyboardButton(t(lang, "money_btn_refresh"),
                                   callback_data="money:show")]]
     if WEBAPP_URL:
         rows.append([InlineKeyboardButton(
@@ -2819,6 +2828,19 @@ async def handle_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                               tz=svc.user_tz(user))
             await message.reply_text(t(lang, "money_saved",
                                        amount=fmt_money(amount, lang)))
+            await show_money(update, ctx)
+
+        elif name == "money_limit":
+            category = flow.get("category") or ""
+            amount = 0 if text.strip() in ("0", "-", "—") else svc.parse_money_amount(text)
+            if amount is None or svc.money_category_kind(category) != "expense":
+                await message.reply_text(t(lang, "money_no_amount"),
+                                         reply_markup=cancel_keyboard(lang))
+                return
+            ctx.user_data.pop("flow", None)
+            with SessionLocal() as s:
+                svc.set_money_budget(s, ws, category, amount)
+            await message.reply_text(t(lang, "saved"))
             await show_money(update, ctx)
 
         elif name == "task_edit_time":
@@ -4476,6 +4498,26 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             await message.reply_text(t(lang, ask),
                                      parse_mode=ParseMode.HTML,
                                      reply_markup=cancel_keyboard(lang))
+        elif sub == "limits":
+            # Each spending category with its limit; one tap to change it.
+            with SessionLocal() as s:
+                limits = svc.money_budgets(s, ws)
+            rows = [[InlineKeyboardButton(
+                f"{icon} {t(lang, 'mcat_' + cid)} — "
+                f"{fmt_money(limits.get(cid, 0), lang) if limits.get(cid) else t(lang, 'money_no_limit')}",
+                callback_data=f"money:limit:{cid}")]
+                for cid, icon, _c, _d, kind in svc.MONEY_CATEGORIES if kind == "expense"]
+            rows.append([InlineKeyboardButton(t(lang, "back"), callback_data="money:show")])
+            await query.edit_message_text(t(lang, "money_limits_title"),
+                                          parse_mode=ParseMode.HTML,
+                                          reply_markup=InlineKeyboardMarkup(rows))
+        elif (sub == "limit" and len(parts) > 2
+              and svc.money_category_kind(parts[2]) == "expense"):
+            start_flow(ctx, "money_limit", category=parts[2])
+            label_key = "mcat_" + parts[2]
+            await message.reply_text(
+                t(lang, "money_limit_ask", cat=t(lang, label_key)),
+                parse_mode=ParseMode.HTML, reply_markup=cancel_keyboard(lang))
         else:
             await show_money(update, ctx, edit=True)
 
@@ -7773,11 +7815,20 @@ def api_team_project_tasks(project_id: int,
             rows = svc.list_team_tasks(s, user.telegram_id, project.team_id,
                                        project_id=project_id,
                                        tz=svc.user_tz(user))
+            listed = svc.list_team_projects(s, user.telegram_id, project.team_id,
+                                            include_archived=True)
         except PermissionError as e:
             raise _perm(e)
-        return {"project": {"id": project.id, "name": project.name,
-                            "team_id": project.team_id, "source": "team"},
-                "tasks": rows}
+        team = svc.team_for(s, user.telegram_id, project.team_id)
+        # The same shape as a personal project, so one screen draws both.
+        info = next((p for p in listed if p["id"] == project_id), {})
+        return {"project": {**info, "id": project.id, "name": project.name,
+                            "team_id": project.team_id, "source": "team",
+                            "team_name": team.name if team else "",
+                            "progress": info.get("percent", 0),
+                            "archived": project.archived_at is not None},
+                "tasks": [{**r, "source": "team",
+                           "team_name": team.name if team else ""} for r in rows]}
 
 
 class TeamProjectPatch(BaseModel):

@@ -181,10 +181,11 @@
         {id:2, title:s.cd2, date:day(33), days_left:33, scope:"general"}],
       overall:{value:EMPTY ? 0 : 62, yesterday:EMPTY ? null : 55, measured:!EMPTY,
                components:{tasks:EMPTY ? null : 57, habits:EMPTY ? null : 67,
-                           focus:EMPTY ? null : 50, prayer:EMPTY ? null : 60}},
+                           team:EMPTY ? null : 50, prayer:EMPTY ? null : 60}},
       habits:{done:due.filter(h => h.done).length, total:due.length},
       counts:{tasks:{done:EMPTY ? 0 : 1, total:EMPTY ? 0 : today.length + 1},
               habits:{done:due.filter(h => h.done).length, total:due.length},
+              team:{done:EMPTY ? 0 : 1, total:EMPTY ? 0 : 2},
               prayer:{done:EMPTY ? 0 : 3, total:5, excused:false, owed:true}},
       streak:EMPTY ? 0 : 6,
       prayer:{performed:EMPTY ? 0 : 3, required:5, excused:false},
@@ -217,9 +218,11 @@
     const today = DB.tasks.filter(x => x.deadline === TODAY);
     const due = DB.habits.filter(h => h.due);
     return {today:{overall:62, measured:!EMPTY,
-      tasks_done:EMPTY ? 0 : 4 + today.filter(x => x.status === "done").length,
-      tasks_total:EMPTY ? 0 : 7, habits_done:due.filter(h => h.done).length,
-      habits_total:due.length, prayer_performed:3, prayer_required:5},
+      // The same counts Home shows — one vocabulary on both screens.
+      tasks_done:EMPTY ? 0 : 1, tasks_total:EMPTY ? 0 : today.length + 1,
+      habits_done:due.filter(h => h.done).length, habits_total:due.length,
+      team_done:EMPTY ? 0 : 1, team_total:EMPTY ? 0 : 2,
+      prayer_performed:3, prayer_required:5},
       windows:EMPTY ? {} : {day:{overall:62, delta:7, measured:true},
                             week:{overall:68, delta:4, measured:true},
                             month:{overall:64, delta:-3, measured:true}}};
@@ -230,13 +233,13 @@
       return period === "year" ? String(i + 1) : String(d.getDate()); };
     const wave = (i, base, amp) => Math.max(0, Math.min(100, Math.round(base + amp * Math.sin(i * 1.3))));
     return {period,
-      today:{overall:62, measured:true, yesterday:55, tasks:57, habits:67, focus:50, prayer:60,
+      today:{overall:62, measured:true, yesterday:55, tasks:57, habits:67, team:50, prayer:60,
              prayer_performed:3, prayer_required:5, streak:6},
-      deltas:{tasks:5, habits:-4, focus:10, prayer:0},
+      deltas:{tasks:5, habits:-4, team:10, prayer:0},
       series:EMPTY ? [] : Array.from({length:n}, (_, i) => ({label:lbl(i),
         overall:wave(i, 64, 14), tasks:wave(i + 1, 58, 20), habits:wave(i + 2, 70, 15),
-        focus:wave(i + 3, 52, 18), prayer:wave(i + 4, 66, 12)})),
-      averages:{overall:66, tasks:61, habits:72, focus:55, prayer:70},
+        team:wave(i + 3, 52, 18), prayer:wave(i + 4, 66, 12)})),
+      averages:{overall:66, tasks:61, habits:72, team:55, prayer:70},
       best_day:{day:day(-3), overall:88},
       prayer_detail:{full_days:4, days:7, on_time_percent:76, jamaat:9, qaza:3, missed:2,
                      consistency:81}};

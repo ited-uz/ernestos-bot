@@ -12,13 +12,14 @@ Mahsulotning asosiy sikli:
 
 | Bo'lim | Mazmuni |
 |---|---|
-| 🏠 Bosh sahifa | **Hozir** (avtomatik tanlanadi), bir qator sanoq (`Vazifa 1/3 · Odat 2/6 · Namoz 3/5`, foizsiz), bugungi vazifalar (jamoanikilar bilan) |
-| ✅ Odatlar | Tepada faqat odatlar (2–3 ustunli katak), pastda boshqaruv paneli: qo'shish, 📋 Tayyor odatlar (10 ta), tartib; + namoz + kundalik |
+| 🏠 Bosh sahifa | **Hozir** (avtomatik tanlanadi; tanlangan vazifa kechikkanini yashirmaydi), bir qator sanoq (`Vazifa 1/3 · Odat 2/6 · Jamoa 1/2 · Namoz 3/5`, foizsiz — Statistika bilan bir xil), bugungi vazifalar |
+| ✅ Odatlar | Tepada faqat odatlar (har biri bitta qatorda), pastda yengil panel: 📋 Tayyor odatlar (10 ta), tartib; qo'shish — sarlavhadagi «+»; + namoz + kundalik |
 | ⚡ Vazifalar | **Bugun / Reja / Taqvim** — Hafta maqsadi faqat shu yerda; Reja ichida Ochiq · Loyihalar · Bajarilgan; Taqvim'da Date countdown, oy va ⏱ Time countdown |
 | 👥 Jamoa | **Bugun / Ishlar / Natija**, rollar (egasi / admin / a'zo), taklif havolasi, so'rovlar, bildirishnoma darajasi, faollik tarixi va qaytarish |
 | 📊 Statistika | Umumiy % + Vazifalar / Odatlar / Namoz, o'zgarish (punktda), jamoa natijalari, daraja/XP |
-| 💰 Pul | **Alohida** — umumiy balans, kirim/chiqim (bir qatorli kiritish + ➖ Chiqim / ➕ Kirim tugmasi), kategoriya byudjeti, yozuvlar; hech qanday foiz yoki reytingga kirmaydi |
+| 💰 Pul | **Alohida** — umumiy balans, kirim/chiqim (bir qatorli kiritish + ➖ Chiqim / ➕ Kirim tugmasi), kategoriya limiti (✎, «2 mln» deb yoziladi; botda 🎯 Limitlar), yozuvlar; hech qanday foiz yoki reytingga kirmaydi |
 
+> **v10** (bot menyusi 4 qator, sana — yil tanlanadi, jamoa loyihasi = shaxsiy loyiha, limit tahriri, audit tuzatishlari) — [docs/V10_OZGARISHLAR.md](docs/V10_OZGARISHLAR.md).
 > **v9.2** (bot menyusi 2×3, jamoa 20% formulada, odatlar katakda, qaytarish yo'q, Pul soddalashdi, jamoa grafigi) — [docs/V9_2_OZGARISHLAR.md](docs/V9_2_OZGARISHLAR.md).
 > **v9.1** (Hozir + sanoq, Pul, tayyor 10 odat, ko'chirish tuzatildi, tezlik) — [docs/V9_1_OZGARISHLAR.md](docs/V9_1_OZGARISHLAR.md).
 > **v8 da nima o'zgardi** (login/parol, saqlash/bekor qilish, loyihalar) — [docs/V8_OZGARISHLAR.md](docs/V8_OZGARISHLAR.md).
