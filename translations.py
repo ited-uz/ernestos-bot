@@ -1559,7 +1559,7 @@ T["ru"].update({
 
 T["uz"].update({
     "home_now": "👉 Hozir",
-    "cnt_tasks": "Vazifa", "cnt_habits": "Odat", "cnt_prayer": "Namoz", "cnt_team": "Jamoa",
+    "cnt_tasks": "Vazifa", "cnt_habits": "Odat", "cnt_prayer": "Namoz", "cnt_team": "Jamoa", "now_also_late": "Kechikkan",
     "btn_presets": "📋 Tayyor odatlar (10 ta)",
     "presets_title": "📋 Tayyor odatlar",
     "presets_hint": ("Eng kerakli 10 ta odat. ✅ — ro'yxatingizda, ➕ — yo'q. "
@@ -1580,6 +1580,10 @@ T["uz"].update({
                    "Pul bo'limi hech qanday foiz yoki reytingga qo'shilmaydi."),
     "money_btn_expense": "➖ Chiqim", "money_btn_income": "➕ Kirim",
     "money_btn_refresh": "🔄 Yangilash",
+    "money_btn_limits": "🎯 Limitlar",
+    "money_limits_title": "🎯 <b>Oylik limitlar</b>\nQaysi kategoriyani o'zgartiramiz?",
+    "money_limit_ask": "🎯 <b>{cat}</b> — oylik limit?\nMasalan: <i>2 mln</i>, <i>500 ming</i>. 0 — cheklovsiz.",
+    "money_no_limit": "cheklovsiz",
     "money_ask_expense": "➖ <b>Chiqim</b>\nSumma va izoh: <i>Tushlik 45 ming</i>",
     "money_ask_income": "➕ <b>Kirim</b>\nSumma va izoh: <i>Maosh 5 mln</i>",
     "money_no_amount": "Summani tushunmadim. Masalan: 45 ming, 45000 yoki 1,5 mln.",
@@ -1594,7 +1598,7 @@ T["uz"].update({
 
 T["en"].update({
     "home_now": "👉 Now",
-    "cnt_tasks": "Tasks", "cnt_habits": "Habits", "cnt_prayer": "Prayer", "cnt_team": "Team",
+    "cnt_tasks": "Tasks", "cnt_habits": "Habits", "cnt_prayer": "Prayer", "cnt_team": "Team", "now_also_late": "Also late",
     "btn_presets": "📋 Ready-made habits (10)",
     "presets_title": "📋 Ready-made habits",
     "presets_hint": ("The ten most useful habits. ✅ — on your list, ➕ — not yet. "
@@ -1614,6 +1618,10 @@ T["en"].update({
                    "Money never counts towards any percentage or rank."),
     "money_btn_expense": "➖ Spent", "money_btn_income": "➕ Income",
     "money_btn_refresh": "🔄 Refresh",
+    "money_btn_limits": "🎯 Limits",
+    "money_limits_title": "🎯 <b>Monthly limits</b>\nWhich category should change?",
+    "money_limit_ask": "🎯 <b>{cat}</b> — monthly limit?\nFor example: <i>2 mln</i>, <i>500k</i>. 0 means no limit.",
+    "money_no_limit": "no limit",
     "money_ask_expense": "➖ <b>Spent</b>\nAmount and note: <i>Lunch 45k</i>",
     "money_ask_income": "➕ <b>Income</b>\nAmount and note: <i>Salary 5 mln</i>",
     "money_no_amount": "I could not read the amount. For example: 45k, 45000 or 1.5 mln.",
@@ -1628,7 +1636,7 @@ T["en"].update({
 
 T["ru"].update({
     "home_now": "👉 Сейчас",
-    "cnt_tasks": "Задачи", "cnt_habits": "Привычки", "cnt_prayer": "Намаз", "cnt_team": "Команда",
+    "cnt_tasks": "Задачи", "cnt_habits": "Привычки", "cnt_prayer": "Намаз", "cnt_team": "Команда", "now_also_late": "Просрочено",
     "btn_presets": "📋 Готовые привычки (10)",
     "presets_title": "📋 Готовые привычки",
     "presets_hint": ("Десять самых полезных привычек. ✅ — в вашем списке, ➕ — нет. "
@@ -1648,6 +1656,10 @@ T["ru"].update({
                    "Деньги не входят ни в какие проценты и рейтинги."),
     "money_btn_expense": "➖ Расход", "money_btn_income": "➕ Доход",
     "money_btn_refresh": "🔄 Обновить",
+    "money_btn_limits": "🎯 Лимиты",
+    "money_limits_title": "🎯 <b>Лимиты на месяц</b>\nКакую категорию изменить?",
+    "money_limit_ask": "🎯 <b>{cat}</b> — лимит на месяц?\nНапример: <i>2 млн</i>, <i>500 тыс</i>. 0 — без лимита.",
+    "money_no_limit": "без лимита",
     "money_ask_expense": "➖ <b>Расход</b>\nСумма и заметка: <i>Обед 45 тыс</i>",
     "money_ask_income": "➕ <b>Доход</b>\nСумма и заметка: <i>Зарплата 5 млн</i>",
     "money_no_amount": "Не понял сумму. Например: 45 тыс, 45000 или 1,5 млн.",

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport"
-      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+      content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <meta name="color-scheme" content="dark light" />
 <title>ErnestOS</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -428,7 +428,7 @@ label{display:block;font-size:14px;color:var(--text-2);margin:var(--s3) 0 6px;
 .chip:hover{border-color:var(--text-3)}
 .chip.on{background:var(--primary-fill);border-color:transparent;
          color:var(--on-primary)}
-.chip.sm{padding:6px 12px;font-size:14px;min-height:36px}
+.chip.sm{padding:6px 12px;font-size:14px;min-height:40px}
 .chips{display:flex;gap:var(--s1);flex-wrap:wrap}
 .chips.scroll{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
               margin:0 calc(var(--pad) * -1);padding:0 var(--pad) 2px}
@@ -437,7 +437,7 @@ label{display:block;font-size:14px;color:var(--text-2);margin:var(--s3) 0 6px;
 /* Segmented control: a quiet track and a raised white cell. */
 .seg{display:flex;background:var(--surface-2);
      border-radius:var(--radius-sm);padding:3px;gap:2px}
-.seg > *{flex:1;text-align:center;padding:var(--s1) 6px;min-height:38px;
+.seg > *{flex:1;text-align:center;padding:var(--s1) 6px;min-height:44px;
          display:flex;align-items:center;justify-content:center;
          border-radius:calc(var(--radius-sm) - 3px);font-size:14.5px;font-weight:580;
          cursor:pointer;color:var(--text-2);white-space:nowrap;overflow:hidden;
@@ -502,7 +502,7 @@ label{display:block;font-size:14px;color:var(--text-2);margin:var(--s3) 0 6px;
 .trio .k{font-size:12.5px;color:var(--text-2);font-weight:560;
          overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .trio .v{font-size:17px;font-weight:640;margin-top:2px;letter-spacing:-.3px}
-@media (max-width:380px){
+@media (max-width:440px){
   .trio[style*="repeat(5"]{grid-template-columns:repeat(3,minmax(0,1fr))!important;
                            row-gap:var(--s2)}
   .trio[style*="repeat(5"] > div:nth-child(4){border-left:0}
@@ -627,9 +627,12 @@ label{display:block;font-size:14px;color:var(--text-2);margin:var(--s3) 0 6px;
           min-height:28px;display:flex;align-items:center}
 .trow .td{font-size:13.5px;color:var(--text-2);margin-top:2px;display:flex;
           align-items:center;gap:4px 8px;flex-wrap:wrap;line-height:1.35}
-.trow .quick{display:flex;gap:6px;margin-top:var(--s2);flex-wrap:wrap;
-             align-items:center}
-.trow .quick .qlbl{font-size:13px;color:var(--text-2);margin-right:2px}
+/* The three ways out of "late" as one row of equal cells, with their label
+   above — never a chip dangling alone on a second line. */
+.trow .quick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;
+             margin-top:var(--s2)}
+.trow .quick .qlbl{grid-column:1 / -1;font-size:12.5px;color:var(--text-2)}
+.trow .quick .chip{justify-content:center;padding:6px 4px;min-width:0}
 .group{font-size:14px;font-weight:600;color:var(--text-2);
        margin:var(--s3) 0 var(--s1);display:flex;align-items:center;gap:6px}
 
@@ -666,7 +669,8 @@ label{display:block;font-size:14px;color:var(--text-2);margin:var(--s3) 0 6px;
 .cal-day.past.has{color:var(--text-2)}
 .cal-day[data-act]{cursor:pointer}
 .cal-day[data-act]:hover{background:var(--surface-2)}
-.cal-dots{display:flex;gap:2px;height:4px}
+.cal-dots{display:flex;gap:2px;height:4px;max-width:100%;overflow:hidden;
+          justify-content:center}
 .cal-dots i{width:4px;height:4px;border-radius:50%}
 .k-task{background:var(--c1)} .k-project{background:var(--c2)}
 .k-birthday{background:var(--c4)}
@@ -682,18 +686,20 @@ label{display:block;font-size:14px;color:var(--text-2);margin:var(--s3) 0 6px;
 .prow:last-of-type{border-bottom:0}
 .prow .pn{font-size:15.5px;font-weight:600;display:flex;align-items:center;
           gap:6px;margin-bottom:var(--s1)}
-.prow .ps{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;
-          margin:0 calc(var(--s3) * -1);padding:1px var(--s3)}
-.prow .ps::-webkit-scrollbar{display:none}
+/* The statuses are one segmented row of equal cells that always fits the
+   width — no sideways scrolling, no clipped last button. Tapping the chosen
+   one again clears it, so there is no separate ✕. */
+.prow .ps{display:grid;grid-template-columns:repeat(var(--n, 4), minmax(0, 1fr));gap:4px}
 @media (min-width:520px){
   .prow{display:flex;align-items:center;gap:var(--s2)}
   .prow .pn{width:96px;flex:none;margin-bottom:0}
-  .prow .ps{flex:1;justify-content:flex-end;overflow:visible;margin:0;padding:0}
+  .prow .ps{flex:1}
 }
-.st{border-radius:var(--radius-pill);
+.st{border-radius:var(--radius-sm);
     border:var(--border-w) solid var(--border-2);background:var(--surface);
-    padding:6px 12px;font-size:14px;font-weight:560;cursor:pointer;min-height:36px;
-    display:inline-flex;align-items:center;gap:4px;
+    padding:4px 2px;font-size:13px;font-weight:560;cursor:pointer;min-height:44px;
+    display:flex;align-items:center;justify-content:center;text-align:center;
+    min-width:0;overflow:hidden;text-overflow:ellipsis;
     white-space:nowrap;color:var(--text-2);transition:background var(--motion),
     color var(--motion)}
 .st.on{color:var(--bg);border-color:transparent;font-weight:640}
@@ -720,6 +726,10 @@ nav button{background:0;border:0;color:var(--text-2);padding:6px 1px 8px;
            transition:color var(--motion)}
 nav button > span:last-child{max-width:100%;overflow:hidden;text-overflow:ellipsis;
            white-space:nowrap;padding:0 1px}
+/* Six labels fit at 360px; below that the type steps down instead of
+   cutting "Statistika" to "Statis…". */
+@media (max-width:359px){ nav button{font-size:9.5px;letter-spacing:-.2px}
+  nav button .ic{width:36px} }
 nav button.on{color:var(--primary)}
 nav button .ic{display:grid;place-items:center;height:28px;width:44px;
                border-radius:var(--radius-pill);transition:background var(--motion)}
@@ -836,6 +846,17 @@ details[open] > summary .i{transform:rotate(90deg)}
         cursor:pointer;box-shadow:0 0 0 2px var(--surface), 0 0 0 3px var(--border)}
 .avatar:focus-visible{outline:0;box-shadow:var(--ring)}
 .avatar img{width:100%;height:100%;object-fit:cover;display:block}
+/* The avatar is the way into Settings; the small gear says so. */
+.avatar{position:relative;overflow:visible}
+.avatar img{border-radius:50%}
+/* A late task under a pinned one: one red line, never hidden. */
+.now-late{display:flex;align-items:center;gap:6px;margin-top:var(--s2);
+  padding:8px 10px;border-radius:var(--radius-sm);font-size:13.5px;
+  color:var(--danger);background:color-mix(in srgb, var(--danger) 9%, transparent);
+  cursor:pointer;min-height:40px}
+.avatar-gear{position:absolute;right:-3px;bottom:-3px;width:19px;height:19px;
+  border-radius:50%;display:grid;place-items:center;background:var(--surface);
+  color:var(--text-2);box-shadow:0 0 0 1.5px var(--border)}
 .datebtn{display:inline-flex;align-items:center;gap:6px;margin-top:2px;
          font-size:14.5px;color:var(--text-2);cursor:pointer;background:none;
          border:0;padding:4px 0;min-height:32px;position:relative}
@@ -909,19 +930,6 @@ details[open] > summary .i{transform:rotate(90deg)}
 .counts:hover{border-color:var(--border-2)}
 
 /* ---- Habits: the list, then a dashboard of controls under it ---- */
-/* Habits in a grid: two columns on a phone, three when there is room.
-   Each habit is its own tile, so the joined-list corners are undone. */
-.hgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s2)}
-@media (min-width:560px){.hgrid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-.hgrid > .item{margin:0 !important;border-radius:var(--radius) !important;
-  border-color:var(--border) !important;align-items:flex-start;min-height:64px}
-.hgrid > .item .grow{min-width:0}
-.hgrid > .item{padding:var(--s2);gap:var(--s1)}
-.hgrid > .item .ellipsis{white-space:normal;overflow-wrap:anywhere;line-height:1.25;
-  font-size:15px;font-weight:560}
-.hgrid > .item .meta{font-size:12px;gap:2px 6px}
-.hgrid > .item .iconbtn.plain{display:none}
-.hgrid > .item.wide{grid-column:1 / -1;align-items:center}
 .hrow-tier{width:4px;align-self:stretch;border-radius:2px;flex:none;margin:-2px 0}
 .hrow-tier.t1{background:var(--danger)}
 .hrow-tier.t2{background:var(--warn)}
@@ -929,6 +937,9 @@ details[open] > summary .i{transform:rotate(90deg)}
 .dash{margin-top:var(--s4);padding:var(--s3);background:var(--surface-2);
       border-radius:var(--radius-lg)}
 .dash .dash-top{display:flex;align-items:center;gap:var(--s2)}
+.dash .dash-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:var(--s1);margin-top:var(--s2)}
+.dash .dash-tools .btn{min-height:44px}
 .dash .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
              gap:var(--s1);margin-top:var(--s3)}
 .dash .grid2 .btn{min-height:46px;font-size:14.5px}
@@ -946,6 +957,8 @@ details[open] > summary .i{transform:rotate(90deg)}
 .mtile.lead{grid-column:1 / -1}
 .mtile.lead .v{font-size:24px}
 .pos{color:var(--ok)} .neg{color:var(--danger)}
+.datef{display:grid;grid-template-columns:0.8fr 1.5fr 1fr;gap:var(--s1)}
+.datef select{min-width:0;min-height:44px}
 .mquick{display:flex;gap:var(--s1);margin-top:var(--s3)}
 .mquick input{flex:1}
 .tcols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s2);
@@ -970,6 +983,7 @@ details[open] > summary .i{transform:rotate(90deg)}
 .mcat{padding:var(--s2) 0;border-bottom:var(--border-w) solid var(--border);cursor:pointer}
 .mcat:last-child{border-bottom:0}
 .mcat .row{gap:var(--s1)}
+.mcat .medit{color:var(--text-3);display:inline-flex;padding:4px}
 .mcat .amt{font-size:13.5px;color:var(--text-2);white-space:nowrap;
            font-variant-numeric:tabular-nums}
 .mcat .amt.over{color:var(--danger);font-weight:640}
@@ -1054,7 +1068,7 @@ const DICT = {
   src_personal:"Shaxsiy",
   team_results:"Natijalar", team_p_day:"Bugun", team_p_week:"Hafta", team_p_month:"Oy",
   team_waiting_on:"Kimda qoldi", team_all_clear:"Bugungi hamma ish bajarildi 🎉",
-  team_left_today:"Bugun qolgani",
+  team_left_today:"Bugun qolgani", team_none_today:"Bugun jamoa ishi yo'q — 20% boshqalarga", team_waiting_on:"Qilmagan",
   team_no_projects:"Umumiy loyiha yo'q", team_add_project:"Umumiy loyiha",
   team_project_ph:"Loyiha nomi", team_open:"Ochish",
   dest_where:"Qayerga qo'shilsin", dest_personal:"Shaxsiy",
@@ -1088,7 +1102,7 @@ const DICT = {
   why_habit:"Bugungi odat hali bajarilmagan",
   why_wake:"Kun shundan boshlanadi",
   why_prayer:"Bugungi namozlar to'liq emas",
-  why_evening:"Kun tugadi — yakunlab qo'ying",
+  why_evening:"Kun tugadi — yakunlab qo'ying", why_wake_late:"Kech bo'lsa ham yozib qo'ying — vaqti saqlanadi", now_also_late:"Kechikkan",
   period_day:"Kun",
   period_week:"Hafta",
   period_month:"Oy",
@@ -1376,7 +1390,7 @@ const DICT = {
   nav_home:"Asosiy", nav_stats:"Statistika", money:"Pul", money_add:"Pul yozuvi",
   money_apart:"Alohida bo'lim — hech qanday foiz, streak yoki reytingga qo'shilmaydi.",
   money_balance:"Umumiy balans", money_income:"Kirim", money_expense:"Chiqim",
-  money_unit:"so'm",
+  money_unit:"so'm", date_day:"Kun", date_month:"Oy", date_year:"Yil",
   money_quick_ph:"Tushlik 45 ming · Maosh 5 mln keldi",
   money_quick_hint:"Yozing va Chiqim yoki Kirim'ni bosing. Summa va kategoriya o'zi aniqlanadi.",
   money_voice:"Ovoz bilan kiritish", money_voice_none:"Bu qurilmada ovozli kiritish yo'q",
@@ -1386,7 +1400,7 @@ const DICT = {
   money_empty:"Bu oy hali yozuv yo'q.", money_over:"Byudjetdan {n} oshdi",
   money_amount:"Summa (so'm)", money_note:"Izoh", money_note_ph:"Tushlik, taksi, reklama...",
   money_saved_toast:"Saqlandi", money_no_amount:"Summani tushunmadim — masalan 45 ming yoki 45000",
-  money_budget_title:"{cat} — oylik byudjet",
+  money_budget_title:"{cat} — oylik limit", money_no_limit:"cheklovsiz", money_limit_tap:"Limit — ✎ bosing",
   money_budget_hint:"Oyiga shu kategoriyaga qancha sarflashni rejalashtirasiz. 0 — cheklovsiz.",
   mcat_food:"Ovqat", mcat_transport:"Transport", mcat_home:"Uy", mcat_health:"Sog'liq",
   mcat_fun:"Ko'ngil ochar", mcat_business:"Biznes", mcat_other:"Boshqa",
@@ -1428,7 +1442,7 @@ const DICT = {
   src_personal:"Personal",
   team_results:"Results", team_p_day:"Today", team_p_week:"Week", team_p_month:"Month",
   team_waiting_on:"Waiting on", team_all_clear:"Everything for today is done 🎉",
-  team_left_today:"Left today",
+  team_left_today:"Left today", team_none_today:"No team work today — its 20% goes to the rest", team_waiting_on:"Not done by",
   team_no_projects:"No shared projects", team_add_project:"Shared project",
   team_project_ph:"Project name", team_open:"Open",
   dest_where:"Where does this go", dest_personal:"Personal",
@@ -1460,7 +1474,7 @@ const DICT = {
   why_habit:"Today's habit, not done yet",
   why_wake:"The day starts here",
   why_prayer:"Today's prayers are not complete",
-  why_evening:"The day is over — close it",
+  why_evening:"The day is over — close it", why_wake_late:"Late still counts — write the time down", now_also_late:"Also late",
   period_day:"Day",
   period_week:"Week",
   period_month:"Month",
@@ -1736,7 +1750,7 @@ const DICT = {
   nav_home:"Home", nav_stats:"Stats", money:"Money", money_add:"Money entry",
   money_apart:"A separate section — never counted in any percentage, streak or rank.",
   money_balance:"Balance", money_income:"Income", money_expense:"Spent",
-  money_unit:"UZS",
+  money_unit:"UZS", date_day:"Day", date_month:"Month", date_year:"Year",
   money_quick_ph:"Lunch 45k · Salary 5 mln received",
   money_quick_hint:"Type it and tap Spent or Income. The amount and category are read for you.",
   money_voice:"Speak it", money_voice_none:"Voice entry is not available on this device",
@@ -1746,7 +1760,7 @@ const DICT = {
   money_empty:"Nothing recorded this month.", money_over:"Over budget by {n}",
   money_amount:"Amount (UZS)", money_note:"Note", money_note_ph:"Lunch, taxi, ads...",
   money_saved_toast:"Saved", money_no_amount:"I could not read the amount — for example 45k or 45000",
-  money_budget_title:"{cat} — monthly budget",
+  money_budget_title:"{cat} — monthly limit", money_no_limit:"no limit", money_limit_tap:"Tap ✎ for the limit",
   money_budget_hint:"How much you plan to spend on this each month. 0 means no limit.",
   mcat_food:"Food", mcat_transport:"Transport", mcat_home:"Home", mcat_health:"Health",
   mcat_fun:"Fun", mcat_business:"Business", mcat_other:"Other",
@@ -1788,7 +1802,7 @@ const DICT = {
   src_personal:"Личное",
   team_results:"Результаты", team_p_day:"Сегодня", team_p_week:"Неделя", team_p_month:"Месяц",
   team_waiting_on:"За кем", team_all_clear:"Всё на сегодня сделано 🎉",
-  team_left_today:"Осталось сегодня",
+  team_left_today:"Осталось сегодня", team_none_today:"Сегодня нет командной работы — её 20% у остальных", team_waiting_on:"Не сделали",
   team_no_projects:"Общих проектов нет", team_add_project:"Общий проект",
   team_project_ph:"Название проекта", team_open:"Открыть",
   dest_where:"Куда добавить", dest_personal:"Личное",
@@ -1820,7 +1834,7 @@ const DICT = {
   why_habit:"Сегодняшняя привычка ещё не выполнена",
   why_wake:"День начинается отсюда",
   why_prayer:"Сегодняшние намазы не завершены",
-  why_evening:"День закончился — подведите итог",
+  why_evening:"День закончился — подведите итог", why_wake_late:"Даже поздно — запишите время", now_also_late:"Просрочено",
   period_day:"День",
   period_week:"Неделя",
   period_month:"Месяц",
@@ -2096,7 +2110,7 @@ const DICT = {
   nav_home:"Главная", nav_stats:"Итоги", money:"Деньги", money_add:"Запись о деньгах",
   money_apart:"Отдельный раздел — не входит ни в какие проценты, серии и рейтинги.",
   money_balance:"Баланс", money_income:"Доход", money_expense:"Расход",
-  money_unit:"сум",
+  money_unit:"сум", date_day:"День", date_month:"Месяц", date_year:"Год",
   money_quick_ph:"Обед 45 тыс · Зарплата 5 млн пришла",
   money_quick_hint:"Напишите и нажмите Расход или Доход. Сумма и категория определятся сами.",
   money_voice:"Голосом", money_voice_none:"Голосовой ввод на этом устройстве недоступен",
@@ -2106,7 +2120,7 @@ const DICT = {
   money_empty:"В этом месяце записей нет.", money_over:"Бюджет превышен на {n}",
   money_amount:"Сумма (сум)", money_note:"Заметка", money_note_ph:"Обед, такси, реклама...",
   money_saved_toast:"Сохранено", money_no_amount:"Не понял сумму — например 45 тыс или 45000",
-  money_budget_title:"{cat} — бюджет на месяц",
+  money_budget_title:"{cat} — лимит на месяц", money_no_limit:"без лимита", money_limit_tap:"Лимит — нажмите ✎",
   money_budget_hint:"Сколько вы планируете тратить на это в месяц. 0 — без ограничения.",
   mcat_food:"Еда", mcat_transport:"Транспорт", mcat_home:"Дом", mcat_health:"Здоровье",
   mcat_fun:"Развлечения", mcat_business:"Бизнес", mcat_other:"Другое",
@@ -2398,6 +2412,52 @@ function shiftISO(iso, days){
 }
 const todayISO = () => state.home?.date || new Date().toISOString().slice(0, 10);
 
+/* A date as three plain selects — day, month, year — instead of the native
+   date input. Telegram's in-app pickers hide the year behind a tap many
+   people never find, so a deadline in 2030 could not be set. Selects work
+   the same on every phone. The chosen date lives in a hidden input with the
+   field's id, so `val(id)` reads it like any other input. `years` is
+   [first, last]; the default is this year and the next twenty. */
+function dateField(id, value, years){
+  const now = new Date(todayISO());
+  const [vy, vm, vd] = (value || "").split("-").map(Number);
+  let [y0, y1] = years || [now.getFullYear(), now.getFullYear() + 20];
+  // A saved date outside the range (last year's overdue task) stays shown.
+  if(vy){ y0 = Math.min(y0, vy); y1 = Math.max(y1, vy); }
+  const opt = (v, label, on) => `<option value="${v}" ${on ? "selected" : ""}>${label}</option>`;
+  const days = [opt("", t("date_day"), !vd)]
+    .concat(Array.from({length:31}, (_, i) => opt(i + 1, i + 1, vd === i + 1)));
+  const months = [opt("", t("date_month"), !vm)]
+    .concat(D().months.map((m, i) => opt(i + 1, m, vm === i + 1)));
+  const yrs = [opt("", t("date_year"), !vy)];
+  for(let y = y0; y <= y1; y++) yrs.push(opt(y, y, vy === y));
+  return `<div class="datef" data-datef="${id}">
+      <select id="${id}-d" aria-label="${t("date_day")}">${days.join("")}</select>
+      <select id="${id}-m" aria-label="${t("date_month")}">${months.join("")}</select>
+      <select id="${id}-y" aria-label="${t("date_year")}">${yrs.join("")}</select>
+      <input type="hidden" id="${id}" value="${value ? esc(value) : ""}" />
+    </div>`;
+}
+/* One part chosen fills the others from today, and a 31st in a short month
+   becomes its last day — so the hidden value is always a real date. */
+function syncDateField(box){
+  const id = box.dataset.datef;
+  const g = k => document.getElementById(`${id}-${k}`);
+  const now = new Date(todayISO());
+  if(!g("d").value && !g("m").value && !g("y").value){
+    document.getElementById(id).value = ""; return;
+  }
+  if(!g("y").value) g("y").value = String(now.getFullYear());
+  if(!g("m").value) g("m").value = String(now.getMonth() + 1);
+  if(!g("d").value) g("d").value = String(now.getDate());
+  const y = Number(g("y").value), m = Number(g("m").value);
+  const last = new Date(y, m, 0).getDate();
+  if(Number(g("d").value) > last) g("d").value = String(last);
+  const pad = n => String(n).padStart(2, "0");
+  document.getElementById(id).value = `${y}-${pad(m)}-${pad(g("d").value)}`;
+}
+
+
 /* ---------- line chart (inline SVG, no libraries) ---------- */
 function lineChart(series, keys){
   if(!series.length) return `<div class="empty">${t("no_data")}</div>`;
@@ -2495,6 +2555,8 @@ function countsRow(d){
     <b>${c.tasks.done}/${c.tasks.total}</b>`);
   if(c.habits.total) parts.push(`${t("cnt_habits")}
     <b>${c.habits.done}/${c.habits.total}</b>`);
+  if(c.team?.total) parts.push(`${t("team")}
+    <b>${c.team.done}/${c.team.total}</b>`);
   if(c.prayer.owed !== false && d.modules?.prayer !== false)
     parts.push(`${t("cnt_prayer")}
       <b>${c.prayer.excused ? "✓" : `${c.prayer.done}/${c.prayer.total}`}</b>`);
@@ -2544,17 +2606,14 @@ function headBlock(d){
       <button class="iconbtn add" data-act="quick-add"
               aria-label="${t("quick_add")}">${icon("plus", 22)}</button>
       <button class="avatar" data-act="settings"
-              aria-label="${t("settings")}">${avatar}</button>
+              aria-label="${t("settings")}">${avatar}
+        <span class="avatar-gear" aria-hidden="true">${icon("settings", 11)}</span></button>
     </div>`;
 
-  // The quote is one quiet line, and an empty one is a link rather than an
-  // empty card demanding to be filled.
-  h += d.quote
-    ? `<div class="t2 small wrap" data-act="quote"
-            style="margin-top:var(--s2)">“${esc(d.quote)}”</div>`
-    : `<div class="t3 tiny" data-act="quote"
-            style="margin-top:var(--s1);text-decoration:underline">
-         ${t("quote_add")}</div>`;
+  // The quote is one quiet line when there is one. An empty one is not an
+  // underlined grey link on the first screen — it is set in Settings.
+  if(d.quote) h += `<div class="t2 small wrap" data-act="quote"
+            style="margin-top:var(--s2)">“${esc(d.quote)}”</div>`;
 
   // Returning after a break gets one offer, not a wall of red.
   const b = d.break;
@@ -2627,7 +2686,8 @@ function nowBlock(d){
   /* Why this one. Kept to a single short line. */
   const REASONS = {pinned:"why_pinned", overdue:"why_overdue",
                    due_today:"why_due_today", habit:"why_habit",
-                   wake:"why_wake", prayer:"why_prayer", evening:"why_evening"};
+                   wake:"why_wake", wake_late:"why_wake_late",
+                   prayer:"why_prayer", evening:"why_evening"};
   const why = REASONS[n.reason];
 
   const meta = [];
@@ -2649,6 +2709,10 @@ function nowBlock(d){
       <div class="now-title">${esc(kind.title)}</div>
       ${meta.length ? `<div class="now-meta">${meta.join("")}</div>` : ""}
       ${why ? `<div class="now-why">${t(why)}</div>` : ""}
+      ${n.overdue ? `<div class="now-late" data-act="nav" data-screen="tasks"
+          role="button" tabindex="0">${icon("clock", 14)}
+          <span class="grow ellipsis">${t("now_also_late")}: ${esc(n.overdue.title)}</span>
+          ${n.overdue.count > 1 ? `<b class="num">+${n.overdue.count - 1}</b>` : ""}</div>` : ""}
       <div class="now-acts">
         <button class="btn" data-act="${kind.act}" ${kind.data || ""}
                 ${n.id ? `data-id="${n.id}"` : ""}>${icon(glyph, 17)} ${label}</button>
@@ -2708,7 +2772,8 @@ function calendarBlock(){
   for(let day = 1; day <= c.days_in_month; day++){
     const iso = `${c.year}-${String(c.month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
     const events = c.events[iso] || [];
-    const kinds = [...new Set(events.map(e => e.kind))].slice(0, 4);
+    // At most three dots, so a busy day never spills into its neighbour.
+    const kinds = [...new Set(events.map(e => e.kind))].slice(0, 3);
     /* A past day opens only when something happened on it, and then only to
        show what was done. Today and every day after open even when empty —
        that is where a task gets planned. */
@@ -2878,7 +2943,8 @@ function teamTodayTab(team, board){
   const open = (board.open || []).map(x => `<div class="row" style="padding:6px 0">
       ${teamBox({...full(x), mirrored: x.mirrored}, x.kind)}
       <div class="grow">${icon(x.kind === "task" ? "list" : "check", 15)} ${esc(x.title)}
-        <div class="muted sm">${(x.missing || []).map(nameOf).join(" · ")}</div></div>
+        ${(x.missing || []).length ? `<div class="muted sm">${t("team_waiting_on")}: ${
+          (x.missing || []).map(nameOf).join(" · ")}</div>` : ""}</div>
     </div>`).join("");
   const done = (board.done || []).map(x => `
     <div class="row" style="opacity:.55;padding:4px 0">
@@ -3041,25 +3107,16 @@ function activityRow(a){
 
 /* One shared item: your own box on the left — the only tick you can move —
    and everybody else's state named on the right. */
-/* The team's shelves. Same object a personal project is, so the row reads
-   the same way — name, progress, a coloured bar. */
+/* The team's shelves, drawn with the very card a personal project uses.
+   No projects yet is not an empty card claiming "nothing here" under a list
+   of work — it is one quiet "+ project" line. */
 function teamProjectsBlock(team){
   const projects = team?.projects || [];
-  return `<div class="card">
-      <div class="card-t">${t("projects")}</div>
-      ${projects.map(p => `
-        <div class="row" data-act="team-project-open" data-id="${p.id}">
-          <div class="grow"><b>${esc(p.name)}</b>
-            <div class="muted sm">${p.tasks_done}/${p.tasks_total}</div>
-            <div class="bar" style="margin-top:4px">
-              <i class="band-${bandOf(p.percent)}" style="width:${p.percent}%"></i></div>
-          </div>
-          <div style="width:48px;text-align:right">
-            <b class="band-${bandOf(p.percent)}">${p.percent}%</b></div>
-        </div>`).join("") || `<div class="muted">${t("team_no_projects")}</div>`}
-      <button class="btn secondary" data-act="team-project-new"
-              style="margin-top:10px">+ ${t("team_add_project")}</button>
-    </div>`;
+  return sectionHead("tone-2", "folder", t("projects"),
+      `<span class="act" data-act="team-project-new">${icon("plus", 14)}
+         ${t("add_project")}</span>`)
+    + (projects.length ? projects.map((p, i) => projectBlock(p, i)).join("")
+       : `<div class="t3 small">${t("team_no_projects")}</div>`);
 }
 
 /* The box beside a shared item, which is only ever the reader's own share.
@@ -3170,40 +3227,35 @@ function habitsTab(){
     .filter(x => x.due && x.scored !== false);
   const done = due.filter(x => x.done).length;
 
-  /* Top of the screen: the habits and nothing else, in a 2–3 column grid,
-     in tier order — non-negotiable, target, bonus. The tier is the coloured
-     edge of the tile rather than a heading, so the grid reads as one list.
-     The wake-up control ("Turdim") sits in the habit it belongs to. */
+  /* Top of the screen: the habits and nothing else, one per row, in tier
+     order — non-negotiable, target, bonus. The tier is the coloured edge of
+     the row rather than a heading, so the list reads as one list. The
+     wake-up control ("Turdim") sits in the habit it belongs to. */
   let h = timerBanner(data.active_timer);
   const rows = data.categories.map(cat =>
     (data.grouped[cat] || []).map(x => habitRow(x, cat, data.wake)).join("")).join("");
-  h += rows ? `<div class="hgrid">${rows}</div>` : `<div class="empty">${t("no_habits_yet")}
+  h += rows || `<div class="empty">${t("no_habits_yet")}
       <button class="btn secondary sm" data-act="presets-open">
         ${icon("tiles", 16)} ${t("presets")}</button></div>`;
   if(rows && !due.length) h += `<div class="t2 small" style="margin-top:var(--s2)">
       ${t("no_habits_today")}</div>`;
 
-  /* Bottom: the dashboard. Today's count and the streak, then every control
-     that changes the list — add, the ready-made ten, reorder.
-     Editing, pausing and deleting one habit live in its own sheet, one tap
-     in, so nothing here can remove a habit by a mis-tap. */
+  /* Bottom: a light panel — today's count, the streak and a bar, then the
+     two list tools. Adding is the header's "+", once, like every screen;
+     editing, pausing and deleting one habit live in its own sheet. */
   const ratio = due.length ? Math.round(done / due.length * 100) : 0;
   h += `<div class="dash">
       <div class="dash-top">
-        <span class="itile">${icon("check", 17)}</span>
-        <div class="grow"><div class="bt">${t("today")}</div>
-          <div class="t2 tiny num">${done}/${due.length}</div></div>
+        <div class="grow bt">${t("today")} <span class="t2 num">${done}/${due.length}</span></div>
         ${data.streak ? `<div class="num" style="font-weight:700">
           ${icon("flame", 16)} ${data.streak}</div>` : ""}
       </div>
       <div style="margin-top:var(--s2)">${bar(ratio)}</div>
-      <div class="grid2">
-        <button class="btn" data-act="habit-add">
-          ${icon("plus", 16)} ${t("add_habit")}</button>
-        <button class="btn secondary" data-act="presets-open">
-          ${icon("tiles", 16)} ${t("presets")}</button>
-        <button class="btn secondary" data-act="reorder-on" style="grid-column:1 / -1">
-          ${icon("drag", 16)} ${t("reorder")}</button>
+      <div class="dash-tools">
+        <button class="btn secondary sm" data-act="presets-open">
+          ${icon("tiles", 15)} ${t("presets")}</button>
+        <button class="btn secondary sm" data-act="reorder-on">
+          ${icon("drag", 15)} ${t("reorder")}</button>
       </div>
     </div>`;
   return h;
@@ -3212,7 +3264,7 @@ function habitsTab(){
 function habitRow(x, cat, wake){
   const edge = `<span class="hrow-tier ${TIERS[cat] || "t2"}" title="${t(cat)}"></span>`;
   if(x.paused){
-    return `<div class="item ${TIERS[cat]} off wide">${edge}
+    return `<div class="item ${TIERS[cat]} off">${edge}
         <div class="grow"><div class="ellipsis">${esc(x.name)}</div>
           <div class="meta">${t("paused")}</div></div>
         <button class="btn secondary sm" data-act="habit-resume" data-id="${x.id}">
@@ -3282,7 +3334,7 @@ function habitRow(x, cat, wake){
   // not asked and lost the one they had: how is this habit going.
   const open = shared ? `data-act="team-habit-open" data-id="${x.id}"`
                       : `data-act="habit-open" data-id="${x.id}"`;
-  return `<div class="item ${TIERS[cat]} ${x.due ? "" : "off"} ${wakeBtn ? "wide" : ""}">
+  return `<div class="item ${TIERS[cat]} ${x.due ? "" : "off"}">
       ${edge}${box}
       <div class="grow" ${open}>
         <div class="ellipsis">${esc(x.name)}</div>
@@ -3342,7 +3394,6 @@ function prayerTab(){
         </div></div>`;
   }
 
-  const ICON = {bomdod:"🌅", peshin:"☀️", asr:"🌤", shom:"🌆", xufton:"🌙"};
   const female = state.me?.gender === "female";
   let h = "";
 
@@ -3366,11 +3417,12 @@ function prayerTab(){
     const cur = p.prayers[name];
     h += `<div class="prow">
         <div class="pn"><span class="ellipsis">${t(name)}</span></div>
-        <div class="ps">${p.statuses.map(st =>
-          `<div class="st ${st} ${cur === st ? "on" : ""}" data-act="prayer"
+        <div class="ps" role="radiogroup" aria-label="${t(name)}"
+             style="--n:${p.statuses.length}">${p.statuses.map(st =>
+          `<div class="st ${st} ${cur === st ? "on" : ""}" role="radio" tabindex="0"
+            aria-checked="${cur === st}"
+            data-act="${cur === st ? "prayer-clear" : "prayer"}"
             data-prayer="${name}" data-status="${st}">${t(st)}</div>`).join("")}
-          ${cur ? `<div class="st" data-act="prayer-clear" data-prayer="${name}"
-            aria-label="${t("prayer_clear")}">${icon("x", 13)}</div>` : ""}
         </div></div>`;
   });
   h += `</div>`;
@@ -3885,7 +3937,7 @@ function countdownSheet(){
           ? "selected" : ""}>${esc(x.title)}</option>`).join("")}
       </select>` : ""}
     <label>${t("countdown_date")}</label>
-    <input type="date" id="cd-date" min="${todayISO()}" value="${esc(f.date || "")}" />
+    ${dateField("cd-date", f.date || "")}
     <input id="cd-title" placeholder="${t("countdown_title_ph")}" maxlength="200"
            value="${esc(f.title || "")}" style="margin-top:10px" />
     <button class="btn" data-act="cd-save" style="margin-top:14px">
@@ -4005,8 +4057,11 @@ function sectionHead(tone, ic, label, action){
    the inventory is the question. */
 function mainTab(){
   const d = state.tasks;
-  let h = timerBanner(d?.active_timer) + weekFocusBlock();
-  if(!d) return h + `<div class="spin"></div>`;
+  /* Order: what is late, then today, then the week goal. The goal used to
+     sit on top and push an overdue task below the fold — the one thing on
+     this screen that most needs seeing first. */
+  let h = timerBanner(d?.active_timer);
+  if(!d) return h + weekFocusBlock() + `<div class="spin"></div>`;
 
   const today = todayISO();
   /* Shared tasks are in the day's own lists, not a block below them: they
@@ -4043,7 +4098,7 @@ function mainTab(){
         ${icon("plus", 16)} ${t("add_first_task")}</button></div>`;
 
   // The dates, the month and both countdowns are the Taqvim tab.
-  return h;
+  return h + weekFocusBlock();
 }
 
 function searchBox(id, value, placeholder, action){
@@ -4316,14 +4371,7 @@ function projectsTab(){
 
   const sharedBlock = shared.map(({team, projects}) =>
     sectionHead("tone-3", "users", esc(team.name))
-    + projects.map(p => `
-        <div class="prow" data-act="team-project-open" data-id="${p.id}">
-          <div class="grow"><b>${esc(p.name)}</b>
-            <div class="muted sm">${p.tasks_done}/${p.tasks_total}</div>
-            <div class="bar" style="margin-top:4px"><i style="width:${p.percent}%"></i></div>
-          </div>
-          <div style="width:44px;text-align:right"><b>${p.percent}%</b></div>
-        </div>`).join("")).join("");
+    + projects.map((p, i) => projectBlock({...p, team_name: team.name}, i + 1)).join("")).join("");
 
   let h = sectionHead("tone-2", "folder", t("projects"),
     `<span class="act" data-act="project-add">${icon("plus", 14)}
@@ -4357,47 +4405,48 @@ function projectsTab(){
         ${bar(average)}</div>
     </div>` + h;
 
-  /* One hue per project, cycling the theme's palette, so a list of five reads
-     as five things. The tone follows the position in the list rather than the
-     id, which keeps it stable while the screen is open and never lands two
-     neighbours on the same colour. */
-  const TONES = ["tone-1", "tone-3", "tone-5", "tone-4", "tone-2"];
+  return h + list.map((p, i) => projectBlock(p, i)).join("") + sharedBlock;
+}
 
-  return h + list.map((p, i) => {
-    const done = p.status === "done";
-    const state_tag = p.archived ? t("st_archived")
-      : done ? t("st_done") : t("st_active");
-
-    // What is actually left, in words. "60%" is a measurement; "4 ta qoldi"
-    // is the thing somebody opens this screen to find out.
-    const facts = [];
-    facts.push(p.tasks_open
-      ? t("pr_left", {n: p.tasks_open})
-      : p.tasks_total ? t("pr_all_done") : t("pr_no_tasks"));
-    if(p.deadline) facts.push(`${icon("calendar", 12)} ${isoToLabel(p.deadline)}`);
-
-    return `<div class="tinted block ${TONES[i % TONES.length]}
-                 ${done || p.archived ? "off" : ""}"
-                 data-act="project-open" data-id="${p.id}">
-        <div class="bh">
-          <span class="itile lg">${icon("folder", 18)}</span>
-          <div class="grow" style="min-width:0">
-            <div class="bt ellipsis">${esc(p.name)}</div>
-            <div class="t2 tiny row" style="gap:6px;margin-top:2px">
-              ${facts.join(" · ")}</div>
-          </div>
-          <div style="text-align:right">
-            <div class="num" style="font-size:19px;font-weight:700"
-                 >${p.progress}%</div>
-            <div class="t3 tiny num">${p.tasks_done}/${p.tasks_total}</div>
-          </div>
-          ${icon("chevron", 15)}
+/* One project card — personal or a team's, the same card. One hue per
+   project, cycling the theme's palette by position, so a list of five reads
+   as five things and no two neighbours share a colour. A team's project
+   says whose it is on the card and opens the same project screen. */
+const PROJECT_TONES = ["tone-1", "tone-3", "tone-5", "tone-4", "tone-2"];
+function projectBlock(p, i){
+  const team = p.source === "team";
+  const progress = p.progress ?? p.percent ?? 0;
+  const left = p.tasks_open ?? Math.max(0, (p.tasks_total || 0) - (p.tasks_done || 0));
+  const done = p.status === "done";
+  const state_tag = p.archived ? t("st_archived")
+    : done ? t("st_done") : t("st_active");
+  // What is actually left, in words: "4 ta qoldi" is what somebody opens
+  // this screen to find out; "60%" is only the measurement.
+  const facts = [];
+  if(team && p.team_name) facts.push(`${icon("users", 12)} ${esc(p.team_name)}`);
+  facts.push(left ? t("pr_left", {n: left})
+    : p.tasks_total ? t("pr_all_done") : t("pr_no_tasks"));
+  if(p.deadline) facts.push(`${icon("calendar", 12)} ${isoToLabel(p.deadline)}`);
+  return `<div class="tinted block ${PROJECT_TONES[i % PROJECT_TONES.length]}
+               ${done || p.archived ? "off" : ""}"
+               data-act="${team ? "team-project-open" : "project-open"}" data-id="${p.id}">
+      <div class="bh">
+        <span class="itile lg">${icon("folder", 18)}</span>
+        <div class="grow" style="min-width:0">
+          <div class="bt ellipsis">${esc(p.name)}</div>
+          <div class="t2 tiny row" style="gap:6px;margin-top:2px;flex-wrap:wrap">
+            ${facts.join(" · ")}</div>
         </div>
-        <div style="margin-top:var(--s2)">${bar(p.progress)}</div>
-        ${done || p.archived
-          ? `<div class="tag" style="margin-top:var(--s2)">${state_tag}</div>` : ""}
-      </div>`;
-  }).join("") + sharedBlock;
+        <div style="text-align:right">
+          <div class="num" style="font-size:19px;font-weight:700">${progress}%</div>
+          <div class="t3 tiny num">${p.tasks_done || 0}/${p.tasks_total || 0}</div>
+        </div>
+        ${icon("chevron", 15)}
+      </div>
+      <div style="margin-top:var(--s2)">${bar(progress)}</div>
+      ${done || p.archived
+        ? `<div class="tag" style="margin-top:var(--s2)">${state_tag}</div>` : ""}
+    </div>`;
 }
 
 /* ---------- one project and the work inside it ---------- */
@@ -4405,16 +4454,24 @@ SCREENS.project = () => {
   const d = state.project;
   if(!d) return `<div class="spin"></div>`;
   const p = d.project;
+  /* A team's project is the same screen: same card, same list, same "+".
+     The only differences are where a new task goes (into the team, so it is
+     a shared task from the start) and who the tick belongs to. */
+  const team = p.source === "team";
+  const addAttrs = `data-act="task-add" data-project="${p.id}"`
+    + (team ? ` data-dest="team:${p.team_id}"` : ` data-dest="personal"`);
 
   let h = `<div class="head">
-      <button class="iconbtn" data-act="nav" data-screen="tasks"
-              aria-label="${t("tasks")}">${icon("back")}</button>
+      <button class="iconbtn" data-act="nav" data-screen="${state.projectBack || "tasks"}"
+              aria-label="${t("back")}">${icon("back")}</button>
       <h1 class="grow">${esc(p.name)}</h1>
       <button class="iconbtn" data-act="project-edit" data-id="${p.id}"
               aria-label="${t("edit")}">${icon("edit")}</button>
-      <button class="iconbtn add" data-act="task-add" data-project="${p.id}"
+      <button class="iconbtn add" ${addAttrs}
               aria-label="${t("add_task")}">${icon("plus", 22)}</button>
-    </div>`;
+    </div>
+    <div class="t2 tiny" style="margin-top:4px">${team
+      ? `${icon("users", 13)} ${esc(p.team_name || "")}` : t("src_personal")}</div>`;
 
   if(p.description)
     h += `<div class="t2 small wrap" style="margin-top:8px">${esc(p.description)}</div>`;
@@ -4437,22 +4494,21 @@ SCREENS.project = () => {
         </div>
       </div>${bar(p.progress)}</div>`;
 
-  h += `<h2>${t("project_tasks")}
-      <span class="act" data-act="task-add" data-project="${p.id}">
-        ${icon("plus", 14)} ${t("add_task")}</span></h2>`;
+  h += `<h2>${t("project_tasks")}</h2>`;
 
+  const isDone = x => team ? x.done : x.status === "done";
   if(!d.tasks.length){
     h += `<div class="empty">${t("no_tasks_yet")}
-      <button class="btn secondary sm" data-act="task-add" data-project="${p.id}"
+      <button class="btn secondary sm" ${addAttrs}
               style="margin:12px auto 0;display:flex">
         ${icon("plus", 16)} ${t("add_first_task")}</button></div>`;
   } else {
-    const open = d.tasks.filter(x => x.status !== "done");
-    const done = d.tasks.filter(x => x.status === "done");
-    if(open.length) h += open.map(taskRow).join("");
+    const open = d.tasks.filter(x => !isDone(x));
+    const done = d.tasks.filter(isDone);
+    if(open.length) h += open.map(x => taskRow(x, {hideProject: true})).join("");
     if(done.length){
       h += `<div class="group">${t("completed")} · ${done.length}</div>`;
-      h += done.map(doneRow).join("");
+      h += done.map(x => team ? taskRow(x, {hideProject: true}) : doneRow(x)).join("");
     }
   }
 
@@ -4462,9 +4518,9 @@ SCREENS.project = () => {
              data-value="active">${t("mark_active")}</button>`
         : `<button class="btn secondary" data-act="project-status" data-id="${p.id}"
              data-value="done">${icon("check", 15)} ${t("mark_done")}</button>`}
-      <button class="btn secondary" data-act="project-archive" data-id="${p.id}"
+      ${team ? "" : `<button class="btn secondary" data-act="project-archive" data-id="${p.id}"
               data-value="${p.archived ? 0 : 1}">
-        ${p.archived ? t("unarchive") : t("archive")}</button>
+        ${p.archived ? t("unarchive") : t("archive")}</button>`}
     </div>
     <button class="btn danger" data-act="project-delete" data-id="${p.id}"
             style="margin-top:8px">${icon("trash", 15)} ${t("delete")}</button>`;
@@ -4480,6 +4536,20 @@ SCREENS.project = () => {
 const MONEY_TONE = {food:"var(--danger)", transport:"var(--warn)", home:"var(--c1)",
   health:"var(--ok)", fun:"var(--c3)", business:"var(--c2)", other:"var(--text-3)",
   salary:"var(--ok)", sales:"var(--c2)", other_in:"var(--c5)"};
+/* "2 mln" → 2000000, "500 ming" → 500000, "1 500 000" → 1500000, "" or "0"
+   → 0 (no limit); anything unreadable → null. */
+function parseMoneyInput(text){
+  const raw = String(text || "").toLowerCase().replace(/\s+/g, " ").trim();
+  if(!raw) return 0;
+  const m = raw.replace(/(\d)[ \u00a0](?=\d{3}\b)/g, "$1")
+    .match(/^(\d+(?:[.,]\d+)?)\s*(mlrd|млрд|mln|million|млн|ming|тыс\S*|k|к)?\.?$/);
+  if(!m) return null;
+  const unit = m[2] || "";
+  const factor = /^(mlrd|млрд)/.test(unit) ? 1e9 : /^(mln|million|млн)/.test(unit) ? 1e6
+    : unit ? 1e3 : 1;
+  const n = Math.round(Number(m[1].replace(",", ".")) * factor);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
 const moneyNum = n => String(Math.round(Math.abs(n || 0)))
   .replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 const moneyFmt = n => moneyNum(n) + " " + t("money_unit");
@@ -4572,7 +4642,8 @@ SCREENS.money = () => {
         : `<div class="t2 small" style="text-align:center;padding:var(--s2) 0">
              ${t("money_no_spend")}</div>`}</div>`;
 
-  h += sectionHead("tone-2", "tiles", t("money_by_category"))
+  h += sectionHead("tone-2", "tiles", t("money_by_category"),
+      `<span class="t3 tiny">${t("money_limit_tap")}</span>`)
     + `<div class="card">${m.categories.map(c => {
         const pct = c.limit ? Math.min(100, c.spent / c.limit * 100) : 0;
         return `<div class="mcat" data-act="money-budget" data-cat="${c.id}"
@@ -4580,7 +4651,8 @@ SCREENS.money = () => {
           <div class="row"><span>${c.icon}</span>
             <div class="grow ellipsis">${t("mcat_" + c.id)}</div>
             <span class="amt ${c.over ? "over" : ""}">${moneyFmt(c.spent)}${
-              c.limit ? ` / ${moneyFmt(c.limit)}` : ""}</span></div>
+              c.limit ? ` / ${moneyFmt(c.limit)}` : ` · ${t("money_no_limit")}`}</span>
+            <span class="medit" aria-hidden="true">${icon("edit", 15)}</span></div>
           ${c.limit ? `<div class="mbar"><span style="width:${pct}%;background:${
               c.over ? "var(--danger)" : MONEY_TONE[c.id]}"></span></div>` : ""}
           ${c.over ? `<div class="tiny" style="color:var(--danger);margin-top:4px">
@@ -4742,7 +4814,9 @@ SCREENS.stats = () => {
              today.habits || 0, st.deltas.habits,
              sum.habits_total ? t("of_habits", {done: sum.habits_done, total: sum.habits_total}) : "")}
       ${tile("team", t("team"), pct(today.team),
-             today.team || 0, st.deltas.team)}
+             today.team || 0, st.deltas.team,
+             sum.team_total ? `${sum.team_done}/${sum.team_total}`
+               : today.team === null || today.team === undefined ? t("team_none_today") : "")}
       ${tile("prayer", t("prayer"),
              `${today.prayer_performed}/${today.prayer_required}`,
              today.prayer || 0, st.deltas.prayer)}
@@ -4973,7 +5047,10 @@ function taskSheet(task, presetProject){
     <input id="task-title" placeholder="${t("task_name")}"
            value="${esc(f.title || "")}" />
 
-    ${editing ? taskOwnerPicker(f, task, shared) : destPicker()}
+    ${editing ? taskOwnerPicker(f, task, shared)
+      /* Added inside a project, the task goes where the project is — a
+         team's project makes it a team task — so there is nothing to ask. */
+      : presetProject ? "" : destPicker()}
     ${shared ? teamTaskOptions(f, task, teamId) : ""}
 
     <div class="chips" style="margin-top:10px">
@@ -4982,13 +5059,11 @@ function taskSheet(task, presetProject){
         data-value="${id}">${label}</div>`).join("")}
       <div class="chip sm ${f.when === "pick" ? "on" : ""}"
            data-act="task-when" data-value="pick">
-        ${icon("calendar", 14)} ${f.when === "pick" && f.deadline
-          ? isoToLabel(f.deadline) : t("when_pick")}</div>
+        ${icon("calendar", 14)} ${t("when_pick")}</div>
     </div>
 
     ${f.when === "pick" ? `<label>${t("deadline")}</label>
-      <input type="date" id="task-deadline" value="${f.deadline || ""}"
-             data-form="deadline" />` : ""}
+      ${dateField("task-deadline", f.deadline || "")}` : ""}
 
     <details ${f.open ? "open" : ""}>
       <summary>${icon("chevron", 15)}<span class="chev"></span>
@@ -5517,7 +5592,7 @@ function birthdaySheet(){
     <label>${t("person_name")}</label>
     <input id="bd-name" placeholder="${t("person_name")}" />
     <label>${t("birth_date")}</label>
-    <input type="date" id="bd-date" />
+    ${dateField("bd-date", "", [new Date(todayISO()).getFullYear() - 100, new Date(todayISO()).getFullYear()])}
     <label>${t("note")} <span class="t3">(${t("optional")})</span></label>
     <input id="bd-note" placeholder="${t("note")}" />
     <button class="btn" data-act="birthday-save" style="margin-top:14px">
@@ -5601,6 +5676,8 @@ function settingsSheet(){
     ${row("set-notify", "bell", "tone-1", t("notifications"), t("notify_hint"))}
     ${row("set-modules", "check", "tone-4", t("modules"), t("modules_hint"))}
     ${row("set-account", "user", "tone-3", t("account"), t("account_hint"))}
+    ${row("quote", "edit", "tone-2", t("quote_add"),
+          state.home?.quote ? `“${esc(state.home.quote)}”` : t("quote_ph"))}
     ${row("set-privacy", "shield", "tone-5", t("privacy_data"), t("privacy_hint"))}
     ${row("set-referral", "gift", "tone-2", t("ref_title"), t("ref_hint"))}
 
@@ -6377,9 +6454,26 @@ async function loadScreen(screen){
     } else if(screen === "stats"){
       await loadStats(state.statsPeriod);
     } else if(screen === "project"){
-      const id = state.project?.project?.id;
-      if(id) setState({project: await api(`/api/projects/${id}/tasks`)});
+      const p = state.project?.project;
+      if(p) setState({project: await api(projectPath(p.id, p.source === "team"))});
     }
+  }catch(e){ handleError(e); }
+}
+
+/* Where one project and its tasks are read from — personal or a team's. */
+const projectPath = (id, team) => team ? `/api/teams/projects/${id}/tasks`
+                                       : `/api/projects/${id}/tasks`;
+const projectEditPath = id => state.project?.project?.source === "team"
+  ? `/api/teams/projects/${id}` : `/api/projects/${id}`;
+/* Opening a project from anywhere: the same screen for both kinds, and the
+   back arrow returns to the screen it was opened from. */
+async function openProject(id, team){
+  haptic();
+  try{
+    const back = state.screen === "project" ? state.projectBack : state.screen;
+    if(team && !state.team){ try{ state.team = await api("/api/teams"); }catch(_){} }
+    setState({screen:"project", projectBack: back || "tasks",
+              project: await api(projectPath(id, team))});
   }catch(e){ handleError(e); }
 }
 
@@ -6647,9 +6741,7 @@ const A = {
     closeSheet();
     if(kind === "birthday") return A.birthdays();
     if(kind === "project"){
-      try{ setState({screen:"project", project: await api(`/api/projects/${id}/tasks`)}); }
-      catch(e){ handleError(e); }
-      return;
+      return openProject(id, false);
     }
     if(!state.tasks) await loadScreen("tasks");
     openTaskSheet(id);
@@ -6679,28 +6771,7 @@ const A = {
     A["project-add"]({dataset:{dest: "team:" + team.id}});
   },
 
-  "team-project-open": async el => {
-    haptic();
-    try{
-      const d = await api(`/api/teams/projects/${el.dataset.id}/tasks`);
-      openSheet(`
-        <h3>${icon("folder", 18)} ${esc(d.project.name)}</h3>
-        ${d.tasks.map(x => `
-          <div class="row">
-            <div class="check ${x.done ? "on" : ""}" data-act="team-toggle"
-                 data-kind="task" data-id="${x.id}"></div>
-            <div class="grow ${x.done ? "done" : ""}">${esc(x.title)}</div>
-          </div>`).join("") || `<div class="muted">${t("team_nothing")}</div>`}
-        <input id="team-project-name" maxlength="200" style="margin-top:12px"
-               value="${esc(d.project.name)}" placeholder="${t("team_project_ph")}">
-        <button class="btn" data-act="team-project-rename" data-id="${d.project.id}"
-                style="margin-top:8px">${t("save")}</button>
-        <button class="btn secondary" data-act="team-project-delete"
-                data-id="${d.project.id}" style="margin-top:8px">${icon("trash", 15)} ${t("delete")}</button>
-        <button class="btn secondary" data-act="close" style="margin-top:8px">
-          ${t("close")}</button>`);
-    }catch(e){ handleError(e); }
-  },
+  "team-project-open": el => openProject(el.dataset.id, true),
 
   /* A shared project is renamed or removed by whoever opened it, an admin
      or the owner; anybody else gets the server's 403 explained. Removing it
@@ -6874,17 +6945,30 @@ const A = {
               source:e.source, day:e.day}}), "money", true));
     }catch(e){ handleError(e); }
   },
+  /* The limit is typed the way money is typed everywhere else here —
+     "2 mln", "500 ming", "1500000" — or picked from a few round numbers. */
   "money-budget": el => openSheet(`
     <h3>${t("money_budget_title", {cat: t("mcat_" + el.dataset.cat)})}</h3>
     <div class="hint">${t("money_budget_hint")}</div>
-    <input id="money-limit" type="number" inputmode="numeric" min="0" step="1000"
-           value="${Number(el.dataset.limit) || ""}" placeholder="0" style="margin-top:10px" />
+    <input id="money-limit" inputmode="text" autocomplete="off"
+           value="${Number(el.dataset.limit) ? moneyNum(el.dataset.limit) : ""}"
+           placeholder="2 mln · 500 ming · 0" style="margin-top:10px" />
+    <div class="chips" style="margin-top:8px">${[0, 500000, 1000000, 2000000, 5000000]
+      .map(n => `<div class="chip" data-act="money-limit-pick" data-value="${n}"
+        role="button" tabindex="0">${n ? moneyNum(n) : t("money_no_limit")}</div>`).join("")}</div>
     <button class="btn" data-act="money-budget-save" data-cat="${el.dataset.cat}"
             style="margin-top:14px">${t("save")}</button>
     <button class="btn secondary" data-act="close" style="margin-top:8px">${t("cancel")}</button>`),
-  "money-budget-save": el => save(() => api(`/api/money/budgets/${el.dataset.cat}`,
-    {method:"PUT", body:{limit: Math.max(0, Math.round(Number(val("money-limit")) || 0))}}),
-    "money"),
+  "money-limit-pick": el => {
+    const input = document.getElementById("money-limit");
+    if(input) input.value = Number(el.dataset.value) ? moneyNum(el.dataset.value) : "0";
+  },
+  "money-budget-save": el => {
+    const limit = parseMoneyInput(val("money-limit"));
+    if(limit === null) return toast(t("money_no_amount"));
+    save(() => api(`/api/money/budgets/${el.dataset.cat}`,
+      {method:"PUT", body:{limit}}), "money", false, t("money_saved_toast"));
+  },
 
   "team-tab": el => { haptic(); setState({teamTab: el.dataset.tab}); },
   "team-graph-period": el => { haptic(); setState({teamGraphPeriod: el.dataset.value}); },
@@ -7441,7 +7525,9 @@ const A = {
         title: body.title, deadline: body.deadline, priority: body.priority,
         description: body.description || "", due_time: body.due_time,
         remind_before: body.remind_before, recurrence: body.recurrence || null,
-        project_id: body.project_id, completion: f.completion || "all",
+        project_id: body.project_id
+          || (el.dataset.project ? Number(el.dataset.project) : null),
+        completion: f.completion || "all",
         assignees: f.completion === "assignees" ? (f.assignees || []) : null,
         timer_minutes: body.timer_minutes ?? null};
       return save(() => api(`/api/teams/${dest.id}/tasks`, {method:"POST", body:teamBody}),
@@ -7483,6 +7569,12 @@ const A = {
     if((from === "team" && to.startsWith("team:")) ||
        (from === "personal" && to === "personal")) return;
     haptic();
+    // Standing in the project: it reopens as what it now is.
+    if(state.screen === "project"){
+      if(state.project?.project) state.project.project.source =
+        to.startsWith("team:") ? "team" : "personal";
+      state.team = null;
+    }
     save(() => api(`/api/projects/${id}/move`, {method:"POST", body:{to}}),
          state.screen, false, t("saved"));
   },
@@ -7512,7 +7604,7 @@ const A = {
       <label>${t("task_desc")}</label>
       <textarea id="project-desc"></textarea>
       <label>${t("deadline")}</label>
-      <input type="date" id="project-deadline" />
+      ${dateField("project-deadline", "")}
     </details>
     <button class="btn" data-act="project-save" style="margin-top:16px">
       ${t("save")}</button>
@@ -7532,12 +7624,7 @@ const A = {
     save(() => api("/api/projects", {method:"POST", body}), "tasks", false,
          t("saved"), {body});
   },
-  "project-open": async el => {
-    haptic();
-    try{ setState({screen:"project",
-                   project: await api(`/api/projects/${el.dataset.id}/tasks`)}); }
-    catch(e){ handleError(e); }
-  },
+  "project-open": el => openProject(el.dataset.id, false),
   "project-edit": el => {
     const p = state.project?.project || {};
     openSheet(`
@@ -7546,18 +7633,23 @@ const A = {
       <label>${t("task_desc")}</label>
       <textarea id="project-desc">${esc(p.description || "")}</textarea>
       <label>${t("deadline")}</label>
-      <input type="date" id="project-deadline" value="${p.deadline || ""}" />
+      ${dateField("project-deadline", p.deadline || "")}
       ${projectOwnerPicker(p)}
       <button class="btn" data-act="project-update" data-id="${el.dataset.id}"
               style="margin-top:16px">${t("save")}</button>
       <button class="btn secondary" data-act="close" style="margin-top:8px">
         ${t("cancel")}</button>`);
   },
-  "project-update": el => save(() => api(`/api/projects/${el.dataset.id}`,
-    {method:"PATCH", body:{name: trimmed("project-name"),
-      description: val("project-desc"),
-      deadline: val("project-deadline") || null}}), "project"),
-  "project-status": el => save(() => api(`/api/projects/${el.dataset.id}`,
+  /* Every change goes to the project's own place — personal or its team. */
+  "project-update": el => {
+    const team = state.project?.project?.source === "team";
+    const deadline = val("project-deadline") || null;
+    const body = {name: trimmed("project-name"), description: val("project-desc")};
+    if(team){ if(deadline) body.deadline = deadline; else body.clear_deadline = true; }
+    else body.deadline = deadline;
+    save(() => api(projectEditPath(el.dataset.id), {method:"PATCH", body}), "project");
+  },
+  "project-status": el => save(() => api(projectEditPath(el.dataset.id),
     {method:"PATCH", body:{status: el.dataset.value}}), "project"),
   "project-archive": el => save(() => api(`/api/projects/${el.dataset.id}`,
     {method:"PATCH", body:{archived: el.dataset.value === "1"}}), "project"),
@@ -7566,10 +7658,12 @@ const A = {
   // it, or the next render reloads a project that is no longer there.
   "project-delete-go": async el => {
     try{
-      await api(`/api/projects/${el.dataset.id}`, {method:"DELETE"});
+      await api(projectEditPath(el.dataset.id), {method:"DELETE"});
       closeSheet(); toast(t("deleted"));
-      setState({screen:"tasks", project:null});
-      await loadScreen("tasks");
+      const back = state.projectBack || "tasks";
+      state.team = null;
+      setState({screen: back, project:null});
+      await loadScreen(back);
     }catch(e){ closeSheet(); handleError(e); }
   },
 
@@ -8152,6 +8246,9 @@ document.addEventListener("keydown", e => {
 /* …and the other half of the same rule: every form control with an action
    runs it here, when the value has actually changed. */
 document.addEventListener("change", e => {
+  // A day/month/year select keeps its field's hidden date in step.
+  const box = e.target.closest("[data-datef]");
+  if(box) syncDateField(box);
   const el = e.target.closest("[data-act]");
   if(el && CHANGE_TAGS.has(el.tagName)) A[el.dataset.act]?.(el);
 });

@@ -975,17 +975,16 @@ def _menu_labels(lang: str) -> list[str]:
 
 @pytest.mark.parametrize("lang", ["uz", "en", "ru"])
 def test_the_menu_has_money_and_no_wake_button(lang):
-    """v9.2: two columns, three rows — Home | Money, Habits | Tasks,
-    Team | Settings. "Turdim" lives on the Habits screen, feedback inside
-    Settings, statistics one tap from Home, and the Mini App opens from the
-    chat's own menu button."""
+    """v10: Home | Money, Habits | Tasks, Team | Statistics, then Settings.
+    "Turdim" lives on the Habits screen, feedback inside Settings, and the
+    Mini App opens from the chat's own menu button."""
     application.WEBAPP_URL = "https://example.test"
     rows = [[b.text for b in row] for row in application.main_menu(lang).keyboard]
-    assert rows == [[application.t(lang, a), application.t(lang, b)] for a, b in (
+    assert rows == [[application.t(lang, k) for k in row] for row in (
         ("menu_home", "menu_money"), ("menu_habits", "menu_tasks"),
-        ("menu_teams", "menu_settings"))]
+        ("menu_teams", "menu_stats"), ("menu_settings",))]
     labels = [label for row in rows for label in row]
-    for gone in ("menu_wake", "menu_feedback", "menu_app", "menu_stats"):
+    for gone in ("menu_wake", "menu_feedback", "menu_app"):
         assert application.t(lang, gone) not in labels
 
 
@@ -1544,7 +1543,7 @@ def test_bot_home_and_mini_app_home_show_the_same_now_and_counts(alice):
     """Item 1: both surfaces read one `now` and one `counts` payload."""
     home = alice.get("/api/home").json()
     assert "now" in home and "counts" in home
-    assert set(home["counts"]) == {"tasks", "habits", "prayer"}
+    assert set(home["counts"]) == {"tasks", "habits", "team", "prayer"}
     for gone in ("overall", "mission", "focus", "birthdays", "week"):
         assert gone not in home, f"Home still computes {gone}"
     with SessionLocal() as s:
@@ -5765,9 +5764,9 @@ def test_the_three_default_habits_are_not_offered_a_day_picker():
 
 def test_the_habits_screen_is_the_list_first_and_the_dashboard_last():
     """The user's words: "at the top only the habits; the edit things go to
-    the dashboard at the bottom" — and in v9.2, "2–3 columns, no restore".
-    Tiers are an edge colour on the tile, not headings between tiles; add,
-    the ready-made ten and reorder live in one dashboard under the grid."""
+    the dashboard at the bottom", "no restore", and in v10 "one per row".
+    Tiers are an edge colour on the row, not headings between rows; the
+    ready-made ten and reorder live in a light panel under the list."""
     html = (ROOT / "webapp" / "index.html").read_text()
     tab = html[html.index("function habitsTab(){"):html.index("function habitRow(")]
     rows_at = tab.index("habitRow(x, cat, data.wake)")
@@ -5775,9 +5774,11 @@ def test_the_habits_screen_is_the_list_first_and_the_dashboard_last():
     assert rows_at < dash_at, "the controls are above the habits again"
     assert "sectionHead(" not in tab, "tier headings are back between the rows"
     dash = tab[dash_at:]
-    for act in ("habit-add", "presets-open", "reorder-on"):
+    for act in ("presets-open", "reorder-on"):
         assert f'data-act="{act}"' in dash, f"{act} left the dashboard"
-    assert 'class="hgrid"' in tab, "the habits are no longer a grid"
+    # v10: one row per habit again, and one "+" (the header's), not two.
+    assert "hgrid" not in tab, "the habits are a grid again"
+    assert 'data-act="habit-add"' not in dash, "a second add button is back"
     for gone in ("habit-archive-open", "habit-restore", "/api/habits/archived"):
         assert gone not in html, f"{gone} is back"
     row = html[html.index("function habitRow("):html.index("function scheduleLabel(")]
@@ -9733,7 +9734,7 @@ def test_the_menu_grows_with_use():
     first = [b.text for row in application.main_menu("uz", 1).keyboard for b in row]
     assert first == [b.text for row in application.main_menu("uz", 3).keyboard
                      for b in row]
-    assert len(first) == 6
+    assert len(first) == 7
 
 
 def test_a_new_account_home_offers_the_two_add_buttons():
@@ -10157,9 +10158,9 @@ async def test_feedback_lives_inside_settings():
     assert (application.t("uz", "menu_feedback"), "set:feedback") in buttons
 
 
-def test_home_opens_statistics_now_that_the_menu_does_not():
+def test_home_does_not_repeat_the_statistics_button():
     labels = _buttons(application.home_keyboard("uz", 3))
-    assert (application.t("uz", "menu_stats"), "home:stats") in labels
+    assert all(data != "home:stats" for _, data in labels)
 
 
 async def test_money_typed_in_the_chat_is_saved_the_way_the_person_taps():
@@ -10224,3 +10225,158 @@ def test_the_team_graph_draws_each_member_and_the_average(client):
     assert 'field:"avg"' in graph and "AVG_COLOR" in graph and "MEMBER_COLORS" in graph
     tab = html[html.index("function teamResultsTab("):html.index("function teamGraph(team){")]
     assert 'class="tcols"' in tab
+
+
+# ==========================================================================
+# v10 — year in dates, one project screen, money limits, one set of counts
+# ==========================================================================
+
+def test_a_typed_date_keeps_its_year():
+    """"12.05.2030" lost "12.05" to the clock and "2030-05-12" was read as
+    5 December; a written month with a year dropped the year."""
+    today = date(2026, 9, 30)
+    for text in ("Pasport 12.05.2030", "Pasport 2030-05-12", "Pasport 12 may 2030"):
+        got = svc.parse_quick_capture(text, today)
+        assert (got["title"], got["deadline"]) == ("Pasport", date(2030, 5, 12)), text
+    both = svc.parse_quick_capture("Pasport 12.05.2030 15:30", today)
+    assert both["deadline"] == date(2030, 5, 12) and both["due_time"] == dtime(15, 30)
+
+
+def test_a_far_deadline_is_saved_for_tasks_and_projects(fresh):
+    made = fresh.post("/api/tasks", {"title": "Magistratura", "deadline": "2030-09-01"})
+    assert made.status_code == 200
+    got = fresh.post("/api/projects", {"name": "Uy", "deadline": "2032-01-15"})
+    assert got.status_code == 200
+    projects = fresh.get("/api/projects").json()["projects"]
+    assert next(p for p in projects if p["name"] == "Uy")["deadline"] == "2032-01-15"
+
+
+def test_the_mini_app_picks_dates_with_a_year_select():
+    """Telegram's native picker hides the year; three selects do not."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert 'type="date"' not in html
+    for field in ("task-deadline", "project-deadline", "cd-date", "bd-date"):
+        assert f'dateField("{field}"' in html, field
+    helper = html[html.index("function dateField("):html.index("function syncDateField(")]
+    assert "now.getFullYear() + 20" in helper
+
+
+def test_a_team_project_opens_like_a_personal_one_and_files_team_tasks(client):
+    one, two, team_id = _pair(client)
+    a = Caller(client, {"id": one, "first_name": "Ernest"})
+    project = a.post(f"/api/teams/{team_id}/projects", {"name": "Do'kon"}).json()
+    task = a.post(f"/api/teams/{team_id}/tasks",
+                  {"title": "Logotip", "project_id": project["id"]}).json()
+    detail = a.get(f"/api/teams/projects/{project['id']}/tasks").json()
+    p = detail["project"]
+    assert p["source"] == "team" and p["team_id"] == team_id
+    for key in ("progress", "tasks_done", "tasks_total", "status", "deadline", "archived"):
+        assert key in p, key
+    assert p["team_name"] == "Ernest va Gulyora"
+    assert [x["id"] for x in detail["tasks"]] == [task["id"]]
+    assert detail["tasks"][0]["source"] == "team"
+    html = (ROOT / "webapp" / "index.html").read_text()
+    screen = html[html.index("SCREENS.project = () => {"):html.index("/* ---------- Money")]
+    # "+" inside a team's project makes a team task, filed on that project.
+    assert 'data-dest="team:${p.team_id}"' in screen
+    assert '"team-project-open": el => openProject(el.dataset.id, true)' in html
+    sheet = html[html.index("function taskSheet("):html.index("function teamTaskOptions(")]
+    assert 'presetProject ? "" : destPicker()' in sheet
+    # One card for both kinds of project.
+    assert "function projectBlock(" in html
+    tab = html[html.index("function projectsTab("):html.index("function projectBlock(")]
+    assert "projectBlock({...p, team_name: team.name}" in tab
+
+
+def test_a_team_project_is_edited_and_finished_in_its_team(client):
+    one, _two, team_id = _pair(client)
+    a = Caller(client, {"id": one, "first_name": "Ernest"})
+    project = a.post(f"/api/teams/{team_id}/projects", {"name": "Sayohat"}).json()
+    r = a.patch(f"/api/teams/projects/{project['id']}",
+                {"deadline": "2031-06-01", "status": "done"})
+    assert r.status_code == 200
+    p = a.get(f"/api/teams/projects/{project['id']}/tasks").json()["project"]
+    assert (p["deadline"], p["status"]) == ("2031-06-01", "done")
+
+
+async def test_the_bot_sets_a_money_limit():
+    uid = next(_next_id)
+    _onboard(uid)
+    ctx = _Ctx()
+    await application.on_callback(_CbUpdate(uid, "money:limit:food"), ctx)
+    assert application.current_flow(ctx, "money_limit")["category"] == "food"
+    await application.on_text(_TextUpdate(uid, "3 mln"), ctx)
+    with SessionLocal() as s:
+        assert svc.money_budgets(s, svc.workspace_id_for(s, uid))["food"] == 3_000_000
+    labels = [b.text for row in application.money_keyboard("uz").inline_keyboard for b in row]
+    assert application.t("uz", "money_btn_limits") in labels
+
+
+def test_the_mini_app_limit_is_visible_and_takes_words():
+    html = (ROOT / "webapp" / "index.html").read_text()
+    screen = html[html.index("SCREENS.money = () => {"):html.index("function moneySheet(")]
+    assert 'class="medit"' in screen and 't("money_limit_tap")' in screen
+    assert "parseMoneyInput(val(\"money-limit\"))" in html
+
+
+def test_home_and_statistics_count_the_same_things(alice):
+    """Vazifa and Odat are your own on both screens; shared work is Jamoa."""
+    home = alice.get("/api/home").json()["counts"]
+    with SessionLocal() as s:
+        today = svc.summary(s, svc.workspace_id_for(s, ALICE["id"]))["today"]
+    assert (home["tasks"]["done"], home["tasks"]["total"]) == \
+        (today["tasks_done"], today["tasks_total"])
+    assert (home["habits"]["done"], home["habits"]["total"]) == \
+        (today["habits_done"], today["habits_total"])
+    assert (home["team"]["done"], home["team"]["total"]) == \
+        (today["team_done"], today["team_total"])
+
+
+def test_a_team_task_counts_under_jamoa_not_vazifa(client):
+    one, _two, team_id = _pair(client)
+    a = Caller(client, {"id": one, "first_name": "Ernest"})
+    before = a.get("/api/home").json()["counts"]
+    a.post(f"/api/teams/{team_id}/tasks",
+           {"title": "Birga", "deadline": svc.today_local().isoformat()})
+    after = a.get("/api/home").json()["counts"]
+    assert after["tasks"] == before["tasks"]
+    assert after["team"]["total"] == before["team"]["total"] + 1
+    line = application.home_counts_line(after, "uz")
+    assert f"{application.t('uz', 'cnt_team')} 0/1" in line
+
+
+def test_a_pinned_task_never_hides_a_late_one(client):
+    uid = next(_next_id)
+    _onboard(uid)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        user = s.get(User, uid)
+        late = svc.add_task(s, ws, "Pasport", deadline=svc.today_local() - timedelta(days=2))
+        pinned = svc.add_task(s, ws, "Q4 reja", deadline=svc.today_local())
+        svc.set_top3(s, ws, pinned.id, True)
+        now = svc.now_next(s, ws, user)
+    assert now["reason"] == "pinned" and now["title"] == "Q4 reja"
+    assert now["overdue"]["title"] == "Pasport" and now["overdue"]["id"] == late.id
+    assert "Pasport" in application.render_now(now, "uz")
+
+
+def test_prayer_is_offered_from_the_morning():
+    src = (ROOT / "services.py").read_text()
+    ladder = src[src.index("def now_next("):src.index("def week_strip(")]
+    assert "now.hour >= 12" not in ladder
+    assert '"reason": "wake_late"' in ladder
+
+
+def test_v10_design_fixes_hold():
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert "user-scalable=no" not in html and "maximum-scale=1" not in html
+    assert ".chip.sm{padding:6px 12px;font-size:14px;min-height:40px}" in html
+    assert "min-height:44px;" in html[html.index(".seg > *{"):][:120]
+    prayer = html[html.index("function prayerTab("):html.index("function journalTab(")]
+    assert "🌅" not in prayer and 'data-act="prayer-clear"' not in prayer.split("cur === st")[0]
+    assert 'data-act="${cur === st ? "prayer-clear" : "prayer"}"' in prayer
+    main = html[html.index("function mainTab("):html.index("function searchBox(")]
+    assert main.index('t("overdue")') < main.index("return h + weekFocusBlock();")
+    head = html[html.index("function headBlock("):html.index("function nowBlock(")]
+    assert "quote_add" not in head and "avatar-gear" in head
+    assert 't("team_waiting_on")' in html
