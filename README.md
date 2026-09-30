@@ -1,17 +1,15 @@
 # ErnestOS
 
-## v11 — ovozli agent
+## v12 — ovozli agent (Groq, sodda)
 
-Telegram ovozi yoki Mini App o‘ngidagi **🎙 Ernest** → matn va to‘liq taklif →
-**Tasdiqlash**. Tasdiqlanmagan buyruqlar Inbox’da qoladi. Loyiha/jamoa
-aytilmagan vazifa **Alohida** bo‘limiga tushadi. O‘zbek, rus va ingliz tillari.
+Telegram botga ovoz yoki matn → Groq Whisper-large-v3 matnga aylantiradi →
+AI taklif tuzadi → **✅ Tasdiqlash · ✏️ Tahrirlash · ❌ Bekor qilish**.
+Vazifa, odat, loyiha va pul yozuvlarini yaratish, o‘zgartirish, o‘chirish
+(shaxsiy va jamoa). Faqat profil tilida (o‘zbek / rus / ingliz) qabul qilinadi.
 
-[Railway’ga ulash va tekshirish](docs/AGENT_SETUP_UZ.md) ·
-[Tekshirilgan imkoniyatlar va cheklovlar](AGENT_STATUS.md).
+[Railway’ga ulash](docs/AGENT_SETUP_UZ.md) · [Holat va cheklovlar](AGENT_STATUS.md).
 
-Agent sukut bo‘yicha o‘chiq. Groq Free kaliti ulanmaguncha haqiqiy ovozli AI
-ishlamaydi; mavjud bot funksiyalari saqlangan. Pastdagi bo‘limlar v10 bazaviy
-funksiyalarini tavsiflaydi.
+Agent sukut bo‘yicha o‘chiq. Pastdagi bo‘limlar v10 bazaviy funksiyalarini tavsiflaydi.
 
 Telegram ichida ishlaydigan shaxsiy tizim: **bot + Mini App + bitta PostgreSQL bazasi**.
 

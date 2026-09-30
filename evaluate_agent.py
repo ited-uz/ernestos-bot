@@ -1,8 +1,8 @@
-"""Opt-in Groq FREE-plan parser / recorded-audio evaluation. Never writes app data.
+"""Opt-in Groq parser / recorded-audio evaluation. Never writes app data.
 
 Usage: python evaluate_agent.py --run-free-api
        python evaluate_agent.py --run-free-api --audio voice.ogg --reference "..."
-Requires your own GROQ_API_KEY on the Free plan. Each case uses provider quota.
+Requires your own GROQ_API_KEY. Each case uses Groq quota (Free: ~87 per day).
 This is not run by pytest and does not provision accounts or change billing.
 """
 import argparse
@@ -24,13 +24,12 @@ CONTEXT = {"today": "2026-09-30", "timezone": "Asia/Tashkent", "language": "uz",
 
 def check(case, output):
     errors = []
-    # Named proper nouns alone do not necessarily constitute code-switching.
-    allowed_languages = {case["language"]}
-    if case["language"] == "mixed":
-        allowed_languages |= {"uz", "ru", "en"}
-    if output.language not in allowed_languages:
+    if output.language != case["language"]:
         errors.append("language")
-    if case.get("clarify"):
+    if case.get("refuse") or case["language"] == "other":
+        if output.actions:
+            errors.append("must_refuse")
+    elif case.get("clarify"):
         if output.actions or not output.question:
             errors.append("must_clarify")
     elif output.question or len(output.actions) != 1:
@@ -65,16 +64,16 @@ def word_error_rate(reference, hypothesis):
 
 async def run(args):
     if not args.run_free_api:
-        raise SystemExit("No network calls made. Pass --run-free-api after configuring a Groq FREE-plan key.")
-    if not config.GROQ_API_KEY:
+        raise SystemExit("No network calls made. Pass --run-free-api after configuring a FREE-plan key.")
+    config.AGENT_ENABLED = True
+    if not provider.configured():
         raise SystemExit("Set GROQ_API_KEY in your local environment, never in this file.")
-    config.AGENT_ENABLED, config.AGENT_PROVIDER = True, "groq"
     if args.audio:
         path = Path(args.audio)
         if path.stat().st_size > config.AGENT_AUDIO_BYTES:
             raise SystemExit("Audio exceeds 10 MB.")
-        transcript = await provider.transcribe(path.read_bytes(), mimetypes.guess_type(path)[0] or "audio/ogg")
-        report = {"transcript": transcript}
+        transcript = await provider.transcribe(path.read_bytes(), mimetypes.guess_type(path)[0] or "audio/ogg", CONTEXT)
+        report = {"model": config.AGENT_SPEECH_MODEL, "transcript": transcript}
         if args.reference:
             report["word_error_rate"] = word_error_rate(args.reference, transcript)
         print(json.dumps(report, ensure_ascii=False, indent=2))
@@ -83,7 +82,9 @@ async def run(args):
     results = []
     for case in cases:
         try:
-            output = await provider.plan(case["text"], CONTEXT, [])
+            # The user's profile language is the case's main language.
+            profile = case.get("profile", case["language"] if case["language"] != "other" else "uz")
+            output = await provider.plan(case["text"], {**CONTEXT, "language": profile}, [])
             errors = check(case, output)
             results.append({"id": case["id"], "pass": not errors, "errors": errors, "output": output.model_dump()})
         except Exception as exc:
