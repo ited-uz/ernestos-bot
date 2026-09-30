@@ -1,4 +1,7 @@
-"""Durable Inbox lifecycle shared by bot and web. No network calls in transactions."""
+"""Draft lifecycle for the Telegram agent: capture -> propose -> confirm/edit/cancel.
+
+No network calls inside transactions. Nothing executes without the button.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -10,7 +13,7 @@ import uuid
 from datetime import timedelta
 
 from pydantic import ValidationError
-from sqlalchemy import delete, select, update
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -18,6 +21,7 @@ import config
 import db
 import services as svc
 from agent_actions import AgentError, AtomicSession, Plan, actor, catalog, dumps, execute, prepare, preview
+from agent_text import tr
 
 log = logging.getLogger("ernestos.agent")
 EDITABLE = {"inbox", "ready", "needs_input", "failed"}
@@ -53,21 +57,12 @@ def get_draft(ws, draft_id):
         return public(owned(s, ws, draft_id))
 
 
-def list_drafts(ws, offset=0):
-    with db.SessionLocal() as s:
-        rows = s.scalars(select(db.AgentDraft).where(db.AgentDraft.workspace_id == ws)
-                         .order_by(db.AgentDraft.created_at.desc()).offset(offset).limit(30)).all()
-        return [public(row) for row in rows]
-
-
 def preferences(ws):
     from agent_provider import configured
     with db.SessionLocal() as s:
         p = s.get(db.AgentPreference, ws)
-        return {"enabled": config.AGENT_ENABLED, "configured": configured(), "provider": config.AGENT_PROVIDER,
-                "consent": bool(p and p.consent_at), "daily_limit": config.AGENT_DAILY_REQUESTS,
-                "audio_seconds": config.AGENT_AUDIO_SECONDS,
-                "audio_bytes": config.AGENT_AUDIO_BYTES}
+        return {"enabled": config.AGENT_ENABLED, "configured": configured(),
+                "consent": bool(p and p.consent_at)}
 
 
 def consent(ws, accepted):
@@ -183,6 +178,20 @@ def capture(uid, ws, key, *, text="", source="text", draft_id=None, revision=Non
         return public(row), True
 
 
+def in_language(text, lang):
+    """Replies follow the user's app language, never the input language.
+
+    A model question mostly in the wrong script is dropped for the fixed
+    fallback in the right language. Names in another script are a minority of
+    letters and pass.
+    """
+    letters = [c for c in text or "" if c.isalpha()]
+    if not letters:
+        return False
+    cyrillic = sum("\u0400" <= c <= "\u04ff" for c in letters) / len(letters)
+    return cyrillic >= 0.5 if lang == "ru" else cyrillic < 0.5
+
+
 def _failure(ws, draft_id, revision, code):
     with db.SessionLocal() as s:
         s.execute(update(db.AgentDraft).where(db.AgentDraft.id == draft_id, db.AgentDraft.workspace_id == ws,
@@ -208,7 +217,7 @@ async def process(uid, ws, draft_id, revision, *, audio=None, mime=None):
         # The whole operation is bounded; provider has its own network timeout.
         async with asyncio.timeout(150):
             if audio is not None:
-                transcript = await agent_provider.transcribe(audio, mime)
+                transcript = await agent_provider.transcribe(audio, mime, context)
                 if not transcript.strip() or len(transcript) > 6000:
                     raise AgentError("empty_audio", 422)
                 with db.SessionLocal() as s:
@@ -223,13 +232,18 @@ async def process(uid, ws, draft_id, revision, *, audio=None, mime=None):
             plan = Plan.model_validate(plan)
         if plan.question and len(plan.question) > 1000:
             raise AgentError("invalid_plan", 422)
+        lang = context["language"]
         with db.SessionLocal() as s:
             require_consent(s, ws)
-            actions = prepare(s, uid, ws, plan, allowed_catalog=context)
-            proposed = {"actions": actions, "question": plan.question,
+            if plan.language != lang:
+                # Only the language chosen in the profile is accepted.
+                actions, question, summary = [], None, tr(lang, "wrong_language")
+            else:
+                actions = prepare(s, uid, ws, plan, allowed_catalog=context)
+                question = plan.question if in_language(plan.question, lang) else None
+                summary = preview(actions, lang) if actions else (question or tr(lang, "clarify"))
+            proposed = {"actions": actions, "question": question,
                         "planned_day": context["today"], "timezone": context["timezone"]}
-            fallback = {"uz": "Buyruqni o‘zbekcha, ruscha yoki inglizcha aniqroq ayting.", "ru": "Уточните команду на узбекском, русском или английском.", "en": "Clarify the command in Uzbek, Russian or English."}
-            summary = preview(actions, context["language"]) if actions else (plan.question or fallback.get(context["language"], fallback["uz"]))
             won = s.execute(update(db.AgentDraft).where(db.AgentDraft.id == draft_id, db.AgentDraft.workspace_id == ws,
                                db.AgentDraft.revision == revision, db.AgentDraft.status == "processing")
                             .values(status="ready" if actions else "needs_input", plan=dumps(proposed),
@@ -327,14 +341,3 @@ def cancel(ws, draft_id, revision):
         _audit(s, row, "cancelled")
         s.commit()
         return public(row)
-
-
-def forget_history(ws):
-    """Privacy deletion does not undo tasks, habits or money already confirmed."""
-    with db.SessionLocal() as s:
-        # Do not race an in-flight execution. This write serializes on draft rows.
-        s.execute(delete(db.AgentDraft).where(db.AgentDraft.workspace_id == ws))
-        s.execute(delete(db.AgentAudit).where(db.AgentAudit.workspace_id == ws))
-        s.execute(update(db.AgentPreference).where(db.AgentPreference.workspace_id == ws)
-                  .values(edit_draft_id=None, edit_revision=None, edit_until=None, consent_at=None))
-        s.commit()

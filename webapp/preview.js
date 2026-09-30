@@ -343,8 +343,6 @@
   window.fetch = async (input, opts = {}) => {
     const url = new URL(typeof input === "string" ? input : input.url, location.href);
     if(!url.pathname.startsWith("/api/")) return realFetch(input, opts);
-    // Opt-in local agent preview server. Production does not serve this file.
-    if(Q.has("agent") && url.pathname.startsWith("/api/agent/")) return realFetch(input, opts);
     const method = (opts.method || "GET").toUpperCase();
     if(SCEN === "loading") return new Promise(() => {});
     if(SCEN === "offline") { await wait(300); throw new TypeError("preview: offline"); }

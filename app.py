@@ -38,7 +38,6 @@ from telegram.ext import (
 )
 
 import accounts
-import agent_api
 import agent_core
 from agent_bot import AgentBot
 import config
@@ -6520,7 +6519,6 @@ async def lifespan(_: FastAPI):
         telegram_app.add_handler(CommandHandler("home", show_home))
         telegram_app.add_handler(CommandHandler("guide", show_guide))
         telegram_app.add_handler(CommandHandler("agent", voice_agent.help))
-        telegram_app.add_handler(CommandHandler("inbox", voice_agent.inbox))
         telegram_app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, voice_agent.voice))
         # Every screen the keyboard offers also has a command. Somebody who
         # cleared the reply keyboard, or who simply types faster than they tap,
@@ -6635,8 +6633,7 @@ async def guard_requests(request: Request, call_next):
         return await call_next(request)
 
     declared = request.headers.get("content-length")
-    body_limit = config.AGENT_AUDIO_BYTES if request.url.path == "/api/agent/audio" else MAX_BODY_BYTES
-    if declared and declared.isdigit() and int(declared) > body_limit:
+    if declared and declared.isdigit() and int(declared) > MAX_BODY_BYTES:
         return JSONResponse(status_code=413, content={"detail": "payload_too_large"})
 
     # Bucket by Telegram id when the signature is valid, else by client host —
@@ -6672,7 +6669,6 @@ async def guard_requests(request: Request, call_next):
     idem_key = request.headers.get("x-idempotency-key", "")
     idem_row = None
     if (key > 0 and idem_key and request.method == "POST"
-            and not request.url.path.startswith("/api/agent/")
             and svc.IDEMPOTENCY_KEY_RE.match(idem_key)):
         with SessionLocal() as s:
             claim = svc.idempotency_begin(s, key, idem_key, request.url.path)
@@ -6707,7 +6703,6 @@ async def guard_requests(request: Request, call_next):
     # a 2xx means a rejected body or a 404 never costs anybody anything.
     if (key > 0 and request.method in MUTATING_METHODS
             and 200 <= response.status_code < 300
-            and not request.url.path.startswith("/api/agent/")
             and request.url.path not in UNCOUNTED_PATHS):
         try:
             with SessionLocal() as s:
@@ -9530,14 +9525,4 @@ def index():
     return FileResponse(WEBAPP_FILE)
 
 
-@app.get("/agent.js")
-def agent_js():
-    return FileResponse(os.path.join(os.path.dirname(WEBAPP_FILE), "agent.js"), media_type="application/javascript")
 
-
-@app.get("/agent.css")
-def agent_css():
-    return FileResponse(os.path.join(os.path.dirname(WEBAPP_FILE), "agent.css"), media_type="text/css")
-
-
-agent_api.install(app, auth)
