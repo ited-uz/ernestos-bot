@@ -241,7 +241,7 @@ async def process(uid, ws, draft_id, revision, *, audio=None, mime=None):
             else:
                 actions = prepare(s, uid, ws, plan, allowed_catalog=context)
                 question = plan.question if in_language(plan.question, lang) else None
-                summary = preview(actions, lang) if actions else (question or tr(lang, "clarify"))
+                summary = preview(actions, lang, context["today"]) if actions else (question or tr(lang, "clarify"))
             proposed = {"actions": actions, "question": question,
                         "planned_day": context["today"], "timezone": context["timezone"]}
             won = s.execute(update(db.AgentDraft).where(db.AgentDraft.id == draft_id, db.AgentDraft.workspace_id == ws,
