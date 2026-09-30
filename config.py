@@ -47,12 +47,24 @@ IS_TEST = ENVIRONMENT == "test"
 AGENT_ENABLED = os.environ.get("AGENT_ENABLED", "false").lower() == "true"
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
-AGENT_PROVIDER = os.environ.get("AGENT_PROVIDER", "groq").lower()
-# This release is free-tier-only by the owner's choice. No paid fallback.
-AGENT_FREE_ONLY = True
-AGENT_TEXT_MODEL = os.environ.get("AGENT_TEXT_MODEL", "openai/gpt-oss-120b" if AGENT_PROVIDER == "groq" else "gpt-5.4-mini")
-AGENT_SPEECH_MODEL = os.environ.get("AGENT_SPEECH_MODEL", "whisper-large-v3" if AGENT_PROVIDER == "groq" else "gpt-transcribe")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+#: groq | gemini | openai. The primary provider.
+AGENT_PROVIDER = os.environ.get("AGENT_PROVIDER", "groq").strip().lower()
+#: Optional second provider, used only when the primary is rate-limited or down.
+AGENT_FALLBACK_PROVIDER = os.environ.get("AGENT_FALLBACK_PROVIDER", "").strip().lower()
+#: true (default) allows only providers with a free tier (groq, gemini). Set
+#: false only once a paid plan and a provider-side spending cap are in place.
+AGENT_FREE_ONLY = os.environ.get("AGENT_FREE_ONLY", "true").lower() != "false"
+DEFAULT_TEXT_MODELS = {"groq": "openai/gpt-oss-120b", "gemini": "gemini-flash-latest", "openai": "gpt-5.4-mini"}
+DEFAULT_SPEECH_MODELS = {"groq": "whisper-large-v3", "gemini": "gemini-flash-latest", "openai": "gpt-transcribe"}
+#: Optional overrides for the PRIMARY provider; empty means the defaults above.
+#: The fallback provider always uses its defaults.
+AGENT_TEXT_MODEL = os.environ.get("AGENT_TEXT_MODEL", "").strip()
+AGENT_SPEECH_MODEL = os.environ.get("AGENT_SPEECH_MODEL", "").strip()
 AGENT_DAILY_REQUESTS = max(1, int(os.environ.get("AGENT_DAILY_REQUESTS", "30")))
+#: AI calls in flight per process. Excess requests wait instead of piling onto
+#: the provider and its per-minute quota.
+AGENT_MAX_CONCURRENT = max(1, int(os.environ.get("AGENT_MAX_CONCURRENT", "8")))
 AGENT_AUDIO_BYTES = 10 * 1024 * 1024
 AGENT_AUDIO_SECONDS = 120
 AGENT_TIMEOUT = 75

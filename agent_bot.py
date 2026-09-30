@@ -7,6 +7,7 @@ from telegram.error import TelegramError
 
 import agent_core as core
 import config
+import db
 from services import NotFound
 from agent_actions import AgentError
 from agent_text import tr
@@ -20,9 +21,19 @@ class AgentBot:
         chat = update.effective_chat
         if not chat or chat.type != "private":
             if update.effective_message:
-                await update.effective_message.reply_text(tr("uz", "private"))
+                await update.effective_message.reply_text(tr(self.language(update), "private"))
             return None
         return await self.guard(update, ctx, write=write)
+
+    @staticmethod
+    def language(update):
+        """The user's saved app language; replies never follow the input language."""
+        who = getattr(update, "effective_user", None)
+        if who is None:
+            return "uz"
+        with db.SessionLocal() as s:
+            user = s.get(db.User, who.id)
+            return user.language if user and user.language in {"uz", "ru", "en"} else "uz"
 
     async def help(self, update, ctx):
         identity = await self.identity(update, ctx, write=False)

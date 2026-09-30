@@ -25,11 +25,24 @@ o‘zgartirmang. Quyidagilarni qo‘shing:
 | Variable | Qiymat |
 |---|---|
 | `AGENT_ENABLED` | Dastlab `false`; deploy tekshirilgach `true` |
-| `AGENT_PROVIDER` | `groq` |
-| `GROQ_API_KEY` | O‘zingizning maxfiy Free-plan API kalitingiz |
-| `AGENT_TEXT_MODEL` | `openai/gpt-oss-120b` |
-| `AGENT_SPEECH_MODEL` | `whisper-large-v3` |
+| `AGENT_PROVIDER` | `groq` yoki `gemini` — asosiy provayder |
+| `AGENT_FALLBACK_PROVIDER` | Ixtiyoriy: `gemini` yoki `groq`. Asosiysi limitga tushsa yoki ishlamasa ishlatiladi |
+| `GROQ_API_KEY` | O‘zingizning maxfiy Groq API kalitingiz |
+| `GEMINI_API_KEY` | O‘zingizning maxfiy Gemini API kalitingiz ([AI Studio](https://aistudio.google.com)) |
+| `AGENT_TEXT_MODEL` | Bo‘sh qoldiring (Groq: `openai/gpt-oss-120b`, Gemini: `gemini-flash-latest`) |
+| `AGENT_SPEECH_MODEL` | Bo‘sh qoldiring (Groq: `whisper-large-v3`) |
 | `AGENT_DAILY_REQUESTS` | `30` — bitta workspace uchun kunlik tahlil limiti |
+| `AGENT_MAX_CONCURRENT` | `8` — bir vaqtda AI’ga ketadigan so‘rovlar soni; ortig‘i navbatda kutadi |
+| `AGENT_FREE_ONLY` | `true`. Faqat pullik reja va provayderda xarajat chegarasi qo‘yilgach `false` |
+
+**Javob tili** doim foydalanuvchining ilovadagi til sozlamasidan olinadi
+(uz/ru/en). Ovozni tanish ham shu tilda majburlanadi: o‘zbekcha profil →
+Whisper `language=uz`. Rus tilida gapiradigan foydalanuvchi profil tilini
+ruschaga o‘zgartirishi kerak. Mos yozuvlar nomlari (loyiha, odam, jamoa)
+Whisper’ga lug‘at sifatida beriladi.
+
+Gemini ovozni o‘zi eshitadi va bitta so‘rovda ham matn, ham buyruq qaytaradi.
+Groq’da esa ikki bosqich: Whisper → matn, keyin matn → buyruq.
 
 Model nomida `openai/` bo‘lishi OpenAI pullik API chaqirilishini anglatmaydi:
 ushbu sozlamalarda barcha AI so‘rovlari Groq’ga yuboriladi. Pullik provayderga
@@ -102,7 +115,7 @@ Katta auditoriyadan oldin kamida 100 xil o‘zbekcha audio yig‘ib, matn xatosi
 va buyruq maydonlari to‘g‘riligini alohida o‘lchang. Sana/vaqt/summa noto‘g‘ri
 bo‘lsa, yaxshi ko‘ringan matn ham to‘g‘ri buyruq hisoblanmaydi.
 
-`evaluate_agent.py --run-free-api` 32 matnli holatni Groq’da sinaydi;
+`evaluate_agent.py --run-free-api` 32 matnli holatni `AGENT_PROVIDER`da sinaydi;
 `--audio sample.ogg --reference "aytilgan matn"` ovozning so‘z xatosini o‘lchaydi.
 Bu vosita app yozuvlarini o‘zgartirmaydi, ammo Free kvotasini sarflaydi.
 

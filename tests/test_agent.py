@@ -497,3 +497,122 @@ def test_model_response_arriving_after_cancel_cannot_restore_ready(person, monke
     result = asyncio.run(core.process(uid, ws, draft["id"], 1))
     assert result["status"] == "cancelled"
     assert count(db.Task, ws) == 0
+
+
+# --- Reply language, provider chain and scale guards ---------------------------
+
+CTX = {"items": [{"entity": "task", "scope": "personal", "id": 1, "name": "Abdulvosid bilan uchrashuv"}],
+       "teams": [{"id": 9, "name": "Savdo jamoasi"}], "truncated": False,
+       "today": "2026-09-30", "timezone": "Asia/Tashkent", "language": "uz"}
+
+
+@pytest.fixture
+def chain_reset(monkeypatch):
+    monkeypatch.setattr(provider, "_cooldown", {})
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "fake-gemini-not-used")
+    monkeypatch.setattr(config, "AGENT_FALLBACK_PROVIDER", "")
+    monkeypatch.setattr(config, "AGENT_FREE_ONLY", True)
+
+
+@pytest.mark.parametrize("lang", ["uz", "ru", "en"])
+def test_whisper_uses_app_language_and_user_names(monkeypatch, chain_reset, lang):
+    sent = []
+    async def fake(path, **kwargs):
+        sent.append(kwargs)
+        return {"text": " matn "}
+    monkeypatch.setattr(provider, "request", fake)
+    monkeypatch.setattr(provider, "audio_wav", lambda data, mime: b"RIFFwav")
+    text = asyncio.run(provider.transcribe(b"OggS", "audio/ogg", {**CTX, "language": lang}))
+    assert text == "matn"
+    data = sent[0]["data"]
+    assert data["language"] == lang and data["temperature"] == "0"
+    assert "Abdulvosid bilan uchrashuv" in data["prompt"] and "Savdo jamoasi" in data["prompt"]
+    assert len(data["prompt"]) <= 600
+
+
+def test_rate_limited_primary_falls_back_then_cools_down(monkeypatch, chain_reset):
+    monkeypatch.setattr(config, "AGENT_FALLBACK_PROVIDER", "gemini")
+    calls = []
+    async def fake(path, **kwargs):
+        calls.append(kwargs["provider"])
+        if kwargs["provider"] == "groq":
+            provider._cooldown["groq"] = provider.time.monotonic() + 60  # as a real 429 does
+            raise actions.AgentError("provider_limit", 429)
+        body = json.dumps(plan(action(title="Hisobot")))
+        return {"candidates": [{"finishReason": "STOP", "content": {"parts": [{"text": body}]}}]}
+    monkeypatch.setattr(provider, "request", fake)
+    assert asyncio.run(provider.plan("Hisobot", CTX, [])).actions[0].entity == "task"
+    assert calls == ["groq", "gemini"]
+    asyncio.run(provider.plan("Hisobot", CTX, []))
+    assert calls == ["groq", "gemini", "gemini"]  # groq skipped while cooling down
+
+
+def test_non_provider_errors_do_not_fall_back(monkeypatch, chain_reset):
+    monkeypatch.setattr(config, "AGENT_FALLBACK_PROVIDER", "gemini")
+    calls = []
+    async def fake(path, **kwargs):
+        calls.append(kwargs["provider"])
+        return {"choices": [{"finish_reason": "length", "message": {"content": ""}}]}
+    monkeypatch.setattr(provider, "request", fake)
+    with pytest.raises(actions.AgentError, match="invalid_plan"):
+        asyncio.run(provider.plan("Hisobot", CTX, []))
+    assert calls == ["groq"]
+
+
+def test_gemini_hears_and_plans_in_one_call(person, monkeypatch, chain_reset):
+    _, uid, ws = person
+    monkeypatch.setattr(config, "AGENT_PROVIDER", "gemini")
+    sent = []
+    async def fake(path, **kwargs):
+        sent.append((path, kwargs["provider"], kwargs["json"]))
+        body = json.dumps({"transcript": "Ovqatga 5 ming", **plan(action("money", kind="expense", amount="5000", category="food"))})
+        return {"candidates": [{"finishReason": "STOP", "content": {"parts": [{"text": body}]}}]}
+    monkeypatch.setattr(provider, "request", fake)
+    monkeypatch.setattr(provider, "audio_wav", lambda data, mime: b"RIFFwav")
+    monkeypatch.setattr(provider, "plan", AsyncMock(side_effect=AssertionError("second call not needed")))
+    draft = asyncio.run(core.ingest(uid, ws, uuid.uuid4().hex, audio=b"OggS", mime="audio/ogg"))
+    assert draft["transcript"] == "Ovqatga 5 ming" and draft["status"] == "ready"
+    path, name, body = sent[0]
+    assert len(sent) == 1 and name == "gemini" and path.endswith(":generateContent")
+    shape = json.dumps(body["generationConfig"]["responseJsonSchema"])
+    assert "$ref" not in shape and "transcript" in shape
+    assert body["contents"][0]["parts"][0]["inline_data"]["mime_type"] == "audio/wav"
+    assert "fake-gemini" not in json.dumps(body)
+
+
+def test_free_only_blocks_paid_provider_until_owner_opts_out(monkeypatch, chain_reset):
+    monkeypatch.setattr(config, "AGENT_PROVIDER", "openai")
+    monkeypatch.setattr(config, "OPENAI_API_KEY", "also-fake")
+    assert not provider.configured()
+    monkeypatch.setattr(config, "AGENT_FREE_ONLY", False)
+    assert provider.configured()
+
+
+@pytest.mark.parametrize("ui_lang,question,expected", [
+    ("uz", "Какую задачу добавить?", "Buyruqni o‘zbekcha"),
+    ("uz", "Qaysi loyihaga qo‘shay?", "Qaysi loyihaga qo‘shay?"),
+    ("ru", "Qaysi loyihaga qo‘shay?", "Уточните команду"),
+    ("en", "Which project?", "Which project?"),
+])
+def test_questions_always_follow_app_language(person, monkeypatch, ui_lang, question, expected):
+    _, uid, ws = person
+    with db.SessionLocal() as s:
+        s.get(db.User, uid).language = ui_lang
+        s.commit()
+    draft = capture(person, monkeypatch, plan(question=question, language="ru"))
+    assert draft["status"] == "needs_input"
+    assert draft["preview"].startswith(expected)
+
+
+def test_group_refusal_uses_saved_app_language(person):
+    from agent_bot import AgentBot
+    from agent_text import TEXT
+    _, uid, _ = person
+    with db.SessionLocal() as s:
+        s.get(db.User, uid).language = "ru"
+        s.commit()
+    message = SimpleNamespace(reply_text=AsyncMock())
+    update = SimpleNamespace(effective_chat=SimpleNamespace(type="group"), effective_message=message,
+                             effective_user=SimpleNamespace(id=uid))
+    asyncio.run(AgentBot(AsyncMock()).voice(update, SimpleNamespace(user_data={})))
+    assert message.reply_text.await_args.args[0] == TEXT["ru"]["private"]

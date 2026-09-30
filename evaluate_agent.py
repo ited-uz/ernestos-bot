@@ -1,8 +1,11 @@
-"""Opt-in Groq FREE-plan parser / recorded-audio evaluation. Never writes app data.
+"""Opt-in FREE-plan parser / recorded-audio evaluation. Never writes app data.
 
 Usage: python evaluate_agent.py --run-free-api
        python evaluate_agent.py --run-free-api --audio voice.ogg --reference "..."
-Requires your own GROQ_API_KEY on the Free plan. Each case uses provider quota.
+       AGENT_PROVIDER=gemini python evaluate_agent.py --run-free-api --audio voice.ogg
+Uses AGENT_PROVIDER (groq or gemini) and its own key (GROQ_API_KEY /
+GEMINI_API_KEY) on a free plan. Each case uses provider quota. Run the same
+recordings through both providers to decide which one stays primary.
 This is not run by pytest and does not provision accounts or change billing.
 """
 import argparse
@@ -65,16 +68,16 @@ def word_error_rate(reference, hypothesis):
 
 async def run(args):
     if not args.run_free_api:
-        raise SystemExit("No network calls made. Pass --run-free-api after configuring a Groq FREE-plan key.")
-    if not config.GROQ_API_KEY:
-        raise SystemExit("Set GROQ_API_KEY in your local environment, never in this file.")
-    config.AGENT_ENABLED, config.AGENT_PROVIDER = True, "groq"
+        raise SystemExit("No network calls made. Pass --run-free-api after configuring a FREE-plan key.")
+    config.AGENT_ENABLED, config.AGENT_FALLBACK_PROVIDER = True, ""
+    if not provider.configured():
+        raise SystemExit("Set AGENT_PROVIDER and its API key in your local environment, never in this file.")
     if args.audio:
         path = Path(args.audio)
         if path.stat().st_size > config.AGENT_AUDIO_BYTES:
             raise SystemExit("Audio exceeds 10 MB.")
-        transcript = await provider.transcribe(path.read_bytes(), mimetypes.guess_type(path)[0] or "audio/ogg")
-        report = {"transcript": transcript}
+        transcript = await provider.transcribe(path.read_bytes(), mimetypes.guess_type(path)[0] or "audio/ogg", CONTEXT)
+        report = {"provider": config.AGENT_PROVIDER, "transcript": transcript}
         if args.reference:
             report["word_error_rate"] = word_error_rate(args.reference, transcript)
         print(json.dumps(report, ensure_ascii=False, indent=2))
@@ -91,7 +94,7 @@ async def run(args):
         # Single-threaded and paced for shared free-tier TPM. Ctrl-C is safe.
         if case is not cases[-1]:
             await asyncio.sleep(35)
-    print(json.dumps({"model": config.AGENT_TEXT_MODEL, "passed": sum(r["pass"] for r in results),
+    print(json.dumps({"provider": config.AGENT_PROVIDER, "model": provider.text_model(config.AGENT_PROVIDER), "passed": sum(r["pass"] for r in results),
                       "total": len(results), "results": results}, ensure_ascii=False, indent=2))
 
 

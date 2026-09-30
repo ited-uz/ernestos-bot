@@ -183,6 +183,20 @@ def capture(uid, ws, key, *, text="", source="text", draft_id=None, revision=Non
         return public(row), True
 
 
+def in_language(text, lang):
+    """Replies follow the user's app language, never the input language.
+
+    A model question mostly in the wrong script is dropped for the fixed
+    fallback in the right language. Names in another script are a minority of
+    letters and pass.
+    """
+    letters = [c for c in text or "" if c.isalpha()]
+    if not letters:
+        return False
+    cyrillic = sum("\u0400" <= c <= "\u04ff" for c in letters) / len(letters)
+    return cyrillic >= 0.5 if lang == "ru" else cyrillic < 0.5
+
+
 def _failure(ws, draft_id, revision, code):
     with db.SessionLocal() as s:
         s.execute(update(db.AgentDraft).where(db.AgentDraft.id == draft_id, db.AgentDraft.workspace_id == ws,
@@ -207,8 +221,10 @@ async def process(uid, ws, draft_id, revision, *, audio=None, mime=None):
             s.commit()
         # The whole operation is bounded; provider has its own network timeout.
         async with asyncio.timeout(150):
+            plan = None
             if audio is not None:
-                transcript = await agent_provider.transcribe(audio, mime)
+                # An audio-native provider returns the plan with the transcript.
+                transcript, plan = await agent_provider.hear(audio, mime, context, history[-3:])
                 if not transcript.strip() or len(transcript) > 6000:
                     raise AgentError("empty_audio", 422)
                 with db.SessionLocal() as s:
@@ -218,7 +234,8 @@ async def process(uid, ws, draft_id, revision, *, audio=None, mime=None):
                     s.commit()
                     if not won:
                         return get_draft(ws, draft_id)
-            plan = await agent_provider.plan(transcript, context, history[-3:])
+            if plan is None:
+                plan = await agent_provider.plan(transcript, context, history[-3:])
         if not isinstance(plan, Plan):
             plan = Plan.model_validate(plan)
         if plan.question and len(plan.question) > 1000:
@@ -226,10 +243,11 @@ async def process(uid, ws, draft_id, revision, *, audio=None, mime=None):
         with db.SessionLocal() as s:
             require_consent(s, ws)
             actions = prepare(s, uid, ws, plan, allowed_catalog=context)
-            proposed = {"actions": actions, "question": plan.question,
+            question = plan.question if in_language(plan.question, context["language"]) else None
+            proposed = {"actions": actions, "question": question,
                         "planned_day": context["today"], "timezone": context["timezone"]}
             fallback = {"uz": "Buyruqni o‘zbekcha, ruscha yoki inglizcha aniqroq ayting.", "ru": "Уточните команду на узбекском, русском или английском.", "en": "Clarify the command in Uzbek, Russian or English."}
-            summary = preview(actions, context["language"]) if actions else (plan.question or fallback.get(context["language"], fallback["uz"]))
+            summary = preview(actions, context["language"]) if actions else (question or fallback.get(context["language"], fallback["uz"]))
             won = s.execute(update(db.AgentDraft).where(db.AgentDraft.id == draft_id, db.AgentDraft.workspace_id == ws,
                                db.AgentDraft.revision == revision, db.AgentDraft.status == "processing")
                             .values(status="ready" if actions else "needs_input", plan=dumps(proposed),
