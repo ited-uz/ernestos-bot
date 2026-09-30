@@ -24,14 +24,14 @@ class Change(BaseModel):
     field: Literal["title", "name", "description", "deadline", "due_time",
                    "priority", "project_id", "recurrence", "remind_before",
                    "timer_minutes", "category", "schedule", "remind_at",
-                   "start", "day", "kind", "amount", "note", "limit"]
+                   "start", "day", "kind", "amount", "note"]
     value: str | None
 
 
 class Action(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    entity: Literal["task", "habit", "project", "money", "budget"]
-    operation: Literal["create", "update", "delete", "done", "reopen"]
+    entity: Literal["task", "habit", "project", "money"]
+    operation: Literal["create", "update", "delete"]
     scope: Literal["personal", "team"]
     team_id: int | None
     target_id: int | None
@@ -40,7 +40,8 @@ class Action(BaseModel):
 
 class Plan(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    language: Literal["uz", "ru", "en", "mixed", "unknown"]
+    # The input's MAIN language. Uzbek with a few Russian/English words is uz.
+    language: Literal["uz", "ru", "en", "other"]
     question: str | None
     actions: list[Action] = Field(max_length=6)
 
@@ -71,7 +72,6 @@ FIELDS = {
     "habit": {"name", "category", "schedule", "remind_at", "timer_minutes", "start"},
     "project": {"name", "description", "deadline"},
     "money": {"kind", "amount", "category", "note", "day"},
-    "budget": {"category", "limit"},
 }
 PERSONAL = {"task": db.Task, "habit": db.Habit, "project": db.Project, "money": db.MoneyEntry}
 TEAM = {"task": db.TeamTask, "habit": db.TeamHabit, "project": db.Project}
@@ -137,11 +137,11 @@ def _value(key, raw):
             raise AgentError("invalid_fields", 422)
         return None
     raw = raw.strip()
-    if key in {"amount", "limit", "project_id", "remind_before", "timer_minutes"}:
+    if key in {"amount", "project_id", "remind_before", "timer_minutes"}:
         if not re.fullmatch(r"\d{1,13}", raw):
             raise AgentError("invalid_fields", 422)
         value = int(raw)
-        high = {"amount": 10**12, "limit": 10**12, "timer_minutes": 1440,
+        high = {"amount": 10**12, "timer_minutes": 1440,
                 "remind_before": 10080, "project_id": 2**31 - 1}[key]
         if value > high or (key in {"amount", "project_id"} and value < 1):
             raise AgentError("invalid_fields", 422)
@@ -170,18 +170,13 @@ def prepare(s, uid, ws, plan: Plan, allowed_catalog=None):
     """Normalize defaults BEFORE preview; revalidate permissions again on confirm."""
     user = actor(s, uid, ws)
     today = svc.today_local(svc.user_tz(user))
-    if plan.language == "unknown" or plan.question or not plan.actions:
+    if plan.question or not plan.actions:
         return []
     out, seen = [], set()
     for spec in plan.actions:
         a = spec.model_dump()
         entity, op = a["entity"], a["operation"]
-        if entity == "budget":
-            if op != "update" or a["scope"] != "personal" or a["target_id"] is not None:
-                raise AgentError("invalid_action", 422)
-        elif op not in ({"create", "update", "delete", "done", "reopen"} if entity in {"task", "habit", "project"} else {"create", "update", "delete"}):
-            raise AgentError("invalid_action", 422)
-        if entity != "budget" and ((op == "create") != (a["target_id"] is None)):
+        if (op == "create") != (a["target_id"] is None):
             raise AgentError("invalid_action", 422)
         row = target(s, uid, ws, a)
         if allowed_catalog is not None:
@@ -192,7 +187,7 @@ def prepare(s, uid, ws, plan: Plan, allowed_catalog=None):
             if a["scope"] == "team" and a["team_id"] not in {t["id"] for t in allowed_catalog["teams"]}:
                 raise AgentError("unknown_reference", 422)
         fields = {}
-        allowed = FIELDS[entity] if op in {"create", "update"} else ({"day"} if entity == "habit" and op in {"done", "reopen"} else set())
+        allowed = FIELDS[entity] if op in {"create", "update"} else set()
         for change in spec.changes:
             if change.field in fields or change.field not in allowed:
                 raise AgentError("invalid_fields", 422)
@@ -226,10 +221,6 @@ def prepare(s, uid, ws, plan: Plan, allowed_catalog=None):
             category = fields.get("category", getattr(row, "category", None))
             if op != "delete" and svc._MONEY_KIND_OF.get(category) != kind:
                 raise AgentError("invalid_fields", 422)
-        if entity == "budget" and (set(fields) != {"category", "limit"} or svc._MONEY_KIND_OF.get(fields.get("category")) != "expense"):
-            raise AgentError("invalid_fields", 422)
-        if entity == "habit" and op in {"done", "reopen"}:
-            fields.setdefault("day", today)
         if "day" in fields and (fields["day"] > today or (today - fields["day"]).days > 366):
             raise AgentError("invalid_day", 422)
         if fields.get("project_id"):
@@ -250,8 +241,6 @@ def prepare(s, uid, ws, plan: Plan, allowed_catalog=None):
                      or fields.get("title") or fields.get("name") or entity)
         a["before"] = snapshot(row) if row is not None else None
         a["fingerprint"] = fingerprint(row) if row is not None else None
-        if entity == "budget":
-            a["previous_limit"] = svc.money_budgets(s, ws)[fields["category"]]
         if a["scope"] == "team":
             a["team_name"] = s.get(db.Team, a["team_id"]).name
         out.append(json.loads(dumps(a)))
@@ -307,39 +296,21 @@ def execute(s, uid, ws, a):
             out = svc.add_team_task(s, uid, a["team_id"], **fields) if team else svc.add_task(s, ws, **fields)
         elif op == "update":
             out = svc.edit_team_task(s, uid, tid, **fields) if team else svc.update_task(s, ws, tid, **fields)
-        elif op == "delete":
-            out = svc.archive_team_task(s, uid, tid) if team else svc.delete_task(s, ws, tid)
-        elif team:
-            current = s.scalar(select(db.TeamTaskDone).where(db.TeamTaskDone.task_id == tid, db.TeamTaskDone.user_id == uid))
-            if bool(current and current.done) != (op == "done"):
-                svc.toggle_team_task(s, uid, tid, tz=tz)
         else:
-            out = svc.complete_task(s, ws, tid, tz=tz) if op == "done" else svc.reopen_task(s, ws, tid)
+            out = svc.archive_team_task(s, uid, tid) if team else svc.delete_task(s, ws, tid)
     elif entity == "habit":
         if op == "create":
             out = svc.add_team_habit(s, uid, a["team_id"], tz=tz, **fields) if team else svc.add_habit(s, ws, tz=tz, **fields)
         elif op == "update":
             out = svc.edit_team_habit(s, uid, tid, **fields) if team else svc.update_habit(s, ws, tid, **fields)
-        elif op == "delete":
-            out = svc.archive_team_habit(s, uid, tid) if team else svc.delete_habit(s, ws, tid)
         else:
-            model = db.TeamHabitLog if team else db.HabitLog
-            q = select(model).where(model.habit_id == tid, model.day == fields["day"])
-            q = q.where(model.user_id == uid) if team else q.where(model.workspace_id == ws)
-            current = s.scalar(q)
-            if bool(current and current.done) != (op == "done"):
-                if team:
-                    svc.toggle_team_habit(s, uid, tid, day=fields["day"], tz=tz)
-                else:
-                    svc.toggle_habit(s, ws, tid, day=fields["day"], tz=tz)
+            out = svc.archive_team_habit(s, uid, tid) if team else svc.delete_habit(s, ws, tid)
     elif entity == "project":
         if op == "create":
             out = svc.add_team_project(s, uid, a["team_id"], **fields) if team else svc.add_project(s, ws, **fields)
         elif op == "delete":
             out = svc.delete_team_project(s, uid, tid) if team else svc.delete_project(s, ws, tid)
         else:
-            if op in {"done", "reopen"}:
-                fields = {"status": "done" if op == "done" else "active"}
             out = svc.update_team_project(s, uid, tid, **fields) if team else svc.update_project(s, ws, tid, **fields)
     elif entity == "money":
         if op == "create":
@@ -353,22 +324,16 @@ def execute(s, uid, ws, a):
                 setattr(row, key, value)
             s.flush()
             out = row
-    elif entity == "budget":
-        # Serialize budgets for this workspace, including first creation.
-        s.scalar(select(db.Workspace).where(db.Workspace.id == ws).with_for_update())
-        if svc.money_budgets(s, ws)[fields["category"]] != a["previous_limit"]:
-            raise AgentError("stale_target")
-        out = svc.set_money_budget(s, ws, fields["category"], fields["limit"])
     result_id = out.get("id") if isinstance(out, dict) else getattr(out, "id", tid)
     return {"entity": entity, "operation": op, "id": result_id, "name": a["name"]}
 
 
 LABELS = {
-    "uz": {"task": "Vazifa", "habit": "Odat", "project": "Loyiha", "money": "Pul yozuvi", "budget": "Oylik limit",
-           "create": "Qo‘shish", "update": "Tahrirlash", "delete": "O‘chirish", "done": "Bajarildi", "reopen": "Bajarilmadi", "personal": "Shaxsiy", "team": "Jamoa",
-           "title": "Nomi", "name": "Nomi", "description": "Izoh", "deadline": "Sana", "due_time": "Vaqt", "priority": "Muhimlik", "project_id": "Loyiha", "recurrence": "Takror", "remind_before": "Eslatma (daqiqa oldin)", "timer_minutes": "Taymer (daqiqa)", "category": "Guruh", "schedule": "Jadval", "remind_at": "Eslatma vaqti", "start": "Boshlanish", "day": "Sana", "kind": "Turi", "amount": "Summa (UZS)", "note": "Izoh", "limit": "Oylik limit (UZS)"},
-    "ru": {"task": "Задача", "habit": "Привычка", "project": "Проект", "money": "Финансы", "budget": "Лимит на месяц", "create": "Добавить", "update": "Изменить", "delete": "Удалить", "done": "Выполнено", "reopen": "Не выполнено", "personal": "Личное", "team": "Команда", "title": "Название", "name": "Название", "description": "Описание", "deadline": "Дата", "due_time": "Время", "priority": "Приоритет", "project_id": "Проект", "recurrence": "Повтор", "remind_before": "Напомнить за (мин)", "timer_minutes": "Таймер (мин)", "category": "Категория", "schedule": "Расписание", "remind_at": "Напоминание", "start": "Начало", "day": "Дата", "kind": "Тип", "amount": "Сумма (UZS)", "note": "Заметка", "limit": "Лимит (UZS)"},
-    "en": {"task": "Task", "habit": "Habit", "project": "Project", "money": "Money entry", "budget": "Monthly budget", "create": "Create", "update": "Edit", "delete": "Delete", "done": "Done", "reopen": "Not done", "personal": "Personal", "team": "Team"},
+    "uz": {"task": "Vazifa", "habit": "Odat", "project": "Loyiha", "money": "Pul yozuvi",
+           "create": "Qo‘shish", "update": "Tahrirlash", "delete": "O‘chirish", "personal": "Shaxsiy", "team": "Jamoa",
+           "title": "Nomi", "name": "Nomi", "description": "Izoh", "deadline": "Sana", "due_time": "Vaqt", "priority": "Muhimlik", "project_id": "Loyiha", "recurrence": "Takror", "remind_before": "Eslatma (daqiqa oldin)", "timer_minutes": "Taymer (daqiqa)", "category": "Guruh", "schedule": "Jadval", "remind_at": "Eslatma vaqti", "start": "Boshlanish", "day": "Sana", "kind": "Turi", "amount": "Summa (UZS)", "note": "Izoh"},
+    "ru": {"task": "Задача", "habit": "Привычка", "project": "Проект", "money": "Финансы", "create": "Добавить", "update": "Изменить", "delete": "Удалить", "personal": "Личное", "team": "Команда", "title": "Название", "name": "Название", "description": "Описание", "deadline": "Дата", "due_time": "Время", "priority": "Приоритет", "project_id": "Проект", "recurrence": "Повтор", "remind_before": "Напомнить за (мин)", "timer_minutes": "Таймер (мин)", "category": "Категория", "schedule": "Расписание", "remind_at": "Напоминание", "start": "Начало", "day": "Дата", "kind": "Тип", "amount": "Сумма (UZS)", "note": "Заметка"},
+    "en": {"task": "Task", "habit": "Habit", "project": "Project", "money": "Money entry", "create": "Create", "update": "Edit", "delete": "Delete", "personal": "Personal", "team": "Team"},
 }
 VALUES = {"uz": {"daily": "Har kuni", "weekdays": "Dushanba–Juma", "today": "Bugundan", "tomorrow": "Ertadan", "target": "Maqsadli", "non_negotiable": "Majburiy", "bonus": "Bonus", "low": "Past", "medium": "O‘rta", "high": "Yuqori", "expense": "Chiqim", "income": "Kirim", "food": "Oziq-ovqat", "transport": "Transport", "home": "Uy", "health": "Salomatlik", "fun": "Dam olish", "business": "Biznes", "other": "Boshqa", "salary": "Maosh", "sales": "Savdo", "other_in": "Boshqa kirim"}}
 VALUES["uz"].update({"weekly": "Har hafta", "monthly": "Har oy"})
@@ -390,16 +355,12 @@ def preview(actions, lang="uz"):
             value = VALUES.get(lang, {}).get(str(value), value)
             if key == "schedule" and str(value).startswith("days:"):
                 value = ", ".join(WEEKDAYS.get(lang, WEEKDAYS["uz"])[int(n)] for n in str(value)[5:].split(","))
-            if key in {"amount", "limit"}:
+            if key == "amount":
                 value = f'{value:,}'.replace(",", " ")
             lines.append(f'{labels.get(key, key.replace("_", " ").capitalize())}: {value if value is not None else "—"}')
         if a["entity"] == "project" and a["operation"] == "delete":
             lines.append({"uz": "Loyiha arxivlanadi, vazifalari saqlanadi va loyihadan ajratiladi.", "ru": "Проект архивируется, задачи сохраняются без проекта.", "en": "Project is archived; its tasks are kept, detached from the project."}.get(lang, ""))
         if a["entity"] == "habit" and "schedule" in a["fields"] and a["operation"] == "update":
             lines.append({"uz": "Yangi jadval ertadan kuchga kiradi.", "ru": "Новое расписание действует с завтрашнего дня.", "en": "The new schedule takes effect tomorrow."}.get(lang, ""))
-        if a["entity"] == "task" and a["operation"] == "done" and (a.get("before") or {}).get("recurrence"):
-            lines.append({"uz": "Takroriy vazifaning keyingi nusxasi yaratilishi mumkin.", "ru": "Может быть создан следующий экземпляр повторяющейся задачи.", "en": "The next occurrence of this recurring task may be created."}.get(lang, ""))
-        if a["scope"] == "team" and a["operation"] in {"done", "reopen"}:
-            lines.append({"uz": "Faqat sizning bajarganlik belgingiz o‘zgaradi.", "ru": "Изменится только ваша отметка выполнения.", "en": "Only your own completion mark changes."}.get(lang, ""))
         chunks.append("\n".join(lines))
     return "\n\n".join(chunks)

@@ -1,6 +1,5 @@
-"""Telegram adapter: private-chat voice, durable corrections, explicit buttons."""
+"""Telegram adapter: private-chat voice or text -> proposal -> Confirm / Edit / Cancel."""
 import hashlib
-import uuid
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import TelegramError
@@ -46,53 +45,32 @@ class AgentBot:
         if not prefs["enabled"]:
             await update.effective_message.reply_text(tr(user.language, "disabled"))
             return
-        buttons = [[InlineKeyboardButton(tr(user.language, "inbox"), callback_data="ag:in:0")]]
+        markup = None
         if not prefs["consent"]:
-            buttons.insert(0, [InlineKeyboardButton(tr(user.language, "consent"), callback_data="ag:consent")])
-        await update.effective_message.reply_text(tr(user.language, "welcome"), reply_markup=InlineKeyboardMarkup(buttons))
-
-    async def inbox(self, update, ctx, offset=0):
-        identity = await self.identity(update, ctx, write=False)
-        if not identity:
-            return
-        user, ws = identity
-        core.editing(ws, clear=True)
-        drafts = core.list_drafts(ws, offset)
-        buttons = []
-        for draft in drafts[:8]:
-            icon = {"executed": "✅", "cancelled": "❌", "processing": "⏳"}.get(draft["status"], "📥")
-            title = draft["transcript"][:42] or "🎙 Audio"
-            buttons.append([InlineKeyboardButton(f'{icon} {title}', callback_data=f'ag:v:{draft["id"]}')])
-        if len(drafts) > 8:
-            buttons.append([InlineKeyboardButton(tr(user.language, "more"), callback_data=f'ag:in:{offset + 8}')])
-        await update.effective_message.reply_text(tr(user.language, "inbox" if drafts else "empty"),
-                                                   reply_markup=InlineKeyboardMarkup(buttons))
+            markup = InlineKeyboardMarkup([[InlineKeyboardButton(tr(user.language, "consent"), callback_data="ag:consent")]])
+        await update.effective_message.reply_text(tr(user.language, "welcome"), reply_markup=markup)
 
     async def show(self, message, draft, lang):
-        header = tr(lang, draft["status"] if draft["status"] in {"ready", "executed", "cancelled", "processing"} else "inbox_status")
-        body = f'{header}\n\n{tr(lang, "heard")}:\n{draft["transcript"] or "🎙 Audio"}'
-        if draft.get("language"):
-            body += f'\n{tr(lang, "input_language")}: {tr(lang, draft["language"])}'
+        status = draft["status"]
+        body = f'{tr(lang, "heard")}:\n{draft["transcript"] or "🎙"}'
         if draft["preview"]:
             body += "\n\n" + draft["preview"]
         if draft["error"]:
             body += "\n\n" + tr(lang, draft["error"])
+        body += "\n\n" + tr(lang, status if status in {"ready", "executed", "cancelled"} else "draft")
         key = f'{draft["id"]}:{draft["revision"]}'
         buttons = []
-        if draft["status"] == "ready":
+        if status == "ready":
             buttons.append([InlineKeyboardButton(tr(lang, "confirm"), callback_data=f"ag:c:{key}")])
-        if draft["status"] not in {"executed", "cancelled", "processing"}:
+        if status in core.EDITABLE:
             buttons.append([InlineKeyboardButton(tr(lang, "edit"), callback_data=f"ag:e:{key}"),
                             InlineKeyboardButton(tr(lang, "cancel"), callback_data=f"ag:x:{key}")])
-            if draft["transcript"]:
-                buttons.append([InlineKeyboardButton(tr(lang, "retry"), callback_data=f"ag:r:{key}")])
-            buttons.append([InlineKeyboardButton(tr(lang, "keep"), callback_data=f"ag:k:{key}")])
-        buttons.append([InlineKeyboardButton(tr(lang, "inbox"), callback_data="ag:in:0")])
         # Telegram counts UTF-16 code units. A 1700-codepoint chunk is safe
-        # even for emoji. Confirmation follows ALL preview chunks, not a truncation.
+        # even for emoji. Buttons follow ALL preview chunks, not a truncation.
         chunks = [body[i:i + 1700] for i in range(0, len(body), 1700)]
         for i, chunk in enumerate(chunks):
-            await message.reply_text(chunk, reply_markup=InlineKeyboardMarkup(buttons) if i == len(chunks) - 1 else None)
+            markup = InlineKeyboardMarkup(buttons) if buttons and i == len(chunks) - 1 else None
+            await message.reply_text(chunk, reply_markup=markup)
 
     async def text(self, update, ctx):
         identity = await self.identity(update, ctx)
@@ -162,7 +140,7 @@ class AgentBot:
 
     async def callback(self, update, ctx):
         parts = update.callback_query.data.split(":")
-        identity = await self.identity(update, ctx, write=parts[1] in {"c", "r"})
+        identity = await self.identity(update, ctx, write=parts[1] == "c")
         if not identity:
             return
         user, ws = identity
@@ -172,33 +150,17 @@ class AgentBot:
             if what == "consent":
                 core.consent(ws, True)
                 await message.reply_text(tr(lang, "consented"))
-            elif what == "in":
-                await self.inbox(update, ctx, max(0, min(int(parts[2]), 100000)))
-            elif what == "v":
-                await self.show(message, core.get_draft(ws, parts[2]), lang)
-            else:
-                draft_id, revision = parts[2], int(parts[3])
-                if what == "c":
-                    draft = core.confirm(user.telegram_id, ws, draft_id, revision)
-                    await self.show(message, draft, lang)
-                elif what == "x":
-                    await self.show(message, core.cancel(ws, draft_id, revision), lang)
-                    core.editing(ws, clear=True)
-                elif what == "e":
-                    core.editing(ws, draft_id, revision)
-                    ctx.user_data.pop("flow", None)
-                    await message.reply_text(tr(lang, "edit_prompt"))
-                elif what == "k":
-                    core.get_draft(ws, draft_id)  # ownership check even on a no-op
-                    core.editing(ws, clear=True)
-                    await message.reply_text(tr(lang, "kept"))
-                elif what == "r":
-                    old = core.get_draft(ws, draft_id)
-                    if not old["transcript"]:
-                        raise AgentError("empty_audio", 422)
-                    draft = await core.ingest(user.telegram_id, ws, "retry:" + uuid.uuid4().hex,
-                        text=old["transcript"], draft_id=draft_id, revision=revision)
-                    await self.show(message, draft, lang)
+                return
+            draft_id, revision = parts[2], int(parts[3])
+            if what == "c":
+                await self.show(message, core.confirm(user.telegram_id, ws, draft_id, revision), lang)
+            elif what == "x":
+                core.editing(ws, clear=True)
+                await self.show(message, core.cancel(ws, draft_id, revision), lang)
+            elif what == "e":
+                core.editing(ws, draft_id, revision)
+                ctx.user_data.pop("flow", None)
+                await message.reply_text(tr(lang, "edit_prompt"))
         except (AgentError, PermissionError, ValueError, IndexError, NotFound) as e:
             code = e.code if isinstance(e, AgentError) else ("not_found" if isinstance(e, NotFound) else ("timer_required" if str(e) == "timer_required" else "forbidden"))
             await message.reply_text(tr(lang, code))

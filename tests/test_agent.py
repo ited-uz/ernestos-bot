@@ -25,7 +25,6 @@ import services as svc
 @pytest.fixture(autouse=True)
 def agent_config(monkeypatch):
     monkeypatch.setattr(config, "AGENT_ENABLED", True)
-    monkeypatch.setattr(config, "AGENT_PROVIDER", "groq")
     monkeypatch.setattr(config, "GROQ_API_KEY", "fake-key-not-used")
     monkeypatch.setattr(config, "AGENT_DAILY_REQUESTS", 100)
     # Catch accidental real provider calls in every test, even if another mock
@@ -73,7 +72,6 @@ def test_text_is_durable_without_side_effect_then_confirms_once(person, monkeypa
     draft = capture(person, monkeypatch)
     assert draft["status"] == "ready"
     assert count(db.Task, ws) == n
-    assert core.list_drafts(ws)[0]["id"] == draft["id"]
     result = core.confirm(uid, ws, draft["id"], draft["revision"])
     assert result["status"] == "executed"
     assert count(db.Task, ws) == n + 1
@@ -216,12 +214,12 @@ def test_money_create_edit_delete_and_snapshot(person, monkeypatch):
 
 
 @pytest.mark.parametrize("entity", ["task", "habit", "project"])
-def test_crud_and_done_reopen(person, monkeypatch, entity):
+def test_create_update_delete(person, monkeypatch, entity):
     _, uid, ws = person
     draft = capture(person, monkeypatch, plan(action(entity, **({"title": "Kitob"} if entity == "task" else {"name": "Kitob"}))))
     result = core.confirm(uid, ws, draft["id"], 1)
     tid = result["result"][0]["id"]
-    for op, fields in [("update", {"title" if entity == "task" else "name": "Yangi nom"}), ("done", {}), ("reopen", {}), ("delete", {})]:
+    for op, fields in [("update", {"title" if entity == "task" else "name": "Yangi nom"}), ("delete", {})]:
         draft = capture(person, monkeypatch, plan(action(entity, op, tid, **fields)))
         assert draft["status"] == "ready", draft
         assert core.confirm(uid, ws, draft["id"], 1)["status"] == "executed"
@@ -229,7 +227,7 @@ def test_crud_and_done_reopen(person, monkeypatch, entity):
         assert s.get(actions.PERSONAL[entity], tid).archived_at is not None
 
 
-def test_time_project_and_budget(person, monkeypatch):
+def test_time_and_project(person, monkeypatch):
     _, uid, ws = person
     with db.SessionLocal() as s:
         p = svc.add_project(s, ws, "Sayt")
@@ -240,10 +238,6 @@ def test_time_project_and_budget(person, monkeypatch):
     with db.SessionLocal() as s:
         task = s.scalar(select(db.Task).where(db.Task.workspace_id == ws))
         assert task.due_time.hour == 10 and task.project_id == p.id
-    budget = capture(person, monkeypatch, plan(action("budget", "update", category="food", limit=750000)))
-    core.confirm(uid, ws, budget["id"], 1)
-    with db.SessionLocal() as s:
-        assert svc.money_budgets(s, ws)["food"] == 750000
 
 
 def test_stale_target_and_protected_habits(person, monkeypatch):
@@ -258,26 +252,19 @@ def test_stale_target_and_protected_habits(person, monkeypatch):
     with db.SessionLocal() as s:
         protected = s.scalar(select(db.Habit).where(db.Habit.workspace_id == ws, db.Habit.system_key.is_not(None)))
     if protected:
-        bad = capture(person, monkeypatch, plan(action("habit", "done", protected.id)))
+        bad = capture(person, monkeypatch, plan(action("habit", "delete", protected.id)))
         assert bad["status"] == "failed"
 
 
-def test_timer_cannot_be_bypassed(person, monkeypatch):
+def test_workspace_isolation(person, client, monkeypatch):
     _, uid, ws = person
-    with db.SessionLocal() as s:
-        t = svc.add_task(s, ws, "Fokus", timer_minutes=25)
-    draft = capture(person, monkeypatch, plan(action("task", "done", t.id)))
-    with pytest.raises(ValueError, match="timer_required"):
-        core.confirm(uid, ws, draft["id"], 1)
-
-
-def test_workspace_isolation_api_and_model(person, client, monkeypatch):
-    caller, uid, ws = person
     other = Caller(client, {"id": next(_next_id), "first_name": "Other"})
     draft = capture(person, monkeypatch)
-    for path in ("/drafts/" + draft["id"],):
-        assert other.get("/api/agent" + path).status_code == 404
-    assert other.post("/api/agent/drafts/" + draft["id"] + "/confirm", {"revision": 1}).status_code in {403, 404}
+    with db.SessionLocal() as s:
+        ows = svc.workspace_id_for(s, other.user["id"])
+    core.consent(ows, True)
+    with pytest.raises(actions.AgentError, match="not_found"):
+        core.confirm(other.user["id"], ows, draft["id"], 1)
     with db.SessionLocal() as s:
         ows = svc.workspace_id_for(s, other.user["id"])
         foreign = svc.add_task(s, ows, "Private")
@@ -318,7 +305,6 @@ def test_consent_and_limits(person, monkeypatch):
     assert capture(person, monkeypatch)["status"] == "ready"
     limited = capture(person, monkeypatch)
     assert limited["status"] == "failed" and limited["error"] == "daily_limit"
-    assert len(core.list_drafts(ws)) == 2
 
 
 def test_audio_transcript_then_confirmation(person, monkeypatch):
@@ -362,19 +348,6 @@ def test_restart_lease_and_expired_confirmation(person, monkeypatch):
     assert retried["status"] == "ready" and retried["revision"] == 2
 
 
-def test_api_routes_auth_body_and_confirmation(person, client, monkeypatch):
-    caller, _, ws = person
-    monkeypatch.setattr(provider, "plan", AsyncMock(return_value=plan(action(title="API task"))))
-    assert client.get("/api/agent/inbox").status_code == 401
-    r = caller.post("/api/agent/text", {"request_key": uuid.uuid4().hex, "text": "Task"})
-    assert r.status_code == 200, r.text
-    draft = r.json()
-    assert count(db.Task, ws) == 0
-    assert caller.post(f'/api/agent/drafts/{draft["id"]}/confirm', {"revision": 1}).json()["status"] == "executed"
-    assert caller.post("/api/agent/text", {"request_key": uuid.uuid4().hex, "text": "Task", "workspace_id": ws}).status_code == 422
-    assert caller.post("/api/agent/text", {"request_key": uuid.uuid4().hex, "text": "Task", "draft_id": draft["id"]}).status_code == 422
-
-
 def test_model_cannot_choose_identity_or_arbitrary_code():
     bad = plan(action(title="safe"))
     bad["actions"][0]["workspace_id"] = 123
@@ -386,13 +359,13 @@ def test_model_cannot_choose_identity_or_arbitrary_code():
         actions.Plan.model_validate(bad)
 
 
-@pytest.mark.parametrize("spec", [action("money", amount=-10, kind="expense"), action("money", amount=10, kind="income", category="food"), action("task", deadline="yesterday", title="Bad"), action("habit", name="Bad", schedule="sometimes"), action("task", operation="delete"), action("money", amount=50), action("budget", "create", category="food", limit=100)])
+@pytest.mark.parametrize("spec", [action("money", amount=-10, kind="expense"), action("money", amount=10, kind="income", category="food"), action("task", deadline="yesterday", title="Bad"), action("habit", name="Bad", schedule="sometimes"), action("task", operation="delete"), action("money", amount=50), action("budget", "create", category="food", limit=100), action("task", "done", 1), action("habit", "reopen", 1)])
 def test_reject_invalid_plans(person, monkeypatch, spec):
     draft = capture(person, monkeypatch, plan(spec))
     assert draft["status"] == "failed"
 
 
-def test_export_wipe_and_private_history_deletion(person, monkeypatch):
+def test_export_and_wipe(person, monkeypatch):
     _, uid, ws = person
     draft = capture(person, monkeypatch)
     core.confirm(uid, ws, draft["id"], 1)
@@ -400,10 +373,6 @@ def test_export_wipe_and_private_history_deletion(person, monkeypatch):
         exported = svc.export_workspace(s, ws, s.get(db.User, uid))
         assert exported["agent_inbox"][0]["transcript"]
         assert exported["agent_history"]
-    core.forget_history(ws)
-    assert count(db.AgentDraft, ws) == count(db.AgentAudit, ws) == 0
-    assert count(db.Task, ws) == 1
-    assert not core.preferences(ws)["consent"]
     with db.SessionLocal() as s:
         svc.wipe_workspace(s, uid)
         assert s.get(db.AgentPreference, ws) is None
@@ -424,11 +393,11 @@ def test_provider_wire_uses_strict_schema_and_no_tools(monkeypatch):
     assert "fake-key" not in json.dumps(payload)
 
 
-def test_no_paid_fallback(monkeypatch):
-    monkeypatch.setattr(config, "AGENT_PROVIDER", "openai")
-    monkeypatch.setattr(config, "OPENAI_API_KEY", "also-fake")
-    with pytest.raises(actions.AgentError):
+def test_groq_key_required(monkeypatch):
+    monkeypatch.setattr(config, "GROQ_API_KEY", "")
+    with pytest.raises(actions.AgentError, match="provider_not_configured"):
         provider.connection()
+    assert not provider.configured()
 
 
 def test_audio_validation_bounds_and_decoder(monkeypatch):
@@ -443,41 +412,40 @@ def test_audio_validation_bounds_and_decoder(monkeypatch):
         provider.audio_wav(b"OggSfake", "audio/ogg")
 
 
-def test_chunked_audio_limit_not_just_content_length(person, client, monkeypatch):
-    caller, _, _ = person
-    monkeypatch.setattr(config, "AGENT_AUDIO_BYTES", 5)
-    def chunks():
-        yield b"OggS"
-        yield b"123456789"
-    r = client.post("/api/agent/audio", headers={**caller.h, "Content-Type": "audio/ogg", "X-Agent-Request-Key": uuid.uuid4().hex}, content=chunks())
-    assert r.status_code == 413
-
-
-@pytest.mark.parametrize("ui_lang,detected,text,label", [
-    ("uz", "uz", "Ertaga hisobot", "Qo‘shish"),
-    ("ru", "ru", "Завтра отчёт", "Добавить"),
-    ("en", "en", "Tomorrow report", "Create"),
-    ("uz", "ru", "Завтра отчёт", "Qo‘shish"),
-    ("en", "uz", "Эртага ҳисобот", "Create"),
-    ("uz", "mixed", "ertaga abdulbosid bilan soat 10 am da meetingim bor. bunda hamma problemalarni hal qilamiz.", "Qo‘shish"),
+@pytest.mark.parametrize("ui_lang,text,label", [
+    ("uz", "Ertaga hisobot", "Qo‘shish"),
+    ("uz", "Эртага ҳисобот", "Qo‘shish"),
+    ("uz", "ertaga abdulbosid bilan soat 10 am da meetingim bor. bunda hamma problemalarni hal qilamiz.", "Qo‘shish"),
+    ("ru", "Завтра отчёт", "Добавить"),
+    ("en", "Tomorrow report", "Create"),
 ])
-def test_language_is_checked_before_actions_independent_of_ui(person, monkeypatch, ui_lang, detected, text, label):
+def test_profile_language_is_accepted(person, monkeypatch, ui_lang, text, label):
     _, uid, ws = person
     with db.SessionLocal() as s:
         s.get(db.User, uid).language = ui_lang
         s.commit()
-    draft = capture(person, monkeypatch, plan(action(title="Report", due_time="10:00"), language=detected), text=text)
-    assert draft["language"] == detected
-    assert label in draft["preview"]
+    draft = capture(person, monkeypatch, plan(action(title="Report", due_time="10:00"), language=ui_lang), text=text)
+    assert draft["status"] == "ready" and label in draft["preview"]
     assert count(db.Task, ws) == 0
 
 
-def test_unknown_language_cannot_execute_even_if_model_proposes_action(person, monkeypatch):
+@pytest.mark.parametrize("ui_lang,detected,message", [
+    ("uz", "ru", "o‘zbek tilida"),
+    ("uz", "en", "o‘zbek tilida"),
+    ("uz", "other", "o‘zbek tilida"),
+    ("ru", "uz", "по-русски"),
+    ("en", "ru", "speak English"),
+])
+def test_other_language_is_refused_in_profile_language(person, monkeypatch, ui_lang, detected, message):
     _, uid, ws = person
-    draft = capture(person, monkeypatch, plan(action(title="Unsafe guess"), language="unknown"))
-    assert draft["status"] == "needs_input"
+    with db.SessionLocal() as s:
+        s.get(db.User, uid).language = ui_lang
+        s.commit()
+    draft = capture(person, monkeypatch, plan(action(title="Unsafe"), language=detected))
+    assert draft["status"] == "needs_input" and message in draft["preview"]
     with pytest.raises(actions.AgentError):
         core.confirm(uid, ws, draft["id"], 1)
+    assert count(db.Task, ws) == 0
 
 
 def test_all_agent_interface_strings_cover_three_languages():
@@ -499,109 +467,57 @@ def test_model_response_arriving_after_cancel_cannot_restore_ready(person, monke
     assert count(db.Task, ws) == 0
 
 
-# --- Reply language, provider chain and scale guards ---------------------------
+# --- Whisper and reply language ---------------------------------------------
 
 CTX = {"items": [{"entity": "task", "scope": "personal", "id": 1, "name": "Abdulvosid bilan uchrashuv"}],
        "teams": [{"id": 9, "name": "Savdo jamoasi"}], "truncated": False,
        "today": "2026-09-30", "timezone": "Asia/Tashkent", "language": "uz"}
 
 
-@pytest.fixture
-def chain_reset(monkeypatch):
-    monkeypatch.setattr(provider, "_cooldown", {})
-    monkeypatch.setattr(config, "GEMINI_API_KEY", "fake-gemini-not-used")
-    monkeypatch.setattr(config, "AGENT_FALLBACK_PROVIDER", "")
-    monkeypatch.setattr(config, "AGENT_FREE_ONLY", True)
-
-
 @pytest.mark.parametrize("lang", ["uz", "ru", "en"])
-def test_whisper_uses_app_language_and_user_names(monkeypatch, chain_reset, lang):
+def test_whisper_uses_profile_language_and_user_names(monkeypatch, lang):
     sent = []
     async def fake(path, **kwargs):
-        sent.append(kwargs)
+        sent.append((path, kwargs))
         return {"text": " matn "}
     monkeypatch.setattr(provider, "request", fake)
     monkeypatch.setattr(provider, "audio_wav", lambda data, mime: b"RIFFwav")
-    text = asyncio.run(provider.transcribe(b"OggS", "audio/ogg", {**CTX, "language": lang}))
-    assert text == "matn"
-    data = sent[0]["data"]
-    assert data["language"] == lang and data["temperature"] == "0"
-    assert "Abdulvosid bilan uchrashuv" in data["prompt"] and "Savdo jamoasi" in data["prompt"]
-    assert len(data["prompt"]) <= 600
-
-
-def test_rate_limited_primary_falls_back_then_cools_down(monkeypatch, chain_reset):
-    monkeypatch.setattr(config, "AGENT_FALLBACK_PROVIDER", "gemini")
-    calls = []
-    async def fake(path, **kwargs):
-        calls.append(kwargs["provider"])
-        if kwargs["provider"] == "groq":
-            provider._cooldown["groq"] = provider.time.monotonic() + 60  # as a real 429 does
-            raise actions.AgentError("provider_limit", 429)
-        body = json.dumps(plan(action(title="Hisobot")))
-        return {"candidates": [{"finishReason": "STOP", "content": {"parts": [{"text": body}]}}]}
-    monkeypatch.setattr(provider, "request", fake)
-    assert asyncio.run(provider.plan("Hisobot", CTX, [])).actions[0].entity == "task"
-    assert calls == ["groq", "gemini"]
-    asyncio.run(provider.plan("Hisobot", CTX, []))
-    assert calls == ["groq", "gemini", "gemini"]  # groq skipped while cooling down
-
-
-def test_non_provider_errors_do_not_fall_back(monkeypatch, chain_reset):
-    monkeypatch.setattr(config, "AGENT_FALLBACK_PROVIDER", "gemini")
-    calls = []
-    async def fake(path, **kwargs):
-        calls.append(kwargs["provider"])
-        return {"choices": [{"finish_reason": "length", "message": {"content": ""}}]}
-    monkeypatch.setattr(provider, "request", fake)
-    with pytest.raises(actions.AgentError, match="invalid_plan"):
-        asyncio.run(provider.plan("Hisobot", CTX, []))
-    assert calls == ["groq"]
-
-
-def test_gemini_hears_and_plans_in_one_call(person, monkeypatch, chain_reset):
-    _, uid, ws = person
-    monkeypatch.setattr(config, "AGENT_PROVIDER", "gemini")
-    sent = []
-    async def fake(path, **kwargs):
-        sent.append((path, kwargs["provider"], kwargs["json"]))
-        body = json.dumps({"transcript": "Ovqatga 5 ming", **plan(action("money", kind="expense", amount="5000", category="food"))})
-        return {"candidates": [{"finishReason": "STOP", "content": {"parts": [{"text": body}]}}]}
-    monkeypatch.setattr(provider, "request", fake)
-    monkeypatch.setattr(provider, "audio_wav", lambda data, mime: b"RIFFwav")
-    monkeypatch.setattr(provider, "plan", AsyncMock(side_effect=AssertionError("second call not needed")))
-    draft = asyncio.run(core.ingest(uid, ws, uuid.uuid4().hex, audio=b"OggS", mime="audio/ogg"))
-    assert draft["transcript"] == "Ovqatga 5 ming" and draft["status"] == "ready"
-    path, name, body = sent[0]
-    assert len(sent) == 1 and name == "gemini" and path.endswith(":generateContent")
-    shape = json.dumps(body["generationConfig"]["responseJsonSchema"])
-    assert "$ref" not in shape and "transcript" in shape
-    assert body["contents"][0]["parts"][0]["inline_data"]["mime_type"] == "audio/wav"
-    assert "fake-gemini" not in json.dumps(body)
-
-
-def test_free_only_blocks_paid_provider_until_owner_opts_out(monkeypatch, chain_reset):
-    monkeypatch.setattr(config, "AGENT_PROVIDER", "openai")
-    monkeypatch.setattr(config, "OPENAI_API_KEY", "also-fake")
-    assert not provider.configured()
-    monkeypatch.setattr(config, "AGENT_FREE_ONLY", False)
-    assert provider.configured()
+    assert asyncio.run(provider.transcribe(b"OggS", "audio/ogg", {**CTX, "language": lang})) == "matn"
+    path, kwargs = sent[0]
+    assert path == "/audio/transcriptions"
+    form = kwargs["data"]
+    assert form["model"] == "whisper-large-v3" and form["language"] == lang and form["temperature"] == "0"
+    assert "Abdulvosid bilan uchrashuv" in form["prompt"] and "Savdo jamoasi" in form["prompt"]
+    assert len(form["prompt"]) <= 600
 
 
 @pytest.mark.parametrize("ui_lang,question,expected", [
-    ("uz", "Какую задачу добавить?", "Buyruqni o‘zbekcha"),
+    ("uz", "Какую задачу добавить?", "Tushunmadim"),
     ("uz", "Qaysi loyihaga qo‘shay?", "Qaysi loyihaga qo‘shay?"),
-    ("ru", "Qaysi loyihaga qo‘shay?", "Уточните команду"),
+    ("ru", "Qaysi loyihaga qo‘shay?", "Не понял"),
     ("en", "Which project?", "Which project?"),
 ])
-def test_questions_always_follow_app_language(person, monkeypatch, ui_lang, question, expected):
+def test_questions_always_follow_profile_language(person, monkeypatch, ui_lang, question, expected):
     _, uid, ws = person
     with db.SessionLocal() as s:
         s.get(db.User, uid).language = ui_lang
         s.commit()
-    draft = capture(person, monkeypatch, plan(question=question, language="ru"))
+    draft = capture(person, monkeypatch, plan(question=question, language=ui_lang))
     assert draft["status"] == "needs_input"
     assert draft["preview"].startswith(expected)
+
+
+def test_bot_buttons_are_confirm_edit_cancel_only():
+    from agent_bot import AgentBot
+    message = SimpleNamespace(reply_text=AsyncMock())
+    draft = {"id": "b" * 32, "revision": 1, "status": "ready", "transcript": "Ovqatga 5 ming",
+             "preview": "1. Qo‘shish · Pul yozuvi", "error": None}
+    asyncio.run(AgentBot(None).show(message, draft, "uz"))
+    rows = message.reply_text.await_args.kwargs["reply_markup"].inline_keyboard
+    assert [b.callback_data.split(":")[1] for row in rows for b in row] == ["c", "e", "x"]
+    message.reply_text.reset_mock()
+    asyncio.run(AgentBot(None).show(message, {**draft, "status": "executed"}, "uz"))
+    assert message.reply_text.await_args.kwargs["reply_markup"] is None
 
 
 def test_group_refusal_uses_saved_app_language(person):
