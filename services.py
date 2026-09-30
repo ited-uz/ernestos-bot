@@ -35,6 +35,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from db import (
+    AgentAudit, AgentDraft, AgentPreference,
     Birthday, Countdown, DailyReportLog, DailyScore, Feedback, Habit, HabitLog,
     HabitPauseInterval, HabitScheduleVersion, IdempotencyKey, JobRun,
     JournalEntry, MoneyBudget, MoneyEntry, PrayerDay, PrayerLog, Project,
@@ -4388,6 +4389,16 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
                                .where(MoneyEntry.workspace_id == ws)
                                .order_by(MoneyEntry.day, MoneyEntry.id)).all()],
         "money_budgets": money_budgets(s, ws),
+        "agent_inbox": [
+            {"id": r.id, "status": r.status, "revision": r.revision,
+             "transcript": r.transcript, "language": r.detected_language, "history": json.loads(r.history),
+             "preview": r.preview, "plan": json.loads(r.plan), "result": json.loads(r.result),
+             "created_at": r.created_at.isoformat()}
+            for r in s.scalars(select(AgentDraft).where(AgentDraft.workspace_id == ws)).all()],
+        "agent_history": [
+            {"draft_id": r.draft_id, "revision": r.revision, "event": r.event,
+             "detail": json.loads(r.detail), "created_at": r.created_at.isoformat()}
+            for r in s.scalars(select(AgentAudit).where(AgentAudit.workspace_id == ws)).all()],
         "daily_scores": [
             {"day": r.day.isoformat(), "score": r.total_score, "grade": r.grade,
              "closed": bool(r.closed)}
@@ -4400,7 +4411,8 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
 #: Every table that holds workspace-scoped data. Deleting an account walks this
 #: list, so adding a model without adding it here is the one way a deletion
 #: could leave someone's rows behind — which is why the list is explicit.
-WORKSPACE_TABLES = [TimerRun, HabitLog, HabitScheduleVersion, HabitPauseInterval,
+WORKSPACE_TABLES = [AgentAudit, AgentDraft, AgentPreference,
+                    TimerRun, HabitLog, HabitScheduleVersion, HabitPauseInterval,
                     Habit, PrayerLog, PrayerDay, Task,
                     Project, WeeklyFocus, WeeklyReview, JournalEntry, Birthday,
                     Countdown, Feedback, DailyReportLog, MoneyEntry, MoneyBudget]
