@@ -1065,20 +1065,17 @@ def test_goals_are_unreachable_from_either_surface():
         assert term not in html, f"index.html still exposes {term!r}"
 
 
-def test_the_mini_app_navigation_is_five_screens_and_money_apart():
-    """Home, the two things you do, the shared list, and the numbers — then
-    Money, last and set apart, because it is not part of the productive day.
-
-    Team sits between Tasks and Statistics deliberately: it is work, not a
-    report, and putting it after the numbers would file a shared goal as
-    something you review rather than something you do.
-    """
+def test_the_mini_app_navigation_is_five_screens_with_more():
+    """Five readable tabs; secondary modules remain one tap away in More."""
     html = (ROOT / "webapp" / "index.html").read_text()
     nav = html[html.index("const NAV = ["):html.index("const NAV_OF")]
     assert [line.split('id:"')[1].split('"')[0]
             for line in nav.splitlines() if 'id:"' in line] == \
-        ["home", "habits", "tasks", "team", "stats", "money"]
-    assert 'id:"money",  icon:"wallet",   key:"money", apart:true' in nav
+        ["home", "habits", "tasks", "stats", "more"]
+    more = html[html.index("SCREENS.more ="):html.index("function blockedScreen()")]
+    assert '["team", "users", "team"]' in more
+    assert '["money", "wallet", "money"]' in more
+    assert 'data-act="settings"' in more and 'data-act="agent-open"' in more
 
 
 def test_the_privacy_line_is_said_once_on_home():
@@ -4257,7 +4254,7 @@ def test_every_backend_capability_is_reachable_from_the_mini_app():
     for path in ("/api/wakeup", "/api/quick", "/api/review", "/api/birthdays",
                  "/api/fresh-start", "/api/overall", "/api/prefs",
                  "/api/export", "/api/subscription", "/api/feedback",
-                 "/api/tasks/done", "/api/calendar",
+                 "/api/tasks/page?", "/api/calendar",
                  "/api/habits/reorder"):
         assert path in html, f"{path} exists on the server but not in the UI"
     # And the ones built from a template string.
@@ -4391,7 +4388,7 @@ def test_home_answers_now_then_counts_then_today():
     # The weights still exist — for Statistics, which still prints them.
     assert "const WEIGHTS = {tasks:40, habits:25, team:20, prayer:15};" in html
     stats = html[html.index("SCREENS.stats = () => {"):]
-    assert "WEIGHTS[key]" in stats and "progressCard()" in stats
+    assert "today.weights?.[key]" in stats and "progressCard()" in stats
 
 
 def test_the_week_goal_lives_on_tasks_and_mission_is_never_said():
@@ -8468,6 +8465,8 @@ def test_every_key_the_team_screen_uses_is_defined():
     # Keys sit several to a line, so anchor on the separator rather than on
     # the start of the line.
     defined = set(re.findall(r"(?:^|[,{])\s*([a-z_0-9]+)\s*:", uz, re.M))
+    release = html[html.index("const RELEASE_WORDS ="):html.index("const D =")]
+    defined.update(re.findall(r"(?:^|[,{])\s*([a-z_0-9]+)\s*:", release, re.M))
     missing = sorted(used - defined)
     assert not missing, f"the team screen uses undefined keys: {missing}"
 
@@ -10376,7 +10375,7 @@ def test_v10_design_fixes_hold():
     assert "🌅" not in prayer and 'data-act="prayer-clear"' not in prayer.split("cur === st")[0]
     assert 'data-act="${cur === st ? "prayer-clear" : "prayer"}"' in prayer
     main = html[html.index("function mainTab("):html.index("function searchBox(")]
-    assert main.index('t("overdue")') < main.index("return h + weekFocusBlock();")
+    assert main.index('t("overdue")') < main.index("return h + taskPageFooter() + weekFocusBlock();")
     head = html[html.index("function headBlock("):html.index("function nowBlock(")]
     assert "quote_add" not in head and "avatar-gear" in head
     assert 't("team_waiting_on")' in html

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 
 from dotenv import load_dotenv
 
@@ -170,6 +171,11 @@ def check() -> None:
             f"{', '.join(missing)} is required in production. "
             "Set it in the deployment environment and redeploy."
         )
+    if AGENT_ENABLED:
+        if not GROQ_API_KEY:
+            raise RuntimeError("AGENT_ENABLED=true requires GROQ_API_KEY")
+        if not shutil.which("ffmpeg"):
+            raise RuntimeError("AGENT_ENABLED=true requires FFmpeg; use the supplied Dockerfile")
     # A webhook without a secret is an endpoint that acts on whatever anybody
     # posts to it. It is not a configuration to warn about; it does not start.
     if WEBHOOK_URL:

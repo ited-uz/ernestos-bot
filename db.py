@@ -31,7 +31,7 @@ from datetime import date, datetime, time, timezone
 
 from sqlalchemy import (
     BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Index, Integer,
-    String, Text, Time, UniqueConstraint, create_engine,
+    String, Text, Time, UniqueConstraint, create_engine, event,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
@@ -62,6 +62,14 @@ _kwargs: dict = {"pool_pre_ping": True} if DATABASE_URL.startswith("postgresql")
     "connect_args": {"check_same_thread": False}
 }
 engine = create_engine(DATABASE_URL, **_kwargs)
+if engine.dialect.name == "sqlite":
+    @event.listens_for(engine, "connect")
+    def _unicode_lower(connection, _record):
+        # SQLite's built-in lower() only handles ASCII; SQL searches must also
+        # find Russian and Uzbek Cyrillic titles in local/test installations.
+        connection.create_function("lower", 1, lambda value: value.lower() if value is not None else None,
+                                   deterministic=True)
+
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 
