@@ -31,7 +31,7 @@ const run = s => vm.runInContext(s,ctx);
 for(const [day,n,want] of [['2026-01-31',1,'2026-02-01'],['2024-02-28',1,'2024-02-29'],['2026-01-01',-1,'2025-12-31']])
   assert.equal(run(`shiftISO('${day}',${n})`),want);
 assert.equal(run(`(state.me={prefs:{timezone:'Asia/Tashkent'}}, todayISO().length)`),10);
-assert.equal(run('NAV.length'),5);
+assert.equal(run('NAV.length'),4);
 for(const lang of ['uz','en','ru']) {
   run(`state.lang='${lang}';state.me={telegram_id:1,trial:{required:true,free_actions:20,remaining:3},agent:{available:true}};`);
   const more=run('SCREENS.more()');
