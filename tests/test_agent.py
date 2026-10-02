@@ -585,3 +585,126 @@ def test_both_groq_models_limited_reports_limit(monkeypatch):
     monkeypatch.setattr(provider, "request", fake)
     with pytest.raises(actions.AgentError, match="provider_limit"):
         asyncio.run(provider.plan("T", CTX, []))
+
+
+# --- Launch voice stack: ElevenLabs first, Gemini as paid overflow -------------
+
+def test_elevenlabs_scribe_is_first_with_language_and_user_names(monkeypatch):
+    monkeypatch.setattr(config, "ELEVENLABS_API_KEY", "fake-11labs")
+    sent = []
+    async def fake(path, **kwargs):
+        sent.append((path, kwargs["service"], kwargs["data"]))
+        return {"text": " Ovqatga besh ming so‘m "}
+    monkeypatch.setattr(provider, "request", fake)
+    monkeypatch.setattr(provider, "audio_wav", lambda data, mime: b"RIFFwav")
+    assert asyncio.run(provider.transcribe(b"OggS", "audio/ogg", CTX)) == "Ovqatga besh ming so‘m"
+    path, service, form = sent[0]
+    assert (path, service) == ("/speech-to-text", "elevenlabs") and len(sent) == 1
+    assert form["model_id"] == "scribe_v2" and form["language_code"] == "uz"
+    assert form["tag_audio_events"] == "false" and form["no_verbatim"] == "true"
+    assert form["keyterms"] == ["Savdo jamoasi", "Abdulvosid bilan uchrashuv"]
+
+
+@pytest.mark.parametrize("code", ["provider_limit", "provider_unavailable"])
+def test_elevenlabs_out_of_credit_falls_back_to_groq_whisper(monkeypatch, code):
+    monkeypatch.setattr(config, "ELEVENLABS_API_KEY", "fake-11labs")
+    used = []
+    async def fake(path, **kwargs):
+        used.append(kwargs["service"])
+        if kwargs["service"] == "elevenlabs":
+            raise actions.AgentError(code, 429)
+        return {"text": "matn"}
+    monkeypatch.setattr(provider, "request", fake)
+    monkeypatch.setattr(provider, "audio_wav", lambda data, mime: b"RIFFwav")
+    assert asyncio.run(provider.transcribe(b"OggS", "audio/ogg", CTX)) == "matn"
+    assert used == ["elevenlabs", "groq"]
+
+
+def test_keyterms_respect_elevenlabs_limits():
+    items = [{"name": f"Mijoz {i}"} for i in range(150)] + [{"name": "x" * 51}, {"name": "bir ikki uch tort besh olti"}]
+    terms = provider.keyterms({"items": items, "teams": []})
+    assert len(terms) == 100 and all(len(t) <= 50 and len(t.split()) <= 5 for t in terms)
+
+
+def test_groq_limit_overflows_to_gemini_with_inlined_schema(monkeypatch):
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "fake-gemini")
+    used = []
+    async def fake(path, **kwargs):
+        used.append(kwargs["service"])
+        if kwargs["service"] == "groq":
+            raise actions.AgentError("provider_limit", 429)
+        assert "$ref" not in json.dumps(kwargs["json"]["generationConfig"]["responseJsonSchema"])
+        body = json.dumps(plan(action(title="Hisobot")))
+        return {"candidates": [{"finishReason": "STOP", "content": {"parts": [{"text": body}]}}]}
+    monkeypatch.setattr(provider, "request", fake)
+    assert asyncio.run(provider.plan("Hisobot", CTX, [])).actions[0].entity == "task"
+    assert used == ["groq", "gemini"]
+
+
+def test_a_bad_answer_is_not_retried_on_another_provider(monkeypatch):
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "fake-gemini")
+    used = []
+    async def fake(path, **kwargs):
+        used.append(kwargs["service"])
+        return {"choices": [{"finish_reason": "length", "message": {"content": ""}}]}
+    monkeypatch.setattr(provider, "request", fake)
+    with pytest.raises(actions.AgentError, match="invalid_plan"):
+        asyncio.run(provider.plan("Hisobot", CTX, []))
+    assert used == ["groq"]
+
+
+def test_no_keys_means_not_configured(monkeypatch):
+    monkeypatch.setattr(config, "GROQ_API_KEY", "")
+    with pytest.raises(actions.AgentError, match="provider_not_configured"):
+        asyncio.run(provider.plan("Hisobot", CTX, []))
+
+
+class _Q:
+    def __init__(self, data, message):
+        self.data, self.message, self.edits = data, message, []
+
+    async def edit_message_text(self, text, reply_markup=None, **kw):
+        self.edits.append((text, reply_markup))
+
+    async def edit_message_reply_markup(self, reply_markup=None, **kw):
+        self.edits.append((None, reply_markup))
+
+
+def _tg(uid, *, text=None, data=None):
+    message = SimpleNamespace(reply_text=AsyncMock(), text=text, message_id=next(_next_id), voice=None, audio=None)
+    chat = SimpleNamespace(id=uid, type="private", send_action=AsyncMock())
+    update = SimpleNamespace(effective_chat=chat, effective_message=message, effective_user=SimpleNamespace(id=uid),
+                             callback_query=_Q(data, message) if data else None)
+    return update, message
+
+
+def test_first_message_runs_right_after_consent(person, monkeypatch):
+    from agent_bot import AgentBot
+    _, uid, ws = person
+    core.consent(ws, False)
+    with db.SessionLocal() as s:
+        user = s.get(db.User, uid)
+    bot = AgentBot(AsyncMock(return_value=(user, ws)))
+    ctx = SimpleNamespace(user_data={}, bot=SimpleNamespace())
+    monkeypatch.setattr(provider, "plan", AsyncMock(return_value=plan(action("money", amount=5000, kind="expense", category="food"))))
+    update, message = _tg(uid, text="Ovqatga 5 ming")
+    asyncio.run(bot.text(update, ctx))
+    provider.plan.assert_not_awaited()  # no consent yet: nothing sent to AI
+    update, message = _tg(uid, data="ag:consent")
+    asyncio.run(bot.callback(update, ctx))
+    assert message.reply_text.await_args.args[0] == "➕ Chiqim: 5 000 so‘m · Oziq-ovqat"
+    assert "agent_pending" not in ctx.user_data
+
+
+def test_confirm_edits_the_same_message_and_drops_buttons(person, monkeypatch):
+    from agent_bot import AgentBot
+    _, uid, ws = person
+    with db.SessionLocal() as s:
+        user = s.get(db.User, uid)
+    draft = capture(person, monkeypatch, plan(action(title="Hisobot")))
+    bot = AgentBot(AsyncMock(return_value=(user, ws)))
+    update, message = _tg(uid, data=f'ag:c:{draft["id"]}:1')
+    asyncio.run(bot.callback(update, SimpleNamespace(user_data={})))
+    text, markup = update.callback_query.edits[-1]
+    assert text.endswith("✅ Bajarildi") and markup is None
+    message.reply_text.assert_not_awaited()

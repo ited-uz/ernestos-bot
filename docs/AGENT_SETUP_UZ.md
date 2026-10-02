@@ -1,10 +1,12 @@
-# Ernest ovozli agenti (v12) — ulash yo‘riqnomasi
+# Ernest ovozli agenti (v12.2) — ulash yo‘riqnomasi
 
 ## Qanday ishlaydi
 
 1. Telegram botga (shaxsiy chatda) ovozli xabar yoki matn yuborasiz.
-2. Groq **Whisper-large-v3** ovozni profil tilingizda matnga aylantiradi.
-3. Groq AI matndan taklif tuzadi: vazifa, odat, loyiha yoki pul yozuvini
+2. **ElevenLabs Scribe v2** ovozni profil tilingizda matnga aylantiradi
+   (kalit bo‘lmasa yoki kredit tugasa — Groq Whisper-large-v3, keyin turbo).
+3. Groq AI (`gpt-oss-120b`, bepul) matndan taklif tuzadi; Groq limiti tugasa
+   Gemini (pullik, kalit bo‘lsa), keyin Groq `gpt-oss-20b`: vazifa, odat, loyiha yoki pul yozuvini
    **yaratish, o‘zgartirish yoki o‘chirish** (shaxsiy yoki jamoa).
 4. Bot bitta qisqa qator ko‘rsatadi, masalan `➕ Chiqim: 5 000 so‘m · Oziq-ovqat`,
    va tugmalar: **✅ Tasdiqlash · ✏️ Tahrirlash · ❌ Bekor qilish**.
@@ -29,30 +31,37 @@ uchrashuv», «Hisobot vazifasini jumaga ko‘chir», «Kitob odatini o‘chir»
 ## Railway sozlamalari
 
 Avval PostgreSQL backupini oling. Mavjud `BOT_TOKEN`, `DATABASE_URL`,
-`WEBAPP_URL` va boshqalarni o‘zgartirmang. Faqat qo‘shing:
+`WEBAPP_URL` va boshqalarni o‘zgartirmang. Qo‘shing:
 
-| Variable | Qiymat |
-|---|---|
-| `GROQ_API_KEY` | [console.groq.com/keys](https://console.groq.com/keys) dagi kalit |
-| `AGENT_ENABLED` | `true` (muammo bo‘lsa `false` — oddiy bot ishlashda davom etadi) |
-| `AGENT_DAILY_REQUESTS` | Ixtiyoriy, sukut `30` — bitta foydalanuvchiga kunlik buyruq |
-
-Kalitni chatga, kodga yoki ZIP ichiga yozmang. Dockerfile FFmpeg o‘rnatadi —
-u ovozni o‘qish uchun kerak. Bitta servis nusxasi, bitta worker.
-
-## Groq Free limiti
-
-Free limit **butun bot uchun umumiy** va **har bir model uchun alohida**.
-Asosiy model limiti tugasa, bot o‘zi zaxira modelga o‘tadi:
-
-| Ish | Asosiy → zaxira | Amalda |
+| Variable | Qiymat | Shartmi |
 |---|---|---|
-| Matnni tushunish | `gpt-oss-120b` → `gpt-oss-20b` | ~87 + ~87 buyruq/kun |
-| Ovoz → matn | `whisper-large-v3` → `whisper-large-v3-turbo` | ~2 000 + ~2 000 ovoz/kun |
+| `AGENT_ENABLED` | `true` | ha |
+| `ELEVENLABS_API_KEY` | elevenlabs.io → API keys | tavsiya (o‘zbek ovozi uchun eng yaxshisi) |
+| `GROQ_API_KEY` | console.groq.com/keys | ha (bepul matn + zaxira ovoz) |
+| `GEMINI_API_KEY` | aistudio.google.com, billing yoqilgan | 1000 foydalanuvchi uchun ha |
+| `AGENT_DAILY_REQUESTS` | `30` (sukut) | yo‘q |
 
-Ikkalasi ham tugasa, bot «1 daqiqadan keyin qayta yuboring» (yoki «ertaga»)
-deydi. Zaxira model biroz kuchsizroq. Developer tarifi ochilganda:
-console.groq.com → Settings → Billing → Developer; kod o‘zgarmaydi.
+Kalit bo‘lmagan provayder shunchaki o‘tkazib yuboriladi. Dockerfile FFmpeg
+o‘rnatadi. Bitta servis nusxasi, bitta worker. Eski foydalanuvchilarning
+odat nomlarini bir marta mahalliylashtirish: `python migrations.py 0013`.
+
+## Limit va xarajat
+
+Bir buyruq: ~10 soniya ovoz + ~2 300 token.
+
+| Qism | Narx | 1 buyruq |
+|---|---|---|
+| ElevenLabs Scribe v2 (+ism lug‘ati) | $0.22 + $0.05 / soat audio | ≈ $0.00075 |
+| Groq `gpt-oss-120b` Free | bepul, butun bot uchun ~87 buyruq/kun | $0 |
+| Gemini (Groq tugagach) | `gemini-flash-latest`: ~$0.50–0.75 kirish / ~$3–3.75 chiqish (1M token, versiyaga qarab) | ≈ $0.003–0.007 |
+
+1000 foydalanuvchi, kunlik 30% faol, har biri 3 buyruq ≈ 900 buyruq/kun →
+taxminan **oyiga $80–180** (asosan Gemini; uning "fikrlash" tokenlari narxni
+o‘zgartiradi). Ochiq manbalarga ko‘ra yangi Flash versiyalari narxi
+2027-yil yanvaridan oshadi — narxni AI Studio’da tekshiring. Arzonroq variant:
+`GEMINI_MODEL=gemini-flash-lite-latest` (sifati biroz past). ElevenLabs balansini va Google
+AI Studio’da byudjet ogohlantirishini qo‘ying. Groq Developer tarifi ochilsa,
+matn qismi ~$0.0007/buyruq bo‘ladi — kod o‘zgarmaydi.
 
 ## Birinchi sinov
 

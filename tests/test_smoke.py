@@ -2936,14 +2936,14 @@ def test_setup_is_four_taps_and_one_answer():
     # v9.1: after the three rituals, the seven ordinary ready-made habits —
     # all ticked, one tap each to drop — so an account starts with ten.
     assert application.ONBOARDING_STEPS == [
-        "language", "account", "name", "modules", "presets", "done"]
+        "language", "name", "modules", "presets", "done"]
     source = (ROOT / "app.py").read_text()
     assert 'user.onboarding_step = "phone"' not in source
     assert 'user.onboarding_step = "subscribe"' not in source, \
         "the channel is back in onboarding"
     # Accounts parked on a retired step are moved on, not re-asked.
     assert set(application.LEGACY_STEPS) == {
-        "phone", "gender", "subscribe", "intro", "goal", "tasks", "habits"}
+        "phone", "gender", "subscribe", "intro", "account", "goal", "tasks", "habits"}
     assert all(step in application.ONBOARDING_STEPS
                for step in application.LEGACY_STEPS.values())
 
@@ -2955,11 +2955,14 @@ def test_setup_writes_the_name_as_it_is_given():
     assert "user.first_name = " in handler, "the name is not written"
 
 
-def test_the_account_step_comes_straight_after_the_language():
+def test_the_name_comes_straight_after_the_language_with_sign_in_one_tap_away():
+    """No 'do you have an account?' wall and no password in the chat."""
     source = (ROOT / "app.py").read_text()
-    assert 'user.onboarding_step = "account"' in source
+    assert 'user.onboarding_step = "account"' not in source
+    start = source[source.index("async def start("):source.index("async def resume_onboarding(")]
+    assert "issue_credentials(" not in start
     for lang in ("uz", "en", "ru"):
-        assert application.t(lang, "acc_new") and application.t(lang, "acc_have")
+        assert application.t(lang, "acc_have")
 
 
 def test_gender_is_not_an_onboarding_step():
@@ -4388,7 +4391,8 @@ def test_home_answers_now_then_counts_then_today():
     # The weights still exist — for Statistics, which still prints them.
     assert "const WEIGHTS = {tasks:40, habits:25, team:20, prayer:15};" in html
     stats = html[html.index("SCREENS.stats = () => {"):]
-    assert "today.weights?.[key]" in stats and "progressCard()" in stats
+    # Tiles show the score; the weights are one tap away, behind (i).
+    assert "d.weights?.[key]" in stats and "progressCard()" in stats
 
 
 def test_the_week_goal_lives_on_tasks_and_mission_is_never_said():
@@ -9483,7 +9487,7 @@ def test_an_automatic_habit_can_be_deleted_and_restored():
         svc.remove_habit(s, ws, prayer["id"])
         assert svc.modules_for(s, ws)["prayer"] is False
         gone = svc.archived_habits(s, ws)
-        assert [h["name"] for h in gone] == ["5x namoz"]
+        assert [h["name"] for h in gone] == [svc.SYSTEM_HABIT_NAMES["prayer"]["uz"]]
         svc.restore_habit(s, ws, gone[0]["id"])
         assert svc.modules_for(s, ws)["prayer"] is True
         assert svc.archived_habits(s, ws) == []
@@ -10379,3 +10383,68 @@ def test_v10_design_fixes_hold():
     head = html[html.index("function headBlock("):html.index("function nowBlock(")]
     assert "quote_add" not in head and "avatar-gear" in head
     assert 't("team_waiting_on")' in html
+
+
+async def test_picking_a_language_names_the_rituals_in_it():
+    """An Uzbek screen never says "Get up"; a name the user chose is kept."""
+    uid = next(_next_id)
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, uid)
+        ws = svc.workspace_id_for(s, uid)
+        journal = next(h for h in svc.list_habits(s, ws) if h["system_key"] == "journal")
+        s.get(db.Habit, journal["id"]).name = "Mening daftarim"
+        s.commit()
+    await application.on_callback(_CbUpdate(uid, "lang:ru"), _Ctx())
+    with SessionLocal() as s:
+        names = {h["system_key"]: h["name"] for h in svc.list_habits(s, ws) if h["system_key"]}
+    assert names["wakeup"] == "Ранний подъём" and names["prayer"] == "5 намазов"
+    assert names["journal"] == "Mening daftarim"
+    assert application.t("uz", "menu_home") == "🏠 Asosiy"
+    assert application.menu_route("🏠 Home") is not None, "old keyboards still work"
+
+
+def test_spoken_times_are_read_like_people_say_them():
+    today = date(2026, 10, 2)
+    cases = {
+        "Ertaga soat 10 da hisobot": ("hisobot", date(2026, 10, 3), dtime(10, 0)),
+        "soat 3 yarimda Aziz bilan uchrashuv": ("Aziz bilan uchrashuv", today, dtime(15, 30)),
+        "Soat 8 da uchrashuv": ("uchrashuv", today, dtime(8, 0)),
+        "kechqurun soat 8 da futbol": ("futbol", today, dtime(20, 0)),
+        "Завтра в 8 вечера ужин": ("ужин", date(2026, 10, 3), dtime(20, 0)),
+        "Call mom at 5 pm": ("Call mom", today, dtime(17, 0)),
+        "Hisobot juma kuni": ("Hisobot", today, None),
+        "5 ta kitob o'qish": ("5 ta kitob o'qish", None, None),
+    }
+    for text, want in cases.items():
+        got = svc.parse_quick_capture(text, today)
+        assert (got["title"], got["deadline"], got["due_time"]) == want, text
+
+
+def test_mini_app_quick_add_reads_the_date_and_sends_money_to_the_money_check(fresh):
+    r = fresh.post("/api/quick", {"title": "Ertaga soat 10 da hisobot"}).json()
+    assert r["title"] == "hisobot" and r["due_time"] == "10:00" and r["deadline"]
+    money = fresh.post("/api/quick", {"title": "Tushlik 45 ming"}).json()
+    assert money == {"ok": True, "money": True}
+    titles = [t["title"] for t in fresh.get("/api/tasks/page?limit=50").json().get("tasks", [])]
+    assert "Tushlik 45 ming" not in titles
+
+
+def test_migration_0013_localizes_existing_rituals_once():
+    uid = next(_next_id)
+    _onboard(uid)
+    with SessionLocal() as s:
+        s.get(User, uid).language = "en"
+        s.commit()
+        ws = svc.workspace_id_for(s, uid)
+    migrations.m0013_localize_rituals()
+    migrations.m0013_localize_rituals()  # idempotent
+    with SessionLocal() as s:
+        names = {h["system_key"]: h["name"] for h in svc.list_habits(s, ws) if h["system_key"]}
+    assert names["wakeup"] == "Wake up early" and names["journal"] == "Journal"
+
+
+def test_numbers_that_are_not_times_stay_in_the_title():
+    today = date(2026, 10, 2)
+    for text in ("Aziz 2 ga bo'lib berdi", "10 ta kitob o'qish", "Sport 30 daqiqa", "iPhone 15 sotib olish"):
+        got = svc.parse_quick_capture(text, today)
+        assert (got["title"], got["due_time"]) == (text, None), text

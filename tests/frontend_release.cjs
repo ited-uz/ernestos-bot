@@ -55,12 +55,16 @@ assert.equal(run('sheetOpen()'),false);
 assert.ok(run('errorMessage({status:401})').length>15);
 assert.ok(run('errorMessage({status:429,retryAfter:42})').includes('42'));
 // A recognized money entry is only parsed, never sent to the write endpoint.
-ctx.fetch = async (url,opts)=>{assert.equal(url,'/api/money/preview');return new Response(JSON.stringify({kind:'expense',amount:45000,category:'food',note:'Lunch'}));};
+ctx.fetch = async (url,opts)=>{
+  // The category list is read (GET) when Money was never opened; nothing is written.
+  if(url==='/api/money'){ assert.ok(!opts?.method || opts.method==='GET'); return new Response(JSON.stringify({category_ids:['food','salary'],kinds:{food:'expense',salary:'income'},icons:{food:'🍔'}})); }
+  assert.equal(url,'/api/money/preview');return new Response(JSON.stringify({kind:'expense',amount:45000,category:'food',note:'Lunch'}));};
 (async()=>{
   await run('moneyText("Lunch 45000", "voice")');
   assert.equal(run('state.moneyForm.amount'),45000);
   assert.equal(run('state.moneyForm.review'),true);
   assert.ok(elements.get('sheet-body').innerHTML.includes('money-save'));
+  assert.ok(elements.get('sheet-body').innerHTML.includes('mcat') || elements.get('sheet-body').innerHTML.includes('🍔'), 'category chips missing');
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../webapp/preview.js'),'utf8'),ctx);
   await run('boot()');
   assert.equal(run('state.error'),null);
