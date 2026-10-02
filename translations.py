@@ -156,7 +156,7 @@ T: dict[str, dict[str, str]] = {
         "lang_changed": "Til o'zgartirildi ✓",
         "theme_changed": "Tema o'zgartirildi — {name}",
         "gender_changed": "Jins saqlandi — {value}",
-        "menu_home": "🏠 Home", "menu_habits": "✅ Odatlar",
+        "menu_home": "🏠 Asosiy", "menu_habits": "✅ Odatlar",
         "menu_tasks": "⚡ Vazifalar", "menu_stats": "📊 Statistika",
         "menu_settings": "⚙️ Sozlamalar", "menu_feedback": "💬 Taklif",
         "menu_app": "🚀 ErnestOS",
@@ -1568,7 +1568,7 @@ T["uz"].update({
     "setup_presets": ("📋 <b>Tayyor odatlar</b>\n\nEng kerakli yettitasi belgilab "
                       "qo'yilgan. Keraksizini olib tashlang — keyin Odatlar → "
                       "📋 Tayyor odatlar'dan istalgan payt qaytarasiz."),
-    "presets_set": "✅ Odatlar tayyor: {n} ta.",
+    "presets_set": "✅ Odatlar tayyor.",
     "menu_money": "💰 Pul",
     "money_title": "Pul",
     "money_unit": "so'm",
@@ -1606,7 +1606,7 @@ T["en"].update({
     "setup_presets": ("📋 <b>Ready-made habits</b>\n\nThe seven most useful are "
                       "ticked. Untick what you do not need — Habits → 📋 "
                       "Ready-made habits brings any of them back later."),
-    "presets_set": "✅ Habits ready: {n}.",
+    "presets_set": "✅ Habits ready.",
     "menu_money": "💰 Money",
     "money_title": "Money",
     "money_unit": "UZS",
@@ -1644,7 +1644,7 @@ T["ru"].update({
     "setup_presets": ("📋 <b>Готовые привычки</b>\n\nСемь самых полезных уже "
                       "отмечены. Снимите лишние — вернуть можно в любой момент: "
                       "Привычки → 📋 Готовые привычки."),
-    "presets_set": "✅ Привычки готовы: {n}.",
+    "presets_set": "✅ Привычки готовы.",
     "menu_money": "💰 Деньги",
     "money_title": "Деньги",
     "money_unit": "сум",

@@ -258,6 +258,15 @@ DEFAULT_HABITS = [
     ("Kundalik", "non_negotiable", "journal"),
 ]
 
+#: What the three rituals are called in each language. Rows are created with
+#: the DEFAULT_HABITS names and renamed to these when the person picks (or
+#: changes) a language, so an Uzbek screen never says "Get up".
+SYSTEM_HABIT_NAMES = {
+    "wakeup": {"uz": "Erta turish", "en": "Wake up early", "ru": "Ранний подъём"},
+    "prayer": {"uz": "5 vaqt namoz", "en": "5 daily prayers", "ru": "5 намазов"},
+    "journal": {"uz": "Kundalik", "en": "Journal", "ru": "Дневник"},
+}
+
 SYSTEM_PRAYER = "prayer"
 #: The journal is a non-negotiable habit, and one meaningful answer is enough
 #: to tick it: a short evening is still a written day. All five answers is a
@@ -459,8 +468,23 @@ def set_modules(s: Session, ws: int, chosen, *, user: User | None = None) -> dic
             live.archived_at = utcnow()
     if user is not None:
         user.modules = ",".join(sorted(chosen))
+        localize_system_habits(s, ws, user.language)
     s.commit()
     return modules_for(s, ws)
+
+
+def localize_system_habits(s: Session, ws: int, lang: str) -> None:
+    """Rename the rituals to `lang`, unless the person gave one its own name.
+
+    Only a name that is still one of the stock names (any language, or the
+    old English/Uzbek defaults) is touched. The caller commits.
+    """
+    stock = {name.casefold() for names in SYSTEM_HABIT_NAMES.values() for name in names.values()}
+    stock |= {name.casefold() for name, _c, _k in DEFAULT_HABITS}
+    for habit in s.scalars(select(Habit).where(Habit.workspace_id == ws,
+                                               Habit.system_key.in_(list(SYSTEM_HABIT_NAMES)))):
+        if habit.name.strip().casefold() in stock:
+            habit.name = SYSTEM_HABIT_NAMES[habit.system_key].get(lang, habit.name)
 
 
 def _reactivate(s: Session, ws: int, habit: Habit, today: date, tz: ZoneInfo) -> None:
@@ -1144,7 +1168,7 @@ HABIT_PRESETS = [
     (SYSTEM_JOURNAL, "non_negotiable", {}),
     ("plan", "target", {"uz": "Kunni rejalashtirish", "en": "Plan the day",
                         "ru": "Планировать день"}),
-    ("deep", "target", {"uz": "Deep work", "en": "Deep work",
+    ("deep", "target", {"uz": "Chuqur ish", "en": "Deep work",
                         "ru": "Глубокая работа"}),
     ("sport", "target", {"uz": "Sport", "en": "Exercise", "ru": "Спорт"}),
     ("read", "target", {"uz": "Kitob o'qish", "en": "Read a book",
@@ -1172,7 +1196,7 @@ def preset_name(key: str, lang: str = "uz") -> str:
     """The preset's name as it is created in `lang`."""
     key, _category, names = _preset(key)
     if key in SYSTEM_KEYS:
-        return next(d[0] for d in DEFAULT_HABITS if d[2] == key)
+        return SYSTEM_HABIT_NAMES[key].get(lang) or SYSTEM_HABIT_NAMES[key]["uz"]
     return names.get(lang) or names["uz"]
 
 
@@ -8916,6 +8940,42 @@ _WEEKDAY_WORDS = {
 _TIME_RE = re.compile(r"(?:\bsoat\s*)?\b([01]?\d|2[0-3])[:.]([0-5]\d)\b(?:\s*da\b)?")
 
 
+_EVENING = r"kechqurun|kechki|kechasi|tushdan\s+keyin|вечера|вечером|дня|pm|p\.m\."
+_MORNING = r"ertalab|ertalabki|tongda|утра|утром|am|a\.m\."
+#: "soat 10 da", "10 da", "soat 3 yarimda", "в 8 вечера", "at 5 pm", "5pm".
+_SPOKEN_TIME_RE = re.compile(
+    rf"(?:\b(?P<pre>{_MORNING}|{_EVENING})\s+)?"
+    r"(?:\bsoat\s+(?P<h1>\d{1,2})|\bв\s+(?P<h2>\d{1,2})|\bat\s+(?P<h3>\d{1,2})"
+    r"|\b(?P<h4>\d{1,2})(?=\s*(?:yarim|da\b|-?da\b|larda\b|am\b|pm\b|a\.m|p\.m|час)))"
+    r"(?P<half>\s*yarim)?(?:\s*-?(?:da|ga|larda)\b)?(?:\s*(?:часов|часа|час)\b)?"
+    rf"(?:\s*(?P<post>{_MORNING}|{_EVENING})\b)?",
+    re.IGNORECASE)
+
+
+def _spoken_time(raw: str) -> tuple[dtime | None, str]:
+    """A clock time said the way people say it, and the text without it.
+
+    The hour follows everyday speech: 7–11 is morning, 1–6 is afternoon,
+    unless a morning or evening word says otherwise.
+    """
+    m = _SPOKEN_TIME_RE.search(raw)
+    if not m:
+        return None, raw
+    hour = int(next(g for g in (m.group("h1"), m.group("h2"), m.group("h3"), m.group("h4")) if g))
+    if hour > 23:
+        return None, raw
+    word = (m.group("pre") or m.group("post") or "").lower()
+    if hour <= 12:
+        if re.fullmatch(_EVENING, word):
+            hour = hour % 12 + 12
+        elif re.fullmatch(_MORNING, word):
+            hour = hour % 12
+        elif 1 <= hour <= 6:
+            hour += 12
+    rest = (raw[:m.start()] + " " + raw[m.end():]).strip()
+    return dtime(hour, 30 if m.group("half") else 0), rest
+
+
 def parse_quick_capture(text: str, today: date) -> dict:
     """Split "ertaga 15:00 doktorga qo'ng'iroq" into title, date and time.
 
@@ -8942,19 +9002,21 @@ def parse_quick_capture(text: str, today: date) -> dict:
     if m:
         due = dtime(int(m.group(1)), int(m.group(2)))
         raw = (raw[:m.start()] + raw[m.end():]).strip()
+    else:
+        due, raw = _spoken_time(raw)
 
     words = raw.split(" ")
-    kept = []
+    kept, previous = [], ""
     for word in words:
         key = word.lower().strip(".,!?")
         if deadline is None and key in _RELATIVE_WORDS:
             deadline = today + timedelta(days=_RELATIVE_WORDS[key])
-            continue
-        if deadline is None and key in _WEEKDAY_WORDS:
+        elif deadline is None and key in _WEEKDAY_WORDS:
             ahead = (_WEEKDAY_WORDS[key] - today.weekday()) % 7
             deadline = today + timedelta(days=ahead)
-            continue
-        kept.append(word)
+        elif not (key in {"kuni", "kuniga", "kunga"} and previous in _WEEKDAY_WORDS):
+            kept.append(word)  # "juma kuni" is one date, not a title word
+        previous = key
     raw = " ".join(kept)
 
     if deadline is None:
@@ -8971,6 +9033,8 @@ def parse_quick_capture(text: str, today: date) -> dict:
                     break
 
     title = " ".join(raw.split()).strip(" ,.-")
+    if due is not None and deadline is None:
+        deadline = today  # "soat 10 da hisobot": a time with no day means today
     return {"title": title or " ".join((text or "").split()),
             "deadline": deadline, "due_time": due}
 

@@ -1,10 +1,13 @@
-# ErnestOS v12.1
+# ErnestOS v12.2
 
 ## Avval shu bo‘limni o‘qing
 
-Bu paket v12 asosida tuzatilgan reliz nomzodi. Barcha mavjud modullar saqlangan.
-Hozirgi o‘zgarishlar, testlar va deploy shartlari:
-[v12.1 yakuniy hisobot](docs/RELEASE_V12_1_UZ.md).
+**v12.2 — 1000 foydalanuvchi bilan launch uchun.** Eng oson yo‘l: botga ovoz
+yoki matn yuborish → bitta qator taklif → ✅ Tasdiqlash. Ovoz → matn:
+ElevenLabs Scribe v2 (zaxira: Groq Whisper). Matn → buyruq: Groq (bepul),
+limit tugasa Gemini. Audit natijasidagi 15 ta muammo va launch qadamlari:
+[v12.2 hisobot](docs/RELEASE_V12_2_UZ.md) · [ulash yo‘riqnomasi](docs/AGENT_SETUP_UZ.md).
+Oldingi reliz: [v12.1 hisobot](docs/RELEASE_V12_1_UZ.md).
 
 Mini App pastki menyusi: **Asosiy · Odatlar · Vazifalar · Statistika · Ko‘proq**.
 **Ko‘proq** ichida Jamoa, Pul, Sozlamalar va ovozli yordamchi mavjud.

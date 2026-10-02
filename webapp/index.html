@@ -1068,7 +1068,7 @@ const DICT = {
   src_personal:"Shaxsiy",
   team_results:"Natijalar", team_p_day:"Bugun", team_p_week:"Hafta", team_p_month:"Oy",
   team_waiting_on:"Kimda qoldi", team_all_clear:"Bugungi hamma ish bajarildi 🎉",
-  team_left_today:"Bugun qolgani", team_none_today:"Bugun jamoa ishi yo'q — 20% boshqalarga", team_waiting_on:"Qilmagan",
+  team_left_today:"Bugun qolgani", team_none_today:"Bugun jamoa ishi yo'q", team_waiting_on:"Qilmagan",
   team_no_projects:"Umumiy loyiha yo'q", team_add_project:"Umumiy loyiha",
   team_project_ph:"Loyiha nomi", team_open:"Ochish",
   dest_where:"Qayerga qo'shilsin", dest_personal:"Shaxsiy",
@@ -1122,10 +1122,11 @@ const DICT = {
   person_name:"Ism", birth_date:"Tug'ilgan sana", note:"Izoh",
   turning:"yosh", bday_today:"bugun", bday_tomorrow:"ertaga",
   wake_btn:"Turdim", wake_at:"Uyg'onish vaqti", wake_done_at:"{time} da turdingiz",
-  wake_late_at:"{time} — bugungi targetdan kechroq", wake_target:"Target",
+  wake_late_at:"{time} — bugungi maqsaddan kechroq", wake_target:"Maqsad",
   /* quick capture */
   quick_add:"Tez qo'shish", quick_ph:"Nima esingizga tushdi?",
   inbox_saved:"Saqlandi — Vazifalarda",
+  quick_saved:"✓ Vazifa", quick_hint:"Masalan: «Ertaga soat 10 da hisobot» yoki «Tushlik 45 ming»", quick_voice:"Ovoz bilan aytish",
   /* tasks */
   add_task:"Vazifa", task_name:"Vazifa nomi", task_desc:"Batafsil",
   deadline:"Muddat", due_time:"Vaqt", priority:"Muhimlik", project:"Loyiha",
@@ -1442,7 +1443,7 @@ const DICT = {
   src_personal:"Personal",
   team_results:"Results", team_p_day:"Today", team_p_week:"Week", team_p_month:"Month",
   team_waiting_on:"Waiting on", team_all_clear:"Everything for today is done 🎉",
-  team_left_today:"Left today", team_none_today:"No team work today — its 20% goes to the rest", team_waiting_on:"Not done by",
+  team_left_today:"Left today", team_none_today:"No team work today", team_waiting_on:"Not done by",
   team_no_projects:"No shared projects", team_add_project:"Shared project",
   team_project_ph:"Project name", team_open:"Open",
   dest_where:"Where does this go", dest_personal:"Personal",
@@ -1497,6 +1498,7 @@ const DICT = {
   wake_late_at:"{time} — later than today's target", wake_target:"Target",
   quick_add:"Quick add", quick_ph:"What came to mind?",
   inbox_saved:"Saved — see Tasks",
+  quick_saved:"✓ Task", quick_hint:"E.g. “Report tomorrow at 10” or “Lunch 45 thousand”", quick_voice:"Say it by voice",
   add_task:"Task", task_name:"Task name", task_desc:"Details",
   deadline:"Date", due_time:"Time", priority:"Priority", project:"Project",
   standalone:"Standalone", high:"High", medium:"Medium", low:"Low",
@@ -1802,7 +1804,7 @@ const DICT = {
   src_personal:"Личное",
   team_results:"Результаты", team_p_day:"Сегодня", team_p_week:"Неделя", team_p_month:"Месяц",
   team_waiting_on:"За кем", team_all_clear:"Всё на сегодня сделано 🎉",
-  team_left_today:"Осталось сегодня", team_none_today:"Сегодня нет командной работы — её 20% у остальных", team_waiting_on:"Не сделали",
+  team_left_today:"Осталось сегодня", team_none_today:"Сегодня нет командной работы", team_waiting_on:"Не сделали",
   team_no_projects:"Общих проектов нет", team_add_project:"Общий проект",
   team_project_ph:"Название проекта", team_open:"Открыть",
   dest_where:"Куда добавить", dest_personal:"Личное",
@@ -1857,6 +1859,7 @@ const DICT = {
   wake_late_at:"{time} — позже сегодняшней цели", wake_target:"Цель",
   quick_add:"Быстро добавить", quick_ph:"Что пришло в голову?",
   inbox_saved:"Сохранено — в Задачах",
+  quick_saved:"✓ Задача", quick_hint:"Например: «Завтра в 10 отчёт» или «Обед 45 тысяч»", quick_voice:"Сказать голосом",
   add_task:"Задача", task_name:"Название", task_desc:"Подробнее",
   deadline:"Дата", due_time:"Время", priority:"Приоритет", project:"Проект",
   standalone:"Отдельно", high:"Высокий", medium:"Средний", low:"Низкий",
@@ -2179,6 +2182,7 @@ const themeMeta = name => THEMES.find(x => x.id === themeOf(name));
    the accent colour. Emoji stay only where they carry meaning of their
    own — a birthday cake, the sun, a flame. */
 const ICONS = {
+  dots:'<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
   home:'<path d="M3.6 10.4 12 3.6l8.4 6.8"/><path d="M6 9.6V20h12V9.6"/>',
   check:'<path d="M4.5 12.5 9 17 19.5 6.5"/>',
   list:'<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
@@ -2567,7 +2571,7 @@ SCREENS.home = () => {
        + nowBlock(d)
        + countsRow(d)
        + tasksBlock(d)
-       + presetsOffer()
+       + presetsOffer(d)
        + privacyNote();
 };
 
@@ -4298,8 +4302,10 @@ function taskPageFooter(){
   const d = state.tasks;
   if(!d) return "";
   const n = [d.overdue, d.upcoming, d.undated, d.later].reduce((n, rows) => n + (rows?.length || 0), 0);
+  // "12 / 80 shown" matters only when part of the list is still on the server.
+  if(!d.next_cursor) return "";
   return `<div class="hint" style="margin:14px 0">${t("src_personal")} · ${t("loaded_tasks", {n, total:d.total ?? n})}</div>`
-    + (d.next_cursor ? `<button class="btn secondary" data-act="tasks-more">${t("load_more")}</button>` : "");
+    + `<button class="btn secondary" data-act="tasks-more">${t("load_more")}</button>`;
 }
 let taskLoadSeq = 0;
 function taskPageURL(cursor){
@@ -4796,6 +4802,17 @@ function moneyVoice(){
   catch(_){ toast(t("money_voice_fail")); }
 }
 
+/* What quick add understood, said back: "Saved: hisobot · Tomorrow 10:00". */
+function quickSaved(r){
+  const today = todayISO();
+  const next = new Date(today); next.setDate(next.getDate() + 1);
+  const tomorrow = next.toISOString().slice(0, 10);
+  const day = !r.deadline ? "" : r.deadline === today ? t("today")
+    : r.deadline === tomorrow ? t("tomorrow") : r.deadline.split("-").reverse().join(".");
+  return [`${t("quick_saved")}: ${r.title}`, [day, r.due_time].filter(Boolean).join(" ")]
+    .filter(Boolean).join(" · ");
+}
+
 /* One line to one entry: the server reads the amount, the direction and the
    category, and the toast says back what it understood. */
 async function moneyText(text, source, kind){
@@ -4804,6 +4821,9 @@ async function moneyText(text, source, kind){
   try{
     const e = await api("/api/money/preview", {method:"POST",
                                             body:{text, source, kind: kind || ""}});
+    // Opened from Home or quick add, the Money screen was never loaded: the
+    // category chips come from it, so fetch it before showing the check.
+    if(!state.money?.category_ids) state.money = await api("/api/money");
     const el = document.getElementById("money-text");
     if(el) el.value = "";
     state.moneyForm = {...e, source, review:true};
@@ -4862,15 +4882,10 @@ SCREENS.stats = () => {
     <div class="tinted tile ${COMPONENT_TONE[key]}">
       <div class="row" style="gap:var(--s1)">
         <span class="itile">${icon(COMPONENT_ICON[key], 17)}</span>
-        <div class="grow"></div>
-        <span class="wt num" title="${t("weight")}">${t("weight")} ${today.weights?.[key] ?? 0}%</span>
       </div>
       <div class="k ellipsis">${label}</div>
       <div class="v num">${value}</div>
       <div class="sub num">${count ? `<div>${count}</div>` : ""}${teamDelta(delta)}</div>
-      ${key === "tasks" ? `<div class="t3 tiny">${today.task_points ? t("task_points", today.task_points) : ""}<br>${t("weighted_tasks")}</div>` : ""}
-      ${key === "habits" ? `<div class="t3 tiny">${t("weighted_habits")}</div>` : ""}
-      ${key === "prayer" && today.prayer_score !== undefined ? `<div class="t3 tiny">${t("prayer_quality", {earned:today.prayer_score, total:today.prayer_max})}</div>` : ""}
       ${bar(percent)}
     </div>`;
 
@@ -6337,13 +6352,16 @@ const NAV = [
   {id:"habits", icon:"check",    key:"habits"},
   {id:"tasks",  icon:"list",     key:"tasks"},
   {id:"stats",  icon:"chart",    key:"nav_stats"},
-  {id:"more",   icon:"list",     key:"more"},
+  {id:"more",   icon:"dots",     key:"more"},
 ];
 //: A project opens from Tasks, so the Tasks tab stays lit while inside one.
 const NAV_OF = {project:"tasks", team:"more", money:"more"};
 
 const offerKey = () => `ernestos-presets-offer-v1-${state.me?.telegram_id || "anon"}`;
-function presetsOffer(){
+function presetsOffer(d){
+  // Only for somebody with almost no habits: an account that already has the
+  // ready-made set does not need to be told about it on every visit.
+  if((d?.counts?.habits?.total || 0) >= 3) return "";
   try{ if(localStorage.getItem(offerKey())) return ""; }catch(_){}
   return `<div class="card" style="margin:12px 0">
     <div>${t("presets_offer")}</div><div class="hint">${t("presets_offer_hint")}</div>
@@ -6780,10 +6798,13 @@ const A = {
 
   "quick-add": () => { haptic(); state.dest = "personal"; openSheet(`
     <h3>${icon("plus", 18)} ${t("quick_add")}</h3>
-    <input id="quick-title" placeholder="${t("quick_ph")}" autofocus />
+    <input id="quick-title" placeholder="${t("quick_ph")}" autofocus enterkeyhint="done" />
+    <div class="hint" style="margin-top:6px">${t("quick_hint")}</div>
     ${destPicker()}
     <button class="btn" data-act="quick-save" style="margin-top:12px">
       ${t("save")}</button>
+    ${state.me?.agent?.available ? `<button class="btn secondary" data-act="agent-open" style="margin-top:8px">
+      🎙 ${t("quick_voice")}</button>` : ""}
     <button class="btn secondary" data-act="close" style="margin-top:8px">
       ${t("cancel")}</button>`);
     setTimeout(() => document.getElementById("quick-title")?.focus(), 60); },
@@ -6795,8 +6816,12 @@ const A = {
       return save(() => api(`/api/teams/${dest.id}/tasks`,
         {method:"POST", body:{title, deadline: todayISO()}}), state.screen,
         false, t("inbox_saved"));
-    save(() => api("/api/quick", {method:"POST", body:{title}}),
-         state.screen, false, t("inbox_saved"), {body:{title}});
+    let got = null;
+    save(async () => { got = await api("/api/quick", {method:"POST", body:{title}}); },
+         state.screen, true, undefined, {body:{title}}).then(() => {
+      if(got?.money) return moneyText(title, "manual");
+      if(got?.id) toast(quickSaved(got));
+    });
   },
   "retry-draft": () => {
     const draft = lastDraft;

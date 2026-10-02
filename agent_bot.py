@@ -46,12 +46,15 @@ class AgentBot:
         if not prefs["enabled"]:
             await update.effective_message.reply_text(tr(user.language, "disabled"))
             return
-        markup = None
-        if not prefs["consent"]:
-            markup = InlineKeyboardMarkup([[InlineKeyboardButton(tr(user.language, "consent"), callback_data="ag:consent")]])
+        if prefs["consent"]:
+            # Already set up: one line, then they just speak.
+            await update.effective_message.reply_text(tr(user.language, "consented"))
+            return
+        markup = InlineKeyboardMarkup([[InlineKeyboardButton(tr(user.language, "consent"), callback_data="ag:consent")]])
         await update.effective_message.reply_text(tr(user.language, "welcome"), reply_markup=markup)
 
-    async def show(self, message, draft, lang):
+    @staticmethod
+    def render(draft, lang):
         """Short: only what will happen, then the buttons. No transcript, no filler."""
         status = draft["status"]
         if draft["error"]:
@@ -59,7 +62,7 @@ class AgentBot:
         elif status == "executed":
             body = f'{draft["preview"]}\n\n{tr(lang, "executed")}'
         elif status == "cancelled":
-            body = tr(lang, "cancelled")
+            body = f'{draft["preview"]}\n\n{tr(lang, "cancelled")}' if draft["preview"] else tr(lang, "cancelled")
         else:
             body = draft["preview"] or tr(lang, "processing")
         key = f'{draft["id"]}:{draft["revision"]}'
@@ -69,12 +72,27 @@ class AgentBot:
         if status in core.EDITABLE:
             buttons.append([InlineKeyboardButton(tr(lang, "edit"), callback_data=f"ag:e:{key}"),
                             InlineKeyboardButton(tr(lang, "cancel"), callback_data=f"ag:x:{key}")])
+        return body, buttons
+
+    async def show(self, message, draft, lang):
+        body, buttons = self.render(draft, lang)
         # Telegram counts UTF-16 code units. A 1700-codepoint chunk is safe
         # even for emoji. Buttons follow ALL preview chunks, not a truncation.
         chunks = [body[i:i + 1700] for i in range(0, len(body), 1700)]
         for i, chunk in enumerate(chunks):
             markup = InlineKeyboardMarkup(buttons) if buttons and i == len(chunks) - 1 else None
             await message.reply_text(chunk, reply_markup=markup)
+
+    async def replace(self, query, draft, lang):
+        """After a button: the same message changes, so old buttons never linger."""
+        body, buttons = self.render(draft, lang)
+        if len(body) > 1700:
+            await query.edit_message_reply_markup(reply_markup=None)
+            return await self.show(query.message, draft, lang)
+        try:
+            await query.edit_message_text(body, reply_markup=InlineKeyboardMarkup(buttons) if buttons else None)
+        except TelegramError:
+            pass  # "message is not modified" after a repeated tap
 
     @staticmethod
     async def typing(update):
@@ -89,15 +107,21 @@ class AgentBot:
         if not identity:
             return
         user, ws = identity
-        lang = user.language
+        message = update.effective_message
         if not core.preferences(ws)["consent"]:
+            # Kept, not lost: it runs right after the consent tap.
+            ctx.user_data["agent_pending"] = {"kind": "text", "text": message.text,
+                                             "key": f"tg:{update.effective_chat.id}:{message.message_id}"}
             return await self.help(update, ctx)
+        await self.run_text(update, ctx, user, ws, message, message.text,
+                            f"tg:{update.effective_chat.id}:{message.message_id}")
+
+    async def run_text(self, update, ctx, user, ws, message, text, key):
+        lang = user.language
         try:
             correction = core.editing(ws)
-            message = update.effective_message
-            key = f"tg:{update.effective_chat.id}:{message.message_id}"
             await self.typing(update)
-            draft = await core.ingest(user.telegram_id, ws, key, text=message.text,
+            draft = await core.ingest(user.telegram_id, ws, key, text=text,
                                       draft_id=correction[0] if correction else None,
                                       revision=correction[1] if correction else None)
             if correction:
@@ -105,40 +129,47 @@ class AgentBot:
             await self.show(message, draft, lang)
         except (AgentError, PermissionError, ValueError, NotFound) as e:
             code = e.code if isinstance(e, AgentError) else ("not_found" if isinstance(e, NotFound) else "forbidden")
-            await update.effective_message.reply_text(tr(lang, code))
+            await message.reply_text(tr(lang, code))
 
     async def voice(self, update, ctx):
         identity = await self.identity(update, ctx)
         if not identity:
             return
         user, ws = identity
-        lang, message = user.language, update.effective_message
-        if not core.preferences(ws)["consent"] or not config.AGENT_ENABLED:
-            return await self.help(update, ctx)
+        message = update.effective_message
         media = message.voice or message.audio
         if not media:
             return
-        draft = None
+        seconds = media.duration.total_seconds() if hasattr(media.duration, "total_seconds") else media.duration
+        audio = {"kind": "voice", "file_id": media.file_id, "unique_id": media.file_unique_id,
+                 "mime": media.mime_type or "audio/ogg", "seconds": seconds or 0, "size": media.file_size or 0,
+                 "key": f"tg:{update.effective_chat.id}:{message.message_id}"}
+        if not config.AGENT_ENABLED or not core.preferences(ws)["consent"]:
+            if config.AGENT_ENABLED:
+                ctx.user_data["agent_pending"] = audio
+            return await self.help(update, ctx)
+        await self.run_voice(update, ctx, user, ws, message, audio)
+
+    async def run_voice(self, update, ctx, user, ws, message, audio):
+        lang, draft = user.language, None
         try:
-            seconds = media.duration.total_seconds() if hasattr(media.duration, "total_seconds") else media.duration
-            if seconds > config.AGENT_AUDIO_SECONDS:
+            if audio["seconds"] > config.AGENT_AUDIO_SECONDS:
                 raise AgentError("audio_too_long", 422)
-            if not media.file_size or media.file_size > config.AGENT_AUDIO_BYTES:
+            if not audio["size"] or audio["size"] > config.AGENT_AUDIO_BYTES:
                 raise AgentError("invalid_audio", 422)
             correction = core.editing(ws)
-            draft, is_new = core.capture(user.telegram_id, ws,
-                f"tg:{update.effective_chat.id}:{message.message_id}", source="voice",
+            draft, is_new = core.capture(user.telegram_id, ws, audio["key"], source="voice",
                 draft_id=correction[0] if correction else None, revision=correction[1] if correction else None,
-                digest=hashlib.sha256(media.file_unique_id.encode()).hexdigest())
+                digest=hashlib.sha256(audio["unique_id"].encode()).hexdigest())
             if is_new:
                 ctx.user_data.pop("flow", None)
                 await self.typing(update)
-                remote = await media.get_file()
+                remote = await ctx.bot.get_file(audio["file_id"])
                 content = await remote.download_as_bytearray()
                 if len(content) > config.AGENT_AUDIO_BYTES:
                     raise AgentError("invalid_audio", 422)
                 draft = await core.process(user.telegram_id, ws, draft["id"], draft["revision"],
-                                            audio=bytes(content), mime=media.mime_type or "audio/ogg")
+                                            audio=bytes(content), mime=audio["mime"])
                 if correction:
                     core.editing(ws, clear=True)
             await self.show(message, draft, lang)
@@ -151,7 +182,8 @@ class AgentBot:
                 await message.reply_text(tr(lang, code))
 
     async def callback(self, update, ctx):
-        parts = update.callback_query.data.split(":")
+        query = update.callback_query
+        parts = query.data.split(":")
         identity = await self.identity(update, ctx, write=parts[1] == "c")
         if not identity:
             return
@@ -161,17 +193,30 @@ class AgentBot:
             what = parts[1]
             if what == "consent":
                 core.consent(ws, True)
-                await message.reply_text(tr(lang, "consented"))
+                pending = ctx.user_data.pop("agent_pending", None)
+                try:
+                    await query.edit_message_text(tr(lang, "consented"))
+                except TelegramError:
+                    pass
+                # The message that asked for consent runs now; nobody re-sends it.
+                if pending and pending["kind"] == "text":
+                    await self.run_text(update, ctx, user, ws, message, pending["text"], pending["key"])
+                elif pending:
+                    await self.run_voice(update, ctx, user, ws, message, pending)
                 return
             draft_id, revision = parts[2], int(parts[3])
             if what == "c":
-                await self.show(message, core.confirm(user.telegram_id, ws, draft_id, revision), lang)
+                await self.replace(query, core.confirm(user.telegram_id, ws, draft_id, revision), lang)
             elif what == "x":
                 core.editing(ws, clear=True)
-                await self.show(message, core.cancel(ws, draft_id, revision), lang)
+                await self.replace(query, core.cancel(ws, draft_id, revision), lang)
             elif what == "e":
                 core.editing(ws, draft_id, revision)
                 ctx.user_data.pop("flow", None)
+                try:
+                    await query.edit_message_reply_markup(reply_markup=None)
+                except TelegramError:
+                    pass
                 await message.reply_text(tr(lang, "edit_prompt"))
         except (AgentError, PermissionError, ValueError, IndexError, NotFound) as e:
             code = e.code if isinstance(e, AgentError) else ("not_found" if isinstance(e, NotFound) else ("timer_required" if str(e) == "timer_required" else "forbidden"))

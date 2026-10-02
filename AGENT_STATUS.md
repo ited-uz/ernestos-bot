@@ -1,6 +1,6 @@
 # v12 agent — holat
 
-> Tarixiy v12 qaydi. Hozirgi reliz va tekshiruv chegaralari: [v12.1 hisobot](docs/RELEASE_V12_1_UZ.md).
+> Tarixiy v12 qaydi. Hozirgi reliz: [v12.2 hisobot](docs/RELEASE_V12_2_UZ.md).
 
 2026-09-30. v11 agentidan soddalashtirildi (KISS).
 
