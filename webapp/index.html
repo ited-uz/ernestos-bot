@@ -797,6 +797,10 @@ nav:empty{display:none}
                   50%{box-shadow:0 0 0 18px color-mix(in srgb, var(--danger) 0%, transparent)}}
 @media (prefers-reduced-motion: reduce){ .voice-pulse{animation:none} }
 .voice-time{font-size:28px;font-weight:720}
+.hstat{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.hstat>div{background:var(--surface-2);border-radius:var(--radius-sm);padding:8px 4px;text-align:center}
+.hstat b{display:block;font-size:16px}
+.hstat span{display:block;font-size:11px;color:var(--text-3)}
 .jai{margin-bottom:14px}
 .jai .btn{margin-top:0}
 textarea.jai-new{border-color:var(--primary)}
@@ -865,8 +869,9 @@ details{margin-top:var(--s3);border-top:var(--border-w) solid var(--border);
         padding-top:var(--s1)}
 details > summary{list-style:none;cursor:pointer;font-size:15px;font-weight:600;
                   color:var(--primary);padding:var(--s1) 0;display:flex;
-                  align-items:center;gap:6px;min-height:44px}
+                  align-items:center;flex-wrap:wrap;gap:6px;min-height:44px}
 details > summary::-webkit-details-marker{display:none}
+details > summary .sumline{flex-basis:100%;font-weight:400;padding-left:22px}
 details > summary .i{transition:transform var(--motion)}
 details[open] > summary .i{transform:rotate(90deg)}
 .chev{transition:transform var(--motion)}
@@ -1213,7 +1218,7 @@ const DICT = {
   /* quick capture */
   quick_add:"Tez qo'shish", quick_ph:"Nima esingizga tushdi?",
   inbox_saved:"Saqlandi — Vazifalarda",
-  quick_saved:"✓ Vazifa", next_up:"Keyingi", home_more_tasks:"Yana {n} ta ish", voice_title:"Ovoz bilan qo'shish", voice_listening:"Gapiring… To'xtatsangiz, tahlil qilaman.", voice_stop:"To'xtatish", voice_thinking:"Tushunishga harakat qilyapman…", voice_confirm:"Tasdiqlash", voice_retry:"Qayta yozish", voice_done:"✅ Tasdiqlandi", voice_failed:"Ovoz yuborilmadi. Qayta urinib ko'ring.", voice_too_long:"Ovoz 2 daqiqadan oshmasin.", voice_denied:"Mikrofonga ruxsat yo'q — botda ovoz yuboring.", voice_consent:"Ovozingiz matnga aylantirish va tushunish uchun AI xizmatlariga (ElevenLabs, Groq, Google — AQSh) yuboriladi. Audio saqlanmaydi. Hech narsa siz tasdiqlamaguningizcha o'zgarmaydi.", voice_agree:"Roziman, boshlash", voice_consent_needed:"Avval rozilik bering.", tab_list:"Ro'yxat", nav_money:"Moliya", quick_more:"Batafsil (vaqt, eslatma, loyiha)", steps_title:"Qadam", steps_motto:"Har bir yaxshi ish — kelajakdagi yutuqqa qadam.", steps_freeze:"Ketma-ketlikni saqlab qoladigan kunlar", steps_level_n:"{n}-daraja", steps_total:"Jami qadamlar", steps_path:"Sizning yo'lingiz", steps_today:"Bugungi qadamlar", steps_go:"Qadamni davom ettir", step_lvl_starter:"Boshlovchi", step_lvl_builder:"Quruvchi", step_lvl_discipline:"Intizom", step_lvl_steady:"Barqarorlik", step_lvl_master:"O'z ustida ishlash", step_tasks:"Vazifa", step_habits:"Odat", step_prayer:"Namoz", step_journal:"Xulosa", step_goal:"Maqsad", task_word:"Vazifa", habit_word:"Odat", quick_habit_ph:"Masalan: Har kuni kitob o'qish", quick_habit_hint:"Har kuni takrorlanadi. Keyin o'zgartirsa bo'ladi.", quick_habit_saved:"✓ Odat", nav_tracker:"Kundalik", nav_profile:"Profil", quick_hint:"Masalan: «Ertaga soat 10 da hisobot» yoki «Tushlik 45 ming»", quick_voice:"Ovoz bilan aytish", jai_title:"AI bilan to'ldirish", jai_hint:"Kuningizni erkin gapirib yoki yozib bering — AI uni 5 savolga ajratib, xatolarini to'g'rilaydi. Siz tekshirib, saqlaysiz.", jai_voice:"Gapirish", jai_text:"Yozish", jai_ph:"Masalan: bugun mijoz bilan shartnoma yopdim, onamga rahmat, vaqtni rejalashtira olmadim, ertaga hisobotni tugataman…", jai_sort:"Savollarga ajratish", jai_done:"✨ {n} ta javob to'ldirildi — tekshirib, Saqlang", jai_nothing:"Savollarga mos gap topilmadi. Batafsilroq ayting.",
+  quick_saved:"✓ Vazifa", next_up:"Keyingi", home_more_tasks:"Yana {n} ta ish", voice_title:"Ovoz bilan qo'shish", voice_listening:"Gapiring… To'xtatsangiz, tahlil qilaman.", voice_stop:"To'xtatish", voice_thinking:"Tushunishga harakat qilyapman…", voice_confirm:"Tasdiqlash", voice_retry:"Qayta yozish", voice_done:"✅ Tasdiqlandi", voice_failed:"Ovoz yuborilmadi. Qayta urinib ko'ring.", voice_too_long:"Ovoz 2 daqiqadan oshmasin.", voice_denied:"Mikrofonga ruxsat yo'q — botda ovoz yuboring.", voice_consent:"Ovozingiz matnga aylantirish va tushunish uchun AI xizmatlariga (ElevenLabs, Groq, Google — AQSh) yuboriladi. Audio saqlanmaydi. Hech narsa siz tasdiqlamaguningizcha o'zgarmaydi.", voice_agree:"Roziman, boshlash", voice_consent_needed:"Avval rozilik bering.", tab_list:"Ro'yxat", nav_money:"Moliya", quick_more:"Batafsil (vaqt, eslatma, loyiha)", quick_more_habit:"Batafsil (kunlar, eslatma, muhimlik)", steps_title:"Qadam", steps_motto:"Har bir yaxshi ish — kelajakdagi yutuqqa qadam.", steps_freeze:"Ketma-ketlikni saqlab qoladigan kunlar", steps_level_n:"{n}-daraja", steps_total:"Jami qadamlar", steps_path:"Sizning yo'lingiz", steps_today:"Bugungi qadamlar", steps_go:"Qadamni davom ettir", step_lvl_starter:"Boshlovchi", step_lvl_builder:"Quruvchi", step_lvl_discipline:"Intizom", step_lvl_steady:"Barqarorlik", step_lvl_master:"O'z ustida ishlash", step_tasks:"Vazifa", step_habits:"Odat", step_prayer:"Namoz", step_journal:"Xulosa", step_goal:"Maqsad", task_word:"Vazifa", habit_word:"Odat", quick_habit_ph:"Masalan: Har kuni kitob o'qish", quick_habit_hint:"Har kuni takrorlanadi. Keyin o'zgartirsa bo'ladi.", quick_habit_saved:"✓ Odat", nav_tracker:"Kundalik", nav_profile:"Profil", quick_hint:"Masalan: «Ertaga soat 10 da hisobot» yoki «Tushlik 45 ming»", quick_voice:"Ovoz bilan aytish", jai_title:"AI bilan to'ldirish", jai_hint:"Kuningizni erkin gapirib yoki yozib bering — AI uni 5 savolga ajratib, xatolarini to'g'rilaydi. Siz tekshirib, saqlaysiz.", jai_voice:"Gapirish", jai_text:"Yozish", jai_ph:"Masalan: bugun mijoz bilan shartnoma yopdim, onamga rahmat, vaqtni rejalashtira olmadim, ertaga hisobotni tugataman…", jai_sort:"Savollarga ajratish", jai_done:"✨ {n} ta javob to'ldirildi — tekshirib, Saqlang", jai_nothing:"Savollarga mos gap topilmadi. Batafsilroq ayting.",
   /* tasks */
   add_task:"Vazifa", task_name:"Vazifa nomi", task_desc:"Batafsil",
   deadline:"Muddat", due_time:"Vaqt", priority:"Muhimlik", project:"Loyiha",
@@ -1253,6 +1258,8 @@ const DICT = {
   /* habits */
   add_habit:"Odat qo'shish", habit_name:"Odat nomi", category:"Kategoriya",
   non_negotiable:"Majburiy", target:"Maqsadli", bonus:"Qo'shimcha",
+  habit_tier:"Qanchalik muhim", autosave_hint:"O'zgarish darhol saqlanadi", done_btn:"Tayyor",
+  none_short:"Yo'q", remind_s_0:"Vaqtida", remind_s_10:"10 daq", remind_s_30:"30 daq", remind_s_60:"1 soat", remind_s_1440:"1 kun",
   edit_habit:"Odatni tahrirlash", schedule:"Kunlar", every_day:"Har kuni",
   weekdays_only:"Ish kunlari", pick_days:"Tanlangan kunlar",
   pause:"To'xtatib turish", resume:"Davom etish", paused:"To'xtatilgan",
@@ -1585,7 +1592,7 @@ const DICT = {
   wake_late_at:"{time} — later than today's target", wake_target:"Target",
   quick_add:"Quick add", quick_ph:"What came to mind?",
   inbox_saved:"Saved — see Tasks",
-  quick_saved:"✓ Task", next_up:"Up next", home_more_tasks:"{n} more", voice_title:"Add by voice", voice_listening:"Speak… Stop when done and I'll analyse it.", voice_stop:"Stop", voice_thinking:"Understanding…", voice_confirm:"Confirm", voice_retry:"Record again", voice_done:"✅ Confirmed", voice_failed:"Voice was not sent. Try again.", voice_too_long:"Keep it under 2 minutes.", voice_denied:"No microphone access — send a voice message in the bot.", voice_consent:"Your voice is sent to AI services (ElevenLabs, Groq, Google — USA) to transcribe and understand it. Audio is not stored. Nothing changes until you confirm.", voice_agree:"I agree, start", voice_consent_needed:"Please give consent first.", tab_list:"List", nav_money:"Money", quick_more:"More options (time, reminder, project)", steps_title:"Steps", steps_motto:"Every good thing you do is a step forward.", steps_freeze:"Days that keep your streak alive", steps_level_n:"Level {n}", steps_total:"Total steps", steps_path:"Your path", steps_today:"Today's steps", steps_go:"Keep going", step_lvl_starter:"Beginner", step_lvl_builder:"Builder", step_lvl_discipline:"Discipline", step_lvl_steady:"Consistency", step_lvl_master:"Self-mastery", step_tasks:"Task", step_habits:"Habit", step_prayer:"Prayer", step_journal:"Summary", step_goal:"Goal", task_word:"Task", habit_word:"Habit", quick_habit_ph:"E.g. Read a book every day", quick_habit_hint:"Repeats every day. You can change it later.", quick_habit_saved:"✓ Habit", nav_tracker:"Tracker", nav_profile:"Profile", quick_hint:"E.g. “Report tomorrow at 10” or “Lunch 45 thousand”", quick_voice:"Say it by voice", jai_title:"Fill with AI", jai_hint:"Talk or write about your day freely — the AI sorts it into the 5 questions and fixes mistakes. You check and save.", jai_voice:"Speak", jai_text:"Write", jai_ph:"E.g. closed a deal with a client today, thankful to my mom, failed to plan my time, tomorrow I finish the report…", jai_sort:"Sort into questions", jai_done:"✨ {n} answers filled — check and Save", jai_nothing:"Nothing matched the questions. Say a bit more.",
+  quick_saved:"✓ Task", next_up:"Up next", home_more_tasks:"{n} more", voice_title:"Add by voice", voice_listening:"Speak… Stop when done and I'll analyse it.", voice_stop:"Stop", voice_thinking:"Understanding…", voice_confirm:"Confirm", voice_retry:"Record again", voice_done:"✅ Confirmed", voice_failed:"Voice was not sent. Try again.", voice_too_long:"Keep it under 2 minutes.", voice_denied:"No microphone access — send a voice message in the bot.", voice_consent:"Your voice is sent to AI services (ElevenLabs, Groq, Google — USA) to transcribe and understand it. Audio is not stored. Nothing changes until you confirm.", voice_agree:"I agree, start", voice_consent_needed:"Please give consent first.", tab_list:"List", nav_money:"Money", quick_more:"More options (time, reminder, project)", quick_more_habit:"More options (days, reminder, importance)", steps_title:"Steps", steps_motto:"Every good thing you do is a step forward.", steps_freeze:"Days that keep your streak alive", steps_level_n:"Level {n}", steps_total:"Total steps", steps_path:"Your path", steps_today:"Today's steps", steps_go:"Keep going", step_lvl_starter:"Beginner", step_lvl_builder:"Builder", step_lvl_discipline:"Discipline", step_lvl_steady:"Consistency", step_lvl_master:"Self-mastery", step_tasks:"Task", step_habits:"Habit", step_prayer:"Prayer", step_journal:"Summary", step_goal:"Goal", task_word:"Task", habit_word:"Habit", quick_habit_ph:"E.g. Read a book every day", quick_habit_hint:"Repeats every day. You can change it later.", quick_habit_saved:"✓ Habit", nav_tracker:"Tracker", nav_profile:"Profile", quick_hint:"E.g. “Report tomorrow at 10” or “Lunch 45 thousand”", quick_voice:"Say it by voice", jai_title:"Fill with AI", jai_hint:"Talk or write about your day freely — the AI sorts it into the 5 questions and fixes mistakes. You check and save.", jai_voice:"Speak", jai_text:"Write", jai_ph:"E.g. closed a deal with a client today, thankful to my mom, failed to plan my time, tomorrow I finish the report…", jai_sort:"Sort into questions", jai_done:"✨ {n} answers filled — check and Save", jai_nothing:"Nothing matched the questions. Say a bit more.",
   add_task:"Task", task_name:"Task name", task_desc:"Details",
   deadline:"Date", due_time:"Time", priority:"Priority", project:"Project",
   standalone:"Standalone", high:"High", medium:"Medium", low:"Low",
@@ -1622,6 +1629,8 @@ const DICT = {
   inbox_hint:"Dated, undated and late — all of it, here",
   add_habit:"Add habit", habit_name:"Habit name", category:"Category",
   non_negotiable:"Must-do", target:"Goal", bonus:"Extra",
+  habit_tier:"How important", autosave_hint:"Changes save instantly", done_btn:"Done",
+  none_short:"None", remind_s_0:"On time", remind_s_10:"10 min", remind_s_30:"30 min", remind_s_60:"1 hour", remind_s_1440:"1 day",
   edit_habit:"Edit habit", schedule:"Days", every_day:"Every day",
   weekdays_only:"Weekdays", pick_days:"Chosen days",
   pause:"Pause", resume:"Resume", paused:"Paused",
@@ -1946,7 +1955,7 @@ const DICT = {
   wake_late_at:"{time} — позже сегодняшней цели", wake_target:"Цель",
   quick_add:"Быстро добавить", quick_ph:"Что пришло в голову?",
   inbox_saved:"Сохранено — в Задачах",
-  quick_saved:"✓ Задача", next_up:"Дальше", home_more_tasks:"Ещё {n}", voice_title:"Добавить голосом", voice_listening:"Говорите… Остановите — и я разберу.", voice_stop:"Стоп", voice_thinking:"Разбираю…", voice_confirm:"Подтвердить", voice_retry:"Записать заново", voice_done:"✅ Подтверждено", voice_failed:"Голос не отправлен. Попробуйте ещё раз.", voice_too_long:"Не длиннее 2 минут.", voice_denied:"Нет доступа к микрофону — отправьте голосовое в боте.", voice_consent:"Голос отправляется AI-сервисам (ElevenLabs, Groq, Google — США) для распознавания. Аудио не хранится. Ничего не меняется без вашего подтверждения.", voice_agree:"Согласен, начать", voice_consent_needed:"Сначала дайте согласие.", tab_list:"Список", nav_money:"Финансы", quick_more:"Подробнее (время, напоминание, проект)", steps_title:"Шаги", steps_motto:"Каждое доброе дело — шаг вперёд.", steps_freeze:"Дни, которые сохраняют серию", steps_level_n:"{n}-й уровень", steps_total:"Всего шагов", steps_path:"Ваш путь", steps_today:"Шаги сегодня", steps_go:"Продолжить", step_lvl_starter:"Новичок", step_lvl_builder:"Строитель", step_lvl_discipline:"Дисциплина", step_lvl_steady:"Стабильность", step_lvl_master:"Работа над собой", step_tasks:"Задача", step_habits:"Привычка", step_prayer:"Намаз", step_journal:"Итоги", step_goal:"Цель", task_word:"Задача", habit_word:"Привычка", quick_habit_ph:"Например: Читать книгу каждый день", quick_habit_hint:"Повторяется каждый день. Можно изменить позже.", quick_habit_saved:"✓ Привычка", nav_tracker:"Трекер", nav_profile:"Профиль", quick_hint:"Например: «Завтра в 10 отчёт» или «Обед 45 тысяч»", quick_voice:"Сказать голосом", jai_title:"Заполнить с AI", jai_hint:"Расскажите о дне голосом или текстом — AI разложит всё по 5 вопросам и исправит ошибки. Вы проверяете и сохраняете.", jai_voice:"Сказать", jai_text:"Написать", jai_ph:"Например: сегодня закрыл сделку с клиентом, благодарен маме, не успел спланировать время, завтра закончу отчёт…", jai_sort:"Разложить по вопросам", jai_done:"✨ Заполнено ответов: {n} — проверьте и Сохраните", jai_nothing:"Ничего не подошло к вопросам. Расскажите подробнее.",
+  quick_saved:"✓ Задача", next_up:"Дальше", home_more_tasks:"Ещё {n}", voice_title:"Добавить голосом", voice_listening:"Говорите… Остановите — и я разберу.", voice_stop:"Стоп", voice_thinking:"Разбираю…", voice_confirm:"Подтвердить", voice_retry:"Записать заново", voice_done:"✅ Подтверждено", voice_failed:"Голос не отправлен. Попробуйте ещё раз.", voice_too_long:"Не длиннее 2 минут.", voice_denied:"Нет доступа к микрофону — отправьте голосовое в боте.", voice_consent:"Голос отправляется AI-сервисам (ElevenLabs, Groq, Google — США) для распознавания. Аудио не хранится. Ничего не меняется без вашего подтверждения.", voice_agree:"Согласен, начать", voice_consent_needed:"Сначала дайте согласие.", tab_list:"Список", nav_money:"Финансы", quick_more:"Подробнее (время, напоминание, проект)", quick_more_habit:"Подробнее (дни, напоминание, важность)", steps_title:"Шаги", steps_motto:"Каждое доброе дело — шаг вперёд.", steps_freeze:"Дни, которые сохраняют серию", steps_level_n:"{n}-й уровень", steps_total:"Всего шагов", steps_path:"Ваш путь", steps_today:"Шаги сегодня", steps_go:"Продолжить", step_lvl_starter:"Новичок", step_lvl_builder:"Строитель", step_lvl_discipline:"Дисциплина", step_lvl_steady:"Стабильность", step_lvl_master:"Работа над собой", step_tasks:"Задача", step_habits:"Привычка", step_prayer:"Намаз", step_journal:"Итоги", step_goal:"Цель", task_word:"Задача", habit_word:"Привычка", quick_habit_ph:"Например: Читать книгу каждый день", quick_habit_hint:"Повторяется каждый день. Можно изменить позже.", quick_habit_saved:"✓ Привычка", nav_tracker:"Трекер", nav_profile:"Профиль", quick_hint:"Например: «Завтра в 10 отчёт» или «Обед 45 тысяч»", quick_voice:"Сказать голосом", jai_title:"Заполнить с AI", jai_hint:"Расскажите о дне голосом или текстом — AI разложит всё по 5 вопросам и исправит ошибки. Вы проверяете и сохраняете.", jai_voice:"Сказать", jai_text:"Написать", jai_ph:"Например: сегодня закрыл сделку с клиентом, благодарен маме, не успел спланировать время, завтра закончу отчёт…", jai_sort:"Разложить по вопросам", jai_done:"✨ Заполнено ответов: {n} — проверьте и Сохраните", jai_nothing:"Ничего не подошло к вопросам. Расскажите подробнее.",
   add_task:"Задача", task_name:"Название", task_desc:"Подробнее",
   deadline:"Дата", due_time:"Время", priority:"Приоритет", project:"Проект",
   standalone:"Отдельно", high:"Высокий", medium:"Средний", low:"Низкий",
@@ -1983,6 +1992,8 @@ const DICT = {
   inbox_hint:"Со сроком, без срока и просроченные — всё здесь",
   add_habit:"Добавить привычку", habit_name:"Название", category:"Категория",
   non_negotiable:"Обязательные", target:"Развитие", bonus:"Дополнительные",
+  habit_tier:"Насколько важно", autosave_hint:"Изменения сохраняются сразу", done_btn:"Готово",
+  none_short:"Нет", remind_s_0:"Вовремя", remind_s_10:"10 мин", remind_s_30:"30 мин", remind_s_60:"1 час", remind_s_1440:"1 день",
   edit_habit:"Изменить привычку", schedule:"Дни", every_day:"Каждый день",
   weekdays_only:"По рабочим дням", pick_days:"Выбранные дни",
   pause:"Приостановить", resume:"Продолжить", paused:"Приостановлена",
@@ -5018,7 +5029,7 @@ function quickSheet(){
     <div class="hint" style="margin-top:6px">${t(habit ? "quick_habit_hint" : "quick_hint")}</div>
     ${habit ? "" : destPicker()}
     <button class="btn" data-act="quick-save" style="margin-top:12px">${t("save")}</button>
-    <button class="btn secondary" data-act="${habit ? "habit-add" : "task-add"}" style="margin-top:8px">${t("quick_more")}</button>`;
+    <button class="btn secondary" data-act="${habit ? "habit-add" : "task-add"}" style="margin-top:8px">${t(habit ? "quick_more_habit" : "quick_more")}</button>`;
 }
 
 /* What quick add understood, said back: "Saved: hisobot · Tomorrow 10:00". */
@@ -5369,27 +5380,25 @@ function taskSheet(task, presetProject){
 
     <details ${f.open ? "open" : ""}>
       <summary>${icon("chevron", 15)}<span class="chev"></span>
-        ${t("more_options")}</summary>
+        ${t("more_options")}${taskSettingsLine(f)}</summary>
 
-      <label>${t("due_time")} <span class="t3">(${t("optional")})</span></label>
+      <label>🕐 ${t("due_time")} <span class="t3">(${t("optional")})</span></label>
       <input type="time" id="task-time" value="${f.due_time || ""}" />
 
-      <label>${t("reminder")}</label>
-      <select id="task-remind">
-        <option value="" ${f.remind_before === null || f.remind_before === undefined
-          ? "selected" : ""}>${t("remind_none")}</option>
-        ${REMINDER_OFFSETS.map(m =>
-          `<option value="${m}" ${String(f.remind_before) === String(m)
-            ? "selected" : ""}>${t("remind_" + m)}</option>`).join("")}
-      </select>
+      <label>🔔 ${t("reminder")}</label>
+      <div class="chips">
+        <div class="chip sm ${f.remind_before === null || f.remind_before === undefined ? "on" : ""}"
+             data-act="task-remind" data-value="">${t("none_short")}</div>
+        ${REMINDER_OFFSETS.map(m => `<div class="chip sm ${String(f.remind_before) === String(m) ? "on" : ""}"
+             data-act="task-remind" data-value="${m}">${t("remind_s_" + m)}</div>`).join("")}
+      </div>
 
-      <label>${t("repeat")}</label>
-      <select id="task-repeat">
-        <option value="">${t("repeat_none")}</option>
-        ${["daily","weekdays","weekly","monthly"].map(r =>
-          `<option value="${r}" ${f.recurrence === r ? "selected" : ""}
-            >${t("repeat_" + r)}</option>`).join("")}
-      </select>
+      <label>🔁 ${t("repeat")}</label>
+      <div class="chips">
+        ${["", "daily", "weekdays", "weekly", "monthly"].map(r => `<div class="chip sm
+             ${(f.recurrence || "") === r ? "on" : ""}" data-act="task-repeat"
+             data-value="${r}">${r ? t("repeat_" + r) : t("none_short")}</div>`).join("")}
+      </div>
 
       <label>${t("priority")}</label>
       <div class="chips">${["high","medium","low"].map(p =>
@@ -5436,6 +5445,26 @@ function teamTaskOptions(f, task, teamId){
            aria-checked="${chosen.has(m.user_id)}">${esc(m.name)}</div>`).join("")}</div>` : ""}`;
 }
 
+/* What is already set, readable without opening the section:
+   "· 🕐 10:00 · 🔔 30 daq · 🔁 Har kuni". */
+function taskSettingsLine(f){
+  const bits = [];
+  if(f.due_time) bits.push("🕐 " + f.due_time);
+  if(f.remind_before !== null && f.remind_before !== undefined && f.remind_before !== "")
+    bits.push("🔔 " + t("remind_s_" + f.remind_before));
+  if(f.recurrence) bits.push("🔁 " + t("repeat_" + f.recurrence));
+  if(f.priority === "high") bits.push("🔴 " + t("high"));
+  return bits.length ? `<span class="t3 small sumline">${bits.join(" · ")}</span>` : "";
+}
+
+/* An existing deadline shown as the chip it matches: today's task opens on
+   "Bugun", not on a date picker. */
+function whenOf(deadline){
+  if(!deadline) return "none";
+  const today = todayISO();
+  return deadline === today ? "today" : deadline === shiftISO(today, 1) ? "tomorrow" : "pick";
+}
+
 function rerenderTaskSheet(){
   const f = state.form;
   openSheet(taskSheet(f.id ? {id: f.id, source: f.source, team_id: f.team_id} : null,
@@ -5452,11 +5481,6 @@ function readTaskForm(){
   if(get("task-time")) f.due_time = get("task-time").value || null;
   if(get("task-desc")) f.description = get("task-desc").value;
   if(get("task-project")) f.project_id = get("task-project").value || null;
-  if(get("task-remind")){
-    const v = get("task-remind").value;
-    f.remind_before = v === "" ? null : Number(v);
-  }
-  if(get("task-repeat")) f.recurrence = get("task-repeat").value || "";
   if(get("task-timer")) f.timer_minutes = pickedTimer("task-timer");
   const details = document.querySelector(".sheet details");
   if(details) f.open = details.open;
@@ -5557,9 +5581,11 @@ function habitSheet(h){
     ${locked
       ? `<div class="hint"><b>${esc(h.name)}</b> — ${t(h.mirrored ? "habit_mirrored"
           : team ? "forbidden" : "auto_habit")}</div>`
-      : `<input id="habit-name" value="${esc(h.name)}" />`}
+      : `<input id="habit-name" value="${esc(h.name)}" data-act="habit-name-set" data-id="${h.id}"
+           enterkeyhint="done" />
+         <div class="t3 tiny" style="margin-top:6px">✓ ${t("autosave_hint")}</div>`}
 
-    ${locked ? "" : `<label>${t("category")}</label>
+    ${locked ? "" : `<label>${t("habit_tier")}</label>
       <div class="chips">${["non_negotiable","target","bonus"].map(c =>
         `<div class="chip sm ${h.category === c ? "on" : ""}"
           data-act="habit-cat" data-id="${h.id}" data-value="${c}">${t(c)}</div>`).join("")}
@@ -5589,33 +5615,30 @@ function habitSheet(h){
         ${days.includes(i) ? "on" : ""}" data-act="habit-day"
         data-id="${h.id}" data-day="${i}">${label}</div>`).join("")}</div>` : ""}`}
 
-    ${h.system_key === "wakeup" ? `<label>${t("wake_at")}</label>
-      <div class="field">
-        <input type="time" id="habit-target" value="${h.target_time || "05:00"}" />
-        <button class="btn sm" data-act="habit-target-save" data-id="${h.id}"
-                style="min-width:96px">${t("save")}</button>
-      </div>` : ""}
+    ${h.system_key === "wakeup" ? `<label>⏰ ${t("wake_at")}</label>
+      <input type="time" id="habit-target" value="${h.target_time || "05:00"}"
+             data-act="habit-target-set" data-id="${h.id}" />` : ""}
 
-    ${team && locked ? "" : `<label>${t("reminder")} <span class="t3">(${t("optional")})</span></label>
-    <div class="field">
-      <input type="time" id="habit-remind" value="${h.remind_at || ""}" />
-      <button class="btn sm" data-act="habit-remind-save" data-id="${h.id}"
-              style="min-width:96px">${t("save")}</button>
-    </div>`}
+    ${team && locked ? "" : `<label>🔔 ${t("reminder")}</label>
+    <div class="chips">
+      <div class="chip sm ${h.remind_at ? "" : "on"}" data-act="habit-remind-pick" data-id="${h.id}"
+           data-value="">${t("remind_none")}</div>
+      ${["07:00", "12:00", "21:00"].map(v => `<div class="chip sm ${h.remind_at === v ? "on" : ""}"
+           data-act="habit-remind-pick" data-id="${h.id}" data-value="${v}">${v}</div>`).join("")}
+    </div>
+    <input type="time" id="habit-remind" value="${h.remind_at || ""}" style="margin-top:8px"
+           aria-label="${t("reminder")}" data-act="habit-remind-set" data-id="${h.id}" />`}
 
     ${locked || h.protected ? "" : timerSetting(team ? "thabit" : "habit", h)}
 
     ${ritualSharePicker(h)}
 
     <label>${t("history")}</label>
-    <div class="metrics">
-      <div class="metric"><div class="k">${t("streak")}</div>
-        <div class="v num">${icon("flame", 17)} ${h.streak}</div></div>
-      <div class="metric"><div class="k">${t("completion")}</div>
-        <div class="v num">${h.percent}%</div></div>
-      <div class="metric wide"><div class="k">${t("last7")} · ${t("last30")}</div>
-        <div class="v num">${h.last7_done}/${h.last7_due}
-          <span class="k">${h.last30_done}/${h.last30_due}</span></div></div>
+    <div class="hstat">
+      <div><b class="num">${icon("flame", 15)} ${h.streak}</b><span>${t("streak")}</span></div>
+      <div><b class="num">${h.percent}%</b><span>${t("completion")}</span></div>
+      <div><b class="num">${h.last7_done}/${h.last7_due}</b><span>${t("last7")}</span></div>
+      <div><b class="num">${h.last30_done}/${h.last30_due}</b><span>${t("last30")}</span></div>
     </div>
     <div class="hgrid" style="margin-top:10px">${grid.map(g =>
       `<i class="${g.done ? "done" : g.due ? "due" : ""}" title="${g.day}"></i>`).join("")}</div>
@@ -5623,21 +5646,17 @@ function habitSheet(h){
     ${partnerRecords(h)}
     ${ownerPicker(h)}
 
+    <button class="btn" data-act="habit-done" data-id="${h.id}" style="margin-top:16px">✓ ${t("done_btn")}</button>
     ${locked ? "" : `
       <div class="btns">
         <button class="btn secondary" data-act="habit-pause" data-id="${h.id}"
                 data-value="${h.paused || h.pause_from ? 0 : 1}">
           ${h.paused || h.pause_from ? icon("play", 15) + " " + t("resume")
                      : icon("pause", 15) + " " + t("pause")}</button>
-        ${h.name !== undefined ? `<button class="btn secondary"
-          data-act="habit-name-save" data-id="${h.id}">${t("save")}</button>` : ""}
-      </div>
-      <button class="btn danger"
+        <button class="btn danger"
               data-act="${h.source === "team" ? "team-habit-delete" : "habit-delete-confirm"}"
-              data-id="${h.id}" data-name="${esc(h.name)}"
-              style="margin-top:8px">${icon("trash", 15)} ${t("delete")}</button>`}
-    <button class="btn secondary" data-act="close" style="margin-top:8px">
-      ${t("close")}</button>`;
+              data-id="${h.id}" data-name="${esc(h.name)}">${icon("trash", 15)} ${t("delete")}</button>
+      </div>`}`;
 }
 
 /* How everybody else in the team is getting on with this habit.
@@ -7202,7 +7221,8 @@ const A = {
      goes to the money check; a habit is just its name, daily. Three taps:
      +, type, save — or Enter. */
   "quick-add": () => { haptic(); state.dest = "personal";
-    state.quickType = state.screen === "habits" ? "habit" : (state.quickType || "task");
+    state.quickType = state.screen === "habits" ? "habit" : state.screen === "tasks" ? "task"
+      : (state.quickType || "task");
     openSheet(quickSheet());
     setTimeout(() => document.getElementById("quick-title")?.focus(), 60); },
   "quick-type": el => {
@@ -7722,50 +7742,51 @@ const A = {
     try{ openSheet(habitSheet(await api(`/api/habits/${el.dataset.id}/history`))); }
     catch(e){ handleError(e); }
   },
-  "habit-add": el => { state.dest = el?.dataset?.dest || "personal"; openSheet(`
-    <h3>${icon("plus", 18)} ${t("add_habit")}</h3>
-    <input id="habit-name" placeholder="${t("habit_name")}" />
-    ${destPicker()}
-    <label>${t("category")}</label>
-    <select id="habit-cat">
-      <option value="non_negotiable">${t("non_negotiable")}</option>
-      <option value="target" selected>${t("target")}</option>
-      <option value="bonus">${t("bonus")}</option></select>
-    <label>${t("schedule")}</label>
-    <select id="habit-sched">
-      <option value="daily">${t("every_day")}</option>
-      <option value="weekdays">${t("weekdays_only")}</option></select>
-    ${timerPicker("habit-timer")}
-    <button class="btn" data-act="habit-save" style="margin-top:16px">
-      ${t("save")}</button>
-    <button class="btn secondary" data-act="close" style="margin-top:8px">
-      ${t("cancel")}</button>`); },
+  "habit-add": el => {
+    state.dest = el?.dataset?.dest || "personal";
+    state.habitForm = {name: el?.dataset?.name || val("quick-title"), category:"target", schedule:"daily", remind_at:""};
+    openSheet(habitAddSheet());
+    setTimeout(() => document.getElementById("habit-name")?.focus(), 60);
+  },
+  /* A chip on the add sheet: remember the choice, keep what was typed. */
+  "habit-form": el => {
+    haptic();
+    const f = state.habitForm || {};
+    f.name = val("habit-name");
+    f.timer = pickedTimer("habit-timer");
+    f[el.dataset.field] = el.dataset.value;
+    openSheet(habitAddSheet());
+  },
   "habit-save": () => {
     const name = trimmed("habit-name");
     if(!name) return;
+    const f = state.habitForm || {};
+    const body = {name, category: f.category || "target", schedule: f.schedule || "daily",
+                  remind_at: f.remind_at || null, timer_minutes: pickedTimer("habit-timer")};
     const dest = destOf();
     if(dest.team)
       // A shared habit has no category: tiers weigh a personal day, and the
       // team's number is a plain count of what the two of you agreed to do.
-      return save(() => api(`/api/teams/${dest.id}/habits`, {method:"POST",
-        body:{name, schedule: val("habit-sched"), category: val("habit-cat"),
-              timer_minutes: pickedTimer("habit-timer")}}), state.screen);
-    save(() => api("/api/habits", {method:"POST", body:{
-      name, category: val("habit-cat"), schedule: val("habit-sched"),
-      timer_minutes: pickedTimer("habit-timer"),
-    }}), "habits");
+      return save(() => api(`/api/teams/${dest.id}/habits`, {method:"POST", body}), state.screen);
+    save(() => api("/api/habits", {method:"POST", body}), "habits");
   },
-  "habit-name-save": el => save(() => habitPatch(el.dataset.id,
-    {name: trimmed("habit-name")}), state.screen),
-  "habit-cat": el => save(() => habitPatch(el.dataset.id,
-    {category: el.dataset.value}), state.screen, true),
+  /* Every setting saves the moment it changes and the sheet stays open:
+     one tap per change, no Save buttons to hunt for. */
+  "habit-name-set": el => {
+    const name = el.value.trim();
+    if(!name || name === state.habitSheet?.name) return;
+    habitSet(el.dataset.id, {name});
+  },
+  "habit-cat": el => habitSet(el.dataset.id, {category: el.dataset.value}),
   "habit-sched": el => {
     const value = el.dataset.value;
     // A custom schedule starts from the working week rather than from nothing.
-    const schedule = value === "custom" ? "days:0,2,4" : value;
-    save(() => habitPatch(el.dataset.id, {schedule}), state.screen, true)
-      .then(() => reopenHabit(el.dataset.id));
+    habitSet(el.dataset.id, {schedule: value === "custom" ? "days:0,2,4" : value});
   },
+  "habit-remind-pick": el => habitSet(el.dataset.id, {remind_at: el.dataset.value || null}),
+  "habit-remind-set": el => habitSet(el.dataset.id, {remind_at: el.value || null}),
+  "habit-target-set": el => { if(el.value) habitSet(el.dataset.id, {target_time: el.value}); },
+  "habit-done": () => { flushHabitName(); closeSheet(); },
   "habit-day": async el => {
     haptic();
     try{
@@ -7782,10 +7803,6 @@ const A = {
       loadScreen(state.screen);
     }catch(e){ handleError(e); }
   },
-  "habit-remind-save": el => save(() => habitPatch(el.dataset.id,
-    {remind_at: val("habit-remind") || null}), state.screen),
-  "habit-target-save": el => save(() => habitPatch(el.dataset.id,
-    {target_time: val("habit-target")}), state.screen),
   /* Pausing asks from when: from today takes today out of the count too,
      from tomorrow keeps today owed. Resuming is immediate. */
   "habit-pause": el => {
@@ -8024,8 +8041,9 @@ const A = {
   "task-add": el => {
     state.dest = el?.dataset?.dest || "personal";
     const project = el?.dataset?.project || state.project?.project?.id || "";
+    // "Batafsil" from quick add keeps what was already typed.
     state.form = {when:"today", priority:"medium", project_id: project || null,
-                  remind_before: DEFAULT_REMIND_BEFORE};
+                  remind_before: DEFAULT_REMIND_BEFORE, title: val("quick-title")};
     openSheet(taskSheet(null, project));
   },
   "task-add-on": el => {
@@ -8041,6 +8059,16 @@ const A = {
     state.form.when = el.dataset.value;
     if(el.dataset.value === "pick" && !state.form.deadline)
       state.form.deadline = todayISO();
+    rerenderTaskSheet();
+  },
+  "task-remind": el => {
+    readTaskForm();
+    state.form.remind_before = el.dataset.value === "" ? null : Number(el.dataset.value);
+    rerenderTaskSheet();
+  },
+  "task-repeat": el => {
+    readTaskForm();
+    state.form.recurrence = el.dataset.value;
     rerenderTaskSheet();
   },
   "task-priority": el => {
@@ -8581,6 +8609,50 @@ function habitPause(id, paused, from){
     ? api(`/api/teams/habits/${id}`, {method:"PATCH", body:{paused, from}})
     : api(`/api/habits/${id}/pause`, {method:"POST", body:{paused, from}});
 }
+/* New habit: a name, then one tap each for how important, which days and
+   when to remind. Every choice is a chip; the defaults are already on. */
+function habitAddSheet(){
+  const f = state.habitForm || {};
+  const chip = (field, value, label) => `<div class="chip sm ${(f[field] || "") === value ? "on" : ""}"
+      data-act="habit-form" data-field="${field}" data-value="${value}">${label}</div>`;
+  return `<h3>${icon("plus", 18)} ${t("add_habit")}</h3>
+    <input id="habit-name" placeholder="${t("quick_habit_ph")}" value="${esc(f.name || "")}"
+           enterkeyhint="done" data-search="habit-save" />
+    ${destPicker()}
+    <label>${t("habit_tier")}</label>
+    <div class="chips">${["non_negotiable", "target", "bonus"].map(c => chip("category", c, t(c))).join("")}</div>
+    <label>${t("schedule")}</label>
+    <div class="chips">${chip("schedule", "daily", t("every_day"))}${chip("schedule", "weekdays", t("weekdays_only"))}</div>
+    <label>🔔 ${t("reminder")}</label>
+    <div class="chips">${chip("remind_at", "", t("none_short"))}${["07:00", "12:00", "21:00"]
+      .map(v => chip("remind_at", v, v)).join("")}</div>
+    ${timerPicker("habit-timer", f.timer)}
+    <button class="btn" data-act="habit-save" style="margin-top:16px">${t("save")}</button>`;
+}
+
+/* Change one habit setting in place: saved, said so, the sheet redrawn with
+   the new value, the list behind it refreshed. */
+let habitSetting = Promise.resolve();
+function habitSet(id, body){
+  haptic();
+  habitSetting = habitSetting.then(async () => {
+    try{
+      await habitPatch(id, body);
+      notify("success");
+      toast(t("saved"));
+      state.calendarStale = true;
+      if(sheetOpen() && String(state.habitSheet?.id) === String(id)) await reopenHabit(id);
+      loadScreen(state.screen);
+    }catch(e){ handleError(e); }
+  });
+  return habitSetting;
+}
+/* A name typed and then "Done" tapped without leaving the field. */
+function flushHabitName(){
+  const el = document.getElementById("habit-name");
+  const name = el?.value.trim();
+  if(el && name && name !== state.habitSheet?.name) habitSet(el.dataset.id, {name});
+}
 async function reopenHabit(id){
   try{ openSheet(habitSheet(await api(habitHistoryPath(id)))); }
   catch(e){ handleError(e); }
@@ -8599,7 +8671,7 @@ async function openTeamTaskSheet(id){
       deadline: task.deadline, due_time: task.due_time,
       remind_before: task.remind_before, recurrence: task.recurrence || "",
       priority: task.priority, project_id: task.project_id,
-      when: task.deadline ? "pick" : "none", open:false,
+      when: whenOf(task.deadline), open:false,
       source: "team", team_id: task.team_id,
       completion: task.completion || "all", assignees: task.assignees || [],
       members: task.members || [],
@@ -8620,7 +8692,7 @@ function openTaskSheet(id){
     deadline: task.deadline, due_time: task.due_time,
     remind_before: task.remind_before, recurrence: task.recurrence || "",
     priority: task.priority, project_id: task.project_id,
-    when: task.deadline ? "pick" : "none", open:false,
+    when: whenOf(task.deadline), open:false,
     timer_minutes: task.timer_minutes, timer_mode: task.timer_mode,
   };
   openSheet(taskSheet(task));
