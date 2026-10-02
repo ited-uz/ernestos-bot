@@ -708,3 +708,16 @@ def test_confirm_edits_the_same_message_and_drops_buttons(person, monkeypatch):
     text, markup = update.callback_query.edits[-1]
     assert text.endswith("✅ Bajarildi") and markup is None
     message.reply_text.assert_not_awaited()
+
+
+def test_log_says_which_provider_answered_never_the_words(monkeypatch, caplog):
+    import logging
+    monkeypatch.setattr(config, "ELEVENLABS_API_KEY", "fake-11labs")
+    async def fake(path, **kwargs):
+        return {"text": "Maxfiy gap"}
+    monkeypatch.setattr(provider, "request", fake)
+    monkeypatch.setattr(provider, "audio_wav", lambda data, mime: b"RIFFwav")
+    with caplog.at_level(logging.INFO, logger="ernestos.agent"):
+        asyncio.run(provider.transcribe(b"OggS", "audio/ogg", CTX))
+    assert "agent voice: elevenlabs/scribe_v2" in caplog.text
+    assert "Maxfiy" not in caplog.text

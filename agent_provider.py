@@ -154,13 +154,20 @@ async def request(path, service="groq", **kwargs):
 FALLBACK = {"provider_limit", "provider_unavailable", "provider_not_configured"}
 
 
-async def first_available(steps, call):
-    """Try each (service, model) in order; move on only when a provider cannot serve."""
+async def first_available(steps, call, what):
+    """Try each (service, model) in order; move on only when a provider cannot serve.
+
+    Every success is logged as "agent voice: elevenlabs/scribe_v2" or "agent
+    text: groq/…", so the owner can see in the server log which provider is
+    really answering. Never the user's words, only the provider.
+    """
     if not steps:
         connection("groq")  # raises the precise disabled / not-configured error
     for i, (service, model) in enumerate(steps):
         try:
-            return await call(service, model)
+            result = await call(service, model)
+            log.info("agent %s: %s/%s", what, service, model)
+            return result
         except AgentError as e:
             if e.code not in FALLBACK or i == len(steps) - 1:
                 raise
@@ -228,7 +235,7 @@ async def plan(transcript, context, history):
     # Do not forward stored database snapshots or audit data to the provider.
     prior = [{"text": h.get("text", "")} for h in history]
     payload = dumps({"context": compact, "previous_inputs": prior, "latest_input": transcript})
-    return await first_available(text_chain(), lambda service, model: _plan_on(service, model, payload))
+    return await first_available(text_chain(), lambda service, model: _plan_on(service, model, payload), "text")
 
 
 MIME_TYPES = {"audio/ogg", "application/ogg", "audio/webm", "video/webm", "audio/mp4", "video/mp4",
@@ -335,4 +342,4 @@ async def transcribe(data, mime, context):
     steps = speech_chain()
     connection(steps[0][0] if steps else "groq")  # fail before spending CPU when disabled
     wav = await asyncio.to_thread(audio_wav, data, mime)
-    return await first_available(steps, lambda service, model: _transcribe_on(service, model, wav, context))
+    return await first_available(steps, lambda service, model: _transcribe_on(service, model, wav, context), "voice")
