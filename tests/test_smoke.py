@@ -4660,7 +4660,7 @@ def test_the_floating_add_never_covers_the_page():
     assert 'id="fab"' in html and "#fab:empty{display:none}" in html
     render = html[html.index('document.getElementById("fab").innerHTML'):]
     assert render.split("\n")[0].strip().endswith('chromeOff ? "" : `'), "fab drawn while loading"
-    assert '"quick-add"' in render[:700] and 'data-act="agent-open"' in render[:700]
+    assert '"quick-add"' in render[:700] and 'data-act="voice-start"' in render[:700]
     assert '"money-add"' in render[:700], "on Money the + adds money"
     assert "fab && fab.innerHTML.trim() ? 84 : 0" in html, "page not padded for the fab"
     assert "body:has(#sheet.show) #fab" in html

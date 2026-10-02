@@ -37,6 +37,15 @@ kerak; ertege/ertegi/ertan -> ertaga; bugin/bugn -> bugun; -de/-te/-ge/-ke ->
 -da/-ta/-ga/-ka; q/k and g/g' and o/o' confusions (qirish -> kirish,
 yotokhuniye/yatoqxana -> yotoqxona); Russian words in Uzbek speech are normal.
 Pick the most likely meaning; never invent facts that were not said.
+THINK ABOUT THE TOPIC, NOT ONLY THE WORDS. Read the whole sentence as one
+real-life activity and choose words that make sense together, using common
+sense: turnik goes with tortilish (pull-ups), never with o'tirish; zal is
+sport zali; otjimaniya are push-ups; a friend, a client or a meeting is a
+task with a person; money words go with an amount. If a heard word does not
+fit the topic, replace it with the word that does and sounds similar.
+A count belongs in the name: "Turnikda tortilish — 30 marta".
+"har kuni / har ertalab / haftada N marta / doim" = a HABIT, not a task.
+A one-off thing with a day or time (meet, call, buy, go, prepare) = a TASK.
 `understood`: that meaning as ONE clean sentence (max 200 chars) in correct
 standard (literary) context.language - uz = Uzbek Latin with o‘ and g‘, e.g.
 "Soat 9 da yotoqxonaga kirishim kerak". null only for silence/noise.
@@ -63,14 +72,30 @@ accounts, permissions, settings, code, bank transfers or other users' data.
 History contains earlier drafts, NOT executed actions. A correction replaces
 the whole plan while preserving unchanged intent. 'Yes/done' is not
 authorization: only app buttons execute.
+EXAMPLES (transcript -> understood -> plan):
+- "turnik o'tirish 30 dona har kuni" -> "Har kuni turnikda 30 marta tortilish"
+  -> habit create name="Turnikda tortilish — 30 marta" (daily).
+- "ertaga soat 5da do'stim bilan ko'rishish" -> "Ertaga soat 17:00 da do‘stim
+  bilan ko‘rishaman" -> task create title="Do‘st bilan uchrashuv",
+  deadline=tomorrow, due_time=17:00. No question: "do'stim" needs no name.
+- "So't 9de yotokhuniye qirishim qerek" -> task title="Yotoqxonaga kirish",
+  deadline=today, due_time=09:00.
+- "matematika matritse mauzusini urganish ertaga" -> task
+  title="Matematika: matritsalar mavzusini o‘rganish", deadline=tomorrow.
+- "haftada uch marta zalga borish" -> habit name="Sport zaliga borish",
+  schedule=days:0,2,4.
+- "otjimaniya 50 ta har kuni ertalab" -> habit name="Otjimaniya — 50 marta".
+- "ovqatga ellik ming ketti" -> money expense amount=50000 category=food.
+- "maosh tushdi 5 million" -> money income amount=5000000 category=salary.
 DEFAULTS, NOT QUESTIONS. Never ask about anything optional; leave it out and
 the app fills a default. Money: day=today, kind=expense unless income words
 (oldim/tushdi/maosh/sotdim/kirim), category guessed from the words, else
 other/other_in. Task with a time but no date: deadline=today. Task with no date
 and no time: no deadline. Habit: daily. Project: none.
-Ask a question ONLY when the command is unintelligible, the money amount or the
-item name is missing, or several existing items match the same name. Then one
-short question, max 12 words.
+Ask a question ONLY when the command is unintelligible, the money amount is
+missing, or several existing items match the same name. Never ask who, which
+friend, where, how long or any detail that can be left out; a short sensible
+title is always better than a question. Then one short question, max 12 words.
 Default personal scope unless a team is explicitly named. 'guruh' can mean a
 habit category, NOT necessarily a Telegram group. Match team/project/item IDs
 ONLY from context.items/context.teams. Never invent IDs. Catalog may be partial.
@@ -320,10 +345,28 @@ def speech_prompt(context):
     return SPEECH_HINT[lang] + (f" {label}: {', '.join(names)}." if names else "")
 
 
+#: Everyday words people say to a planner, so the recogniser expects them.
+#: The user's own names come first; these fill the rest of ElevenLabs' 100.
+EVERYDAY_TERMS = {
+    "uz": ["turnik", "tortilish", "otjimaniya", "sport zali", "yugurish", "kitob o‘qish",
+           "namoz", "bomdod", "peshin", "asr", "shom", "xufton", "uchrashuv", "ko‘rishish",
+           "vazifa", "odat", "loyiha", "xarajat", "kirim", "maosh", "so‘m", "ming",
+           "million", "ertaga", "bugun", "indinga", "soat", "har kuni", "haftada",
+           "dushanba", "seshanba", "chorshanba", "payshanba", "juma", "shanba", "yakshanba"],
+    "ru": ["турник", "подтягивания", "отжимания", "спортзал", "пробежка", "чтение",
+           "встреча", "задача", "привычка", "проект", "расход", "доход", "зарплата",
+           "сум", "тысяч", "миллион", "завтра", "сегодня", "каждый день"],
+    "en": ["pull-ups", "push-ups", "gym", "running", "reading", "meeting", "task",
+           "habit", "project", "expense", "income", "salary", "thousand", "million",
+           "tomorrow", "today", "every day"],
+}
+
+
 def keyterms(context):
-    """The user's own names for ElevenLabs: ≤100 terms, ≤50 chars and ≤5 words each."""
+    """The user's own names, then everyday words: ≤100 terms, ≤50 chars, ≤5 words each."""
     terms, seen = [], set()
-    for item in [*context.get("teams", []), *context.get("items", [])]:
+    everyday = [{"name": w} for w in EVERYDAY_TERMS.get(context.get("language"), EVERYDAY_TERMS["uz"])]
+    for item in [*context.get("teams", []), *context.get("items", []), *everyday]:
         term = re.sub(r"\s+", " ", str(item.get("name") or "")).strip()
         if term and len(term) <= 50 and len(term.split()) <= 5 and term.casefold() not in seen:
             seen.add(term.casefold())

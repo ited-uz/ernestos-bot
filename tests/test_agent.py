@@ -604,7 +604,8 @@ def test_elevenlabs_scribe_is_first_with_language_and_user_names(monkeypatch):
     assert (path, service) == ("/speech-to-text", "elevenlabs") and len(sent) == 1
     assert form["model_id"] == "scribe_v2" and form["language_code"] == "uz"
     assert form["tag_audio_events"] == "false" and form["no_verbatim"] == "true"
-    assert form["keyterms"] == ["Savdo jamoasi", "Abdulvosid bilan uchrashuv"]
+    assert form["keyterms"][:2] == ["Savdo jamoasi", "Abdulvosid bilan uchrashuv"], "own names first"
+    assert "turnik" in form["keyterms"] and "tortilish" in form["keyterms"], "everyday words follow"
 
 
 @pytest.mark.parametrize("code", ["provider_limit", "provider_unavailable"])
@@ -745,3 +746,55 @@ def test_card_reads_like_a_person_wrote_it():
 def test_understood_in_another_language_is_not_shown(person, monkeypatch):
     draft = capture(person, monkeypatch, plan(action(title="Hisobot"), understood="Завтра отчёт"))
     assert "Завтра" not in draft["preview"]
+
+
+# --- Mini App agent API: speak/type → card → Confirm / Cancel ------------------
+
+def test_mini_app_agent_text_card_confirm(person, client, monkeypatch):
+    caller, uid, ws = person
+    assert client.post("/api/agent/text", json={"text": "x", "request_key": uuid.uuid4().hex}).status_code == 401
+    me = caller.get("/api/me").json()["agent"]
+    assert me["available"] and me["consent"]
+    monkeypatch.setattr(provider, "plan", AsyncMock(return_value=plan(action(title="Hisobot"), understood="Hisobot tayyorlash")))
+    r = caller.post("/api/agent/text", {"text": "hisobot", "request_key": uuid.uuid4().hex})
+    assert r.status_code == 200, r.text
+    draft = r.json()
+    assert draft["status"] == "ready" and "<b>Hisobot</b>" in draft["preview"]
+    assert count(db.Task, ws) == 0, "nothing before Confirm"
+    done = caller.post(f'/api/agent/drafts/{draft["id"]}/confirm', {"revision": 1}).json()
+    assert done["status"] == "executed" and count(db.Task, ws) == 1
+    again = caller.post(f'/api/agent/drafts/{draft["id"]}/confirm', {"revision": 1}).json()
+    assert again["status"] == "executed" and count(db.Task, ws) == 1, "double tap adds once"
+
+
+def test_mini_app_agent_cancel_and_consent(person, client, monkeypatch):
+    caller, uid, ws = person
+    core.consent(ws, False)
+    blocked = caller.post("/api/agent/text", {"text": "hisobot", "request_key": uuid.uuid4().hex})
+    assert blocked.status_code == 403
+    assert caller.post("/api/agent/consent").json()["consent"] is True
+    monkeypatch.setattr(provider, "plan", AsyncMock(return_value=plan(action(title="Hisobot"))))
+    draft = caller.post("/api/agent/text", {"text": "hisobot", "request_key": uuid.uuid4().hex}).json()
+    gone = caller.post(f'/api/agent/drafts/{draft["id"]}/cancel', {"revision": 1}).json()
+    assert gone["status"] == "cancelled" and count(db.Task, ws) == 0
+
+
+def test_mini_app_audio_is_streamed_and_bounded(person, client, monkeypatch):
+    caller, _, _ = person
+    monkeypatch.setattr(config, "AGENT_AUDIO_BYTES", 5)
+    def chunks():
+        yield b"OggS"
+        yield b"123456789"
+    r = client.post("/api/agent/audio", headers={**caller.h, "Content-Type": "audio/webm",
+                    "X-Agent-Request-Key": uuid.uuid4().hex}, content=chunks())
+    assert r.status_code == 413
+
+
+def test_mini_app_audio_goes_through_the_same_pipeline(person, client, monkeypatch):
+    caller, _, ws = person
+    monkeypatch.setattr(provider, "transcribe", AsyncMock(return_value="ovqatga 5 ming"))
+    monkeypatch.setattr(provider, "plan", AsyncMock(return_value=plan(action("money", amount=5000, kind="expense", category="food"))))
+    r = client.post("/api/agent/audio", headers={**caller.h, "Content-Type": "audio/webm",
+                    "X-Agent-Request-Key": uuid.uuid4().hex}, content=b"\x1aE\xdf\xa3voice")
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "ready" and "5 000 so‘m" in r.json()["preview"]

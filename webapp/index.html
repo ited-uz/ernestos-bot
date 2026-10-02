@@ -782,6 +782,19 @@ nav:empty{display:none}
 #fab .fab-mic{width:48px;height:48px;background:var(--surface);color:var(--primary);
               border:var(--border-w) solid var(--border)}
 #fab button:active{transform:scale(.94)}
+#fab .fab-add{background:linear-gradient(145deg, color-mix(in srgb, var(--primary-fill) 82%, var(--surface) 18%), var(--primary-fill))}
+.voice-box{display:grid;justify-items:center;gap:10px;padding:8px 0 4px;text-align:center}
+.voice-box .btn{width:100%}
+.voice-pulse{width:92px;height:92px;border-radius:50%;display:grid;place-items:center;
+             color:var(--on-primary);background:var(--danger);animation:vpulse 1.4s ease-in-out infinite}
+@keyframes vpulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb, var(--danger) 45%, transparent)}
+                  50%{box-shadow:0 0 0 18px color-mix(in srgb, var(--danger) 0%, transparent)}}
+@media (prefers-reduced-motion: reduce){ .voice-pulse{animation:none} }
+.voice-time{font-size:28px;font-weight:720}
+.voice-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.voice-row .btn{margin:0}
+.voice-card{background:var(--surface-2);border-radius:var(--radius-sm);padding:14px;margin-bottom:12px;
+            line-height:1.5;font-size:15.5px}
 body:has(#sheet.show) #fab,
 body:has(#app input:focus, #app textarea:focus) #fab{display:none}
 nav button{background:0;border:0;color:var(--text-2);padding:6px 1px 8px;
@@ -1191,7 +1204,7 @@ const DICT = {
   /* quick capture */
   quick_add:"Tez qo'shish", quick_ph:"Nima esingizga tushdi?",
   inbox_saved:"Saqlandi — Vazifalarda",
-  quick_saved:"✓ Vazifa", tab_list:"Ro'yxat", nav_money:"Moliya", quick_more:"Batafsil (vaqt, eslatma, loyiha)", steps_title:"Qadam", steps_motto:"Har bir yaxshi ish — kelajakdagi yutuqqa qadam.", steps_freeze:"Ketma-ketlikni saqlab qoladigan kunlar", steps_level_n:"{n}-daraja", steps_total:"Jami qadamlar", steps_path:"Sizning yo'lingiz", steps_today:"Bugungi qadamlar", steps_go:"Qadamni davom ettir", step_lvl_starter:"Boshlovchi", step_lvl_builder:"Quruvchi", step_lvl_discipline:"Intizom", step_lvl_steady:"Barqarorlik", step_lvl_master:"O'z ustida ishlash", step_tasks:"Vazifa", step_habits:"Odat", step_prayer:"Namoz", step_journal:"Kundalik", step_goal:"Maqsad", task_word:"Vazifa", habit_word:"Odat", quick_habit_ph:"Masalan: Har kuni kitob o'qish", quick_habit_hint:"Har kuni takrorlanadi. Keyin o'zgartirsa bo'ladi.", quick_habit_saved:"✓ Odat", nav_tracker:"Kundalik", nav_profile:"Profil", quick_hint:"Masalan: «Ertaga soat 10 da hisobot» yoki «Tushlik 45 ming»", quick_voice:"Ovoz bilan aytish",
+  quick_saved:"✓ Vazifa", voice_title:"Ovoz bilan qo'shish", voice_listening:"Gapiring… To'xtatsangiz, tahlil qilaman.", voice_stop:"To'xtatish", voice_thinking:"Tushunishga harakat qilyapman…", voice_confirm:"Tasdiqlash", voice_retry:"Qayta yozish", voice_done:"✅ Tasdiqlandi", voice_failed:"Ovoz yuborilmadi. Qayta urinib ko'ring.", voice_too_long:"Ovoz 2 daqiqadan oshmasin.", voice_denied:"Mikrofonga ruxsat yo'q — botda ovoz yuboring.", voice_consent:"Ovozingiz matnga aylantirish va tushunish uchun AI xizmatlariga (ElevenLabs, Groq, Google — AQSh) yuboriladi. Audio saqlanmaydi. Hech narsa siz tasdiqlamaguningizcha o'zgarmaydi.", voice_agree:"Roziman, boshlash", voice_consent_needed:"Avval rozilik bering.", tab_list:"Ro'yxat", nav_money:"Moliya", quick_more:"Batafsil (vaqt, eslatma, loyiha)", steps_title:"Qadam", steps_motto:"Har bir yaxshi ish — kelajakdagi yutuqqa qadam.", steps_freeze:"Ketma-ketlikni saqlab qoladigan kunlar", steps_level_n:"{n}-daraja", steps_total:"Jami qadamlar", steps_path:"Sizning yo'lingiz", steps_today:"Bugungi qadamlar", steps_go:"Qadamni davom ettir", step_lvl_starter:"Boshlovchi", step_lvl_builder:"Quruvchi", step_lvl_discipline:"Intizom", step_lvl_steady:"Barqarorlik", step_lvl_master:"O'z ustida ishlash", step_tasks:"Vazifa", step_habits:"Odat", step_prayer:"Namoz", step_journal:"Kundalik", step_goal:"Maqsad", task_word:"Vazifa", habit_word:"Odat", quick_habit_ph:"Masalan: Har kuni kitob o'qish", quick_habit_hint:"Har kuni takrorlanadi. Keyin o'zgartirsa bo'ladi.", quick_habit_saved:"✓ Odat", nav_tracker:"Kundalik", nav_profile:"Profil", quick_hint:"Masalan: «Ertaga soat 10 da hisobot» yoki «Tushlik 45 ming»", quick_voice:"Ovoz bilan aytish",
   /* tasks */
   add_task:"Vazifa", task_name:"Vazifa nomi", task_desc:"Batafsil",
   deadline:"Muddat", due_time:"Vaqt", priority:"Muhimlik", project:"Loyiha",
@@ -1563,7 +1576,7 @@ const DICT = {
   wake_late_at:"{time} — later than today's target", wake_target:"Target",
   quick_add:"Quick add", quick_ph:"What came to mind?",
   inbox_saved:"Saved — see Tasks",
-  quick_saved:"✓ Task", tab_list:"List", nav_money:"Money", quick_more:"More options (time, reminder, project)", steps_title:"Steps", steps_motto:"Every good thing you do is a step forward.", steps_freeze:"Days that keep your streak alive", steps_level_n:"Level {n}", steps_total:"Total steps", steps_path:"Your path", steps_today:"Today's steps", steps_go:"Keep going", step_lvl_starter:"Beginner", step_lvl_builder:"Builder", step_lvl_discipline:"Discipline", step_lvl_steady:"Consistency", step_lvl_master:"Self-mastery", step_tasks:"Task", step_habits:"Habit", step_prayer:"Prayer", step_journal:"Journal", step_goal:"Goal", task_word:"Task", habit_word:"Habit", quick_habit_ph:"E.g. Read a book every day", quick_habit_hint:"Repeats every day. You can change it later.", quick_habit_saved:"✓ Habit", nav_tracker:"Tracker", nav_profile:"Profile", quick_hint:"E.g. “Report tomorrow at 10” or “Lunch 45 thousand”", quick_voice:"Say it by voice",
+  quick_saved:"✓ Task", voice_title:"Add by voice", voice_listening:"Speak… Stop when done and I'll analyse it.", voice_stop:"Stop", voice_thinking:"Understanding…", voice_confirm:"Confirm", voice_retry:"Record again", voice_done:"✅ Confirmed", voice_failed:"Voice was not sent. Try again.", voice_too_long:"Keep it under 2 minutes.", voice_denied:"No microphone access — send a voice message in the bot.", voice_consent:"Your voice is sent to AI services (ElevenLabs, Groq, Google — USA) to transcribe and understand it. Audio is not stored. Nothing changes until you confirm.", voice_agree:"I agree, start", voice_consent_needed:"Please give consent first.", tab_list:"List", nav_money:"Money", quick_more:"More options (time, reminder, project)", steps_title:"Steps", steps_motto:"Every good thing you do is a step forward.", steps_freeze:"Days that keep your streak alive", steps_level_n:"Level {n}", steps_total:"Total steps", steps_path:"Your path", steps_today:"Today's steps", steps_go:"Keep going", step_lvl_starter:"Beginner", step_lvl_builder:"Builder", step_lvl_discipline:"Discipline", step_lvl_steady:"Consistency", step_lvl_master:"Self-mastery", step_tasks:"Task", step_habits:"Habit", step_prayer:"Prayer", step_journal:"Journal", step_goal:"Goal", task_word:"Task", habit_word:"Habit", quick_habit_ph:"E.g. Read a book every day", quick_habit_hint:"Repeats every day. You can change it later.", quick_habit_saved:"✓ Habit", nav_tracker:"Tracker", nav_profile:"Profile", quick_hint:"E.g. “Report tomorrow at 10” or “Lunch 45 thousand”", quick_voice:"Say it by voice",
   add_task:"Task", task_name:"Task name", task_desc:"Details",
   deadline:"Date", due_time:"Time", priority:"Priority", project:"Project",
   standalone:"Standalone", high:"High", medium:"Medium", low:"Low",
@@ -1924,7 +1937,7 @@ const DICT = {
   wake_late_at:"{time} — позже сегодняшней цели", wake_target:"Цель",
   quick_add:"Быстро добавить", quick_ph:"Что пришло в голову?",
   inbox_saved:"Сохранено — в Задачах",
-  quick_saved:"✓ Задача", tab_list:"Список", nav_money:"Финансы", quick_more:"Подробнее (время, напоминание, проект)", steps_title:"Шаги", steps_motto:"Каждое доброе дело — шаг вперёд.", steps_freeze:"Дни, которые сохраняют серию", steps_level_n:"{n}-й уровень", steps_total:"Всего шагов", steps_path:"Ваш путь", steps_today:"Шаги сегодня", steps_go:"Продолжить", step_lvl_starter:"Новичок", step_lvl_builder:"Строитель", step_lvl_discipline:"Дисциплина", step_lvl_steady:"Стабильность", step_lvl_master:"Работа над собой", step_tasks:"Задача", step_habits:"Привычка", step_prayer:"Намаз", step_journal:"Дневник", step_goal:"Цель", task_word:"Задача", habit_word:"Привычка", quick_habit_ph:"Например: Читать книгу каждый день", quick_habit_hint:"Повторяется каждый день. Можно изменить позже.", quick_habit_saved:"✓ Привычка", nav_tracker:"Трекер", nav_profile:"Профиль", quick_hint:"Например: «Завтра в 10 отчёт» или «Обед 45 тысяч»", quick_voice:"Сказать голосом",
+  quick_saved:"✓ Задача", voice_title:"Добавить голосом", voice_listening:"Говорите… Остановите — и я разберу.", voice_stop:"Стоп", voice_thinking:"Разбираю…", voice_confirm:"Подтвердить", voice_retry:"Записать заново", voice_done:"✅ Подтверждено", voice_failed:"Голос не отправлен. Попробуйте ещё раз.", voice_too_long:"Не длиннее 2 минут.", voice_denied:"Нет доступа к микрофону — отправьте голосовое в боте.", voice_consent:"Голос отправляется AI-сервисам (ElevenLabs, Groq, Google — США) для распознавания. Аудио не хранится. Ничего не меняется без вашего подтверждения.", voice_agree:"Согласен, начать", voice_consent_needed:"Сначала дайте согласие.", tab_list:"Список", nav_money:"Финансы", quick_more:"Подробнее (время, напоминание, проект)", steps_title:"Шаги", steps_motto:"Каждое доброе дело — шаг вперёд.", steps_freeze:"Дни, которые сохраняют серию", steps_level_n:"{n}-й уровень", steps_total:"Всего шагов", steps_path:"Ваш путь", steps_today:"Шаги сегодня", steps_go:"Продолжить", step_lvl_starter:"Новичок", step_lvl_builder:"Строитель", step_lvl_discipline:"Дисциплина", step_lvl_steady:"Стабильность", step_lvl_master:"Работа над собой", step_tasks:"Задача", step_habits:"Привычка", step_prayer:"Намаз", step_journal:"Дневник", step_goal:"Цель", task_word:"Задача", habit_word:"Привычка", quick_habit_ph:"Например: Читать книгу каждый день", quick_habit_hint:"Повторяется каждый день. Можно изменить позже.", quick_habit_saved:"✓ Привычка", nav_tracker:"Трекер", nav_profile:"Профиль", quick_hint:"Например: «Завтра в 10 отчёт» или «Обед 45 тысяч»", quick_voice:"Сказать голосом",
   add_task:"Задача", task_name:"Название", task_desc:"Подробнее",
   deadline:"Дата", due_time:"Время", priority:"Приоритет", project:"Проект",
   standalone:"Отдельно", high:"Высокий", medium:"Средний", low:"Низкий",
@@ -4866,6 +4879,71 @@ function moneyVoice(){
   catch(_){ toast(t("money_voice_fail")); }
 }
 
+/* ---------- Voice: tap the mic, speak, tap stop → a card to confirm ----------
+   The same agent as the bot: the server hears, understands and proposes; the
+   app shows the card; nothing is written until ✅. Where the WebView cannot
+   record, the mic opens the bot chat instead, which always can. */
+const voice = {rec:null, stream:null, chunks:[], mime:"", timer:null, started:0, cancelled:false, draft:null};
+const VOICE_MAX_S = 119;
+function voiceSupported(){
+  return !!(navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== "undefined");
+}
+function voiceStopTracks(){
+  try{ voice.stream?.getTracks().forEach(tr => tr.stop()); }catch(_){}
+  voice.stream = null; clearInterval(voice.timer); voice.timer = null;
+}
+function voiceRecordingSheet(){
+  return `<div class="voice-box">
+      <div class="voice-pulse">${icon("mic", 34)}</div>
+      <div class="voice-time num" id="voice-time">0:00</div>
+      <div class="t2 small">${t("voice_listening")}</div>
+      <button class="btn voice-stop" data-act="voice-stop">■ ${t("voice_stop")}</button>
+      <button class="btn secondary" data-act="voice-cancel" style="margin-top:8px">${t("cancel")}</button>
+    </div>`;
+}
+function voiceBusySheet(){
+  return `<div class="voice-box"><div class="spin"></div>
+      <div class="t2 small" style="margin-top:10px">${t("voice_thinking")}</div></div>`;
+}
+function voiceCardSheet(d){
+  const body = d.message ? esc(d.message) : (d.preview || "").replace(/\n/g, "<br>");
+  const ready = d.status === "ready";
+  return `<div class="voice-card">${body}</div>
+    ${ready ? `<button class="btn" data-act="voice-confirm">✅ ${t("voice_confirm")}</button>` : ""}
+    <div class="voice-row">
+      <button class="btn secondary" data-act="voice-retry">🔄 ${t("voice_retry")}</button>
+      <button class="btn secondary" data-act="voice-dismiss">✖ ${t("cancel")}</button>
+    </div>`;
+}
+async function voiceSend(){
+  const blob = new Blob(voice.chunks, {type: voice.mime});
+  voice.chunks = [];
+  openSheet(voiceBusySheet(), "voice");
+  try{
+    const res = await fetch("/api/agent/audio", {method:"POST", body:blob,
+      signal: requestTimeout(150000),
+      headers:{"Content-Type": voice.mime.split(";")[0] || "audio/webm",
+               "X-Telegram-Init-Data": tg?.initData || "", "X-Agent-Request-Key": newKey()}});
+    if(!res.ok){
+      const err = new Error("http_" + res.status); err.status = res.status;
+      try{ err.detail = (await res.json())?.detail; }catch(_){}
+      throw err;
+    }
+    voice.draft = await res.json();
+    openSheet(voiceCardSheet(voice.draft), "voice");
+    notify(voice.draft.status === "ready" ? "success" : "warning");
+  }catch(e){
+    voice.draft = null;
+    openSheet(voiceCardSheet({status:"failed", message: e.detail === "consent_required"
+      ? t("voice_consent_needed") : e.status === 413 ? t("voice_too_long") : t("voice_failed")}), "voice");
+  }
+}
+function voiceConsentSheet(){
+  return `<h3>🎙 ${t("voice_title")}</h3>
+    <div class="t2 small wrap" style="margin:8px 0 14px">${t("voice_consent")}</div>
+    <button class="btn" data-act="voice-consent">${t("voice_agree")}</button>`;
+}
+
 function quickSheet(){
   const habit = state.quickType === "habit";
   return `<div class="seg big" style="margin-bottom:12px">
@@ -6660,7 +6738,7 @@ function render(){
       <span class="ic">${icon(n.icon, 21)}</span><span>${t(n.key)}</span></button>`).join("");
   /* + types it, the microphone says it. Both one tap, on every main screen. */
   document.getElementById("fab").innerHTML = chromeOff ? "" : `
-    ${state.me?.agent?.available && state.screen !== "money" ? `<button class="fab-mic" data-act="agent-open"
+    ${state.me?.agent?.available && state.screen !== "money" ? `<button class="fab-mic" data-act="voice-start"
         aria-label="${t("quick_voice")}">${icon("mic", 22)}</button>` : ""}
     <button class="fab-add" data-act="${state.screen === "money" ? "money-add" : "quick-add"}"
         aria-label="${t(state.screen === "money" ? "money_add" : "quick_add")}">${icon("plus", 30)}</button>`;
@@ -6974,6 +7052,72 @@ const A = {
       chip.classList.toggle("on", chip.dataset.value === state.dest);
   },
 
+  "voice-start": async () => {
+    haptic("medium");
+    if(!state.me?.agent?.available) return toast(t("agent_off"));
+    if(!state.me?.agent?.consent) return openSheet(voiceConsentSheet(), "voice");
+    if(!voiceSupported()) return A["agent-open"]();
+    try{ voice.stream = await navigator.mediaDevices.getUserMedia({audio:true}); }
+    catch(_){ toast(t("voice_denied")); return A["agent-open"](); }
+    const mime = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4", "audio/webm"]
+      .find(m => MediaRecorder.isTypeSupported?.(m)) || "";
+    try{ voice.rec = new MediaRecorder(voice.stream, mime ? {mimeType: mime} : undefined); }
+    catch(_){ voiceStopTracks(); return A["agent-open"](); }
+    voice.mime = voice.rec.mimeType || mime || "audio/webm";
+    voice.chunks = []; voice.cancelled = false;
+    voice.rec.ondataavailable = e => { if(e.data?.size) voice.chunks.push(e.data); };
+    voice.rec.onstop = () => { voiceStopTracks(); if(!voice.cancelled && voice.chunks.length) voiceSend(); };
+    voice.rec.start(250);
+    voice.started = Date.now();
+    openSheet(voiceRecordingSheet(), "voice");
+    voice.timer = setInterval(() => {
+      const s = Math.floor((Date.now() - voice.started) / 1000);
+      const el = document.getElementById("voice-time");
+      if(el) el.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+      if(s >= VOICE_MAX_S) A["voice-stop"]();
+    }, 250);
+  },
+  "voice-stop": () => {
+    haptic();
+    if(voice.rec && voice.rec.state !== "inactive") voice.rec.stop();
+  },
+  "voice-cancel": () => {
+    voice.cancelled = true;
+    if(voice.rec && voice.rec.state !== "inactive") voice.rec.stop();
+    voiceStopTracks(); closeSheet();
+  },
+  "voice-consent": async () => {
+    try{
+      await api("/api/agent/consent", {method:"POST"});
+      if(state.me?.agent) state.me.agent.consent = true;
+      A["voice-start"]();
+    }catch(e){ handleError(e); }
+  },
+  "voice-confirm": async () => {
+    const d = voice.draft;
+    if(!d) return closeSheet();
+    try{
+      voice.draft = await api(`/api/agent/drafts/${d.id}/confirm`, {method:"POST", body:{revision:d.revision}});
+      notify("success");
+      closeSheet();
+      toast(t("voice_done"));
+      state.calendarStale = true;
+      await loadScreen(state.screen);
+    }catch(e){ handleError(e); }
+  },
+  "voice-retry": () => {
+    const d = voice.draft;
+    if(d?.id && ["ready", "needs_input", "failed"].includes(d.status))
+      api(`/api/agent/drafts/${d.id}/cancel`, {method:"POST", body:{revision:d.revision}}).catch(() => {});
+    voice.draft = null;
+    A["voice-start"]();
+  },
+  "voice-dismiss": () => {
+    const d = voice.draft;
+    if(d?.id && ["ready", "needs_input", "failed"].includes(d.status))
+      api(`/api/agent/drafts/${d.id}/cancel`, {method:"POST", body:{revision:d.revision}}).catch(() => {});
+    voice.draft = null; closeSheet();
+  },
   /* The one "+": a line of text, and whether it is a task or a habit. Tasks
      read the date and time out of the text ("ertaga soat 10 da …") and money
      goes to the money check; a habit is just its name, daily. Three taps:
