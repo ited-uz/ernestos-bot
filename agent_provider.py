@@ -19,6 +19,7 @@ import subprocess
 import wave
 
 import httpx
+from pydantic import BaseModel, ConfigDict
 
 import config
 from agent_actions import AgentError, Plan, dumps
@@ -245,24 +246,25 @@ def _inline(schema):
     return walk(schema)
 
 
-async def _plan_on(service, model, payload):
+async def _structured(service, model, system, schema_model, payload, name):
+    """One JSON answer that must match `schema_model`, from Gemini or Groq."""
     if service == "gemini":
         result = await request(f"/models/{model}:generateContent", service="gemini", json={
-            "system_instruction": {"parts": [{"text": SYSTEM}]},
+            "system_instruction": {"parts": [{"text": system}]},
             "contents": [{"role": "user", "parts": [{"text": payload}]}],
             "generationConfig": {"responseMimeType": "application/json", "temperature": 0,
-                                 "responseJsonSchema": _inline(Plan.model_json_schema()),
+                                 "responseJsonSchema": _inline(schema_model.model_json_schema()),
                                  "maxOutputTokens": 8192},
         })
         candidates = result.get("candidates") or []
         if not candidates or candidates[0].get("finishReason") != "STOP":
             raise AgentError("invalid_plan", 422)
         parts = candidates[0].get("content", {}).get("parts", [])
-        return Plan.model_validate(json.loads("".join(p.get("text", "") for p in parts if not p.get("thought"))))
-    schema = {"name": "ernest_plan", "schema": Plan.model_json_schema(), "strict": True}
+        return schema_model.model_validate(json.loads("".join(p.get("text", "") for p in parts if not p.get("thought"))))
+    schema = {"name": name, "schema": schema_model.model_json_schema(), "strict": True}
     result = await request("/chat/completions", service="groq", json={
         "model": model,
-        "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": payload}],
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": payload}],
         "response_format": {"type": "json_schema", "json_schema": schema},
         "temperature": 0,
         "max_completion_tokens": 2500,
@@ -270,7 +272,11 @@ async def _plan_on(service, model, payload):
     choice = result["choices"][0]
     if choice.get("finish_reason") != "stop" or choice["message"].get("refusal"):
         raise AgentError("invalid_plan", 422)
-    return Plan.model_validate(json.loads(choice["message"]["content"]))
+    return schema_model.model_validate(json.loads(choice["message"]["content"]))
+
+
+async def _plan_on(service, model, payload):
+    return await _structured(service, model, SYSTEM, Plan, payload, "ernest_plan")
 
 
 async def plan(transcript, context, history):
@@ -404,3 +410,53 @@ async def transcribe(data, mime, context):
     connection(steps[0][0] if steps else "groq")  # fail before spending CPU when disabled
     wav = await asyncio.to_thread(audio_wav, data, mime)
     return await first_available(steps, lambda service, model: _transcribe_on(service, model, wav, context), "voice")
+
+
+class JournalFill(BaseModel):
+    """The day summary's five answers. None = the person said nothing for it."""
+    model_config = ConfigDict(extra="forbid")
+    wins: str | None
+    gratitude: str | None
+    problem: str | None
+    lesson: str | None
+    tomorrow: str | None
+
+
+JOURNAL_SYSTEM = """You sort one person's free evening reflection into the five
+questions of their day summary. Return only the JSON schema.
+
+The five questions:
+- wins: what they accomplished or did well today.
+- gratitude: who or what they are thankful for.
+- problem: a difficulty, mistake, failure or worry they faced today.
+- lesson: what they learned or realised today.
+- tomorrow: the most important thing to do tomorrow (or next).
+
+RULES
+1. The input may be a speech-to-text transcript with mistakes (Uzbek dialect,
+   Russian/English words, wrong letters). First understand what was meant.
+2. Put each thought under the ONE question it answers. Several thoughts for
+   one question: join them into one short answer.
+3. Never invent. Only what the person said, nothing added, no advice, no
+   praise. If nothing fits a question, return null for it. Never fill a
+   question just to fill it.
+4. Write every answer in the language given as "language" (uz = Uzbek Latin
+   script with o‘ g‘ ʼ, ru = Russian, en = English), even when the person spoke
+   another language — translate faithfully.
+5. Correct grammar, spelling and misheard words into clean, literary language.
+   Keep the person's meaning, numbers and names exactly.
+6. First person ("I"/"men"/"я"), short: 1–2 sentences per answer, no lists.
+7. "Thank God / Alhamdulillah / Xudoga shukr ..." goes to gratitude.
+   "Ertaga ... kerak / qilaman" goes to tomorrow. "Tushundim / o‘rgandim /
+   bildimki" goes to lesson. "Qiynaldim / muammo / bo‘lmadi / xato" goes to problem.
+"""
+
+
+async def journal_answers(text, lang):
+    """Free speech or text -> five clean answers in the app language."""
+    payload = dumps({"language": lang, "text": text})
+    return await first_available(
+        text_chain(),
+        lambda service, model: _structured(service, model, JOURNAL_SYSTEM, JournalFill, payload, "ernest_journal"),
+        "journal")
+

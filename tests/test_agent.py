@@ -798,3 +798,66 @@ def test_mini_app_audio_goes_through_the_same_pipeline(person, client, monkeypat
                     "X-Agent-Request-Key": uuid.uuid4().hex}, content=b"\x1aE\xdf\xa3voice")
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "ready" and "5 000 so‘m" in r.json()["preview"]
+
+
+def journal_fill(**answers):
+    return provider.JournalFill(**{k: answers.get(k) for k in svc.JOURNAL_KEYS})
+
+
+def test_journal_ai_sorts_text_into_answers_and_saves_nothing(person, client, monkeypatch):
+    caller, _, ws = person
+    seen = {}
+    async def fake(text, lang):
+        seen.update(text=text, lang=lang)
+        return journal_fill(wins="Mijoz bilan shartnoma yopdim.", gratitude="Onamga rahmat aytaman.",
+                            problem="Ничего", lesson=None, tomorrow="Ertaga hisobotni tugataman.")
+    monkeypatch.setattr(provider, "journal_answers", fake)
+    r = caller.post("/api/agent/journal/text", {"text": "bugun mijoz bilan shartnoma yopdim onamga rahmat"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert seen == {"text": "bugun mijoz bilan shartnoma yopdim onamga rahmat", "lang": "uz"}
+    # Wrong script is dropped, nothing invented for the empty question.
+    assert body["answers"] == {"wins": "Mijoz bilan shartnoma yopdim.", "gratitude": "Onamga rahmat aytaman.",
+                               "tomorrow": "Ertaga hisobotni tugataman."}
+    assert body["filled"] == 3
+    assert count(db.JournalEntry, ws) == 0, "the person reviews and saves"
+
+
+def test_journal_ai_needs_consent_and_counts_the_budget(person, monkeypatch):
+    caller, _, ws = person
+    monkeypatch.setattr(provider, "journal_answers", AsyncMock(return_value=journal_fill(wins="Yugurdim.")))
+    monkeypatch.setattr(config, "AGENT_DAILY_REQUESTS", 1)
+    assert caller.post("/api/agent/journal/text", {"text": "yugurdim"}).status_code == 200
+    assert caller.post("/api/agent/journal/text", {"text": "yugurdim"}).status_code == 429
+    core.consent(ws, False)
+    assert caller.post("/api/agent/journal/text", {"text": "yugurdim"}).status_code == 403
+
+
+def test_journal_ai_voice_transcribes_in_the_profile_language(person, client, monkeypatch):
+    caller, _, _ = person
+    heard = {}
+    async def transcribe(data, mime, context):
+        heard.update(context)
+        return "bugun 5 km yugurdim"
+    monkeypatch.setattr(provider, "transcribe", transcribe)
+    monkeypatch.setattr(provider, "journal_answers", AsyncMock(return_value=journal_fill(wins="Bugun 5 km yugurdim.")))
+    r = client.post("/api/agent/journal/audio", headers={**caller.h, "Content-Type": "audio/webm"},
+                    content=b"\x1aE\xdf\xa3voice")
+    assert r.status_code == 200, r.text
+    assert r.json()["answers"] == {"wins": "Bugun 5 km yugurdim."}
+    assert heard["language"] == "uz"
+
+
+def test_journal_ai_wire_is_strict_json_with_the_five_questions(monkeypatch):
+    sent = {}
+    async def fake_request(path, service="groq", **kwargs):
+        sent.update(kwargs["json"])
+        content = json.dumps({"wins": "A", "gratitude": None, "problem": None, "lesson": None, "tomorrow": "B"})
+        return {"choices": [{"finish_reason": "stop", "message": {"content": content}}]}
+    monkeypatch.setattr(provider, "request", fake_request)
+    filled = asyncio.run(provider.journal_answers("salom", "uz"))
+    assert filled.wins == "A" and filled.tomorrow == "B" and filled.lesson is None
+    schema = sent["response_format"]["json_schema"]
+    assert schema["strict"] and set(schema["schema"]["required"]) == set(svc.JOURNAL_KEYS)
+    assert "Never invent" in sent["messages"][0]["content"]
+    assert json.loads(sent["messages"][1]["content"]) == {"language": "uz", "text": "salom"}

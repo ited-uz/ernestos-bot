@@ -264,7 +264,7 @@ DEFAULT_HABITS = [
 SYSTEM_HABIT_NAMES = {
     "wakeup": {"uz": "Erta turish", "en": "Wake up early", "ru": "Ранний подъём"},
     "prayer": {"uz": "5 vaqt namoz", "en": "5 daily prayers", "ru": "5 намазов"},
-    "journal": {"uz": "Kundalik", "en": "Journal", "ru": "Дневник"},
+    "journal": {"uz": "Kun xulosasi", "en": "Day summary", "ru": "Итоги дня"},
 }
 
 SYSTEM_PRAYER = "prayer"
@@ -473,6 +473,10 @@ def set_modules(s: Session, ws: int, chosen, *, user: User | None = None) -> dic
     return modules_for(s, ws)
 
 
+#: Stock names from before v12.2, still renamed when someone never changed them.
+LEGACY_RITUAL_NAMES = {"kundalik", "journal", "дневник"}
+
+
 def localize_system_habits(s: Session, ws: int, lang: str) -> None:
     """Rename the rituals to `lang`, unless the person gave one its own name.
 
@@ -481,6 +485,7 @@ def localize_system_habits(s: Session, ws: int, lang: str) -> None:
     """
     stock = {name.casefold() for names in SYSTEM_HABIT_NAMES.values() for name in names.values()}
     stock |= {name.casefold() for name, _c, _k in DEFAULT_HABITS}
+    stock |= LEGACY_RITUAL_NAMES
     for habit in s.scalars(select(Habit).where(Habit.workspace_id == ws,
                                                Habit.system_key.in_(list(SYSTEM_HABIT_NAMES)))):
         if habit.name.strip().casefold() in stock:

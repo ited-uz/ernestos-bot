@@ -26,6 +26,24 @@ class Revision(BaseModel):
     revision: int = Field(ge=1)
 
 
+class JournalText(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    text: str = Field(min_length=1, max_length=6000)
+
+
+async def read_audio(request):
+    """Counted while streaming: a missing or false Content-Length cannot make
+    the server buffer more than the limit."""
+    data = bytearray()
+    async for chunk in request.stream():
+        if len(data) + len(chunk) > config.AGENT_AUDIO_BYTES:
+            raise AgentError("invalid_audio", 413)
+        data.extend(chunk)
+    if not data:
+        raise AgentError("invalid_audio", 422)
+    return bytes(data)
+
+
 def card(draft, lang):
     """The draft plus what the app needs to draw it: the HTML card, a message."""
     message = tr(lang, draft["error"]) if draft["error"] else None
@@ -59,18 +77,27 @@ def install(app, auth):
             raise AgentError("agent_disabled", 503)
         if not prefs["consent"]:
             raise AgentError("consent_required", 403)
-        # Counted while streaming: a missing or false Content-Length cannot
-        # make the server buffer more than the limit.
-        data = bytearray()
-        async for chunk in request.stream():
-            if len(data) + len(chunk) > config.AGENT_AUDIO_BYTES:
-                raise AgentError("invalid_audio", 413)
-            data.extend(chunk)
-        if not data:
-            raise AgentError("invalid_audio", 422)
-        draft = await core.ingest(user.telegram_id, ws, x_agent_request_key or "", audio=bytes(data),
+        data = await read_audio(request)
+        draft = await core.ingest(user.telegram_id, ws, x_agent_request_key or "", audio=data,
                                   mime=request.headers.get("content-type"))
         return card(draft, user.language)
+
+    @router.post("/journal/text")
+    async def journal_text(body: JournalText, x_telegram_init_data: str | None = Header(None)):
+        user, ws = auth(x_telegram_init_data)
+        return await core.journal_fill(user.telegram_id, ws, text=body.text)
+
+    @router.post("/journal/audio")
+    async def journal_audio(request: Request, x_telegram_init_data: str | None = Header(None)):
+        user, ws = auth(x_telegram_init_data)
+        prefs = core.preferences(ws)
+        if not prefs["enabled"]:
+            raise AgentError("agent_disabled", 503)
+        if not prefs["consent"]:
+            raise AgentError("consent_required", 403)
+        data = await read_audio(request)
+        return await core.journal_fill(user.telegram_id, ws, audio=data,
+                                       mime=request.headers.get("content-type"))
 
     @router.post("/drafts/{draft_id}/confirm")
     def confirm(draft_id: str, body: Revision, x_telegram_init_data: str | None = Header(None)):

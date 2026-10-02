@@ -6660,7 +6660,7 @@ async def guard_requests(request: Request, call_next):
         return await call_next(request)
 
     declared = request.headers.get("content-length")
-    body_limit = config.AGENT_AUDIO_BYTES if request.url.path == "/api/agent/audio" else MAX_BODY_BYTES
+    body_limit = config.AGENT_AUDIO_BYTES if request.url.path in {"/api/agent/audio", "/api/agent/journal/audio"} else MAX_BODY_BYTES
     if declared and declared.isdigit() and int(declared) > body_limit:
         return JSONResponse(status_code=413, content={"detail": "payload_too_large"})
 

@@ -10449,7 +10449,7 @@ def test_migration_0013_localizes_existing_rituals_once():
     migrations.m0013_localize_rituals()  # idempotent
     with SessionLocal() as s:
         names = {h["system_key"]: h["name"] for h in svc.list_habits(s, ws) if h["system_key"]}
-    assert names["wakeup"] == "Wake up early" and names["journal"] == "Journal"
+    assert names["wakeup"] == "Wake up early" and names["journal"] == "Day summary"
 
 
 def test_numbers_that_are_not_times_stay_in_the_title():
