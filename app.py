@@ -525,6 +525,9 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             return
 
     if onboarded:
+        if payload == "agent" and config.AGENT_ENABLED:
+            await voice_agent.help(update, ctx)
+            return
         await message.reply_text(t(lang, "hello_named", name=esc(name)),
                                  parse_mode=ParseMode.HTML,
                                  reply_markup=menu_for(uid))
@@ -863,6 +866,13 @@ async def finish_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> N
     await issue_credentials(message, uid, lang)
     await message.reply_text(render_day_ready(data, lang), parse_mode=ParseMode.HTML,
                              reply_markup=menu_for(uid))
+    if deps.REQUIRED_CHANNEL_ID:
+        notices = {
+            "uz": f"Birinchi {deps.FREE_ACTIONS} ta amal bepul. Keyin o'zgartirish kiritish uchun kanalga obuna bo'lish kerak. Ma'lumotlaringiz saqlanadi va o'qish uchun ochiq qoladi.",
+            "en": f"Your first {deps.FREE_ACTIONS} actions are free. After that, join the channel to make changes. Your data stays saved and readable.",
+            "ru": f"Первые {deps.FREE_ACTIONS} действий бесплатны. Затем для изменений нужна подписка на канал. Данные сохраняются и доступны для чтения.",
+        }
+        await message.reply_text(notices.get(lang, notices["uz"]))
     markup = webapp_button(lang)
     if markup:
         await message.reply_text(t(lang, "day_ready_app"), reply_markup=markup)
@@ -6707,6 +6717,8 @@ async def guard_requests(request: Request, call_next):
         try:
             with SessionLocal() as s:
                 outcome = svc.record_action_and_progress(s, key)
+                updated_user = s.get(User, key)
+                response.headers["X-Trial-Remaining"] = str(deps.trial_state(updated_user).remaining)
             # The Mini App is the other half of the same loop: a friend who
             # only ever uses the web UI must still qualify, and their inviter
             # must still hear about it.
@@ -6737,6 +6749,7 @@ MUTATING_METHODS = {"POST", "PATCH", "PUT", "DELETE"}
 UNCOUNTED_PATHS = {
     "/api/subscription", "/api/settings", "/api/prefs", "/api/feedback",
     "/api/export/send", "/api/account/delete", "/api/stats/export",
+    "/api/money/preview",
 }
 
 
@@ -7093,6 +7106,7 @@ def health_ready():
 @app.get("/api/me")
 def api_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, _ = auth(init, require_onboarded=False)
+    trial = deps.trial_state(user)
     return {"telegram_id": user.telegram_id, "member_no": user.member_no,
             "first_name": user.first_name, "last_name": user.last_name,
             "username": user.username,
@@ -7110,6 +7124,15 @@ def api_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
             "onboarded": user.onboarded, "is_subscribed": user.is_subscribed,
             # Read-only mode: the channel gate stops writes, never reading.
             "gated": deps.trial_state(user).gated,
+            "today": str(svc.today_local(svc.user_tz(user))),
+            "trial": {"required": bool(deps.REQUIRED_CHANNEL_ID),
+                      "free_actions": deps.FREE_ACTIONS,
+                      "remaining": trial.remaining, "free": trial.free,
+                      "subscribed": user.is_subscribed,
+                      "channel": deps.REQUIRED_CHANNEL_URL},
+            "agent": {"enabled": config.AGENT_ENABLED,
+                      "available": config.AGENT_ENABLED and bool(config.GROQ_API_KEY)},
+            "bot_username": BOT_USERNAME,
             "onboarding_step": user.onboarding_step,
             "modules": _modules_of(user),
             # The ErnestOS login, for signing in from another Telegram.
@@ -8674,6 +8697,28 @@ def api_tasks(days: int = 7, q: str = "", project_id: int | None = None,
         return out
 
 
+@app.get("/api/tasks/page")
+def api_task_page(q: str = "", bucket: str = "", cursor: str = "", limit: int = 50,
+                  done: bool = False,
+                  init=Header(default=None, alias="X-Telegram-Init-Data")):
+    import task_pages
+    user, ws = auth(init)
+    tz = svc.user_tz(user)
+    if len(cursor) > 2048:
+        raise HTTPException(status_code=422, detail="invalid_cursor")
+    with SessionLocal() as s:
+        svc.settle_timers(s, ws)
+        try:
+            out = task_pages.page(s, ws, today=svc.today_local(tz), search=q[:100],
+                                  bucket=bucket, cursor=cursor, limit=limit, done=done)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        shared = svc.team_items_for_day(s, user.telegram_id, tz=tz)
+        out.update(team_tasks=shared["tasks"], teams=shared["teams"],
+                   active_timer=svc.active_timer(s, ws))
+        return out
+
+
 @app.post("/api/tasks")
 def api_task_add(body: TaskIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
     _, ws = auth(init)
@@ -9285,6 +9330,17 @@ def api_money_add(body: MoneyIn, init=Header(default=None, alias="X-Telegram-Ini
             raise HTTPException(status_code=422, detail=str(e))
 
 
+@app.post("/api/money/preview")
+def api_money_preview(body: MoneyTextIn,
+                      init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Parse only. A separate, explicit save is required to create an entry."""
+    auth(init)
+    parsed = svc.parse_money_text(body.text, body.kind or None)
+    if parsed is None:
+        raise HTTPException(status_code=422, detail="no_amount")
+    return parsed
+
+
 @app.post("/api/money/text")
 def api_money_text(body: MoneyTextIn,
                    init=Header(default=None, alias="X-Telegram-Init-Data")):
@@ -9523,6 +9579,4 @@ WEBAPP_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 @app.get("/")
 def index():
     return FileResponse(WEBAPP_FILE)
-
-
 

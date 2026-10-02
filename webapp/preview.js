@@ -30,6 +30,7 @@
   let dateLabel;
   try{ dateLabel = now.toLocaleDateString(LOCALE, {weekday:"long", day:"numeric", month:"long"}); }
   catch(_){ dateLabel = TODAY; }
+  if(LANG === "uz") dateLabel = `${now.getDate()} ${["yanvar","fevral","mart","aprel","may","iyun","iyul","avgust","sentabr","oktabr","noyabr","dekabr"][now.getMonth()]}, ${["yakshanba","dushanba","seshanba","chorshanba","payshanba","juma","shanba"][now.getDay()]}`;
 
   /* Sample copy in each language, deliberately including long strings so
      wrapping can be checked in Uzbek and Russian as well as English. */
@@ -80,6 +81,8 @@
 
   const DB = {
     me:{telegram_id:1, name:"Ernest", language:LANG, onboarded:true, gated:false,
+        today:TODAY, trial:{required:true, remaining:17, free_actions:20, subscribed:false, channel:""},
+        agent:{enabled:false, available:false},
         theme:Q.get("theme") || "ocean", gender:"male",
         modules:{wake:true, prayer:true, journal:true}, member_no:128, username:"ernest",
         has_photo:false, avatar_token:"",
@@ -99,6 +102,7 @@
       task(106, s.t6, {deadline:day(1), project:s.work}),
       task(107, s.t7, {deadline:day(3), due_time:"09:30", remind_before:60}),
       task(108, s.t8, {priority:"low"}),
+      task(109, s.f2, {priority:"high", deadline:TODAY, status:"done"}),
     ],
     habits:EMPTY ? [] : [
       {id:1, name:s.h1, system_key:"wakeup", target_time:"06:00", cat:"non_negotiable", done:true},
@@ -109,10 +113,26 @@
       {id:5, name:s.h5, cat:"bonus", done:true},
       {id:7, name:s.h7, cat:"bonus", due:false, schedule:"custom", days:[0,2,4], done:false},
     ],
-    prayers:{bomdod:"jamaat", peshin:"on_time", asr:"qaza", shom:null, xufton:null},
+    prayers:EMPTY ? {} : {bomdod:"jamaat", peshin:"on_time", asr:"qaza", shom:null, xufton:null},
   };
   DB.habits.forEach(h => Object.assign(h, {due:h.due !== false, source:"personal",
-    schedule:h.schedule || "daily", paused:false, protected:!!h.protected}));
+    schedule:h.schedule || "daily", paused:false, protected:!!h.protected, scored:h.system_key !== "prayer"}));
+
+  const figures = () => {
+    const tasks = DB.tasks.filter(x=>x.deadline===TODAY), habits=DB.habits.filter(x=>x.due && x.scored);
+    const weight=x=>({high:3,medium:2,low:1}[x.priority] || 2);
+    const total=tasks.reduce((n,x)=>n+weight(x),0), earned=tasks.filter(x=>x.status==='done').reduce((n,x)=>n+weight(x),0);
+    const prayerScore=Object.values(DB.prayers).reduce((n,x)=>n+({jamaat:1,on_time:1,qaza:.5}[x] || 0),0);
+    const performed=Object.values(DB.prayers).filter(x=>x && x!=='missed').length;
+    const taskPct=total ? Math.round(100*earned/total) : null;
+    const habitPct=habits.length ? Math.round(['non_negotiable','target','bonus'].reduce((n,c,i)=>{
+      const rows=habits.filter(x=>x.cat===c);return n+(rows.length ? rows.filter(x=>x.done).length/rows.length*[50,30,20][i] : 0);
+    },0)) : null;
+    const prayerPct=prayerScore/5*100, overall=EMPTY ? 0 : Math.round(taskPct*.4+habitPct*.25+50*.2+prayerPct*.15);
+    return {taskPct,habitPct,prayerPct,overall,prayerScore,performed,earned,total,
+      tasksDone:tasks.filter(x=>x.status==='done').length,tasksTotal:tasks.length,
+      habitsDone:habits.filter(x=>x.done).length,habitsTotal:habits.length};
+  };
 
   const team = () => EMPTY ? [] : [{
     id:1, name:s.fam,
@@ -151,7 +171,7 @@
   const habitsPayload = () => {
     const grouped = {non_negotiable:[], target:[], bonus:[]};
     DB.habits.forEach(h => grouped[h.cat].push(h));
-    const tier = (c, w) => { const due = grouped[c].filter(h => h.due);
+    const tier = (c, w) => { const due = grouped[c].filter(h => h.due && h.scored);
       return {due:due.length, done:due.filter(h => h.done).length, weight:w, applied:w}; };
     return {habits:DB.habits, grouped, categories:["non_negotiable","target","bonus"],
             tiers:{non_negotiable:tier("non_negotiable", 50), target:tier("target", 30),
@@ -159,19 +179,31 @@
             streak:EMPTY ? 0 : 6, wake:{logged:!EMPTY, done:true, at:"05:52"},
             active_timer:null, teams:[]};
   };
+  const taskPage = q => {
+    const done = q.get("done") === "true", bucket = q.get("bucket"), needle = (q.get("q") || "").toLowerCase();
+    const rows = DB.tasks.filter(x => (x.status === "done") === done)
+      .filter(x => !needle || x.title.toLowerCase().includes(needle))
+      .filter(x => bucket === "today" ? x.deadline && x.deadline <= TODAY
+        : bucket === "overdue" ? x.deadline && x.deadline < TODAY
+        : bucket === "undated" ? !x.deadline : true);
+    return {...tasksPayload(), overdue:rows.filter(x=>x.deadline && x.deadline<TODAY),
+      upcoming:rows.filter(x=>x.deadline && x.deadline>=TODAY), undated:rows.filter(x=>!x.deadline),
+      later:[], total:rows.length, next_cursor:null,
+      groups:{today:done ? rows : [],week:[],earlier:[]}};
+  };
   const home = () => {
     const open = DB.tasks.filter(x => x.status !== "done");
     const today = open.filter(x => x.deadline === TODAY);
     const byProject = {};
     today.forEach(x => (byProject[x.project || ""] ||= []).push(x));
-    const due = DB.habits.filter(h => h.due);
+    const due = DB.habits.filter(h => h.due && h.scored), f=figures();
     const lead = open.find(x => x.top3) || open.find(x => x.overdue) || today[0];
     return {
       date:TODAY, date_label:dateLabel, name:"Ernest", quote:EMPTY ? "" : s.q, break:null,
       now: lead ? {kind:"task", id:lead.id, title:lead.title,
                    reason:lead.top3 ? "pinned" : lead.overdue ? "overdue" : "due_today",
                    due_time:lead.due_time, priority:lead.priority, project:lead.project}
-                : {kind:"clear", reason:"clear"},
+                : {kind:"clear", reason:"clear", empty:EMPTY},
       top3: open.filter(x => x.top3),
       tasks_today: Object.entries(byProject).map(([p, tasks]) => ({project:p || null,
                     tasks: tasks.filter(x => !x.top3)})),
@@ -183,10 +215,10 @@
                components:{tasks:EMPTY ? null : 57, habits:EMPTY ? null : 67,
                            team:EMPTY ? null : 50, prayer:EMPTY ? null : 60}},
       habits:{done:due.filter(h => h.done).length, total:due.length},
-      counts:{tasks:{done:EMPTY ? 0 : 1, total:EMPTY ? 0 : today.length + 1},
+      counts:{tasks:{done:f.tasksDone, total:f.tasksTotal},
               habits:{done:due.filter(h => h.done).length, total:due.length},
               team:{done:EMPTY ? 0 : 1, total:EMPTY ? 0 : 2},
-              prayer:{done:EMPTY ? 0 : 3, total:5, excused:false, owed:true}},
+              prayer:{done:f.performed, total:5, excused:false, owed:true}},
       streak:EMPTY ? 0 : 6,
       prayer:{performed:EMPTY ? 0 : 3, required:5, excused:false},
       modules:DB.me.modules, active_timer:null,
@@ -216,10 +248,10 @@
            salary:"💰", sales:"📈", other_in:"➕"}});
   const summary = () => {
     const today = DB.tasks.filter(x => x.deadline === TODAY);
-    const due = DB.habits.filter(h => h.due);
-    return {today:{overall:62, measured:!EMPTY,
+    const due = DB.habits.filter(h => h.due && h.scored), f=figures();
+    return {today:{overall:f.overall, measured:!EMPTY,
       // The same counts Home shows — one vocabulary on both screens.
-      tasks_done:EMPTY ? 0 : 1, tasks_total:EMPTY ? 0 : today.length + 1,
+      tasks_done:f.tasksDone, tasks_total:today.length,
       habits_done:due.filter(h => h.done).length, habits_total:due.length,
       team_done:EMPTY ? 0 : 1, team_total:EMPTY ? 0 : 2,
       prayer_performed:3, prayer_required:5},
@@ -228,13 +260,17 @@
                             month:{overall:64, delta:-3, measured:true}}};
   };
   const stats = period => {
+    const f=figures();
     const n = period === "year" ? 12 : period === "month" ? 30 : 7;
     const lbl = i => { const d = new Date(now); d.setDate(d.getDate() - (n - 1 - i));
       return period === "year" ? String(i + 1) : String(d.getDate()); };
     const wave = (i, base, amp) => Math.max(0, Math.min(100, Math.round(base + amp * Math.sin(i * 1.3))));
     return {period,
-      today:{overall:62, measured:true, yesterday:55, tasks:57, habits:67, team:50, prayer:60,
-             prayer_performed:3, prayer_required:5, streak:6},
+      today:{overall:f.overall, measured:!EMPTY, yesterday:EMPTY ? null : 55,
+             tasks:f.taskPct, habits:f.habitPct, team:EMPTY ? null : 50, prayer:f.prayerPct,
+             weights:EMPTY ? {prayer:100} : {tasks:40,habits:25,team:20,prayer:15}, task_points:{earned:f.earned,total:f.total},
+             prayer_score:f.prayerScore, prayer_max:5,
+             prayer_performed:f.performed, prayer_required:5, streak:EMPTY ? 0 : 6},
       deltas:{tasks:5, habits:-4, team:10, prayer:0},
       series:EMPTY ? [] : Array.from({length:n}, (_, i) => ({label:lbl(i),
         overall:wave(i, 64, 14), tasks:wave(i + 1, 58, 20), habits:wave(i + 2, 70, 15),
@@ -285,12 +321,13 @@
       })})],
     [/^\/api\/prayers$/, () => ({prayers:DB.prayers, statuses:["jamaat","on_time","qaza","missed"],
       performed:Object.values(DB.prayers).filter(v => v && v !== "missed").length, required:5,
-      score:7, max:15, complete:false, excused:false})],
+      score:figures().prayerScore, max:5, complete:figures().performed===5, excused:false})],
     [/^\/api\/journal$/, () => ({entry:{answers:{1:s.a1}, mood:"good"},
       questions:[{id:1, text:s.j1}, {id:2, text:s.j2}, {id:3, text:s.j3}]})],
     [/^\/api\/tasks\/done$/, () => ({groups:{today:[], week:EMPTY ? [] :
       [{id:120, title:s.bill, project:null}], earlier:[]}})],
     [/^\/api\/tasks$/, tasksPayload],
+    [/^\/api\/tasks\/page$/, taskPage],
     [/^\/api\/projects$/, () => ({projects:EMPTY ? [] : [
       {id:1, name:s.work, status:"active", archived:false, tasks_total:12, tasks_done:7,
        tasks_open:5, progress:58, deadline:day(14)},
@@ -317,6 +354,7 @@
 
   function mutate(method, path, body){
     let m;
+    if(path === "/api/money/preview") return {kind:body.kind || "expense", amount:45000, category:"food", note:body.text};
     if((m = path.match(/^\/api\/tasks\/(\d+)$/)) && method === "PATCH"){
       const t = DB.tasks.find(x => x.id === Number(m[1]));
       if(t && body?.status) t.status = body.status === "done" ? "done" : "open";

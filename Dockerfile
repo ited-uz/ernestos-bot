@@ -4,8 +4,9 @@ WORKDIR /app
 # FFmpeg validates duration and normalizes Telegram OGG / browser WebM / M4A.
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt constraints-tested.txt ./
+RUN python -m pip install --no-cache-dir --upgrade "pip>=26.2.1" \
+    && python -m pip install --no-cache-dir -r requirements.txt
 COPY . .
 RUN useradd --create-home ernest && chown -R ernest:ernest /app
 USER ernest
