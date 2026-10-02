@@ -1758,7 +1758,7 @@ T["uz"].update({
     "day_ready": "🌅 {name}, tayyor!",
     "day_ready_open": "Boshlash uchun ➕ Odat yoki ➕ Vazifa qo'shing.",
     "day_ready_app": "To'liq ko'rinish 👇",
-    "trial_over": ("<b>Bepul 20 ta amal tugadi.</b>\n"
+    "trial_over": ("<b>Bepul amallar tugadi.</b>\n"
                    "Davom etish uchun kanalga qo'shiling — ma'lumotlaringiz joyida."),
     "trial_soon": "Yana <b>{n}</b> ta amaldan keyin kanalga qo'shilish so'raladi.",
     "guide": ("<b>ErnestOS — qisqacha</b>\n\n"
@@ -1909,7 +1909,7 @@ T["en"].update({
     "day_ready": "🌅 {name}, all set!",
     "day_ready_open": "Start with ➕ Habit or ➕ Task.",
     "day_ready_app": "Full view 👇",
-    "trial_over": ("<b>Your 20 free actions are used.</b>\n"
+    "trial_over": ("<b>Your free actions are used.</b>\n"
                    "Join the channel to continue — your data is safe."),
     "trial_soon": "<b>{n}</b> more actions, then we'll ask you to join the channel.",
     "guide": ("<b>ErnestOS in short</b>\n\n"
@@ -2051,7 +2051,7 @@ T["ru"].update({
     "day_ready": "🌅 {name}, готово!",
     "day_ready_open": "Начните с ➕ Привычки или ➕ Задачи.",
     "day_ready_app": "Полный вид 👇",
-    "trial_over": ("<b>20 бесплатных действий закончились.</b>\n"
+    "trial_over": ("<b>Бесплатные действия закончились.</b>\n"
                    "Подпишитесь на канал, чтобы продолжить — данные на месте."),
     "trial_soon": "Ещё <b>{n}</b> действий — и попросим подписаться на канал.",
     "guide": ("<b>ErnestOS коротко</b>\n\n"

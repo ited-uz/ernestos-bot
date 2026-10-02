@@ -1,5 +1,7 @@
 # Release audit — nima qilindi, nima qilinmadi
 
+> Avvalgi audit tarixi. Hozirgi reliz natijalari: [v12.1 hisobot](docs/RELEASE_V12_1_UZ.md).
+
 `ErnestOS_100_muammo_release_audit.docx` bo'yicha. 100 band: P0 — 22, P1 — 63, P2 — 15.
 
 ## Yopilgan P0 lar (kod bilan)

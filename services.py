@@ -2352,10 +2352,12 @@ def completed_tasks(s: Session, ws: int, limit: int = 200, *, search: str = "",
     monday = week_start(today)
     needle = search.strip().lower()[:100]
 
-    rows = s.scalars(select(Task).where(
-        Task.workspace_id == ws, Task.archived_at.is_(None),
-        Task.status == "done")
-        .order_by(Task.completed_at.desc()).limit(limit)).all()
+    stmt = select(Task).where(Task.workspace_id == ws, Task.archived_at.is_(None),
+                              Task.status == "done")
+    if needle:
+        pattern = "%" + needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        stmt = stmt.where(Task.title.ilike(pattern, escape="\\"))
+    rows = s.scalars(stmt.order_by(Task.completed_at.desc(), Task.id.desc()).limit(limit)).all()
 
     today_group, week_group, earlier = [], [], []
     for task in rows:
@@ -3388,6 +3390,12 @@ def weighted_overall(components: dict) -> int:
                      for key, value in present.items()) / total_weight)
 
 
+def applied_weights(components: dict) -> dict:
+    present = {k: v for k, v in OVERALL_WEIGHTS.items() if components.get(k) is not None}
+    total = sum(present.values())
+    return {k: round(v / total * 100, 1) for k, v in present.items()} if total else {}
+
+
 def _is_measured(components: dict) -> bool:
     return any(v is not None for k, v in components.items() if k in OVERALL_WEIGHTS)
 
@@ -3759,6 +3767,9 @@ def stats(s: Session, ws: int, period: str = "week", *,
         "prayer_detail": breakdown,
         "today": {
             "overall": overall["value"],
+            "weights": applied_weights(components),
+            "task_points": dict(zip(("earned", "total"), today_task_score(s, ws, today, tz=tz, include_team=False))),
+            "habit_tiers": habit_tier_progress(s, ws, today, include_team=False),
             "measured": overall["measured"],
             "trend": overall["trend"],
             "yesterday": overall["yesterday"],
@@ -4159,8 +4170,11 @@ def now_next(s: Session, ws: int, user: User, *,
         return {"kind": "journal", "title": "", "id": None, "action": "journal",
                 "meta": "", "reason": "evening"}
 
+    counts = home_counts(s, ws, user, today)
+    any_done = any(counts[k]["done"] for k in ("tasks", "habits", "team", "prayer"))
     return {"kind": "clear", "title": "", "id": None, "action": "", "meta": "",
-            "reason": "clear"}
+            "reason": "clear", "empty": not any_done,
+            "team_remaining": counts["team"]["total"] - counts["team"]["done"]}
 
 
 def week_strip(s: Session, ws: int, *, tz: ZoneInfo | None = None) -> dict:

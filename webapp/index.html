@@ -13,7 +13,7 @@
    so the interface can be reviewed without Telegram or a backend. Production
    opens the app without the parameter and never reaches this branch. */
 if(/[?&]preview(=|&|$)/.test(location.search))
-  document.write('<script src="preview.js"><\/script>');
+  document.write('<script src="preview.js?v=12.1"><\/script>');
 </script>
 <style>
 /* ==================================================================
@@ -728,7 +728,7 @@ nav button > span:last-child{max-width:100%;overflow:hidden;text-overflow:ellips
            white-space:nowrap;padding:0 1px}
 /* Six labels fit at 360px; below that the type steps down instead of
    cutting "Statistika" to "Statis…". */
-@media (max-width:359px){ nav button{font-size:9.5px;letter-spacing:-.2px}
+@media (max-width:359px){ nav button{font-size:10.5px;letter-spacing:-.2px}
   nav button .ic{width:36px} }
 nav button.on{color:var(--primary)}
 nav button .ic{display:grid;place-items:center;height:28px;width:44px;
@@ -2275,6 +2275,12 @@ const state = {
   achievements:null,
 };
 
+const RELEASE_WORDS = {
+  uz: {more:"Ko'proq", load_more:"Yana ko'rsatish", loaded_tasks:"{n} / {total} ta ish ko'rsatilgan", retry_screen:"Qayta yuklash", session_expired:"Sessiya tugadi. Botdan ilovani qayta oching.", rate_wait:"Juda ko'p amal. {n} soniyadan keyin qayta urining.", invalid_input:"Maydonlarni tekshiring: sana, vaqt, nom yoki summa noto'g'ri.", not_found_item:"Yozuv topilmadi yoki o'chirilgan. Ro'yxatni yangilang.", now_empty:"Bugunga hali reja yo'q", now_empty_hint:"Birinchi vazifangizni qo'shing yoki odat tanlang.", now_team:"Jamoada {n} ta ishingiz qoldi", monthly_income:"Bu oy kirim", monthly_expense:"Bu oy chiqim", balance_hint:"Barcha davr: yozilgan kirim minus chiqim", task_points:"Prioritet balli: {earned}/{total}", weighted_tasks:"Foiz muhimlik bo'yicha: yuqori 3, o'rta 2, past 1 ball.", weighted_habits:"Foiz odat darajasiga qarab hisoblanadi.", prayer_quality:"Sifat balli: {earned}/{total}", planned_count:"Bugun rejalashtirilgan: {n}", not_due_count:"Bugun rejasiz: {n} · Hisobga kirmaydi", habit_count_hint:"Namoz alohida hisoblanadi; jamoa odatlari Jamoa hisobida.", team_units:"{items} ta ish · {confirmations} ta shaxsiy belgi · {left} ta belgi qolgan", team_left_today:"Hali yopilmagan ishlar", team_you_done:"Siz bajardingiz", team_waiting_on:"Hali bajarmagan", trial_notice:"Dastlab {n} ta amal bepul. Keyin davom etish uchun kanalga qo'shilish kerak. Ma'lumotlaringiz saqlanadi va o'qish ochiq qoladi.", trial_remaining:"Kanalga qo'shilish so'ralguncha {n} ta amal qoldi.", presets_offer:"Tayyor odatlarni tanlab ko'ring", presets_offer_hint:"Keraklisini bir bosishda qo'shing. Eski odatlaringiz saqlanadi.", dismiss:"Keyinroq", agent_title:"Ovozli yordamchi", agent_ready:"Botga ovoz yoki matn yuboring. Amalni avval ko'rib, tasdiqlaysiz.", agent_off:"Hozir yoqilmagan. Vazifa va odatlarni + orqali qo'shishingiz mumkin.", agent_open:"Botda yordamchini ochish", money_review:"Yozuvni tekshiring", money_review_hint:"Summa, tur va kategoriyani tekshirib saqlang.", journal_local:"Qurilmada saqlandi. Internet tiklangach qayta saqlang.", saving_failed:"Saqlanmadi. Kiritgan ma'lumotingiz oynada qoldi.", habit_auto_prayer:"Avtomatik · 5 namoz qayd etilganda", habit_auto_journal:"Avtomatik · Kundalik javoblari to'lganda", money_latest:"Oy yozuvlari", record_limit:"Oxirgi {n} ta yozuv ko'rsatilgan. To'liq tarixni Ma'lumotlarim orqali yuklab oling."},
+  en: {more:"More", load_more:"Show more", loaded_tasks:"Showing {n} of {total} items", retry_screen:"Reload", session_expired:"Session expired. Reopen the app from the bot.", rate_wait:"Too many actions. Try again in {n} seconds.", invalid_input:"Check the fields: invalid date, time, name or amount.", not_found_item:"This item was deleted or is unavailable. Refresh the list.", now_empty:"Nothing planned for today yet", now_empty_hint:"Add your first task or choose a habit.", now_team:"You have {n} team items left", monthly_income:"Income this month", monthly_expense:"Spent this month", balance_hint:"All time: recorded income minus expenses", task_points:"Priority points: {earned}/{total}", weighted_tasks:"Weighted by priority: high 3, medium 2, low 1 point.", weighted_habits:"Weighted by habit tier.", prayer_quality:"Quality points: {earned}/{total}", planned_count:"Scheduled today: {n}", not_due_count:"Not scheduled today: {n} · Not counted", habit_count_hint:"Prayer is counted separately; shared habits count under Team.", team_units:"{items} items · {confirmations} individual check-ins · {left} check-ins left", team_left_today:"Items still open", team_you_done:"You completed this", team_waiting_on:"Still to complete", trial_notice:"Your first {n} actions are free. After that, join the channel to keep making changes. Your data stays saved and readable.", trial_remaining:"{n} actions left before joining the channel is required.", presets_offer:"Choose ready-made habits", presets_offer_hint:"Add what fits in one tap. Your existing habits stay.", dismiss:"Later", agent_title:"Voice assistant", agent_ready:"Send voice or text to the bot. Review and confirm before anything changes.", agent_off:"Currently unavailable. Use + to add tasks and habits.", agent_open:"Open assistant in bot", money_review:"Review entry", money_review_hint:"Check the amount, direction and category before saving.", journal_local:"Saved on this device. Save again when connected.", saving_failed:"Not saved. Your input is still in the form.", habit_auto_prayer:"Automatic · after all 5 prayers are recorded", habit_auto_journal:"Automatic · after the journal is complete", money_latest:"Entries this month", record_limit:"Showing the latest {n} entries. Download the full history from My data."},
+  ru: {more:"Ещё", load_more:"Показать ещё", loaded_tasks:"Показано {n} из {total} дел", retry_screen:"Обновить", session_expired:"Сессия истекла. Откройте приложение заново из бота.", rate_wait:"Слишком много действий. Повторите через {n} сек.", invalid_input:"Проверьте поля: дату, время, название или сумму.", not_found_item:"Запись удалена или недоступна. Обновите список.", now_empty:"На сегодня пока нет плана", now_empty_hint:"Добавьте первую задачу или выберите привычку.", now_team:"Осталось {n} ваших командных дел", monthly_income:"Доход за месяц", monthly_expense:"Расход за месяц", balance_hint:"За всё время: записанные доходы минус расходы", task_points:"Баллы приоритета: {earned}/{total}", weighted_tasks:"С учётом приоритета: высокий 3, средний 2, низкий 1 балл.", weighted_habits:"Процент зависит от уровня привычки.", prayer_quality:"Баллы качества: {earned}/{total}", planned_count:"Запланировано на сегодня: {n}", not_due_count:"Не запланировано сегодня: {n} · Не учитывается", habit_count_hint:"Намаз считается отдельно; общие привычки — в Команде.", team_units:"{items} дел · {confirmations} личных отметок · осталось {left} отметок", team_left_today:"Ещё открытые дела", team_you_done:"Вы выполнили", team_waiting_on:"Ещё не выполнили", trial_notice:"Первые {n} действий бесплатны. Затем для изменений нужна подписка на канал. Данные сохраняются и доступны для чтения.", trial_remaining:"Осталось {n} действий до запроса подписки на канал.", presets_offer:"Выберите готовые привычки", presets_offer_hint:"Добавьте подходящие одним нажатием. Ваши привычки сохранятся.", dismiss:"Позже", agent_title:"Голосовой помощник", agent_ready:"Отправьте голос или текст боту. Сначала проверьте и подтвердите действие.", agent_off:"Сейчас недоступен. Добавляйте задачи и привычки через +.", agent_open:"Открыть помощника в боте", money_review:"Проверьте запись", money_review_hint:"Проверьте сумму, тип и категорию перед сохранением.", journal_local:"Сохранено на устройстве. Повторите сохранение после подключения.", saving_failed:"Не сохранено. Введённые данные остались в форме.", habit_auto_prayer:"Автоматически · после записи всех 5 намазов", habit_auto_journal:"Автоматически · после заполнения дневника", money_latest:"Записи за месяц", record_limit:"Показаны последние {n} записей. Полную историю можно скачать в разделе Мои данные."}
+};
+for(const [lang, words] of Object.entries(RELEASE_WORDS)) Object.assign(DICT[lang], words);
 const D = () => DICT[state.lang] || DICT.uz;
 /* A missing key returns the key itself rather than "undefined", so a gap
    is visible in testing instead of silently shipping. */
@@ -2316,7 +2322,7 @@ async function api(path, options = {}){
   if(method === "POST" && idemKey){ extra["X-Idempotency-Key"] = idemKey; idemKey = null; }
   const res = await fetch(path, {
     ...options,
-    signal: options.signal || AbortSignal.timeout(API_TIMEOUT_MS),
+    signal: options.signal || requestTimeout(API_TIMEOUT_MS),
     headers:{"Content-Type":"application/json",
              "X-Telegram-Init-Data": tg?.initData || "", ...extra,
              ...(options.headers||{})},
@@ -2325,10 +2331,24 @@ async function api(path, options = {}){
   if(!res.ok){
     const err = new Error("http_" + res.status);
     err.status = res.status;
+    err.retryAfter = Number(res.headers.get("Retry-After")) || 30;
     try{ err.detail = (await res.json())?.detail; }catch(_){}
     throw err;
   }
+  const remaining = res.headers.get("X-Trial-Remaining");
+  if(remaining !== null && state.me?.trial){
+    state.me.trial.remaining = Number(remaining);
+    if(state.me.trial.required && !state.me.trial.subscribed)
+      state.readOnly = Number(remaining) === 0;
+  }
   return res.status === 204 ? null : res.json();
+}
+
+function requestTimeout(ms){
+  if(AbortSignal.timeout) return AbortSignal.timeout(ms);
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), ms);
+  return controller.signal;
 }
 
 /* ---------- ui helpers ---------- */
@@ -2360,6 +2380,7 @@ function openSheet(html, view){
   syncBackButton();
 }
 function closeSheet(){
+  state.sheetView = null;
   document.getElementById("sheet").classList.remove("show");
   syncBackButton();
 }
@@ -2406,11 +2427,18 @@ function isoToLabel(iso){
   return `${d} ${D().months[m - 1]}`;
 }
 function shiftISO(iso, days){
-  const dt = new Date(iso + "T00:00:00");
-  dt.setDate(dt.getDate() + days);
+  const dt = new Date(iso + "T12:00:00Z");
+  dt.setUTCDate(dt.getUTCDate() + days);
   return dt.toISOString().slice(0, 10);
 }
-const todayISO = () => state.home?.date || new Date().toISOString().slice(0, 10);
+const todayISO = () => {
+  try{
+    const parts = new Intl.DateTimeFormat("en-CA", {timeZone:state.me?.prefs?.timezone || "Asia/Tashkent",
+      year:"numeric", month:"2-digit", day:"2-digit"}).formatToParts(new Date());
+    const p = Object.fromEntries(parts.map(x => [x.type, x.value]));
+    return `${p.year}-${p.month}-${p.day}`;
+  }catch(_){ return state.me?.today || state.home?.date || new Date().toISOString().slice(0, 10); }
+};
 
 /* A date as three plain selects — day, month, year — instead of the native
    date input. Telegram's in-app pickers hide the year behind a tap many
@@ -2539,6 +2567,7 @@ SCREENS.home = () => {
        + nowBlock(d)
        + countsRow(d)
        + tasksBlock(d)
+       + presetsOffer()
        + privacyNote();
 };
 
@@ -2676,10 +2705,10 @@ function nowBlock(d){
   if(!kind){
     return `<div class="hero" style="margin-top:var(--s3)">
         ${head}
-        <div class="now-title">${t("now_clear")}</div>
-        <div class="t2 small" style="margin-top:2px">${t("now_clear_hint")}</div>
-        <div class="now-acts"><button class="btn secondary" data-act="task-add">
-          ${icon("plus", 17)} ${t("add_task")}</button></div>
+        <div class="now-title">${n.team_remaining ? t("now_team", {n:n.team_remaining}) : t(n.empty ? "now_empty" : "now_clear")}</div>
+        <div class="t2 small" style="margin-top:2px">${t(n.team_remaining ? "team_left_today" : n.empty ? "now_empty_hint" : "now_clear_hint")}</div>
+        <div class="now-acts"><button class="btn secondary" data-act="${n.team_remaining ? "nav" : "task-add"}" data-screen="team">
+          ${icon("plus", 17)} ${t(n.team_remaining ? "team" : "add_task")}</button></div>
       </div>`;
   }
 
@@ -2943,6 +2972,7 @@ function teamTodayTab(team, board){
   const open = (board.open || []).map(x => `<div class="row" style="padding:6px 0">
       ${teamBox({...full(x), mirrored: x.mirrored}, x.kind)}
       <div class="grow">${icon(x.kind === "task" ? "list" : "check", 15)} ${esc(x.title)}
+        ${full(x).done ? `<div class="muted sm">${t("team_you_done")}</div>` : ""}
         ${(x.missing || []).length ? `<div class="muted sm">${t("team_waiting_on")}: ${
           (x.missing || []).map(nameOf).join(" · ")}</div>` : ""}</div>
     </div>`).join("");
@@ -3223,8 +3253,8 @@ function habitsTab(){
   const everything = Object.values(data.grouped || {}).flat();
   /* The prayer habit is a shortcut to its own section and is scored there,
      so it is left out of this count — the same count Home shows. */
-  const due = (everything.length ? everything : data.habits)
-    .filter(x => x.due && x.scored !== false);
+  const allHabits = everything.length ? everything : data.habits;
+  const due = allHabits.filter(x => x.due && !x.paused && x.scored !== false && x.source !== "team");
   const done = due.filter(x => x.done).length;
 
   /* Top of the screen: the habits and nothing else, one per row, in tier
@@ -3232,8 +3262,8 @@ function habitsTab(){
      the row rather than a heading, so the list reads as one list. The
      wake-up control ("Turdim") sits in the habit it belongs to. */
   let h = timerBanner(data.active_timer);
-  const rows = data.categories.map(cat =>
-    (data.grouped[cat] || []).map(x => habitRow(x, cat, data.wake)).join("")).join("");
+  const rows = data.categories.map(cat => (data.grouped[cat] || []).length
+    ? `<h2>${t(cat)}</h2>` + data.grouped[cat].map(x => habitRow(x, cat, data.wake)).join("") : "").join("");
   h += rows || `<div class="empty">${t("no_habits_yet")}
       <button class="btn secondary sm" data-act="presets-open">
         ${icon("tiles", 16)} ${t("presets")}</button></div>`;
@@ -3251,6 +3281,9 @@ function habitsTab(){
           ${icon("flame", 16)} ${data.streak}</div>` : ""}
       </div>
       <div style="margin-top:var(--s2)">${bar(ratio)}</div>
+      <div class="t2 small">${t("planned_count", {n:due.length})}</div>
+      <div class="t3 tiny">${t("not_due_count", {n:allHabits.filter(x => !x.due || x.paused).length})}</div>
+      <div class="t3 tiny">${t("habit_count_hint")}</div>
       <div class="dash-tools">
         <button class="btn secondary sm" data-act="presets-open">
           ${icon("tiles", 15)} ${t("presets")}</button>
@@ -3577,7 +3610,7 @@ function flushJournal(){
     }catch(_){
       // The draft is on disk; the answers wait for the next pause or Save.
       journalPending = {...answers, ...journalPending};
-      if(note) note.textContent = "…";
+      if(note) note.textContent = t("journal_local");
     }
   });
   return journalChain;
@@ -4098,7 +4131,7 @@ function mainTab(){
         ${icon("plus", 16)} ${t("add_first_task")}</button></div>`;
 
   // The dates, the month and both countdowns are the Taqvim tab.
-  return h + weekFocusBlock();
+  return h + taskPageFooter() + weekFocusBlock();
 }
 
 function searchBox(id, value, placeholder, action){
@@ -4175,8 +4208,7 @@ function weekFocusBlock(){
    box and three filters over the top. */
 function openTab(){
   const d = state.tasks;
-  const total = d ? [d.overdue, d.upcoming, d.undated, d.later || []]
-    .reduce((n, rows) => n + rows.length, 0) : null;
+  const total = d ? d.total : null;
 
   let h = `<div class="tinted block tone-2">
       <div class="bh">
@@ -4242,7 +4274,7 @@ function openTab(){
             ${icon("plus", 16)} ${t("add_first_task")}</button></div>`;
   } else h += body;
 
-  return h;
+  return h + taskPageFooter() + ((d.teams || []).length ? `<button class="btn secondary" data-act="nav" data-screen="team">${t("team_tasks")} →</button>` : "");
 }
 
 function doneTab(){
@@ -4259,7 +4291,37 @@ function doneTab(){
     + section("tone-3", t("done_earlier"), g.earlier);
 
   return h + (body || `<div class="empty">${
-    state.doneQuery ? t("no_results") : t("empty")}</div>`);
+    state.doneQuery ? t("no_results") : t("empty")}</div>`) + taskPageFooter();
+}
+
+function taskPageFooter(){
+  const d = state.tasks;
+  if(!d) return "";
+  const n = [d.overdue, d.upcoming, d.undated, d.later].reduce((n, rows) => n + (rows?.length || 0), 0);
+  return `<div class="hint" style="margin:14px 0">${t("src_personal")} · ${t("loaded_tasks", {n, total:d.total ?? n})}</div>`
+    + (d.next_cursor ? `<button class="btn secondary" data-act="tasks-more">${t("load_more")}</button>` : "");
+}
+let taskLoadSeq = 0;
+function taskPageURL(cursor){
+  const q = new URLSearchParams({limit:"50"});
+  if(state.taskTab === "done") { q.set("done", "true"); q.set("q", state.doneQuery); }
+  else { q.set("q", state.taskQuery); q.set("bucket", state.taskTab === "main" ? "today" : state.taskFilter); }
+  if(cursor) q.set("cursor", cursor);
+  return "/api/tasks/page?" + q;
+}
+async function moreTasks(){
+  const cursor = state.tasks?.next_cursor, seq = taskLoadSeq;
+  if(!cursor || state.tasksPaging) return;
+  state.tasksPaging = true;
+  try{
+    const next = await api(taskPageURL(cursor));
+    if(seq !== taskLoadSeq) return;
+    for(const key of ["overdue", "upcoming", "undated", "later"])
+      next[key] = [...(state.tasks[key] || []), ...(next[key] || [])];
+    for(const key of ["today", "week", "earlier"])
+      next.groups[key] = [...(state.tasksDone?.[key] || []), ...(next.groups[key] || [])];
+    setState({tasks:next, tasksDone:next.groups});
+  }finally{ state.tasksPaging = false; }
 }
 
 function doneRow(task){
@@ -4558,7 +4620,7 @@ const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 async function loadMoney(month){
   try{
     setState({money: await api("/api/money" + (month ? "?month=" + month : ""))});
-  }catch(e){ handleError(e); }
+  }catch(e){ setState({screenError:errorMessage(e)}); handleError(e); }
 }
 
 /* Where each category's money went this month, as one ring. */
@@ -4615,10 +4677,11 @@ SCREENS.money = () => {
 
   h += `<div class="mtiles">
       <div class="mtile lead"><div class="k">${icon("wallet", 15)} ${t("money_balance")}</div>
-        <div class="v ${m.balance < 0 ? "neg" : ""}">${m.balance < 0 ? "−" : ""}${moneyFmt(m.balance)}</div></div>
-      <div class="mtile"><div class="k">${icon("up", 15)} ${t("money_income")}</div>
+        <div class="v ${m.balance < 0 ? "neg" : ""}">${m.balance < 0 ? "−" : ""}${moneyFmt(m.balance)}</div>
+        <div class="t3 tiny">${t("balance_hint")}</div></div>
+      <div class="mtile"><div class="k">${icon("up", 15)} ${t("monthly_income")}</div>
         <div class="v pos">+${moneyFmt(m.income)}</div></div>
-      <div class="mtile"><div class="k">${icon("down", 15)} ${t("money_expense")}</div>
+      <div class="mtile"><div class="k">${icon("down", 15)} ${t("monthly_expense")}</div>
         <div class="v neg">−${moneyFmt(m.expense)}</div></div>
     </div>`;
 
@@ -4665,6 +4728,8 @@ SCREENS.money = () => {
     : `<div class="empty">${t("money_empty")}
         <button class="btn secondary sm" data-act="money-add">
           ${icon("plus", 16)} ${t("money_add")}</button></div>`;
+  if(m.count > m.entries.length) h += `<div class="hint">${t("record_limit", {n:m.entries.length})}</div>
+    <button class="btn secondary" data-act="set-account">${t("account")}</button>`;
   return h;
 };
 
@@ -4672,7 +4737,8 @@ function moneySheet(){
   const f = state.moneyForm || (state.moneyForm = {kind:"expense", category:"food"});
   const m = state.money || {};
   const ids = (m.category_ids || []).filter(id => (m.kinds || {})[id] === f.kind);
-  return `<h3>${icon("wallet", 18)} ${t("money_add")}</h3>
+  return `<h3>${icon("wallet", 18)} ${t(f.review ? "money_review" : "money_add")}</h3>
+    ${f.review ? `<div class="hint">${t("money_review_hint")}</div>` : ""}
     <div class="seg" role="tablist" style="margin:var(--s2) 0">
       ${[["expense", t("money_expense")], ["income", t("money_income")]].map(([k, label]) =>
         `<div class="${f.kind === k ? "on" : ""}" role="tab" tabindex="0"
@@ -4736,13 +4802,12 @@ async function moneyText(text, source, kind){
   if(!text) return;
   haptic();
   try{
-    const e = await api("/api/money/text", {method:"POST",
+    const e = await api("/api/money/preview", {method:"POST",
                                             body:{text, source, kind: kind || ""}});
     const el = document.getElementById("money-text");
     if(el) el.value = "";
-    notify("success");
-    toast(`${e.kind === "income" ? "+" : "−"}${moneyFmt(e.amount)} · ${t("mcat_" + e.category)}`);
-    await loadMoney(state.moneyMonth);
+    state.moneyForm = {...e, source, review:true};
+    openSheet(moneySheet(), "money");
   }catch(err){
     if(err.status === 422) return toast(t("money_no_amount"));
     handleError(err);
@@ -4780,7 +4845,7 @@ SCREENS.stats = () => {
         ${today.measured === false ? "—" : today.overall + "%"}</div>
       <div class="small wrap" style="margin-top:var(--s1)">
         ${known
-          ? `<b>${TREND_ICON[dir] || ""}${change > 0 ? "+" : ""}${change}%</b>
+          ? `<b>${TREND_ICON[dir] || ""}${change > 0 ? "+" : ""}${change} ${t("pts")}</b>
              ${t("vs_yesterday")} <span class="t2">(${yesterday}%)</span>`
           : t("vs_yesterday_none")}</div>
       <div style="margin-top:var(--s2)">${bar(today.overall)}</div>
@@ -4798,11 +4863,14 @@ SCREENS.stats = () => {
       <div class="row" style="gap:var(--s1)">
         <span class="itile">${icon(COMPONENT_ICON[key], 17)}</span>
         <div class="grow"></div>
-        <span class="wt num" title="${t("weight")}">${t("weight")} ${WEIGHTS[key]}%</span>
+        <span class="wt num" title="${t("weight")}">${t("weight")} ${today.weights?.[key] ?? 0}%</span>
       </div>
       <div class="k ellipsis">${label}</div>
       <div class="v num">${value}</div>
       <div class="sub num">${count ? `<div>${count}</div>` : ""}${teamDelta(delta)}</div>
+      ${key === "tasks" ? `<div class="t3 tiny">${today.task_points ? t("task_points", today.task_points) : ""}<br>${t("weighted_tasks")}</div>` : ""}
+      ${key === "habits" ? `<div class="t3 tiny">${t("weighted_habits")}</div>` : ""}
+      ${key === "prayer" && today.prayer_score !== undefined ? `<div class="t3 tiny">${t("prayer_quality", {earned:today.prayer_score, total:today.prayer_max})}</div>` : ""}
       ${bar(percent)}
     </div>`;
 
@@ -5992,9 +6060,9 @@ function progressSheet(){
   /* Today, with the same four components the overall score is built from and
      the same weights printed on them. Not a second formula — the API sends the
      stored breakdown, so this cannot drift from the number above it. */
-  const LABEL = {tasks:"tasks", habits:"habits", focus:"week_focus", prayer:"prayer"};
+  const LABEL = {tasks:"tasks", habits:"habits", team:"team", prayer:"prayer"};
   const rows = Object.entries(LABEL)
-    .filter(([key]) => d.breakdown[key] !== null && d.breakdown[key] !== undefined)
+    .filter(([key]) => d.breakdown?.[key] !== null && d.breakdown?.[key] !== undefined)
     .map(([key, label]) => `
       <div class="row" style="gap:var(--s2);margin-top:var(--s1)">
         <div class="grow t2 small">${t(label)}</div>
@@ -6268,12 +6336,34 @@ const NAV = [
   {id:"home",   icon:"home",     key:"nav_home"},
   {id:"habits", icon:"check",    key:"habits"},
   {id:"tasks",  icon:"list",     key:"tasks"},
-  {id:"team",   icon:"users",    key:"team"},
   {id:"stats",  icon:"chart",    key:"nav_stats"},
-  {id:"money",  icon:"wallet",   key:"money", apart:true},
+  {id:"more",   icon:"list",     key:"more"},
 ];
 //: A project opens from Tasks, so the Tasks tab stays lit while inside one.
-const NAV_OF = {project:"tasks"};
+const NAV_OF = {project:"tasks", team:"more", money:"more"};
+
+const offerKey = () => `ernestos-presets-offer-v1-${state.me?.telegram_id || "anon"}`;
+function presetsOffer(){
+  try{ if(localStorage.getItem(offerKey())) return ""; }catch(_){}
+  return `<div class="card" style="margin:12px 0">
+    <div>${t("presets_offer")}</div><div class="hint">${t("presets_offer_hint")}</div>
+    <div class="btns"><button class="btn secondary sm" data-act="presets-open">${t("habits")}</button>
+    <button class="btn secondary sm" data-act="offer-dismiss">${t("dismiss")}</button></div></div>`;
+}
+function trialBanner(){
+  const trial = state.me?.trial;
+  if(!trial?.required || trial.subscribed || state.readOnly) return "";
+  return `<div class="banner" data-act="sub-open" role="button" tabindex="0">
+    ${icon("info", 16)}<div class="grow small">${t("trial_notice", {n:trial.free_actions || 20})}
+    <div>${t("trial_remaining", {n:trial.remaining})}</div></div></div>`;
+}
+SCREENS.more = () => `<h1>${t("more")}</h1>` + [
+  ["team", "users", "team"], ["money", "wallet", "money"]
+].map(([screen, ic, key]) => `<button class="btn secondary" style="margin:12px 0"
+  data-act="nav" data-screen="${screen}">${icon(ic, 20)} ${t(key)}</button>`).join("")
+  + `<button class="btn secondary" data-act="settings">${icon("settings", 20)} ${t("settings")}</button>
+    <h2>${t("agent_title")}</h2><div class="hint">${t(state.me?.agent?.available ? "agent_ready" : "agent_off")}</div>
+    ${state.me?.agent?.available ? `<button class="btn secondary" data-act="agent-open">${t("agent_open")}</button>` : ""}`;
 
 /* The blocked screen. A full screen with a way out, not a 403 string:
    join, check, and the session continues from where it was. */
@@ -6295,7 +6385,7 @@ function blockedScreen(){
 
 /* The subscription ask as a sheet: reading stays open underneath it (#15). */
 function blockedSheet(){
-  const b = state.subInfo || {};
+  const b = state.subInfo || state.me?.trial || {};
   return `<div style="text-align:center">
       <div class="state-ico">${icon("shield", 26)}</div>
       <h3 style="margin-top:8px">${t("sub_title")}</h3>
@@ -6367,7 +6457,10 @@ function render(){
   else if(state.needsSetup) app.innerHTML = setupScreen();
   else if(state.error)      app.innerHTML = errorScreen();
   else if(state.loading)    app.innerHTML = `<div class="spin"></div>`;
-  else app.innerHTML = readOnlyBanner() + (SCREENS[state.screen] || SCREENS.home)();
+  else app.innerHTML = readOnlyBanner() + (state.screen === "home" ? trialBanner() : "")
+    + (state.screenError ? `<div class="empty">${esc(state.screenError)}
+      <button class="btn secondary" data-act="retry-screen">${t("retry_screen")}</button></div>`
+      : (SCREENS[state.screen] || SCREENS.home)());
 
   const chromeOff = Boolean(state.blocked || state.error || state.loading
                             || state.needsSetup);
@@ -6399,6 +6492,7 @@ function syncShell(){
    Loading
    ================================================================== */
 async function loadScreen(screen){
+  state.screenError = null;
   try{
     if(screen === "home"){
       /* One request. Home used to wait on /api/summary (a month of scores
@@ -6422,13 +6516,13 @@ async function loadScreen(screen){
                 journalQuestions: journal.questions,
                 teams: habits.teams || state.teams});
     } else if(screen === "tasks"){
-      const query = state.taskQuery ? "&q=" + encodeURIComponent(state.taskQuery) : "";
+      const seq = ++taskLoadSeq;
       /* The month is part of this screen now rather than a sheet opened from
          it, so it is fetched with the rest — but only once: moving between the
          tabs must not re-request a grid that is already drawn, and paging to
          another month must not be undone by the next tab tap. */
       const [tasks, projects, focus, calendar, countdowns] = await Promise.all([
-        api("/api/tasks?days=365" + query), api("/api/projects"),
+        api(taskPageURL()), api("/api/projects"),
         api("/api/focus"),
         state.calendar && !state.calendarStale ? Promise.resolve(state.calendar)
           : api(state.calendar
@@ -6437,8 +6531,9 @@ async function loadScreen(screen){
         // A failure here costs the countdown block, not the screen.
         api("/api/countdowns").catch(() => ({countdowns: state.countdowns || []})),
       ]);
+      if(seq !== taskLoadSeq) return;
       state.calendarStale = false;
-      setState({tasks, projects: projects.projects, focus: focus.week, calendar,
+      setState({tasks, tasksDone:tasks.groups, projects: projects.projects, focus: focus.week, calendar,
                 countdowns: countdowns.countdowns,
                 teams: tasks.teams || state.teams});
       /* The Projects tab lists shared shelves beside private ones, so the
@@ -6447,17 +6542,16 @@ async function loadScreen(screen){
       if((tasks.teams || []).length && !state.team){
         try{ state.team = await api("/api/teams"); }catch(_){}
       }
-      if(state.taskTab === "done"){
-        const q = state.doneQuery ? "?q=" + encodeURIComponent(state.doneQuery) : "";
-        setState({tasksDone: (await api("/api/tasks/done" + q)).groups});
-      }
     } else if(screen === "stats"){
       await loadStats(state.statsPeriod);
     } else if(screen === "project"){
       const p = state.project?.project;
       if(p) setState({project: await api(projectPath(p.id, p.source === "team"))});
     }
-  }catch(e){ handleError(e); }
+  }catch(e){
+    if(state.screen === screen) setState({screenError:errorMessage(e)});
+    handleError(e);
+  }
 }
 
 /* Where one project and its tasks are read from — personal or a team's. */
@@ -6509,12 +6603,12 @@ async function loadStats(period){
     setState({stats, statsPeriod: period, team: team || state.team,
               summary: summary || state.summary,
               progress: progress || state.progress});
-  }catch(e){ handleError(e); }
+  }catch(e){ setState({screenError:errorMessage(e)}); handleError(e); }
 }
 
 function goto(screen, patch){
   haptic();
-  setState({screen, reorderMode:false, ...(patch || {})});
+  setState({screen, error:null, screenError:null, reorderMode:false, ...(patch || {})});
   loadScreen(screen);
 }
 
@@ -6522,6 +6616,13 @@ function goto(screen, patch){
 //: start from a blank field.
 let lastDraft = null;
 
+function errorMessage(e){
+  if(e.status === 401) return t("session_expired");
+  if(e.status === 429) return t("rate_wait", {n:e.retryAfter || 30});
+  if(e.status === 422) return t("invalid_input");
+  if(e.status === 404) return t("not_found_item");
+  return e.status ? t("error") : t("offline");
+}
 function handleError(e, draft){
   console.error("ErnestOS:", e);
   if(e.status === 403 && e.detail === "forbidden"){ toast(t("forbidden")); return; }
@@ -6557,7 +6658,7 @@ function handleError(e, draft){
         ${t("cancel")}</button>`);
     return;
   }
-  toast(e.status ? t("error") : t("offline"));
+  toast(errorMessage(e));
 }
 
 /* Re-checks membership against Telegram. Called from the blocked screen,
@@ -6587,7 +6688,10 @@ async function checkSubscription(quiet){
 /* ==================================================================
    Actions
    ================================================================== */
+let saveInFlight = false;
 async function save(request, reload, quiet, message, draft){
+  if(saveInFlight) return;
+  saveInFlight = true;
   // One key per submission; a retry of the same draft sends the same key.
   const key = draft?.key || newKey();
   idemKey = key;
@@ -6608,9 +6712,9 @@ async function save(request, reload, quiet, message, draft){
     else render();
   }catch(e){
     idemKey = null;
-    closeSheet();
     handleError(e, draft && {...draft, request, reload, key});
   }finally{
+    saveInFlight = false;
     busy?.classList.remove("busy"); busy?.removeAttribute("aria-busy");
   }
 }
@@ -6632,6 +6736,14 @@ function optimistic(mutate, request, reload){
 }
 
 const A = {
+  "tasks-more": moreTasks,
+  "offer-dismiss": () => { try{ localStorage.setItem(offerKey(), "1"); }catch(_){} render(); },
+  "retry-screen": () => loadScreen(state.screen),
+  "agent-open": () => {
+    const name = state.me?.bot_username?.replace(/^@/, "");
+    if(name && tg?.openTelegramLink) tg.openTelegramLink(`https://t.me/${name}?start=agent`);
+    else tg?.close?.();
+  },
   nav: el => goto(el.dataset.screen),
   reload: () => { setState({error:null, loading:true}); boot(); },
   tab: el => { haptic(); setState({tab:el.dataset.tab, reorderMode:false}); },
@@ -6919,7 +7031,7 @@ const A = {
     const f = readMoneyForm();
     const amount = Math.round(Number(f.amount));
     if(!amount || amount <= 0) return toast(t("money_no_amount"));
-    const body = {kind: f.kind, amount, category: f.category, note: (f.note || "").trim()};
+    const body = {kind: f.kind, amount, category: f.category, note: (f.note || "").trim(), source:f.source || "manual"};
     save(() => api("/api/money", {method:"POST", body}), "money", false,
          t("money_saved_toast"), {body});
   },
@@ -7589,7 +7701,7 @@ const A = {
   "task-search-clear": () => { setState({taskQuery:""}); loadScreen("tasks"); },
   "done-search": () => { setState({doneQuery: val("done-q")}); loadScreen("tasks"); },
   "done-search-clear": () => { setState({doneQuery:""}); loadScreen("tasks"); },
-  "task-filter": el => { haptic(); setState({taskFilter: el.dataset.value}); },
+  "task-filter": el => { haptic(); setState({taskFilter: el.dataset.value}); loadScreen("tasks"); },
 
   /* ---- projects ---- */
   /* A project is asked where it lives — yours, or one of your teams' — the
@@ -8211,6 +8323,7 @@ let pressedBtn = null;
 document.addEventListener("click", e => {
   const el = e.target.closest("[data-act]");
   if(!el) return;
+  if(el.classList.contains("busy")) return;
   if(CHANGE_TAGS.has(el.tagName)) return;
   const action = A[el.dataset.act];
   if(!action) return;
@@ -8226,7 +8339,7 @@ document.addEventListener("click", e => {
   // An async action shows its button as busy until it settles.
   if(el.tagName === "BUTTON" && out && typeof out.then === "function"){
     el.classList.add("busy"); el.setAttribute("aria-busy", "true");
-    out.finally(() => { el.classList.remove("busy"); el.removeAttribute("aria-busy"); });
+    out.catch(handleError).finally(() => { el.classList.remove("busy"); el.removeAttribute("aria-busy"); });
   }
 });
 /* Enter and Space act on anything focusable that has an action, so every
@@ -8297,7 +8410,7 @@ async function boot(){
     console.error("ErnestOS boot failed:", e);
     if(e.status === 403){ setState({loading:false}); await checkSubscription(true); return; }
     setState({loading:false,
-      error: e.status ? t("error") : t("offline")});
+      error: errorMessage(e)});
   }
 }
 boot();

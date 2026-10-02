@@ -1,4 +1,19 @@
-# ErnestOS
+# ErnestOS v12.1
+
+## Avval shu bo‘limni o‘qing
+
+Bu paket v12 asosida tuzatilgan reliz nomzodi. Barcha mavjud modullar saqlangan.
+Hozirgi o‘zgarishlar, testlar va deploy shartlari:
+[v12.1 yakuniy hisobot](docs/RELEASE_V12_1_UZ.md).
+
+Mini App pastki menyusi: **Asosiy · Odatlar · Vazifalar · Statistika · Ko‘proq**.
+**Ko‘proq** ichida Jamoa, Pul, Sozlamalar va ovozli yordamchi mavjud.
+Pulni matn/ovozdan kiritishda avval tekshirish, keyin Saqlash talab qilinadi.
+Dastlabki 20 amaldan so‘ng kanalga obuna talabi oldindan tushuntiriladi.
+
+Jonli Telegram/Railway/Groq tekshiruvi ushbu topshiriqda bajarilmagan.
+Avtomatik testlar o‘tishi mutlaqo xatosiz ishlash kafolati emas.
+Quyidagi v12/v10 bo‘limlari tarixiy batafsil qo‘llanma; yangi holat uchun yuqoridagi hisobot ustuvor.
 
 ## v12 — ovozli agent (Groq, sodda)
 
@@ -36,7 +51,7 @@ Mahsulotning asosiy sikli:
 > **v8 da nima o'zgardi** (login/parol, saqlash/bekor qilish, loyihalar) — [docs/V8_OZGARISHLAR.md](docs/V8_OZGARISHLAR.md).
 > **v7** — [docs/V7_OZGARISHLAR.md](docs/V7_OZGARISHLAR.md).
 
-Pastdagi navigatsiya — shu beshta va chiziq bilan ajratilgan 💰 Pul. Qolgan hamma narsa — kalendar,
+Pastdagi navigatsiya — Asosiy, Odatlar, Vazifalar, Statistika, Ko‘proq. Jamoa va Pul Ko‘proq ichida. Qolgan hamma narsa — kalendar,
 tug'ilgan kunlar, haftalik yakun, sozlamalar, export — kerakli joydan
 ochiladi, alohida tab sifatida emas.
 
@@ -508,7 +523,7 @@ Noldan ishga tushirish. Har bir qadamni tartib bilan bajaring.
 4. Username kiriting — `_bot` bilan tugashi shart (masalan `ernestos_bot`).
 5. BotFather **tokenni** beradi:
    ```
-   8123456789:AAF-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   <BOT_TOKEN_FROM_BOTFATHER>
    ```
    Buni `BOT_TOKEN` ga yozasiz. **Hech kimga bermang.**
 
