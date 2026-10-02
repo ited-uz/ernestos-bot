@@ -776,6 +776,27 @@ nav:empty{display:none}
 .step-chip .ck{width:20px;height:20px;border-radius:50%;border:2px solid var(--border);display:grid;place-items:center}
 .step-chip.ok .ck{background:var(--ok);border-color:var(--ok);color:var(--on-primary)}
 .steps-go{margin-top:14px}
+.qhero{background:var(--surface);border:var(--border-w) solid var(--border);border-radius:var(--radius-lg);
+       padding:16px;box-shadow:var(--shadow-1)}
+.qtop{display:flex;align-items:center;gap:12px}
+.qtop .badge{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;font-size:28px;
+             background:var(--surface-2);box-shadow:0 0 0 3px color-mix(in srgb, var(--warn) 70%, transparent)}
+.qtop .ln{font-size:21px;font-weight:760}
+.qtotal{text-align:right}.qtotal .tv{font-size:30px;font-weight:800;line-height:1}
+.sbar.big{height:10px;margin:14px 0 6px}
+.qstats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:14px}
+.qstats>div{background:var(--surface-2);border-radius:var(--radius-sm);padding:8px 4px;text-align:center}
+.qstats b{display:block;font-size:16px}
+.qstats span{display:block;font-size:11px;color:var(--text-3)}
+.qlist{padding:4px 12px}
+.qrow{display:flex;align-items:center;gap:10px;min-height:48px;cursor:pointer;
+      border-bottom:var(--border-w) solid var(--border)}
+.qrow:last-child{border-bottom:0}
+.qrow .ci{font-size:18px}
+.qrow .ck{width:22px;height:22px;border-radius:50%;border:2px solid var(--border);display:grid;place-items:center}
+.qrow.ok .ck{background:var(--ok);border-color:var(--ok);color:var(--on-primary)}
+.qrow.ok .grow{color:var(--text-2)}
+
 .profile-head .pname{font-size:20px;font-weight:700}
 /* The two ways to add anything, always in the same place: + for typing and
    the microphone above it for speaking. Bottom right, above the bar. */
@@ -1228,7 +1249,7 @@ const DICT = {
   /* quick capture */
   quick_add:"Tez qo'shish", quick_ph:"Nima esingizga tushdi?",
   inbox_saved:"Saqlandi — Vazifalarda",
-  quick_saved:"✓ Vazifa", next_up:"Keyingi", home_more_tasks:"Yana {n} ta ish", voice_title:"Ovoz bilan qo'shish", voice_listening:"Gapiring… To'xtatsangiz, tahlil qilaman.", voice_stop:"To'xtatish", voice_thinking:"Tushunishga harakat qilyapman…", voice_confirm:"Tasdiqlash", voice_retry:"Qayta yozish", voice_done:"✅ Tasdiqlandi", voice_failed:"Ovoz yuborilmadi. Qayta urinib ko'ring.", voice_too_long:"Ovoz 2 daqiqadan oshmasin.", voice_denied:"Mikrofonga ruxsat yo'q — botda ovoz yuboring.", voice_consent:"Ovozingiz matnga aylantirish va tushunish uchun AI xizmatlariga (ElevenLabs, Groq, Google — AQSh) yuboriladi. Audio saqlanmaydi. Hech narsa siz tasdiqlamaguningizcha o'zgarmaydi.", voice_agree:"Roziman, boshlash", voice_consent_needed:"Avval rozilik bering.", tab_list:"Ro'yxat", nav_money:"Moliya", quick_more:"Batafsil (vaqt, eslatma, loyiha)", quick_more_habit:"Batafsil (kunlar, eslatma, muhimlik)", steps_title:"Qadam", steps_motto:"Har bir yaxshi ish — kelajakdagi yutuqqa qadam.", steps_freeze:"Ketma-ketlikni saqlab qoladigan kunlar", steps_level_n:"{n}-daraja", steps_total:"Jami qadamlar", steps_path:"Sizning yo'lingiz", steps_today:"Bugungi qadamlar", steps_go:"Qadamni davom ettir", step_lvl_starter:"Boshlovchi", step_lvl_builder:"Quruvchi", step_lvl_discipline:"Intizom", step_lvl_steady:"Barqarorlik", step_lvl_master:"O'z ustida ishlash", step_tasks:"Vazifa", step_habits:"Odat", step_prayer:"Namoz", step_journal:"Xulosa", step_goal:"Maqsad", task_word:"Vazifa", habit_word:"Odat", quick_habit_ph:"Masalan: Har kuni kitob o'qish", quick_habit_hint:"Har kuni takrorlanadi. Keyin o'zgartirsa bo'ladi.", quick_habit_saved:"✓ Odat", nav_tracker:"Kundalik", nav_profile:"Profil", quick_hint:"Masalan: «Ertaga soat 10 da hisobot» yoki «Tushlik 45 ming»", quick_voice:"Ovoz bilan aytish", jai_title:"AI bilan to'ldirish", jai_hint:"Kuningizni erkin gapirib yoki yozib bering — AI uni 5 savolga ajratib, xatolarini to'g'rilaydi. Siz tekshirib, saqlaysiz.", jai_voice:"Gapirish", jai_text:"Yozish", jai_ph:"Masalan: bugun mijoz bilan shartnoma yopdim, onamga rahmat, vaqtni rejalashtira olmadim, ertaga hisobotni tugataman…", jai_sort:"Savollarga ajratish", jai_done:"✨ {n} ta javob to'ldirildi — tekshirib, Saqlang", jai_nothing:"Savollarga mos gap topilmadi. Batafsilroq ayting.",
+  quick_saved:"✓ Vazifa", next_up:"Keyingi", home_more_tasks:"Yana {n} ta ish", voice_title:"Ovoz bilan qo'shish", voice_listening:"Gapiring… To'xtatsangiz, tahlil qilaman.", voice_stop:"To'xtatish", voice_thinking:"Tushunishga harakat qilyapman…", voice_confirm:"Tasdiqlash", voice_retry:"Qayta yozish", voice_done:"✅ Tasdiqlandi", voice_failed:"Ovoz yuborilmadi. Qayta urinib ko'ring.", voice_too_long:"Ovoz 2 daqiqadan oshmasin.", voice_denied:"Mikrofonga ruxsat yo'q — botda ovoz yuboring.", voice_consent:"Ovozingiz matnga aylantirish va tushunish uchun AI xizmatlariga (ElevenLabs, Groq, Google — AQSh) yuboriladi. Audio saqlanmaydi. Hech narsa siz tasdiqlamaguningizcha o'zgarmaydi.", voice_agree:"Roziman, boshlash", voice_consent_needed:"Avval rozilik bering.", tab_list:"Ro'yxat", nav_money:"Moliya", quick_more:"Batafsil (vaqt, eslatma, loyiha)", quick_more_habit:"Batafsil (kunlar, eslatma, muhimlik)", nav_steps:"Qadam", steps_to_next:"«{name}» darajasigacha yana {n} qadam", steps_max:"Eng yuqori daraja — barakalla!", steps_freeze_short:"Muzlatish", steps_rank_in:"{n} kundan keyin", steps_next:"Keyingi qadam", steps_all_done:"Bugungi qadamlar bajarildi 🎉", steps_more:"Yutuqlar va reyting", steps_title:"Qadam", steps_motto:"Har bir yaxshi ish — kelajakdagi yutuqqa qadam.", steps_freeze:"Ketma-ketlikni saqlab qoladigan kunlar", steps_level_n:"{n}-daraja", steps_total:"Jami qadamlar", steps_path:"Sizning yo'lingiz", steps_today:"Bugungi qadamlar", steps_go:"Qadamni davom ettir", step_lvl_starter:"Boshlovchi", step_lvl_builder:"Quruvchi", step_lvl_discipline:"Intizom", step_lvl_steady:"Barqarorlik", step_lvl_master:"O'z ustida ishlash", step_tasks:"Vazifa", step_habits:"Odat", step_prayer:"Namoz", step_journal:"Xulosa", step_goal:"Maqsad", task_word:"Vazifa", habit_word:"Odat", quick_habit_ph:"Masalan: Har kuni kitob o'qish", quick_habit_hint:"Har kuni takrorlanadi. Keyin o'zgartirsa bo'ladi.", quick_habit_saved:"✓ Odat", nav_tracker:"Kundalik", nav_profile:"Profil", quick_hint:"Masalan: «Ertaga soat 10 da hisobot» yoki «Tushlik 45 ming»", quick_voice:"Ovoz bilan aytish", jai_title:"AI bilan to'ldirish", jai_hint:"Kuningizni erkin gapirib yoki yozib bering — AI uni 5 savolga ajratib, xatolarini to'g'rilaydi. Siz tekshirib, saqlaysiz.", jai_voice:"Gapirish", jai_text:"Yozish", jai_ph:"Masalan: bugun mijoz bilan shartnoma yopdim, onamga rahmat, vaqtni rejalashtira olmadim, ertaga hisobotni tugataman…", jai_sort:"Savollarga ajratish", jai_done:"✨ {n} ta javob to'ldirildi — tekshirib, Saqlang", jai_nothing:"Savollarga mos gap topilmadi. Batafsilroq ayting.",
   /* tasks */
   add_task:"Vazifa", task_name:"Vazifa nomi", task_desc:"Batafsil",
   deadline:"Muddat", due_time:"Vaqt", priority:"Muhimlik", project:"Loyiha",
@@ -1603,7 +1624,7 @@ const DICT = {
   wake_late_at:"{time} — later than today's target", wake_target:"Target",
   quick_add:"Quick add", quick_ph:"What came to mind?",
   inbox_saved:"Saved — see Tasks",
-  quick_saved:"✓ Task", next_up:"Up next", home_more_tasks:"{n} more", voice_title:"Add by voice", voice_listening:"Speak… Stop when done and I'll analyse it.", voice_stop:"Stop", voice_thinking:"Understanding…", voice_confirm:"Confirm", voice_retry:"Record again", voice_done:"✅ Confirmed", voice_failed:"Voice was not sent. Try again.", voice_too_long:"Keep it under 2 minutes.", voice_denied:"No microphone access — send a voice message in the bot.", voice_consent:"Your voice is sent to AI services (ElevenLabs, Groq, Google — USA) to transcribe and understand it. Audio is not stored. Nothing changes until you confirm.", voice_agree:"I agree, start", voice_consent_needed:"Please give consent first.", tab_list:"List", nav_money:"Money", quick_more:"More options (time, reminder, project)", quick_more_habit:"More options (days, reminder, importance)", steps_title:"Steps", steps_motto:"Every good thing you do is a step forward.", steps_freeze:"Days that keep your streak alive", steps_level_n:"Level {n}", steps_total:"Total steps", steps_path:"Your path", steps_today:"Today's steps", steps_go:"Keep going", step_lvl_starter:"Beginner", step_lvl_builder:"Builder", step_lvl_discipline:"Discipline", step_lvl_steady:"Consistency", step_lvl_master:"Self-mastery", step_tasks:"Task", step_habits:"Habit", step_prayer:"Prayer", step_journal:"Summary", step_goal:"Goal", task_word:"Task", habit_word:"Habit", quick_habit_ph:"E.g. Read a book every day", quick_habit_hint:"Repeats every day. You can change it later.", quick_habit_saved:"✓ Habit", nav_tracker:"Tracker", nav_profile:"Profile", quick_hint:"E.g. “Report tomorrow at 10” or “Lunch 45 thousand”", quick_voice:"Say it by voice", jai_title:"Fill with AI", jai_hint:"Talk or write about your day freely — the AI sorts it into the 5 questions and fixes mistakes. You check and save.", jai_voice:"Speak", jai_text:"Write", jai_ph:"E.g. closed a deal with a client today, thankful to my mom, failed to plan my time, tomorrow I finish the report…", jai_sort:"Sort into questions", jai_done:"✨ {n} answers filled — check and Save", jai_nothing:"Nothing matched the questions. Say a bit more.",
+  quick_saved:"✓ Task", next_up:"Up next", home_more_tasks:"{n} more", voice_title:"Add by voice", voice_listening:"Speak… Stop when done and I'll analyse it.", voice_stop:"Stop", voice_thinking:"Understanding…", voice_confirm:"Confirm", voice_retry:"Record again", voice_done:"✅ Confirmed", voice_failed:"Voice was not sent. Try again.", voice_too_long:"Keep it under 2 minutes.", voice_denied:"No microphone access — send a voice message in the bot.", voice_consent:"Your voice is sent to AI services (ElevenLabs, Groq, Google — USA) to transcribe and understand it. Audio is not stored. Nothing changes until you confirm.", voice_agree:"I agree, start", voice_consent_needed:"Please give consent first.", tab_list:"List", nav_money:"Money", quick_more:"More options (time, reminder, project)", quick_more_habit:"More options (days, reminder, importance)", nav_steps:"Steps", steps_to_next:"{n} steps to «{name}»", steps_max:"Top level — well done!", steps_freeze_short:"Freezes", steps_rank_in:"in {n} days", steps_next:"Next step", steps_all_done:"All of today's steps are done 🎉", steps_more:"Achievements and rank", steps_title:"Steps", steps_motto:"Every good thing you do is a step forward.", steps_freeze:"Days that keep your streak alive", steps_level_n:"Level {n}", steps_total:"Total steps", steps_path:"Your path", steps_today:"Today's steps", steps_go:"Keep going", step_lvl_starter:"Beginner", step_lvl_builder:"Builder", step_lvl_discipline:"Discipline", step_lvl_steady:"Consistency", step_lvl_master:"Self-mastery", step_tasks:"Task", step_habits:"Habit", step_prayer:"Prayer", step_journal:"Summary", step_goal:"Goal", task_word:"Task", habit_word:"Habit", quick_habit_ph:"E.g. Read a book every day", quick_habit_hint:"Repeats every day. You can change it later.", quick_habit_saved:"✓ Habit", nav_tracker:"Tracker", nav_profile:"Profile", quick_hint:"E.g. “Report tomorrow at 10” or “Lunch 45 thousand”", quick_voice:"Say it by voice", jai_title:"Fill with AI", jai_hint:"Talk or write about your day freely — the AI sorts it into the 5 questions and fixes mistakes. You check and save.", jai_voice:"Speak", jai_text:"Write", jai_ph:"E.g. closed a deal with a client today, thankful to my mom, failed to plan my time, tomorrow I finish the report…", jai_sort:"Sort into questions", jai_done:"✨ {n} answers filled — check and Save", jai_nothing:"Nothing matched the questions. Say a bit more.",
   add_task:"Task", task_name:"Task name", task_desc:"Details",
   deadline:"Date", due_time:"Time", priority:"Priority", project:"Project",
   standalone:"Standalone", high:"High", medium:"Medium", low:"Low",
@@ -1967,7 +1988,7 @@ const DICT = {
   wake_late_at:"{time} — позже сегодняшней цели", wake_target:"Цель",
   quick_add:"Быстро добавить", quick_ph:"Что пришло в голову?",
   inbox_saved:"Сохранено — в Задачах",
-  quick_saved:"✓ Задача", next_up:"Дальше", home_more_tasks:"Ещё {n}", voice_title:"Добавить голосом", voice_listening:"Говорите… Остановите — и я разберу.", voice_stop:"Стоп", voice_thinking:"Разбираю…", voice_confirm:"Подтвердить", voice_retry:"Записать заново", voice_done:"✅ Подтверждено", voice_failed:"Голос не отправлен. Попробуйте ещё раз.", voice_too_long:"Не длиннее 2 минут.", voice_denied:"Нет доступа к микрофону — отправьте голосовое в боте.", voice_consent:"Голос отправляется AI-сервисам (ElevenLabs, Groq, Google — США) для распознавания. Аудио не хранится. Ничего не меняется без вашего подтверждения.", voice_agree:"Согласен, начать", voice_consent_needed:"Сначала дайте согласие.", tab_list:"Список", nav_money:"Финансы", quick_more:"Подробнее (время, напоминание, проект)", quick_more_habit:"Подробнее (дни, напоминание, важность)", steps_title:"Шаги", steps_motto:"Каждое доброе дело — шаг вперёд.", steps_freeze:"Дни, которые сохраняют серию", steps_level_n:"{n}-й уровень", steps_total:"Всего шагов", steps_path:"Ваш путь", steps_today:"Шаги сегодня", steps_go:"Продолжить", step_lvl_starter:"Новичок", step_lvl_builder:"Строитель", step_lvl_discipline:"Дисциплина", step_lvl_steady:"Стабильность", step_lvl_master:"Работа над собой", step_tasks:"Задача", step_habits:"Привычка", step_prayer:"Намаз", step_journal:"Итоги", step_goal:"Цель", task_word:"Задача", habit_word:"Привычка", quick_habit_ph:"Например: Читать книгу каждый день", quick_habit_hint:"Повторяется каждый день. Можно изменить позже.", quick_habit_saved:"✓ Привычка", nav_tracker:"Трекер", nav_profile:"Профиль", quick_hint:"Например: «Завтра в 10 отчёт» или «Обед 45 тысяч»", quick_voice:"Сказать голосом", jai_title:"Заполнить с AI", jai_hint:"Расскажите о дне голосом или текстом — AI разложит всё по 5 вопросам и исправит ошибки. Вы проверяете и сохраняете.", jai_voice:"Сказать", jai_text:"Написать", jai_ph:"Например: сегодня закрыл сделку с клиентом, благодарен маме, не успел спланировать время, завтра закончу отчёт…", jai_sort:"Разложить по вопросам", jai_done:"✨ Заполнено ответов: {n} — проверьте и Сохраните", jai_nothing:"Ничего не подошло к вопросам. Расскажите подробнее.",
+  quick_saved:"✓ Задача", next_up:"Дальше", home_more_tasks:"Ещё {n}", voice_title:"Добавить голосом", voice_listening:"Говорите… Остановите — и я разберу.", voice_stop:"Стоп", voice_thinking:"Разбираю…", voice_confirm:"Подтвердить", voice_retry:"Записать заново", voice_done:"✅ Подтверждено", voice_failed:"Голос не отправлен. Попробуйте ещё раз.", voice_too_long:"Не длиннее 2 минут.", voice_denied:"Нет доступа к микрофону — отправьте голосовое в боте.", voice_consent:"Голос отправляется AI-сервисам (ElevenLabs, Groq, Google — США) для распознавания. Аудио не хранится. Ничего не меняется без вашего подтверждения.", voice_agree:"Согласен, начать", voice_consent_needed:"Сначала дайте согласие.", tab_list:"Список", nav_money:"Финансы", quick_more:"Подробнее (время, напоминание, проект)", quick_more_habit:"Подробнее (дни, напоминание, важность)", nav_steps:"Шаги", steps_to_next:"До уровня «{name}» ещё {n} шагов", steps_max:"Высший уровень — отлично!", steps_freeze_short:"Заморозки", steps_rank_in:"через {n} дн.", steps_next:"Следующий шаг", steps_all_done:"Все шаги на сегодня сделаны 🎉", steps_more:"Достижения и рейтинг", steps_title:"Шаги", steps_motto:"Каждое доброе дело — шаг вперёд.", steps_freeze:"Дни, которые сохраняют серию", steps_level_n:"{n}-й уровень", steps_total:"Всего шагов", steps_path:"Ваш путь", steps_today:"Шаги сегодня", steps_go:"Продолжить", step_lvl_starter:"Новичок", step_lvl_builder:"Строитель", step_lvl_discipline:"Дисциплина", step_lvl_steady:"Стабильность", step_lvl_master:"Работа над собой", step_tasks:"Задача", step_habits:"Привычка", step_prayer:"Намаз", step_journal:"Итоги", step_goal:"Цель", task_word:"Задача", habit_word:"Привычка", quick_habit_ph:"Например: Читать книгу каждый день", quick_habit_hint:"Повторяется каждый день. Можно изменить позже.", quick_habit_saved:"✓ Привычка", nav_tracker:"Трекер", nav_profile:"Профиль", quick_hint:"Например: «Завтра в 10 отчёт» или «Обед 45 тысяч»", quick_voice:"Сказать голосом", jai_title:"Заполнить с AI", jai_hint:"Расскажите о дне голосом или текстом — AI разложит всё по 5 вопросам и исправит ошибки. Вы проверяете и сохраняете.", jai_voice:"Сказать", jai_text:"Написать", jai_ph:"Например: сегодня закрыл сделку с клиентом, благодарен маме, не успел спланировать время, завтра закончу отчёт…", jai_sort:"Разложить по вопросам", jai_done:"✨ Заполнено ответов: {n} — проверьте и Сохраните", jai_nothing:"Ничего не подошло к вопросам. Расскажите подробнее.",
   add_task:"Задача", task_name:"Название", task_desc:"Подробнее",
   deadline:"Дата", due_time:"Время", priority:"Приоритет", project:"Проект",
   standalone:"Отдельно", high:"Высокий", medium:"Средний", low:"Низкий",
@@ -2333,6 +2354,7 @@ const ICONS = {
   sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M5 5l1.8 1.8M17.2 17.2 19 19M5 19l1.8-1.8M17.2 6.8 19 5"/>',
   moon:'<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/>',
   user:'<circle cx="12" cy="8" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/>',
+  steps:'<path d="M8.2 3c1.7 0 2.7 2.1 2.5 4.7-.2 2.3-1.1 4-2.7 4s-2.6-1.7-2.6-4.1C5.4 5 6.4 3 8.2 3z"/><path d="M5.7 14.6h4.8l-.4 2.6a2.2 2.2 0 0 1-4.1 0z"/><path d="M15.8 7.4c1.8 0 2.8 1.9 2.6 4.5-.2 2.3-1.1 4-2.7 4s-2.6-1.6-2.6-4c0-2.5 1-4.5 2.7-4.5z"/><path d="M13.4 19h4.8l-.3 1.3a2.2 2.2 0 0 1-4.2 0z"/>',
   target:'<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/>',
   info:'<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.8v.6"/>',
   pause:'<path d="M9 5v14M15 5v14"/>',
@@ -5179,7 +5201,7 @@ SCREENS.stats = () => {
   const change = known ? today.overall - yesterday : null;
   const dir = !known || change === 0 ? "flat" : change > 0 ? "up" : "down";
 
-  let h = `<h1>${t("stats")}</h1>${stepsCard()}
+  let h = `<h1>${t("stats")}</h1>
     <div class="hero" style="margin-top:14px" data-act="overall-why">
       <div class="row">
         <div class="grow eyebrow">${t("overall")} · ${t("today")}</div>
@@ -5229,11 +5251,6 @@ SCREENS.stats = () => {
       ${tile("prayer", t("prayer"),
              `${today.prayer_performed}/${today.prayer_required}`,
              today.prayer || 0, st.deltas.prayer)}
-    </div>
-    <div class="item" style="margin-top:var(--s1)">
-      <span class="itile tone-4">${icon("flame", 17)}</span>
-      <div class="grow">${t("streak")}</div>
-      <div class="num" style="font-weight:660">${today.streak}</div>
     </div>`;
 
   h += `<div class="seg" style="margin:16px 0 12px">
@@ -5301,10 +5318,6 @@ SCREENS.stats = () => {
   // reviewing their month should not have to remember that half of it is
   // filed under another tab.
   h += teamStatsOnStats();
-
-  /* Level, XP and rank moved here from Home: they are a reading of how the
-     days have gone, which is what this screen is, and Home is about now. */
-  h += progressCard();
 
   h += `<div class="btns">
       <button class="btn secondary" data-act="stats-download">
@@ -6339,98 +6352,66 @@ function accountSheet(){
    come from /api/progress/me (steps_snapshot); nothing is computed here. */
 const STEP_ICON = {starter:"👟", builder:"⛰️", discipline:"⛺", steady:"🌲", master:"👑"};
 const STEP_TODAY_ICON = {tasks:"✅", habits:"🔁", prayer:"🕌", journal:"📔", goal:"🎯"};
-function stepsCard(){
-  const st = state.progress?.steps;
-  if(!st) return "";
+/* Qadam: one progress system, read in five seconds. The level and how far
+   to the next one; streak, freeze days and rank on one line; today's five
+   steps as rows that open where each is done; the path below. */
+const STEP_GO = {tasks:["tasks"], habits:["habits", "habits"], prayer:["habits", "prayer"],
+                 journal:["habits", "journal"], goal:["home"]};
+SCREENS.steps = () => {
+  const p = state.progress, st = p?.steps;
+  if(!st) return `<div class="spin"></div>`;
   const lvl = st.levels[st.level - 1];
+  const nextLvl = st.levels[st.level];
   const span = st.next ? st.next - lvl.min : 1;
   const pct = st.next ? Math.round(Math.min(1, (st.total - lvl.min) / span) * 100) : 100;
+  const rank = p.rank || {};
+  const streak = p.streak?.current ?? 0;
   const path = st.levels.map((l, i) => {
-    const state_ = i + 1 < st.level ? "past" : i + 1 === st.level ? "now" : "lock";
-    return `<div class="step-node ${state_}">
-        <div class="dot">${STEP_ICON[l.key]}${state_ === "lock" ? '<span class="lk">🔒</span>' : ""}</div>
+    const s_ = i + 1 < st.level ? "past" : i + 1 === st.level ? "now" : "lock";
+    return `<div class="step-node ${s_}">
+        <div class="dot">${STEP_ICON[l.key]}${s_ === "lock" ? '<span class="lk">🔒</span>' : ""}</div>
         <div class="nm">${t("step_lvl_" + l.key)}</div>
         <div class="rg">${l.max === null ? l.min + "+" : `${l.min}–${l.max}`}</div></div>`;
   }).join('<div class="step-line"></div>');
-  const today = st.today.map(c => `<div class="step-chip ${c.ok ? "ok" : ""}">
-      <div class="ci">${STEP_TODAY_ICON[c.key] || "•"}</div>
-      <div class="grow"><div class="cn">${t("step_" + c.key)}</div>
-        <div class="cv num">${c.done}/${c.total}</div></div>
-      <div class="ck">${c.ok ? icon("check", 14) : ""}</div></div>`).join("");
-  const dots = st.today.map(c => `<i class="${c.ok ? "on" : ""}"></i>`).join("");
-  return `<div class="steps">
-      <div class="steps-top">
-        <div class="grow"><div class="steps-title">🚩 ${t("steps_title")}</div>
-          <div class="t2 small">${t("steps_motto")}</div></div>
-        ${st.freeze ? `<div class="freeze" title="${t("steps_freeze")}">❄️ ${st.freeze}</div>` : ""}
-      </div>
-      <div class="steps-level">
+  const next = st.today.find(c => !c.ok);
+  return `<div class="qhero">
+      <div class="qtop">
         <div class="badge">${STEP_ICON[lvl.key]}</div>
         <div class="grow">
           <div class="ln">${t("step_lvl_" + lvl.key)}</div>
-          <div class="t3 tiny">${t("steps_level_n", {n: st.level})}</div>
-          <div class="sbar"><i style="width:${pct}%"></i></div>
-          <div class="t3 tiny num">${st.next ? `${st.total} / ${st.next}` : st.total}</div>
+          <div class="t2 small">${t("steps_level_n", {n: st.level})}</div>
         </div>
-        <div class="total"><div class="t3 tiny">${t("steps_total")}</div>
-          <div class="tv num">${st.total}</div></div>
+        <div class="qtotal"><div class="tv num">${st.total}</div><div class="t3 tiny">${t("steps_total")}</div></div>
       </div>
-      <div class="steps-sub">${t("steps_path")}</div>
-      <div class="steps-path">${path}</div>
-      <div class="steps-sub row"><span class="grow">${t("steps_today")}</span>
-        <span class="t2 small num">${t("today")} ${st.today_done}/${st.today.length}</span>
-        <span class="sdots">${dots}</span></div>
-      <div class="steps-today">${today}</div>
-      <button class="btn steps-go" data-act="nav" data-screen="tracker">${t("steps_go")} →</button>
-    </div>`;
-}
-
-function progressCard(){
-  const p = state.progress;
-  if(!p) return "";
-
-  const lvl = p.level, rank = p.rank;
-  const pct = Math.round((lvl.progress || 0) * 100);
-  const xp = n => String(n ?? 0).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-
-  /* Rank has three states and they are genuinely different, so the card says
-     which one it is in rather than showing "—" for two of them. */
-  const rankCell = rank.eligible
-    ? `<div class="score-cell"><div class="k">${t("rank_global")}</div>
-         <div class="v num">#${rank.global}</div></div>`
-    : `<div class="score-cell"><div class="k">${t("rank_global")}</div>
-         <div class="v num" style="font-size:15px">${
-           t("rank_locked_short", {n: rank.days_remaining})}</div></div>`;
-
-  return `<h2>${t("progress")}</h2>
-    <div class="tinted block tone-4" data-act="progress-open"
-         style="cursor:pointer">
-      <div class="bh" style="margin-bottom:var(--s2)">
-        <span class="itile">${icon("up", 17)}</span>
-        <div class="grow">
-          <div class="bt">${t("plevel_" + lvl.key)} ${lvl.numeral}</div>
-          <div class="t3 tiny num">${xp(lvl.xp)}${
-            lvl.next_threshold ? " / " + xp(lvl.next_threshold) : ""} XP</div>
-        </div>
-        ${icon("chevron", 16)}
+      <div class="sbar big"><i style="width:${pct}%"></i></div>
+      <div class="t2 small">${nextLvl ? t("steps_to_next", {n: st.next - st.total, name: t("step_lvl_" + nextLvl.key)})
+        : t("steps_max")}</div>
+      <div class="qstats" data-act="progress-open" role="button" tabindex="0">
+        <div><b class="num">🔥 ${streak}</b><span>${t("streak")}</span></div>
+        <div><b class="num">❄️ ${st.freeze || 0}</b><span>${t("steps_freeze_short")}</span></div>
+        <div><b class="num">🏆 ${rank.eligible ? "#" + rank.global : "—"}</b><span>${rank.eligible
+          ? t("rank_global") : t("steps_rank_in", {n: rank.days_remaining ?? 0})}</span></div>
       </div>
-      ${bar(pct)}
-      ${lvl.next_threshold ? `<div class="t2 tiny" style="margin-top:var(--s1)">
-        ${t("xp_to_next", {n: xp(lvl.remaining),
-                           level: t("plevel_" + lvl.next_key)})}</div>` : ""}
-      <div class="scores" style="margin-top:var(--s2)">
-        <div class="score-cell lead"><div class="k">${t("today")}</div>
-          <div class="v num">${p.daily.grade} · ${p.daily.score}</div></div>
-        <div class="score-cell"><div class="k">${t("streak")}</div>
-          <div class="v num">${icon("flame", 17)} ${p.streak.current}</div></div>
-        ${rankCell}
-      </div>
-      ${rank.eligible && rank.top_percent !== null
-        ? `<div class="t3 tiny" style="margin-top:var(--s1)">
-             ${t("top_percent_of", {p: rank.top_percent,
-                                    n: xp(rank.users)})}</div>` : ""}
-    </div>`;
-}
+    </div>
+
+    <div class="steps-sub row"><span class="grow">${t("steps_today")}</span>
+      <span class="t2 small num">${st.today_done}/${st.today.length}</span></div>
+    <div class="card qlist">${st.today.map(c => `<div class="qrow ${c.ok ? "ok" : ""}"
+        data-act="steps-go" data-key="${c.key}" role="button" tabindex="0">
+        <span class="ci">${STEP_TODAY_ICON[c.key] || "•"}</span>
+        <div class="grow">${t("step_" + c.key)}</div>
+        <span class="t2 small num">${c.done}/${c.total}</span>
+        <span class="ck">${c.ok ? icon("check", 14) : ""}</span></div>`).join("")}</div>
+    ${next ? `<button class="btn steps-go" data-act="steps-go" data-key="${next.key}">
+        ${t("steps_next")}: ${t("step_" + next.key)} →</button>`
+      : `<div class="hint" style="text-align:center;margin-top:12px">${t("steps_all_done")}</div>`}
+
+    <div class="steps-sub">${t("steps_path")}</div>
+    <div class="card"><div class="steps-path">${path}</div></div>
+    <div class="item pressable" style="margin-top:var(--s2)" data-act="progress-open">
+      <span style="font-size:18px">🏅</span><div class="grow">${t("steps_more")}</div>${icon("chevron", 15)}</div>
+    <div class="t3 tiny" style="text-align:center;margin-top:12px">${t("steps_motto")}</div>`;
+};
 
 /* The detail, in a sheet rather than a fifth tab. The bottom navigation is
    four items and has been since the app was designed around them; a
@@ -6440,22 +6421,12 @@ function progressSheet(){
   const p = state.progress;
   if(!p) return `<div class="spin"></div>`;
 
-  const lvl = p.level, rank = p.rank, d = p.daily;
+  // One level system: Qadam. This sheet is the detail behind it — today's
+  // score, consistency, rank and achievements — with no second level.
+  const rank = p.rank, d = p.daily;
   const xp = n => String(n ?? 0).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-  const pct = Math.round((lvl.progress || 0) * 100);
 
-  let h = `<h3>${icon("up", 18)} ${t("progress")}</h3>
-
-    <div class="tinted block tone-4" style="margin-top:var(--s2)">
-      <div style="font-size:19px;font-weight:650">
-        ${t("plevel_" + lvl.key)} ${lvl.numeral}</div>
-      <div class="t2 small num">${xp(lvl.xp)}${
-        lvl.next_threshold ? " / " + xp(lvl.next_threshold) : ""} XP</div>
-      <div style="margin-top:var(--s2)">${bar(pct)}</div>
-      ${lvl.next_threshold ? `<div class="t3 tiny" style="margin-top:var(--s1)">
-        ${t("xp_to_next", {n: xp(lvl.remaining),
-                           level: t("plevel_" + lvl.next_key)})}</div>` : ""}
-    </div>`;
+  let h = `<h3>🏅 ${t("steps_more")}</h3>`;
 
   /* Today, with the same four components the overall score is built from and
      the same weights printed on them. Not a second formula — the API sends the
@@ -6739,15 +6710,15 @@ const NAV = [
   {id:"home",    icon:"home",   key:"nav_home"},
   {id:"tracker", icon:"check",  key:"nav_tracker"},
   {id:"money",   icon:"wallet", key:"nav_money"},
-  {id:"profile", icon:"user",   key:"nav_profile"},
+  {id:"profile", icon:"steps",  key:"nav_steps"},
 ];
 //: Which tab stays lit for each screen. A project opens from Tasks.
 const NAV_OF = {habits:"tracker", tasks:"tracker", project:"tracker",
-                stats:"profile", team:"profile", more:"profile"};
+                steps:"profile", stats:"profile", team:"profile", more:"profile"};
 //: A tab opens where the person last was inside it.
 function navTarget(id){
   if(id === "tracker") return state.trackerLast || "habits";
-  if(id === "profile") return state.profileLast || "stats";
+  if(id === "profile") return state.profileLast || "steps";
   return id;
 }
 /* Which header parts the floating + replaces: in Habits and Tasks (except
@@ -6755,7 +6726,7 @@ function navTarget(id){
    there is one + on the screen, never two. */
 function screenClass(){
   const sc = state.screen;
-  const grouped = ["habits", "tasks", "stats", "team"].includes(sc);
+  const grouped = ["habits", "tasks", "steps", "stats", "team"].includes(sc);
   const nohead = (sc === "habits" && state.tab === "habits") || (sc === "tasks" && state.taskTab !== "projects");
   return [grouped ? "grouped" : "", nohead ? "nohead" : "", "screen-" + sc].join(" ");
 }
@@ -6765,17 +6736,19 @@ function groupBar(screen){
     `<div class="${cur === id ? "on" : ""}" data-act="nav" data-screen="${id}">${t(key)}</div>`).join("")}</div>`;
   if(screen === "habits" || screen === "tasks")
     return seg([["habits", "habits"], ["tasks", "tasks"]], screen);
-  if(screen === "stats" || screen === "team"){
+  if(screen === "steps" || screen === "stats" || screen === "team"){
     const me = state.me || {};
     const name = esc(me.first_name || me.name || "");
+    const st = state.progress?.steps;
     return `<div class="profile-head">
         <div class="avatar">${tg?.initDataUnsafe?.user?.photo_url
           ? `<img src="${esc(tg.initDataUnsafe.user.photo_url)}" alt="" />`
           : esc((name || "?").slice(0, 1).toUpperCase())}</div>
         <div class="grow"><div class="pname">${name}</div>
-          <div class="t3 tiny">${t("nav_profile")}</div></div>
+          <div class="t3 tiny">${st ? `${STEP_ICON[st.level_key] || ""} ${t("step_lvl_" + st.level_key)} · ${
+            t("steps_level_n", {n: st.level})}` : t("nav_profile")}</div></div>
         <button class="iconbtn" data-act="settings" aria-label="${t("settings")}">${icon("settings", 22)}</button>
-      </div>` + seg([["stats", "nav_stats"], ["team", "team"]], screen);
+      </div>` + seg([["steps", "nav_steps"], ["stats", "nav_stats"], ["team", "team"]], screen);
   }
   return "";
 }
@@ -6993,6 +6966,8 @@ async function loadScreen(screen){
       if((tasks.teams || []).length && !state.team){
         try{ state.team = await api("/api/teams"); }catch(_){}
       }
+    } else if(screen === "steps"){
+      setState({progress: await api("/api/progress/me")});
     } else if(screen === "stats"){
       await loadStats(state.statsPeriod);
     } else if(screen === "project"){
@@ -7060,7 +7035,7 @@ async function loadStats(period){
 function goto(screen, patch){
   haptic();
   if(screen === "habits" || screen === "tasks") state.trackerLast = screen;
-  if(screen === "stats" || screen === "team") state.profileLast = screen;
+  if(["steps", "stats", "team"].includes(screen)) state.profileLast = screen;
   setState({screen, error:null, screenError:null, reorderMode:false, ...(patch || {})});
   loadScreen(screen);
 }
@@ -8487,6 +8462,11 @@ const A = {
      achievements when they arrive. Waiting for the second request before
      drawing anything would mean a tap that appears to do nothing on a slow
      connection, for a list that is the least important thing on the sheet. */
+  "steps-go": el => {
+    const [screen, tab] = STEP_GO[el.dataset.key] || ["home"];
+    if(tab) state.tab = tab;
+    goto(screen);
+  },
   "progress-open": async () => {
     haptic();
     openSheet(progressSheet());

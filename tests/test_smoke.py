@@ -1076,10 +1076,10 @@ def test_the_mini_app_navigation_is_four_places():
         ["home", "tracker", "money", "profile"]
     group = html[html.index("function groupBar(screen){"):html.index("const offerKey")]
     assert '[["habits", "habits"], ["tasks", "tasks"]]' in group
-    assert '[["stats", "nav_stats"], ["team", "team"]]' in group
+    assert '[["steps", "nav_steps"], ["stats", "nav_stats"], ["team", "team"]]' in group
     assert 'data-act="settings"' in group, "settings one tap from Profil"
     nav_of = html[html.index("const NAV_OF"):html.index("function navTarget(")]
-    for screen in ("habits", "tasks", "project", "stats", "team"):
+    for screen in ("habits", "tasks", "project", "steps", "stats", "team"):
         assert screen + ":" in nav_of
 
 
@@ -4399,7 +4399,11 @@ def test_home_answers_now_then_counts_then_today():
     assert "const WEIGHTS = {tasks:40, habits:25, team:20, prayer:15};" in html
     stats = html[html.index("SCREENS.stats = () => {"):]
     # Tiles show the score; the weights are one tap away, behind (i).
-    assert "d.weights?.[key]" in stats and "progressCard()" in stats
+    assert "d.weights?.[key]" in stats
+    # One level system: Qadam. No XP level card on Statistics any more.
+    assert "progressCard" not in html and "plevel_" not in html[html.index("function progressSheet("):]
+    steps = html[html.index("SCREENS.steps = () => {"):html.index("function progressSheet(")]
+    assert "p.streak" in steps and "rank.global" in steps and 'data-act="progress-open"' in steps
 
 
 def test_the_week_goal_lives_on_tasks_and_mission_is_never_said():
@@ -10521,3 +10525,16 @@ def test_overdue_debt_is_flagged(fresh):
         svc.add_debt(s, ws, "Vali", 10000, "lent", due=svc.today_local() - timedelta(days=1))
         d = svc.debts_overview(s, ws)
     assert d["overdue"] == 1 and d["open"][0]["overdue"] is True
+
+
+def test_steps_read_today_live_without_a_stored_score(fresh):
+    """The first open of the day shows real counts, not 0/0."""
+    uid = fresh.user["id"]
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        svc.add_task(s, ws, "Hisobot", deadline=svc.today_local())
+        svc.add_task(s, ws, "Qo'ng'iroq", deadline=svc.today_local())
+        s.commit()
+        assert s.scalar(select(db.DailyScore).where(db.DailyScore.user_id == uid)) is None
+    tasks = fresh.get("/api/progress/me").json()["steps"]["today"][0]
+    assert tasks == {"key": "tasks", "done": 0, "total": 2, "ok": False}

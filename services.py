@@ -5560,7 +5560,6 @@ def steps_snapshot(s: Session, user_id: int, ws: int, *, tz: ZoneInfo | None = N
     today = today_local(zone)
     modules = modules_for(s, ws)
     rows = s.scalars(select(DailyScore).where(DailyScore.user_id == user_id)).all()
-    today_row = next((r for r in rows if r.day == today), None)
 
     def wrote(entry) -> bool:
         return bool(entry and ((entry.text or "").strip() or (entry.answers or "{}") not in ("{}", "")))
@@ -5569,17 +5568,22 @@ def steps_snapshot(s: Session, user_id: int, ws: int, *, tz: ZoneInfo | None = N
     goals = s.scalars(select(WeeklyFocus).where(WeeklyFocus.workspace_id == ws)).all()
     week_goals = [g for g in goals if g.week_start == week_start(today)]
 
+    # Today is read live: its stored snapshot is only written when a score is
+    # computed, and the first open of the day would otherwise show 0/0.
+    tasks_done, tasks_total = today_task_progress(s, ws, today, tz=zone, include_team=False)
+    habits_done, habits_total = habit_progress(s, ws, today, include_team=False)
+    prayed = prayer_state(s, ws, today, getattr(s.get(User, user_id), "gender", None))["performed"]
     total = sum(((r.tasks_done or 0) > 0) + ((r.habits_done or 0) > 0) + ((r.prayer_performed or 0) > 0)
-                for r in rows)
+                for r in rows if r.day != today)
+    total += (tasks_done > 0) + (habits_done > 0) + (prayed > 0)
     total += len({e.day for e in journal_days}) + sum(1 for g in goals if g.done)
 
-    tr = today_row
     checks = [
-        {"key": "tasks", "done": (tr.tasks_done or 0) if tr else 0, "total": (tr.tasks_total or 0) if tr else 0},
-        {"key": "habits", "done": (tr.habits_done or 0) if tr else 0, "total": (tr.habits_total or 0) if tr else 0},
+        {"key": "tasks", "done": tasks_done, "total": tasks_total},
+        {"key": "habits", "done": habits_done, "total": habits_total},
     ]
     if modules.get("prayer"):
-        checks.append({"key": "prayer", "done": (tr.prayer_performed or 0) if tr else 0, "total": 5})
+        checks.append({"key": "prayer", "done": prayed, "total": 5})
     if modules.get("journal"):
         checks.append({"key": "journal", "done": int(any(e.day == today for e in journal_days)), "total": 1})
     checks.append({"key": "goal", "done": sum(1 for g in week_goals if g.done), "total": len(week_goals) or 1})
