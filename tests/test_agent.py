@@ -49,8 +49,8 @@ def action(entity="task", operation="create", target_id=None, scope="personal", 
             "changes": [{"field": k, "value": str(v) if v is not None else None} for k, v in fields.items()]}
 
 
-def plan(*items, question=None, language="uz"):
-    return {"language": language, "question": question, "actions": list(items)}
+def plan(*items, question=None, language="uz", understood=None):
+    return {"language": language, "understood": understood, "question": question, "actions": list(items)}
 
 
 def capture(person, monkeypatch, proposed=None, text="Ertaga hisobot tayyorla", **kwargs):
@@ -86,7 +86,7 @@ def test_unnamed_project_is_standalone_not_a_new_project(person, monkeypatch):
     _, uid, ws = person
     before = count(db.Project, ws)
     draft = capture(person, monkeypatch)
-    assert draft["preview"] == "➕ Vazifa: Hisobot tayyorlash"  # defaults hidden
+    assert draft["preview"] == "📝 Yangi vazifa\n<b>Hisobot tayyorlash</b>"  # defaults hidden
     assert count(db.Task, ws) == 0
     result = core.confirm(uid, ws, draft["id"], 1)
     with db.SessionLocal() as s:
@@ -413,11 +413,11 @@ def test_audio_validation_bounds_and_decoder(monkeypatch):
 
 
 @pytest.mark.parametrize("ui_lang,text,label", [
-    ("uz", "Ertaga hisobot", "➕ Vazifa"),
-    ("uz", "Эртага ҳисобот", "➕ Vazifa"),
-    ("uz", "ertaga abdulbosid bilan soat 10 am da meetingim bor. bunda hamma problemalarni hal qilamiz.", "➕ Vazifa"),
-    ("ru", "Завтра отчёт", "➕ Задача"),
-    ("en", "Tomorrow report", "➕ Task"),
+    ("uz", "Ertaga hisobot", "📝 Yangi vazifa"),
+    ("uz", "Эртага ҳисобот", "📝 Yangi vazifa"),
+    ("uz", "ertaga abdulbosid bilan soat 10 am da meetingim bor. bunda hamma problemalarni hal qilamiz.", "📝 Yangi vazifa"),
+    ("ru", "Завтра отчёт", "📝 Новая задача"),
+    ("en", "Tomorrow report", "📝 New task"),
 ])
 def test_profile_language_is_accepted(person, monkeypatch, ui_lang, text, label):
     _, uid, ws = person
@@ -539,9 +539,11 @@ def test_short_preview_hides_defaults_and_uses_today(person, monkeypatch):
     with db.SessionLocal() as s:
         today = svc.today_local(svc.user_tz(s.get(db.User, uid)))
     money = capture(person, monkeypatch, plan(action("money", amount=5000, kind="expense", category="food")))
-    assert money["preview"] == "➕ Chiqim: 5 000 so‘m · Oziq-ovqat"
-    task = capture(person, monkeypatch, plan(action(title="Ustun bilan uchrashuv", deadline=today, due_time="08:00")))
-    assert task["preview"] == "➕ Vazifa: Ustun bilan uchrashuv · bugun · 08:00"
+    assert money["preview"] == "💸 Chiqim\n<b>5 000 so‘m</b>\n🍔 Oziq-ovqat"
+    task = capture(person, monkeypatch, plan(action(title="Ustun bilan uchrashuv", deadline=today, due_time="08:00"),
+                                             understood="Soat 8 da Ustun bilan uchrashuvim bor"))
+    assert task["preview"] == ("🎙 <i>Soat 8 da Ustun bilan uchrashuvim bor</i>\n\n📝 Yangi vazifa\n"
+                               f"<b>Ustun bilan uchrashuv</b>\n📅 {actions.human_day(today, 'uz', today)}   ⏰ 08:00")
     core.confirm(uid, ws, money["id"], 1)
     with db.SessionLocal() as s:
         assert s.scalar(select(db.MoneyEntry).where(db.MoneyEntry.workspace_id == ws)).day == today
@@ -692,7 +694,7 @@ def test_first_message_runs_right_after_consent(person, monkeypatch):
     provider.plan.assert_not_awaited()  # no consent yet: nothing sent to AI
     update, message = _tg(uid, data="ag:consent")
     asyncio.run(bot.callback(update, ctx))
-    assert message.reply_text.await_args.args[0] == "➕ Chiqim: 5 000 so‘m · Oziq-ovqat"
+    assert message.reply_text.await_args.args[0] == "💸 Chiqim\n<b>5 000 so‘m</b>\n🍔 Oziq-ovqat"
     assert "agent_pending" not in ctx.user_data
 
 
@@ -706,7 +708,7 @@ def test_confirm_edits_the_same_message_and_drops_buttons(person, monkeypatch):
     update, message = _tg(uid, data=f'ag:c:{draft["id"]}:1')
     asyncio.run(bot.callback(update, SimpleNamespace(user_data={})))
     text, markup = update.callback_query.edits[-1]
-    assert text.endswith("✅ Bajarildi") and markup is None
+    assert text.endswith("<b>✅ Tasdiqlandi</b>") and markup is None
     message.reply_text.assert_not_awaited()
 
 
@@ -721,3 +723,25 @@ def test_log_says_which_provider_answered_never_the_words(monkeypatch, caplog):
         asyncio.run(provider.transcribe(b"OggS", "audio/ogg", CTX))
     assert "agent voice: elevenlabs/scribe_v2" in caplog.text
     assert "Maxfiy" not in caplog.text
+
+
+def test_card_reads_like_a_person_wrote_it():
+    today = "2026-10-02"
+    card = actions.preview([
+        {"entity": "task", "operation": "create", "scope": "personal", "name": "x",
+         "fields": {"title": "Yotoqxonaga <kirish>", "deadline": "2026-10-08", "due_time": "09:00",
+                    "priority": "high", "timer_minutes": 0, "project_id": None}},
+        {"entity": "habit", "operation": "delete", "scope": "personal", "name": "Kitob o‘qish", "fields": {}},
+    ], "uz", today, "Juma kuni soat 9 da yotoqxonaga kirishim kerak")
+    assert card.startswith("🎙 <i>Juma kuni soat 9 da yotoqxonaga kirishim kerak</i>")
+    assert "<b>Yotoqxonaga &lt;kirish&gt;</b>" in card, "names are escaped"
+    assert "📅 Payshanba, 8-oktabr" in card and "⏰ 09:00" in card and "🔥 Yuqori" in card
+    assert "🗑 Odat o‘chiriladi\n<b>Kitob o‘qish</b>" in card
+    assert "2026-10-08" not in card and "Taymer" not in card and "Loyiha" not in card
+    assert actions.human_day("2026-10-02", "ru", today) == "Сегодня, 2 октября"
+    assert actions.human_day("2027-01-05", "en", today) == "Jan 5 2027"
+
+
+def test_understood_in_another_language_is_not_shown(person, monkeypatch):
+    draft = capture(person, monkeypatch, plan(action(title="Hisobot"), understood="Завтра отчёт"))
+    assert "Завтра" not in draft["preview"]
