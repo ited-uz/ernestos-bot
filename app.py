@@ -9415,6 +9415,57 @@ def api_money_budget(category: str, body: MoneyBudgetIn,
             raise HTTPException(status_code=422, detail=str(e))
 
 
+class DebtIn(BaseModel):
+    person: str = Field(min_length=1, max_length=80)
+    amount: int = Field(gt=0, le=svc.MONEY_MAX_AMOUNT)
+    direction: str = Field(pattern="^(lent|borrowed)$")
+    note: str = Field(default="", max_length=200)
+    due: str | None = Field(default=None, max_length=10)
+
+
+class DebtSettleIn(BaseModel):
+    settled: bool = True
+    #: Part of it returned: that much comes off and the debt stays open.
+    paid: int | None = Field(default=None, gt=0, le=svc.MONEY_MAX_AMOUNT)
+
+
+@app.get("/api/debts")
+def api_debts(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        return svc.debts_overview(s, ws, tz=svc.user_tz(user))
+
+
+@app.post("/api/debts")
+def api_debt_add(body: DebtIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        try:
+            return svc.add_debt(s, ws, body.person, body.amount, body.direction,
+                                note=body.note, due=_date(body.due))
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.post("/api/debts/{debt_id}/settle")
+def api_debt_settle(debt_id: int, body: DebtSettleIn,
+                    init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        try:
+            return svc.settle_debt(s, ws, debt_id, body.settled, body.paid)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.delete("/api/debts/{debt_id}")
+def api_debt_delete(debt_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        svc.delete_debt(s, ws, debt_id)
+    return {"ok": True}
+
+
 @app.get("/api/avatar")
 async def api_avatar(token: str | None = None, tgdata: str | None = None,
                      init=Header(default=None, alias="X-Telegram-Init-Data")):

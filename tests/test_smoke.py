@@ -10478,3 +10478,46 @@ def test_steps_count_good_things_done_and_climb_levels(fresh):
     assert today["tasks"]["ok"] and today["habits"]["ok"]
     assert steps["today_done"] >= 2 and steps["total"] >= 2
     assert steps["freeze"] >= 0 and len(steps["levels"]) == 5
+
+
+def test_debts_record_close_partly_and_stay_out_of_the_balance(fresh, client):
+    """Qarzlar: who owes whom, apart from the balance; one tap closes one."""
+    due = (svc.today_local() + timedelta(days=7)).isoformat()
+    lent = fresh.post("/api/debts", {"person": " Aziz  ", "amount": 200000, "direction": "lent",
+                                     "due": due}).json()
+    assert lent["person"] == "Aziz" and lent["due"] == due and not lent["settled"]
+    fresh.post("/api/debts", {"person": "Akam", "amount": 1500000, "direction": "borrowed"})
+    money = fresh.get("/api/money").json()
+    assert money["balance"] == 0, "a loan is not spending"
+    d = money["debts"]
+    assert (d["owed_to_me"], d["i_owe"], len(d["open"])) == (200000, 1500000, 2)
+    # Part of it came back: that much comes off, the debt stays open.
+    part = fresh.post(f'/api/debts/{lent["id"]}/settle', {"settled": True, "paid": 50000}).json()
+    assert part["amount"] == 150000 and not part["settled"]
+    closed = fresh.post(f'/api/debts/{lent["id"]}/settle', {"settled": True}).json()
+    assert closed["settled"]
+    d = fresh.get("/api/debts").json()
+    assert d["owed_to_me"] == 0 and [x["person"] for x in d["settled"]] == ["Aziz"]
+    assert fresh.post(f'/api/debts/{lent["id"]}/settle', {"settled": False}).json()["settled"] is False
+    assert fresh.delete(f'/api/debts/{lent["id"]}').status_code == 200
+    assert [x["person"] for x in fresh.get("/api/debts").json()["open"]] == ["Akam"]
+
+
+def test_debts_are_private_and_validated(fresh, client):
+    other = Caller(client, {"id": next(_next_id), "first_name": "Other"})
+    mine = fresh.post("/api/debts", {"person": "Aziz", "amount": 1000, "direction": "lent"}).json()
+    assert other.post(f'/api/debts/{mine["id"]}/settle', {"settled": True}).status_code == 404
+    assert other.delete(f'/api/debts/{mine["id"]}').status_code == 404
+    assert other.get("/api/debts").json()["open"] == []
+    assert fresh.post("/api/debts", {"person": "A", "amount": 0, "direction": "lent"}).status_code == 422
+    assert fresh.post("/api/debts", {"person": "A", "amount": 5, "direction": "gift"}).status_code == 422
+    assert fresh.post("/api/debts", {"person": "   ", "amount": 5, "direction": "lent"}).status_code == 422
+
+
+def test_overdue_debt_is_flagged(fresh):
+    uid = fresh.user["id"]
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        svc.add_debt(s, ws, "Vali", 10000, "lent", due=svc.today_local() - timedelta(days=1))
+        d = svc.debts_overview(s, ws)
+    assert d["overdue"] == 1 and d["open"][0]["overdue"] is True

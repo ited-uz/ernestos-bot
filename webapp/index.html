@@ -1047,6 +1047,16 @@ details[open] > summary .i{transform:rotate(90deg)}
           font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .mtile.lead{grid-column:1 / -1}
 .mtile.lead .v{font-size:24px}
+.mhero{background:var(--surface);border:var(--border-w) solid var(--border);border-radius:var(--radius-lg);
+       padding:var(--s3);margin-top:var(--s1)}
+.mhero .k{font-size:13px;color:var(--text-2);font-weight:560;display:flex;align-items:center;gap:6px}
+.mhero .v{font-size:30px;font-weight:750;letter-spacing:-.5px;margin:2px 0 6px;overflow-wrap:anywhere}
+.mflow{display:flex;gap:var(--s2);flex-wrap:wrap;font-size:15px;font-weight:620}
+.mflow .t3{font-weight:400;font-size:13px;align-self:center}
+.mdebt{margin-top:var(--s2);padding-top:var(--s2);border-top:var(--border-w) solid var(--border);
+       font-size:14px;cursor:pointer}
+.mtabs{margin:var(--s3) 0 var(--s2)}
+.drow.settled{opacity:.6}
 .pos{color:var(--ok)} .neg{color:var(--danger)}
 .datef{display:grid;grid-template-columns:0.8fr 1.5fr 1fr;gap:var(--s1)}
 .datef select{min-width:0;min-height:44px}
@@ -1483,6 +1493,7 @@ const DICT = {
   pause_note:"Bugundan desangiz, bugungi hisobdan ham chiqadi",
   pts:"p.", team_join_hint:"Taklif havolasini bosing — jamoani ko'rib, keyin qo'shilasiz",
   nav_home:"Asosiy", nav_stats:"Statistika", money:"Pul", money_add:"Pul yozuvi",
+  money_this_month:"bu oy", money_tab_entries:"Yozuvlar", money_tab_cats:"Kategoriyalar", money_tab_debts:"Qarzlar", debt_overdue_n:"{n} tasi muddati o'tgan", debt_owed_to_me:"Sizga qaytarishadi", debt_i_owe:"Siz qaytarasiz", debt_add:"Qarz yozish", debt_empty:"Hozircha qarz yo'q. Kimgadir pul bersangiz yoki olsangiz — shu yerga yozing, unutilmaydi.", debt_settled:"Yopilganlar", debt_lent_meta:"men berdim", debt_borrowed_meta:"men oldim", debt_overdue:"muddati o'tdi", debt_until:"{d} gacha", debt_returned:"Qaytdi", debt_returned_full:"To'liq qaytdi", debt_lent:"Men berdim", debt_borrowed:"Men oldim", debt_person:"Kim? Ismini yozing", debt_amount:"Summa (200 ming, 1,5 mln…)", debt_due:"Qachongacha qaytariladi", debt_due_week:"1 haftada", debt_due_month:"1 oyda", debt_note:"Izoh (ixtiyoriy)", debt_bad_amount:"Summani yozing — 200 ming yoki 200000", debt_saved:"✓ Qarz yozildi", debt_closed:"✓ Qarz yopildi", debt_partial:"Bir qismi qaytdimi?", debt_partial_ph:"Qancha? Masalan, 50 ming", debt_reopen:"Qayta ochish",
   money_apart:"Alohida bo'lim — hech qanday foiz, streak yoki reytingga qo'shilmaydi.",
   money_balance:"Umumiy balans", money_income:"Kirim", money_expense:"Chiqim",
   money_unit:"so'm", date_day:"Kun", date_month:"Oy", date_year:"Yil",
@@ -1846,6 +1857,7 @@ const DICT = {
   pause_note:"From today takes today out of the count as well",
   pts:"pts", team_join_hint:"Open an invite link — you see the team first, then join",
   nav_home:"Home", nav_stats:"Stats", money:"Money", money_add:"Money entry",
+  money_this_month:"this month", money_tab_entries:"Entries", money_tab_cats:"Categories", money_tab_debts:"Debts", debt_overdue_n:"{n} overdue", debt_owed_to_me:"Owed to you", debt_i_owe:"You owe", debt_add:"Record a debt", debt_empty:"No debts yet. Lend or borrow money — write it here and it won't be forgotten.", debt_settled:"Closed", debt_lent_meta:"I lent", debt_borrowed_meta:"I borrowed", debt_overdue:"overdue", debt_until:"by {d}", debt_returned:"Returned", debt_returned_full:"Fully returned", debt_lent:"I lent", debt_borrowed:"I borrowed", debt_person:"Who? Type a name", debt_amount:"Amount (200k, 1.5 mln…)", debt_due:"Return by", debt_due_week:"In 1 week", debt_due_month:"In 1 month", debt_note:"Note (optional)", debt_bad_amount:"Type an amount — 200 ming or 200000", debt_saved:"✓ Debt recorded", debt_closed:"✓ Debt closed", debt_partial:"Part of it returned?", debt_partial_ph:"How much? E.g. 50 ming", debt_reopen:"Reopen",
   money_apart:"A separate section — never counted in any percentage, streak or rank.",
   money_balance:"Balance", money_income:"Income", money_expense:"Spent",
   money_unit:"UZS", date_day:"Day", date_month:"Month", date_year:"Year",
@@ -2209,6 +2221,7 @@ const DICT = {
   pause_note:"С сегодня — сегодняшний день тоже не считается",
   pts:"п.", team_join_hint:"Откройте ссылку-приглашение — сначала увидите команду, потом вступите",
   nav_home:"Главная", nav_stats:"Итоги", money:"Деньги", money_add:"Запись о деньгах",
+  money_this_month:"за месяц", money_tab_entries:"Записи", money_tab_cats:"Категории", money_tab_debts:"Долги", debt_overdue_n:"просрочено: {n}", debt_owed_to_me:"Вам должны", debt_i_owe:"Вы должны", debt_add:"Записать долг", debt_empty:"Долгов пока нет. Дали или взяли деньги — запишите здесь, и это не забудется.", debt_settled:"Закрытые", debt_lent_meta:"я дал", debt_borrowed_meta:"я взял", debt_overdue:"просрочен", debt_until:"до {d}", debt_returned:"Вернули", debt_returned_full:"Вернули полностью", debt_lent:"Я дал", debt_borrowed:"Я взял", debt_person:"Кто? Введите имя", debt_amount:"Сумма (200 тыс, 1,5 млн…)", debt_due:"Вернуть до", debt_due_week:"Через неделю", debt_due_month:"Через месяц", debt_note:"Заметка (необязательно)", debt_bad_amount:"Введите сумму — 200 тыс или 200000", debt_saved:"✓ Долг записан", debt_closed:"✓ Долг закрыт", debt_partial:"Вернули часть?", debt_partial_ph:"Сколько? Например, 50 тыс", debt_reopen:"Открыть снова",
   money_apart:"Отдельный раздел — не входит ни в какие проценты, серии и рейтинги.",
   money_balance:"Баланс", money_income:"Доход", money_expense:"Расход",
   money_unit:"сум", date_day:"День", date_month:"Месяц", date_year:"Год",
@@ -4814,13 +4827,16 @@ function moneyRow(e, icons){
     </div>`;
 }
 
+/* Money, top to bottom: what you have, one line to add, then one of three
+   views — the month's entries, where it went, and who owes whom. */
 SCREENS.money = () => {
   const m = state.money;
+  const tab = state.moneyTab || "entries";
   let h = `<div class="head"><h1 class="grow">${t("nav_money")}</h1>
-      <button class="iconbtn add" data-act="money-add"
-              aria-label="${t("money_add")}">${icon("plus", 22)}</button></div>
-    <div class="t3 tiny">${t("money_apart")}</div>`;
+      <button class="iconbtn add" data-act="${tab === "debts" ? "debt-add" : "money-add"}"
+              aria-label="${t(tab === "debts" ? "debt_add" : "money_add")}">${icon("plus", 22)}</button></div>`;
   if(!m) return h + `<div class="spin"></div>`;
+  const debts = m.debts || {open:[], settled:[], owed_to_me:0, i_owe:0, overdue:0};
 
   h += `<div class="mnav">
       <button class="iconbtn sm" data-act="money-month" data-delta="-1"
@@ -4829,14 +4845,17 @@ SCREENS.money = () => {
       <button class="iconbtn sm" data-act="money-month" data-delta="1" aria-label="›"
               ${m.is_current ? "disabled" : ""}>${icon("chevron", 16)}</button></div>`;
 
-  h += `<div class="mtiles">
-      <div class="mtile lead"><div class="k">${icon("wallet", 15)} ${t("money_balance")}</div>
-        <div class="v ${m.balance < 0 ? "neg" : ""}">${m.balance < 0 ? "−" : ""}${moneyFmt(m.balance)}</div>
-        <div class="t3 tiny">${t("balance_hint")}</div></div>
-      <div class="mtile"><div class="k">${icon("up", 15)} ${t("monthly_income")}</div>
-        <div class="v pos">+${moneyFmt(m.income)}</div></div>
-      <div class="mtile"><div class="k">${icon("down", 15)} ${t("monthly_expense")}</div>
-        <div class="v neg">−${moneyFmt(m.expense)}</div></div>
+  h += `<div class="mhero">
+      <div class="k">${icon("wallet", 15)} ${t("money_balance")}</div>
+      <div class="v num ${m.balance < 0 ? "neg" : ""}">${m.balance < 0 ? "−" : ""}${moneyFmt(m.balance)}</div>
+      <div class="mflow num">
+        <span class="pos">↑ +${moneyNum(m.income)}</span>
+        <span class="neg">↓ −${moneyNum(m.expense)}</span>
+        <span class="t3">${t("money_this_month")}</span></div>
+      ${debts.open.length ? `<div class="mdebt" data-act="money-tab" data-value="debts" role="button" tabindex="0">
+        🤝 ${t("money_tab_debts")}: <span class="pos num">+${moneyNum(debts.owed_to_me)}</span>
+        · <span class="neg num">−${moneyNum(debts.i_owe)}</span>
+        ${debts.overdue ? `<span class="neg"> · ${t("debt_overdue_n", {n: debts.overdue})}</span>` : ""}</div>` : ""}
     </div>`;
 
   if(m.is_current) h += `<div class="mquick">
@@ -4850,42 +4869,119 @@ SCREENS.money = () => {
         − ${t("money_expense")}</button>
       <button class="btn secondary pos" data-act="money-text-save" data-kind="income">
         + ${t("money_income")}</button>
-    </div>
-    <div class="t3 tiny" style="margin-top:6px">${t("money_quick_hint")}</div>`;
+    </div>`;
 
-  const spent = m.categories.filter(c => c.spent > 0);
-  h += sectionHead("tone-4", "chart", t("money_spend_split"))
-    + `<div class="card">${spent.length ? moneyDonut(spent, m.expense)
-        : `<div class="t2 small" style="text-align:center;padding:var(--s2) 0">
-             ${t("money_no_spend")}</div>`}</div>`;
+  h += `<div class="seg mtabs">${[["entries", t("money_tab_entries")], ["cats", t("money_tab_cats")],
+      ["debts", t("money_tab_debts") + (debts.open.length ? ` · ${debts.open.length}` : "")]]
+      .map(([id, label]) => `<div class="${tab === id ? "on" : ""}" data-act="money-tab"
+        data-value="${id}">${label}</div>`).join("")}</div>`;
 
-  h += sectionHead("tone-2", "tiles", t("money_by_category"),
-      `<span class="t3 tiny">${t("money_limit_tap")}</span>`)
-    + `<div class="card">${m.categories.map(c => {
-        const pct = c.limit ? Math.min(100, c.spent / c.limit * 100) : 0;
-        return `<div class="mcat" data-act="money-budget" data-cat="${c.id}"
-            data-limit="${c.limit}" role="button" tabindex="0">
-          <div class="row"><span>${c.icon}</span>
-            <div class="grow ellipsis">${t("mcat_" + c.id)}</div>
-            <span class="amt ${c.over ? "over" : ""}">${moneyFmt(c.spent)}${
-              c.limit ? ` / ${moneyFmt(c.limit)}` : ` · ${t("money_no_limit")}`}</span>
-            <span class="medit" aria-hidden="true">${icon("edit", 15)}</span></div>
-          ${c.limit ? `<div class="mbar"><span style="width:${pct}%;background:${
-              c.over ? "var(--danger)" : MONEY_TONE[c.id]}"></span></div>` : ""}
-          ${c.over ? `<div class="tiny" style="color:var(--danger);margin-top:4px">
-              ${t("money_over", {n: moneyFmt(c.spent - c.limit)})}</div>` : ""}
-        </div>`;}).join("")}</div>`;
+  if(tab === "cats") return h + moneyCats(m);
+  if(tab === "debts") return h + debtsView(debts);
 
-  h += sectionHead("tone-1", "list", t("money_latest"),
-      `<span class="t3 tiny num">${m.count}</span>`);
   h += m.entries.length ? m.entries.map(e => moneyRow(e, m.icons)).join("")
-    : `<div class="empty">${t("money_empty")}
-        <button class="btn secondary sm" data-act="money-add">
-          ${icon("plus", 16)} ${t("money_add")}</button></div>`;
+    : `<div class="empty">${t("money_empty")}</div>`;
   if(m.count > m.entries.length) h += `<div class="hint">${t("record_limit", {n:m.entries.length})}</div>
     <button class="btn secondary" data-act="set-account">${t("account")}</button>`;
   return h;
 };
+
+/* Where the month's money went, and each category against its limit. */
+function moneyCats(m){
+  const spent = m.categories.filter(c => c.spent > 0);
+  let h = spent.length ? `<div class="card">${moneyDonut(spent, m.expense)}</div>` : "";
+  h += `<div class="t3 tiny" style="margin:var(--s2) 0 var(--s1)">${t("money_limit_tap")}</div>`;
+  h += `<div class="card">${m.categories.map(c => {
+      const pct = c.limit ? Math.min(100, c.spent / c.limit * 100) : 0;
+      return `<div class="mcat" data-act="money-budget" data-cat="${c.id}"
+          data-limit="${c.limit}" role="button" tabindex="0">
+        <div class="row"><span>${c.icon}</span>
+          <div class="grow ellipsis">${t("mcat_" + c.id)}</div>
+          <span class="amt ${c.over ? "over" : ""}">${moneyFmt(c.spent)}${
+            c.limit ? ` / ${moneyFmt(c.limit)}` : ` · ${t("money_no_limit")}`}</span>
+          <span class="medit" aria-hidden="true">${icon("edit", 15)}</span></div>
+        ${c.limit ? `<div class="mbar"><span style="width:${pct}%;background:${
+            c.over ? "var(--danger)" : MONEY_TONE[c.id]}"></span></div>` : ""}
+        ${c.over ? `<div class="tiny" style="color:var(--danger);margin-top:4px">
+            ${t("money_over", {n: moneyFmt(c.spent - c.limit)})}</div>` : ""}
+      </div>`;}).join("")}</div>`;
+  return h;
+}
+
+/* ---------- Debts ----------
+   Who owes you and whom you owe, apart from the balance: lending is not
+   spending. One tap closes a debt; part of it can come back too. */
+function debtsView(d){
+  let h = `<div class="mtiles">
+      <div class="mtile"><div class="k">↙ ${t("debt_owed_to_me")}</div>
+        <div class="v pos">${moneyFmt(d.owed_to_me)}</div></div>
+      <div class="mtile"><div class="k">↗ ${t("debt_i_owe")}</div>
+        <div class="v neg">${moneyFmt(d.i_owe)}</div></div>
+    </div>
+    <div style="height:var(--s2)"></div>`;
+  if(!d.open.length) h += `<div class="empty">${t("debt_empty")}
+      <button class="btn secondary sm" data-act="debt-add" style="margin:12px auto 0;display:flex">
+        ${icon("plus", 16)} ${t("debt_add")}</button></div>`;
+  h += d.open.map(debtRow).join("");
+  if(d.settled.length) h += `<details style="margin-top:var(--s2)">
+      <summary>${icon("chevron", 15)} ${t("debt_settled")} · ${d.settled.length}</summary>
+      ${d.settled.map(debtRow).join("")}</details>`;
+  return h;
+}
+function debtRow(x){
+  const lent = x.direction === "lent";
+  const meta = [t(lent ? "debt_lent_meta" : "debt_borrowed_meta"),
+    x.due ? (x.overdue ? `<span class="neg">${t("debt_overdue")} · ${isoToLabel(x.due)}</span>`
+                       : t("debt_until", {d: isoToLabel(x.due)})) : "",
+    x.note ? esc(x.note) : ""].filter(Boolean).join(" · ");
+  return `<div class="item drow ${x.settled ? "settled" : ""}" data-act="debt-open" data-id="${x.id}">
+      ${x.settled ? `<span class="check on" aria-hidden="true">${icon("check", 14)}</span>`
+        : `<button class="check" data-act="debt-settle" data-id="${x.id}"
+           aria-label="${t("debt_returned")}" title="${t("debt_returned")}"></button>`}
+      <div class="grow"><div class="ellipsis"><b>${esc(x.person)}</b></div>
+        <div class="meta">${meta}</div></div>
+      <div class="amount ${x.settled ? "t3" : lent ? "pos" : "neg"}">${lent ? "+" : "−"}${moneyNum(x.amount)}</div>
+    </div>`;
+}
+function debtSheet(){
+  const f = state.debtForm || (state.debtForm = {direction:"lent", due:""});
+  const people = [...new Set([...(state.money?.debts?.open || []), ...(state.money?.debts?.settled || [])]
+    .map(x => x.person))].slice(0, 8);
+  const today = todayISO();
+  const dues = [["", t("none_short")], [shiftISO(today, 7), t("debt_due_week")],
+                [shiftISO(today, 30), t("debt_due_month")]];
+  return `<h3>🤝 ${t("debt_add")}</h3>
+    <div class="seg big" style="margin-bottom:12px">
+      ${[["lent", t("debt_lent")], ["borrowed", t("debt_borrowed")]].map(([k, label]) =>
+        `<div class="${f.direction === k ? "on" : ""}" data-act="debt-form" data-field="direction"
+          data-value="${k}">${label}</div>`).join("")}</div>
+    <input id="debt-person" placeholder="${t("debt_person")}" value="${esc(f.person || "")}" maxlength="80" />
+    ${people.length ? `<div class="chips" style="margin-top:6px">${people.map(p =>
+      `<div class="chip sm" data-act="debt-person" data-value="${esc(p)}">${esc(p)}</div>`).join("")}</div>` : ""}
+    <input id="debt-amount" placeholder="${t("debt_amount")}" value="${esc(f.amount || "")}"
+           inputmode="text" autocomplete="off" style="margin-top:10px" />
+    <label>${t("debt_due")}</label>
+    <div class="chips">${dues.map(([v, label]) => `<div class="chip sm ${(f.due || "") === v ? "on" : ""}"
+      data-act="debt-form" data-field="due" data-value="${v}">${label}</div>`).join("")}</div>
+    <input id="debt-note" placeholder="${t("debt_note")}" value="${esc(f.note || "")}" maxlength="200"
+           style="margin-top:10px" />
+    <button class="btn" data-act="debt-save" style="margin-top:16px">${t("save")}</button>`;
+}
+function readDebtForm(){
+  const f = state.debtForm || (state.debtForm = {direction:"lent", due:""});
+  for(const k of ["person", "amount", "note"]){
+    const el = document.getElementById("debt-" + k);
+    if(el) f[k] = el.value;
+  }
+  return f;
+}
+async function reloadDebts(){
+  try{
+    const d = await api("/api/debts");
+    if(state.money) state.money.debts = d;
+    render();
+  }catch(e){ handleError(e); }
+}
 
 function moneySheet(){
   const f = state.moneyForm || (state.moneyForm = {kind:"expense", category:"food"});
@@ -6822,7 +6918,8 @@ function render(){
   document.getElementById("fab").innerHTML = chromeOff ? "" : `
     ${state.me?.agent?.available && state.screen !== "money" ? `<button class="fab-mic" data-act="voice-start"
         aria-label="${t("quick_voice")}">${icon("mic", 22)}</button>` : ""}
-    <button class="fab-add" data-act="${state.screen === "money" ? "money-add" : "quick-add"}"
+    <button class="fab-add" data-act="${state.screen !== "money" ? "quick-add"
+      : state.moneyTab === "debts" ? "debt-add" : "money-add"}"
         aria-label="${t(state.screen === "money" ? "money_add" : "quick_add")}">${icon("plus", 30)}</button>`;
 
   syncShell();
@@ -7491,6 +7588,70 @@ const A = {
   },
   "money-text-save": el => moneyText(trimmed("money-text"), "manual", el?.dataset?.kind),
   "money-voice": () => moneyVoice(),
+  "money-tab": el => { haptic(); state.moneyTab = el.dataset.value; render(); },
+  "debt-add": () => { haptic(); state.debtForm = {direction:"lent", due:""}; openSheet(debtSheet());
+    setTimeout(() => document.getElementById("debt-person")?.focus(), 60); },
+  "debt-form": el => { haptic(); readDebtForm()[el.dataset.field] = el.dataset.value; openSheet(debtSheet()); },
+  "debt-person": el => { readDebtForm().person = el.dataset.value; openSheet(debtSheet()); },
+  "debt-save": () => {
+    const f = readDebtForm();
+    const person = (f.person || "").trim();
+    const amount = parseMoneyInput(f.amount);
+    if(!person) return toast(t("debt_person"));
+    if(!amount) return toast(t("debt_bad_amount"));
+    const body = {person, amount, direction: f.direction, note: (f.note || "").trim(), due: f.due || null};
+    state.moneyTab = "debts";
+    save(() => api("/api/debts", {method:"POST", body}), "money", false, t("debt_saved"));
+  },
+  "debt-settle": async el => {
+    haptic("medium");
+    try{
+      await api(`/api/debts/${el.dataset.id}/settle`, {method:"POST", body:{settled:true}});
+      notify("success");
+      toast(t("debt_closed"), t("undo"), async () => {
+        await api(`/api/debts/${el.dataset.id}/settle`, {method:"POST", body:{settled:false}});
+        reloadDebts();
+      });
+      closeSheet();
+      reloadDebts();
+    }catch(e){ handleError(e); }
+  },
+  "debt-open": el => {
+    const all = [...(state.money?.debts?.open || []), ...(state.money?.debts?.settled || [])];
+    const x = all.find(d => String(d.id) === el.dataset.id);
+    if(!x) return;
+    openSheet(`<h3>🤝 ${esc(x.person)}</h3>
+      <div class="hint">${t(x.direction === "lent" ? "debt_lent_meta" : "debt_borrowed_meta")}
+        · <b class="num">${moneyFmt(x.amount)}</b>${x.note ? " · " + esc(x.note) : ""}</div>
+      ${x.settled ? `<button class="btn secondary" data-act="debt-reopen" data-id="${x.id}"
+          style="margin-top:12px">${t("debt_reopen")}</button>` : `
+      <button class="btn" data-act="debt-settle" data-id="${x.id}" style="margin-top:12px">✓ ${t("debt_returned_full")}</button>
+      <label>${t("debt_partial")}</label>
+      <div class="field"><input id="debt-paid" placeholder="${t("debt_partial_ph")}" autocomplete="off" />
+        <button class="btn sm" data-act="debt-partial" data-id="${x.id}" style="min-width:96px">OK</button></div>`}
+      <button class="btn danger" data-act="debt-delete" data-id="${x.id}" style="margin-top:12px">
+        ${icon("trash", 15)} ${t("delete")}</button>`);
+  },
+  "debt-partial": async el => {
+    const paid = parseMoneyInput(val("debt-paid"));
+    if(!paid) return toast(t("debt_bad_amount"));
+    try{
+      await api(`/api/debts/${el.dataset.id}/settle`, {method:"POST", body:{settled:true, paid}});
+      notify("success"); closeSheet(); toast(t("saved")); reloadDebts();
+    }catch(e){ handleError(e); }
+  },
+  "debt-reopen": async el => {
+    try{
+      await api(`/api/debts/${el.dataset.id}/settle`, {method:"POST", body:{settled:false}});
+      closeSheet(); reloadDebts();
+    }catch(e){ handleError(e); }
+  },
+  "debt-delete": async el => {
+    try{
+      await api(`/api/debts/${el.dataset.id}`, {method:"DELETE"});
+      closeSheet(); toast(t("deleted")); reloadDebts();
+    }catch(e){ handleError(e); }
+  },
   "money-month": el => {
     const m = state.money;
     if(!m) return;

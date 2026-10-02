@@ -38,7 +38,7 @@ from db import (
     AgentAudit, AgentDraft, AgentPreference,
     Birthday, Countdown, DailyReportLog, DailyScore, Feedback, Habit, HabitLog,
     HabitPauseInterval, HabitScheduleVersion, IdempotencyKey, JobRun,
-    JournalEntry, MoneyBudget, MoneyEntry, PrayerDay, PrayerLog, Project,
+    Debt, JournalEntry, MoneyBudget, MoneyEntry, PrayerDay, PrayerLog, Project,
     Referral, ReferralCode, Task,
     Team, TeamActivity, TeamDayScore, TeamHabit, TeamHabitLog, TeamJoinRequest,
     TeamMember, TeamTask, TeamTaskDone, TimerRun, User, UserAchievement,
@@ -3157,7 +3157,78 @@ def money_overview(s: Session, ws: int, *, month: date | None = None,
             "category_ids": MONEY_CATEGORY_IDS,
             "kinds": {c[0]: c[4] for c in MONEY_CATEGORIES},
             "icons": {c[0]: c[1] for c in MONEY_CATEGORIES},
-            "colors": {c[0]: c[2] for c in MONEY_CATEGORIES}}
+            "colors": {c[0]: c[2] for c in MONEY_CATEGORIES},
+            "debts": debts_overview(s, ws, tz=tz)}
+
+
+# ---------------------------------------------------------------------------
+# Debts — who owes whom. Separate from the balance; settled ones stay as history.
+# ---------------------------------------------------------------------------
+
+DEBT_DIRECTIONS = ("lent", "borrowed")
+
+
+def _debt_dict(row: Debt, today: date | None = None) -> dict:
+    return {"id": row.id, "person": row.person, "amount": int(row.amount),
+            "direction": row.direction, "note": row.note or "",
+            "due": row.due.isoformat() if row.due else None,
+            "overdue": bool(today and row.due and not row.settled_at and row.due < today),
+            "settled": row.settled_at is not None,
+            "created_at": (row.created_at.replace(tzinfo=_utc.utc).isoformat()
+                           if row.created_at else None)}
+
+
+def add_debt(s: Session, ws: int, person: str, amount, direction: str, *,
+             note: str = "", due: date | None = None) -> dict:
+    person = " ".join(str(person or "").split())[:80]
+    if not person:
+        raise ValueError("bad_person")
+    if direction not in DEBT_DIRECTIONS:
+        raise ValueError("bad_direction")
+    row = Debt(workspace_id=ws, person=person, amount=clean_money_amount(amount),
+               direction=direction, note=str(note or "").strip()[:200], due=due)
+    s.add(row)
+    s.commit()
+    return _debt_dict(row)
+
+
+def _own_debt(s: Session, ws: int, debt_id: int) -> Debt:
+    row = s.get(Debt, debt_id)
+    if row is None or row.workspace_id != ws:
+        raise NotFound("debt")
+    return row
+
+
+def settle_debt(s: Session, ws: int, debt_id: int, settled: bool = True,
+                paid: int | None = None) -> dict:
+    """Mark returned — or, with `paid` less than the amount, take that much off."""
+    row = _own_debt(s, ws, debt_id)
+    if settled and paid is not None and 0 < paid < row.amount:
+        row.amount = int(row.amount) - clean_money_amount(paid)
+    else:
+        row.settled_at = utcnow() if settled else None
+    s.commit()
+    return _debt_dict(row)
+
+
+def delete_debt(s: Session, ws: int, debt_id: int) -> None:
+    s.delete(_own_debt(s, ws, debt_id))
+    s.commit()
+
+
+def debts_overview(s: Session, ws: int, *, tz: ZoneInfo | None = None) -> dict:
+    """Open debts, biggest first per side, the two totals, and recent history."""
+    today = today_local(tz or _habit_tz(s, ws))
+    rows = s.scalars(select(Debt).where(Debt.workspace_id == ws, Debt.settled_at.is_(None))
+                     .order_by(Debt.due.is_(None), Debt.due, Debt.id.desc())).all()
+    settled = s.scalars(select(Debt).where(Debt.workspace_id == ws, Debt.settled_at.is_not(None))
+                        .order_by(Debt.settled_at.desc()).limit(20)).all()
+    owed_to_me = sum(int(r.amount) for r in rows if r.direction == "lent")
+    i_owe = sum(int(r.amount) for r in rows if r.direction == "borrowed")
+    return {"open": [_debt_dict(r, today) for r in rows],
+            "settled": [_debt_dict(r) for r in settled],
+            "owed_to_me": owed_to_me, "i_owe": i_owe,
+            "overdue": sum(1 for r in rows if r.due and r.due < today)}
 
 
 # ---------------------------------------------------------------------------
@@ -4434,6 +4505,8 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
                                .where(MoneyEntry.workspace_id == ws)
                                .order_by(MoneyEntry.day, MoneyEntry.id)).all()],
         "money_budgets": money_budgets(s, ws),
+        "debts": [_debt_dict(r) for r in s.scalars(select(Debt).where(Debt.workspace_id == ws)
+                                                    .order_by(Debt.id)).all()],
         "agent_inbox": [
             {"id": r.id, "status": r.status, "revision": r.revision,
              "transcript": r.transcript, "language": r.detected_language, "history": json.loads(r.history),
@@ -4460,7 +4533,7 @@ WORKSPACE_TABLES = [AgentAudit, AgentDraft, AgentPreference,
                     TimerRun, HabitLog, HabitScheduleVersion, HabitPauseInterval,
                     Habit, PrayerLog, PrayerDay, Task,
                     Project, WeeklyFocus, WeeklyReview, JournalEntry, Birthday,
-                    Countdown, Feedback, DailyReportLog, MoneyEntry, MoneyBudget]
+                    Countdown, Feedback, DailyReportLog, MoneyEntry, MoneyBudget, Debt]
 
 
 def wipe_workspace(s: Session, telegram_id: int) -> bool:

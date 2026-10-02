@@ -25,13 +25,13 @@ class Change(BaseModel):
     field: Literal["title", "name", "description", "deadline", "due_time",
                    "priority", "project_id", "recurrence", "remind_before",
                    "timer_minutes", "category", "schedule", "remind_at",
-                   "start", "day", "kind", "amount", "note"]
+                   "start", "day", "kind", "amount", "note", "person", "direction"]
     value: str | None
 
 
 class Action(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    entity: Literal["task", "habit", "project", "money"]
+    entity: Literal["task", "habit", "project", "money", "debt"]
     operation: Literal["create", "update", "delete"]
     scope: Literal["personal", "team"]
     team_id: int | None
@@ -76,6 +76,8 @@ FIELDS = {
     "habit": {"name", "category", "schedule", "remind_at", "timer_minutes", "start"},
     "project": {"name", "description", "deadline"},
     "money": {"kind", "amount", "category", "note", "day"},
+    # Create only: closing or changing a debt is one tap in the app.
+    "debt": {"person", "amount", "direction", "note", "deadline"},
 }
 PERSONAL = {"task": db.Task, "habit": db.Habit, "project": db.Project, "money": db.MoneyEntry}
 TEAM = {"task": db.TeamTask, "habit": db.TeamHabit, "project": db.Project}
@@ -158,11 +160,12 @@ def _value(key, raw):
         if not re.fullmatch(r"\d{2}:\d{2}", raw):
             raise AgentError("invalid_fields", 422)
         return time.fromisoformat(raw)
-    bounds = {"title": 300, "name": 120, "description": 2000, "note": 200}
-    if len(raw) > bounds.get(key, 32) or (key in {"title", "name"} and not raw):
+    bounds = {"title": 300, "name": 120, "description": 2000, "note": 200, "person": 80}
+    if len(raw) > bounds.get(key, 32) or (key in {"title", "name", "person"} and not raw):
         raise AgentError("invalid_fields", 422)
     choices = {"priority": {"low", "medium", "high"}, "kind": {"income", "expense"},
-               "start": {"today", "tomorrow"}, "recurrence": {"", "daily", "weekly", "monthly"}}
+               "start": {"today", "tomorrow"}, "recurrence": {"", "daily", "weekly", "monthly"},
+               "direction": {"lent", "borrowed"}}
     if key in choices and raw not in choices[key]:
         raise AgentError("invalid_fields", 422)
     if key == "schedule" and raw not in {"daily", "weekdays"} and not re.fullmatch(r"days:[0-6](?:,[0-6])*", raw):
@@ -181,6 +184,8 @@ def prepare(s, uid, ws, plan: Plan, allowed_catalog=None):
         a = spec.model_dump()
         entity, op = a["entity"], a["operation"]
         if (op == "create") != (a["target_id"] is None):
+            raise AgentError("invalid_action", 422)
+        if entity == "debt" and (op != "create" or a["scope"] != "personal"):
             raise AgentError("invalid_action", 422)
         row = target(s, uid, ws, a)
         if allowed_catalog is not None:
@@ -201,8 +206,11 @@ def prepare(s, uid, ws, plan: Plan, allowed_catalog=None):
         if entity == "habit" and op == "update" and "start" in fields:
             raise AgentError("invalid_fields", 422)
         if op == "create":
-            required = {"task": "title", "habit": "name", "project": "name", "money": "amount"}[entity]
+            required = {"task": "title", "habit": "name", "project": "name", "money": "amount",
+                        "debt": "amount"}[entity]
             if not fields.get(required):
+                raise AgentError("missing_fields", 422)
+            if entity == "debt" and not (fields.get("person") and fields.get("direction")):
                 raise AgentError("missing_fields", 422)
             if entity == "habit":
                 fields.setdefault("category", "target")
@@ -242,7 +250,7 @@ def prepare(s, uid, ws, plan: Plan, allowed_catalog=None):
         a["fields"] = fields
         a["name"] = (getattr(row, "title", None) or getattr(row, "name", None)
                      or (f'{row.kind}: {row.amount:,} UZS · {row.category} · {row.day} · {row.note}' if entity == "money" and row else None)
-                     or fields.get("title") or fields.get("name") or entity)
+                     or fields.get("title") or fields.get("name") or fields.get("person") or entity)
         a["before"] = snapshot(row) if row is not None else None
         a["fingerprint"] = fingerprint(row) if row is not None else None
         if a["scope"] == "team":
@@ -328,6 +336,9 @@ def execute(s, uid, ws, a):
                 setattr(row, key, value)
             s.flush()
             out = row
+    elif entity == "debt":
+        out = svc.add_debt(s, ws, fields["person"], fields["amount"], fields["direction"],
+                           note=fields.get("note") or "", due=fields.get("deadline"))
     result_id = out.get("id") if isinstance(out, dict) else getattr(out, "id", tid)
     return {"entity": entity, "operation": op, "id": result_id, "name": a["name"]}
 
@@ -348,17 +359,20 @@ HEADINGS = {
            ("habit", "create"): "🔁 Yangi odat", ("habit", "update"): "✏️ Odat o‘zgaradi", ("habit", "delete"): "🗑 Odat o‘chiriladi",
            ("project", "create"): "📁 Yangi loyiha", ("project", "update"): "✏️ Loyiha o‘zgaradi", ("project", "delete"): "🗑 Loyiha o‘chiriladi",
            ("money", "expense"): "💸 Chiqim", ("money", "income"): "💰 Kirim",
-           ("money", "update"): "✏️ Pul yozuvi o‘zgaradi", ("money", "delete"): "🗑 Pul yozuvi o‘chiriladi"},
+           ("money", "update"): "✏️ Pul yozuvi o‘zgaradi", ("money", "delete"): "🗑 Pul yozuvi o‘chiriladi",
+           ("debt", "lent"): "🤝 Qarz berdingiz", ("debt", "borrowed"): "🤝 Qarz oldingiz"},
     "ru": {("task", "create"): "📝 Новая задача", ("task", "update"): "✏️ Изменить задачу", ("task", "delete"): "🗑 Удалить задачу",
            ("habit", "create"): "🔁 Новая привычка", ("habit", "update"): "✏️ Изменить привычку", ("habit", "delete"): "🗑 Удалить привычку",
            ("project", "create"): "📁 Новый проект", ("project", "update"): "✏️ Изменить проект", ("project", "delete"): "🗑 Удалить проект",
            ("money", "expense"): "💸 Расход", ("money", "income"): "💰 Доход",
-           ("money", "update"): "✏️ Изменить запись", ("money", "delete"): "🗑 Удалить запись"},
+           ("money", "update"): "✏️ Изменить запись", ("money", "delete"): "🗑 Удалить запись",
+           ("debt", "lent"): "🤝 Вы дали в долг", ("debt", "borrowed"): "🤝 Вы взяли в долг"},
     "en": {("task", "create"): "📝 New task", ("task", "update"): "✏️ Edit task", ("task", "delete"): "🗑 Delete task",
            ("habit", "create"): "🔁 New habit", ("habit", "update"): "✏️ Edit habit", ("habit", "delete"): "🗑 Delete habit",
            ("project", "create"): "📁 New project", ("project", "update"): "✏️ Edit project", ("project", "delete"): "🗑 Delete project",
            ("money", "expense"): "💸 Expense", ("money", "income"): "💰 Income",
-           ("money", "update"): "✏️ Edit money entry", ("money", "delete"): "🗑 Delete money entry"},
+           ("money", "update"): "✏️ Edit money entry", ("money", "delete"): "🗑 Delete money entry",
+           ("debt", "lent"): "🤝 You lent", ("debt", "borrowed"): "🤝 You borrowed"},
 }
 MONTHS = {"uz": ["yanvar", "fevral", "mart", "aprel", "may", "iyun", "iyul", "avgust", "sentabr", "oktabr", "noyabr", "dekabr"],
           "ru": ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"],
@@ -407,6 +421,17 @@ def _block(a, lang, today):
     f, op, entity = a["fields"], a["operation"], a["entity"]
     words, before = VALUES.get(lang, VALUES["uz"]), a.get("before") or {}
     detail = DETAIL.get(lang, DETAIL["uz"])
+    if entity == "debt":
+        heading = HEADINGS.get(lang, HEADINGS["uz"])[("debt", f.get("direction", "lent"))]
+        lines = [heading, f'<b>{escape(str(f.get("person", "")))}</b> — {_amount(f.get("amount", 0), lang)}']
+        extra = []
+        if f.get("deadline"):
+            extra.append(f'📅 {human_day(f["deadline"], lang, today)}')
+        if f.get("note"):
+            extra.append(f'💬 {escape(str(f["note"]))}')
+        if extra:
+            lines.append("   ".join(extra))
+        return "\n".join(lines)
     if entity == "money" and op == "create":
         heading = HEADINGS.get(lang, HEADINGS["uz"])[("money", f.get("kind", "expense"))]
     else:

@@ -861,3 +861,23 @@ def test_journal_ai_wire_is_strict_json_with_the_five_questions(monkeypatch):
     assert schema["strict"] and set(schema["schema"]["required"]) == set(svc.JOURNAL_KEYS)
     assert "Never invent" in sent["messages"][0]["content"]
     assert json.loads(sent["messages"][1]["content"]) == {"language": "uz", "text": "salom"}
+
+
+def test_agent_records_a_debt_not_an_expense(person, monkeypatch):
+    caller, uid, ws = person
+    debt = action("debt", person="Aziz", amount=200000, direction="lent", deadline="2026-10-09")
+    draft = capture(person, monkeypatch, plan(debt), text="Azizga 200 ming qarz berdim")
+    assert draft["status"] == "ready", draft
+    assert "🤝 Qarz berdingiz" in draft["preview"] and "<b>Aziz</b> — 200 000 so‘m" in draft["preview"]
+    core.confirm(uid, ws, draft["id"], draft["revision"])
+    d = caller.get("/api/debts").json()
+    assert d["owed_to_me"] == 200000 and d["open"][0]["due"] == "2026-10-09"
+    assert count(db.MoneyEntry, ws) == 0
+
+
+def test_agent_cannot_edit_or_share_a_debt(person, monkeypatch):
+    for bad in (action("debt", operation="update", target_id=1, amount=5),
+                action("debt", scope="team", team_id=1, person="A", amount=5, direction="lent"),
+                action("debt", amount=5, direction="lent")):
+        draft = capture(person, monkeypatch, plan(bad))
+        assert draft["status"] == "failed", bad
