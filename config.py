@@ -47,6 +47,11 @@ IS_TEST = ENVIRONMENT == "test"
 # Voice agent (Groq only). Disabled until explicitly enabled; the key stays server-side.
 AGENT_ENABLED = os.environ.get("AGENT_ENABLED", "false").lower() == "true"
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
+#: Optional. Best Uzbek speech-to-text (Scribe v2); Groq Whisper is the fallback.
+ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "").strip()
+#: Optional. Paid overflow for understanding text when Groq's free quota is used up.
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "").strip() or "gemini-flash-latest"
 AGENT_TEXT_MODEL = os.environ.get("AGENT_TEXT_MODEL", "").strip() or "openai/gpt-oss-120b"
 AGENT_SPEECH_MODEL = os.environ.get("AGENT_SPEECH_MODEL", "").strip() or "whisper-large-v3"
 #: Commands per user per day. Protects the Groq bill.
@@ -172,8 +177,10 @@ def check() -> None:
             "Set it in the deployment environment and redeploy."
         )
     if AGENT_ENABLED:
-        if not GROQ_API_KEY:
-            raise RuntimeError("AGENT_ENABLED=true requires GROQ_API_KEY")
+        if not (GROQ_API_KEY or GEMINI_API_KEY):
+            raise RuntimeError("AGENT_ENABLED=true requires GROQ_API_KEY (or GEMINI_API_KEY)")
+        if not (ELEVENLABS_API_KEY or GROQ_API_KEY):
+            raise RuntimeError("AGENT_ENABLED=true requires ELEVENLABS_API_KEY or GROQ_API_KEY for voice")
         if not shutil.which("ffmpeg"):
             raise RuntimeError("AGENT_ENABLED=true requires FFmpeg; use the supplied Dockerfile")
     # A webhook without a secret is an endpoint that acts on whatever anybody

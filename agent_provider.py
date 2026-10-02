@@ -1,12 +1,18 @@
-"""Groq only: Whisper-large-v3 turns voice into text, a Groq LLM turns text into a plan.
+"""Voice -> text -> plan, each step on a short chain of providers.
 
-No tools, no remote execution, no other providers. The model only proposes;
-the user's button executes.
+Speech: ElevenLabs Scribe v2 (best measured Uzbek accuracy) when a key is set,
+then Groq Whisper-large-v3 and Whisper-turbo as free fallbacks.
+Text: Groq gpt-oss-120b (free tier first), then Gemini (paid overflow, when a
+key is set), then Groq gpt-oss-20b. A step is skipped only when its provider is
+rate-limited, out of quota or down; a bad answer is never retried elsewhere.
+
+No tools, no remote execution. The model only proposes; the user's button executes.
 """
 from __future__ import annotations
 
 import asyncio
 import io
+import logging
 import json
 import re
 import subprocess
@@ -17,7 +23,9 @@ import httpx
 import config
 from agent_actions import AgentError, Plan, dumps
 
-BASE = "https://api.groq.com/openai/v1"
+log = logging.getLogger("ernestos.agent")
+BASES = {"groq": "https://api.groq.com/openai/v1", "elevenlabs": "https://api.elevenlabs.io/v1",
+         "gemini": "https://generativelanguage.googleapis.com/v1beta"}
 
 SYSTEM = """You are Ernest, a cautious command PARSER for ErnestOS. Return only the
 requested JSON plan, never claim anything was executed. No external actions.
@@ -94,24 +102,45 @@ SPEECH_HINT = {
 }
 
 
+def _key(service):
+    return {"groq": config.GROQ_API_KEY, "elevenlabs": config.ELEVENLABS_API_KEY,
+            "gemini": config.GEMINI_API_KEY}[service]
+
+
+def text_chain():
+    steps = [("groq", config.AGENT_TEXT_MODEL), ("gemini", config.GEMINI_MODEL), ("groq", "openai/gpt-oss-20b")]
+    return [step for step in dict.fromkeys(steps) if _key(step[0])]
+
+
+def speech_chain():
+    steps = [("elevenlabs", "scribe_v2"), ("groq", config.AGENT_SPEECH_MODEL), ("groq", "whisper-large-v3-turbo")]
+    return [step for step in dict.fromkeys(steps) if _key(step[0])]
+
+
 def configured():
-    return bool(config.GROQ_API_KEY)
+    return bool(text_chain())
 
 
-def connection():
+def connection(service="groq"):
     if not config.AGENT_ENABLED:
         raise AgentError("agent_disabled", 503)
-    if not configured():
+    if not _key(service):
         raise AgentError("provider_not_configured", 503)
-    return BASE, config.GROQ_API_KEY
+    return BASES[service], _key(service)
 
 
-async def request(path, **kwargs):
-    base, key = connection()
+HEADERS = {"groq": lambda key: {"Authorization": f"Bearer {key}"},
+           "elevenlabs": lambda key: {"xi-api-key": key},
+           "gemini": lambda key: {"x-goog-api-key": key}}
+
+
+async def request(path, service="groq", **kwargs):
+    base, key = connection(service)
     try:
         async with httpx.AsyncClient(timeout=config.AGENT_TIMEOUT, follow_redirects=False) as client:
-            response = await client.post(base + path, headers={"Authorization": f"Bearer {key}"}, **kwargs)
-        if response.status_code == 429:
+            response = await client.post(base + path, headers=HEADERS[service](key), **kwargs)
+        # 402: ElevenLabs credits used up. Same meaning for the user as a limit.
+        if response.status_code in {402, 429}:
             raise AgentError("provider_limit", 429)
         if response.status_code in {401, 403}:
             raise AgentError("provider_not_configured", 503)
@@ -122,19 +151,20 @@ async def request(path, **kwargs):
         raise AgentError("provider_unavailable", 503) from None
 
 
-# Groq Free limits are per model: when the main model's quota is used up,
-# the next one still has its own.
-TEXT_MODELS = (config.AGENT_TEXT_MODEL, "openai/gpt-oss-20b")
-SPEECH_MODELS = (config.AGENT_SPEECH_MODEL, "whisper-large-v3-turbo")
+FALLBACK = {"provider_limit", "provider_unavailable", "provider_not_configured"}
 
 
-async def first_available(models, call):
-    for i, model in enumerate(dict.fromkeys(models)):
+async def first_available(steps, call):
+    """Try each (service, model) in order; move on only when a provider cannot serve."""
+    if not steps:
+        connection("groq")  # raises the precise disabled / not-configured error
+    for i, (service, model) in enumerate(steps):
         try:
-            return await call(model)
+            return await call(service, model)
         except AgentError as e:
-            if e.code != "provider_limit" or i == len(dict.fromkeys(models)) - 1:
+            if e.code not in FALLBACK or i == len(steps) - 1:
                 raise
+            log.warning("agent %s/%s unavailable (%s), trying the next one", service, model, e.code)
 
 
 def compact_context(context, transcript, history):
@@ -151,23 +181,54 @@ def compact_context(context, transcript, history):
     return {**context, "items": slim, "truncated": context["truncated"] or len(items) > len(selected)}
 
 
-async def plan(transcript, context, history):
-    compact = compact_context(context, transcript, history)
-    # Do not forward stored database snapshots or audit data to the provider.
-    prior = [{"text": h.get("text", "")} for h in history]
-    payload = dumps({"context": compact, "previous_inputs": prior, "latest_input": transcript})
+def _inline(schema):
+    """Gemini takes one self-contained schema tree: resolve local $refs."""
+    defs = schema.get("$defs", {})
+    def walk(node):
+        if isinstance(node, dict):
+            if "$ref" in node:
+                return walk(defs[node["$ref"].rsplit("/", 1)[-1]])
+            return {k: walk(v) for k, v in node.items() if k not in {"$defs", "title"}}
+        if isinstance(node, list):
+            return [walk(v) for v in node]
+        return node
+    return walk(schema)
+
+
+async def _plan_on(service, model, payload):
+    if service == "gemini":
+        result = await request(f"/models/{model}:generateContent", service="gemini", json={
+            "system_instruction": {"parts": [{"text": SYSTEM}]},
+            "contents": [{"role": "user", "parts": [{"text": payload}]}],
+            "generationConfig": {"responseMimeType": "application/json", "temperature": 0,
+                                 "responseJsonSchema": _inline(Plan.model_json_schema()),
+                                 "maxOutputTokens": 8192},
+        })
+        candidates = result.get("candidates") or []
+        if not candidates or candidates[0].get("finishReason") != "STOP":
+            raise AgentError("invalid_plan", 422)
+        parts = candidates[0].get("content", {}).get("parts", [])
+        return Plan.model_validate(json.loads("".join(p.get("text", "") for p in parts if not p.get("thought"))))
     schema = {"name": "ernest_plan", "schema": Plan.model_json_schema(), "strict": True}
-    result = await first_available(TEXT_MODELS, lambda model: request("/chat/completions", json={
+    result = await request("/chat/completions", service="groq", json={
         "model": model,
         "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": payload}],
         "response_format": {"type": "json_schema", "json_schema": schema},
         "temperature": 0,
         "max_completion_tokens": 2500,
-    }))
+    })
     choice = result["choices"][0]
     if choice.get("finish_reason") != "stop" or choice["message"].get("refusal"):
         raise AgentError("invalid_plan", 422)
     return Plan.model_validate(json.loads(choice["message"]["content"]))
+
+
+async def plan(transcript, context, history):
+    compact = compact_context(context, transcript, history)
+    # Do not forward stored database snapshots or audit data to the provider.
+    prior = [{"text": h.get("text", "")} for h in history]
+    payload = dumps({"context": compact, "previous_inputs": prior, "latest_input": transcript})
+    return await first_available(text_chain(), lambda service, model: _plan_on(service, model, payload))
 
 
 MIME_TYPES = {"audio/ogg", "application/ogg", "audio/webm", "video/webm", "audio/mp4", "video/mp4",
@@ -234,16 +295,44 @@ def speech_prompt(context):
     return SPEECH_HINT[lang] + (f" {label}: {', '.join(names)}." if names else "")
 
 
-async def transcribe(data, mime, context):
-    """Whisper-large-v3, forced to the user's app language."""
-    connection()  # fail before spending CPU when disabled or not configured
-    wav = await asyncio.to_thread(audio_wav, data, mime)
-    form = {"response_format": "json", "temperature": "0", "prompt": speech_prompt(context)}
-    if context.get("language") in SPEECH_HINT:
-        form["language"] = context["language"]
-    result = await first_available(SPEECH_MODELS, lambda model: request(
-        "/audio/transcriptions", data={**form, "model": model}, files={"file": ("voice.wav", wav, "audio/wav")}))
+def keyterms(context):
+    """The user's own names for ElevenLabs: ≤100 terms, ≤50 chars and ≤5 words each."""
+    terms, seen = [], set()
+    for item in [*context.get("teams", []), *context.get("items", [])]:
+        term = re.sub(r"\s+", " ", str(item.get("name") or "")).strip()
+        if term and len(term) <= 50 and len(term.split()) <= 5 and term.casefold() not in seen:
+            seen.add(term.casefold())
+            terms.append(term)
+    return terms[:100]
+
+
+async def _transcribe_on(service, model, wav, context):
+    lang = context.get("language") if context.get("language") in SPEECH_HINT else None
+    if service == "elevenlabs":
+        form = {"model_id": model, "tag_audio_events": "false", "timestamps_granularity": "none",
+                "no_verbatim": "true"}
+        if lang:
+            form["language_code"] = lang
+        terms = keyterms(context)
+        if terms:
+            form["keyterms"] = terms
+        result = await request("/speech-to-text", service="elevenlabs", data=form,
+                               files={"file": ("voice.wav", wav, "audio/wav")})
+    else:
+        form = {"model": model, "response_format": "json", "temperature": "0", "prompt": speech_prompt(context)}
+        if lang:
+            form["language"] = lang
+        result = await request("/audio/transcriptions", service="groq", data=form,
+                               files={"file": ("voice.wav", wav, "audio/wav")})
     text = result.get("text")
     if not isinstance(text, str):
         raise AgentError("empty_audio", 422)
     return text.strip()
+
+
+async def transcribe(data, mime, context):
+    """Speech -> text in the user's app language, best available provider first."""
+    steps = speech_chain()
+    connection(steps[0][0] if steps else "groq")  # fail before spending CPU when disabled
+    wav = await asyncio.to_thread(audio_wav, data, mime)
+    return await first_available(steps, lambda service, model: _transcribe_on(service, model, wav, context))

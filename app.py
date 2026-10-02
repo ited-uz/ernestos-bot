@@ -531,8 +531,8 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         await message.reply_text(t(lang, "hello_named", name=esc(name)),
                                  parse_mode=ParseMode.HTML,
                                  reply_markup=menu_for(uid))
-        # Accounts from before logins existed get theirs on the next /start.
-        await issue_credentials(message, uid, lang)
+        # No login/password pushed into the chat: Telegram is the account.
+        # Settings → Account issues one when somebody actually wants it.
         await show_home(update, ctx)
         return
 
@@ -556,7 +556,7 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 #:   * the channel, asked after `FREE_ACTIONS` real actions instead;
 #:   * the phone number, not asked anywhere;
 #:   * gender, asked the first time prayer is opened.
-ONBOARDING_STEPS = ["language", "account", "name", "modules", "presets", "done"]
+ONBOARDING_STEPS = ["language", "name", "modules", "presets", "done"]
 
 #: The choices on the modules step, in the order they are shown. Three are the
 #: rituals `services.MODULES` drives; "team" is a promise to offer a team at
@@ -601,7 +601,7 @@ def _setup_presets(ctx: ContextTypes.DEFAULT_TYPE) -> set[str]:
 #: Steps from older builds, and where somebody parked on one continues. The
 #: long setup's questions are gone; anybody half-way through it is finished.
 LEGACY_STEPS = {"phone": "name", "gender": "name", "subscribe": "name",
-                "intro": "account", "goal": "done", "tasks": "done",
+                "intro": "name", "account": "name", "goal": "done", "tasks": "done",
                 "habits": "done"}
 
 
@@ -652,9 +652,9 @@ async def resume_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         if name:
             rows.append([InlineKeyboardButton(f"👤 {name}",
                                               callback_data="setup:name")])
+        rows.append([InlineKeyboardButton(t(lang, "acc_have"), callback_data="acc:have")])
         await message.reply_text(t(lang, "ask_name"), parse_mode=ParseMode.HTML,
-                                 reply_markup=InlineKeyboardMarkup(rows) if rows
-                                 else None)
+                                 reply_markup=InlineKeyboardMarkup(rows))
 
     elif step == "modules":
         chosen = set(setup_data(ctx).setdefault("modules", []))
@@ -861,18 +861,19 @@ async def finish_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> N
 
     wants_team = bool((ctx.user_data.get("setup") or {}).get("team"))
     ctx.user_data.pop("setup", None)
-    # Anybody who reached the end without the account screen — an older
-    # build's setup, or the channel check finishing it — gets theirs here.
-    await issue_credentials(message, uid, lang)
-    await message.reply_text(render_day_ready(data, lang), parse_mode=ParseMode.HTML,
-                             reply_markup=menu_for(uid))
+    # One closing message: their day, the one way to add anything (voice or
+    # text), and the channel rule up front. No login/password in the chat.
+    closing = render_day_ready(data, lang)
+    if config.AGENT_ENABLED:
+        closing += "\n\n" + VOICE_HINT.get(lang, VOICE_HINT["uz"])
     if deps.REQUIRED_CHANNEL_ID:
         notices = {
             "uz": f"Birinchi {deps.FREE_ACTIONS} ta amal bepul. Keyin o'zgartirish kiritish uchun kanalga obuna bo'lish kerak. Ma'lumotlaringiz saqlanadi va o'qish uchun ochiq qoladi.",
             "en": f"Your first {deps.FREE_ACTIONS} actions are free. After that, join the channel to make changes. Your data stays saved and readable.",
             "ru": f"Первые {deps.FREE_ACTIONS} действий бесплатны. Затем для изменений нужна подписка на канал. Данные сохраняются и доступны для чтения.",
         }
-        await message.reply_text(notices.get(lang, notices["uz"]))
+        closing += "\n\n<i>" + notices.get(lang, notices["uz"]) + "</i>"
+    await message.reply_text(closing, parse_mode=ParseMode.HTML, reply_markup=menu_for(uid))
     markup = webapp_button(lang)
     if markup:
         await message.reply_text(t(lang, "day_ready_app"), reply_markup=markup)
@@ -885,6 +886,17 @@ async def finish_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> N
                     f"Language: {snapshot.language}")
     if qualified_inviter is not None:
         await notify_referral_qualified(ctx.bot, qualified_inviter)
+
+
+#: The product's main door, said once at the end of setup: no menus needed.
+VOICE_HINT = {
+    "uz": "🎙 <b>Eng oson yo'l:</b> ovozli xabar yoki matn yuboring.\n"
+          "Masalan: «Ertaga soat 10 da uchrashuv», «Ovqatga 50 ming», «Har kuni kitob o'qish».",
+    "en": "🎙 <b>The easy way:</b> just send a voice message or text.\n"
+          "E.g. “Meeting tomorrow at 10”, “Lunch 50 thousand”, “Read a book every day”.",
+    "ru": "🎙 <b>Проще всего:</b> отправьте голосовое или текст.\n"
+          "Например: «Завтра в 10 встреча», «Обед 50 тысяч», «Каждый день читать книгу».",
+}
 
 
 def render_day_ready(data: dict, lang: str) -> str:
@@ -4247,8 +4259,11 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             if user is None:
                 return
             user.language = parts[1]
+            svc.localize_system_habits(s, svc.workspace_id_for(s, uid), parts[1])
             if not user.onboarded:
-                user.onboarding_step = "account"
+                # Straight to the name: Telegram already is the account. Signing
+                # in to an existing one stays one tap away on that screen.
+                user.onboarding_step = "name"
             s.commit()
             lang, onboarded = user.language, user.onboarded
             snapshot = user
@@ -4260,7 +4275,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             await query.edit_message_text(
                 t(lang, "hello_named", name=esc(update.effective_user.first_name or "")),
                 parse_mode=ParseMode.HTML)
-            await resume_onboarding(update, ctx, "account")
+            await resume_onboarding(update, ctx, "name")
         else:
             # A settings change says what it changed, not just "saved".
             await query.edit_message_text(t(lang, "lang_changed"))
@@ -7188,6 +7203,7 @@ def api_settings(body: SettingsIn, init=Header(default=None, alias="X-Telegram-I
         row = s.get(User, user.telegram_id)
         if body.language in ("uz", "en", "ru"):
             row.language = body.language
+            svc.localize_system_habits(s, svc.workspace_id_for(s, user.telegram_id), body.language)
         if body.gender in ("male", "female"):
             row.gender = body.gender
         if body.theme in THEMES:
@@ -8962,12 +8978,21 @@ def api_quick_add(body: QuickAddIn,
     Making someone answer three questions before a note is saved is how notes
     stop getting saved. Sorting happens later, in Tasks.
     """
-    _, ws = auth(init)
-    if not body.title.strip():
+    user, ws = auth(init)
+    text = body.title.strip()
+    if not text:
         raise HTTPException(status_code=422, detail="empty_title")
+    # "Tushlik 45 ming" is money, not a task: the app opens the money check.
+    if svc.looks_like_money(text) and svc.parse_money_text(text) is not None:
+        return {"ok": True, "money": True}
+    # "Ertaga soat 10 da hisobot" → "hisobot", tomorrow, 10:00 — like the bot.
+    parsed = svc.parse_quick_capture(text, svc.today_local(svc.user_tz(user)))
     with SessionLocal() as s:
-        task = svc.add_task(s, ws, body.title)
-    return {"ok": True, "id": task.id}
+        task = svc.add_task(s, ws, parsed["title"], deadline=parsed["deadline"],
+                            due_time=parsed["due_time"])
+    return {"ok": True, "id": task.id, "title": parsed["title"],
+            "deadline": parsed["deadline"].isoformat() if parsed["deadline"] else None,
+            "due_time": parsed["due_time"].strftime("%H:%M") if parsed["due_time"] else None}
 
 
 class FreshStartIn(BaseModel):

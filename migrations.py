@@ -659,6 +659,30 @@ def m0012_close_past_days() -> dict:
     return {"migration": "0012_close_past_days", "users": users, "days_closed": closed}
 
 
+def m0013_localize_rituals() -> dict:
+    """Rename "Get up" / "5x namoz" / "Kundalik" to each user's language.
+
+    New accounts get this when they pick a language; this does the same once
+    for accounts created before v12.2. Idempotent, and a ritual the user
+    renamed themselves is left alone (`localize_system_habits`).
+    """
+    from sqlalchemy import select as sql_select
+
+    import services as svc
+    from db import User
+
+    users = 0
+    with SessionLocal() as s:
+        for user in s.scalars(sql_select(User)).all():
+            try:
+                svc.localize_system_habits(s, svc.workspace_id_for(s, user.telegram_id), user.language)
+                users += 1
+            except svc.NotFound:
+                continue
+        s.commit()
+    return {"migration": "0013_localize_rituals", "users": users}
+
+
 MIGRATIONS = {
     "0001": m0001_retire_summary_habit,
     "0002": m0002_retire_goals,
@@ -672,6 +696,7 @@ MIGRATIONS = {
     "0010": m0010_daily_report_unique,
     "0011": m0011_seed_team_rituals,
     "0012": m0012_close_past_days,
+    "0013": m0013_localize_rituals,
 }
 
 

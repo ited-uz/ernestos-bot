@@ -1,7 +1,7 @@
 """Human-facing agent messages, always in the user's app language. Never expose raw provider errors."""
 TEXT = {
     "uz": {
-        "welcome": "🎙 Ernest — ovozli yordamchi\nOvozli xabar yoki matn yuboring: vazifa, odat, loyiha yoki pul yozuvini qo‘shaman, o‘zgartiraman yoki o‘chiraman. Faqat «Tasdiqlash» tugmasidan keyin bajaraman.\n\nOvoz va matn Groq AI xizmatiga (AQSh) yuboriladi. Audio saqlanmaydi. Parol yoki karta raqamini yubormang.",
+        "welcome": "🎙 Ernest — ovozli yordamchi\nOvozli xabar yoki matn yuboring: vazifa, odat, loyiha yoki pul yozuvini qo‘shaman, o‘zgartiraman yoki o‘chiraman. Faqat «Tasdiqlash» tugmasidan keyin bajaraman.\n\nOvoz va matn AI xizmatlariga (ElevenLabs, Groq, Google — AQSh) yuboriladi. Audio saqlanmaydi. Parol yoki karta raqamini yubormang.",
         "consent": "Roziman", "consented": "Tayyor. Ovozli xabar yoki matn yuboring.",
         "confirm": "✅ Tasdiqlash", "edit": "✏️ Tahrirlash", "cancel": "❌ Bekor qilish",
         "processing": "🎧 Qabul qilindi, tahlil qilyapman…", "ready": "Shunday bajarilsinmi? Hali hech narsa o‘zgarmadi.",
@@ -41,7 +41,7 @@ TEXT = {
         "concurrent_change": "Boshqa o‘zgarish bilan to‘qnashdi. Qayta urinib ko‘ring.",
     },
     "ru": {
-        "welcome": "🎙 Ernest — голосовой помощник\nОтправьте голосовое или текст: добавлю, изменю или удалю задачу, привычку, проект или запись финансов. Выполняю только после кнопки «Подтвердить».\n\nГолос и текст передаются в Groq AI (США). Аудио не хранится. Не отправляйте пароли и номера карт.",
+        "welcome": "🎙 Ernest — голосовой помощник\nОтправьте голосовое или текст: добавлю, изменю или удалю задачу, привычку, проект или запись финансов. Выполняю только после кнопки «Подтвердить».\n\nГолос и текст передаются AI-сервисам (ElevenLabs, Groq, Google — США). Аудио не хранится. Не отправляйте пароли и номера карт.",
         "consent": "Согласен", "consented": "Готово. Отправьте голосовое или текст.",
         "confirm": "✅ Подтвердить", "edit": "✏️ Исправить", "cancel": "❌ Отменить",
         "processing": "🎧 Принято, обрабатываю…", "ready": "Выполнить так? Пока ничего не изменено.",
@@ -81,7 +81,7 @@ TEXT = {
         "concurrent_change": "Конфликт с другим изменением. Попробуйте ещё раз.",
     },
     "en": {
-        "welcome": "🎙 Ernest voice assistant\nSend a voice message or text: I add, edit or delete tasks, habits, projects and money entries. Nothing runs until you press Confirm.\n\nVoice and text are sent to Groq AI (USA). Audio is not stored. Do not send passwords or card numbers.",
+        "welcome": "🎙 Ernest voice assistant\nSend a voice message or text: I add, edit or delete tasks, habits, projects and money entries. Nothing runs until you press Confirm.\n\nVoice and text are sent to AI services (ElevenLabs, Groq, Google — USA). Audio is not stored. Do not send passwords or card numbers.",
         "consent": "I agree", "consented": "Ready. Send a voice message or text.",
         "confirm": "✅ Confirm", "edit": "✏️ Edit", "cancel": "❌ Cancel",
         "processing": "🎧 Received, analyzing…", "ready": "Proceed with this? Nothing has changed yet.",
