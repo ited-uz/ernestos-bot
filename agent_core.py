@@ -11,6 +11,7 @@ import logging
 import re
 import uuid
 from datetime import timedelta
+from html import escape
 
 from pydantic import ValidationError
 from sqlalchemy import select, update
@@ -237,11 +238,14 @@ async def process(uid, ws, draft_id, revision, *, audio=None, mime=None):
             require_consent(s, ws)
             if plan.language != lang:
                 # Only the language chosen in the profile is accepted.
-                actions, question, summary = [], None, tr(lang, "wrong_language")
+                actions, question, summary = [], None, escape(tr(lang, "wrong_language"))
             else:
                 actions = prepare(s, uid, ws, plan, allowed_catalog=context)
                 question = plan.question if in_language(plan.question, lang) else None
-                summary = preview(actions, lang, context["today"]) if actions else (question or tr(lang, "clarify"))
+                understood = (plan.understood or "")[:300] if in_language(plan.understood, lang) else None
+                # The summary is the HTML card the bot sends; plain text is escaped.
+                summary = (preview(actions, lang, context["today"], understood) if actions
+                           else escape(question or tr(lang, "clarify")))
             proposed = {"actions": actions, "question": question,
                         "planned_day": context["today"], "timezone": context["timezone"]}
             won = s.execute(update(db.AgentDraft).where(db.AgentDraft.id == draft_id, db.AgentDraft.workspace_id == ws,

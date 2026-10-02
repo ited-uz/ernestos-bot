@@ -1,9 +1,11 @@
 """Telegram adapter: private-chat voice or text -> proposal -> Confirm / Edit / Cancel."""
 import hashlib
+import re
+from html import escape
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.constants import ChatAction
-from telegram.error import TelegramError
+from telegram.constants import ChatAction, ParseMode
+from telegram.error import BadRequest, TelegramError
 
 import agent_core as core
 import config
@@ -58,13 +60,13 @@ class AgentBot:
         """Short: only what will happen, then the buttons. No transcript, no filler."""
         status = draft["status"]
         if draft["error"]:
-            body = tr(lang, draft["error"])
+            body = escape(tr(lang, draft["error"]))
         elif status == "executed":
-            body = f'{draft["preview"]}\n\n{tr(lang, "executed")}'
+            body = f'{draft["preview"]}\n\n<b>{escape(tr(lang, "executed"))}</b>'
         elif status == "cancelled":
-            body = f'{draft["preview"]}\n\n{tr(lang, "cancelled")}' if draft["preview"] else tr(lang, "cancelled")
+            body = (f'<s>{draft["preview"]}</s>\n\n' if draft["preview"] else "") + escape(tr(lang, "cancelled"))
         else:
-            body = draft["preview"] or tr(lang, "processing")
+            body = draft["preview"] or escape(tr(lang, "processing"))
         key = f'{draft["id"]}:{draft["revision"]}'
         buttons = []
         if status == "ready":
@@ -76,23 +78,37 @@ class AgentBot:
 
     async def show(self, message, draft, lang):
         body, buttons = self.render(draft, lang)
+        markup = InlineKeyboardMarkup(buttons) if buttons else None
+        if len(body) <= 4000:
+            try:
+                return await message.reply_text(body, parse_mode=ParseMode.HTML, reply_markup=markup)
+            except BadRequest:
+                pass  # a draft saved before cards were HTML: send it as it is
         # Telegram counts UTF-16 code units. A 1700-codepoint chunk is safe
-        # even for emoji. Buttons follow ALL preview chunks, not a truncation.
-        chunks = [body[i:i + 1700] for i in range(0, len(body), 1700)]
+        # even for emoji. Buttons follow ALL chunks, not a truncation.
+        plain = re.sub(r"<[^>]+>", "", body)
+        chunks = [plain[i:i + 1700] for i in range(0, len(plain), 1700)]
         for i, chunk in enumerate(chunks):
-            markup = InlineKeyboardMarkup(buttons) if buttons and i == len(chunks) - 1 else None
-            await message.reply_text(chunk, reply_markup=markup)
+            await message.reply_text(chunk, reply_markup=markup if i == len(chunks) - 1 else None)
 
     async def replace(self, query, draft, lang):
         """After a button: the same message changes, so old buttons never linger."""
         body, buttons = self.render(draft, lang)
-        if len(body) > 1700:
+        markup = InlineKeyboardMarkup(buttons) if buttons else None
+        if len(body) > 4000:
             await query.edit_message_reply_markup(reply_markup=None)
             return await self.show(query.message, draft, lang)
         try:
-            await query.edit_message_text(body, reply_markup=InlineKeyboardMarkup(buttons) if buttons else None)
+            await query.edit_message_text(body, parse_mode=ParseMode.HTML, reply_markup=markup)
+        except BadRequest as e:
+            if "not modified" in str(e).lower():
+                return  # a repeated tap
+            try:
+                await query.edit_message_text(re.sub(r"<[^>]+>", "", body), reply_markup=markup)
+            except TelegramError:
+                pass
         except TelegramError:
-            pass  # "message is not modified" after a repeated tap
+            pass
 
     @staticmethod
     async def typing(update):
