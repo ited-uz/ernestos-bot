@@ -73,3 +73,22 @@ Batafsil: [AGENT_SETUP_UZ.md → Limit va xarajat](AGENT_SETUP_UZ.md).
 - Haqiqiy Telegram ilovasida (iOS/Android) end-to-end sinov.
 - 1000 foydalanuvchi yuklamasi. Bitta nusxa bunga yetishi kerak:
   900 buyruq/kun ≈ daqiqasiga 1 ta.
+
+## Qo‘shimcha: yangi navigatsiya va «Qadam»
+
+- **Pastki menyu 4 ta:** Asosiy · Kundalik · Moliya · Profil.
+  - **Kundalik** tepasida katta «Odatlar | Vazifalar» almashtirgichi bor.
+  - **Profil** tepasida avatar, ⚙️ Sozlamalar va «Statistika | Jamoa» almashtirgichi bor.
+  - Pastki menyu doim joyida turadi, chiqish bir bosish.
+- **Pastda o‘ngda katta ➕ va uning ustida 🎙.**
+  - ➕ oynasida «Vazifa | Odat» tanlovi bor.
+  - Vazifa matnidan sana va vaqt avtomatik olinadi. Pulga oid matn pul tekshiruviga o‘tadi.
+  - Moliya ekranida ➕ to‘g‘ridan-to‘g‘ri pul qo‘shadi.
+  - «Batafsil» tugmasi to‘liq formani ochadi.
+  - Har ekranda bitta ➕ bor, ikkitasi emas.
+- **«Qadam» kartasi** Statistika tepasida:
+  - jami qadamlar, daraja va 5 bosqichli yo‘l (Boshlovchi → O‘z ustida ishlash);
+  - bugungi qadamlar: Vazifa, Odat, Namoz, Kundalik, Maqsad;
+  - ❄️ ketma-ketlikni saqlab qoluvchi kunlar.
+- Jamoa nomi namunasi: «Masalan: Savdo jamoasi», shaxsiy ismlar olib tashlandi.
+- **Bosishlar soni:** vazifa qo‘shish 2 ta, odat 2–3 ta, odatni belgilash 1–2 ta, sozlamalar 2 ta.

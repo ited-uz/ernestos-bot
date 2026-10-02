@@ -9086,6 +9086,8 @@ def api_progress_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
     with SessionLocal() as s:
         snapshot = svc.progress_snapshot(s, user.telegram_id,
                                          tz=svc.user_tz(user))
+        snapshot["steps"] = svc.steps_snapshot(s, user.telegram_id, _ws,
+                                               tz=svc.user_tz(user))
         # `global_rank` refreshes the stored best and last rank as it reads,
         # which is the only write on this path and is what makes "↑7" and
         # "personal best" honest rather than recomputed guesses.

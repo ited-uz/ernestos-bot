@@ -720,6 +720,70 @@ nav{position:fixed;left:0;right:0;bottom:0;z-index:40;display:grid;
    bar with a floating button over a blank page was the first thing the app
    showed, for as long as the first request took. */
 nav:empty{display:none}
+/* The switch at the top of Kundalik and Profil: big, thumb-sized, sticky, so
+   Habits ↔ Tasks is one tap from anywhere on the page. */
+.groupseg{position:sticky;top:0;z-index:5;margin:2px 0 6px;
+          box-shadow:0 6px 12px -10px rgba(0,0,0,.25)}
+.seg.big > *{min-height:48px;font-size:16px;font-weight:650}
+/* Inside a group the switch already names the screen. */
+.grouped > .head > h1, .grouped > .head > .grow > h1{display:none}
+.grouped > .head{min-height:0;justify-content:flex-end}
+.profile-head{display:flex;align-items:center;gap:var(--s2);margin:4px 0 12px}
+.grouped > h1:first-child{display:none}
+.nohead > .head, .screen-money > .head .add{display:none}
+/* Qadam card */
+.steps{background:var(--surface);border:var(--border-w) solid var(--border);border-radius:var(--radius);
+       padding:16px;margin:4px 0 14px;box-shadow:var(--shadow-1)}
+.steps-top{display:flex;align-items:flex-start;gap:var(--s2)}
+.steps-title{font-size:22px;font-weight:760}
+.freeze{background:var(--surface-2);border-radius:var(--radius-pill);padding:4px 10px;font-weight:650}
+.steps-level{display:flex;align-items:center;gap:12px;margin-top:14px;padding:12px;
+             background:var(--surface-2);border-radius:var(--radius-sm)}
+.steps-level .badge{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;font-size:26px;
+                    background:var(--surface);box-shadow:0 0 0 3px color-mix(in srgb, var(--warn) 70%, transparent)}
+.steps-level .ln{font-size:18px;font-weight:720}
+.sbar{height:8px;border-radius:8px;background:color-mix(in srgb, var(--text) 10%, transparent);margin:6px 0 2px;overflow:hidden}
+.sbar i{display:block;height:100%;border-radius:8px;background:var(--warn)}
+.steps-level .total{text-align:right;padding-left:12px;border-left:var(--border-w) solid var(--border)}
+.steps-level .tv{font-size:28px;font-weight:780}
+.steps-sub{margin:16px 0 8px;font-weight:700}
+.steps-sub.row{display:flex;align-items:center;gap:8px}
+.sdots{display:flex;gap:4px}.sdots i{width:8px;height:8px;border-radius:50%;background:var(--border)}
+.sdots i.on{background:var(--ok)}
+.steps-path{display:flex;align-items:flex-start}
+.step-node{flex:0 0 auto;width:58px;text-align:center}
+.step-node .dot{position:relative;width:46px;height:46px;margin:0 auto;border-radius:50%;display:grid;place-items:center;
+                font-size:20px;background:var(--surface-2);border:2px solid var(--border)}
+.step-node.now .dot{border-color:var(--ok);box-shadow:0 0 0 4px color-mix(in srgb, var(--ok) 20%, transparent)}
+.step-node.past .dot{border-color:var(--ok)}
+.step-node.lock .dot{opacity:.6}
+.step-node .lk{position:absolute;right:-4px;bottom:-4px;font-size:12px}
+.step-node .nm{font-size:11px;font-weight:650;margin-top:4px;line-height:1.15}
+.step-node .rg{font-size:10.5px;color:var(--text-3)}
+.step-line{flex:1;height:2px;background:var(--border);margin-top:23px;min-width:4px}
+.steps-today{display:grid;grid-template-columns:repeat(auto-fit, minmax(96px, 1fr));gap:8px}
+.step-chip{position:relative;display:grid;gap:2px;padding:10px;border-radius:var(--radius-sm);
+           border:var(--border-w) solid var(--border)}
+.step-chip .ck{position:absolute;top:8px;right:8px}
+.step-chip .ci{font-size:18px}.step-chip .cn{font-size:12.5px;font-weight:650}
+.step-chip .cv{font-size:12px;color:var(--text-2)}
+.step-chip .ck{width:20px;height:20px;border-radius:50%;border:2px solid var(--border);display:grid;place-items:center}
+.step-chip.ok .ck{background:var(--ok);border-color:var(--ok);color:var(--on-primary)}
+.steps-go{margin-top:14px}
+.profile-head .pname{font-size:20px;font-weight:700}
+/* The two ways to add anything, always in the same place: + for typing and
+   the microphone above it for speaking. Bottom right, above the bar. */
+#fab{position:fixed;right:16px;bottom:calc(var(--nav-h, 64px) + 16px);z-index:41;
+     display:grid;gap:12px;justify-items:center}
+#fab:empty{display:none}
+#fab button{border:0;border-radius:50%;display:grid;place-items:center;cursor:pointer;
+            box-shadow:0 8px 20px -6px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.15)}
+#fab .fab-add{width:62px;height:62px;background:var(--primary-fill);color:var(--on-primary)}
+#fab .fab-mic{width:48px;height:48px;background:var(--surface);color:var(--primary);
+              border:var(--border-w) solid var(--border)}
+#fab button:active{transform:scale(.94)}
+body:has(#sheet.show) #fab,
+body:has(#app input:focus, #app textarea:focus) #fab{display:none}
 nav button{background:0;border:0;color:var(--text-2);padding:6px 1px 8px;
            font-size:11px;font-weight:600;cursor:pointer;display:grid;gap:3px;
            min-width:0;justify-items:center;align-content:center;min-height:56px;
@@ -1002,6 +1066,7 @@ details[open] > summary .i{transform:rotate(90deg)}
 
 <div id="app"><div class="spin"></div></div>
 <nav id="nav"></nav>
+<div id="fab"></div>
 <div class="sheet" id="sheet"><div class="sheet-inner" id="sheet-body"></div></div>
 <div class="toast" id="toast"></div>
 
@@ -1054,7 +1119,7 @@ const DICT = {
   team:"Jamoa",
   team_empty_title:"Sherigingiz bilan birga",
   team_empty:"Jamoa — bitta umumiy ro'yxat. Vazifa ikkovingizga ko'rinadi, lekin har biringiz o'zingiznikini belgilaysiz.",
-  team_new:"Jamoa yaratish", team_name_ph:"Masalan: Ernest va Gulyora",
+  team_new:"Jamoa yaratish", team_name_ph:"Masalan: Savdo jamoasi",
   team_invite:"Taklif havolasi", team_invite_hint:"Havolani sherigingizga yuboring",
   team_copy:"Nusxa olish", team_copied:"Nusxa olindi",
   team_rename:"Nomini o'zgartirish", team_leave:"Jamoani tark etish",
@@ -1126,7 +1191,7 @@ const DICT = {
   /* quick capture */
   quick_add:"Tez qo'shish", quick_ph:"Nima esingizga tushdi?",
   inbox_saved:"Saqlandi — Vazifalarda",
-  quick_saved:"✓ Vazifa", quick_hint:"Masalan: «Ertaga soat 10 da hisobot» yoki «Tushlik 45 ming»", quick_voice:"Ovoz bilan aytish",
+  quick_saved:"✓ Vazifa", tab_list:"Ro'yxat", nav_money:"Moliya", quick_more:"Batafsil (vaqt, eslatma, loyiha)", steps_title:"Qadam", steps_motto:"Har bir yaxshi ish — kelajakdagi yutuqqa qadam.", steps_freeze:"Ketma-ketlikni saqlab qoladigan kunlar", steps_level_n:"{n}-daraja", steps_total:"Jami qadamlar", steps_path:"Sizning yo'lingiz", steps_today:"Bugungi qadamlar", steps_go:"Qadamni davom ettir", step_lvl_starter:"Boshlovchi", step_lvl_builder:"Quruvchi", step_lvl_discipline:"Intizom", step_lvl_steady:"Barqarorlik", step_lvl_master:"O'z ustida ishlash", step_tasks:"Vazifa", step_habits:"Odat", step_prayer:"Namoz", step_journal:"Kundalik", step_goal:"Maqsad", task_word:"Vazifa", habit_word:"Odat", quick_habit_ph:"Masalan: Har kuni kitob o'qish", quick_habit_hint:"Har kuni takrorlanadi. Keyin o'zgartirsa bo'ladi.", quick_habit_saved:"✓ Odat", nav_tracker:"Kundalik", nav_profile:"Profil", quick_hint:"Masalan: «Ertaga soat 10 da hisobot» yoki «Tushlik 45 ming»", quick_voice:"Ovoz bilan aytish",
   /* tasks */
   add_task:"Vazifa", task_name:"Vazifa nomi", task_desc:"Batafsil",
   deadline:"Muddat", due_time:"Vaqt", priority:"Muhimlik", project:"Loyiha",
@@ -1429,7 +1494,7 @@ const DICT = {
   team:"Team",
   team_empty_title:"Together with your partner",
   team_empty:"A team is one shared list. Both of you see the work; each of you ticks your own.",
-  team_new:"New team", team_name_ph:"e.g. Ernest and Gulyora",
+  team_new:"New team", team_name_ph:"e.g. Sales team",
   team_invite:"Invite link", team_invite_hint:"Send this link to your partner",
   team_copy:"Copy", team_copied:"Copied",
   team_rename:"Rename", team_leave:"Leave team",
@@ -1498,7 +1563,7 @@ const DICT = {
   wake_late_at:"{time} — later than today's target", wake_target:"Target",
   quick_add:"Quick add", quick_ph:"What came to mind?",
   inbox_saved:"Saved — see Tasks",
-  quick_saved:"✓ Task", quick_hint:"E.g. “Report tomorrow at 10” or “Lunch 45 thousand”", quick_voice:"Say it by voice",
+  quick_saved:"✓ Task", tab_list:"List", nav_money:"Money", quick_more:"More options (time, reminder, project)", steps_title:"Steps", steps_motto:"Every good thing you do is a step forward.", steps_freeze:"Days that keep your streak alive", steps_level_n:"Level {n}", steps_total:"Total steps", steps_path:"Your path", steps_today:"Today's steps", steps_go:"Keep going", step_lvl_starter:"Beginner", step_lvl_builder:"Builder", step_lvl_discipline:"Discipline", step_lvl_steady:"Consistency", step_lvl_master:"Self-mastery", step_tasks:"Task", step_habits:"Habit", step_prayer:"Prayer", step_journal:"Journal", step_goal:"Goal", task_word:"Task", habit_word:"Habit", quick_habit_ph:"E.g. Read a book every day", quick_habit_hint:"Repeats every day. You can change it later.", quick_habit_saved:"✓ Habit", nav_tracker:"Tracker", nav_profile:"Profile", quick_hint:"E.g. “Report tomorrow at 10” or “Lunch 45 thousand”", quick_voice:"Say it by voice",
   add_task:"Task", task_name:"Task name", task_desc:"Details",
   deadline:"Date", due_time:"Time", priority:"Priority", project:"Project",
   standalone:"Standalone", high:"High", medium:"Medium", low:"Low",
@@ -1790,7 +1855,7 @@ const DICT = {
   team:"Команда",
   team_empty_title:"Вместе с партнёром",
   team_empty:"Команда — это общий список. Дело видно обоим, но каждый отмечает своё.",
-  team_new:"Новая команда", team_name_ph:"Например: Эрнест и Гулёра",
+  team_new:"Новая команда", team_name_ph:"Например: Отдел продаж",
   team_invite:"Ссылка-приглашение", team_invite_hint:"Отправьте ссылку партнёру",
   team_copy:"Копировать", team_copied:"Скопировано",
   team_rename:"Переименовать", team_leave:"Покинуть команду",
@@ -1859,7 +1924,7 @@ const DICT = {
   wake_late_at:"{time} — позже сегодняшней цели", wake_target:"Цель",
   quick_add:"Быстро добавить", quick_ph:"Что пришло в голову?",
   inbox_saved:"Сохранено — в Задачах",
-  quick_saved:"✓ Задача", quick_hint:"Например: «Завтра в 10 отчёт» или «Обед 45 тысяч»", quick_voice:"Сказать голосом",
+  quick_saved:"✓ Задача", tab_list:"Список", nav_money:"Финансы", quick_more:"Подробнее (время, напоминание, проект)", steps_title:"Шаги", steps_motto:"Каждое доброе дело — шаг вперёд.", steps_freeze:"Дни, которые сохраняют серию", steps_level_n:"{n}-й уровень", steps_total:"Всего шагов", steps_path:"Ваш путь", steps_today:"Шаги сегодня", steps_go:"Продолжить", step_lvl_starter:"Новичок", step_lvl_builder:"Строитель", step_lvl_discipline:"Дисциплина", step_lvl_steady:"Стабильность", step_lvl_master:"Работа над собой", step_tasks:"Задача", step_habits:"Привычка", step_prayer:"Намаз", step_journal:"Дневник", step_goal:"Цель", task_word:"Задача", habit_word:"Привычка", quick_habit_ph:"Например: Читать книгу каждый день", quick_habit_hint:"Повторяется каждый день. Можно изменить позже.", quick_habit_saved:"✓ Привычка", nav_tracker:"Трекер", nav_profile:"Профиль", quick_hint:"Например: «Завтра в 10 отчёт» или «Обед 45 тысяч»", quick_voice:"Сказать голосом",
   add_task:"Задача", task_name:"Название", task_desc:"Подробнее",
   deadline:"Дата", due_time:"Время", priority:"Приоритет", project:"Проект",
   standalone:"Отдельно", high:"Высокий", medium:"Средний", low:"Низкий",
@@ -2636,8 +2701,6 @@ function headBlock(d){
                 aria-label="${t("calendar")} · ${esc(d.date_label)}">
           ${icon("calendar", 15)}<span>${esc(d.date_label)}</span></button>
       </div>
-      <button class="iconbtn add" data-act="quick-add"
-              aria-label="${t("quick_add")}">${icon("plus", 22)}</button>
       <button class="avatar" data-act="settings"
               aria-label="${t("settings")}">${avatar}
         <span class="avatar-gear" aria-hidden="true">${icon("settings", 11)}</span></button>
@@ -3223,7 +3286,8 @@ function sharedRow(x, kind, label, board, team){
 SCREENS.habits = () => {
   /* Only the modules somebody chose have a tab (#22). */
   const mods = state.me?.modules || state.home?.modules || {};
-  const tabs = [["habits","habits"],
+  // The top switch already says "Odatlar"; the first tab is their list.
+  const tabs = [["habits","tab_list"],
                 ...(mods.prayer === false ? [] : [["prayer","prayer"]]),
                 ...(mods.journal === false ? [] : [["journal","journal"]])];
   if(!tabs.some(([id]) => id === state.tab)) state.tab = "habits";
@@ -4668,7 +4732,7 @@ function moneyRow(e, icons){
 
 SCREENS.money = () => {
   const m = state.money;
-  let h = `<div class="head"><h1 class="grow">${t("money")}</h1>
+  let h = `<div class="head"><h1 class="grow">${t("nav_money")}</h1>
       <button class="iconbtn add" data-act="money-add"
               aria-label="${t("money_add")}">${icon("plus", 22)}</button></div>
     <div class="t3 tiny">${t("money_apart")}</div>`;
@@ -4802,6 +4866,20 @@ function moneyVoice(){
   catch(_){ toast(t("money_voice_fail")); }
 }
 
+function quickSheet(){
+  const habit = state.quickType === "habit";
+  return `<div class="seg big" style="margin-bottom:12px">
+      <div class="${habit ? "" : "on"}" data-act="quick-type" data-value="task">📝 ${t("task_word")}</div>
+      <div class="${habit ? "on" : ""}" data-act="quick-type" data-value="habit">🔁 ${t("habit_word")}</div>
+    </div>
+    <input id="quick-title" placeholder="${t(habit ? "quick_habit_ph" : "quick_ph")}" enterkeyhint="done"
+           data-search="quick-save" />
+    <div class="hint" style="margin-top:6px">${t(habit ? "quick_habit_hint" : "quick_hint")}</div>
+    ${habit ? "" : destPicker()}
+    <button class="btn" data-act="quick-save" style="margin-top:12px">${t("save")}</button>
+    <button class="btn secondary" data-act="${habit ? "habit-add" : "task-add"}" style="margin-top:8px">${t("quick_more")}</button>`;
+}
+
 /* What quick add understood, said back: "Saved: hisobot · Tomorrow 10:00". */
 function quickSaved(r){
   const today = todayISO();
@@ -4853,7 +4931,7 @@ SCREENS.stats = () => {
   const change = known ? today.overall - yesterday : null;
   const dir = !known || change === 0 ? "flat" : change > 0 ? "up" : "down";
 
-  let h = `<h1>${t("stats")}</h1>
+  let h = `<h1>${t("stats")}</h1>${stepsCard()}
     <div class="hero" style="margin-top:14px" data-act="overall-why">
       <div class="row">
         <div class="grow eyebrow">${t("overall")} · ${t("today")}</div>
@@ -6000,6 +6078,57 @@ function accountSheet(){
    than a layout choice: personal progression measures how somebody runs their
    own life, referral progression measures who they brought in, and a card that
    mixes them would suggest inviting people is a way to level up. It is not. */
+/* ---------- Qadam: every good thing done is a step ----------
+   Today's checkpoints, the all-time total and a five-level path. Numbers
+   come from /api/progress/me (steps_snapshot); nothing is computed here. */
+const STEP_ICON = {starter:"👟", builder:"⛰️", discipline:"⛺", steady:"🌲", master:"👑"};
+const STEP_TODAY_ICON = {tasks:"✅", habits:"🔁", prayer:"🕌", journal:"📔", goal:"🎯"};
+function stepsCard(){
+  const st = state.progress?.steps;
+  if(!st) return "";
+  const lvl = st.levels[st.level - 1];
+  const span = st.next ? st.next - lvl.min : 1;
+  const pct = st.next ? Math.round(Math.min(1, (st.total - lvl.min) / span) * 100) : 100;
+  const path = st.levels.map((l, i) => {
+    const state_ = i + 1 < st.level ? "past" : i + 1 === st.level ? "now" : "lock";
+    return `<div class="step-node ${state_}">
+        <div class="dot">${STEP_ICON[l.key]}${state_ === "lock" ? '<span class="lk">🔒</span>' : ""}</div>
+        <div class="nm">${t("step_lvl_" + l.key)}</div>
+        <div class="rg">${l.max === null ? l.min + "+" : `${l.min}–${l.max}`}</div></div>`;
+  }).join('<div class="step-line"></div>');
+  const today = st.today.map(c => `<div class="step-chip ${c.ok ? "ok" : ""}">
+      <div class="ci">${STEP_TODAY_ICON[c.key] || "•"}</div>
+      <div class="grow"><div class="cn">${t("step_" + c.key)}</div>
+        <div class="cv num">${c.done}/${c.total}</div></div>
+      <div class="ck">${c.ok ? icon("check", 14) : ""}</div></div>`).join("");
+  const dots = st.today.map(c => `<i class="${c.ok ? "on" : ""}"></i>`).join("");
+  return `<div class="steps">
+      <div class="steps-top">
+        <div class="grow"><div class="steps-title">🚩 ${t("steps_title")}</div>
+          <div class="t2 small">${t("steps_motto")}</div></div>
+        ${st.freeze ? `<div class="freeze" title="${t("steps_freeze")}">❄️ ${st.freeze}</div>` : ""}
+      </div>
+      <div class="steps-level">
+        <div class="badge">${STEP_ICON[lvl.key]}</div>
+        <div class="grow">
+          <div class="ln">${t("step_lvl_" + lvl.key)}</div>
+          <div class="t3 tiny">${t("steps_level_n", {n: st.level})}</div>
+          <div class="sbar"><i style="width:${pct}%"></i></div>
+          <div class="t3 tiny num">${st.next ? `${st.total} / ${st.next}` : st.total}</div>
+        </div>
+        <div class="total"><div class="t3 tiny">${t("steps_total")}</div>
+          <div class="tv num">${st.total}</div></div>
+      </div>
+      <div class="steps-sub">${t("steps_path")}</div>
+      <div class="steps-path">${path}</div>
+      <div class="steps-sub row"><span class="grow">${t("steps_today")}</span>
+        <span class="t2 small num">${t("today")} ${st.today_done}/${st.today.length}</span>
+        <span class="sdots">${dots}</span></div>
+      <div class="steps-today">${today}</div>
+      <button class="btn steps-go" data-act="nav" data-screen="tracker">${t("steps_go")} →</button>
+    </div>`;
+}
+
 function progressCard(){
   const p = state.progress;
   if(!p) return "";
@@ -6347,15 +6476,53 @@ function confirmSheet(action, id, label){
 /* Five productivity screens, then Money on its own, after a hairline: what
    somebody spends is not part of how their day went, and nothing on the
    first five reads from it. */
+/* Four places, one tap each. Kundalik holds Habits and Tasks, Profil holds
+   Statistics, the team and settings; inside them a switch at the top moves
+   between the two, and the bar below stays put — leaving is always one tap. */
 const NAV = [
-  {id:"home",   icon:"home",     key:"nav_home"},
-  {id:"habits", icon:"check",    key:"habits"},
-  {id:"tasks",  icon:"list",     key:"tasks"},
-  {id:"stats",  icon:"chart",    key:"nav_stats"},
-  {id:"more",   icon:"dots",     key:"more"},
+  {id:"home",    icon:"home",   key:"nav_home"},
+  {id:"tracker", icon:"check",  key:"nav_tracker"},
+  {id:"money",   icon:"wallet", key:"nav_money"},
+  {id:"profile", icon:"user",   key:"nav_profile"},
 ];
-//: A project opens from Tasks, so the Tasks tab stays lit while inside one.
-const NAV_OF = {project:"tasks", team:"more", money:"more"};
+//: Which tab stays lit for each screen. A project opens from Tasks.
+const NAV_OF = {habits:"tracker", tasks:"tracker", project:"tracker",
+                stats:"profile", team:"profile", more:"profile"};
+//: A tab opens where the person last was inside it.
+function navTarget(id){
+  if(id === "tracker") return state.trackerLast || "habits";
+  if(id === "profile") return state.profileLast || "stats";
+  return id;
+}
+/* Which header parts the floating + replaces: in Habits and Tasks (except
+   Projects, whose + adds a project) and in Money the header + is hidden, so
+   there is one + on the screen, never two. */
+function screenClass(){
+  const sc = state.screen;
+  const grouped = ["habits", "tasks", "stats", "team"].includes(sc);
+  const nohead = (sc === "habits" && state.tab === "habits") || (sc === "tasks" && state.taskTab !== "projects");
+  return [grouped ? "grouped" : "", nohead ? "nohead" : "", "screen-" + sc].join(" ");
+}
+/* The switch at the top of a two-screen tab. */
+function groupBar(screen){
+  const seg = (items, cur) => `<div class="seg big groupseg">${items.map(([id, key]) =>
+    `<div class="${cur === id ? "on" : ""}" data-act="nav" data-screen="${id}">${t(key)}</div>`).join("")}</div>`;
+  if(screen === "habits" || screen === "tasks")
+    return seg([["habits", "habits"], ["tasks", "tasks"]], screen);
+  if(screen === "stats" || screen === "team"){
+    const me = state.me || {};
+    const name = esc(me.first_name || me.name || "");
+    return `<div class="profile-head">
+        <div class="avatar">${tg?.initDataUnsafe?.user?.photo_url
+          ? `<img src="${esc(tg.initDataUnsafe.user.photo_url)}" alt="" />`
+          : esc((name || "?").slice(0, 1).toUpperCase())}</div>
+        <div class="grow"><div class="pname">${name}</div>
+          <div class="t3 tiny">${t("nav_profile")}</div></div>
+        <button class="iconbtn" data-act="settings" aria-label="${t("settings")}">${icon("settings", 22)}</button>
+      </div>` + seg([["stats", "nav_stats"], ["team", "team"]], screen);
+  }
+  return "";
+}
 
 const offerKey = () => `ernestos-presets-offer-v1-${state.me?.telegram_id || "anon"}`;
 function presetsOffer(d){
@@ -6476,9 +6643,10 @@ function render(){
   else if(state.error)      app.innerHTML = errorScreen();
   else if(state.loading)    app.innerHTML = `<div class="spin"></div>`;
   else app.innerHTML = readOnlyBanner() + (state.screen === "home" ? trialBanner() : "")
+    + groupBar(state.screen)
     + (state.screenError ? `<div class="empty">${esc(state.screenError)}
       <button class="btn secondary" data-act="retry-screen">${t("retry_screen")}</button></div>`
-      : (SCREENS[state.screen] || SCREENS.home)());
+      : `<div class="${screenClass()}">${(SCREENS[state.screen] || SCREENS.home)()}</div>`);
 
   const chromeOff = Boolean(state.blocked || state.error || state.loading
                             || state.needsSetup);
@@ -6490,6 +6658,12 @@ function render(){
             class="${active === n.id ? "on" : ""} ${n.apart ? "apart" : ""}"
             aria-current="${active === n.id ? "page" : "false"}">
       <span class="ic">${icon(n.icon, 21)}</span><span>${t(n.key)}</span></button>`).join("");
+  /* + types it, the microphone says it. Both one tap, on every main screen. */
+  document.getElementById("fab").innerHTML = chromeOff ? "" : `
+    ${state.me?.agent?.available && state.screen !== "money" ? `<button class="fab-mic" data-act="agent-open"
+        aria-label="${t("quick_voice")}">${icon("mic", 22)}</button>` : ""}
+    <button class="fab-add" data-act="${state.screen === "money" ? "money-add" : "quick-add"}"
+        aria-label="${t(state.screen === "money" ? "money_add" : "quick_add")}">${icon("plus", 30)}</button>`;
 
   syncShell();
   syncBackButton();
@@ -6503,7 +6677,9 @@ function syncShell(){
   const root = document.documentElement;
   const navH = nav.offsetHeight || 60;
   root.style.setProperty("--nav-h", navH + "px");
-  root.style.setProperty("--shell-b", navH + "px");
+  // Room under the last row for the + and microphone buttons.
+  const fab = document.getElementById("fab");
+  root.style.setProperty("--shell-b", navH + (fab && fab.innerHTML.trim() ? 84 : 0) + "px");
 }
 
 /* ==================================================================
@@ -6626,6 +6802,8 @@ async function loadStats(period){
 
 function goto(screen, patch){
   haptic();
+  if(screen === "habits" || screen === "tasks") state.trackerLast = screen;
+  if(screen === "stats" || screen === "team") state.profileLast = screen;
   setState({screen, error:null, screenError:null, reorderMode:false, ...(patch || {})});
   loadScreen(screen);
 }
@@ -6762,7 +6940,7 @@ const A = {
     if(name && tg?.openTelegramLink) tg.openTelegramLink(`https://t.me/${name}?start=agent`);
     else tg?.close?.();
   },
-  nav: el => goto(el.dataset.screen),
+  nav: el => goto(navTarget(el.dataset.screen)),
   reload: () => { setState({error:null, loading:true}); boot(); },
   tab: el => { haptic(); setState({tab:el.dataset.tab, reorderMode:false}); },
   "go-tab": el => goto("habits", {tab:el.dataset.tab}),
@@ -6796,21 +6974,29 @@ const A = {
       chip.classList.toggle("on", chip.dataset.value === state.dest);
   },
 
-  "quick-add": () => { haptic(); state.dest = "personal"; openSheet(`
-    <h3>${icon("plus", 18)} ${t("quick_add")}</h3>
-    <input id="quick-title" placeholder="${t("quick_ph")}" autofocus enterkeyhint="done" />
-    <div class="hint" style="margin-top:6px">${t("quick_hint")}</div>
-    ${destPicker()}
-    <button class="btn" data-act="quick-save" style="margin-top:12px">
-      ${t("save")}</button>
-    ${state.me?.agent?.available ? `<button class="btn secondary" data-act="agent-open" style="margin-top:8px">
-      🎙 ${t("quick_voice")}</button>` : ""}
-    <button class="btn secondary" data-act="close" style="margin-top:8px">
-      ${t("cancel")}</button>`);
+  /* The one "+": a line of text, and whether it is a task or a habit. Tasks
+     read the date and time out of the text ("ertaga soat 10 da …") and money
+     goes to the money check; a habit is just its name, daily. Three taps:
+     +, type, save — or Enter. */
+  "quick-add": () => { haptic(); state.dest = "personal";
+    state.quickType = state.screen === "habits" ? "habit" : (state.quickType || "task");
+    openSheet(quickSheet());
     setTimeout(() => document.getElementById("quick-title")?.focus(), 60); },
+  "quick-type": el => {
+    haptic();
+    const typed = document.getElementById("quick-title")?.value || "";
+    state.quickType = el.dataset.value;
+    openSheet(quickSheet());
+    const input = document.getElementById("quick-title");
+    if(input){ input.value = typed; input.focus(); }
+  },
   "quick-save": () => {
     const title = trimmed("quick-title");
     if(!title) return;
+    if(state.quickType === "habit")
+      return save(() => api("/api/habits", {method:"POST", body:{name:title, category:"target"}}),
+                  state.screen === "habits" ? "habits" : state.screen, false, `${t("quick_habit_saved")}: ${title}`,
+                  {body:{name:title}});
     const dest = destOf();
     if(dest.team)
       return save(() => api(`/api/teams/${dest.id}/tasks`,
