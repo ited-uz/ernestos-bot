@@ -52,7 +52,7 @@ T: dict[str, dict[str, str]] = {
             "<b>Bugun nima qilish kerak</b>\n"
             "1️⃣ Bitta vazifa qo'shing — hozir bajaradigan ishingizni.\n"
             "2️⃣ Bitta odat qo'shing — har kuni takrorlanadiganini.\n"
-            "3️⃣ Kechqurun 📔 Kundalikni to'ldiring.\n\n"
+            "3️⃣ Kechqurun 📔 Kun xulosasini yozing.\n\n"
 
             "Hammasi shu. Ertaga ochganingizda ErnestOS sizga nimadan "
             "boshlashni aytib turadi."
@@ -269,7 +269,7 @@ T: dict[str, dict[str, str]] = {
         "evening_title": "🌙 Kun yakuni",
         "r_habits": "✅ Odatlar", "r_prayer": "🕌 Namoz", "r_tasks": "⚡ Vazifalar",
         "r_completed": "bajarildi", "r_remaining": "qoldi",
-        "r_journal": "📓 Kundalik", "r_yes": "yozilgan", "r_no": "yozilmagan",
+        "r_journal": "📓 Kun xulosasi", "r_yes": "yozilgan", "r_no": "yozilmagan",
         "r_unfinished": "❗ Tugallanmagan:",
         "r_yesterday": "Kecha",
         # Evening: the day against yesterday, in words rather than an arrow.
@@ -432,7 +432,7 @@ T: dict[str, dict[str, str]] = {
             "<b>What to do today</b>\n"
             "1️⃣ Add one task — whatever you are doing next.\n"
             "2️⃣ Add one habit — something you repeat daily.\n"
-            "3️⃣ Fill in the 📔 journal this evening.\n\n"
+            "3️⃣ Write the 📔 day summary this evening.\n\n"
 
             "That is all of it. Tomorrow, ErnestOS tells you where to start."
         ),
@@ -519,7 +519,7 @@ T: dict[str, dict[str, str]] = {
             "30 minutes of reading\n"
             "10,000 steps\n"
             "Two litres of water</i>\n\n"
-            "Waking up, prayer and the journal are already in."),
+            "Waking up, prayer and the day summary are already in."),
         "habits_set": "✅ {n} habits added",
         "day_ready": "🌅 {name}, your day is ready",
         "day_ready_plain": "🌅 Your day is ready",
@@ -636,7 +636,7 @@ T: dict[str, dict[str, str]] = {
         "evening_title": "🌙 End of day",
         "r_habits": "✅ Habits", "r_prayer": "🕌 Prayer", "r_tasks": "⚡ Tasks",
         "r_completed": "completed", "r_remaining": "remaining",
-        "r_journal": "📓 Journal", "r_yes": "written", "r_no": "not written",
+        "r_journal": "📓 Day summary", "r_yes": "written", "r_no": "not written",
         "r_unfinished": "❗ Still unfinished:",
         "r_yesterday": "Yesterday",
         "r_vs_yesterday_up": "<b>+{delta}%</b> on yesterday",
@@ -795,7 +795,7 @@ T: dict[str, dict[str, str]] = {
             "<b>Что сделать сегодня</b>\n"
             "1️⃣ Добавьте одну задачу — то, чем займётесь сейчас.\n"
             "2️⃣ Добавьте одну привычку — то, что повторяете каждый день.\n"
-            "3️⃣ Вечером заполните 📔 дневник.\n\n"
+            "3️⃣ Вечером подведите 📔 итоги дня.\n\n"
 
             "Это всё. Завтра ErnestOS сам подскажет, с чего начать."
         ),
@@ -883,7 +883,7 @@ T: dict[str, dict[str, str]] = {
             "30 минут чтения\n"
             "10 000 шагов\n"
             "Два литра воды</i>\n\n"
-            "Подъём, намаз и дневник уже добавлены."),
+            "Подъём, намаз и итоги дня уже добавлены."),
         "habits_set": "✅ Добавлено привычек: {n}",
         "day_ready": "🌅 {name}, ваш день готов",
         "day_ready_plain": "🌅 Ваш день готов",
@@ -1001,7 +1001,7 @@ T: dict[str, dict[str, str]] = {
         "evening_title": "🌙 Итоги дня",
         "r_habits": "✅ Привычки", "r_prayer": "🕌 Намаз", "r_tasks": "⚡ Задачи",
         "r_completed": "выполнено", "r_remaining": "осталось",
-        "r_journal": "📓 Дневник", "r_yes": "заполнен", "r_no": "не заполнен",
+        "r_journal": "📓 Итоги дня", "r_yes": "заполнен", "r_no": "не заполнен",
         "r_unfinished": "❗ Не завершено:",
         "r_yesterday": "Вчера",
         "r_vs_yesterday_up": "<b>+{delta}%</b> ко вчерашнему",
@@ -1169,7 +1169,7 @@ T["uz"].update({
                     "Faqat tanlaganingiz hisoblanadi. Keyin Sozlamalar → "
                     "🧩 Modullar'dan o'zgartirasiz."),
     "mod_wake": "☀️ Erta turish", "mod_prayer": "🕌 Namoz",
-    "mod_journal": "📔 Kundalik", "mod_team": "👥 Jamoa bilan ishlash",
+    "mod_journal": "📔 Kun xulosasi", "mod_team": "👥 Jamoa bilan ishlash",
     "mod_continue": "Davom etish ➡️",
     "modules_set": "✅ Tanlandi: <b>{list}</b>",
     "modules_none": "hech biri — faqat o'z vazifa va odatlaringiz",
@@ -1309,7 +1309,7 @@ T["en"].update({
                     "Only what you pick is counted. Change it later in Settings → "
                     "🧩 Modules."),
     "mod_wake": "☀️ Early rising", "mod_prayer": "🕌 Prayer",
-    "mod_journal": "📔 Journal", "mod_team": "👥 Working with a team",
+    "mod_journal": "📔 Day summary", "mod_team": "👥 Working with a team",
     "mod_continue": "Continue ➡️",
     "modules_set": "✅ Chosen: <b>{list}</b>",
     "modules_none": "none — just your own tasks and habits",
@@ -1443,7 +1443,7 @@ T["ru"].update({
                     "Считается только выбранное. Изменить можно в Настройки → "
                     "🧩 Модули."),
     "mod_wake": "☀️ Ранний подъём", "mod_prayer": "🕌 Намаз",
-    "mod_journal": "📔 Дневник", "mod_team": "👥 Работа в команде",
+    "mod_journal": "📔 Итоги дня", "mod_team": "👥 Работа в команде",
     "mod_continue": "Дальше ➡️",
     "modules_set": "✅ Выбрано: <b>{list}</b>",
     "modules_none": "ничего — только свои задачи и привычки",

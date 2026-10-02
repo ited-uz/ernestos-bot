@@ -1076,10 +1076,10 @@ def test_the_mini_app_navigation_is_four_places():
         ["home", "tracker", "money", "profile"]
     group = html[html.index("function groupBar(screen){"):html.index("const offerKey")]
     assert '[["habits", "habits"], ["tasks", "tasks"]]' in group
-    assert '[["stats", "nav_stats"], ["team", "team"]]' in group
+    assert '[["steps", "nav_steps"], ["stats", "nav_stats"], ["team", "team"]]' in group
     assert 'data-act="settings"' in group, "settings one tap from Profil"
     nav_of = html[html.index("const NAV_OF"):html.index("function navTarget(")]
-    for screen in ("habits", "tasks", "project", "stats", "team"):
+    for screen in ("habits", "tasks", "project", "steps", "stats", "team"):
         assert screen + ":" in nav_of
 
 
@@ -1546,8 +1546,10 @@ def test_bot_home_and_mini_app_home_show_the_same_now_and_counts(alice):
     home = alice.get("/api/home").json()
     assert "now" in home and "counts" in home
     assert set(home["counts"]) == {"tasks", "habits", "team", "prayer"}
-    for gone in ("overall", "mission", "focus", "birthdays", "week"):
+    for gone in ("overall", "mission", "birthdays", "week"):
         assert gone not in home, f"Home still computes {gone}"
+    # v12.2: the week goal is on Home on purpose — seen every day.
+    assert "focus" in home
     with SessionLocal() as s:
         ws = svc.workspace_id_for(s, ALICE["id"])
         data = svc.home(s, ws, s.get(User, ALICE["id"]))
@@ -4397,7 +4399,11 @@ def test_home_answers_now_then_counts_then_today():
     assert "const WEIGHTS = {tasks:40, habits:25, team:20, prayer:15};" in html
     stats = html[html.index("SCREENS.stats = () => {"):]
     # Tiles show the score; the weights are one tap away, behind (i).
-    assert "d.weights?.[key]" in stats and "progressCard()" in stats
+    assert "d.weights?.[key]" in stats
+    # One level system: Qadam. No XP level card on Statistics any more.
+    assert "progressCard" not in html and "plevel_" not in html[html.index("function progressSheet("):]
+    steps = html[html.index("SCREENS.steps = () => {"):html.index("function progressSheet(")]
+    assert "p.streak" in steps and "rank.global" in steps and 'data-act="progress-open"' in steps
 
 
 def test_the_week_goal_lives_on_tasks_and_mission_is_never_said():
@@ -4660,7 +4666,7 @@ def test_the_floating_add_never_covers_the_page():
     assert 'id="fab"' in html and "#fab:empty{display:none}" in html
     render = html[html.index('document.getElementById("fab").innerHTML'):]
     assert render.split("\n")[0].strip().endswith('chromeOff ? "" : `'), "fab drawn while loading"
-    assert '"quick-add"' in render[:700] and 'data-act="agent-open"' in render[:700]
+    assert '"quick-add"' in render[:700] and 'data-act="voice-start"' in render[:700]
     assert '"money-add"' in render[:700], "on Money the + adds money"
     assert "fab && fab.innerHTML.trim() ? 84 : 0" in html, "page not padded for the fab"
     assert "body:has(#sheet.show) #fab" in html
@@ -10447,7 +10453,7 @@ def test_migration_0013_localizes_existing_rituals_once():
     migrations.m0013_localize_rituals()  # idempotent
     with SessionLocal() as s:
         names = {h["system_key"]: h["name"] for h in svc.list_habits(s, ws) if h["system_key"]}
-    assert names["wakeup"] == "Wake up early" and names["journal"] == "Journal"
+    assert names["wakeup"] == "Wake up early" and names["journal"] == "Day summary"
 
 
 def test_numbers_that_are_not_times_stay_in_the_title():
@@ -10476,3 +10482,59 @@ def test_steps_count_good_things_done_and_climb_levels(fresh):
     assert today["tasks"]["ok"] and today["habits"]["ok"]
     assert steps["today_done"] >= 2 and steps["total"] >= 2
     assert steps["freeze"] >= 0 and len(steps["levels"]) == 5
+
+
+def test_debts_record_close_partly_and_stay_out_of_the_balance(fresh, client):
+    """Qarzlar: who owes whom, apart from the balance; one tap closes one."""
+    due = (svc.today_local() + timedelta(days=7)).isoformat()
+    lent = fresh.post("/api/debts", {"person": " Aziz  ", "amount": 200000, "direction": "lent",
+                                     "due": due}).json()
+    assert lent["person"] == "Aziz" and lent["due"] == due and not lent["settled"]
+    fresh.post("/api/debts", {"person": "Akam", "amount": 1500000, "direction": "borrowed"})
+    money = fresh.get("/api/money").json()
+    assert money["balance"] == 0, "a loan is not spending"
+    d = money["debts"]
+    assert (d["owed_to_me"], d["i_owe"], len(d["open"])) == (200000, 1500000, 2)
+    # Part of it came back: that much comes off, the debt stays open.
+    part = fresh.post(f'/api/debts/{lent["id"]}/settle', {"settled": True, "paid": 50000}).json()
+    assert part["amount"] == 150000 and not part["settled"]
+    closed = fresh.post(f'/api/debts/{lent["id"]}/settle', {"settled": True}).json()
+    assert closed["settled"]
+    d = fresh.get("/api/debts").json()
+    assert d["owed_to_me"] == 0 and [x["person"] for x in d["settled"]] == ["Aziz"]
+    assert fresh.post(f'/api/debts/{lent["id"]}/settle', {"settled": False}).json()["settled"] is False
+    assert fresh.delete(f'/api/debts/{lent["id"]}').status_code == 200
+    assert [x["person"] for x in fresh.get("/api/debts").json()["open"]] == ["Akam"]
+
+
+def test_debts_are_private_and_validated(fresh, client):
+    other = Caller(client, {"id": next(_next_id), "first_name": "Other"})
+    mine = fresh.post("/api/debts", {"person": "Aziz", "amount": 1000, "direction": "lent"}).json()
+    assert other.post(f'/api/debts/{mine["id"]}/settle', {"settled": True}).status_code == 404
+    assert other.delete(f'/api/debts/{mine["id"]}').status_code == 404
+    assert other.get("/api/debts").json()["open"] == []
+    assert fresh.post("/api/debts", {"person": "A", "amount": 0, "direction": "lent"}).status_code == 422
+    assert fresh.post("/api/debts", {"person": "A", "amount": 5, "direction": "gift"}).status_code == 422
+    assert fresh.post("/api/debts", {"person": "   ", "amount": 5, "direction": "lent"}).status_code == 422
+
+
+def test_overdue_debt_is_flagged(fresh):
+    uid = fresh.user["id"]
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        svc.add_debt(s, ws, "Vali", 10000, "lent", due=svc.today_local() - timedelta(days=1))
+        d = svc.debts_overview(s, ws)
+    assert d["overdue"] == 1 and d["open"][0]["overdue"] is True
+
+
+def test_steps_read_today_live_without_a_stored_score(fresh):
+    """The first open of the day shows real counts, not 0/0."""
+    uid = fresh.user["id"]
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        svc.add_task(s, ws, "Hisobot", deadline=svc.today_local())
+        svc.add_task(s, ws, "Qo'ng'iroq", deadline=svc.today_local())
+        s.commit()
+        assert s.scalar(select(db.DailyScore).where(db.DailyScore.user_id == uid)) is None
+    tasks = fresh.get("/api/progress/me").json()["steps"]["today"][0]
+    assert tasks == {"key": "tasks", "done": 0, "total": 2, "ok": False}

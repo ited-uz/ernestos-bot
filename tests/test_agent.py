@@ -604,7 +604,8 @@ def test_elevenlabs_scribe_is_first_with_language_and_user_names(monkeypatch):
     assert (path, service) == ("/speech-to-text", "elevenlabs") and len(sent) == 1
     assert form["model_id"] == "scribe_v2" and form["language_code"] == "uz"
     assert form["tag_audio_events"] == "false" and form["no_verbatim"] == "true"
-    assert form["keyterms"] == ["Savdo jamoasi", "Abdulvosid bilan uchrashuv"]
+    assert form["keyterms"][:2] == ["Savdo jamoasi", "Abdulvosid bilan uchrashuv"], "own names first"
+    assert "turnik" in form["keyterms"] and "tortilish" in form["keyterms"], "everyday words follow"
 
 
 @pytest.mark.parametrize("code", ["provider_limit", "provider_unavailable"])
@@ -745,3 +746,138 @@ def test_card_reads_like_a_person_wrote_it():
 def test_understood_in_another_language_is_not_shown(person, monkeypatch):
     draft = capture(person, monkeypatch, plan(action(title="Hisobot"), understood="Завтра отчёт"))
     assert "Завтра" not in draft["preview"]
+
+
+# --- Mini App agent API: speak/type → card → Confirm / Cancel ------------------
+
+def test_mini_app_agent_text_card_confirm(person, client, monkeypatch):
+    caller, uid, ws = person
+    assert client.post("/api/agent/text", json={"text": "x", "request_key": uuid.uuid4().hex}).status_code == 401
+    me = caller.get("/api/me").json()["agent"]
+    assert me["available"] and me["consent"]
+    monkeypatch.setattr(provider, "plan", AsyncMock(return_value=plan(action(title="Hisobot"), understood="Hisobot tayyorlash")))
+    r = caller.post("/api/agent/text", {"text": "hisobot", "request_key": uuid.uuid4().hex})
+    assert r.status_code == 200, r.text
+    draft = r.json()
+    assert draft["status"] == "ready" and "<b>Hisobot</b>" in draft["preview"]
+    assert count(db.Task, ws) == 0, "nothing before Confirm"
+    done = caller.post(f'/api/agent/drafts/{draft["id"]}/confirm', {"revision": 1}).json()
+    assert done["status"] == "executed" and count(db.Task, ws) == 1
+    again = caller.post(f'/api/agent/drafts/{draft["id"]}/confirm', {"revision": 1}).json()
+    assert again["status"] == "executed" and count(db.Task, ws) == 1, "double tap adds once"
+
+
+def test_mini_app_agent_cancel_and_consent(person, client, monkeypatch):
+    caller, uid, ws = person
+    core.consent(ws, False)
+    blocked = caller.post("/api/agent/text", {"text": "hisobot", "request_key": uuid.uuid4().hex})
+    assert blocked.status_code == 403
+    assert caller.post("/api/agent/consent").json()["consent"] is True
+    monkeypatch.setattr(provider, "plan", AsyncMock(return_value=plan(action(title="Hisobot"))))
+    draft = caller.post("/api/agent/text", {"text": "hisobot", "request_key": uuid.uuid4().hex}).json()
+    gone = caller.post(f'/api/agent/drafts/{draft["id"]}/cancel', {"revision": 1}).json()
+    assert gone["status"] == "cancelled" and count(db.Task, ws) == 0
+
+
+def test_mini_app_audio_is_streamed_and_bounded(person, client, monkeypatch):
+    caller, _, _ = person
+    monkeypatch.setattr(config, "AGENT_AUDIO_BYTES", 5)
+    def chunks():
+        yield b"OggS"
+        yield b"123456789"
+    r = client.post("/api/agent/audio", headers={**caller.h, "Content-Type": "audio/webm",
+                    "X-Agent-Request-Key": uuid.uuid4().hex}, content=chunks())
+    assert r.status_code == 413
+
+
+def test_mini_app_audio_goes_through_the_same_pipeline(person, client, monkeypatch):
+    caller, _, ws = person
+    monkeypatch.setattr(provider, "transcribe", AsyncMock(return_value="ovqatga 5 ming"))
+    monkeypatch.setattr(provider, "plan", AsyncMock(return_value=plan(action("money", amount=5000, kind="expense", category="food"))))
+    r = client.post("/api/agent/audio", headers={**caller.h, "Content-Type": "audio/webm",
+                    "X-Agent-Request-Key": uuid.uuid4().hex}, content=b"\x1aE\xdf\xa3voice")
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "ready" and "5 000 so‘m" in r.json()["preview"]
+
+
+def journal_fill(**answers):
+    return provider.JournalFill(**{k: answers.get(k) for k in svc.JOURNAL_KEYS})
+
+
+def test_journal_ai_sorts_text_into_answers_and_saves_nothing(person, client, monkeypatch):
+    caller, _, ws = person
+    seen = {}
+    async def fake(text, lang):
+        seen.update(text=text, lang=lang)
+        return journal_fill(wins="Mijoz bilan shartnoma yopdim.", gratitude="Onamga rahmat aytaman.",
+                            problem="Ничего", lesson=None, tomorrow="Ertaga hisobotni tugataman.")
+    monkeypatch.setattr(provider, "journal_answers", fake)
+    r = caller.post("/api/agent/journal/text", {"text": "bugun mijoz bilan shartnoma yopdim onamga rahmat"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert seen == {"text": "bugun mijoz bilan shartnoma yopdim onamga rahmat", "lang": "uz"}
+    # Wrong script is dropped, nothing invented for the empty question.
+    assert body["answers"] == {"wins": "Mijoz bilan shartnoma yopdim.", "gratitude": "Onamga rahmat aytaman.",
+                               "tomorrow": "Ertaga hisobotni tugataman."}
+    assert body["filled"] == 3
+    assert count(db.JournalEntry, ws) == 0, "the person reviews and saves"
+
+
+def test_journal_ai_needs_consent_and_counts_the_budget(person, monkeypatch):
+    caller, _, ws = person
+    monkeypatch.setattr(provider, "journal_answers", AsyncMock(return_value=journal_fill(wins="Yugurdim.")))
+    monkeypatch.setattr(config, "AGENT_DAILY_REQUESTS", 1)
+    assert caller.post("/api/agent/journal/text", {"text": "yugurdim"}).status_code == 200
+    assert caller.post("/api/agent/journal/text", {"text": "yugurdim"}).status_code == 429
+    core.consent(ws, False)
+    assert caller.post("/api/agent/journal/text", {"text": "yugurdim"}).status_code == 403
+
+
+def test_journal_ai_voice_transcribes_in_the_profile_language(person, client, monkeypatch):
+    caller, _, _ = person
+    heard = {}
+    async def transcribe(data, mime, context):
+        heard.update(context)
+        return "bugun 5 km yugurdim"
+    monkeypatch.setattr(provider, "transcribe", transcribe)
+    monkeypatch.setattr(provider, "journal_answers", AsyncMock(return_value=journal_fill(wins="Bugun 5 km yugurdim.")))
+    r = client.post("/api/agent/journal/audio", headers={**caller.h, "Content-Type": "audio/webm"},
+                    content=b"\x1aE\xdf\xa3voice")
+    assert r.status_code == 200, r.text
+    assert r.json()["answers"] == {"wins": "Bugun 5 km yugurdim."}
+    assert heard["language"] == "uz"
+
+
+def test_journal_ai_wire_is_strict_json_with_the_five_questions(monkeypatch):
+    sent = {}
+    async def fake_request(path, service="groq", **kwargs):
+        sent.update(kwargs["json"])
+        content = json.dumps({"wins": "A", "gratitude": None, "problem": None, "lesson": None, "tomorrow": "B"})
+        return {"choices": [{"finish_reason": "stop", "message": {"content": content}}]}
+    monkeypatch.setattr(provider, "request", fake_request)
+    filled = asyncio.run(provider.journal_answers("salom", "uz"))
+    assert filled.wins == "A" and filled.tomorrow == "B" and filled.lesson is None
+    schema = sent["response_format"]["json_schema"]
+    assert schema["strict"] and set(schema["schema"]["required"]) == set(svc.JOURNAL_KEYS)
+    assert "Never invent" in sent["messages"][0]["content"]
+    assert json.loads(sent["messages"][1]["content"]) == {"language": "uz", "text": "salom"}
+
+
+def test_agent_records_a_debt_not_an_expense(person, monkeypatch):
+    caller, uid, ws = person
+    debt = action("debt", person="Aziz", amount=200000, direction="lent", deadline="2026-10-09")
+    draft = capture(person, monkeypatch, plan(debt), text="Azizga 200 ming qarz berdim")
+    assert draft["status"] == "ready", draft
+    assert "🤝 Qarz berdingiz" in draft["preview"] and "<b>Aziz</b> — 200 000 so‘m" in draft["preview"]
+    core.confirm(uid, ws, draft["id"], draft["revision"])
+    d = caller.get("/api/debts").json()
+    assert d["owed_to_me"] == 200000 and d["open"][0]["due"] == "2026-10-09"
+    assert count(db.MoneyEntry, ws) == 0
+
+
+def test_agent_cannot_edit_or_share_a_debt(person, monkeypatch):
+    for bad in (action("debt", operation="update", target_id=1, amount=5),
+                action("debt", scope="team", team_id=1, person="A", amount=5, direction="lent"),
+                action("debt", amount=5, direction="lent")):
+        draft = capture(person, monkeypatch, plan(bad))
+        assert draft["status"] == "failed", bad

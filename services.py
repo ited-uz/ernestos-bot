@@ -38,7 +38,7 @@ from db import (
     AgentAudit, AgentDraft, AgentPreference,
     Birthday, Countdown, DailyReportLog, DailyScore, Feedback, Habit, HabitLog,
     HabitPauseInterval, HabitScheduleVersion, IdempotencyKey, JobRun,
-    JournalEntry, MoneyBudget, MoneyEntry, PrayerDay, PrayerLog, Project,
+    Debt, JournalEntry, MoneyBudget, MoneyEntry, PrayerDay, PrayerLog, Project,
     Referral, ReferralCode, Task,
     Team, TeamActivity, TeamDayScore, TeamHabit, TeamHabitLog, TeamJoinRequest,
     TeamMember, TeamTask, TeamTaskDone, TimerRun, User, UserAchievement,
@@ -264,7 +264,7 @@ DEFAULT_HABITS = [
 SYSTEM_HABIT_NAMES = {
     "wakeup": {"uz": "Erta turish", "en": "Wake up early", "ru": "Ранний подъём"},
     "prayer": {"uz": "5 vaqt namoz", "en": "5 daily prayers", "ru": "5 намазов"},
-    "journal": {"uz": "Kundalik", "en": "Journal", "ru": "Дневник"},
+    "journal": {"uz": "Kun xulosasi", "en": "Day summary", "ru": "Итоги дня"},
 }
 
 SYSTEM_PRAYER = "prayer"
@@ -473,6 +473,10 @@ def set_modules(s: Session, ws: int, chosen, *, user: User | None = None) -> dic
     return modules_for(s, ws)
 
 
+#: Stock names from before v12.2, still renamed when someone never changed them.
+LEGACY_RITUAL_NAMES = {"kundalik", "journal", "дневник"}
+
+
 def localize_system_habits(s: Session, ws: int, lang: str) -> None:
     """Rename the rituals to `lang`, unless the person gave one its own name.
 
@@ -481,6 +485,7 @@ def localize_system_habits(s: Session, ws: int, lang: str) -> None:
     """
     stock = {name.casefold() for names in SYSTEM_HABIT_NAMES.values() for name in names.values()}
     stock |= {name.casefold() for name, _c, _k in DEFAULT_HABITS}
+    stock |= LEGACY_RITUAL_NAMES
     for habit in s.scalars(select(Habit).where(Habit.workspace_id == ws,
                                                Habit.system_key.in_(list(SYSTEM_HABIT_NAMES)))):
         if habit.name.strip().casefold() in stock:
@@ -3152,7 +3157,78 @@ def money_overview(s: Session, ws: int, *, month: date | None = None,
             "category_ids": MONEY_CATEGORY_IDS,
             "kinds": {c[0]: c[4] for c in MONEY_CATEGORIES},
             "icons": {c[0]: c[1] for c in MONEY_CATEGORIES},
-            "colors": {c[0]: c[2] for c in MONEY_CATEGORIES}}
+            "colors": {c[0]: c[2] for c in MONEY_CATEGORIES},
+            "debts": debts_overview(s, ws, tz=tz)}
+
+
+# ---------------------------------------------------------------------------
+# Debts — who owes whom. Separate from the balance; settled ones stay as history.
+# ---------------------------------------------------------------------------
+
+DEBT_DIRECTIONS = ("lent", "borrowed")
+
+
+def _debt_dict(row: Debt, today: date | None = None) -> dict:
+    return {"id": row.id, "person": row.person, "amount": int(row.amount),
+            "direction": row.direction, "note": row.note or "",
+            "due": row.due.isoformat() if row.due else None,
+            "overdue": bool(today and row.due and not row.settled_at and row.due < today),
+            "settled": row.settled_at is not None,
+            "created_at": (row.created_at.replace(tzinfo=_utc.utc).isoformat()
+                           if row.created_at else None)}
+
+
+def add_debt(s: Session, ws: int, person: str, amount, direction: str, *,
+             note: str = "", due: date | None = None) -> dict:
+    person = " ".join(str(person or "").split())[:80]
+    if not person:
+        raise ValueError("bad_person")
+    if direction not in DEBT_DIRECTIONS:
+        raise ValueError("bad_direction")
+    row = Debt(workspace_id=ws, person=person, amount=clean_money_amount(amount),
+               direction=direction, note=str(note or "").strip()[:200], due=due)
+    s.add(row)
+    s.commit()
+    return _debt_dict(row)
+
+
+def _own_debt(s: Session, ws: int, debt_id: int) -> Debt:
+    row = s.get(Debt, debt_id)
+    if row is None or row.workspace_id != ws:
+        raise NotFound("debt")
+    return row
+
+
+def settle_debt(s: Session, ws: int, debt_id: int, settled: bool = True,
+                paid: int | None = None) -> dict:
+    """Mark returned — or, with `paid` less than the amount, take that much off."""
+    row = _own_debt(s, ws, debt_id)
+    if settled and paid is not None and 0 < paid < row.amount:
+        row.amount = int(row.amount) - clean_money_amount(paid)
+    else:
+        row.settled_at = utcnow() if settled else None
+    s.commit()
+    return _debt_dict(row)
+
+
+def delete_debt(s: Session, ws: int, debt_id: int) -> None:
+    s.delete(_own_debt(s, ws, debt_id))
+    s.commit()
+
+
+def debts_overview(s: Session, ws: int, *, tz: ZoneInfo | None = None) -> dict:
+    """Open debts, biggest first per side, the two totals, and recent history."""
+    today = today_local(tz or _habit_tz(s, ws))
+    rows = s.scalars(select(Debt).where(Debt.workspace_id == ws, Debt.settled_at.is_(None))
+                     .order_by(Debt.due.is_(None), Debt.due, Debt.id.desc())).all()
+    settled = s.scalars(select(Debt).where(Debt.workspace_id == ws, Debt.settled_at.is_not(None))
+                        .order_by(Debt.settled_at.desc()).limit(20)).all()
+    owed_to_me = sum(int(r.amount) for r in rows if r.direction == "lent")
+    i_owe = sum(int(r.amount) for r in rows if r.direction == "borrowed")
+    return {"open": [_debt_dict(r, today) for r in rows],
+            "settled": [_debt_dict(r) for r in settled],
+            "owed_to_me": owed_to_me, "i_owe": i_owe,
+            "overdue": sum(1 for r in rows if r.due and r.due < today)}
 
 
 # ---------------------------------------------------------------------------
@@ -4302,6 +4378,8 @@ def home(s: Session, ws: int, user: User) -> dict:
         "counts": home_counts(s, ws, user, today, habits=(done, total),
                               prayer=prayer),
         "now": now_next(s, ws, user, tz=tz),
+        # The week's one goal, on Home so it is seen every day (v12.2).
+        "focus": primary_focus(s, ws, today, tz=tz),
         "wake": wake_state(s, ws, tz=tz),
         "top3": top3,
         "top3_max": MAX_TOP3,
@@ -4427,6 +4505,8 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
                                .where(MoneyEntry.workspace_id == ws)
                                .order_by(MoneyEntry.day, MoneyEntry.id)).all()],
         "money_budgets": money_budgets(s, ws),
+        "debts": [_debt_dict(r) for r in s.scalars(select(Debt).where(Debt.workspace_id == ws)
+                                                    .order_by(Debt.id)).all()],
         "agent_inbox": [
             {"id": r.id, "status": r.status, "revision": r.revision,
              "transcript": r.transcript, "language": r.detected_language, "history": json.loads(r.history),
@@ -4453,7 +4533,7 @@ WORKSPACE_TABLES = [AgentAudit, AgentDraft, AgentPreference,
                     TimerRun, HabitLog, HabitScheduleVersion, HabitPauseInterval,
                     Habit, PrayerLog, PrayerDay, Task,
                     Project, WeeklyFocus, WeeklyReview, JournalEntry, Birthday,
-                    Countdown, Feedback, DailyReportLog, MoneyEntry, MoneyBudget]
+                    Countdown, Feedback, DailyReportLog, MoneyEntry, MoneyBudget, Debt]
 
 
 def wipe_workspace(s: Session, telegram_id: int) -> bool:
@@ -5480,7 +5560,6 @@ def steps_snapshot(s: Session, user_id: int, ws: int, *, tz: ZoneInfo | None = N
     today = today_local(zone)
     modules = modules_for(s, ws)
     rows = s.scalars(select(DailyScore).where(DailyScore.user_id == user_id)).all()
-    today_row = next((r for r in rows if r.day == today), None)
 
     def wrote(entry) -> bool:
         return bool(entry and ((entry.text or "").strip() or (entry.answers or "{}") not in ("{}", "")))
@@ -5489,17 +5568,22 @@ def steps_snapshot(s: Session, user_id: int, ws: int, *, tz: ZoneInfo | None = N
     goals = s.scalars(select(WeeklyFocus).where(WeeklyFocus.workspace_id == ws)).all()
     week_goals = [g for g in goals if g.week_start == week_start(today)]
 
+    # Today is read live: its stored snapshot is only written when a score is
+    # computed, and the first open of the day would otherwise show 0/0.
+    tasks_done, tasks_total = today_task_progress(s, ws, today, tz=zone, include_team=False)
+    habits_done, habits_total = habit_progress(s, ws, today, include_team=False)
+    prayed = prayer_state(s, ws, today, getattr(s.get(User, user_id), "gender", None))["performed"]
     total = sum(((r.tasks_done or 0) > 0) + ((r.habits_done or 0) > 0) + ((r.prayer_performed or 0) > 0)
-                for r in rows)
+                for r in rows if r.day != today)
+    total += (tasks_done > 0) + (habits_done > 0) + (prayed > 0)
     total += len({e.day for e in journal_days}) + sum(1 for g in goals if g.done)
 
-    tr = today_row
     checks = [
-        {"key": "tasks", "done": (tr.tasks_done or 0) if tr else 0, "total": (tr.tasks_total or 0) if tr else 0},
-        {"key": "habits", "done": (tr.habits_done or 0) if tr else 0, "total": (tr.habits_total or 0) if tr else 0},
+        {"key": "tasks", "done": tasks_done, "total": tasks_total},
+        {"key": "habits", "done": habits_done, "total": habits_total},
     ]
     if modules.get("prayer"):
-        checks.append({"key": "prayer", "done": (tr.prayer_performed or 0) if tr else 0, "total": 5})
+        checks.append({"key": "prayer", "done": prayed, "total": 5})
     if modules.get("journal"):
         checks.append({"key": "journal", "done": int(any(e.day == today for e in journal_days)), "total": 1})
     checks.append({"key": "goal", "done": sum(1 for g in week_goals if g.done), "total": len(week_goals) or 1})

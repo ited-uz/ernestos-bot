@@ -345,3 +345,36 @@ def cancel(ws, draft_id, revision):
         _audit(s, row, "cancelled")
         s.commit()
         return public(row)
+
+
+async def journal_fill(uid, ws, *, text="", audio=None, mime=None):
+    """Voice or free text -> the five day-summary answers, for the user to review.
+
+    Nothing is saved here: the app fills the five fields and the person saves.
+    Counts against the same daily budget as the agent.
+    """
+    import agent_provider
+    with db.SessionLocal() as s:
+        _budget(s, uid, ws)
+        lang = s.get(db.User, uid).language or "uz"
+        s.commit()
+    try:
+        async with asyncio.timeout(150):
+            if audio is not None:
+                context = {"language": lang, "items": [], "teams": []}
+                text = await agent_provider.transcribe(audio, mime, context)
+            text = (text or "").strip()
+            if not text or len(text) > 6000:
+                raise AgentError("empty_audio", 422)
+            filled = await agent_provider.journal_answers(text, lang)
+    except (TimeoutError, asyncio.CancelledError):
+        raise AgentError("processing_interrupted", 503) from None
+    except (ValidationError, ValueError, TypeError, KeyError):
+        raise AgentError("invalid_plan", 422) from None
+    answers = {}
+    for key in svc.JOURNAL_KEYS:
+        value = (getattr(filled, key, None) or "").strip()[:2000]
+        # A reply in the wrong script is dropped rather than shown.
+        if value and in_language(value, lang):
+            answers[key] = value
+    return {"answers": answers, "filled": len(answers)}

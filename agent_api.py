@@ -1,26 +1,24 @@
-"""Authenticated Mini App adapter. Request bodies never contain actor IDs."""
+"""Mini App door to the same agent the bot uses: speak or type → card → Confirm.
+
+Request bodies never carry an actor id: identity is the Telegram signature.
+Nothing is executed until /confirm, exactly as in the bot.
+"""
 from fastapi import APIRouter, Header, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 import agent_core as core
 import config
 from agent_actions import AgentError
-from agent_text import TEXT
+from agent_text import tr
+
+KEY = r"^[A-Za-z0-9_:-]{8,80}$"
 
 
-class Input(BaseModel):
+class TextIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     text: str = Field(min_length=1, max_length=6000)
-    request_key: str = Field(pattern=r"^[A-Za-z0-9_:-]{8,80}$")
-    draft_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
-    revision: int | None = Field(default=None, ge=1)
-
-    @model_validator(mode="after")
-    def revision_pair(self):
-        if (self.draft_id is None) != (self.revision is None):
-            raise ValueError("draft_id and revision must be supplied together")
-        return self
+    request_key: str = Field(pattern=KEY)
 
 
 class Revision(BaseModel):
@@ -28,13 +26,28 @@ class Revision(BaseModel):
     revision: int = Field(ge=1)
 
 
-class Retry(Revision):
-    request_key: str = Field(pattern=r"^[A-Za-z0-9_:-]{8,80}$")
-
-
-class Consent(BaseModel):
+class JournalText(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    accepted: bool
+    text: str = Field(min_length=1, max_length=6000)
+
+
+async def read_audio(request):
+    """Counted while streaming: a missing or false Content-Length cannot make
+    the server buffer more than the limit."""
+    data = bytearray()
+    async for chunk in request.stream():
+        if len(data) + len(chunk) > config.AGENT_AUDIO_BYTES:
+            raise AgentError("invalid_audio", 413)
+        data.extend(chunk)
+    if not data:
+        raise AgentError("invalid_audio", 422)
+    return bytes(data)
+
+
+def card(draft, lang):
+    """The draft plus what the app needs to draw it: the HTML card, a message."""
+    message = tr(lang, draft["error"]) if draft["error"] else None
+    return {**draft, "message": message}
 
 
 def install(app, auth):
@@ -44,82 +57,59 @@ def install(app, auth):
     async def agent_error(request, exc):
         return JSONResponse(status_code=exc.status, content={"detail": exc.code})
 
-    @router.get("/meta")
-    def meta(x_telegram_init_data: str | None = Header(None)):
-        user, ws = auth(x_telegram_init_data)
-        return {**core.preferences(ws), "strings": TEXT.get(user.language, TEXT["uz"])}
-
     @router.post("/consent")
-    def consent(body: Consent, x_telegram_init_data: str | None = Header(None)):
+    def consent(x_telegram_init_data: str | None = Header(None)):
         _, ws = auth(x_telegram_init_data)
-        return core.consent(ws, body.accepted)
-
-    @router.get("/inbox")
-    def inbox(offset: int = 0, x_telegram_init_data: str | None = Header(None)):
-        _, ws = auth(x_telegram_init_data)
-        return {"drafts": core.list_drafts(ws, max(0, min(offset, 100000)))}
-
-    @router.get("/drafts/{draft_id}")
-    def detail(draft_id: str, x_telegram_init_data: str | None = Header(None)):
-        _, ws = auth(x_telegram_init_data)
-        return core.get_draft(ws, draft_id)
+        return core.consent(ws, True)
 
     @router.post("/text")
-    async def text(body: Input, x_telegram_init_data: str | None = Header(None)):
+    async def text(body: TextIn, x_telegram_init_data: str | None = Header(None)):
         user, ws = auth(x_telegram_init_data)
-        return await core.ingest(user.telegram_id, ws, body.request_key, text=body.text,
-                                  draft_id=body.draft_id, revision=body.revision)
+        draft = await core.ingest(user.telegram_id, ws, body.request_key, text=body.text)
+        return card(draft, user.language)
 
     @router.post("/audio")
-    async def audio(request: Request, draft_id: str | None = None, revision: int | None = None,
-                    x_telegram_init_data: str | None = Header(None), x_agent_request_key: str | None = Header(None)):
+    async def audio(request: Request, x_telegram_init_data: str | None = Header(None),
+                    x_agent_request_key: str | None = Header(None)):
         user, ws = auth(x_telegram_init_data)
-        if (draft_id is None) != (revision is None):
-            raise AgentError("invalid_fields", 422)
-        # Consent checked before buffering any voice bytes.
         prefs = core.preferences(ws)
         if not prefs["enabled"]:
             raise AgentError("agent_disabled", 503)
         if not prefs["consent"]:
             raise AgentError("consent_required", 403)
-        data = bytearray()
-        async for chunk in request.stream():
-            if len(data) + len(chunk) > config.AGENT_AUDIO_BYTES:
-                raise AgentError("invalid_audio", 413)
-            data.extend(chunk)
-        if not data:
-            raise AgentError("invalid_audio", 422)
-        return await core.ingest(user.telegram_id, ws, x_agent_request_key or "", audio=bytes(data),
-                                  mime=request.headers.get("content-type"), draft_id=draft_id, revision=revision)
+        data = await read_audio(request)
+        draft = await core.ingest(user.telegram_id, ws, x_agent_request_key or "", audio=data,
+                                  mime=request.headers.get("content-type"))
+        return card(draft, user.language)
+
+    @router.post("/journal/text")
+    async def journal_text(body: JournalText, x_telegram_init_data: str | None = Header(None)):
+        user, ws = auth(x_telegram_init_data)
+        return await core.journal_fill(user.telegram_id, ws, text=body.text)
+
+    @router.post("/journal/audio")
+    async def journal_audio(request: Request, x_telegram_init_data: str | None = Header(None)):
+        user, ws = auth(x_telegram_init_data)
+        prefs = core.preferences(ws)
+        if not prefs["enabled"]:
+            raise AgentError("agent_disabled", 503)
+        if not prefs["consent"]:
+            raise AgentError("consent_required", 403)
+        data = await read_audio(request)
+        return await core.journal_fill(user.telegram_id, ws, audio=data,
+                                       mime=request.headers.get("content-type"))
 
     @router.post("/drafts/{draft_id}/confirm")
     def confirm(draft_id: str, body: Revision, x_telegram_init_data: str | None = Header(None)):
         user, ws = auth(x_telegram_init_data)
         try:
-            return core.confirm(user.telegram_id, ws, draft_id, body.revision)
+            return card(core.confirm(user.telegram_id, ws, draft_id, body.revision), user.language)
         except ValueError as e:
             raise AgentError("timer_required" if str(e) == "timer_required" else "invalid_action", 422) from None
 
     @router.post("/drafts/{draft_id}/cancel")
     def cancel(draft_id: str, body: Revision, x_telegram_init_data: str | None = Header(None)):
-        _, ws = auth(x_telegram_init_data)
-        return core.cancel(ws, draft_id, body.revision)
-
-    @router.post("/drafts/{draft_id}/retry")
-    async def retry(draft_id: str, body: Retry, x_telegram_init_data: str | None = Header(None)):
         user, ws = auth(x_telegram_init_data)
-        old = core.get_draft(ws, draft_id)
-        if not old["transcript"]:
-            raise AgentError("empty_audio", 422)
-        return await core.ingest(user.telegram_id, ws, body.request_key, text=old["transcript"],
-                                  draft_id=draft_id, revision=body.revision)
-
-    @router.delete("/history")
-    def forget(body: Consent, x_telegram_init_data: str | None = Header(None)):
-        _, ws = auth(x_telegram_init_data)
-        if not body.accepted:
-            raise AgentError("confirmation_required", 422)
-        core.forget_history(ws)
-        return {"ok": True}
+        return card(core.cancel(ws, draft_id, body.revision), user.language)
 
     app.include_router(router)
