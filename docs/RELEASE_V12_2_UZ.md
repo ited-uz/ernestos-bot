@@ -55,7 +55,7 @@ Batafsil: [AGENT_SETUP_UZ.md → Limit va xarajat](AGENT_SETUP_UZ.md).
 
 ## Tekshirilgani
 
-- Python testlari: **960 o‘tdi** (v12.1: 946). Toza Python 3.12 muhitida ham
+- Python testlari: **978 o‘tdi** (v12.1: 946). Toza Python 3.12 muhitida ham
   `requirements.txt` + `constraints-tested.txt` o‘rnatildi va `pip check` toza.
 - Frontend regression testlari: Toshkent va Nyu-York vaqt mintaqalarida o‘tdi.
 - Yangi testlar: ElevenLabs chaqiruvi (model, til, lug‘at, cheklovlar),
@@ -74,21 +74,79 @@ Batafsil: [AGENT_SETUP_UZ.md → Limit va xarajat](AGENT_SETUP_UZ.md).
 - 1000 foydalanuvchi yuklamasi. Bitta nusxa bunga yetishi kerak:
   900 buyruq/kun ≈ daqiqasiga 1 ta.
 
-## Qo‘shimcha: yangi navigatsiya va «Qadam»
+## Qo‘shimcha: yangi navigatsiya
 
-- **Pastki menyu 4 ta:** Asosiy · Kundalik · Moliya · Profil.
+- **Pastki menyu 4 ta:** Asosiy · Kundalik · Moliya · 👣 Qadam.
   - **Kundalik** tepasida katta «Odatlar | Vazifalar» almashtirgichi bor.
-  - **Profil** tepasida avatar, ⚙️ Sozlamalar va «Statistika | Jamoa» almashtirgichi bor.
-  - Pastki menyu doim joyida turadi, chiqish bir bosish.
+  - **Qadam** tepasida avatar, daraja, ⚙️ Sozlamalar va «Qadam | Statistika | Jamoa» almashtirgichi bor.
 - **Pastda o‘ngda katta ➕ va uning ustida 🎙.**
-  - ➕ oynasida «Vazifa | Odat» tanlovi bor.
-  - Vazifa matnidan sana va vaqt avtomatik olinadi. Pulga oid matn pul tekshiruviga o‘tadi.
-  - Moliya ekranida ➕ to‘g‘ridan-to‘g‘ri pul qo‘shadi.
-  - «Batafsil» tugmasi to‘liq formani ochadi.
-  - Har ekranda bitta ➕ bor, ikkitasi emas.
-- **«Qadam» kartasi** Statistika tepasida:
-  - jami qadamlar, daraja va 5 bosqichli yo‘l (Boshlovchi → O‘z ustida ishlash);
-  - bugungi qadamlar: Vazifa, Odat, Namoz, Kundalik, Maqsad;
-  - ❄️ ketma-ketlikni saqlab qoluvchi kunlar.
-- Jamoa nomi namunasi: «Masalan: Savdo jamoasi», shaxsiy ismlar olib tashlandi.
+  - ➕ oynasida «Vazifa | Odat» tanlovi bor. Matndan sana va vaqt avtomatik olinadi.
+  - «Batafsil» yozilgan matnni saqlab, to‘liq formani ochadi.
+  - 🎙: yozish → to‘xtatish → karta → ✅ Tasdiqlash / 🔄 Qayta / ✖ Bekor.
 - **Bosishlar soni:** vazifa qo‘shish 2 ta, odat 2–3 ta, odatni belgilash 1–2 ta, sozlamalar 2 ta.
+
+## 9 bandlik so‘rov bo‘yicha o‘zgarishlar
+
+1. **Agent ma’noni tushunadi.** Prompt avval nutqni tiklaydi, keyin mavzuni o‘ylaydi
+   («turnik» → «tortilish», «do‘stim bilan ko‘rishish» → vazifa, savolsiz).
+   Karta o‘qishga oson: sarlavha, qalin nom, bitta qatorda tafsilotlar.
+2. **Asosiy ekran:** birinchi «Hozir» kartasi, keyin bitta qator hisob, 🎯 hafta
+   maqsadi va faqat keyingi 3 ta ish.
+3. **➕ va 🎙** — yuqoridagidek.
+4. **Kundalik sozlamalari:**
+   - Odat oynasida har bir sozlama bosilgan zahoti saqlanadi, oyna yopilmaydi.
+     «Saqlash» tugmalari yo‘q. Eslatma chiplari 07:00 / 12:00 / 21:00 yoki istalgan vaqt.
+   - Yangi odat: muhimlik, kunlar va eslatma chiplar bilan tanlanadi.
+   - Vazifa: eslatma va takrorlanish ro‘yxat emas, chip. Yopiq bo‘limda nima
+     sozlangani ko‘rinadi («🕐 10:00 · 🔔 30 daq · 🔁 Har kuni»). Bugungi vazifa
+     «Bugun» chipida ochiladi.
+5. **«Kun xulosasi»** (oldingi «Kundalik» jurnali):
+   - «✨ AI bilan to‘ldirish»: 🎙 Gapirish yoki ✍️ Yozish.
+   - AI erkin gapni 5 savolga ajratadi, adabiy tilda to‘g‘rilaydi, mos gap bo‘lmasa
+     savolni bo‘sh qoldiradi. Hech narsa o‘ylab topmaydi.
+   - Javoblar maydonlarga tushadi, siz tekshirib saqlaysiz.
+   - Rozilik va kunlik limit agent bilan bir xil.
+6. **Hafta maqsadi** Asosiy ekranda ko‘rinadi.
+7. **Moliya:**
+   - Bitta karta: balans, shu oy kirim/chiqim, ochiq qarzlar.
+   - Undan keyin tezkor yozish, so‘ng «Yozuvlar | Kategoriyalar | Qarzlar».
+   - **Qarzlar** (yangi):
+     - «Men berdim / Men oldim», ism, summa, «qachongacha» chiplari.
+     - Bir bosishda yopiladi va bekor qilsa bo‘ladi. Qisman qaytarishni ham yozsa bo‘ladi.
+     - Muddati o‘tgani qizil bilan belgilanadi.
+     - Qarz balansga qo‘shilmaydi, chunki qarz xarajat emas.
+     - Agent «Azizga 200 ming qarz berdim»ni xarajat emas, qarz deb yozadi.
+   - Tadqiqot: foydalanuvchilarning eng ko‘p tashlab ketish sababi — ilovadan
+     yetarlicha foydalanmaslik (28%). Shu sababli yozish tezligi birinchi o‘rinda.
+     33% foydalanuvchi qarzlarni kuzatishni xohlaydi.
+8. **Profil → 👣 Qadam:**
+   - Bitta daraja tizimi; XP darajasi ekrandan olib tashlandi.
+   - Bitta qatorda ketma-ketlik, muzlatish va reyting.
+   - Bugungi 5 qadam: bosilsa, o‘sha qadam bajariladigan joy ochiladi.
+   - «Keyingi qadam» tugmasi, yo‘l va yutuqlar.
+   - Bugungi sonlar endi jonli o‘qiladi; avval birinchi ochilishda 0/0 chiqardi.
+9. **KISS:** Statistika va Moliyadagi takror bloklar olib tashlandi.
+
+## Agent qanday ishlaydi (qadam-baqadam)
+
+1. **Kirish.** Siz botga yoki ilovadagi 🎙 ga gapirasiz yoki yozasiz. Hech narsa hali bajarilmaydi.
+2. **Ovoz → matn.** ElevenLabs Scribe v2 profilingiz tilida, ismlaringiz va kundalik
+   so‘zlar lug‘ati bilan eshitadi. Limit tugasa, Groq Whisper zaxira bo‘ladi.
+3. **Matn → ma’no.** Groq gpt-oss-120b (zaxira: Gemini, keyin gpt-oss-20b) xom matnni
+   tiklaydi: shevani, noto‘g‘ri harflarni, ruscha so‘zlarni tushunadi.
+   Mavzuga qarab so‘zni tanlaydi. Natija qat’iy JSON reja va «tushundim» jumlasi.
+4. **Tekshiruv.** Server rejani o‘zi tekshiradi:
+   - faqat ruxsat etilgan amallar va maydonlar;
+   - sana va summa chegaralari;
+   - faqat sizning yozuvlaringiz;
+   - til profilingiz bilan bir xil bo‘lishi kerak.
+   Model o‘ylab topgan ID rad etiladi.
+5. **Karta.** Siz «nima bo‘lishini» ko‘rasiz: «📝 Yangi vazifa · **Do‘st bilan
+   uchrashuv** · 📅 Ertaga ⏰ 17:00». Xom transkript ko‘rsatilmaydi.
+6. **Tasdiqlash.** ✅ bosilgandagina bitta tranzaksiyada bajariladi. Ikki marta bosilsa,
+   bir marta bajariladi. 🔄 qayta yozadi, ✖ bekor qiladi. Natija: «✅ Tasdiqlandi».
+
+**Aniqlik haqida rost gap.** 97% ni kafolatlab bo‘lmaydi. Bu jonli sinovda
+o‘lchanadi, chunki o‘zbek nutqini aniqlash shovqin va shevaga bog‘liq. Himoya
+shundaki, xato tushunilgan buyruq karta bosqichida ko‘rinadi va siz tasdiqlamasangiz
+hech narsa o‘zgarmaydi. Kun xulosasida esa javoblar faqat maydonlarga tushadi.

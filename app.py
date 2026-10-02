@@ -38,7 +38,9 @@ from telegram.ext import (
 )
 
 import accounts
+import agent_api
 import agent_core
+import agent_provider
 from agent_bot import AgentBot
 import config
 import db
@@ -6658,7 +6660,8 @@ async def guard_requests(request: Request, call_next):
         return await call_next(request)
 
     declared = request.headers.get("content-length")
-    if declared and declared.isdigit() and int(declared) > MAX_BODY_BYTES:
+    body_limit = config.AGENT_AUDIO_BYTES if request.url.path in {"/api/agent/audio", "/api/agent/journal/audio"} else MAX_BODY_BYTES
+    if declared and declared.isdigit() and int(declared) > body_limit:
         return JSONResponse(status_code=413, content={"detail": "payload_too_large"})
 
     # Bucket by Telegram id when the signature is valid, else by client host —
@@ -6694,6 +6697,7 @@ async def guard_requests(request: Request, call_next):
     idem_key = request.headers.get("x-idempotency-key", "")
     idem_row = None
     if (key > 0 and idem_key and request.method == "POST"
+            and not request.url.path.startswith("/api/agent/")
             and svc.IDEMPOTENCY_KEY_RE.match(idem_key)):
         with SessionLocal() as s:
             claim = svc.idempotency_begin(s, key, idem_key, request.url.path)
@@ -6728,6 +6732,7 @@ async def guard_requests(request: Request, call_next):
     # a 2xx means a rejected body or a 404 never costs anybody anything.
     if (key > 0 and request.method in MUTATING_METHODS
             and 200 <= response.status_code < 300
+            and not request.url.path.startswith("/api/agent/")
             and request.url.path not in UNCOUNTED_PATHS):
         try:
             with SessionLocal() as s:
@@ -7118,6 +7123,14 @@ def health_ready():
                         content={"ok": ok, "checks": checks})
 
 
+def _agent_consent(uid: int) -> bool:
+    if not config.AGENT_ENABLED:
+        return False
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+    return agent_core.preferences(ws)["consent"]
+
+
 @app.get("/api/me")
 def api_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, _ = auth(init, require_onboarded=False)
@@ -7146,7 +7159,8 @@ def api_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
                       "subscribed": user.is_subscribed,
                       "channel": deps.REQUIRED_CHANNEL_URL},
             "agent": {"enabled": config.AGENT_ENABLED,
-                      "available": config.AGENT_ENABLED and bool(config.GROQ_API_KEY)},
+                      "available": config.AGENT_ENABLED and agent_provider.configured(),
+                      "consent": _agent_consent(user.telegram_id)},
             "bot_username": BOT_USERNAME,
             "onboarding_step": user.onboarding_step,
             "modules": _modules_of(user),
@@ -9401,6 +9415,57 @@ def api_money_budget(category: str, body: MoneyBudgetIn,
             raise HTTPException(status_code=422, detail=str(e))
 
 
+class DebtIn(BaseModel):
+    person: str = Field(min_length=1, max_length=80)
+    amount: int = Field(gt=0, le=svc.MONEY_MAX_AMOUNT)
+    direction: str = Field(pattern="^(lent|borrowed)$")
+    note: str = Field(default="", max_length=200)
+    due: str | None = Field(default=None, max_length=10)
+
+
+class DebtSettleIn(BaseModel):
+    settled: bool = True
+    #: Part of it returned: that much comes off and the debt stays open.
+    paid: int | None = Field(default=None, gt=0, le=svc.MONEY_MAX_AMOUNT)
+
+
+@app.get("/api/debts")
+def api_debts(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        return svc.debts_overview(s, ws, tz=svc.user_tz(user))
+
+
+@app.post("/api/debts")
+def api_debt_add(body: DebtIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        try:
+            return svc.add_debt(s, ws, body.person, body.amount, body.direction,
+                                note=body.note, due=_date(body.due))
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.post("/api/debts/{debt_id}/settle")
+def api_debt_settle(debt_id: int, body: DebtSettleIn,
+                    init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        try:
+            return svc.settle_debt(s, ws, debt_id, body.settled, body.paid)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.delete("/api/debts/{debt_id}")
+def api_debt_delete(debt_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        svc.delete_debt(s, ws, debt_id)
+    return {"ok": True}
+
+
 @app.get("/api/avatar")
 async def api_avatar(token: str | None = None, tgdata: str | None = None,
                      init=Header(default=None, alias="X-Telegram-Init-Data")):
@@ -9607,3 +9672,5 @@ WEBAPP_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 def index():
     return FileResponse(WEBAPP_FILE)
 
+
+agent_api.install(app, auth)

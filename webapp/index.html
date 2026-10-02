@@ -730,6 +730,12 @@ nav:empty{display:none}
 .grouped > .head{min-height:0;justify-content:flex-end}
 .profile-head{display:flex;align-items:center;gap:var(--s2);margin:4px 0 12px}
 .grouped > h1:first-child{display:none}
+.goal-line{display:flex;align-items:center;gap:12px;margin-top:10px;padding:12px 14px;
+           border-radius:var(--radius-sm);background:var(--surface);border:var(--border-w) solid var(--border)}
+.goal-line .gi{font-size:18px}
+.goal-line .gt{font-size:16px;font-weight:650;margin-top:1px}
+.goal-line.done{opacity:.75}
+.more-link{padding:10px 4px;color:var(--primary);font-weight:650;cursor:pointer}
 .nohead > .head, .screen-money > .head .add{display:none}
 /* Qadam card */
 .steps{background:var(--surface);border:var(--border-w) solid var(--border);border-radius:var(--radius);
@@ -770,6 +776,27 @@ nav:empty{display:none}
 .step-chip .ck{width:20px;height:20px;border-radius:50%;border:2px solid var(--border);display:grid;place-items:center}
 .step-chip.ok .ck{background:var(--ok);border-color:var(--ok);color:var(--on-primary)}
 .steps-go{margin-top:14px}
+.qhero{background:var(--surface);border:var(--border-w) solid var(--border);border-radius:var(--radius-lg);
+       padding:16px;box-shadow:var(--shadow-1)}
+.qtop{display:flex;align-items:center;gap:12px}
+.qtop .badge{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;font-size:28px;
+             background:var(--surface-2);box-shadow:0 0 0 3px color-mix(in srgb, var(--warn) 70%, transparent)}
+.qtop .ln{font-size:21px;font-weight:760}
+.qtotal{text-align:right}.qtotal .tv{font-size:30px;font-weight:800;line-height:1}
+.sbar.big{height:10px;margin:14px 0 6px}
+.qstats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:14px}
+.qstats>div{background:var(--surface-2);border-radius:var(--radius-sm);padding:8px 4px;text-align:center}
+.qstats b{display:block;font-size:16px}
+.qstats span{display:block;font-size:11px;color:var(--text-3)}
+.qlist{padding:4px 12px}
+.qrow{display:flex;align-items:center;gap:10px;min-height:48px;cursor:pointer;
+      border-bottom:var(--border-w) solid var(--border)}
+.qrow:last-child{border-bottom:0}
+.qrow .ci{font-size:18px}
+.qrow .ck{width:22px;height:22px;border-radius:50%;border:2px solid var(--border);display:grid;place-items:center}
+.qrow.ok .ck{background:var(--ok);border-color:var(--ok);color:var(--on-primary)}
+.qrow.ok .grow{color:var(--text-2)}
+
 .profile-head .pname{font-size:20px;font-weight:700}
 /* The two ways to add anything, always in the same place: + for typing and
    the microphone above it for speaking. Bottom right, above the bar. */
@@ -782,6 +809,26 @@ nav:empty{display:none}
 #fab .fab-mic{width:48px;height:48px;background:var(--surface);color:var(--primary);
               border:var(--border-w) solid var(--border)}
 #fab button:active{transform:scale(.94)}
+#fab .fab-add{background:linear-gradient(145deg, color-mix(in srgb, var(--primary-fill) 82%, var(--surface) 18%), var(--primary-fill))}
+.voice-box{display:grid;justify-items:center;gap:10px;padding:8px 0 4px;text-align:center}
+.voice-box .btn{width:100%}
+.voice-pulse{width:92px;height:92px;border-radius:50%;display:grid;place-items:center;
+             color:var(--on-primary);background:var(--danger);animation:vpulse 1.4s ease-in-out infinite}
+@keyframes vpulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb, var(--danger) 45%, transparent)}
+                  50%{box-shadow:0 0 0 18px color-mix(in srgb, var(--danger) 0%, transparent)}}
+@media (prefers-reduced-motion: reduce){ .voice-pulse{animation:none} }
+.voice-time{font-size:28px;font-weight:720}
+.hstat{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.hstat>div{background:var(--surface-2);border-radius:var(--radius-sm);padding:8px 4px;text-align:center}
+.hstat b{display:block;font-size:16px}
+.hstat span{display:block;font-size:11px;color:var(--text-3)}
+.jai{margin-bottom:14px}
+.jai .btn{margin-top:0}
+textarea.jai-new{border-color:var(--primary)}
+.voice-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.voice-row .btn{margin:0}
+.voice-card{background:var(--surface-2);border-radius:var(--radius-sm);padding:14px;margin-bottom:12px;
+            line-height:1.5;font-size:15.5px}
 body:has(#sheet.show) #fab,
 body:has(#app input:focus, #app textarea:focus) #fab{display:none}
 nav button{background:0;border:0;color:var(--text-2);padding:6px 1px 8px;
@@ -843,8 +890,9 @@ details{margin-top:var(--s3);border-top:var(--border-w) solid var(--border);
         padding-top:var(--s1)}
 details > summary{list-style:none;cursor:pointer;font-size:15px;font-weight:600;
                   color:var(--primary);padding:var(--s1) 0;display:flex;
-                  align-items:center;gap:6px;min-height:44px}
+                  align-items:center;flex-wrap:wrap;gap:6px;min-height:44px}
 details > summary::-webkit-details-marker{display:none}
+details > summary .sumline{flex-basis:100%;font-weight:400;padding-left:22px}
 details > summary .i{transition:transform var(--motion)}
 details[open] > summary .i{transform:rotate(90deg)}
 .chev{transition:transform var(--motion)}
@@ -1020,6 +1068,16 @@ details[open] > summary .i{transform:rotate(90deg)}
           font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .mtile.lead{grid-column:1 / -1}
 .mtile.lead .v{font-size:24px}
+.mhero{background:var(--surface);border:var(--border-w) solid var(--border);border-radius:var(--radius-lg);
+       padding:var(--s3);margin-top:var(--s1)}
+.mhero .k{font-size:13px;color:var(--text-2);font-weight:560;display:flex;align-items:center;gap:6px}
+.mhero .v{font-size:30px;font-weight:750;letter-spacing:-.5px;margin:2px 0 6px;overflow-wrap:anywhere}
+.mflow{display:flex;gap:var(--s2);flex-wrap:wrap;font-size:15px;font-weight:620}
+.mflow .t3{font-weight:400;font-size:13px;align-self:center}
+.mdebt{margin-top:var(--s2);padding-top:var(--s2);border-top:var(--border-w) solid var(--border);
+       font-size:14px;cursor:pointer}
+.mtabs{margin:var(--s3) 0 var(--s2)}
+.drow.settled{opacity:.6}
 .pos{color:var(--ok)} .neg{color:var(--danger)}
 .datef{display:grid;grid-template-columns:0.8fr 1.5fr 1fr;gap:var(--s1)}
 .datef select{min-width:0;min-height:44px}
@@ -1191,7 +1249,7 @@ const DICT = {
   /* quick capture */
   quick_add:"Tez qo'shish", quick_ph:"Nima esingizga tushdi?",
   inbox_saved:"Saqlandi — Vazifalarda",
-  quick_saved:"✓ Vazifa", tab_list:"Ro'yxat", nav_money:"Moliya", quick_more:"Batafsil (vaqt, eslatma, loyiha)", steps_title:"Qadam", steps_motto:"Har bir yaxshi ish — kelajakdagi yutuqqa qadam.", steps_freeze:"Ketma-ketlikni saqlab qoladigan kunlar", steps_level_n:"{n}-daraja", steps_total:"Jami qadamlar", steps_path:"Sizning yo'lingiz", steps_today:"Bugungi qadamlar", steps_go:"Qadamni davom ettir", step_lvl_starter:"Boshlovchi", step_lvl_builder:"Quruvchi", step_lvl_discipline:"Intizom", step_lvl_steady:"Barqarorlik", step_lvl_master:"O'z ustida ishlash", step_tasks:"Vazifa", step_habits:"Odat", step_prayer:"Namoz", step_journal:"Kundalik", step_goal:"Maqsad", task_word:"Vazifa", habit_word:"Odat", quick_habit_ph:"Masalan: Har kuni kitob o'qish", quick_habit_hint:"Har kuni takrorlanadi. Keyin o'zgartirsa bo'ladi.", quick_habit_saved:"✓ Odat", nav_tracker:"Kundalik", nav_profile:"Profil", quick_hint:"Masalan: «Ertaga soat 10 da hisobot» yoki «Tushlik 45 ming»", quick_voice:"Ovoz bilan aytish",
+  quick_saved:"✓ Vazifa", next_up:"Keyingi", home_more_tasks:"Yana {n} ta ish", voice_title:"Ovoz bilan qo'shish", voice_listening:"Gapiring… To'xtatsangiz, tahlil qilaman.", voice_stop:"To'xtatish", voice_thinking:"Tushunishga harakat qilyapman…", voice_confirm:"Tasdiqlash", voice_retry:"Qayta yozish", voice_done:"✅ Tasdiqlandi", voice_failed:"Ovoz yuborilmadi. Qayta urinib ko'ring.", voice_too_long:"Ovoz 2 daqiqadan oshmasin.", voice_denied:"Mikrofonga ruxsat yo'q — botda ovoz yuboring.", voice_consent:"Ovozingiz matnga aylantirish va tushunish uchun AI xizmatlariga (ElevenLabs, Groq, Google — AQSh) yuboriladi. Audio saqlanmaydi. Hech narsa siz tasdiqlamaguningizcha o'zgarmaydi.", voice_agree:"Roziman, boshlash", voice_consent_needed:"Avval rozilik bering.", tab_list:"Ro'yxat", nav_money:"Moliya", quick_more:"Batafsil (vaqt, eslatma, loyiha)", quick_more_habit:"Batafsil (kunlar, eslatma, muhimlik)", nav_steps:"Qadam", steps_to_next:"«{name}» darajasigacha yana {n} qadam", steps_max:"Eng yuqori daraja — barakalla!", steps_freeze_short:"Muzlatish", steps_rank_in:"{n} kundan keyin", steps_next:"Keyingi qadam", steps_all_done:"Bugungi qadamlar bajarildi 🎉", steps_more:"Yutuqlar va reyting", steps_title:"Qadam", steps_motto:"Har bir yaxshi ish — kelajakdagi yutuqqa qadam.", steps_freeze:"Ketma-ketlikni saqlab qoladigan kunlar", steps_level_n:"{n}-daraja", steps_total:"Jami qadamlar", steps_path:"Sizning yo'lingiz", steps_today:"Bugungi qadamlar", steps_go:"Qadamni davom ettir", step_lvl_starter:"Boshlovchi", step_lvl_builder:"Quruvchi", step_lvl_discipline:"Intizom", step_lvl_steady:"Barqarorlik", step_lvl_master:"O'z ustida ishlash", step_tasks:"Vazifa", step_habits:"Odat", step_prayer:"Namoz", step_journal:"Xulosa", step_goal:"Maqsad", task_word:"Vazifa", habit_word:"Odat", quick_habit_ph:"Masalan: Har kuni kitob o'qish", quick_habit_hint:"Har kuni takrorlanadi. Keyin o'zgartirsa bo'ladi.", quick_habit_saved:"✓ Odat", nav_tracker:"Kundalik", nav_profile:"Profil", quick_hint:"Masalan: «Ertaga soat 10 da hisobot» yoki «Tushlik 45 ming»", quick_voice:"Ovoz bilan aytish", jai_title:"AI bilan to'ldirish", jai_hint:"Kuningizni erkin gapirib yoki yozib bering — AI uni 5 savolga ajratib, xatolarini to'g'rilaydi. Siz tekshirib, saqlaysiz.", jai_voice:"Gapirish", jai_text:"Yozish", jai_ph:"Masalan: bugun mijoz bilan shartnoma yopdim, onamga rahmat, vaqtni rejalashtira olmadim, ertaga hisobotni tugataman…", jai_sort:"Savollarga ajratish", jai_done:"✨ {n} ta javob to'ldirildi — tekshirib, Saqlang", jai_nothing:"Savollarga mos gap topilmadi. Batafsilroq ayting.",
   /* tasks */
   add_task:"Vazifa", task_name:"Vazifa nomi", task_desc:"Batafsil",
   deadline:"Muddat", due_time:"Vaqt", priority:"Muhimlik", project:"Loyiha",
@@ -1231,6 +1289,8 @@ const DICT = {
   /* habits */
   add_habit:"Odat qo'shish", habit_name:"Odat nomi", category:"Kategoriya",
   non_negotiable:"Majburiy", target:"Maqsadli", bonus:"Qo'shimcha",
+  habit_tier:"Qanchalik muhim", autosave_hint:"O'zgarish darhol saqlanadi", done_btn:"Tayyor",
+  none_short:"Yo'q", remind_s_0:"Vaqtida", remind_s_10:"10 daq", remind_s_30:"30 daq", remind_s_60:"1 soat", remind_s_1440:"1 kun",
   edit_habit:"Odatni tahrirlash", schedule:"Kunlar", every_day:"Har kuni",
   weekdays_only:"Ish kunlari", pick_days:"Tanlangan kunlar",
   pause:"To'xtatib turish", resume:"Davom etish", paused:"To'xtatilgan",
@@ -1238,7 +1298,7 @@ const DICT = {
   last7:"Oxirgi 7 kun", last30:"Oxirgi 30 kun", completion:"Bajarilish",
   auto_habit:"Bu odat avtomatik belgilanadi", habit_auto_prayer:"Namoz bo'limidan",
   habit_always_daily:"o'zgartirib bo'lmaydi",
-  habit_auto_journal:"Kundalik bo'limidan",
+  habit_auto_journal:"Kun xulosasi bo'limidan",
   reorder:"Tartib", reorder_hint:"Ushlab suring yoki ↑ ↓ dan foydalaning",
   move_up:"Yuqoriga", move_down:"Pastga", finish:"Tayyor",
   no_habits_today:"Bugun rejada odat yo'q",
@@ -1254,7 +1314,7 @@ const DICT = {
   pr_full_days:"5/5 bo'lgan kunlar", pr_on_time:"Vaqtida", pr_jamaat:"Jamoat",
   pr_qaza:"Qazo", pr_missed:"O'qilmadi", pr_consistency:"Barqarorlik",
   /* journal */
-  journal:"Kundalik", journal_progress:"{done} / {total} javob berildi",
+  journal:"Kun xulosasi", journal_progress:"{done} / {total} javob berildi",
   journal_complete:"To'liq yozildi", journal_hint:"Qancha yozsangiz — shuncha saqlanadi",
   journal_history:"Tarix", journal_partial:"To'liq emas",
   draft_restored:"Saqlanmagan matn tiklandi", autosaved:"Saqlanmoqda…",
@@ -1358,7 +1418,7 @@ const DICT = {
   wipe_warn:"Barcha vazifa, odat, namoz yozuvi, kundalik, loyiha va maqsadlar butunlay o'chiriladi. Buni qaytarib bo'lmaydi.",
   wipe_keeps:"Hisobingiz, tilingiz, temangiz va sozlamalaringiz saqlanadi. Standart odatlar qaytariladi.",
   wipe_continue:"Ha, hammasini o'chirish", wipe_done:"Ma'lumotlar o'chirildi",
-  privacy_body:"Har bir foydalanuvchining ma'lumoti alohida ish maydonida saqlanadi va boshqa foydalanuvchilarga ko'rinmaydi. Ma'lumotlar PostgreSQL bazasida saqlanadi; texnik xizmat uchun administrator bazaga kirish huquqiga ega. Kundalik yozuvlaringiz hech qanday tashqi xizmatga yuborilmaydi.",
+  privacy_body:"Har bir foydalanuvchining ma'lumoti alohida ish maydonida saqlanadi va boshqa foydalanuvchilarga ko'rinmaydi. Ma'lumotlar PostgreSQL bazasida saqlanadi; texnik xizmat uchun administrator bazaga kirish huquqiga ega. Kun xulosangiz tashqi xizmatga yuborilmaydi — faqat o'zingiz «AI bilan to'ldirish»ni bossangiz, o'sha matn tahlil uchun AI xizmatiga yuboriladi.",
   delete_account:"Akkaunt va ma'lumotlarni o'chirish",
   delete_account_warn:"Barcha odatlar, vazifalar, namoz yozuvlari va kundalik butunlay o'chiriladi. Buni qaytarib bo'lmaydi.",
   delete_confirm_ph:"Tasdiqlash uchun DELETE deb yozing",
@@ -1447,13 +1507,14 @@ const DICT = {
   setup_body:"ErnestOS botiga qayting va bir necha savolga javob bering — keyin hammasi shu yerda ochiladi.",
   back_to_bot:"Botga qaytish",
   modules:"Modullar", modules_hint:"Nimani kuzatasiz", mod_wake:"Erta turish", mod_prayer:"Namoz",
-  mod_journal:"Kundalik",
+  mod_journal:"Kun xulosasi",
   modules_note:"O'chirilgan modul tarixini saqlaydi. Qayta yoqsangiz, o'chiq turgan kunlar «bajarilmadi» deb sanalmaydi.",
   wake_enter:"Vaqtni kiritish", wake_enter_hint:"Qachon turganingizni yozing — tugmani bosgan vaqtingiz emas",
   pause_today:"Bugundan", pause_tomorrow:"Ertadan", pause_when:"Qachondan to'xtatamiz?",
   pause_note:"Bugundan desangiz, bugungi hisobdan ham chiqadi",
   pts:"p.", team_join_hint:"Taklif havolasini bosing — jamoani ko'rib, keyin qo'shilasiz",
   nav_home:"Asosiy", nav_stats:"Statistika", money:"Pul", money_add:"Pul yozuvi",
+  money_this_month:"bu oy", money_tab_entries:"Yozuvlar", money_tab_cats:"Kategoriyalar", money_tab_debts:"Qarzlar", debt_overdue_n:"{n} tasi muddati o'tgan", debt_owed_to_me:"Sizga qaytarishadi", debt_i_owe:"Siz qaytarasiz", debt_add:"Qarz yozish", debt_empty:"Hozircha qarz yo'q. Kimgadir pul bersangiz yoki olsangiz — shu yerga yozing, unutilmaydi.", debt_settled:"Yopilganlar", debt_lent_meta:"men berdim", debt_borrowed_meta:"men oldim", debt_overdue:"muddati o'tdi", debt_until:"{d} gacha", debt_returned:"Qaytdi", debt_returned_full:"To'liq qaytdi", debt_lent:"Men berdim", debt_borrowed:"Men oldim", debt_person:"Kim? Ismini yozing", debt_amount:"Summa (200 ming, 1,5 mln…)", debt_due:"Qachongacha qaytariladi", debt_due_week:"1 haftada", debt_due_month:"1 oyda", debt_note:"Izoh (ixtiyoriy)", debt_bad_amount:"Summani yozing — 200 ming yoki 200000", debt_saved:"✓ Qarz yozildi", debt_closed:"✓ Qarz yopildi", debt_partial:"Bir qismi qaytdimi?", debt_partial_ph:"Qancha? Masalan, 50 ming", debt_reopen:"Qayta ochish",
   money_apart:"Alohida bo'lim — hech qanday foiz, streak yoki reytingga qo'shilmaydi.",
   money_balance:"Umumiy balans", money_income:"Kirim", money_expense:"Chiqim",
   money_unit:"so'm", date_day:"Kun", date_month:"Oy", date_year:"Yil",
@@ -1563,7 +1624,7 @@ const DICT = {
   wake_late_at:"{time} — later than today's target", wake_target:"Target",
   quick_add:"Quick add", quick_ph:"What came to mind?",
   inbox_saved:"Saved — see Tasks",
-  quick_saved:"✓ Task", tab_list:"List", nav_money:"Money", quick_more:"More options (time, reminder, project)", steps_title:"Steps", steps_motto:"Every good thing you do is a step forward.", steps_freeze:"Days that keep your streak alive", steps_level_n:"Level {n}", steps_total:"Total steps", steps_path:"Your path", steps_today:"Today's steps", steps_go:"Keep going", step_lvl_starter:"Beginner", step_lvl_builder:"Builder", step_lvl_discipline:"Discipline", step_lvl_steady:"Consistency", step_lvl_master:"Self-mastery", step_tasks:"Task", step_habits:"Habit", step_prayer:"Prayer", step_journal:"Journal", step_goal:"Goal", task_word:"Task", habit_word:"Habit", quick_habit_ph:"E.g. Read a book every day", quick_habit_hint:"Repeats every day. You can change it later.", quick_habit_saved:"✓ Habit", nav_tracker:"Tracker", nav_profile:"Profile", quick_hint:"E.g. “Report tomorrow at 10” or “Lunch 45 thousand”", quick_voice:"Say it by voice",
+  quick_saved:"✓ Task", next_up:"Up next", home_more_tasks:"{n} more", voice_title:"Add by voice", voice_listening:"Speak… Stop when done and I'll analyse it.", voice_stop:"Stop", voice_thinking:"Understanding…", voice_confirm:"Confirm", voice_retry:"Record again", voice_done:"✅ Confirmed", voice_failed:"Voice was not sent. Try again.", voice_too_long:"Keep it under 2 minutes.", voice_denied:"No microphone access — send a voice message in the bot.", voice_consent:"Your voice is sent to AI services (ElevenLabs, Groq, Google — USA) to transcribe and understand it. Audio is not stored. Nothing changes until you confirm.", voice_agree:"I agree, start", voice_consent_needed:"Please give consent first.", tab_list:"List", nav_money:"Money", quick_more:"More options (time, reminder, project)", quick_more_habit:"More options (days, reminder, importance)", nav_steps:"Steps", steps_to_next:"{n} steps to «{name}»", steps_max:"Top level — well done!", steps_freeze_short:"Freezes", steps_rank_in:"in {n} days", steps_next:"Next step", steps_all_done:"All of today's steps are done 🎉", steps_more:"Achievements and rank", steps_title:"Steps", steps_motto:"Every good thing you do is a step forward.", steps_freeze:"Days that keep your streak alive", steps_level_n:"Level {n}", steps_total:"Total steps", steps_path:"Your path", steps_today:"Today's steps", steps_go:"Keep going", step_lvl_starter:"Beginner", step_lvl_builder:"Builder", step_lvl_discipline:"Discipline", step_lvl_steady:"Consistency", step_lvl_master:"Self-mastery", step_tasks:"Task", step_habits:"Habit", step_prayer:"Prayer", step_journal:"Summary", step_goal:"Goal", task_word:"Task", habit_word:"Habit", quick_habit_ph:"E.g. Read a book every day", quick_habit_hint:"Repeats every day. You can change it later.", quick_habit_saved:"✓ Habit", nav_tracker:"Tracker", nav_profile:"Profile", quick_hint:"E.g. “Report tomorrow at 10” or “Lunch 45 thousand”", quick_voice:"Say it by voice", jai_title:"Fill with AI", jai_hint:"Talk or write about your day freely — the AI sorts it into the 5 questions and fixes mistakes. You check and save.", jai_voice:"Speak", jai_text:"Write", jai_ph:"E.g. closed a deal with a client today, thankful to my mom, failed to plan my time, tomorrow I finish the report…", jai_sort:"Sort into questions", jai_done:"✨ {n} answers filled — check and Save", jai_nothing:"Nothing matched the questions. Say a bit more.",
   add_task:"Task", task_name:"Task name", task_desc:"Details",
   deadline:"Date", due_time:"Time", priority:"Priority", project:"Project",
   standalone:"Standalone", high:"High", medium:"Medium", low:"Low",
@@ -1600,6 +1661,8 @@ const DICT = {
   inbox_hint:"Dated, undated and late — all of it, here",
   add_habit:"Add habit", habit_name:"Habit name", category:"Category",
   non_negotiable:"Must-do", target:"Goal", bonus:"Extra",
+  habit_tier:"How important", autosave_hint:"Changes save instantly", done_btn:"Done",
+  none_short:"None", remind_s_0:"On time", remind_s_10:"10 min", remind_s_30:"30 min", remind_s_60:"1 hour", remind_s_1440:"1 day",
   edit_habit:"Edit habit", schedule:"Days", every_day:"Every day",
   weekdays_only:"Weekdays", pick_days:"Chosen days",
   pause:"Pause", resume:"Resume", paused:"Paused",
@@ -1607,7 +1670,7 @@ const DICT = {
   last7:"Last 7 days", last30:"Last 30 days", completion:"Completion",
   auto_habit:"This habit is marked automatically", habit_auto_prayer:"from the Prayer tab",
   habit_always_daily:"cannot be changed",
-  habit_auto_journal:"from the Journal tab",
+  habit_auto_journal:"from the Day summary tab",
   reorder:"Reorder", reorder_hint:"Drag to reorder, or use ↑ ↓",
   move_up:"Move up", move_down:"Move down", finish:"Done",
   no_habits_today:"No habits scheduled today",
@@ -1621,7 +1684,7 @@ const DICT = {
   male:"Male", female:"Female",
   pr_full_days:"Days with all five", pr_on_time:"On time", pr_jamaat:"Jamaat",
   pr_qaza:"Qaza", pr_missed:"Missed", pr_consistency:"Consistency",
-  journal:"Journal", journal_progress:"{done} of {total} answered",
+  journal:"Day summary", journal_progress:"{done} of {total} answered",
   journal_complete:"Fully written", journal_hint:"Whatever you write is kept",
   journal_history:"History", journal_partial:"Incomplete",
   draft_restored:"Unsaved text restored", autosaved:"Saving…",
@@ -1720,7 +1783,7 @@ const DICT = {
   wipe_warn:"Every task, habit, prayer record, journal entry, project and week goal is erased for good. This cannot be undone.",
   wipe_keeps:"Your account, language, theme and settings stay. The default habits are put back.",
   wipe_continue:"Yes, erase everything", wipe_done:"Your data was erased",
-  privacy_body:"Each user's data lives in its own workspace and is not visible to other users. It is stored in a PostgreSQL database, which an administrator can access for maintenance. Your journal entries are never sent to any external service.",
+  privacy_body:"Each user's data lives in its own workspace and is not visible to other users. It is stored in a PostgreSQL database, which an administrator can access for maintenance. Your day summary is never sent to an external service — only if you tap «Fill with AI» is that text sent to the AI service for sorting.",
   delete_account:"Delete account and data",
   delete_account_warn:"Every habit, task, prayer record and journal entry will be permanently erased. This cannot be undone.",
   delete_confirm_ph:"Type DELETE to confirm",
@@ -1808,13 +1871,14 @@ const DICT = {
   setup_body:"Go back to the ErnestOS bot and answer a few questions — then everything opens here.",
   back_to_bot:"Back to the bot",
   modules:"Modules", modules_hint:"What you keep track of", mod_wake:"Early rising", mod_prayer:"Prayer",
-  mod_journal:"Journal",
+  mod_journal:"Day summary",
   modules_note:"A module switched off keeps its history. Switched back on, the days it was off are not counted as missed.",
   wake_enter:"Enter the time", wake_enter_hint:"When you actually got up — not when you pressed the button",
   pause_today:"From today", pause_tomorrow:"From tomorrow", pause_when:"Pause from when?",
   pause_note:"From today takes today out of the count as well",
   pts:"pts", team_join_hint:"Open an invite link — you see the team first, then join",
   nav_home:"Home", nav_stats:"Stats", money:"Money", money_add:"Money entry",
+  money_this_month:"this month", money_tab_entries:"Entries", money_tab_cats:"Categories", money_tab_debts:"Debts", debt_overdue_n:"{n} overdue", debt_owed_to_me:"Owed to you", debt_i_owe:"You owe", debt_add:"Record a debt", debt_empty:"No debts yet. Lend or borrow money — write it here and it won't be forgotten.", debt_settled:"Closed", debt_lent_meta:"I lent", debt_borrowed_meta:"I borrowed", debt_overdue:"overdue", debt_until:"by {d}", debt_returned:"Returned", debt_returned_full:"Fully returned", debt_lent:"I lent", debt_borrowed:"I borrowed", debt_person:"Who? Type a name", debt_amount:"Amount (200k, 1.5 mln…)", debt_due:"Return by", debt_due_week:"In 1 week", debt_due_month:"In 1 month", debt_note:"Note (optional)", debt_bad_amount:"Type an amount — 200 ming or 200000", debt_saved:"✓ Debt recorded", debt_closed:"✓ Debt closed", debt_partial:"Part of it returned?", debt_partial_ph:"How much? E.g. 50 ming", debt_reopen:"Reopen",
   money_apart:"A separate section — never counted in any percentage, streak or rank.",
   money_balance:"Balance", money_income:"Income", money_expense:"Spent",
   money_unit:"UZS", date_day:"Day", date_month:"Month", date_year:"Year",
@@ -1924,7 +1988,7 @@ const DICT = {
   wake_late_at:"{time} — позже сегодняшней цели", wake_target:"Цель",
   quick_add:"Быстро добавить", quick_ph:"Что пришло в голову?",
   inbox_saved:"Сохранено — в Задачах",
-  quick_saved:"✓ Задача", tab_list:"Список", nav_money:"Финансы", quick_more:"Подробнее (время, напоминание, проект)", steps_title:"Шаги", steps_motto:"Каждое доброе дело — шаг вперёд.", steps_freeze:"Дни, которые сохраняют серию", steps_level_n:"{n}-й уровень", steps_total:"Всего шагов", steps_path:"Ваш путь", steps_today:"Шаги сегодня", steps_go:"Продолжить", step_lvl_starter:"Новичок", step_lvl_builder:"Строитель", step_lvl_discipline:"Дисциплина", step_lvl_steady:"Стабильность", step_lvl_master:"Работа над собой", step_tasks:"Задача", step_habits:"Привычка", step_prayer:"Намаз", step_journal:"Дневник", step_goal:"Цель", task_word:"Задача", habit_word:"Привычка", quick_habit_ph:"Например: Читать книгу каждый день", quick_habit_hint:"Повторяется каждый день. Можно изменить позже.", quick_habit_saved:"✓ Привычка", nav_tracker:"Трекер", nav_profile:"Профиль", quick_hint:"Например: «Завтра в 10 отчёт» или «Обед 45 тысяч»", quick_voice:"Сказать голосом",
+  quick_saved:"✓ Задача", next_up:"Дальше", home_more_tasks:"Ещё {n}", voice_title:"Добавить голосом", voice_listening:"Говорите… Остановите — и я разберу.", voice_stop:"Стоп", voice_thinking:"Разбираю…", voice_confirm:"Подтвердить", voice_retry:"Записать заново", voice_done:"✅ Подтверждено", voice_failed:"Голос не отправлен. Попробуйте ещё раз.", voice_too_long:"Не длиннее 2 минут.", voice_denied:"Нет доступа к микрофону — отправьте голосовое в боте.", voice_consent:"Голос отправляется AI-сервисам (ElevenLabs, Groq, Google — США) для распознавания. Аудио не хранится. Ничего не меняется без вашего подтверждения.", voice_agree:"Согласен, начать", voice_consent_needed:"Сначала дайте согласие.", tab_list:"Список", nav_money:"Финансы", quick_more:"Подробнее (время, напоминание, проект)", quick_more_habit:"Подробнее (дни, напоминание, важность)", nav_steps:"Шаги", steps_to_next:"До уровня «{name}» ещё {n} шагов", steps_max:"Высший уровень — отлично!", steps_freeze_short:"Заморозки", steps_rank_in:"через {n} дн.", steps_next:"Следующий шаг", steps_all_done:"Все шаги на сегодня сделаны 🎉", steps_more:"Достижения и рейтинг", steps_title:"Шаги", steps_motto:"Каждое доброе дело — шаг вперёд.", steps_freeze:"Дни, которые сохраняют серию", steps_level_n:"{n}-й уровень", steps_total:"Всего шагов", steps_path:"Ваш путь", steps_today:"Шаги сегодня", steps_go:"Продолжить", step_lvl_starter:"Новичок", step_lvl_builder:"Строитель", step_lvl_discipline:"Дисциплина", step_lvl_steady:"Стабильность", step_lvl_master:"Работа над собой", step_tasks:"Задача", step_habits:"Привычка", step_prayer:"Намаз", step_journal:"Итоги", step_goal:"Цель", task_word:"Задача", habit_word:"Привычка", quick_habit_ph:"Например: Читать книгу каждый день", quick_habit_hint:"Повторяется каждый день. Можно изменить позже.", quick_habit_saved:"✓ Привычка", nav_tracker:"Трекер", nav_profile:"Профиль", quick_hint:"Например: «Завтра в 10 отчёт» или «Обед 45 тысяч»", quick_voice:"Сказать голосом", jai_title:"Заполнить с AI", jai_hint:"Расскажите о дне голосом или текстом — AI разложит всё по 5 вопросам и исправит ошибки. Вы проверяете и сохраняете.", jai_voice:"Сказать", jai_text:"Написать", jai_ph:"Например: сегодня закрыл сделку с клиентом, благодарен маме, не успел спланировать время, завтра закончу отчёт…", jai_sort:"Разложить по вопросам", jai_done:"✨ Заполнено ответов: {n} — проверьте и Сохраните", jai_nothing:"Ничего не подошло к вопросам. Расскажите подробнее.",
   add_task:"Задача", task_name:"Название", task_desc:"Подробнее",
   deadline:"Дата", due_time:"Время", priority:"Приоритет", project:"Проект",
   standalone:"Отдельно", high:"Высокий", medium:"Средний", low:"Низкий",
@@ -1961,6 +2025,8 @@ const DICT = {
   inbox_hint:"Со сроком, без срока и просроченные — всё здесь",
   add_habit:"Добавить привычку", habit_name:"Название", category:"Категория",
   non_negotiable:"Обязательные", target:"Развитие", bonus:"Дополнительные",
+  habit_tier:"Насколько важно", autosave_hint:"Изменения сохраняются сразу", done_btn:"Готово",
+  none_short:"Нет", remind_s_0:"Вовремя", remind_s_10:"10 мин", remind_s_30:"30 мин", remind_s_60:"1 час", remind_s_1440:"1 день",
   edit_habit:"Изменить привычку", schedule:"Дни", every_day:"Каждый день",
   weekdays_only:"По рабочим дням", pick_days:"Выбранные дни",
   pause:"Приостановить", resume:"Продолжить", paused:"Приостановлена",
@@ -1968,7 +2034,7 @@ const DICT = {
   last7:"Последние 7 дней", last30:"Последние 30 дней", completion:"Выполнение",
   auto_habit:"Эта привычка отмечается автоматически", habit_auto_prayer:"из раздела Намаз",
   habit_always_daily:"нельзя изменить",
-  habit_auto_journal:"из раздела Дневник",
+  habit_auto_journal:"из раздела Итоги дня",
   reorder:"Порядок", reorder_hint:"Перетащите или используйте ↑ ↓",
   move_up:"Вверх", move_down:"Вниз", finish:"Готово",
   no_habits_today:"На сегодня привычек нет",
@@ -1982,7 +2048,7 @@ const DICT = {
   male:"Мужской", female:"Женский",
   pr_full_days:"Дней со всеми пятью", pr_on_time:"Вовремя", pr_jamaat:"Джамаат",
   pr_qaza:"Каза", pr_missed:"Пропущено", pr_consistency:"Стабильность",
-  journal:"Дневник", journal_progress:"{done} из {total} отвечено",
+  journal:"Итоги дня", journal_progress:"{done} из {total} отвечено",
   journal_complete:"Заполнен полностью", journal_hint:"Сохраняется всё, что вы напишете",
   journal_history:"История", journal_partial:"Не заполнен",
   draft_restored:"Несохранённый текст восстановлен", autosaved:"Сохраняем…",
@@ -2081,7 +2147,7 @@ const DICT = {
   wipe_warn:"Все задачи, привычки, записи намаза, дневник, проекты и цели будут стёрты навсегда. Отменить это нельзя.",
   wipe_keeps:"Аккаунт, язык, тема и настройки останутся. Привычки по умолчанию вернутся.",
   wipe_continue:"Да, стереть всё", wipe_done:"Данные удалены",
-  privacy_body:"Данные каждого пользователя лежат в отдельном рабочем пространстве и не видны другим пользователям. Они хранятся в базе PostgreSQL, к которой администратор имеет доступ для обслуживания. Записи дневника не передаются никаким внешним сервисам.",
+  privacy_body:"Данные каждого пользователя лежат в отдельном рабочем пространстве и не видны другим пользователям. Они хранятся в базе PostgreSQL, к которой администратор имеет доступ для обслуживания. Итоги дня не передаются внешним сервисам — только если вы нажмёте «Заполнить с AI», этот текст отправится AI-сервису для разбора.",
   delete_account:"Удалить аккаунт и данные",
   delete_account_warn:"Все привычки, задачи, записи намазов и дневник будут удалены безвозвратно. Это нельзя отменить.",
   delete_confirm_ph:"Введите DELETE для подтверждения",
@@ -2169,13 +2235,14 @@ const DICT = {
   setup_body:"Вернитесь в бот ErnestOS и ответьте на несколько вопросов — затем здесь откроется всё.",
   back_to_bot:"Вернуться в бот",
   modules:"Модули", modules_hint:"Что вы отслеживаете", mod_wake:"Ранний подъём", mod_prayer:"Намаз",
-  mod_journal:"Дневник",
+  mod_journal:"Итоги дня",
   modules_note:"Выключенный модуль хранит историю. При включении дни, когда он был выключен, не считаются пропущенными.",
   wake_enter:"Ввести время", wake_enter_hint:"Когда вы действительно встали — а не когда нажали кнопку",
   pause_today:"С сегодня", pause_tomorrow:"С завтра", pause_when:"С какого дня пауза?",
   pause_note:"С сегодня — сегодняшний день тоже не считается",
   pts:"п.", team_join_hint:"Откройте ссылку-приглашение — сначала увидите команду, потом вступите",
   nav_home:"Главная", nav_stats:"Итоги", money:"Деньги", money_add:"Запись о деньгах",
+  money_this_month:"за месяц", money_tab_entries:"Записи", money_tab_cats:"Категории", money_tab_debts:"Долги", debt_overdue_n:"просрочено: {n}", debt_owed_to_me:"Вам должны", debt_i_owe:"Вы должны", debt_add:"Записать долг", debt_empty:"Долгов пока нет. Дали или взяли деньги — запишите здесь, и это не забудется.", debt_settled:"Закрытые", debt_lent_meta:"я дал", debt_borrowed_meta:"я взял", debt_overdue:"просрочен", debt_until:"до {d}", debt_returned:"Вернули", debt_returned_full:"Вернули полностью", debt_lent:"Я дал", debt_borrowed:"Я взял", debt_person:"Кто? Введите имя", debt_amount:"Сумма (200 тыс, 1,5 млн…)", debt_due:"Вернуть до", debt_due_week:"Через неделю", debt_due_month:"Через месяц", debt_note:"Заметка (необязательно)", debt_bad_amount:"Введите сумму — 200 тыс или 200000", debt_saved:"✓ Долг записан", debt_closed:"✓ Долг закрыт", debt_partial:"Вернули часть?", debt_partial_ph:"Сколько? Например, 50 тыс", debt_reopen:"Открыть снова",
   money_apart:"Отдельный раздел — не входит ни в какие проценты, серии и рейтинги.",
   money_balance:"Баланс", money_income:"Доход", money_expense:"Расход",
   money_unit:"сум", date_day:"День", date_month:"Месяц", date_year:"Год",
@@ -2287,6 +2354,7 @@ const ICONS = {
   sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M5 5l1.8 1.8M17.2 17.2 19 19M5 19l1.8-1.8M17.2 6.8 19 5"/>',
   moon:'<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/>',
   user:'<circle cx="12" cy="8" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/>',
+  steps:'<path d="M8.2 3c1.7 0 2.7 2.1 2.5 4.7-.2 2.3-1.1 4-2.7 4s-2.6-1.7-2.6-4.1C5.4 5 6.4 3 8.2 3z"/><path d="M5.7 14.6h4.8l-.4 2.6a2.2 2.2 0 0 1-4.1 0z"/><path d="M15.8 7.4c1.8 0 2.8 1.9 2.6 4.5-.2 2.3-1.1 4-2.7 4s-2.6-1.6-2.6-4c0-2.5 1-4.5 2.7-4.5z"/><path d="M13.4 19h4.8l-.3 1.3a2.2 2.2 0 0 1-4.2 0z"/>',
   target:'<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/>',
   info:'<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.8v.6"/>',
   pause:'<path d="M9 5v14M15 5v14"/>',
@@ -2345,7 +2413,7 @@ const state = {
 };
 
 const RELEASE_WORDS = {
-  uz: {more:"Ko'proq", load_more:"Yana ko'rsatish", loaded_tasks:"{n} / {total} ta ish ko'rsatilgan", retry_screen:"Qayta yuklash", session_expired:"Sessiya tugadi. Botdan ilovani qayta oching.", rate_wait:"Juda ko'p amal. {n} soniyadan keyin qayta urining.", invalid_input:"Maydonlarni tekshiring: sana, vaqt, nom yoki summa noto'g'ri.", not_found_item:"Yozuv topilmadi yoki o'chirilgan. Ro'yxatni yangilang.", now_empty:"Bugunga hali reja yo'q", now_empty_hint:"Birinchi vazifangizni qo'shing yoki odat tanlang.", now_team:"Jamoada {n} ta ishingiz qoldi", monthly_income:"Bu oy kirim", monthly_expense:"Bu oy chiqim", balance_hint:"Barcha davr: yozilgan kirim minus chiqim", task_points:"Prioritet balli: {earned}/{total}", weighted_tasks:"Foiz muhimlik bo'yicha: yuqori 3, o'rta 2, past 1 ball.", weighted_habits:"Foiz odat darajasiga qarab hisoblanadi.", prayer_quality:"Sifat balli: {earned}/{total}", planned_count:"Bugun rejalashtirilgan: {n}", not_due_count:"Bugun rejasiz: {n} · Hisobga kirmaydi", habit_count_hint:"Namoz alohida hisoblanadi; jamoa odatlari Jamoa hisobida.", team_units:"{items} ta ish · {confirmations} ta shaxsiy belgi · {left} ta belgi qolgan", team_left_today:"Hali yopilmagan ishlar", team_you_done:"Siz bajardingiz", team_waiting_on:"Hali bajarmagan", trial_notice:"Dastlab {n} ta amal bepul. Keyin davom etish uchun kanalga qo'shilish kerak. Ma'lumotlaringiz saqlanadi va o'qish ochiq qoladi.", trial_remaining:"Kanalga qo'shilish so'ralguncha {n} ta amal qoldi.", presets_offer:"Tayyor odatlarni tanlab ko'ring", presets_offer_hint:"Keraklisini bir bosishda qo'shing. Eski odatlaringiz saqlanadi.", dismiss:"Keyinroq", agent_title:"Ovozli yordamchi", agent_ready:"Botga ovoz yoki matn yuboring. Amalni avval ko'rib, tasdiqlaysiz.", agent_off:"Hozir yoqilmagan. Vazifa va odatlarni + orqali qo'shishingiz mumkin.", agent_open:"Botda yordamchini ochish", money_review:"Yozuvni tekshiring", money_review_hint:"Summa, tur va kategoriyani tekshirib saqlang.", journal_local:"Qurilmada saqlandi. Internet tiklangach qayta saqlang.", saving_failed:"Saqlanmadi. Kiritgan ma'lumotingiz oynada qoldi.", habit_auto_prayer:"Avtomatik · 5 namoz qayd etilganda", habit_auto_journal:"Avtomatik · Kundalik javoblari to'lganda", money_latest:"Oy yozuvlari", record_limit:"Oxirgi {n} ta yozuv ko'rsatilgan. To'liq tarixni Ma'lumotlarim orqali yuklab oling."},
+  uz: {more:"Ko'proq", load_more:"Yana ko'rsatish", loaded_tasks:"{n} / {total} ta ish ko'rsatilgan", retry_screen:"Qayta yuklash", session_expired:"Sessiya tugadi. Botdan ilovani qayta oching.", rate_wait:"Juda ko'p amal. {n} soniyadan keyin qayta urining.", invalid_input:"Maydonlarni tekshiring: sana, vaqt, nom yoki summa noto'g'ri.", not_found_item:"Yozuv topilmadi yoki o'chirilgan. Ro'yxatni yangilang.", now_empty:"Bugunga hali reja yo'q", now_empty_hint:"Birinchi vazifangizni qo'shing yoki odat tanlang.", now_team:"Jamoada {n} ta ishingiz qoldi", monthly_income:"Bu oy kirim", monthly_expense:"Bu oy chiqim", balance_hint:"Barcha davr: yozilgan kirim minus chiqim", task_points:"Prioritet balli: {earned}/{total}", weighted_tasks:"Foiz muhimlik bo'yicha: yuqori 3, o'rta 2, past 1 ball.", weighted_habits:"Foiz odat darajasiga qarab hisoblanadi.", prayer_quality:"Sifat balli: {earned}/{total}", planned_count:"Bugun rejalashtirilgan: {n}", not_due_count:"Bugun rejasiz: {n} · Hisobga kirmaydi", habit_count_hint:"Namoz alohida hisoblanadi; jamoa odatlari Jamoa hisobida.", team_units:"{items} ta ish · {confirmations} ta shaxsiy belgi · {left} ta belgi qolgan", team_left_today:"Hali yopilmagan ishlar", team_you_done:"Siz bajardingiz", team_waiting_on:"Hali bajarmagan", trial_notice:"Dastlab {n} ta amal bepul. Keyin davom etish uchun kanalga qo'shilish kerak. Ma'lumotlaringiz saqlanadi va o'qish ochiq qoladi.", trial_remaining:"Kanalga qo'shilish so'ralguncha {n} ta amal qoldi.", presets_offer:"Tayyor odatlarni tanlab ko'ring", presets_offer_hint:"Keraklisini bir bosishda qo'shing. Eski odatlaringiz saqlanadi.", dismiss:"Keyinroq", agent_title:"Ovozli yordamchi", agent_ready:"Botga ovoz yoki matn yuboring. Amalni avval ko'rib, tasdiqlaysiz.", agent_off:"Hozir yoqilmagan. Vazifa va odatlarni + orqali qo'shishingiz mumkin.", agent_open:"Botda yordamchini ochish", money_review:"Yozuvni tekshiring", money_review_hint:"Summa, tur va kategoriyani tekshirib saqlang.", journal_local:"Qurilmada saqlandi. Internet tiklangach qayta saqlang.", saving_failed:"Saqlanmadi. Kiritgan ma'lumotingiz oynada qoldi.", habit_auto_prayer:"Avtomatik · 5 namoz qayd etilganda", habit_auto_journal:"Avtomatik · Kun xulosasi yozilganda", money_latest:"Oy yozuvlari", record_limit:"Oxirgi {n} ta yozuv ko'rsatilgan. To'liq tarixni Ma'lumotlarim orqali yuklab oling."},
   en: {more:"More", load_more:"Show more", loaded_tasks:"Showing {n} of {total} items", retry_screen:"Reload", session_expired:"Session expired. Reopen the app from the bot.", rate_wait:"Too many actions. Try again in {n} seconds.", invalid_input:"Check the fields: invalid date, time, name or amount.", not_found_item:"This item was deleted or is unavailable. Refresh the list.", now_empty:"Nothing planned for today yet", now_empty_hint:"Add your first task or choose a habit.", now_team:"You have {n} team items left", monthly_income:"Income this month", monthly_expense:"Spent this month", balance_hint:"All time: recorded income minus expenses", task_points:"Priority points: {earned}/{total}", weighted_tasks:"Weighted by priority: high 3, medium 2, low 1 point.", weighted_habits:"Weighted by habit tier.", prayer_quality:"Quality points: {earned}/{total}", planned_count:"Scheduled today: {n}", not_due_count:"Not scheduled today: {n} · Not counted", habit_count_hint:"Prayer is counted separately; shared habits count under Team.", team_units:"{items} items · {confirmations} individual check-ins · {left} check-ins left", team_left_today:"Items still open", team_you_done:"You completed this", team_waiting_on:"Still to complete", trial_notice:"Your first {n} actions are free. After that, join the channel to keep making changes. Your data stays saved and readable.", trial_remaining:"{n} actions left before joining the channel is required.", presets_offer:"Choose ready-made habits", presets_offer_hint:"Add what fits in one tap. Your existing habits stay.", dismiss:"Later", agent_title:"Voice assistant", agent_ready:"Send voice or text to the bot. Review and confirm before anything changes.", agent_off:"Currently unavailable. Use + to add tasks and habits.", agent_open:"Open assistant in bot", money_review:"Review entry", money_review_hint:"Check the amount, direction and category before saving.", journal_local:"Saved on this device. Save again when connected.", saving_failed:"Not saved. Your input is still in the form.", habit_auto_prayer:"Automatic · after all 5 prayers are recorded", habit_auto_journal:"Automatic · after the journal is complete", money_latest:"Entries this month", record_limit:"Showing the latest {n} entries. Download the full history from My data."},
   ru: {more:"Ещё", load_more:"Показать ещё", loaded_tasks:"Показано {n} из {total} дел", retry_screen:"Обновить", session_expired:"Сессия истекла. Откройте приложение заново из бота.", rate_wait:"Слишком много действий. Повторите через {n} сек.", invalid_input:"Проверьте поля: дату, время, название или сумму.", not_found_item:"Запись удалена или недоступна. Обновите список.", now_empty:"На сегодня пока нет плана", now_empty_hint:"Добавьте первую задачу или выберите привычку.", now_team:"Осталось {n} ваших командных дел", monthly_income:"Доход за месяц", monthly_expense:"Расход за месяц", balance_hint:"За всё время: записанные доходы минус расходы", task_points:"Баллы приоритета: {earned}/{total}", weighted_tasks:"С учётом приоритета: высокий 3, средний 2, низкий 1 балл.", weighted_habits:"Процент зависит от уровня привычки.", prayer_quality:"Баллы качества: {earned}/{total}", planned_count:"Запланировано на сегодня: {n}", not_due_count:"Не запланировано сегодня: {n} · Не учитывается", habit_count_hint:"Намаз считается отдельно; общие привычки — в Команде.", team_units:"{items} дел · {confirmations} личных отметок · осталось {left} отметок", team_left_today:"Ещё открытые дела", team_you_done:"Вы выполнили", team_waiting_on:"Ещё не выполнили", trial_notice:"Первые {n} действий бесплатны. Затем для изменений нужна подписка на канал. Данные сохраняются и доступны для чтения.", trial_remaining:"Осталось {n} действий до запроса подписки на канал.", presets_offer:"Выберите готовые привычки", presets_offer_hint:"Добавьте подходящие одним нажатием. Ваши привычки сохранятся.", dismiss:"Позже", agent_title:"Голосовой помощник", agent_ready:"Отправьте голос или текст боту. Сначала проверьте и подтвердите действие.", agent_off:"Сейчас недоступен. Добавляйте задачи и привычки через +.", agent_open:"Открыть помощника в боте", money_review:"Проверьте запись", money_review_hint:"Проверьте сумму, тип и категорию перед сохранением.", journal_local:"Сохранено на устройстве. Повторите сохранение после подключения.", saving_failed:"Не сохранено. Введённые данные остались в форме.", habit_auto_prayer:"Автоматически · после записи всех 5 намазов", habit_auto_journal:"Автоматически · после заполнения дневника", money_latest:"Записи за месяц", record_limit:"Показаны последние {n} записей. Полную историю можно скачать в разделе Мои данные."}
 };
@@ -2631,10 +2699,13 @@ SCREENS.home = () => {
      Everything else — the week goal, the countdowns, the day/week/month
      percentages, XP — lives on the screen that owns it (Tasks, Statistics).
      The month grid opens from the date in the header. */
+  /* v12.2: everything serves the Now card. Under it only the week goal and
+     the next three things, each one line; the rest is one tap away. */
   return headBlock(d)
        + timerBanner(d.active_timer)
        + nowBlock(d)
        + countsRow(d)
+       + homeGoal(d)
        + tasksBlock(d)
        + presetsOffer(d)
        + privacyNote();
@@ -2817,6 +2888,21 @@ function nowBlock(d){
 }
 
 /* Today's work, grouped by the project it belongs to. */
+/* The week goal, the size of one line, right under the day. */
+const focusScreen = () => state.screen === "home" ? "home" : "tasks";
+function homeGoal(d){
+  const g = d.focus;
+  if(!g) return `<div class="goal-line pressable" data-act="focus-add" data-slot="primary">
+      <span class="gi">🎯</span><div class="grow t2">${t("add_mission")}</div>${icon("plus", 16)}</div>`;
+  return `<div class="goal-line ${g.done ? "done" : ""}">
+      <div class="check ${g.done ? "on" : ""}" data-act="focus-toggle" data-id="${g.id}">${icon("check", 14)}</div>
+      <div class="grow" data-act="focus-open" data-id="${g.id}" data-title="${esc(g.title)}"
+           data-priority="${g.priority || "medium"}" data-done="${g.done ? 1 : 0}">
+        <div class="eyebrow">🎯 ${t("week_focus")}</div>
+        <div class="gt ${g.done ? "strike" : ""}">${esc(g.title)}</div></div>
+      ${icon("chevron", 16)}</div>`;
+}
+
 function tasksBlock(d){
   const groups = d.tasks_today || [];
   /* Whatever the Now card is showing is already the largest thing on the
@@ -2826,9 +2912,7 @@ function tasksBlock(d){
   const shownAbove = d.now?.kind === "task" ? d.now.id : (d.top3 || [])[0]?.id;
   const missionId = shownAbove;
 
-  let h = `<h2>${t("today_tasks")}
-      <span class="act" data-act="task-add">${icon("plus", 15)}
-        ${t("add_task")}</span></h2>`;
+  let h = `<h2>${t("next_up")}</h2>`;
 
   const rows = groups
     .map(g => ({...g, tasks: g.tasks.filter(x => x.id !== missionId)}))
@@ -2851,12 +2935,12 @@ function tasksBlock(d){
         ${icon("plus", 16)} ${t("add_first_task")}</button></div>`;
   }
 
-  return h + rows.map(group => `
-    ${group.project
-      ? `<div class="group">${icon("target", 13)} ${esc(group.project)}</div>`
-      : `<div class="group">${esc(t("standalone"))}</div>`}
-    ${group.tasks.map(x => taskRow(x, {hideProject: true, hideDate: true}))
-                 .join("")}`).join("") + shared;
+  /* Next three only: Home is for doing, the full list lives in Kundalik. */
+  const all = rows.flatMap(g => g.tasks);
+  const more = all.length - 3;
+  return h + all.slice(0, 3).map(x => taskRow(x, {hideDate: true})).join("")
+    + (more > 0 ? `<div class="more-link" data-act="nav" data-screen="tasks" role="button" tabindex="0">
+        ${t("home_more_tasks", {n: more})} →</div>` : "") + shared;
 }
 
 function calendarBlock(){
@@ -3574,7 +3658,15 @@ function journalTab(){
       <div class="t3 tiny" id="jsave"></div>
     </div>`;
 
-  h += `<div class="t3 tiny" style="margin-bottom:10px">${t("journal_hint")}</div>`;
+  // Speak or write freely; the AI sorts it into the five answers for review.
+  if(state.me?.agent?.available) h += `<div class="card jai">
+      <div class="small"><b>✨ ${t("jai_title")}</b></div>
+      <div class="t3 tiny" style="margin:4px 0 10px">${t("jai_hint")}</div>
+      <div class="voice-row" style="margin-top:0">
+        <button class="btn" data-act="voice-start" data-target="journal">🎙 ${t("jai_voice")}</button>
+        <button class="btn secondary" data-act="jai-text">✍️ ${t("jai_text")}</button>
+      </div></div>`;
+  else h += `<div class="t3 tiny" style="margin-bottom:10px">${t("journal_hint")}</div>`;
 
   questions.forEach((q, i) => {
     const value = draft[q.id] ?? answers[q.id] ?? "";
@@ -3633,6 +3725,33 @@ function saveDraft(id, value){
 }
 function clearDraft(){
   try{ localStorage.removeItem(draftKey()); }catch(_){}
+}
+
+/* The AI's five answers land in the fields, never straight into the saved
+   entry: the person reads them, fixes a word if needed, and saves. A field
+   that already has text keeps it and gets the new sentence after it. */
+function journalFilled(r){
+  closeSheet();
+  const answers = r?.answers || {};
+  const keys = Object.keys(answers);
+  if(!keys.length){ notify("warning"); return toast(t("jai_nothing")); }
+  for(const id of keys){
+    const el = document.getElementById("jq-" + id);
+    if(!el) continue;
+    const old = el.value.trim();
+    el.value = old ? `${old} ${answers[id]}` : answers[id];
+    el.classList.add("jai-new");
+    onJournalInput(el);
+  }
+  notify("success");
+  toast(t("jai_done", {n: keys.length}));
+  document.getElementById("jq-" + keys[0])?.scrollIntoView({behavior:"smooth", block:"center"});
+}
+function jaiTextSheet(){
+  return `<h3>✍️ ${t("jai_title")}</h3>
+    <div class="t3 tiny" style="margin:4px 0 10px">${t("jai_hint")}</div>
+    <textarea id="jai-text" style="min-height:160px" placeholder="${t("jai_ph")}"></textarea>
+    <button class="btn" data-act="jai-send" style="margin-top:12px">✨ ${t("jai_sort")}</button>`;
 }
 
 /* Autosave. Every changed answer waits in `journalPending` until typing
@@ -4730,13 +4849,16 @@ function moneyRow(e, icons){
     </div>`;
 }
 
+/* Money, top to bottom: what you have, one line to add, then one of three
+   views — the month's entries, where it went, and who owes whom. */
 SCREENS.money = () => {
   const m = state.money;
+  const tab = state.moneyTab || "entries";
   let h = `<div class="head"><h1 class="grow">${t("nav_money")}</h1>
-      <button class="iconbtn add" data-act="money-add"
-              aria-label="${t("money_add")}">${icon("plus", 22)}</button></div>
-    <div class="t3 tiny">${t("money_apart")}</div>`;
+      <button class="iconbtn add" data-act="${tab === "debts" ? "debt-add" : "money-add"}"
+              aria-label="${t(tab === "debts" ? "debt_add" : "money_add")}">${icon("plus", 22)}</button></div>`;
   if(!m) return h + `<div class="spin"></div>`;
+  const debts = m.debts || {open:[], settled:[], owed_to_me:0, i_owe:0, overdue:0};
 
   h += `<div class="mnav">
       <button class="iconbtn sm" data-act="money-month" data-delta="-1"
@@ -4745,14 +4867,17 @@ SCREENS.money = () => {
       <button class="iconbtn sm" data-act="money-month" data-delta="1" aria-label="›"
               ${m.is_current ? "disabled" : ""}>${icon("chevron", 16)}</button></div>`;
 
-  h += `<div class="mtiles">
-      <div class="mtile lead"><div class="k">${icon("wallet", 15)} ${t("money_balance")}</div>
-        <div class="v ${m.balance < 0 ? "neg" : ""}">${m.balance < 0 ? "−" : ""}${moneyFmt(m.balance)}</div>
-        <div class="t3 tiny">${t("balance_hint")}</div></div>
-      <div class="mtile"><div class="k">${icon("up", 15)} ${t("monthly_income")}</div>
-        <div class="v pos">+${moneyFmt(m.income)}</div></div>
-      <div class="mtile"><div class="k">${icon("down", 15)} ${t("monthly_expense")}</div>
-        <div class="v neg">−${moneyFmt(m.expense)}</div></div>
+  h += `<div class="mhero">
+      <div class="k">${icon("wallet", 15)} ${t("money_balance")}</div>
+      <div class="v num ${m.balance < 0 ? "neg" : ""}">${m.balance < 0 ? "−" : ""}${moneyFmt(m.balance)}</div>
+      <div class="mflow num">
+        <span class="pos">↑ +${moneyNum(m.income)}</span>
+        <span class="neg">↓ −${moneyNum(m.expense)}</span>
+        <span class="t3">${t("money_this_month")}</span></div>
+      ${debts.open.length ? `<div class="mdebt" data-act="money-tab" data-value="debts" role="button" tabindex="0">
+        🤝 ${t("money_tab_debts")}: <span class="pos num">+${moneyNum(debts.owed_to_me)}</span>
+        · <span class="neg num">−${moneyNum(debts.i_owe)}</span>
+        ${debts.overdue ? `<span class="neg"> · ${t("debt_overdue_n", {n: debts.overdue})}</span>` : ""}</div>` : ""}
     </div>`;
 
   if(m.is_current) h += `<div class="mquick">
@@ -4766,42 +4891,119 @@ SCREENS.money = () => {
         − ${t("money_expense")}</button>
       <button class="btn secondary pos" data-act="money-text-save" data-kind="income">
         + ${t("money_income")}</button>
-    </div>
-    <div class="t3 tiny" style="margin-top:6px">${t("money_quick_hint")}</div>`;
+    </div>`;
 
-  const spent = m.categories.filter(c => c.spent > 0);
-  h += sectionHead("tone-4", "chart", t("money_spend_split"))
-    + `<div class="card">${spent.length ? moneyDonut(spent, m.expense)
-        : `<div class="t2 small" style="text-align:center;padding:var(--s2) 0">
-             ${t("money_no_spend")}</div>`}</div>`;
+  h += `<div class="seg mtabs">${[["entries", t("money_tab_entries")], ["cats", t("money_tab_cats")],
+      ["debts", t("money_tab_debts") + (debts.open.length ? ` · ${debts.open.length}` : "")]]
+      .map(([id, label]) => `<div class="${tab === id ? "on" : ""}" data-act="money-tab"
+        data-value="${id}">${label}</div>`).join("")}</div>`;
 
-  h += sectionHead("tone-2", "tiles", t("money_by_category"),
-      `<span class="t3 tiny">${t("money_limit_tap")}</span>`)
-    + `<div class="card">${m.categories.map(c => {
-        const pct = c.limit ? Math.min(100, c.spent / c.limit * 100) : 0;
-        return `<div class="mcat" data-act="money-budget" data-cat="${c.id}"
-            data-limit="${c.limit}" role="button" tabindex="0">
-          <div class="row"><span>${c.icon}</span>
-            <div class="grow ellipsis">${t("mcat_" + c.id)}</div>
-            <span class="amt ${c.over ? "over" : ""}">${moneyFmt(c.spent)}${
-              c.limit ? ` / ${moneyFmt(c.limit)}` : ` · ${t("money_no_limit")}`}</span>
-            <span class="medit" aria-hidden="true">${icon("edit", 15)}</span></div>
-          ${c.limit ? `<div class="mbar"><span style="width:${pct}%;background:${
-              c.over ? "var(--danger)" : MONEY_TONE[c.id]}"></span></div>` : ""}
-          ${c.over ? `<div class="tiny" style="color:var(--danger);margin-top:4px">
-              ${t("money_over", {n: moneyFmt(c.spent - c.limit)})}</div>` : ""}
-        </div>`;}).join("")}</div>`;
+  if(tab === "cats") return h + moneyCats(m);
+  if(tab === "debts") return h + debtsView(debts);
 
-  h += sectionHead("tone-1", "list", t("money_latest"),
-      `<span class="t3 tiny num">${m.count}</span>`);
   h += m.entries.length ? m.entries.map(e => moneyRow(e, m.icons)).join("")
-    : `<div class="empty">${t("money_empty")}
-        <button class="btn secondary sm" data-act="money-add">
-          ${icon("plus", 16)} ${t("money_add")}</button></div>`;
+    : `<div class="empty">${t("money_empty")}</div>`;
   if(m.count > m.entries.length) h += `<div class="hint">${t("record_limit", {n:m.entries.length})}</div>
     <button class="btn secondary" data-act="set-account">${t("account")}</button>`;
   return h;
 };
+
+/* Where the month's money went, and each category against its limit. */
+function moneyCats(m){
+  const spent = m.categories.filter(c => c.spent > 0);
+  let h = spent.length ? `<div class="card">${moneyDonut(spent, m.expense)}</div>` : "";
+  h += `<div class="t3 tiny" style="margin:var(--s2) 0 var(--s1)">${t("money_limit_tap")}</div>`;
+  h += `<div class="card">${m.categories.map(c => {
+      const pct = c.limit ? Math.min(100, c.spent / c.limit * 100) : 0;
+      return `<div class="mcat" data-act="money-budget" data-cat="${c.id}"
+          data-limit="${c.limit}" role="button" tabindex="0">
+        <div class="row"><span>${c.icon}</span>
+          <div class="grow ellipsis">${t("mcat_" + c.id)}</div>
+          <span class="amt ${c.over ? "over" : ""}">${moneyFmt(c.spent)}${
+            c.limit ? ` / ${moneyFmt(c.limit)}` : ` · ${t("money_no_limit")}`}</span>
+          <span class="medit" aria-hidden="true">${icon("edit", 15)}</span></div>
+        ${c.limit ? `<div class="mbar"><span style="width:${pct}%;background:${
+            c.over ? "var(--danger)" : MONEY_TONE[c.id]}"></span></div>` : ""}
+        ${c.over ? `<div class="tiny" style="color:var(--danger);margin-top:4px">
+            ${t("money_over", {n: moneyFmt(c.spent - c.limit)})}</div>` : ""}
+      </div>`;}).join("")}</div>`;
+  return h;
+}
+
+/* ---------- Debts ----------
+   Who owes you and whom you owe, apart from the balance: lending is not
+   spending. One tap closes a debt; part of it can come back too. */
+function debtsView(d){
+  let h = `<div class="mtiles">
+      <div class="mtile"><div class="k">↙ ${t("debt_owed_to_me")}</div>
+        <div class="v pos">${moneyFmt(d.owed_to_me)}</div></div>
+      <div class="mtile"><div class="k">↗ ${t("debt_i_owe")}</div>
+        <div class="v neg">${moneyFmt(d.i_owe)}</div></div>
+    </div>
+    <div style="height:var(--s2)"></div>`;
+  if(!d.open.length) h += `<div class="empty">${t("debt_empty")}
+      <button class="btn secondary sm" data-act="debt-add" style="margin:12px auto 0;display:flex">
+        ${icon("plus", 16)} ${t("debt_add")}</button></div>`;
+  h += d.open.map(debtRow).join("");
+  if(d.settled.length) h += `<details style="margin-top:var(--s2)">
+      <summary>${icon("chevron", 15)} ${t("debt_settled")} · ${d.settled.length}</summary>
+      ${d.settled.map(debtRow).join("")}</details>`;
+  return h;
+}
+function debtRow(x){
+  const lent = x.direction === "lent";
+  const meta = [t(lent ? "debt_lent_meta" : "debt_borrowed_meta"),
+    x.due ? (x.overdue ? `<span class="neg">${t("debt_overdue")} · ${isoToLabel(x.due)}</span>`
+                       : t("debt_until", {d: isoToLabel(x.due)})) : "",
+    x.note ? esc(x.note) : ""].filter(Boolean).join(" · ");
+  return `<div class="item drow ${x.settled ? "settled" : ""}" data-act="debt-open" data-id="${x.id}">
+      ${x.settled ? `<span class="check on" aria-hidden="true">${icon("check", 14)}</span>`
+        : `<button class="check" data-act="debt-settle" data-id="${x.id}"
+           aria-label="${t("debt_returned")}" title="${t("debt_returned")}"></button>`}
+      <div class="grow"><div class="ellipsis"><b>${esc(x.person)}</b></div>
+        <div class="meta">${meta}</div></div>
+      <div class="amount ${x.settled ? "t3" : lent ? "pos" : "neg"}">${lent ? "+" : "−"}${moneyNum(x.amount)}</div>
+    </div>`;
+}
+function debtSheet(){
+  const f = state.debtForm || (state.debtForm = {direction:"lent", due:""});
+  const people = [...new Set([...(state.money?.debts?.open || []), ...(state.money?.debts?.settled || [])]
+    .map(x => x.person))].slice(0, 8);
+  const today = todayISO();
+  const dues = [["", t("none_short")], [shiftISO(today, 7), t("debt_due_week")],
+                [shiftISO(today, 30), t("debt_due_month")]];
+  return `<h3>🤝 ${t("debt_add")}</h3>
+    <div class="seg big" style="margin-bottom:12px">
+      ${[["lent", t("debt_lent")], ["borrowed", t("debt_borrowed")]].map(([k, label]) =>
+        `<div class="${f.direction === k ? "on" : ""}" data-act="debt-form" data-field="direction"
+          data-value="${k}">${label}</div>`).join("")}</div>
+    <input id="debt-person" placeholder="${t("debt_person")}" value="${esc(f.person || "")}" maxlength="80" />
+    ${people.length ? `<div class="chips" style="margin-top:6px">${people.map(p =>
+      `<div class="chip sm" data-act="debt-person" data-value="${esc(p)}">${esc(p)}</div>`).join("")}</div>` : ""}
+    <input id="debt-amount" placeholder="${t("debt_amount")}" value="${esc(f.amount || "")}"
+           inputmode="text" autocomplete="off" style="margin-top:10px" />
+    <label>${t("debt_due")}</label>
+    <div class="chips">${dues.map(([v, label]) => `<div class="chip sm ${(f.due || "") === v ? "on" : ""}"
+      data-act="debt-form" data-field="due" data-value="${v}">${label}</div>`).join("")}</div>
+    <input id="debt-note" placeholder="${t("debt_note")}" value="${esc(f.note || "")}" maxlength="200"
+           style="margin-top:10px" />
+    <button class="btn" data-act="debt-save" style="margin-top:16px">${t("save")}</button>`;
+}
+function readDebtForm(){
+  const f = state.debtForm || (state.debtForm = {direction:"lent", due:""});
+  for(const k of ["person", "amount", "note"]){
+    const el = document.getElementById("debt-" + k);
+    if(el) f[k] = el.value;
+  }
+  return f;
+}
+async function reloadDebts(){
+  try{
+    const d = await api("/api/debts");
+    if(state.money) state.money.debts = d;
+    render();
+  }catch(e){ handleError(e); }
+}
 
 function moneySheet(){
   const f = state.moneyForm || (state.moneyForm = {kind:"expense", category:"food"});
@@ -4866,6 +5068,74 @@ function moneyVoice(){
   catch(_){ toast(t("money_voice_fail")); }
 }
 
+/* ---------- Voice: tap the mic, speak, tap stop → a card to confirm ----------
+   The same agent as the bot: the server hears, understands and proposes; the
+   app shows the card; nothing is written until ✅. Where the WebView cannot
+   record, the mic opens the bot chat instead, which always can. */
+const voice = {rec:null, stream:null, chunks:[], mime:"", timer:null, started:0, cancelled:false, draft:null,
+               target:"agent"};
+const VOICE_MAX_S = 119;
+function voiceSupported(){
+  return !!(navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== "undefined");
+}
+function voiceStopTracks(){
+  try{ voice.stream?.getTracks().forEach(tr => tr.stop()); }catch(_){}
+  voice.stream = null; clearInterval(voice.timer); voice.timer = null;
+}
+function voiceRecordingSheet(){
+  return `<div class="voice-box">
+      <div class="voice-pulse">${icon("mic", 34)}</div>
+      <div class="voice-time num" id="voice-time">0:00</div>
+      <div class="t2 small">${t("voice_listening")}</div>
+      <button class="btn voice-stop" data-act="voice-stop">■ ${t("voice_stop")}</button>
+      <button class="btn secondary" data-act="voice-cancel" style="margin-top:8px">${t("cancel")}</button>
+    </div>`;
+}
+function voiceBusySheet(){
+  return `<div class="voice-box"><div class="spin"></div>
+      <div class="t2 small" style="margin-top:10px">${t("voice_thinking")}</div></div>`;
+}
+function voiceCardSheet(d){
+  const body = d.message ? esc(d.message) : (d.preview || "").replace(/\n/g, "<br>");
+  const ready = d.status === "ready";
+  return `<div class="voice-card">${body}</div>
+    ${ready ? `<button class="btn" data-act="voice-confirm">✅ ${t("voice_confirm")}</button>` : ""}
+    <div class="voice-row">
+      <button class="btn secondary" data-act="voice-retry">🔄 ${t("voice_retry")}</button>
+      <button class="btn secondary" data-act="voice-dismiss">✖ ${t("cancel")}</button>
+    </div>`;
+}
+async function voiceSend(){
+  const blob = new Blob(voice.chunks, {type: voice.mime});
+  voice.chunks = [];
+  openSheet(voiceBusySheet(), "voice");
+  const journal = voice.target === "journal";
+  try{
+    const res = await fetch(journal ? "/api/agent/journal/audio" : "/api/agent/audio", {method:"POST", body:blob,
+      signal: requestTimeout(150000),
+      headers:{"Content-Type": voice.mime.split(";")[0] || "audio/webm",
+               "X-Telegram-Init-Data": tg?.initData || "", "X-Agent-Request-Key": newKey()}});
+    if(!res.ok){
+      const err = new Error("http_" + res.status); err.status = res.status;
+      try{ err.detail = (await res.json())?.detail; }catch(_){}
+      throw err;
+    }
+    if(journal) return journalFilled(await res.json());
+    voice.draft = await res.json();
+    openSheet(voiceCardSheet(voice.draft), "voice");
+    notify(voice.draft.status === "ready" ? "success" : "warning");
+  }catch(e){
+    voice.draft = null;
+    openSheet(voiceCardSheet({status:"failed", message: e.detail === "consent_required"
+      ? t("voice_consent_needed") : e.status === 413 ? t("voice_too_long") : t("voice_failed")}), "voice");
+  }
+}
+function voiceConsentSheet(){
+  return `<h3>🎙 ${t("voice_title")}</h3>
+    <div class="t2 small wrap" style="margin:8px 0 14px">${t("voice_consent")}</div>
+    <button class="btn" data-act="voice-consent">${t("voice_agree")}</button>`;
+}
+
 function quickSheet(){
   const habit = state.quickType === "habit";
   return `<div class="seg big" style="margin-bottom:12px">
@@ -4877,7 +5147,7 @@ function quickSheet(){
     <div class="hint" style="margin-top:6px">${t(habit ? "quick_habit_hint" : "quick_hint")}</div>
     ${habit ? "" : destPicker()}
     <button class="btn" data-act="quick-save" style="margin-top:12px">${t("save")}</button>
-    <button class="btn secondary" data-act="${habit ? "habit-add" : "task-add"}" style="margin-top:8px">${t("quick_more")}</button>`;
+    <button class="btn secondary" data-act="${habit ? "habit-add" : "task-add"}" style="margin-top:8px">${t(habit ? "quick_more_habit" : "quick_more")}</button>`;
 }
 
 /* What quick add understood, said back: "Saved: hisobot · Tomorrow 10:00". */
@@ -4931,7 +5201,7 @@ SCREENS.stats = () => {
   const change = known ? today.overall - yesterday : null;
   const dir = !known || change === 0 ? "flat" : change > 0 ? "up" : "down";
 
-  let h = `<h1>${t("stats")}</h1>${stepsCard()}
+  let h = `<h1>${t("stats")}</h1>
     <div class="hero" style="margin-top:14px" data-act="overall-why">
       <div class="row">
         <div class="grow eyebrow">${t("overall")} · ${t("today")}</div>
@@ -4981,11 +5251,6 @@ SCREENS.stats = () => {
       ${tile("prayer", t("prayer"),
              `${today.prayer_performed}/${today.prayer_required}`,
              today.prayer || 0, st.deltas.prayer)}
-    </div>
-    <div class="item" style="margin-top:var(--s1)">
-      <span class="itile tone-4">${icon("flame", 17)}</span>
-      <div class="grow">${t("streak")}</div>
-      <div class="num" style="font-weight:660">${today.streak}</div>
     </div>`;
 
   h += `<div class="seg" style="margin:16px 0 12px">
@@ -5053,10 +5318,6 @@ SCREENS.stats = () => {
   // reviewing their month should not have to remember that half of it is
   // filed under another tab.
   h += teamStatsOnStats();
-
-  /* Level, XP and rank moved here from Home: they are a reading of how the
-     days have gone, which is what this screen is, and Home is about now. */
-  h += progressCard();
 
   h += `<div class="btns">
       <button class="btn secondary" data-act="stats-download">
@@ -5228,27 +5489,25 @@ function taskSheet(task, presetProject){
 
     <details ${f.open ? "open" : ""}>
       <summary>${icon("chevron", 15)}<span class="chev"></span>
-        ${t("more_options")}</summary>
+        ${t("more_options")}${taskSettingsLine(f)}</summary>
 
-      <label>${t("due_time")} <span class="t3">(${t("optional")})</span></label>
+      <label>🕐 ${t("due_time")} <span class="t3">(${t("optional")})</span></label>
       <input type="time" id="task-time" value="${f.due_time || ""}" />
 
-      <label>${t("reminder")}</label>
-      <select id="task-remind">
-        <option value="" ${f.remind_before === null || f.remind_before === undefined
-          ? "selected" : ""}>${t("remind_none")}</option>
-        ${REMINDER_OFFSETS.map(m =>
-          `<option value="${m}" ${String(f.remind_before) === String(m)
-            ? "selected" : ""}>${t("remind_" + m)}</option>`).join("")}
-      </select>
+      <label>🔔 ${t("reminder")}</label>
+      <div class="chips">
+        <div class="chip sm ${f.remind_before === null || f.remind_before === undefined ? "on" : ""}"
+             data-act="task-remind" data-value="">${t("none_short")}</div>
+        ${REMINDER_OFFSETS.map(m => `<div class="chip sm ${String(f.remind_before) === String(m) ? "on" : ""}"
+             data-act="task-remind" data-value="${m}">${t("remind_s_" + m)}</div>`).join("")}
+      </div>
 
-      <label>${t("repeat")}</label>
-      <select id="task-repeat">
-        <option value="">${t("repeat_none")}</option>
-        ${["daily","weekdays","weekly","monthly"].map(r =>
-          `<option value="${r}" ${f.recurrence === r ? "selected" : ""}
-            >${t("repeat_" + r)}</option>`).join("")}
-      </select>
+      <label>🔁 ${t("repeat")}</label>
+      <div class="chips">
+        ${["", "daily", "weekdays", "weekly", "monthly"].map(r => `<div class="chip sm
+             ${(f.recurrence || "") === r ? "on" : ""}" data-act="task-repeat"
+             data-value="${r}">${r ? t("repeat_" + r) : t("none_short")}</div>`).join("")}
+      </div>
 
       <label>${t("priority")}</label>
       <div class="chips">${["high","medium","low"].map(p =>
@@ -5295,6 +5554,26 @@ function teamTaskOptions(f, task, teamId){
            aria-checked="${chosen.has(m.user_id)}">${esc(m.name)}</div>`).join("")}</div>` : ""}`;
 }
 
+/* What is already set, readable without opening the section:
+   "· 🕐 10:00 · 🔔 30 daq · 🔁 Har kuni". */
+function taskSettingsLine(f){
+  const bits = [];
+  if(f.due_time) bits.push("🕐 " + f.due_time);
+  if(f.remind_before !== null && f.remind_before !== undefined && f.remind_before !== "")
+    bits.push("🔔 " + t("remind_s_" + f.remind_before));
+  if(f.recurrence) bits.push("🔁 " + t("repeat_" + f.recurrence));
+  if(f.priority === "high") bits.push("🔴 " + t("high"));
+  return bits.length ? `<span class="t3 small sumline">${bits.join(" · ")}</span>` : "";
+}
+
+/* An existing deadline shown as the chip it matches: today's task opens on
+   "Bugun", not on a date picker. */
+function whenOf(deadline){
+  if(!deadline) return "none";
+  const today = todayISO();
+  return deadline === today ? "today" : deadline === shiftISO(today, 1) ? "tomorrow" : "pick";
+}
+
 function rerenderTaskSheet(){
   const f = state.form;
   openSheet(taskSheet(f.id ? {id: f.id, source: f.source, team_id: f.team_id} : null,
@@ -5311,11 +5590,6 @@ function readTaskForm(){
   if(get("task-time")) f.due_time = get("task-time").value || null;
   if(get("task-desc")) f.description = get("task-desc").value;
   if(get("task-project")) f.project_id = get("task-project").value || null;
-  if(get("task-remind")){
-    const v = get("task-remind").value;
-    f.remind_before = v === "" ? null : Number(v);
-  }
-  if(get("task-repeat")) f.recurrence = get("task-repeat").value || "";
   if(get("task-timer")) f.timer_minutes = pickedTimer("task-timer");
   const details = document.querySelector(".sheet details");
   if(details) f.open = details.open;
@@ -5416,9 +5690,11 @@ function habitSheet(h){
     ${locked
       ? `<div class="hint"><b>${esc(h.name)}</b> — ${t(h.mirrored ? "habit_mirrored"
           : team ? "forbidden" : "auto_habit")}</div>`
-      : `<input id="habit-name" value="${esc(h.name)}" />`}
+      : `<input id="habit-name" value="${esc(h.name)}" data-act="habit-name-set" data-id="${h.id}"
+           enterkeyhint="done" />
+         <div class="t3 tiny" style="margin-top:6px">✓ ${t("autosave_hint")}</div>`}
 
-    ${locked ? "" : `<label>${t("category")}</label>
+    ${locked ? "" : `<label>${t("habit_tier")}</label>
       <div class="chips">${["non_negotiable","target","bonus"].map(c =>
         `<div class="chip sm ${h.category === c ? "on" : ""}"
           data-act="habit-cat" data-id="${h.id}" data-value="${c}">${t(c)}</div>`).join("")}
@@ -5448,33 +5724,30 @@ function habitSheet(h){
         ${days.includes(i) ? "on" : ""}" data-act="habit-day"
         data-id="${h.id}" data-day="${i}">${label}</div>`).join("")}</div>` : ""}`}
 
-    ${h.system_key === "wakeup" ? `<label>${t("wake_at")}</label>
-      <div class="field">
-        <input type="time" id="habit-target" value="${h.target_time || "05:00"}" />
-        <button class="btn sm" data-act="habit-target-save" data-id="${h.id}"
-                style="min-width:96px">${t("save")}</button>
-      </div>` : ""}
+    ${h.system_key === "wakeup" ? `<label>⏰ ${t("wake_at")}</label>
+      <input type="time" id="habit-target" value="${h.target_time || "05:00"}"
+             data-act="habit-target-set" data-id="${h.id}" />` : ""}
 
-    ${team && locked ? "" : `<label>${t("reminder")} <span class="t3">(${t("optional")})</span></label>
-    <div class="field">
-      <input type="time" id="habit-remind" value="${h.remind_at || ""}" />
-      <button class="btn sm" data-act="habit-remind-save" data-id="${h.id}"
-              style="min-width:96px">${t("save")}</button>
-    </div>`}
+    ${team && locked ? "" : `<label>🔔 ${t("reminder")}</label>
+    <div class="chips">
+      <div class="chip sm ${h.remind_at ? "" : "on"}" data-act="habit-remind-pick" data-id="${h.id}"
+           data-value="">${t("remind_none")}</div>
+      ${["07:00", "12:00", "21:00"].map(v => `<div class="chip sm ${h.remind_at === v ? "on" : ""}"
+           data-act="habit-remind-pick" data-id="${h.id}" data-value="${v}">${v}</div>`).join("")}
+    </div>
+    <input type="time" id="habit-remind" value="${h.remind_at || ""}" style="margin-top:8px"
+           aria-label="${t("reminder")}" data-act="habit-remind-set" data-id="${h.id}" />`}
 
     ${locked || h.protected ? "" : timerSetting(team ? "thabit" : "habit", h)}
 
     ${ritualSharePicker(h)}
 
     <label>${t("history")}</label>
-    <div class="metrics">
-      <div class="metric"><div class="k">${t("streak")}</div>
-        <div class="v num">${icon("flame", 17)} ${h.streak}</div></div>
-      <div class="metric"><div class="k">${t("completion")}</div>
-        <div class="v num">${h.percent}%</div></div>
-      <div class="metric wide"><div class="k">${t("last7")} · ${t("last30")}</div>
-        <div class="v num">${h.last7_done}/${h.last7_due}
-          <span class="k">${h.last30_done}/${h.last30_due}</span></div></div>
+    <div class="hstat">
+      <div><b class="num">${icon("flame", 15)} ${h.streak}</b><span>${t("streak")}</span></div>
+      <div><b class="num">${h.percent}%</b><span>${t("completion")}</span></div>
+      <div><b class="num">${h.last7_done}/${h.last7_due}</b><span>${t("last7")}</span></div>
+      <div><b class="num">${h.last30_done}/${h.last30_due}</b><span>${t("last30")}</span></div>
     </div>
     <div class="hgrid" style="margin-top:10px">${grid.map(g =>
       `<i class="${g.done ? "done" : g.due ? "due" : ""}" title="${g.day}"></i>`).join("")}</div>
@@ -5482,21 +5755,17 @@ function habitSheet(h){
     ${partnerRecords(h)}
     ${ownerPicker(h)}
 
+    <button class="btn" data-act="habit-done" data-id="${h.id}" style="margin-top:16px">✓ ${t("done_btn")}</button>
     ${locked ? "" : `
       <div class="btns">
         <button class="btn secondary" data-act="habit-pause" data-id="${h.id}"
                 data-value="${h.paused || h.pause_from ? 0 : 1}">
           ${h.paused || h.pause_from ? icon("play", 15) + " " + t("resume")
                      : icon("pause", 15) + " " + t("pause")}</button>
-        ${h.name !== undefined ? `<button class="btn secondary"
-          data-act="habit-name-save" data-id="${h.id}">${t("save")}</button>` : ""}
-      </div>
-      <button class="btn danger"
+        <button class="btn danger"
               data-act="${h.source === "team" ? "team-habit-delete" : "habit-delete-confirm"}"
-              data-id="${h.id}" data-name="${esc(h.name)}"
-              style="margin-top:8px">${icon("trash", 15)} ${t("delete")}</button>`}
-    <button class="btn secondary" data-act="close" style="margin-top:8px">
-      ${t("close")}</button>`;
+              data-id="${h.id}" data-name="${esc(h.name)}">${icon("trash", 15)} ${t("delete")}</button>
+      </div>`}`;
 }
 
 /* How everybody else in the team is getting on with this habit.
@@ -6083,98 +6352,66 @@ function accountSheet(){
    come from /api/progress/me (steps_snapshot); nothing is computed here. */
 const STEP_ICON = {starter:"👟", builder:"⛰️", discipline:"⛺", steady:"🌲", master:"👑"};
 const STEP_TODAY_ICON = {tasks:"✅", habits:"🔁", prayer:"🕌", journal:"📔", goal:"🎯"};
-function stepsCard(){
-  const st = state.progress?.steps;
-  if(!st) return "";
+/* Qadam: one progress system, read in five seconds. The level and how far
+   to the next one; streak, freeze days and rank on one line; today's five
+   steps as rows that open where each is done; the path below. */
+const STEP_GO = {tasks:["tasks"], habits:["habits", "habits"], prayer:["habits", "prayer"],
+                 journal:["habits", "journal"], goal:["home"]};
+SCREENS.steps = () => {
+  const p = state.progress, st = p?.steps;
+  if(!st) return `<div class="spin"></div>`;
   const lvl = st.levels[st.level - 1];
+  const nextLvl = st.levels[st.level];
   const span = st.next ? st.next - lvl.min : 1;
   const pct = st.next ? Math.round(Math.min(1, (st.total - lvl.min) / span) * 100) : 100;
+  const rank = p.rank || {};
+  const streak = p.streak?.current ?? 0;
   const path = st.levels.map((l, i) => {
-    const state_ = i + 1 < st.level ? "past" : i + 1 === st.level ? "now" : "lock";
-    return `<div class="step-node ${state_}">
-        <div class="dot">${STEP_ICON[l.key]}${state_ === "lock" ? '<span class="lk">🔒</span>' : ""}</div>
+    const s_ = i + 1 < st.level ? "past" : i + 1 === st.level ? "now" : "lock";
+    return `<div class="step-node ${s_}">
+        <div class="dot">${STEP_ICON[l.key]}${s_ === "lock" ? '<span class="lk">🔒</span>' : ""}</div>
         <div class="nm">${t("step_lvl_" + l.key)}</div>
         <div class="rg">${l.max === null ? l.min + "+" : `${l.min}–${l.max}`}</div></div>`;
   }).join('<div class="step-line"></div>');
-  const today = st.today.map(c => `<div class="step-chip ${c.ok ? "ok" : ""}">
-      <div class="ci">${STEP_TODAY_ICON[c.key] || "•"}</div>
-      <div class="grow"><div class="cn">${t("step_" + c.key)}</div>
-        <div class="cv num">${c.done}/${c.total}</div></div>
-      <div class="ck">${c.ok ? icon("check", 14) : ""}</div></div>`).join("");
-  const dots = st.today.map(c => `<i class="${c.ok ? "on" : ""}"></i>`).join("");
-  return `<div class="steps">
-      <div class="steps-top">
-        <div class="grow"><div class="steps-title">🚩 ${t("steps_title")}</div>
-          <div class="t2 small">${t("steps_motto")}</div></div>
-        ${st.freeze ? `<div class="freeze" title="${t("steps_freeze")}">❄️ ${st.freeze}</div>` : ""}
-      </div>
-      <div class="steps-level">
+  const next = st.today.find(c => !c.ok);
+  return `<div class="qhero">
+      <div class="qtop">
         <div class="badge">${STEP_ICON[lvl.key]}</div>
         <div class="grow">
           <div class="ln">${t("step_lvl_" + lvl.key)}</div>
-          <div class="t3 tiny">${t("steps_level_n", {n: st.level})}</div>
-          <div class="sbar"><i style="width:${pct}%"></i></div>
-          <div class="t3 tiny num">${st.next ? `${st.total} / ${st.next}` : st.total}</div>
+          <div class="t2 small">${t("steps_level_n", {n: st.level})}</div>
         </div>
-        <div class="total"><div class="t3 tiny">${t("steps_total")}</div>
-          <div class="tv num">${st.total}</div></div>
+        <div class="qtotal"><div class="tv num">${st.total}</div><div class="t3 tiny">${t("steps_total")}</div></div>
       </div>
-      <div class="steps-sub">${t("steps_path")}</div>
-      <div class="steps-path">${path}</div>
-      <div class="steps-sub row"><span class="grow">${t("steps_today")}</span>
-        <span class="t2 small num">${t("today")} ${st.today_done}/${st.today.length}</span>
-        <span class="sdots">${dots}</span></div>
-      <div class="steps-today">${today}</div>
-      <button class="btn steps-go" data-act="nav" data-screen="tracker">${t("steps_go")} →</button>
-    </div>`;
-}
-
-function progressCard(){
-  const p = state.progress;
-  if(!p) return "";
-
-  const lvl = p.level, rank = p.rank;
-  const pct = Math.round((lvl.progress || 0) * 100);
-  const xp = n => String(n ?? 0).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-
-  /* Rank has three states and they are genuinely different, so the card says
-     which one it is in rather than showing "—" for two of them. */
-  const rankCell = rank.eligible
-    ? `<div class="score-cell"><div class="k">${t("rank_global")}</div>
-         <div class="v num">#${rank.global}</div></div>`
-    : `<div class="score-cell"><div class="k">${t("rank_global")}</div>
-         <div class="v num" style="font-size:15px">${
-           t("rank_locked_short", {n: rank.days_remaining})}</div></div>`;
-
-  return `<h2>${t("progress")}</h2>
-    <div class="tinted block tone-4" data-act="progress-open"
-         style="cursor:pointer">
-      <div class="bh" style="margin-bottom:var(--s2)">
-        <span class="itile">${icon("up", 17)}</span>
-        <div class="grow">
-          <div class="bt">${t("plevel_" + lvl.key)} ${lvl.numeral}</div>
-          <div class="t3 tiny num">${xp(lvl.xp)}${
-            lvl.next_threshold ? " / " + xp(lvl.next_threshold) : ""} XP</div>
-        </div>
-        ${icon("chevron", 16)}
+      <div class="sbar big"><i style="width:${pct}%"></i></div>
+      <div class="t2 small">${nextLvl ? t("steps_to_next", {n: st.next - st.total, name: t("step_lvl_" + nextLvl.key)})
+        : t("steps_max")}</div>
+      <div class="qstats" data-act="progress-open" role="button" tabindex="0">
+        <div><b class="num">🔥 ${streak}</b><span>${t("streak")}</span></div>
+        <div><b class="num">❄️ ${st.freeze || 0}</b><span>${t("steps_freeze_short")}</span></div>
+        <div><b class="num">🏆 ${rank.eligible ? "#" + rank.global : "—"}</b><span>${rank.eligible
+          ? t("rank_global") : t("steps_rank_in", {n: rank.days_remaining ?? 0})}</span></div>
       </div>
-      ${bar(pct)}
-      ${lvl.next_threshold ? `<div class="t2 tiny" style="margin-top:var(--s1)">
-        ${t("xp_to_next", {n: xp(lvl.remaining),
-                           level: t("plevel_" + lvl.next_key)})}</div>` : ""}
-      <div class="scores" style="margin-top:var(--s2)">
-        <div class="score-cell lead"><div class="k">${t("today")}</div>
-          <div class="v num">${p.daily.grade} · ${p.daily.score}</div></div>
-        <div class="score-cell"><div class="k">${t("streak")}</div>
-          <div class="v num">${icon("flame", 17)} ${p.streak.current}</div></div>
-        ${rankCell}
-      </div>
-      ${rank.eligible && rank.top_percent !== null
-        ? `<div class="t3 tiny" style="margin-top:var(--s1)">
-             ${t("top_percent_of", {p: rank.top_percent,
-                                    n: xp(rank.users)})}</div>` : ""}
-    </div>`;
-}
+    </div>
+
+    <div class="steps-sub row"><span class="grow">${t("steps_today")}</span>
+      <span class="t2 small num">${st.today_done}/${st.today.length}</span></div>
+    <div class="card qlist">${st.today.map(c => `<div class="qrow ${c.ok ? "ok" : ""}"
+        data-act="steps-go" data-key="${c.key}" role="button" tabindex="0">
+        <span class="ci">${STEP_TODAY_ICON[c.key] || "•"}</span>
+        <div class="grow">${t("step_" + c.key)}</div>
+        <span class="t2 small num">${c.done}/${c.total}</span>
+        <span class="ck">${c.ok ? icon("check", 14) : ""}</span></div>`).join("")}</div>
+    ${next ? `<button class="btn steps-go" data-act="steps-go" data-key="${next.key}">
+        ${t("steps_next")}: ${t("step_" + next.key)} →</button>`
+      : `<div class="hint" style="text-align:center;margin-top:12px">${t("steps_all_done")}</div>`}
+
+    <div class="steps-sub">${t("steps_path")}</div>
+    <div class="card"><div class="steps-path">${path}</div></div>
+    <div class="item pressable" style="margin-top:var(--s2)" data-act="progress-open">
+      <span style="font-size:18px">🏅</span><div class="grow">${t("steps_more")}</div>${icon("chevron", 15)}</div>
+    <div class="t3 tiny" style="text-align:center;margin-top:12px">${t("steps_motto")}</div>`;
+};
 
 /* The detail, in a sheet rather than a fifth tab. The bottom navigation is
    four items and has been since the app was designed around them; a
@@ -6184,22 +6421,12 @@ function progressSheet(){
   const p = state.progress;
   if(!p) return `<div class="spin"></div>`;
 
-  const lvl = p.level, rank = p.rank, d = p.daily;
+  // One level system: Qadam. This sheet is the detail behind it — today's
+  // score, consistency, rank and achievements — with no second level.
+  const rank = p.rank, d = p.daily;
   const xp = n => String(n ?? 0).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-  const pct = Math.round((lvl.progress || 0) * 100);
 
-  let h = `<h3>${icon("up", 18)} ${t("progress")}</h3>
-
-    <div class="tinted block tone-4" style="margin-top:var(--s2)">
-      <div style="font-size:19px;font-weight:650">
-        ${t("plevel_" + lvl.key)} ${lvl.numeral}</div>
-      <div class="t2 small num">${xp(lvl.xp)}${
-        lvl.next_threshold ? " / " + xp(lvl.next_threshold) : ""} XP</div>
-      <div style="margin-top:var(--s2)">${bar(pct)}</div>
-      ${lvl.next_threshold ? `<div class="t3 tiny" style="margin-top:var(--s1)">
-        ${t("xp_to_next", {n: xp(lvl.remaining),
-                           level: t("plevel_" + lvl.next_key)})}</div>` : ""}
-    </div>`;
+  let h = `<h3>🏅 ${t("steps_more")}</h3>`;
 
   /* Today, with the same four components the overall score is built from and
      the same weights printed on them. Not a second formula — the API sends the
@@ -6483,15 +6710,15 @@ const NAV = [
   {id:"home",    icon:"home",   key:"nav_home"},
   {id:"tracker", icon:"check",  key:"nav_tracker"},
   {id:"money",   icon:"wallet", key:"nav_money"},
-  {id:"profile", icon:"user",   key:"nav_profile"},
+  {id:"profile", icon:"steps",  key:"nav_steps"},
 ];
 //: Which tab stays lit for each screen. A project opens from Tasks.
 const NAV_OF = {habits:"tracker", tasks:"tracker", project:"tracker",
-                stats:"profile", team:"profile", more:"profile"};
+                steps:"profile", stats:"profile", team:"profile", more:"profile"};
 //: A tab opens where the person last was inside it.
 function navTarget(id){
   if(id === "tracker") return state.trackerLast || "habits";
-  if(id === "profile") return state.profileLast || "stats";
+  if(id === "profile") return state.profileLast || "steps";
   return id;
 }
 /* Which header parts the floating + replaces: in Habits and Tasks (except
@@ -6499,7 +6726,7 @@ function navTarget(id){
    there is one + on the screen, never two. */
 function screenClass(){
   const sc = state.screen;
-  const grouped = ["habits", "tasks", "stats", "team"].includes(sc);
+  const grouped = ["habits", "tasks", "steps", "stats", "team"].includes(sc);
   const nohead = (sc === "habits" && state.tab === "habits") || (sc === "tasks" && state.taskTab !== "projects");
   return [grouped ? "grouped" : "", nohead ? "nohead" : "", "screen-" + sc].join(" ");
 }
@@ -6509,17 +6736,19 @@ function groupBar(screen){
     `<div class="${cur === id ? "on" : ""}" data-act="nav" data-screen="${id}">${t(key)}</div>`).join("")}</div>`;
   if(screen === "habits" || screen === "tasks")
     return seg([["habits", "habits"], ["tasks", "tasks"]], screen);
-  if(screen === "stats" || screen === "team"){
+  if(screen === "steps" || screen === "stats" || screen === "team"){
     const me = state.me || {};
     const name = esc(me.first_name || me.name || "");
+    const st = state.progress?.steps;
     return `<div class="profile-head">
         <div class="avatar">${tg?.initDataUnsafe?.user?.photo_url
           ? `<img src="${esc(tg.initDataUnsafe.user.photo_url)}" alt="" />`
           : esc((name || "?").slice(0, 1).toUpperCase())}</div>
         <div class="grow"><div class="pname">${name}</div>
-          <div class="t3 tiny">${t("nav_profile")}</div></div>
+          <div class="t3 tiny">${st ? `${STEP_ICON[st.level_key] || ""} ${t("step_lvl_" + st.level_key)} · ${
+            t("steps_level_n", {n: st.level})}` : t("nav_profile")}</div></div>
         <button class="iconbtn" data-act="settings" aria-label="${t("settings")}">${icon("settings", 22)}</button>
-      </div>` + seg([["stats", "nav_stats"], ["team", "team"]], screen);
+      </div>` + seg([["steps", "nav_steps"], ["stats", "nav_stats"], ["team", "team"]], screen);
   }
   return "";
 }
@@ -6660,9 +6889,10 @@ function render(){
       <span class="ic">${icon(n.icon, 21)}</span><span>${t(n.key)}</span></button>`).join("");
   /* + types it, the microphone says it. Both one tap, on every main screen. */
   document.getElementById("fab").innerHTML = chromeOff ? "" : `
-    ${state.me?.agent?.available && state.screen !== "money" ? `<button class="fab-mic" data-act="agent-open"
+    ${state.me?.agent?.available && state.screen !== "money" ? `<button class="fab-mic" data-act="voice-start"
         aria-label="${t("quick_voice")}">${icon("mic", 22)}</button>` : ""}
-    <button class="fab-add" data-act="${state.screen === "money" ? "money-add" : "quick-add"}"
+    <button class="fab-add" data-act="${state.screen !== "money" ? "quick-add"
+      : state.moneyTab === "debts" ? "debt-add" : "money-add"}"
         aria-label="${t(state.screen === "money" ? "money_add" : "quick_add")}">${icon("plus", 30)}</button>`;
 
   syncShell();
@@ -6736,6 +6966,8 @@ async function loadScreen(screen){
       if((tasks.teams || []).length && !state.team){
         try{ state.team = await api("/api/teams"); }catch(_){}
       }
+    } else if(screen === "steps"){
+      setState({progress: await api("/api/progress/me")});
     } else if(screen === "stats"){
       await loadStats(state.statsPeriod);
     } else if(screen === "project"){
@@ -6803,7 +7035,7 @@ async function loadStats(period){
 function goto(screen, patch){
   haptic();
   if(screen === "habits" || screen === "tasks") state.trackerLast = screen;
-  if(screen === "stats" || screen === "team") state.profileLast = screen;
+  if(["steps", "stats", "team"].includes(screen)) state.profileLast = screen;
   setState({screen, error:null, screenError:null, reorderMode:false, ...(patch || {})});
   loadScreen(screen);
 }
@@ -6974,12 +7206,95 @@ const A = {
       chip.classList.toggle("on", chip.dataset.value === state.dest);
   },
 
+  "voice-start": async el => {
+    haptic("medium");
+    voice.then = null;
+    // From a button: its target. Retry and consent keep the one in progress.
+    if(el?.dataset) voice.target = el.dataset.target === "journal" ? "journal" : "agent";
+    if(!state.me?.agent?.available) return toast(t("agent_off"));
+    if(!state.me?.agent?.consent) return openSheet(voiceConsentSheet(), "voice");
+    if(!voiceSupported()) return A["agent-open"]();
+    try{ voice.stream = await navigator.mediaDevices.getUserMedia({audio:true}); }
+    catch(_){ toast(t("voice_denied")); return A["agent-open"](); }
+    const mime = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4", "audio/webm"]
+      .find(m => MediaRecorder.isTypeSupported?.(m)) || "";
+    try{ voice.rec = new MediaRecorder(voice.stream, mime ? {mimeType: mime} : undefined); }
+    catch(_){ voiceStopTracks(); return A["agent-open"](); }
+    voice.mime = voice.rec.mimeType || mime || "audio/webm";
+    voice.chunks = []; voice.cancelled = false;
+    voice.rec.ondataavailable = e => { if(e.data?.size) voice.chunks.push(e.data); };
+    voice.rec.onstop = () => { voiceStopTracks(); if(!voice.cancelled && voice.chunks.length) voiceSend(); };
+    voice.rec.start(250);
+    voice.started = Date.now();
+    openSheet(voiceRecordingSheet(), "voice");
+    voice.timer = setInterval(() => {
+      const s = Math.floor((Date.now() - voice.started) / 1000);
+      const el = document.getElementById("voice-time");
+      if(el) el.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+      if(s >= VOICE_MAX_S) A["voice-stop"]();
+    }, 250);
+  },
+  "voice-stop": () => {
+    haptic();
+    if(voice.rec && voice.rec.state !== "inactive") voice.rec.stop();
+  },
+  "voice-cancel": () => {
+    voice.cancelled = true;
+    if(voice.rec && voice.rec.state !== "inactive") voice.rec.stop();
+    voiceStopTracks(); closeSheet();
+  },
+  "voice-consent": async () => {
+    try{
+      await api("/api/agent/consent", {method:"POST"});
+      if(state.me?.agent) state.me.agent.consent = true;
+      const then = voice.then; voice.then = null;
+      then ? A[then]() : A["voice-start"]();
+    }catch(e){ handleError(e); }
+  },
+  "voice-confirm": async () => {
+    const d = voice.draft;
+    if(!d) return closeSheet();
+    try{
+      voice.draft = await api(`/api/agent/drafts/${d.id}/confirm`, {method:"POST", body:{revision:d.revision}});
+      notify("success");
+      closeSheet();
+      toast(t("voice_done"));
+      state.calendarStale = true;
+      await loadScreen(state.screen);
+    }catch(e){ handleError(e); }
+  },
+  "jai-text": () => {
+    if(!state.me?.agent?.consent){ voice.then = "jai-text"; return openSheet(voiceConsentSheet(), "voice"); }
+    openSheet(jaiTextSheet());
+    setTimeout(() => document.getElementById("jai-text")?.focus(), 60);
+  },
+  "jai-send": async () => {
+    const text = trimmed("jai-text");
+    if(!text) return;
+    openSheet(voiceBusySheet(), "voice");
+    try{ journalFilled(await api("/api/agent/journal/text", {method:"POST", body:{text}})); }
+    catch(e){ closeSheet(); handleError(e); }
+  },
+  "voice-retry": () => {
+    const d = voice.draft;
+    if(d?.id && ["ready", "needs_input", "failed"].includes(d.status))
+      api(`/api/agent/drafts/${d.id}/cancel`, {method:"POST", body:{revision:d.revision}}).catch(() => {});
+    voice.draft = null;
+    A["voice-start"]();
+  },
+  "voice-dismiss": () => {
+    const d = voice.draft;
+    if(d?.id && ["ready", "needs_input", "failed"].includes(d.status))
+      api(`/api/agent/drafts/${d.id}/cancel`, {method:"POST", body:{revision:d.revision}}).catch(() => {});
+    voice.draft = null; closeSheet();
+  },
   /* The one "+": a line of text, and whether it is a task or a habit. Tasks
      read the date and time out of the text ("ertaga soat 10 da …") and money
      goes to the money check; a habit is just its name, daily. Three taps:
      +, type, save — or Enter. */
   "quick-add": () => { haptic(); state.dest = "personal";
-    state.quickType = state.screen === "habits" ? "habit" : (state.quickType || "task");
+    state.quickType = state.screen === "habits" ? "habit" : state.screen === "tasks" ? "task"
+      : (state.quickType || "task");
     openSheet(quickSheet());
     setTimeout(() => document.getElementById("quick-title")?.focus(), 60); },
   "quick-type": el => {
@@ -7248,6 +7563,70 @@ const A = {
   },
   "money-text-save": el => moneyText(trimmed("money-text"), "manual", el?.dataset?.kind),
   "money-voice": () => moneyVoice(),
+  "money-tab": el => { haptic(); state.moneyTab = el.dataset.value; render(); },
+  "debt-add": () => { haptic(); state.debtForm = {direction:"lent", due:""}; openSheet(debtSheet());
+    setTimeout(() => document.getElementById("debt-person")?.focus(), 60); },
+  "debt-form": el => { haptic(); readDebtForm()[el.dataset.field] = el.dataset.value; openSheet(debtSheet()); },
+  "debt-person": el => { readDebtForm().person = el.dataset.value; openSheet(debtSheet()); },
+  "debt-save": () => {
+    const f = readDebtForm();
+    const person = (f.person || "").trim();
+    const amount = parseMoneyInput(f.amount);
+    if(!person) return toast(t("debt_person"));
+    if(!amount) return toast(t("debt_bad_amount"));
+    const body = {person, amount, direction: f.direction, note: (f.note || "").trim(), due: f.due || null};
+    state.moneyTab = "debts";
+    save(() => api("/api/debts", {method:"POST", body}), "money", false, t("debt_saved"));
+  },
+  "debt-settle": async el => {
+    haptic("medium");
+    try{
+      await api(`/api/debts/${el.dataset.id}/settle`, {method:"POST", body:{settled:true}});
+      notify("success");
+      toast(t("debt_closed"), t("undo"), async () => {
+        await api(`/api/debts/${el.dataset.id}/settle`, {method:"POST", body:{settled:false}});
+        reloadDebts();
+      });
+      closeSheet();
+      reloadDebts();
+    }catch(e){ handleError(e); }
+  },
+  "debt-open": el => {
+    const all = [...(state.money?.debts?.open || []), ...(state.money?.debts?.settled || [])];
+    const x = all.find(d => String(d.id) === el.dataset.id);
+    if(!x) return;
+    openSheet(`<h3>🤝 ${esc(x.person)}</h3>
+      <div class="hint">${t(x.direction === "lent" ? "debt_lent_meta" : "debt_borrowed_meta")}
+        · <b class="num">${moneyFmt(x.amount)}</b>${x.note ? " · " + esc(x.note) : ""}</div>
+      ${x.settled ? `<button class="btn secondary" data-act="debt-reopen" data-id="${x.id}"
+          style="margin-top:12px">${t("debt_reopen")}</button>` : `
+      <button class="btn" data-act="debt-settle" data-id="${x.id}" style="margin-top:12px">✓ ${t("debt_returned_full")}</button>
+      <label>${t("debt_partial")}</label>
+      <div class="field"><input id="debt-paid" placeholder="${t("debt_partial_ph")}" autocomplete="off" />
+        <button class="btn sm" data-act="debt-partial" data-id="${x.id}" style="min-width:96px">OK</button></div>`}
+      <button class="btn danger" data-act="debt-delete" data-id="${x.id}" style="margin-top:12px">
+        ${icon("trash", 15)} ${t("delete")}</button>`);
+  },
+  "debt-partial": async el => {
+    const paid = parseMoneyInput(val("debt-paid"));
+    if(!paid) return toast(t("debt_bad_amount"));
+    try{
+      await api(`/api/debts/${el.dataset.id}/settle`, {method:"POST", body:{settled:true, paid}});
+      notify("success"); closeSheet(); toast(t("saved")); reloadDebts();
+    }catch(e){ handleError(e); }
+  },
+  "debt-reopen": async el => {
+    try{
+      await api(`/api/debts/${el.dataset.id}/settle`, {method:"POST", body:{settled:false}});
+      closeSheet(); reloadDebts();
+    }catch(e){ handleError(e); }
+  },
+  "debt-delete": async el => {
+    try{
+      await api(`/api/debts/${el.dataset.id}`, {method:"DELETE"});
+      closeSheet(); toast(t("deleted")); reloadDebts();
+    }catch(e){ handleError(e); }
+  },
   "money-month": el => {
     const m = state.money;
     if(!m) return;
@@ -7499,50 +7878,51 @@ const A = {
     try{ openSheet(habitSheet(await api(`/api/habits/${el.dataset.id}/history`))); }
     catch(e){ handleError(e); }
   },
-  "habit-add": el => { state.dest = el?.dataset?.dest || "personal"; openSheet(`
-    <h3>${icon("plus", 18)} ${t("add_habit")}</h3>
-    <input id="habit-name" placeholder="${t("habit_name")}" />
-    ${destPicker()}
-    <label>${t("category")}</label>
-    <select id="habit-cat">
-      <option value="non_negotiable">${t("non_negotiable")}</option>
-      <option value="target" selected>${t("target")}</option>
-      <option value="bonus">${t("bonus")}</option></select>
-    <label>${t("schedule")}</label>
-    <select id="habit-sched">
-      <option value="daily">${t("every_day")}</option>
-      <option value="weekdays">${t("weekdays_only")}</option></select>
-    ${timerPicker("habit-timer")}
-    <button class="btn" data-act="habit-save" style="margin-top:16px">
-      ${t("save")}</button>
-    <button class="btn secondary" data-act="close" style="margin-top:8px">
-      ${t("cancel")}</button>`); },
+  "habit-add": el => {
+    state.dest = el?.dataset?.dest || "personal";
+    state.habitForm = {name: el?.dataset?.name || val("quick-title"), category:"target", schedule:"daily", remind_at:""};
+    openSheet(habitAddSheet());
+    setTimeout(() => document.getElementById("habit-name")?.focus(), 60);
+  },
+  /* A chip on the add sheet: remember the choice, keep what was typed. */
+  "habit-form": el => {
+    haptic();
+    const f = state.habitForm || {};
+    f.name = val("habit-name");
+    f.timer = pickedTimer("habit-timer");
+    f[el.dataset.field] = el.dataset.value;
+    openSheet(habitAddSheet());
+  },
   "habit-save": () => {
     const name = trimmed("habit-name");
     if(!name) return;
+    const f = state.habitForm || {};
+    const body = {name, category: f.category || "target", schedule: f.schedule || "daily",
+                  remind_at: f.remind_at || null, timer_minutes: pickedTimer("habit-timer")};
     const dest = destOf();
     if(dest.team)
       // A shared habit has no category: tiers weigh a personal day, and the
       // team's number is a plain count of what the two of you agreed to do.
-      return save(() => api(`/api/teams/${dest.id}/habits`, {method:"POST",
-        body:{name, schedule: val("habit-sched"), category: val("habit-cat"),
-              timer_minutes: pickedTimer("habit-timer")}}), state.screen);
-    save(() => api("/api/habits", {method:"POST", body:{
-      name, category: val("habit-cat"), schedule: val("habit-sched"),
-      timer_minutes: pickedTimer("habit-timer"),
-    }}), "habits");
+      return save(() => api(`/api/teams/${dest.id}/habits`, {method:"POST", body}), state.screen);
+    save(() => api("/api/habits", {method:"POST", body}), "habits");
   },
-  "habit-name-save": el => save(() => habitPatch(el.dataset.id,
-    {name: trimmed("habit-name")}), state.screen),
-  "habit-cat": el => save(() => habitPatch(el.dataset.id,
-    {category: el.dataset.value}), state.screen, true),
+  /* Every setting saves the moment it changes and the sheet stays open:
+     one tap per change, no Save buttons to hunt for. */
+  "habit-name-set": el => {
+    const name = el.value.trim();
+    if(!name || name === state.habitSheet?.name) return;
+    habitSet(el.dataset.id, {name});
+  },
+  "habit-cat": el => habitSet(el.dataset.id, {category: el.dataset.value}),
   "habit-sched": el => {
     const value = el.dataset.value;
     // A custom schedule starts from the working week rather than from nothing.
-    const schedule = value === "custom" ? "days:0,2,4" : value;
-    save(() => habitPatch(el.dataset.id, {schedule}), state.screen, true)
-      .then(() => reopenHabit(el.dataset.id));
+    habitSet(el.dataset.id, {schedule: value === "custom" ? "days:0,2,4" : value});
   },
+  "habit-remind-pick": el => habitSet(el.dataset.id, {remind_at: el.dataset.value || null}),
+  "habit-remind-set": el => habitSet(el.dataset.id, {remind_at: el.value || null}),
+  "habit-target-set": el => { if(el.value) habitSet(el.dataset.id, {target_time: el.value}); },
+  "habit-done": () => { flushHabitName(); closeSheet(); },
   "habit-day": async el => {
     haptic();
     try{
@@ -7559,10 +7939,6 @@ const A = {
       loadScreen(state.screen);
     }catch(e){ handleError(e); }
   },
-  "habit-remind-save": el => save(() => habitPatch(el.dataset.id,
-    {remind_at: val("habit-remind") || null}), state.screen),
-  "habit-target-save": el => save(() => habitPatch(el.dataset.id,
-    {target_time: val("habit-target")}), state.screen),
   /* Pausing asks from when: from today takes today out of the count too,
      from tomorrow keeps today owed. Resuming is immediate. */
   "habit-pause": el => {
@@ -7723,7 +8099,7 @@ const A = {
     try{
       await api("/api/focus", {method:"POST",
         body:{title, priority: val("focus-priority")}});
-      closeSheet(); toast(t("saved")); await loadScreen("tasks");
+      closeSheet(); toast(t("saved")); await loadScreen(focusScreen());
     }catch(e){
       closeSheet();
       toast(e.status === 422 ? t("mission_full") : t("error"));
@@ -7734,12 +8110,12 @@ const A = {
                            priority: val("focus-priority")}}), "tasks"),
   "focus-toggle": el => { haptic();
     save(() => api(`/api/focus/${el.dataset.id}/toggle`, {method:"POST"}),
-         "tasks", true); },
+         focusScreen(), true); },
   "focus-carry": el => save(() => api(`/api/focus/${el.dataset.id}/carry`,
-    {method:"POST"}), "tasks", false, t("mission_carried")),
+    {method:"POST"}), focusScreen(), false, t("mission_carried")),
   "focus-delete": el => confirmSheet("focus-delete-go", el.dataset.id),
   "focus-delete-go": el => save(() => api(`/api/focus/${el.dataset.id}`,
-    {method:"DELETE"}), "tasks", false, t("deleted")),
+    {method:"DELETE"}), focusScreen(), false, t("deleted")),
 
   /* ---- tasks ---- */
   /* Completing is the most common write in the app, so it is one request and
@@ -7801,8 +8177,9 @@ const A = {
   "task-add": el => {
     state.dest = el?.dataset?.dest || "personal";
     const project = el?.dataset?.project || state.project?.project?.id || "";
+    // "Batafsil" from quick add keeps what was already typed.
     state.form = {when:"today", priority:"medium", project_id: project || null,
-                  remind_before: DEFAULT_REMIND_BEFORE};
+                  remind_before: DEFAULT_REMIND_BEFORE, title: val("quick-title")};
     openSheet(taskSheet(null, project));
   },
   "task-add-on": el => {
@@ -7818,6 +8195,16 @@ const A = {
     state.form.when = el.dataset.value;
     if(el.dataset.value === "pick" && !state.form.deadline)
       state.form.deadline = todayISO();
+    rerenderTaskSheet();
+  },
+  "task-remind": el => {
+    readTaskForm();
+    state.form.remind_before = el.dataset.value === "" ? null : Number(el.dataset.value);
+    rerenderTaskSheet();
+  },
+  "task-repeat": el => {
+    readTaskForm();
+    state.form.recurrence = el.dataset.value;
     rerenderTaskSheet();
   },
   "task-priority": el => {
@@ -8075,6 +8462,11 @@ const A = {
      achievements when they arrive. Waiting for the second request before
      drawing anything would mean a tap that appears to do nothing on a slow
      connection, for a list that is the least important thing on the sheet. */
+  "steps-go": el => {
+    const [screen, tab] = STEP_GO[el.dataset.key] || ["home"];
+    if(tab) state.tab = tab;
+    goto(screen);
+  },
   "progress-open": async () => {
     haptic();
     openSheet(progressSheet());
@@ -8358,6 +8750,50 @@ function habitPause(id, paused, from){
     ? api(`/api/teams/habits/${id}`, {method:"PATCH", body:{paused, from}})
     : api(`/api/habits/${id}/pause`, {method:"POST", body:{paused, from}});
 }
+/* New habit: a name, then one tap each for how important, which days and
+   when to remind. Every choice is a chip; the defaults are already on. */
+function habitAddSheet(){
+  const f = state.habitForm || {};
+  const chip = (field, value, label) => `<div class="chip sm ${(f[field] || "") === value ? "on" : ""}"
+      data-act="habit-form" data-field="${field}" data-value="${value}">${label}</div>`;
+  return `<h3>${icon("plus", 18)} ${t("add_habit")}</h3>
+    <input id="habit-name" placeholder="${t("quick_habit_ph")}" value="${esc(f.name || "")}"
+           enterkeyhint="done" data-search="habit-save" />
+    ${destPicker()}
+    <label>${t("habit_tier")}</label>
+    <div class="chips">${["non_negotiable", "target", "bonus"].map(c => chip("category", c, t(c))).join("")}</div>
+    <label>${t("schedule")}</label>
+    <div class="chips">${chip("schedule", "daily", t("every_day"))}${chip("schedule", "weekdays", t("weekdays_only"))}</div>
+    <label>🔔 ${t("reminder")}</label>
+    <div class="chips">${chip("remind_at", "", t("none_short"))}${["07:00", "12:00", "21:00"]
+      .map(v => chip("remind_at", v, v)).join("")}</div>
+    ${timerPicker("habit-timer", f.timer)}
+    <button class="btn" data-act="habit-save" style="margin-top:16px">${t("save")}</button>`;
+}
+
+/* Change one habit setting in place: saved, said so, the sheet redrawn with
+   the new value, the list behind it refreshed. */
+let habitSetting = Promise.resolve();
+function habitSet(id, body){
+  haptic();
+  habitSetting = habitSetting.then(async () => {
+    try{
+      await habitPatch(id, body);
+      notify("success");
+      toast(t("saved"));
+      state.calendarStale = true;
+      if(sheetOpen() && String(state.habitSheet?.id) === String(id)) await reopenHabit(id);
+      loadScreen(state.screen);
+    }catch(e){ handleError(e); }
+  });
+  return habitSetting;
+}
+/* A name typed and then "Done" tapped without leaving the field. */
+function flushHabitName(){
+  const el = document.getElementById("habit-name");
+  const name = el?.value.trim();
+  if(el && name && name !== state.habitSheet?.name) habitSet(el.dataset.id, {name});
+}
 async function reopenHabit(id){
   try{ openSheet(habitSheet(await api(habitHistoryPath(id)))); }
   catch(e){ handleError(e); }
@@ -8376,7 +8812,7 @@ async function openTeamTaskSheet(id){
       deadline: task.deadline, due_time: task.due_time,
       remind_before: task.remind_before, recurrence: task.recurrence || "",
       priority: task.priority, project_id: task.project_id,
-      when: task.deadline ? "pick" : "none", open:false,
+      when: whenOf(task.deadline), open:false,
       source: "team", team_id: task.team_id,
       completion: task.completion || "all", assignees: task.assignees || [],
       members: task.members || [],
@@ -8397,7 +8833,7 @@ function openTaskSheet(id){
     deadline: task.deadline, due_time: task.due_time,
     remind_before: task.remind_before, recurrence: task.recurrence || "",
     priority: task.priority, project_id: task.project_id,
-    when: task.deadline ? "pick" : "none", open:false,
+    when: whenOf(task.deadline), open:false,
     timer_minutes: task.timer_minutes, timer_mode: task.timer_mode,
   };
   openSheet(taskSheet(task));

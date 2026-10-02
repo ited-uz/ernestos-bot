@@ -632,6 +632,28 @@ class MoneyBudget(Base):
     monthly_limit: Mapped[int] = mapped_column(BigInteger)
 
 
+class Debt(Base):
+    """Money lent to or borrowed from a person: "Aziz — 200 000, men berdim".
+
+    Kept apart from the balance on purpose: a loan is not spending, and
+    nobody should have to enter it twice. Settled rows stay as history.
+    """
+
+    __tablename__ = "debts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    person: Mapped[str] = mapped_column(String(80))
+    amount: Mapped[int] = mapped_column(BigInteger)
+    #: lent — they owe me; borrowed — I owe them.
+    direction: Mapped[str] = mapped_column(String(8))
+    note: Mapped[str] = mapped_column(String(200), default="")
+    due: Mapped[date | None] = mapped_column(Date, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class Feedback(Base):
     __tablename__ = "feedback"
 
