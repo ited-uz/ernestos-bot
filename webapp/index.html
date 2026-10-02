@@ -730,6 +730,12 @@ nav:empty{display:none}
 .grouped > .head{min-height:0;justify-content:flex-end}
 .profile-head{display:flex;align-items:center;gap:var(--s2);margin:4px 0 12px}
 .grouped > h1:first-child{display:none}
+.goal-line{display:flex;align-items:center;gap:12px;margin-top:10px;padding:12px 14px;
+           border-radius:var(--radius-sm);background:var(--surface);border:var(--border-w) solid var(--border)}
+.goal-line .gi{font-size:18px}
+.goal-line .gt{font-size:16px;font-weight:650;margin-top:1px}
+.goal-line.done{opacity:.75}
+.more-link{padding:10px 4px;color:var(--primary);font-weight:650;cursor:pointer}
 .nohead > .head, .screen-money > .head .add{display:none}
 /* Qadam card */
 .steps{background:var(--surface);border:var(--border-w) solid var(--border);border-radius:var(--radius);
@@ -1204,7 +1210,7 @@ const DICT = {
   /* quick capture */
   quick_add:"Tez qo'shish", quick_ph:"Nima esingizga tushdi?",
   inbox_saved:"Saqlandi — Vazifalarda",
-  quick_saved:"✓ Vazifa", voice_title:"Ovoz bilan qo'shish", voice_listening:"Gapiring… To'xtatsangiz, tahlil qilaman.", voice_stop:"To'xtatish", voice_thinking:"Tushunishga harakat qilyapman…", voice_confirm:"Tasdiqlash", voice_retry:"Qayta yozish", voice_done:"✅ Tasdiqlandi", voice_failed:"Ovoz yuborilmadi. Qayta urinib ko'ring.", voice_too_long:"Ovoz 2 daqiqadan oshmasin.", voice_denied:"Mikrofonga ruxsat yo'q — botda ovoz yuboring.", voice_consent:"Ovozingiz matnga aylantirish va tushunish uchun AI xizmatlariga (ElevenLabs, Groq, Google — AQSh) yuboriladi. Audio saqlanmaydi. Hech narsa siz tasdiqlamaguningizcha o'zgarmaydi.", voice_agree:"Roziman, boshlash", voice_consent_needed:"Avval rozilik bering.", tab_list:"Ro'yxat", nav_money:"Moliya", quick_more:"Batafsil (vaqt, eslatma, loyiha)", steps_title:"Qadam", steps_motto:"Har bir yaxshi ish — kelajakdagi yutuqqa qadam.", steps_freeze:"Ketma-ketlikni saqlab qoladigan kunlar", steps_level_n:"{n}-daraja", steps_total:"Jami qadamlar", steps_path:"Sizning yo'lingiz", steps_today:"Bugungi qadamlar", steps_go:"Qadamni davom ettir", step_lvl_starter:"Boshlovchi", step_lvl_builder:"Quruvchi", step_lvl_discipline:"Intizom", step_lvl_steady:"Barqarorlik", step_lvl_master:"O'z ustida ishlash", step_tasks:"Vazifa", step_habits:"Odat", step_prayer:"Namoz", step_journal:"Kundalik", step_goal:"Maqsad", task_word:"Vazifa", habit_word:"Odat", quick_habit_ph:"Masalan: Har kuni kitob o'qish", quick_habit_hint:"Har kuni takrorlanadi. Keyin o'zgartirsa bo'ladi.", quick_habit_saved:"✓ Odat", nav_tracker:"Kundalik", nav_profile:"Profil", quick_hint:"Masalan: «Ertaga soat 10 da hisobot» yoki «Tushlik 45 ming»", quick_voice:"Ovoz bilan aytish",
+  quick_saved:"✓ Vazifa", next_up:"Keyingi", home_more_tasks:"Yana {n} ta ish", voice_title:"Ovoz bilan qo'shish", voice_listening:"Gapiring… To'xtatsangiz, tahlil qilaman.", voice_stop:"To'xtatish", voice_thinking:"Tushunishga harakat qilyapman…", voice_confirm:"Tasdiqlash", voice_retry:"Qayta yozish", voice_done:"✅ Tasdiqlandi", voice_failed:"Ovoz yuborilmadi. Qayta urinib ko'ring.", voice_too_long:"Ovoz 2 daqiqadan oshmasin.", voice_denied:"Mikrofonga ruxsat yo'q — botda ovoz yuboring.", voice_consent:"Ovozingiz matnga aylantirish va tushunish uchun AI xizmatlariga (ElevenLabs, Groq, Google — AQSh) yuboriladi. Audio saqlanmaydi. Hech narsa siz tasdiqlamaguningizcha o'zgarmaydi.", voice_agree:"Roziman, boshlash", voice_consent_needed:"Avval rozilik bering.", tab_list:"Ro'yxat", nav_money:"Moliya", quick_more:"Batafsil (vaqt, eslatma, loyiha)", steps_title:"Qadam", steps_motto:"Har bir yaxshi ish — kelajakdagi yutuqqa qadam.", steps_freeze:"Ketma-ketlikni saqlab qoladigan kunlar", steps_level_n:"{n}-daraja", steps_total:"Jami qadamlar", steps_path:"Sizning yo'lingiz", steps_today:"Bugungi qadamlar", steps_go:"Qadamni davom ettir", step_lvl_starter:"Boshlovchi", step_lvl_builder:"Quruvchi", step_lvl_discipline:"Intizom", step_lvl_steady:"Barqarorlik", step_lvl_master:"O'z ustida ishlash", step_tasks:"Vazifa", step_habits:"Odat", step_prayer:"Namoz", step_journal:"Kundalik", step_goal:"Maqsad", task_word:"Vazifa", habit_word:"Odat", quick_habit_ph:"Masalan: Har kuni kitob o'qish", quick_habit_hint:"Har kuni takrorlanadi. Keyin o'zgartirsa bo'ladi.", quick_habit_saved:"✓ Odat", nav_tracker:"Kundalik", nav_profile:"Profil", quick_hint:"Masalan: «Ertaga soat 10 da hisobot» yoki «Tushlik 45 ming»", quick_voice:"Ovoz bilan aytish",
   /* tasks */
   add_task:"Vazifa", task_name:"Vazifa nomi", task_desc:"Batafsil",
   deadline:"Muddat", due_time:"Vaqt", priority:"Muhimlik", project:"Loyiha",
@@ -1576,7 +1582,7 @@ const DICT = {
   wake_late_at:"{time} — later than today's target", wake_target:"Target",
   quick_add:"Quick add", quick_ph:"What came to mind?",
   inbox_saved:"Saved — see Tasks",
-  quick_saved:"✓ Task", voice_title:"Add by voice", voice_listening:"Speak… Stop when done and I'll analyse it.", voice_stop:"Stop", voice_thinking:"Understanding…", voice_confirm:"Confirm", voice_retry:"Record again", voice_done:"✅ Confirmed", voice_failed:"Voice was not sent. Try again.", voice_too_long:"Keep it under 2 minutes.", voice_denied:"No microphone access — send a voice message in the bot.", voice_consent:"Your voice is sent to AI services (ElevenLabs, Groq, Google — USA) to transcribe and understand it. Audio is not stored. Nothing changes until you confirm.", voice_agree:"I agree, start", voice_consent_needed:"Please give consent first.", tab_list:"List", nav_money:"Money", quick_more:"More options (time, reminder, project)", steps_title:"Steps", steps_motto:"Every good thing you do is a step forward.", steps_freeze:"Days that keep your streak alive", steps_level_n:"Level {n}", steps_total:"Total steps", steps_path:"Your path", steps_today:"Today's steps", steps_go:"Keep going", step_lvl_starter:"Beginner", step_lvl_builder:"Builder", step_lvl_discipline:"Discipline", step_lvl_steady:"Consistency", step_lvl_master:"Self-mastery", step_tasks:"Task", step_habits:"Habit", step_prayer:"Prayer", step_journal:"Journal", step_goal:"Goal", task_word:"Task", habit_word:"Habit", quick_habit_ph:"E.g. Read a book every day", quick_habit_hint:"Repeats every day. You can change it later.", quick_habit_saved:"✓ Habit", nav_tracker:"Tracker", nav_profile:"Profile", quick_hint:"E.g. “Report tomorrow at 10” or “Lunch 45 thousand”", quick_voice:"Say it by voice",
+  quick_saved:"✓ Task", next_up:"Up next", home_more_tasks:"{n} more", voice_title:"Add by voice", voice_listening:"Speak… Stop when done and I'll analyse it.", voice_stop:"Stop", voice_thinking:"Understanding…", voice_confirm:"Confirm", voice_retry:"Record again", voice_done:"✅ Confirmed", voice_failed:"Voice was not sent. Try again.", voice_too_long:"Keep it under 2 minutes.", voice_denied:"No microphone access — send a voice message in the bot.", voice_consent:"Your voice is sent to AI services (ElevenLabs, Groq, Google — USA) to transcribe and understand it. Audio is not stored. Nothing changes until you confirm.", voice_agree:"I agree, start", voice_consent_needed:"Please give consent first.", tab_list:"List", nav_money:"Money", quick_more:"More options (time, reminder, project)", steps_title:"Steps", steps_motto:"Every good thing you do is a step forward.", steps_freeze:"Days that keep your streak alive", steps_level_n:"Level {n}", steps_total:"Total steps", steps_path:"Your path", steps_today:"Today's steps", steps_go:"Keep going", step_lvl_starter:"Beginner", step_lvl_builder:"Builder", step_lvl_discipline:"Discipline", step_lvl_steady:"Consistency", step_lvl_master:"Self-mastery", step_tasks:"Task", step_habits:"Habit", step_prayer:"Prayer", step_journal:"Journal", step_goal:"Goal", task_word:"Task", habit_word:"Habit", quick_habit_ph:"E.g. Read a book every day", quick_habit_hint:"Repeats every day. You can change it later.", quick_habit_saved:"✓ Habit", nav_tracker:"Tracker", nav_profile:"Profile", quick_hint:"E.g. “Report tomorrow at 10” or “Lunch 45 thousand”", quick_voice:"Say it by voice",
   add_task:"Task", task_name:"Task name", task_desc:"Details",
   deadline:"Date", due_time:"Time", priority:"Priority", project:"Project",
   standalone:"Standalone", high:"High", medium:"Medium", low:"Low",
@@ -1937,7 +1943,7 @@ const DICT = {
   wake_late_at:"{time} — позже сегодняшней цели", wake_target:"Цель",
   quick_add:"Быстро добавить", quick_ph:"Что пришло в голову?",
   inbox_saved:"Сохранено — в Задачах",
-  quick_saved:"✓ Задача", voice_title:"Добавить голосом", voice_listening:"Говорите… Остановите — и я разберу.", voice_stop:"Стоп", voice_thinking:"Разбираю…", voice_confirm:"Подтвердить", voice_retry:"Записать заново", voice_done:"✅ Подтверждено", voice_failed:"Голос не отправлен. Попробуйте ещё раз.", voice_too_long:"Не длиннее 2 минут.", voice_denied:"Нет доступа к микрофону — отправьте голосовое в боте.", voice_consent:"Голос отправляется AI-сервисам (ElevenLabs, Groq, Google — США) для распознавания. Аудио не хранится. Ничего не меняется без вашего подтверждения.", voice_agree:"Согласен, начать", voice_consent_needed:"Сначала дайте согласие.", tab_list:"Список", nav_money:"Финансы", quick_more:"Подробнее (время, напоминание, проект)", steps_title:"Шаги", steps_motto:"Каждое доброе дело — шаг вперёд.", steps_freeze:"Дни, которые сохраняют серию", steps_level_n:"{n}-й уровень", steps_total:"Всего шагов", steps_path:"Ваш путь", steps_today:"Шаги сегодня", steps_go:"Продолжить", step_lvl_starter:"Новичок", step_lvl_builder:"Строитель", step_lvl_discipline:"Дисциплина", step_lvl_steady:"Стабильность", step_lvl_master:"Работа над собой", step_tasks:"Задача", step_habits:"Привычка", step_prayer:"Намаз", step_journal:"Дневник", step_goal:"Цель", task_word:"Задача", habit_word:"Привычка", quick_habit_ph:"Например: Читать книгу каждый день", quick_habit_hint:"Повторяется каждый день. Можно изменить позже.", quick_habit_saved:"✓ Привычка", nav_tracker:"Трекер", nav_profile:"Профиль", quick_hint:"Например: «Завтра в 10 отчёт» или «Обед 45 тысяч»", quick_voice:"Сказать голосом",
+  quick_saved:"✓ Задача", next_up:"Дальше", home_more_tasks:"Ещё {n}", voice_title:"Добавить голосом", voice_listening:"Говорите… Остановите — и я разберу.", voice_stop:"Стоп", voice_thinking:"Разбираю…", voice_confirm:"Подтвердить", voice_retry:"Записать заново", voice_done:"✅ Подтверждено", voice_failed:"Голос не отправлен. Попробуйте ещё раз.", voice_too_long:"Не длиннее 2 минут.", voice_denied:"Нет доступа к микрофону — отправьте голосовое в боте.", voice_consent:"Голос отправляется AI-сервисам (ElevenLabs, Groq, Google — США) для распознавания. Аудио не хранится. Ничего не меняется без вашего подтверждения.", voice_agree:"Согласен, начать", voice_consent_needed:"Сначала дайте согласие.", tab_list:"Список", nav_money:"Финансы", quick_more:"Подробнее (время, напоминание, проект)", steps_title:"Шаги", steps_motto:"Каждое доброе дело — шаг вперёд.", steps_freeze:"Дни, которые сохраняют серию", steps_level_n:"{n}-й уровень", steps_total:"Всего шагов", steps_path:"Ваш путь", steps_today:"Шаги сегодня", steps_go:"Продолжить", step_lvl_starter:"Новичок", step_lvl_builder:"Строитель", step_lvl_discipline:"Дисциплина", step_lvl_steady:"Стабильность", step_lvl_master:"Работа над собой", step_tasks:"Задача", step_habits:"Привычка", step_prayer:"Намаз", step_journal:"Дневник", step_goal:"Цель", task_word:"Задача", habit_word:"Привычка", quick_habit_ph:"Например: Читать книгу каждый день", quick_habit_hint:"Повторяется каждый день. Можно изменить позже.", quick_habit_saved:"✓ Привычка", nav_tracker:"Трекер", nav_profile:"Профиль", quick_hint:"Например: «Завтра в 10 отчёт» или «Обед 45 тысяч»", quick_voice:"Сказать голосом",
   add_task:"Задача", task_name:"Название", task_desc:"Подробнее",
   deadline:"Дата", due_time:"Время", priority:"Приоритет", project:"Проект",
   standalone:"Отдельно", high:"Высокий", medium:"Средний", low:"Низкий",
@@ -2644,10 +2650,13 @@ SCREENS.home = () => {
      Everything else — the week goal, the countdowns, the day/week/month
      percentages, XP — lives on the screen that owns it (Tasks, Statistics).
      The month grid opens from the date in the header. */
+  /* v12.2: everything serves the Now card. Under it only the week goal and
+     the next three things, each one line; the rest is one tap away. */
   return headBlock(d)
        + timerBanner(d.active_timer)
        + nowBlock(d)
        + countsRow(d)
+       + homeGoal(d)
        + tasksBlock(d)
        + presetsOffer(d)
        + privacyNote();
@@ -2830,6 +2839,21 @@ function nowBlock(d){
 }
 
 /* Today's work, grouped by the project it belongs to. */
+/* The week goal, the size of one line, right under the day. */
+const focusScreen = () => state.screen === "home" ? "home" : "tasks";
+function homeGoal(d){
+  const g = d.focus;
+  if(!g) return `<div class="goal-line pressable" data-act="focus-add" data-slot="primary">
+      <span class="gi">🎯</span><div class="grow t2">${t("add_mission")}</div>${icon("plus", 16)}</div>`;
+  return `<div class="goal-line ${g.done ? "done" : ""}">
+      <div class="check ${g.done ? "on" : ""}" data-act="focus-toggle" data-id="${g.id}">${icon("check", 14)}</div>
+      <div class="grow" data-act="focus-open" data-id="${g.id}" data-title="${esc(g.title)}"
+           data-priority="${g.priority || "medium"}" data-done="${g.done ? 1 : 0}">
+        <div class="eyebrow">🎯 ${t("week_focus")}</div>
+        <div class="gt ${g.done ? "strike" : ""}">${esc(g.title)}</div></div>
+      ${icon("chevron", 16)}</div>`;
+}
+
 function tasksBlock(d){
   const groups = d.tasks_today || [];
   /* Whatever the Now card is showing is already the largest thing on the
@@ -2839,9 +2863,7 @@ function tasksBlock(d){
   const shownAbove = d.now?.kind === "task" ? d.now.id : (d.top3 || [])[0]?.id;
   const missionId = shownAbove;
 
-  let h = `<h2>${t("today_tasks")}
-      <span class="act" data-act="task-add">${icon("plus", 15)}
-        ${t("add_task")}</span></h2>`;
+  let h = `<h2>${t("next_up")}</h2>`;
 
   const rows = groups
     .map(g => ({...g, tasks: g.tasks.filter(x => x.id !== missionId)}))
@@ -2864,12 +2886,12 @@ function tasksBlock(d){
         ${icon("plus", 16)} ${t("add_first_task")}</button></div>`;
   }
 
-  return h + rows.map(group => `
-    ${group.project
-      ? `<div class="group">${icon("target", 13)} ${esc(group.project)}</div>`
-      : `<div class="group">${esc(t("standalone"))}</div>`}
-    ${group.tasks.map(x => taskRow(x, {hideProject: true, hideDate: true}))
-                 .join("")}`).join("") + shared;
+  /* Next three only: Home is for doing, the full list lives in Kundalik. */
+  const all = rows.flatMap(g => g.tasks);
+  const more = all.length - 3;
+  return h + all.slice(0, 3).map(x => taskRow(x, {hideDate: true})).join("")
+    + (more > 0 ? `<div class="more-link" data-act="nav" data-screen="tasks" role="button" tabindex="0">
+        ${t("home_more_tasks", {n: more})} →</div>` : "") + shared;
 }
 
 function calendarBlock(){
@@ -7867,7 +7889,7 @@ const A = {
     try{
       await api("/api/focus", {method:"POST",
         body:{title, priority: val("focus-priority")}});
-      closeSheet(); toast(t("saved")); await loadScreen("tasks");
+      closeSheet(); toast(t("saved")); await loadScreen(focusScreen());
     }catch(e){
       closeSheet();
       toast(e.status === 422 ? t("mission_full") : t("error"));
@@ -7878,12 +7900,12 @@ const A = {
                            priority: val("focus-priority")}}), "tasks"),
   "focus-toggle": el => { haptic();
     save(() => api(`/api/focus/${el.dataset.id}/toggle`, {method:"POST"}),
-         "tasks", true); },
+         focusScreen(), true); },
   "focus-carry": el => save(() => api(`/api/focus/${el.dataset.id}/carry`,
-    {method:"POST"}), "tasks", false, t("mission_carried")),
+    {method:"POST"}), focusScreen(), false, t("mission_carried")),
   "focus-delete": el => confirmSheet("focus-delete-go", el.dataset.id),
   "focus-delete-go": el => save(() => api(`/api/focus/${el.dataset.id}`,
-    {method:"DELETE"}), "tasks", false, t("deleted")),
+    {method:"DELETE"}), focusScreen(), false, t("deleted")),
 
   /* ---- tasks ---- */
   /* Completing is the most common write in the app, so it is one request and

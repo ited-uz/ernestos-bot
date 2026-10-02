@@ -4302,6 +4302,8 @@ def home(s: Session, ws: int, user: User) -> dict:
         "counts": home_counts(s, ws, user, today, habits=(done, total),
                               prayer=prayer),
         "now": now_next(s, ws, user, tz=tz),
+        # The week's one goal, on Home so it is seen every day (v12.2).
+        "focus": primary_focus(s, ws, today, tz=tz),
         "wake": wake_state(s, ws, tz=tz),
         "top3": top3,
         "top3_max": MAX_TOP3,

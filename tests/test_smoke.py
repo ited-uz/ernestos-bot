@@ -1546,8 +1546,10 @@ def test_bot_home_and_mini_app_home_show_the_same_now_and_counts(alice):
     home = alice.get("/api/home").json()
     assert "now" in home and "counts" in home
     assert set(home["counts"]) == {"tasks", "habits", "team", "prayer"}
-    for gone in ("overall", "mission", "focus", "birthdays", "week"):
+    for gone in ("overall", "mission", "birthdays", "week"):
         assert gone not in home, f"Home still computes {gone}"
+    # v12.2: the week goal is on Home on purpose — seen every day.
+    assert "focus" in home
     with SessionLocal() as s:
         ws = svc.workspace_id_for(s, ALICE["id"])
         data = svc.home(s, ws, s.get(User, ALICE["id"]))
