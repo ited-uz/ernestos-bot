@@ -1065,17 +1065,22 @@ def test_goals_are_unreachable_from_either_surface():
         assert term not in html, f"index.html still exposes {term!r}"
 
 
-def test_the_mini_app_navigation_is_five_screens_with_more():
-    """Five readable tabs; secondary modules remain one tap away in More."""
+def test_the_mini_app_navigation_is_four_places():
+    """v12.2: Asosiy · Kundalik · Moliya · Profil. Kundalik switches Habits ↔
+    Tasks and Profil switches Statistics ↔ Team at the top, while the bar stays,
+    so leaving is always one tap."""
     html = (ROOT / "webapp" / "index.html").read_text()
     nav = html[html.index("const NAV = ["):html.index("const NAV_OF")]
     assert [line.split('id:"')[1].split('"')[0]
             for line in nav.splitlines() if 'id:"' in line] == \
-        ["home", "habits", "tasks", "stats", "more"]
-    more = html[html.index("SCREENS.more ="):html.index("function blockedScreen()")]
-    assert '["team", "users", "team"]' in more
-    assert '["money", "wallet", "money"]' in more
-    assert 'data-act="settings"' in more and 'data-act="agent-open"' in more
+        ["home", "tracker", "money", "profile"]
+    group = html[html.index("function groupBar(screen){"):html.index("const offerKey")]
+    assert '[["habits", "habits"], ["tasks", "tasks"]]' in group
+    assert '[["stats", "nav_stats"], ["team", "team"]]' in group
+    assert 'data-act="settings"' in group, "settings one tap from Profil"
+    nav_of = html[html.index("const NAV_OF"):html.index("function navTarget(")]
+    for screen in ("habits", "tasks", "project", "stats", "team"):
+        assert screen + ":" in nav_of
 
 
 def test_the_privacy_line_is_said_once_on_home():
@@ -4646,17 +4651,19 @@ def test_the_brand_surface_control_is_visible_on_it():
     assert ".hero .check{border-color:color-mix(in srgb, var(--hero-text)" in styled
 
 
-def test_no_floating_button_covers_the_page():
-    """v9.1: the floating ＋ covered the last row of whatever was under it —
-    the first thing the app showed on opening — and sat over a blank page
-    while the first request was in flight. Every screen's add is now in its
-    own header, and the tab bar is not drawn until the screen has data."""
+def test_the_floating_add_never_covers_the_page():
+    """v12.2: one + (type) and a microphone (speak) bottom right, as the owner
+    asked. The v9.1 problems stay solved: nothing floats over a blank page
+    while loading, the page is padded so the last row stays reachable, and
+    the buttons step aside for a sheet or the keyboard."""
     html = (ROOT / "webapp" / "index.html").read_text()
-    assert 'id="fab"' not in html and 'class="fab"' not in html
-    assert ".fab{" not in html and "fabAction" not in html
-    assert "nav:empty{display:none}" in html
-    head = html[html.index("function headBlock(d){"):html.index("function nowBlock(d){")]
-    assert 'class="iconbtn add"' in head, "Home has no add in its header"
+    assert 'id="fab"' in html and "#fab:empty{display:none}" in html
+    render = html[html.index('document.getElementById("fab").innerHTML'):]
+    assert render.split("\n")[0].strip().endswith('chromeOff ? "" : `'), "fab drawn while loading"
+    assert '"quick-add"' in render[:700] and 'data-act="agent-open"' in render[:700]
+    assert '"money-add"' in render[:700], "on Money the + adds money"
+    assert "fab && fab.innerHTML.trim() ? 84 : 0" in html, "page not padded for the fab"
+    assert "body:has(#sheet.show) #fab" in html
     for screen in ("SCREENS.habits", "SCREENS.tasks",
                    "SCREENS.team", "SCREENS.money", "SCREENS.project"):
         block = html[html.index(screen + " = () => {"):]
@@ -10448,3 +10455,24 @@ def test_numbers_that_are_not_times_stay_in_the_title():
     for text in ("Aziz 2 ga bo'lib berdi", "10 ta kitob o'qish", "Sport 30 daqiqa", "iPhone 15 sotib olish"):
         got = svc.parse_quick_capture(text, today)
         assert (got["title"], got["due_time"]) == (text, None), text
+
+
+def test_steps_count_good_things_done_and_climb_levels(fresh):
+    """Qadam: a done task and a done habit are two steps today."""
+    uid = fresh.user["id"]
+    before = fresh.get("/api/progress/me").json()["steps"]
+    assert before["total"] == 0 and before["level_key"] == "starter" and before["next"] == 26
+    assert [c["key"] for c in before["today"]][:2] == ["tasks", "habits"]
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        task = svc.add_task(s, ws, "Hisobot", deadline=svc.today_local())
+        habit = svc.add_habit(s, ws, "Kitob", "target")
+    with SessionLocal() as s:
+        svc.toggle_habit(s, ws, habit.id)
+        svc.complete_task(s, ws, task.id)
+        svc.record_action_and_progress(s, uid)
+    steps = fresh.get("/api/progress/me").json()["steps"]
+    today = {c["key"]: c for c in steps["today"]}
+    assert today["tasks"]["ok"] and today["habits"]["ok"]
+    assert steps["today_done"] >= 2 and steps["total"] >= 2
+    assert steps["freeze"] >= 0 and len(steps["levels"]) == 5

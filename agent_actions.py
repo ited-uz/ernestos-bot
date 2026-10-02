@@ -9,6 +9,7 @@ import hashlib
 import json
 import re
 from datetime import date, time
+from html import escape
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -42,6 +43,9 @@ class Plan(BaseModel):
     model_config = ConfigDict(extra="forbid")
     # The input's MAIN language. Uzbek with a few Russian/English words is uz.
     language: Literal["uz", "ru", "en", "other"]
+    # What the person meant, rewritten as one clean sentence in their app
+    # language — the speech transcript itself is often phonetic or dialectal.
+    understood: str | None
     question: str | None
     actions: list[Action] = Field(max_length=6)
 
@@ -328,79 +332,144 @@ def execute(s, uid, ws, a):
     return {"entity": entity, "operation": op, "id": result_id, "name": a["name"]}
 
 
-LABELS = {
-    "uz": {"task": "Vazifa", "habit": "Odat", "project": "Loyiha", "money": "Pul yozuvi",
-           "create": "Qo‘shish", "update": "Tahrirlash", "delete": "O‘chirish", "personal": "Shaxsiy", "team": "Jamoa",
-           "title": "Nomi", "name": "Nomi", "description": "Izoh", "deadline": "Sana", "due_time": "Vaqt", "priority": "Muhimlik", "project_id": "Loyiha", "recurrence": "Takror", "remind_before": "Eslatma (daqiqa oldin)", "timer_minutes": "Taymer (daqiqa)", "category": "Guruh", "schedule": "Jadval", "remind_at": "Eslatma vaqti", "start": "Boshlanish", "day": "Sana", "kind": "Turi", "amount": "Summa (UZS)", "note": "Izoh"},
-    "ru": {"task": "Задача", "habit": "Привычка", "project": "Проект", "money": "Финансы", "create": "Добавить", "update": "Изменить", "delete": "Удалить", "personal": "Личное", "team": "Команда", "title": "Название", "name": "Название", "description": "Описание", "deadline": "Дата", "due_time": "Время", "priority": "Приоритет", "project_id": "Проект", "recurrence": "Повтор", "remind_before": "Напомнить за (мин)", "timer_minutes": "Таймер (мин)", "category": "Категория", "schedule": "Расписание", "remind_at": "Напоминание", "start": "Начало", "day": "Дата", "kind": "Тип", "amount": "Сумма (UZS)", "note": "Заметка"},
-    "en": {"task": "Task", "habit": "Habit", "project": "Project", "money": "Money entry", "create": "Create", "update": "Edit", "delete": "Delete", "personal": "Personal", "team": "Team"},
-}
 VALUES = {"uz": {"daily": "Har kuni", "weekdays": "Dushanba–Juma", "today": "Bugundan", "tomorrow": "Ertadan", "target": "Maqsadli", "non_negotiable": "Majburiy", "bonus": "Bonus", "low": "Past", "medium": "O‘rta", "high": "Yuqori", "expense": "Chiqim", "income": "Kirim", "food": "Oziq-ovqat", "transport": "Transport", "home": "Uy", "health": "Salomatlik", "fun": "Dam olish", "business": "Biznes", "other": "Boshqa", "salary": "Maosh", "sales": "Savdo", "other_in": "Boshqa kirim"}}
 VALUES["uz"].update({"weekly": "Har hafta", "monthly": "Har oy"})
 VALUES["ru"] = {"daily": "Каждый день", "weekdays": "Понедельник–Пятница", "weekly": "Каждую неделю", "monthly": "Каждый месяц", "today": "С сегодня", "tomorrow": "С завтра", "target": "Целевая", "non_negotiable": "Обязательная", "bonus": "Бонус", "low": "Низкий", "medium": "Средний", "high": "Высокий", "expense": "Расход", "income": "Доход", "food": "Питание", "transport": "Транспорт", "home": "Дом", "health": "Здоровье", "fun": "Отдых", "business": "Бизнес", "other": "Прочее", "salary": "Зарплата", "sales": "Продажи", "other_in": "Прочий доход"}
 VALUES["en"] = {"daily": "Every day", "weekdays": "Monday–Friday", "weekly": "Every week", "monthly": "Every month", "today": "Today", "tomorrow": "Tomorrow", "target": "Target", "non_negotiable": "Non-negotiable", "bonus": "Bonus", "low": "Low", "medium": "Medium", "high": "High", "expense": "Expense", "income": "Income", "food": "Food", "transport": "Transport", "home": "Home", "health": "Health", "fun": "Leisure", "business": "Business", "other": "Other", "salary": "Salary", "sales": "Sales", "other_in": "Other income"}
-WEEKDAYS = {"uz": ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"], "ru": ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"], "en": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]}
 
 
-ICONS = {"create": "➕", "update": "✏️", "delete": "🗑"}
-DAY_WORDS = {"uz": ("bugun", "ertaga"), "ru": ("сегодня", "завтра"), "en": ("today", "tomorrow")}
+# --- The proposal card ---------------------------------------------------------
+# One block per action: what happens (heading), to what (bold name), and only
+# the details the user actually gave, on one line with icons. HTML for Telegram;
+# every user-supplied string is escaped.
+
+HEADINGS = {
+    "uz": {("task", "create"): "📝 Yangi vazifa", ("task", "update"): "✏️ Vazifa o‘zgaradi", ("task", "delete"): "🗑 Vazifa o‘chiriladi",
+           ("habit", "create"): "🔁 Yangi odat", ("habit", "update"): "✏️ Odat o‘zgaradi", ("habit", "delete"): "🗑 Odat o‘chiriladi",
+           ("project", "create"): "📁 Yangi loyiha", ("project", "update"): "✏️ Loyiha o‘zgaradi", ("project", "delete"): "🗑 Loyiha o‘chiriladi",
+           ("money", "expense"): "💸 Chiqim", ("money", "income"): "💰 Kirim",
+           ("money", "update"): "✏️ Pul yozuvi o‘zgaradi", ("money", "delete"): "🗑 Pul yozuvi o‘chiriladi"},
+    "ru": {("task", "create"): "📝 Новая задача", ("task", "update"): "✏️ Изменить задачу", ("task", "delete"): "🗑 Удалить задачу",
+           ("habit", "create"): "🔁 Новая привычка", ("habit", "update"): "✏️ Изменить привычку", ("habit", "delete"): "🗑 Удалить привычку",
+           ("project", "create"): "📁 Новый проект", ("project", "update"): "✏️ Изменить проект", ("project", "delete"): "🗑 Удалить проект",
+           ("money", "expense"): "💸 Расход", ("money", "income"): "💰 Доход",
+           ("money", "update"): "✏️ Изменить запись", ("money", "delete"): "🗑 Удалить запись"},
+    "en": {("task", "create"): "📝 New task", ("task", "update"): "✏️ Edit task", ("task", "delete"): "🗑 Delete task",
+           ("habit", "create"): "🔁 New habit", ("habit", "update"): "✏️ Edit habit", ("habit", "delete"): "🗑 Delete habit",
+           ("project", "create"): "📁 New project", ("project", "update"): "✏️ Edit project", ("project", "delete"): "🗑 Delete project",
+           ("money", "expense"): "💸 Expense", ("money", "income"): "💰 Income",
+           ("money", "update"): "✏️ Edit money entry", ("money", "delete"): "🗑 Delete money entry"},
+}
+MONTHS = {"uz": ["yanvar", "fevral", "mart", "aprel", "may", "iyun", "iyul", "avgust", "sentabr", "oktabr", "noyabr", "dekabr"],
+          "ru": ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"],
+          "en": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]}
+DAYS_FULL = {"uz": ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"],
+             "ru": ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"],
+             "en": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]}
+RELATIVE = {"uz": ("Bugun", "Ertaga"), "ru": ("Сегодня", "Завтра"), "en": ("Today", "Tomorrow")}
 SOM = {"uz": "so‘m", "ru": "сум", "en": "UZS"}
+CATEGORY_ICONS = {"food": "🍔", "transport": "🚕", "home": "🏠", "health": "💊", "fun": "🎮",
+                  "business": "💼", "other": "📦", "salary": "💼", "sales": "🛒", "other_in": "📦"}
+DETAIL = {
+    "uz": {"no_project": "Loyihasiz", "before": "{n} daqiqa oldin", "timer": "{n} daqiqa", "start_tomorrow": "Ertadan boshlab"},
+    "ru": {"no_project": "Без проекта", "before": "за {n} мин", "timer": "{n} мин", "start_tomorrow": "С завтрашнего дня"},
+    "en": {"no_project": "No project", "before": "{n} min before", "timer": "{n} min", "start_tomorrow": "Starting tomorrow"},
+}
 # Values the app fills in by itself. Showing them only adds noise.
 HIDDEN = {("priority", "medium"), ("timer_minutes", 0), ("project_id", None), ("category", "target"),
           ("schedule", "daily"), ("start", "today"), ("recurrence", None), ("remind_before", None)}
 
 
-def _day(value, lang, today):
-    if today:
-        t = date.fromisoformat(str(today))
-        d = date.fromisoformat(str(value))
-        if d == t:
-            return DAY_WORDS.get(lang, DAY_WORDS["uz"])[0]
-        if (d - t).days == 1:
-            return DAY_WORDS.get(lang, DAY_WORDS["uz"])[1]
-        return d.strftime("%d.%m.%Y")
-    return str(value)
+def human_day(value, lang="uz", today=None):
+    """'Bugun, 2-oktabr' / 'Juma, 9-oktabr' / '9-oktabr 2027' — never 2026-10-09."""
+    d = date.fromisoformat(str(value))
+    months = MONTHS.get(lang, MONTHS["uz"])
+    plain = {"uz": f"{d.day}-{months[d.month - 1]}", "ru": f"{d.day} {months[d.month - 1]}",
+             "en": f"{months[d.month - 1]} {d.day}"}.get(lang, f"{d.day}-{months[d.month - 1]}")
+    t = date.fromisoformat(str(today)) if today else None
+    if t is None:
+        return plain
+    if d.year != t.year:
+        plain += f" {d.year}"
+    ahead = (d - t).days
+    if ahead in (0, 1):
+        return f"{RELATIVE.get(lang, RELATIVE['uz'])[ahead]}, {plain}"
+    if 2 <= ahead <= 6:
+        return f"{DAYS_FULL.get(lang, DAYS_FULL['uz'])[d.weekday()]}, {plain}"
+    return plain
 
 
-def _money(fields, before, lang):
-    kind = fields.get("kind") or (before or {}).get("kind") or "expense"
-    words = VALUES.get(lang, VALUES["uz"])
-    return words.get(kind, kind)
+def _amount(value, lang):
+    return f'{int(value):,} {SOM.get(lang, "so‘m")}'.replace(",", " ")
 
 
-def preview(actions, lang="uz", today=None):
-    """One short line per action: what happens, to what, and only the details the user gave."""
-    labels, words = LABELS.get(lang, LABELS["uz"]), VALUES.get(lang, {})
-    lines = []
-    for a in actions:
-        f, op = a["fields"], a["operation"]
-        if a["entity"] == "money":
-            head = _money(f, a.get("before"), lang)
-            name = f'{f["amount"]:,} {SOM.get(lang, "so‘m")}'.replace(",", " ") if "amount" in f else str(a["name"])
-        else:
-            head = labels[a["entity"]]
-            name = str(a["name"])
-        parts = [f'{ICONS[op]} {head}: {name}']
+def _block(a, lang, today):
+    f, op, entity = a["fields"], a["operation"], a["entity"]
+    words, before = VALUES.get(lang, VALUES["uz"]), a.get("before") or {}
+    detail = DETAIL.get(lang, DETAIL["uz"])
+    if entity == "money" and op == "create":
+        heading = HEADINGS.get(lang, HEADINGS["uz"])[("money", f.get("kind", "expense"))]
+    else:
+        heading = HEADINGS.get(lang, HEADINGS["uz"])[(entity, op)]
+    if entity == "money":
+        name = _amount(f.get("amount", before.get("amount", 0)), lang)
+    else:
+        name = f.get("title") or f.get("name") or a["name"]
+    lines = [heading, f"<b>{escape(str(name))}</b>"]
+    if op == "delete":
+        if entity == "project":
+            lines.append({"uz": "Vazifalari saqlanadi.", "ru": "Задачи сохранятся.", "en": "Its tasks are kept."}.get(lang, ""))
+        return "\n".join(lines)
+    parts = []
+    if entity == "money":
+        category = f.get("category") or (before.get("category") if op == "update" else None)
+        if category and ("category" in f or op == "create"):
+            parts.append(f'{CATEGORY_ICONS.get(category, "")} {words.get(category, category)}'.strip())
+        if f.get("day") and str(f["day"]) != str(today):
+            parts.append(f'📅 {human_day(f["day"], lang, today)}')
+        if f.get("note"):
+            parts.append(f'💬 {escape(str(f["note"]))}')
+        if "kind" in f and op == "update":
+            parts.append(words.get(f["kind"], f["kind"]))
+    else:
         for key, value in f.items():
-            if key in {"title", "name", "amount", "kind"} and not (op == "update" and key in {"title", "name"}):
+            if key in {"title", "name"} or (op == "create" and (key, value) in HIDDEN):
                 continue
-            if op == "create" and (key, value) in HIDDEN:
-                continue
-            if a["entity"] == "money" and key == "day" and str(value) == str(today):
-                continue
-            if key in {"deadline", "day"} and value is not None:
-                value = _day(value, lang, today)
+            if key in {"deadline"}:
+                parts.append(f'📅 {human_day(value, lang, today)}' if value else "📅 —")
+            elif key == "due_time":
+                parts.append(f"⏰ {value}" if value else "⏰ —")
+            elif key == "remind_at":
+                parts.append(f"🔔 {value}" if value else "🔔 —")
+            elif key == "remind_before":
+                parts.append(f'🔔 {detail["before"].format(n=value)}' if value else "🔔 —")
+            elif key == "timer_minutes":
+                parts.append(f'⏱ {detail["timer"].format(n=value)}' if value else "⏱ —")
             elif key == "project_id":
-                value = a.get("project_name") or {"uz": "loyihasiz", "ru": "без проекта", "en": "no project"}.get(lang)
-            elif key == "schedule" and str(value).startswith("days:"):
-                value = ", ".join(WEEKDAYS.get(lang, WEEKDAYS["uz"])[int(n)] for n in str(value)[5:].split(","))
-            elif value is None:
-                value = "—"
-            else:
-                value = words.get(str(value), value)
-            parts.append(str(value) if key in {"deadline", "due_time", "day", "category", "note"}
-                         else f'{labels.get(key, key.replace("_", " ")).lower()}: {value}')
-        if a["scope"] == "team":
-            parts.append(f'{labels["team"]}: {a["team_name"]}')
-        lines.append(" · ".join(parts))
+                parts.append(f'📁 {escape(a.get("project_name") or detail["no_project"])}')
+            elif key == "priority":
+                parts.append({"high": "🔥 ", "low": "⬇️ "}.get(value, "") + words.get(value, value))
+            elif key == "recurrence":
+                parts.append(f'🔁 {words.get(value, value)}' if value else "🔁 —")
+            elif key == "schedule":
+                if str(value).startswith("days:"):
+                    value = ", ".join(DAYS_FULL.get(lang, DAYS_FULL["uz"])[int(n)] for n in str(value)[5:].split(","))
+                parts.append(f"🗓 {words.get(value, value)}")
+            elif key == "category":
+                parts.append(words.get(value, value))
+            elif key == "start":
+                parts.append(detail["start_tomorrow"] if value == "tomorrow" else words.get(value, value))
+            elif key == "description":
+                parts.append(f"💬 {escape(str(value))}" if value else "💬 —")
+    if a["scope"] == "team":
+        parts.append(f'👥 {escape(str(a.get("team_name") or ""))}')
+    if parts:
+        lines.append("   ".join(parts))
     return "\n".join(lines)
+
+
+def preview(actions, lang="uz", today=None, understood=None):
+    """The card the user approves: what was understood, then one block per action."""
+    blocks = [_block(a, lang, today) for a in actions]
+    head = [f"🎙 <i>{escape(understood.strip())}</i>"] if understood and understood.strip() else []
+    return "\n\n".join(head + blocks)

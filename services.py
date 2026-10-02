@@ -5464,6 +5464,66 @@ def progress_snapshot(s: Session, user_id: int, *,
     }
 
 
+#: "Qadam": every good thing done is a step. Levels by total steps.
+STEP_LEVELS = [("starter", 0), ("builder", 26), ("discipline", 51), ("steady", 101), ("master", 201)]
+
+
+def steps_snapshot(s: Session, user_id: int, ws: int, *, tz: ZoneInfo | None = None) -> dict:
+    """Steps: today's checkpoints, the all-time total and the level.
+
+    A step is one kind of good thing done on a day: at least one task, at
+    least one habit, at least one prayer, the journal written. A week goal
+    marked done is one more. Everything is read from rows that already exist
+    (the day snapshots, the journal, the week goals); nothing new is stored.
+    """
+    zone = tz or user_tz(s.get(User, user_id))
+    today = today_local(zone)
+    modules = modules_for(s, ws)
+    rows = s.scalars(select(DailyScore).where(DailyScore.user_id == user_id)).all()
+    today_row = next((r for r in rows if r.day == today), None)
+
+    def wrote(entry) -> bool:
+        return bool(entry and ((entry.text or "").strip() or (entry.answers or "{}") not in ("{}", "")))
+
+    journal_days = [e for e in s.scalars(select(JournalEntry).where(JournalEntry.workspace_id == ws)).all() if wrote(e)]
+    goals = s.scalars(select(WeeklyFocus).where(WeeklyFocus.workspace_id == ws)).all()
+    week_goals = [g for g in goals if g.week_start == week_start(today)]
+
+    total = sum(((r.tasks_done or 0) > 0) + ((r.habits_done or 0) > 0) + ((r.prayer_performed or 0) > 0)
+                for r in rows)
+    total += len({e.day for e in journal_days}) + sum(1 for g in goals if g.done)
+
+    tr = today_row
+    checks = [
+        {"key": "tasks", "done": (tr.tasks_done or 0) if tr else 0, "total": (tr.tasks_total or 0) if tr else 0},
+        {"key": "habits", "done": (tr.habits_done or 0) if tr else 0, "total": (tr.habits_total or 0) if tr else 0},
+    ]
+    if modules.get("prayer"):
+        checks.append({"key": "prayer", "done": (tr.prayer_performed or 0) if tr else 0, "total": 5})
+    if modules.get("journal"):
+        checks.append({"key": "journal", "done": int(any(e.day == today for e in journal_days)), "total": 1})
+    checks.append({"key": "goal", "done": sum(1 for g in week_goals if g.done), "total": len(week_goals) or 1})
+    for c in checks:
+        c["ok"] = c["done"] > 0
+
+    index = max(i for i, (_k, low) in enumerate(STEP_LEVELS) if total >= low)
+    nxt = STEP_LEVELS[index + 1][1] if index + 1 < len(STEP_LEVELS) else None
+    progress = s.get(UserProgress, user_id)
+    used = (progress.recovery_used or 0) if progress and progress.recovery_month == _month_key(today) else 0
+    return {
+        "total": total,
+        "level": index + 1,
+        "level_key": STEP_LEVELS[index][0],
+        "next": nxt,
+        "levels": [{"key": k, "min": low,
+                    "max": (STEP_LEVELS[i + 1][1] - 1) if i + 1 < len(STEP_LEVELS) else None}
+                   for i, (k, low) in enumerate(STEP_LEVELS)],
+        "today": checks,
+        "today_done": sum(c["ok"] for c in checks),
+        "freeze": max(RECOVERY_DAYS_PER_MONTH - used, 0),
+    }
+
+
 def platform_progress_stats(s: Session) -> dict:
     """Aggregate progression numbers for the operator. No personal content."""
     ranked = int(s.scalar(select(func.count()).select_from(UserProgress)
