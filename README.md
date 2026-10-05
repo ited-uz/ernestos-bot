@@ -1,22 +1,31 @@
-# ErnestOS v12.2
+# ErnestOS v13.0
 
 ## Avval shu bo‘limni o‘qing
 
-**v12.2 — 1000 foydalanuvchi bilan launch uchun.** Eng oson yo‘l: botga ovoz
-yoki matn yuborish → bitta qator taklif → ✅ Tasdiqlash. Ovoz → matn:
-ElevenLabs Scribe v2 (zaxira: Groq Whisper). Matn → buyruq: Groq (bepul),
-limit tugasa Gemini. Audit natijasidagi 15 ta muammo va launch qadamlari:
-[v12.2 hisobot](docs/RELEASE_V12_2_UZ.md) · [ulash yo‘riqnomasi](docs/AGENT_SETUP_UZ.md).
-Oldingi reliz: [v12.1 hisobot](docs/RELEASE_V12_1_UZ.md).
+**v13.0 — 50 bandli audit tuzatishlari.** Ma’lumot yaxlitligi (qarz, kundalik,
+o‘chirish), «Hozir», taymer, hisoblar va kundalik foydalanish oqimlari
+tuzatildi. Har bir bandning holati va dalili:
+[docs/AUDIT_50_STATUS.md](docs/AUDIT_50_STATUS.md).
+Kod hozir qanday ishlashi — qisqa va testlangan:
+[docs/AMALDAGI_QOIDALAR.md](docs/AMALDAGI_QOIDALAR.md).
 
-Mini App pastki menyusi: **Asosiy · Odatlar · Vazifalar · Statistika · Ko‘proq**.
-**Ko‘proq** ichida Jamoa, Pul, Sozlamalar va ovozli yordamchi mavjud.
-Pulni matn/ovozdan kiritishda avval tekshirish, keyin Saqlash talab qilinadi.
-Dastlabki 20 amaldan so‘ng kanalga obuna talabi oldindan tushuntiriladi.
+Versiya bitta joyda: `version.py`. Ishlab turgan build: `GET /api/version`
+(`BUILD_ID` yoki `RAILWAY_GIT_COMMIT_SHA` dan olinadi). Arxiv nomi ham shu
+manbadan: `python scripts/package_release.py`.
 
-Jonli Telegram/Railway/Groq tekshiruvi ushbu topshiriqda bajarilmagan.
-Avtomatik testlar o‘tishi mutlaqo xatosiz ishlash kafolati emas.
-Quyidagi v12/v10 bo‘limlari tarixiy batafsil qo‘llanma; yangi holat uchun yuqoridagi hisobot ustuvor.
+Testlar:
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest -q
+TZ=Asia/Tashkent node tests/frontend_release.cjs
+node tests/frontend_audit50.cjs
+```
+
+Jonli Telegram, Railway va AI provayderlari bilan tekshiruv bu relizda
+bajarilmagan. Avtomatik testlar o‘tishi xatosiz ishlash kafolati emas.
+Pastdagi v12/v10 bo‘limlari **tarixiy**; qoida bo‘yicha ziddiyat bo‘lsa,
+`docs/AMALDAGI_QOIDALAR.md` ustun.
 
 ## v12 — ovozli agent (Groq, sodda)
 

@@ -11009,3 +11009,31 @@ def test_finishing_a_session_early_keeps_the_time_stopping_does_not(fresh):
     run = fresh.post(f"/api/timers/task/{other}/start").json()["run"]
     _age_run(run["id"], 10 * 60)
     assert fresh.post(f'/api/timers/runs/{run["id"]}/stop').json()["worked_sec"] == 0
+
+
+def test_the_rules_document_matches_the_code():
+    """Audit #50: the written rules carry the numbers the code uses."""
+    import version
+    doc = (ROOT / "docs" / "AMALDAGI_QOIDALAR.md").read_text()
+    assert f"(v{version.VERSION})" in doc
+    for part, label in (("tasks", "Vazifa"), ("habits", "Odat"), ("team", "Jamoa"), ("prayer", "Namoz")):
+        assert f"| {label} | {round(svc.OVERALL_WEIGHTS[part] * 100)}% |" in doc, part
+    w = svc.TASK_PRIORITY_WEIGHTS
+    assert f"yuqori {w['high']}, o‘rta {w['medium']}, past {w['low']}" in doc
+    h = svc.HABIT_TIER_WEIGHTS
+    assert f"majburiy {h['non_negotiable']}, maqsad {h['target']}, bonus {h['bonus']}" in doc
+    assert f"kamida **{svc.STREAK_THRESHOLD}** ball" in doc
+    assert f"oyiga **{svc.RECOVERY_DAYS_PER_MONTH}** ta himoya" in doc
+    assert f"**{svc.PERFECT_DAY_SCORE}**+ ball" in doc
+    assert f"Kamida **{svc.JOURNAL_DONE_MIN}** ta mazmunli javob" in doc
+    assert " · ".join(str(low) for _k, low in svc.STEP_LEVELS) + " qadam" in doc
+    assert f"**{svc.NOW_LEAD_MINUTES}** daqiqa ichida" in doc
+    assert f"eng muhim **{svc.FRESH_TODAY}** ta" in doc
+    assert f"**{svc.RESET_UNDO_WINDOW.days}** kun ichida" in doc
+    assert f"**{int(svc.HABIT_REMINDER_WINDOW.total_seconds() // 60)}** daqiqa ichida bir marta" in doc
+    assert f"Dastlabki **{deps.FREE_ACTIONS}** amal" in doc
+    assert f"ko‘pi bilan **{application.SETUP_PRESET_LIMIT}** ta" in doc
+    readme = (ROOT / "README.md").read_text()
+    assert readme.startswith(f"# ErnestOS v{version.VERSION}")
+    assert version.RELEASE_NAME in (ROOT / "scripts" / "package_release.py").read_text() \
+        or "from version import RELEASE_NAME" in (ROOT / "scripts" / "package_release.py").read_text()
