@@ -107,5 +107,30 @@ const posts = url => calls.filter(c => c.method === 'POST' && c.url === url);
   assert.equal([...storage.keys()].filter(k => k.includes('-7-') || k === 'ernestos-jai-7').length, 0);
   assert.ok(storage.has('ernestos-journal-99-2026-10-01'));
 
+  // #23 — a shared task gets the same date and time the parser read.
+  calls.length = 0;
+  reply = (url, m, body) => url === '/api/quick'
+    ? {ok:true, preview:true, title:'hisobot', deadline:'2026-10-06', due_time:'15:00'} : {id:1};
+  run(`state.dest='team:5'`);
+  await run(`quickTask('ertaga 15:00 hisobot', destOf())`);
+  await wait(10);
+  const team = calls.find(c => c.url === '/api/teams/5/tasks');
+  assert.ok(team, 'team task not posted');
+  assert.equal(team.body.deadline, '2026-10-06');
+  assert.equal(team.body.due_time, '15:00');
+  assert.equal(team.body.title, 'hisobot');
+  assert.equal(calls.find(c => c.url === '/api/quick').body.preview, true);
+
+  // #49 — a passed bare time asks, and nothing is posted to the team.
+  calls.length = 0;
+  reply = url => url === '/api/quick'
+    ? {ok:false, ask:'past_time', title:'hisobot', deadline:'2026-10-05', due_time:'10:00',
+       options:['2026-10-05','2026-10-06']} : {id:1};
+  await run(`quickTask('10:00 hisobot', destOf())`);
+  await wait(10);
+  assert.equal(calls.filter(c => c.url === '/api/teams/5/tasks').length, 0);
+  assert.ok(document.getElementById('sheet-body').innerHTML.includes('2026-10-06'));
+  run(`state.dest='personal'`);
+
   console.log('Audit-50 frontend checks passed');
 })().catch(e => { console.error(e); process.exitCode = 1; });

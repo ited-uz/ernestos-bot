@@ -1220,6 +1220,7 @@ T["uz"].update({
     "team_not_assigned": "Bu vazifa sizga tayinlanmagan.",
     # --- quick capture -----------------------------------------------------
     "capture_ask": "Vazifa sifatida saqlaymi?",
+    "capture_past_time": "⚠️ Bugun {time} o'tib ketgan — bugunga yozildi. Ertaga uchun bo'lsa: «ertaga {time} …» deb yozing.",
     "capture_save": "👤 Shaxsiy vazifa",
     "capture_skip": "✖️ Kerak emas",
     "capture_saved": "📥 Saqlandi: <b>{title}</b> · {where}",
@@ -1355,6 +1356,7 @@ T["en"].update({
                        "it in your personal list; it is never counted twice."),
     "team_not_assigned": "This task isn't assigned to you.",
     "capture_ask": "Save it as a task?",
+    "capture_past_time": "⚠️ {time} has already passed today — saved for today. For tomorrow, write «tomorrow {time} …».",
     "capture_save": "👤 Personal task",
     "capture_skip": "✖️ No thanks",
     "capture_saved": "📥 Saved: <b>{title}</b> · {where}",
@@ -1489,6 +1491,7 @@ T["ru"].update({
                        "отмечайте его в личном списке, дважды он не считается."),
     "team_not_assigned": "Эта задача назначена не вам.",
     "capture_ask": "Сохранить как задачу?",
+    "capture_past_time": "⚠️ {time} сегодня уже прошло — записано на сегодня. Если на завтра, напишите «завтра {time} …».",
     "capture_save": "👤 Личная задача",
     "capture_skip": "✖️ Не нужно",
     "capture_saved": "📥 Сохранено: <b>{title}</b> · {where}",

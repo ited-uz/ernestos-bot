@@ -3351,10 +3351,14 @@ def test_habit_reminders_are_off_by_default_and_fire_in_one_window(fresh):
         user = s.get(User, fresh.user["id"])
         ws = _ws(fresh.user["id"])
         assert len(svc.due_habit_reminders(s, ws, user, at)) == 1
-        # Exactly one job interval wide: there is nothing to mark as sent, so a
-        # wider window would repeat the nudge on every pass.
         outside = at + svc.HABIT_REMINDER_WINDOW
         assert svc.due_habit_reminders(s, ws, user, outside) == []
+        # Audit #35: a job seven minutes late still sends it — once.
+        late = at + timedelta(minutes=7)
+        due = svc.due_habit_reminders(s, ws, user, late)
+        assert len(due) == 1
+        svc.mark_habit_reminder_sent(s, ws, due[0]["id"], day=today)
+        assert svc.due_habit_reminders(s, ws, user, late + timedelta(minutes=5)) == []
     fresh.post("/api/prefs", json={"habit_reminders": False})
 
 
@@ -3636,8 +3640,8 @@ def test_the_report_job_interval_is_shared_with_the_scheduler():
     assert minute_of("reminders") == f"*/{svc.REMINDER_JOB_MINUTES}"
     for report_type in ("morning", "evening"):
         assert minute_of(report_type) == f"*/{application.REPORT_TICK_MINUTES}"
-    assert svc.HABIT_REMINDER_WINDOW == timedelta(
-        minutes=svc.REMINDER_JOB_MINUTES)
+    # Wider than a tick so a late job still delivers; marking keeps it single.
+    assert svc.HABIT_REMINDER_WINDOW > timedelta(minutes=svc.REMINDER_JOB_MINUTES)
 
 
 def test_no_scheduled_job_may_overlap_itself():
@@ -10790,3 +10794,31 @@ def test_the_seven_day_option_says_what_it_does():
     html = (ROOT / "webapp" / "index.html").read_text()
     assert 'when_week:"7 kundan keyin"' in html and 'when_week:"In 7 days"' in html
     assert 'if(f.when === "week") return shiftISO(today, 7);' in html
+
+
+def test_a_bare_time_that_has_passed_is_asked_about(fresh, monkeypatch):
+    """Audit #49: "10:00 hisobot" at 20:00 is not silently put in the past."""
+    _at(monkeypatch, 20)
+    r = fresh.post("/api/quick", {"title": "10:00 hisobot"}).json()
+    today = svc.today_local()
+    assert r["ok"] is False and r["ask"] == "past_time" and r["due_time"] == "10:00"
+    assert r["options"] == [today.isoformat(), (today + timedelta(days=1)).isoformat()]
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        assert s.scalar(select(func.count(db.Task.id)).where(db.Task.workspace_id == ws)) == 0
+    saved = fresh.post("/api/quick", {"title": "10:00 hisobot", "deadline": r["options"][1]}).json()
+    assert saved["id"] and saved["deadline"] == r["options"][1] and saved["due_time"] == "10:00"
+    # A time still ahead, or a day said outright, is not asked about.
+    assert fresh.post("/api/quick", {"title": "21:00 qo'ng'iroq"}).json()["id"]
+    assert fresh.post("/api/quick", {"title": "ertaga 10:00 hisobot"}).json()["id"]
+
+
+def test_quick_preview_parses_without_saving(fresh):
+    """Audit #23: the shared-task path reads date and time with the same parser."""
+    tomorrow = (svc.today_local() + timedelta(days=1)).isoformat()
+    r = fresh.post("/api/quick", {"title": "ertaga 15:00 hisobot", "preview": True}).json()
+    assert r == {"ok": True, "preview": True, "title": "hisobot",
+                 "deadline": tomorrow, "due_time": "15:00"}
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        assert s.scalar(select(func.count(db.Task.id)).where(db.Task.workspace_id == ws)) == 0

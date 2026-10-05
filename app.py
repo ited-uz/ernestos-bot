@@ -4116,7 +4116,9 @@ async def offer_capture(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                                       callback_data=f"cap:{capture_id}:x")]]))
         return
     with SessionLocal() as s:
-        parsed = svc.parse_quick_capture(text[:300], svc.today_local(svc.user_tz(user)))
+        tz = svc.user_tz(user)
+        parsed = svc.parse_quick_capture(text[:300], svc.today_local(tz),
+                                         svc.now_local(tz).time())
         teams = svc.teams_for(s, user.telegram_id)
     capture_id = uuid.uuid4().hex[:6]
     ctx.user_data["capture"] = {
@@ -4132,6 +4134,10 @@ async def offer_capture(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     body = f"📥 <b>{esc(parsed['title'])}</b>"
     if when:
         body += "\n" + " · ".join(when)
+    if parsed.get("past_time"):
+        # The time has passed today: say the guess out loud (audit #49).
+        body += "\n" + t(lang, "capture_past_time",
+                         time=parsed["due_time"].strftime("%H:%M"))
     body += f"\n\n{t(lang, 'capture_ask')}"
     rows = [[InlineKeyboardButton(t(lang, "capture_save"),
                                   callback_data=f"cap:{capture_id}:p")]]
@@ -9008,6 +9014,12 @@ def api_journal_delete(day: str, init=Header(default=None, alias="X-Telegram-Ini
 class QuickAddIn(BaseModel):
     """The whole of quick capture: a line of text, nothing else."""
     title: str = Field(min_length=1, max_length=300)
+    #: The person's answer when a bare time has already passed today
+    #: ("10:00" at 20:00): the day they meant. Without it the app is asked.
+    deadline: str | None = Field(default=None, max_length=10)
+    #: Read only, write nothing: the shared-task path reuses this parser so
+    #: "ertaga 15:00 hisobot" means the same in both places (audit #23).
+    preview: bool = False
 
 
 @app.post("/api/quick")
@@ -9026,13 +9038,24 @@ def api_quick_add(body: QuickAddIn,
     if svc.looks_like_money(text) and svc.parse_money_text(text) is not None:
         return {"ok": True, "money": True}
     # "Ertaga soat 10 da hisobot" → "hisobot", tomorrow, 10:00 — like the bot.
-    parsed = svc.parse_quick_capture(text, svc.today_local(svc.user_tz(user)))
+    tz = svc.user_tz(user)
+    parsed = svc.parse_quick_capture(text, svc.today_local(tz), svc.now_local(tz).time())
+    if body.deadline:
+        parsed["deadline"], parsed["past_time"] = _date(body.deadline), False
+    out = {"title": parsed["title"],
+           "deadline": parsed["deadline"].isoformat() if parsed["deadline"] else None,
+           "due_time": parsed["due_time"].strftime("%H:%M") if parsed["due_time"] else None}
+    if parsed["past_time"]:
+        # Not saved: the app asks "today or tomorrow?" and sends the answer.
+        tomorrow = svc.today_local(tz) + timedelta(days=1)
+        return {"ok": False, "ask": "past_time", **out,
+                "options": [out["deadline"], tomorrow.isoformat()]}
+    if body.preview:
+        return {"ok": True, "preview": True, **out}
     with SessionLocal() as s:
         task = svc.add_task(s, ws, parsed["title"], deadline=parsed["deadline"],
                             due_time=parsed["due_time"])
-    return {"ok": True, "id": task.id, "title": parsed["title"],
-            "deadline": parsed["deadline"].isoformat() if parsed["deadline"] else None,
-            "due_time": parsed["due_time"].strftime("%H:%M") if parsed["due_time"] else None}
+    return {"ok": True, "id": task.id, **out}
 
 
 class FreshStartIn(BaseModel):

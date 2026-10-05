@@ -6159,8 +6159,11 @@ REMINDER_WINDOW = timedelta(minutes=30)
 #: How often the reminder job runs.
 REMINDER_JOB_MINUTES = 5
 
-#: Habit reminders' window is exactly one job interval.
-HABIT_REMINDER_WINDOW = timedelta(minutes=REMINDER_JOB_MINUTES)
+#: How late a habit reminder may still go out. Wider than one job interval
+#: on purpose: a job delayed by a deploy or a slow tick must not skip the
+#: nudge (audit #35). `reminder_sent_at` keeps it to one per habit per day,
+#: and a reminder older than this is dropped rather than sent stale.
+HABIT_REMINDER_WINDOW = timedelta(minutes=30)
 
 
 def prefs_for(user: User) -> dict:
@@ -9401,7 +9404,7 @@ def _spoken_time(raw: str) -> tuple[dtime | None, str]:
     return dtime(hour, 30 if m.group("half") else 0), rest
 
 
-def parse_quick_capture(text: str, today: date) -> dict:
+def parse_quick_capture(text: str, today: date, now: dtime | None = None) -> dict:
     """Split "ertaga 15:00 doktorga qo'ng'iroq" into title, date and time.
 
     Deliberately small: the day words, a weekday, a written date and a clock
@@ -9458,10 +9461,14 @@ def parse_quick_capture(text: str, today: date) -> dict:
                     break
 
     title = " ".join(raw.split()).strip(" ,.-")
-    if due is not None and deadline is None:
+    time_only = due is not None and deadline is None
+    if time_only:
         deadline = today  # "soat 10 da hisobot": a time with no day means today
     return {"title": title or " ".join((text or "").split()),
-            "deadline": deadline, "due_time": due}
+            "deadline": deadline, "due_time": due,
+            # "10:00 hisobot" typed at 20:00 may mean tomorrow: today is only a
+            # guess, and the caller asks instead of hiding it (audit #49).
+            "past_time": bool(time_only and now is not None and due < now)}
 
 
 def _countdown_dict(row: Countdown, today: date, *, team_name: str | None = None,
