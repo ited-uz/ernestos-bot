@@ -167,5 +167,36 @@ const posts = url => calls.filter(c => c.method === 'POST' && c.url === url);
   assert.equal(edits.length, 1);
   assert.deepEqual(edits[0].body, {revision:3, index:0, field:'due_time', value:'15:00'});
 
+  // #18 — an offline habit tick stays on screen, waits in the queue and is
+  // sent once with its own idempotency key when the network is back.
+  storage.clear();
+  const wire = [];
+  let online = false;
+  ctx.fetch = async (url, opts={}) => {
+    if(!online) throw new TypeError('Failed to fetch');
+    wire.push({url, key: opts.headers?.['X-Idempotency-Key'], method: opts.method});
+    return new Response('{"ok":true}', {status: 200});
+  };
+  run(`state.screen='habits'; state.habits={habits:[{id:5, name:'Kitob', done:false}], grouped:{}};`);
+  run(`A["habit-toggle"]({dataset:{id:'5'}})`);
+  await wait(20);
+  assert.equal(run('state.habits.habits[0].done'), true, 'the tick stays on screen');
+  assert.equal(run('loadQueue().length'), 1);
+  assert.ok(run('queueBanner()').includes('queue-flush'));
+  online = true;
+  await run('flushQueue()');
+  const toggles = wire.filter(c => c.url === '/api/habits/5/toggle');
+  assert.equal(toggles.length, 1, 'sent exactly once');
+  assert.ok(toggles[0].key, 'with an idempotency key');
+  assert.equal(run('loadQueue().length'), 0);
+  // A refusal is dropped, not retried forever.
+  online = false;
+  run(`A["habit-toggle"]({dataset:{id:'5'}})`);
+  await wait(20);
+  online = true;
+  ctx.fetch = async () => new Response('{"detail":"not_found"}', {status: 404});
+  await run('flushQueue()');
+  assert.equal(run('loadQueue().length'), 0);
+
   console.log('Audit-50 frontend checks passed');
 })().catch(e => { console.error(e); process.exitCode = 1; });
