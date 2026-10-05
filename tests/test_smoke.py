@@ -11312,3 +11312,15 @@ def test_qadam_stays_fast_on_years_of_history(fresh):
     src = (ROOT / "services.py").read_text()
     body = src[src.index("def steps_snapshot("):src.index("def platform_progress_stats(")]
     assert "select(DailyScore)" not in body and "JournalEntry.text" not in body
+
+
+def test_a_replayed_habit_toggle_with_the_same_key_flips_once(fresh, client):
+    """Audit #18: the offline queue's replay of a toggle that already reached
+    the server is answered from the first result, not applied again."""
+    hid = fresh.post("/api/habits", {"name": "Kitob"}).json()["id"]
+    headers = {"X-Telegram-Init-Data": init_data(fresh.user), "X-Idempotency-Key": "queue-test-key-0001"}
+    first = client.post(f"/api/habits/{hid}/toggle", headers=headers, json={})
+    again = client.post(f"/api/habits/{hid}/toggle", headers=headers, json={})
+    assert first.status_code == again.status_code == 200
+    assert again.headers.get("X-Idempotent-Replay") == "1"
+    assert next(h for h in fresh.get("/api/habits").json()["habits"] if h["id"] == hid)["done"] is True

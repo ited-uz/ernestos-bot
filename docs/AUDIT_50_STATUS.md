@@ -13,7 +13,7 @@ kod va avtomatik test bilan yopilgan; faqat UI matni bo‘lgan uch band (#8, #34
 bundan mustasno — ular qo‘lda tekshiriladi. Jonli qurilma sinovlari hali
 ochiq (pastda).
 
-Testlar: `python -m pytest -q` → **1022 o‘tdi** (bazada 978 edi);
+Testlar: `python -m pytest -q` → **1023 o‘tdi** (bazada 978 edi);
 `node tests/frontend_release.cjs` va yangi `node tests/frontend_audit50.cjs`
 o‘tdi; `pyflakes` toza.
 

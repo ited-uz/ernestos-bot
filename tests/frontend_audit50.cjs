@@ -188,6 +188,22 @@ const posts = url => calls.filter(c => c.method === 'POST' && c.url === url);
   const toggles = wire.filter(c => c.url === '/api/habits/5/toggle');
   assert.equal(toggles.length, 1, 'sent exactly once');
   assert.ok(toggles[0].key, 'with an idempotency key');
+  // A timed-out first attempt and its replay carry the same key, so a request
+  // that did reach the server is not applied twice.
+  const firstKeys = [];
+  ctx.fetch = async (url, opts={}) => {
+    firstKeys.push(opts.headers?.['X-Idempotency-Key']);
+    const e = new Error('timeout'); e.name = 'TimeoutError'; throw e;
+  };
+  run(`A["habit-toggle"]({dataset:{id:'5'}})`);
+  await wait(20);
+  assert.equal(run('loadQueue()[0].key'), firstKeys[0]);
+  storage.delete(run('queueKey()'));
+  ctx.fetch = async (url, opts={}) => {
+    if(!online) throw new TypeError('Failed to fetch');
+    wire.push({url, key: opts.headers?.['X-Idempotency-Key'], method: opts.method});
+    return new Response('{"ok":true}', {status: 200});
+  };
   assert.equal(run('loadQueue().length'), 0);
   // A refusal is dropped, not retried forever.
   online = false;

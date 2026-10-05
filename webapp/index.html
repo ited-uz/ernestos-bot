@@ -7640,7 +7640,9 @@ function storeQueue(q){
 }
 function enqueue(item){
   const q = loadQueue();
-  q.push({...item, key: newKey(), at: Date.now()});
+  // The key the first attempt already carried, if any: a request that timed
+  // out may have reached the server, and its replay must not apply twice.
+  q.push({...item, key: item.key || newKey(), at: Date.now()});
   storeQueue(q);
   toast(t("queued_offline"));
   render();
@@ -8045,7 +8047,7 @@ const A = {
 
   "team-toggle": el => {
     haptic();
-    const id = Number(el.dataset.id);
+    const id = Number(el.dataset.id), key = newKey();
     const kind = el.dataset.kind;
     optimistic(() => {
       /* The same row can be on screen in several places — the Team tab, the
@@ -8063,8 +8065,8 @@ const A = {
             if(flipped === null) flipped = !row.done;
             row.done = flipped;
           }
-    }, () => api(`/api/teams/${kind}s/${id}/toggle`, {method:"POST"}),
-       state.screen, {path:`/api/teams/${kind}s/${id}/toggle`, method:"POST"});
+    }, () => api(`/api/teams/${kind}s/${id}/toggle`, {method:"POST", headers:{"X-Idempotency-Key": key}}),
+       state.screen, {path:`/api/teams/${kind}s/${id}/toggle`, method:"POST", key});
   },
 
   /* A shared task opens the full task sheet, headed for the team. */
@@ -8485,14 +8487,14 @@ const A = {
 
   "habit-toggle": el => {
     haptic();
-    const id = Number(el.dataset.id);
+    const id = Number(el.dataset.id), key = newKey();
     optimistic(() => {
       const row = state.habits?.habits?.find(x => x.id === id);
       if(row) row.done = !row.done;
       for(const cat of Object.values(state.habits?.grouped || {}))
         for(const x of cat) if(x.id === id) x.done = row ? row.done : x.done;
-    }, () => api(`/api/habits/${id}/toggle`, {method:"POST"}), "habits",
-       {path:`/api/habits/${id}/toggle`, method:"POST", label: el.dataset.name || ""});
+    }, () => api(`/api/habits/${id}/toggle`, {method:"POST", headers:{"X-Idempotency-Key": key}}), "habits",
+       {path:`/api/habits/${id}/toggle`, method:"POST", key, label: el.dataset.name || ""});
   },
   "habit-toggle-home": el => {
     haptic();
