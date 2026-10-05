@@ -1296,7 +1296,7 @@ const DICT = {
   edit_habit:"Odatni tahrirlash", schedule:"Kunlar", every_day:"Har kuni",
   weekdays_only:"Ish kunlari", pick_days:"Tanlangan kunlar",
   pause:"To'xtatib turish", resume:"Davom etish", paused:"To'xtatilgan",
-  not_today:"Bugun rejada yo'q", history:"Tarix", streak:"Ketma-ket",
+  not_today:"Bugun rejada yo'q", history:"Tarix", streak:"Ketma-ket", streak_habits:"Odatlar seriyasi", streak_habits_hint:"Rejadagi barcha odatlar bajarilgan kunlar ketma-ket", streak_days:"Izchil kunlar", streak_days_hint:"{n}+ ball to'plangan kunlar ketma-ket (himoya kunlari bilan)",
   last7:"Oxirgi 7 kun", last30:"Oxirgi 30 kun", completion:"Bajarilish",
   auto_habit:"Bu odat avtomatik belgilanadi", habit_auto_prayer:"Namoz bo'limidan",
   habit_always_daily:"o'zgartirib bo'lmaydi",
@@ -1326,7 +1326,7 @@ const DICT = {
   /* review */
   review:"Haftani yakunlash", review_prompt:"Haftani yakunlaysizmi?",
   review_q1:"Nima yaxshi ketdi?", review_q2:"Nima to'sqinlik qildi?",
-  review_q3:"Keyingi haftadagi asosiy fokus nima?", skip:"Keyinroq",
+  review_q3:"Keyingi haftadagi asosiy fokus nima?", review_make_goal:"Buni keyingi hafta maqsadi qilish", review_due:"hafta yakuni", skip:"Keyinroq",
   /* stats */
   week:"Hafta", month:"Oy", year:"Yil", average:"O'rtacha",
   best_day:"Eng yaxshi kun", vs_prev:"oldingi davrga nisbatan",
@@ -1504,7 +1504,7 @@ const DICT = {
   act_countdown_del:"countdownni o'chirdi", act_project_add:"loyiha qo'shdi",
   act_project_remove:"loyihani olib tashladi",
   forbidden:"Buni faqat yaratgan kishi, admin yoki jamoa egasi qila oladi",
-  read_only:"Faqat ko'rish rejimi — o'zgartirish uchun kanalga qo'shiling",
+  read_only:"Bajarganlaringizni belgilash ochiq. Yangi qo'shish va tahrirlash uchun kanalga qo'shiling",
   setup_title:"Sozlash botda yakunlanadi",
   setup_body:"ErnestOS botiga qayting va bir necha savolga javob bering — keyin hammasi shu yerda ochiladi.",
   back_to_bot:"Botga qaytish",
@@ -1670,7 +1670,7 @@ const DICT = {
   edit_habit:"Edit habit", schedule:"Days", every_day:"Every day",
   weekdays_only:"Weekdays", pick_days:"Chosen days",
   pause:"Pause", resume:"Resume", paused:"Paused",
-  not_today:"Not scheduled today", history:"History", streak:"Streak",
+  not_today:"Not scheduled today", history:"History", streak:"Streak", streak_habits:"Habit streak", streak_habits_hint:"Days in a row with every scheduled habit done", streak_days:"Steady days", streak_days_hint:"Days in a row scoring {n}+ (protected days count)",
   last7:"Last 7 days", last30:"Last 30 days", completion:"Completion",
   auto_habit:"This habit is marked automatically", habit_auto_prayer:"from the Prayer tab",
   habit_always_daily:"cannot be changed",
@@ -1697,7 +1697,7 @@ const DICT = {
   mood_good:"Good", mood_great:"Great",
   review:"Close the week", review_prompt:"Close out the week?",
   review_q1:"What went well?", review_q2:"What got in the way?",
-  review_q3:"What is next week's main focus?", skip:"Later",
+  review_q3:"What is next week's main focus?", review_make_goal:"Make this next week's goal", review_due:"week's end", skip:"Later",
   week:"Week", month:"Month", year:"Year", average:"Average",
   best_day:"Best day", vs_prev:"vs the previous period",
   how_calculated:"How was this calculated?",
@@ -1870,7 +1870,7 @@ const DICT = {
   act_countdown_del:"removed a countdown", act_project_add:"added a project",
   act_project_remove:"removed a project",
   forbidden:"Only its creator, an admin or the team owner can do this",
-  read_only:"Read-only mode — join the channel to make changes",
+  read_only:"Ticking off what you did stays open. Join the channel to add or edit",
   setup_title:"Setup finishes in the bot",
   setup_body:"Go back to the ErnestOS bot and answer a few questions — then everything opens here.",
   back_to_bot:"Back to the bot",
@@ -2036,7 +2036,7 @@ const DICT = {
   edit_habit:"Изменить привычку", schedule:"Дни", every_day:"Каждый день",
   weekdays_only:"По рабочим дням", pick_days:"Выбранные дни",
   pause:"Приостановить", resume:"Продолжить", paused:"Приостановлена",
-  not_today:"Сегодня не запланировано", history:"История", streak:"Серия",
+  not_today:"Сегодня не запланировано", history:"История", streak:"Серия", streak_habits:"Серия привычек", streak_habits_hint:"Дни подряд, когда выполнены все запланированные привычки", streak_days:"Стабильные дни", streak_days_hint:"Дни подряд с {n}+ баллами (с днями защиты)",
   last7:"Последние 7 дней", last30:"Последние 30 дней", completion:"Выполнение",
   auto_habit:"Эта привычка отмечается автоматически", habit_auto_prayer:"из раздела Намаз",
   habit_always_daily:"нельзя изменить",
@@ -2063,7 +2063,7 @@ const DICT = {
   mood_good:"Хорошо", mood_great:"Очень хорошо",
   review:"Итоги недели", review_prompt:"Подведём итоги недели?",
   review_q1:"Что прошло хорошо?", review_q2:"Что мешало?",
-  review_q3:"Главный фокус на следующую неделю?", skip:"Позже",
+  review_q3:"Главный фокус на следующую неделю?", review_make_goal:"Сделать целью следующей недели", review_due:"конец недели", skip:"Позже",
   week:"Неделя", month:"Месяц", year:"Год", average:"Среднее",
   best_day:"Лучший день", vs_prev:"к прошлому периоду",
   how_calculated:"Как это посчитано?",
@@ -2236,7 +2236,7 @@ const DICT = {
   act_countdown_del:"удалил отсчёт", act_project_add:"добавил проект",
   act_project_remove:"убрал проект",
   forbidden:"Это может только автор, админ или владелец команды",
-  read_only:"Режим просмотра — вступите в канал, чтобы вносить изменения",
+  read_only:"Отмечать сделанное можно. Чтобы добавлять и редактировать — вступите в канал",
   setup_title:"Настройка завершается в боте",
   setup_body:"Вернитесь в бот ErnestOS и ответьте на несколько вопросов — затем здесь откроется всё.",
   back_to_bot:"Вернуться в бот",
@@ -2742,7 +2742,10 @@ function countsRow(d){
   if(c.prayer.owed !== false && d.modules?.prayer !== false)
     parts.push(`${t("cnt_prayer")}
       <b>${c.prayer.excused ? "✓" : `${c.prayer.done}/${c.prayer.total}`}</b>`);
-  if(d.streak) parts.push(`${icon("flame", 15)} <b>${d.streak}</b>`);
+  // The habit streak — every scheduled habit done — named, so it is not
+  // read as the score-based "steady days" on the Steps screen (audit #8).
+  if(d.streak) parts.push(`<span title="${esc(t("streak_habits_hint"))}">${icon("flame", 15)} <b>${d.streak}</b>
+    <span class="t3 tiny">${t("streak_habits")}</span></span>`);
   if(!parts.length) return "";
   return `<div class="counts" data-act="nav" data-screen="stats" role="button"
       tabindex="0" aria-label="${t("stats")}">
@@ -3453,8 +3456,8 @@ function habitsTab(){
   h += `<div class="dash">
       <div class="dash-top">
         <div class="grow bt">${t("today")} <span class="t2 num">${done}/${due.length}</span></div>
-        ${data.streak ? `<div class="num" style="font-weight:700">
-          ${icon("flame", 16)} ${data.streak}</div>` : ""}
+        ${data.streak ? `<div class="num" style="font-weight:700" title="${esc(t("streak_habits_hint"))}">
+          ${icon("flame", 16)} ${data.streak} <span class="t3 tiny">${t("streak_habits")}</span></div>` : ""}
       </div>
       <div style="margin-top:var(--s2)">${bar(ratio)}</div>
       <div class="t2 small">${t("planned_count", {n:due.length})}</div>
@@ -4478,6 +4481,13 @@ function weekFocusBlock(){
       ? `<span class="act" data-act="focus-add" data-slot="supporting">
            ${icon("plus", 14)} ${t("add_supporting")}</span>` : "");
 
+  /* The weekly review lives next to the goals it feeds; from Friday on it is
+     pointed out (audit #16). */
+  const weekEnd = new Date().getDay() >= 5 || new Date().getDay() === 0;
+  const reviewRow = `<div class="item pressable" data-act="review-open" style="min-height:44px;margin-top:6px">
+      ${icon("chart", 16)}<div class="grow small">${t("review")}${weekEnd
+        ? ` <span class="tag ok">${t("review_due")}</span>` : ""}</div>${icon("chevron", 15)}</div>`;
+
   if(!primary){
     // One row, not a panel: the block printed "Add a main goal" as a line of
     // text and again on the button under it, and spent a third of the screen
@@ -4487,7 +4497,7 @@ function weekFocusBlock(){
                      data-slot="primary" style="min-height:48px">
         ${icon("target", 17)}
         <div class="grow t2">${t("add_mission")}</div>
-        ${icon("plus", 16)}</div>`;
+        ${icon("plus", 16)}</div>` + reviewRow;
   }
 
   h += `<div class="tinted block tone-3">
@@ -4526,7 +4536,7 @@ function weekFocusBlock(){
     h += `<div class="item" style="min-height:40px;margin-top:6px;opacity:.7">
         ${icon("chevron", 14)}<div class="grow small wrap">${esc(row.title)}
           <div class="t3 tiny">${t("focus_moved")}</div></div></div>`;
-  return h;
+  return h + reviewRow;
 }
 
 /* The inbox: every open task there is, in one place.
@@ -6234,6 +6244,9 @@ function reviewSheet(r){
     <textarea id="rv-blocked">${esc(a.blocked || "")}</textarea>
     <label>${t("review_q3")}</label>
     <textarea id="rv-next">${esc(a.next_focus || "")}</textarea>
+    <label class="row" style="gap:8px;margin-top:8px">
+      <input type="checkbox" id="rv-goal" checked style="width:auto;min-height:0" />
+      <span class="small">${t("review_make_goal")}</span></label>
     <button class="btn" data-act="review-save" style="margin-top:14px">
       ${t("save")}</button>
     <button class="btn secondary" data-act="review-dismiss" style="margin-top:8px">
@@ -6595,7 +6608,7 @@ SCREENS.steps = () => {
       <div class="t2 small">${nextLvl ? t("steps_to_next", {n: st.next - st.total, name: t("step_lvl_" + nextLvl.key)})
         : t("steps_max")}</div>
       <div class="qstats" data-act="progress-open" role="button" tabindex="0">
-        <div><b class="num">🔥 ${streak}</b><span>${t("streak")}</span></div>
+        <div><b class="num">📈 ${streak}</b><span>${t("streak_days")}</span></div>
         <div><b class="num">❄️ ${st.freeze || 0}</b><span>${t("steps_freeze_short")}</span></div>
         <div><b class="num">🏆 ${rank.eligible ? "#" + rank.global : "—"}</b><span>${rank.eligible
           ? t("rank_global") : t("steps_rank_in", {n: rank.days_remaining ?? 0})}</span></div>
@@ -6679,8 +6692,8 @@ function progressSheet(){
 
   h += `<label>${t("consistency")}</label>
     <div class="metrics">
-      <div class="metric"><div class="k">${t("streak")}</div>
-        <div class="v num">${icon("flame", 17)} ${p.streak.current}</div></div>
+      <div class="metric"><div class="k">${t("streak_days")}</div>
+        <div class="v num">📈 ${p.streak.current}</div></div>
       <div class="metric"><div class="k">${t("best")}</div>
         <div class="v num">${p.streak.best}</div></div>
       <div class="metric"><div class="k">${t("perfect_days")}</div>
@@ -6689,7 +6702,7 @@ function progressSheet(){
         <div class="v num">${p.streak.recovery_remaining} / 2</div></div>
     </div>
     <div class="t3 tiny" style="margin-top:var(--s1)">
-      ${t("recovery_hint", {n: p.streak.threshold})}</div>`;
+      ${t("streak_days_hint", {n: p.streak.threshold})}. ${t("recovery_hint", {n: p.streak.threshold})}</div>`;
 
   h += `<label>${t("rank")}</label>`;
   if(!rank.eligible){
@@ -8702,7 +8715,8 @@ const A = {
   "review-save": () => save(() => api("/api/review", {method:"POST", body:{
     went_well: val("rv-well"), blocked: val("rv-blocked"),
     next_focus: val("rv-next"),
-  }}), "home"),
+    make_goal: Boolean(document.getElementById("rv-goal")?.checked) && Boolean(val("rv-next").trim()),
+  }}), state.screen, false, t("saved")),
   "review-dismiss": () => closeSheet(),
   "break-dismiss": () => setState({dismissedBreak:true}),
 

@@ -755,9 +755,19 @@ READ_CALLBACKS = {("habit", "back"), ("habit", "noop"),
                   ("money", "show"), ("money", "limits")}
 
 
+#: Recording work already done stays open past the free run, in the bot as
+#: in the Mini App (audit #19): ticking a habit or task, a shared tick, and
+#: driving a timer. Creating and editing still ask for the channel.
+RECORD_CALLBACKS = {("habit", "toggle"), ("task", "done"), ("thabit", "toggle"),
+                    ("ttask", "toggle"), ("tmr", "open"), ("tmr", "start"),
+                    ("tmr", "pause"), ("tmr", "resume"), ("tmr", "stop")}
+
+
 def is_read_callback(action: str, parts: list[str]) -> bool:
+    """Callbacks that do not need the channel: reads, and recording work done."""
     sub = parts[1] if len(parts) > 1 else ""
-    return action == "home" or (action, sub) in READ_CALLBACKS
+    return (action == "home" or (action, sub) in READ_CALLBACKS
+            or (action, sub) in RECORD_CALLBACKS)
 
 
 async def on_contact(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -8806,8 +8816,11 @@ def api_task_add(body: TaskIn, init=Header(default=None, alias="X-Telegram-Init-
 @app.patch("/api/tasks/{task_id}")
 def api_task_patch(task_id: int, body: TaskPatch,
                    init=Header(default=None, alias="X-Telegram-Init-Data")):
-    _, ws = auth(init)
+    user, ws = auth(init)
     fields = body.model_dump(exclude_unset=True)
+    # Past the free run, ticking a task stays open; editing it does not.
+    if deps.trial_state(user).gated and set(fields) - {"status"}:
+        raise HTTPException(status_code=403, detail="subscription_required")
     if "deadline" in fields:
         fields["deadline"] = _date(fields["deadline"])
     if "due_time" in fields:
@@ -9119,6 +9132,8 @@ class ReviewIn(BaseModel):
     went_well: str = Field(default="", max_length=2000)
     blocked: str = Field(default="", max_length=2000)
     next_focus: str = Field(default="", max_length=2000)
+    #: Also make `next_focus` next week's goal (never twice).
+    make_goal: bool = False
 
 
 @app.get("/api/review")
@@ -9131,11 +9146,19 @@ def api_review(init=Header(default=None, alias="X-Telegram-Init-Data")):
 @app.post("/api/review")
 def api_review_save(body: ReviewIn,
                     init=Header(default=None, alias="X-Telegram-Init-Data")):
-    _, ws = auth(init)
+    user, ws = auth(init)
+    tz = svc.user_tz(user)
+    goal_id = None
     with SessionLocal() as s:
         svc.save_weekly_review(s, ws, went_well=body.went_well,
-                               blocked=body.blocked, next_focus=body.next_focus)
-    return {"ok": True}
+                               blocked=body.blocked, next_focus=body.next_focus, tz=tz)
+        if body.make_goal:
+            try:
+                goal = svc.review_to_goal(s, ws, body.next_focus, tz=tz)
+            except ValueError as e:
+                raise HTTPException(status_code=422, detail=str(e))
+            goal_id = goal.id if goal else None
+    return {"ok": True, "goal_id": goal_id}
 
 
 @app.get("/api/stats")

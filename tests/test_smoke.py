@@ -10937,3 +10937,47 @@ def test_a_reset_can_be_undone_without_overwriting_later_edits(fresh):
         assert s.get(db.Task, ids[0]).deadline.isoformat() == edited
         assert s.get(db.Task, ids[1]).deadline.isoformat() == old[1]
     assert fresh.post("/api/fresh-start/undo", {}).status_code == 404
+
+
+def test_the_review_is_reachable_and_feeds_next_weeks_goal_once(fresh):
+    """Audit #16: an entry point exists, and next_focus becomes next week's goal once."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    block = html[html.index("function weekFocusBlock("):html.index("function openTab(")]
+    assert 'data-act="review-open"' in block
+    body = {"went_well": "a", "blocked": "b", "next_focus": "Sotuv voronkasi", "make_goal": True}
+    first = fresh.post("/api/review", body).json()
+    again = fresh.post("/api/review", body).json()
+    assert first["goal_id"] and again["goal_id"] is None
+    nxt = svc.week_start(svc.today_local()) + timedelta(days=7)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        titles = [g["title"] for g in svc.list_focus(s, ws, nxt)]
+    assert titles == ["Sotuv voronkasi"]
+
+
+
+def test_past_the_free_run_ticking_done_work_stays_open(client, monkeypatch):
+    """Audit #19: the channel ask never stands between a person and the tick for
+    a habit they did; new work still asks."""
+    monkeypatch.setattr(deps, "REQUIRED_CHANNEL_ID", "-1001234567890")
+    uid = next(_next_id)
+    _onboard(uid)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        habit = svc.add_habit(s, ws, "Kitob")
+        task = svc.add_task(s, ws, "Hisobot", deadline=svc.today_local())
+        habit_id, task_id = habit.id, task.id
+        user = s.get(User, uid)
+        user.is_subscribed = False
+        user.actions_count = deps.FREE_ACTIONS
+        s.commit()
+    h = {"X-Telegram-Init-Data": init_data({"id": uid, "first_name": "G"})}
+    assert client.post(f"/api/habits/{habit_id}/toggle", headers=h, json={}).status_code == 200
+    assert client.patch(f"/api/tasks/{task_id}", headers=h, json={"status": "done"}).status_code == 200
+    assert client.post("/api/journal", headers=h, json={"answers": {"wins": "ok"}}).status_code == 200
+    # Editing or creating is still new work.
+    r = client.patch(f"/api/tasks/{task_id}", headers=h, json={"title": "Boshqa"})
+    assert r.status_code == 403 and r.json()["detail"] == "subscription_required"
+    assert client.post("/api/tasks", headers=h, json={"title": "yangi"}).status_code == 403
+    assert application.is_read_callback("habit", ["habit", "toggle", "1"])
+    assert not application.is_read_callback("habit", ["habit", "del", "1"])

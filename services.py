@@ -4409,6 +4409,26 @@ def save_weekly_review(s: Session, ws: int, *, went_well: str = "",
     return row
 
 
+def review_to_goal(s: Session, ws: int, title: str, *,
+                   tz: ZoneInfo | None = None) -> WeeklyFocus | None:
+    """Turn the review's "next week's focus" into next week's goal, once.
+
+    Saving the review twice, or a goal of that name already being there, does
+    not make a second one (audit #16).
+    """
+    title = " ".join((title or "").split())[:200]
+    if not title:
+        return None
+    nxt = week_start(today_local(tz)) + timedelta(days=7)
+    rows = s.scalars(select(WeeklyFocus).where(
+        WeeklyFocus.workspace_id == ws, WeeklyFocus.week_start == nxt)).all()
+    if any(r.title.strip().lower() == title.lower() for r in rows):
+        return None
+    if len(rows) >= MAX_FOCUS:
+        raise ValueError("week is full")
+    return add_focus(s, ws, title, nxt)
+
+
 # ---------------------------------------------------------------------------
 # Home
 # ---------------------------------------------------------------------------
