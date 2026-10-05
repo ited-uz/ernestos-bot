@@ -408,6 +408,11 @@ class Task(Base):
     day_priority_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(10), default="waiting")  # waiting|done
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    #: Waiting on something outside the person's hands: "reply" (an answer
+    #: from someone) or "depends" (another piece of work). Not done, not late
+    #: by their own doing; offered again on `blocked_until` (audit #12).
+    blocked_reason: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    blocked_until: Mapped[date | None] = mapped_column(Date, nullable=True)
     #: Same three states as `Habit.timer_minutes`: NULL reads the title,
     #: 0 is off, a number is that many minutes.
     timer_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)

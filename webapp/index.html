@@ -1221,7 +1221,7 @@ const DICT = {
   mission_change:"Bugun uchun tanlash",
   why_pinned:"Siz o'zingiz tanlagansiz",
   why_overdue:"Muddati o'tgan — eng oldin shu",
-  why_due_today:"Bugun muddati tugaydi",
+  why_due_today:"Bugun muddati tugaydi", why_recheck:"Kutayotgan javobingizni tekshiring", block_label:"Boshqaga bog'liqmi?", block_reply:"Javob kutilyapti", block_depends:"Boshqa ishga bog'liq", block_in:"{n} kundan keyin tekshirish", block_until:"{d} da tekshiriladi", block_clear:"Kutish tugadi", block_saved:"⏳ Kutishga olindi — «Hozir»da ko'rinmaydi", block_recheck:"tekshirish vaqti",
   why_due_later:"Bugungi belgilangan vaqtli ish — hozir boshqa ish qolmagan",
   now_upcoming:"Keyingi belgilangan",
   why_habit:"Bugungi odat hali bajarilmagan",
@@ -1599,7 +1599,7 @@ const DICT = {
   mission_change:"Choose for today",
   why_pinned:"You pinned this one",
   why_overdue:"Late — this comes first",
-  why_due_today:"Due today",
+  why_due_today:"Due today", why_recheck:"Check on the reply you were waiting for", block_label:"Waiting on someone?", block_reply:"Waiting for a reply", block_depends:"Depends on other work", block_in:"check in {n} days", block_until:"check on {d}", block_clear:"No longer waiting", block_saved:"⏳ Parked — out of «Now» until then", block_recheck:"time to check",
   why_due_later:"Set for later today — nothing else is waiting now",
   now_upcoming:"Next at a set time",
   why_habit:"Today's habit, not done yet",
@@ -1965,7 +1965,7 @@ const DICT = {
   mission_change:"Выбрать на сегодня",
   why_pinned:"Вы выбрали это сами",
   why_overdue:"Просрочено — сначала это",
-  why_due_today:"Срок сегодня",
+  why_due_today:"Срок сегодня", why_recheck:"Проверьте ответ, которого ждали", block_label:"Зависит от других?", block_reply:"Жду ответа", block_depends:"Зависит от другой задачи", block_in:"проверить через {n} дн.", block_until:"проверить {d}", block_clear:"Больше не жду", block_saved:"⏳ Отложено — не в «Сейчас» до проверки", block_recheck:"пора проверить",
   why_due_later:"Назначено на позже сегодня — больше ничего не ждёт",
   now_upcoming:"Следующее по времени",
   why_habit:"Сегодняшняя привычка ещё не выполнена",
@@ -2874,6 +2874,7 @@ function nowBlock(d){
   /* Why this one. Kept to a single short line. */
   const REASONS = {pinned:"why_pinned", overdue:"why_overdue",
                    due_today:"why_due_today", due_later:"why_due_later", habit:"why_habit",
+                   recheck:"why_recheck",
                    wake:"why_wake", wake_late:"why_wake_late",
                    prayer:"why_prayer", evening:"why_evening"};
   const why = REASONS[n.reason];
@@ -4691,6 +4692,8 @@ function taskRow(task, opts){
   // Urgency is written, not only painted: the edge colour repeats the word.
   if(task.priority === "high" && task.status !== "done")
     meta.unshift(`<span class="tag hot">${t("high")}</span>`);
+  if(task.blocked && task.status !== "done")
+    meta.unshift(`<span class="tag">⏳ ${t(task.recheck ? "block_recheck" : "block_" + task.blocked)}</span>`);
   if(task.project && !opts?.hideProject) meta.push(esc(task.project));
   // Same reasoning for the date under a heading that already says "today":
   // six rows each reading "13 August" beneath "Today's tasks" is a second
@@ -5798,11 +5801,32 @@ function taskSheet(task, presetProject){
       ${editing ? `data-act="task-update" data-id="${task.id}"`
                 : `data-act="task-save"${presetProject ? ` data-project="${presetProject}"` : ""}`}
       >${t("save")}</button>
+    ${editing && !shared && task.status !== "done" ? blockPicker(task) : ""}
     ${editing ? `<button class="btn danger" data-act="task-delete-go"
       data-id="${task.id}" style="margin-top:8px">
       ${icon("trash", 15)} ${t("delete")}</button>` : ""}
     <button class="btn secondary" data-act="close" style="margin-top:8px">
       ${t("cancel")}</button>`;
+}
+
+/* Waiting on somebody else: the task stays, out of "Now" until the day to
+   check again (audit #12). */
+function blockPicker(task){
+  if(task.blocked) return `<div class="card tight" style="margin-top:12px">
+      <div class="small">⏳ ${t("block_" + task.blocked)}${task.blocked_until
+        ? ` · ${t("block_until", {d: isoToLabel(task.blocked_until)})}` : ""}</div>
+      <button class="btn sm secondary" data-act="task-unblock" data-id="${task.id}"
+              style="margin-top:8px">${t("block_clear")}</button></div>`;
+  const today = todayISO();
+  return `<label>⏳ ${t("block_label")}</label>
+    <div class="chips">
+      <div class="chip sm" data-act="task-block" data-id="${task.id}" data-reason="reply"
+           data-until="${shiftISO(today, 2)}">${t("block_reply")} · ${t("block_in", {n: 2})}</div>
+      <div class="chip sm" data-act="task-block" data-id="${task.id}" data-reason="reply"
+           data-until="${shiftISO(today, 7)}">${t("block_reply")} · ${t("block_in", {n: 7})}</div>
+      <div class="chip sm" data-act="task-block" data-id="${task.id}" data-reason="depends"
+           data-until="${shiftISO(today, 3)}">${t("block_depends")} · ${t("block_in", {n: 3})}</div>
+    </div>`;
 }
 
 /* Who does a shared task: everybody, any one of you, or the named people (#24). */
@@ -8570,6 +8594,11 @@ const A = {
      every one of these chips sent the task to a team endpoint with no team
      and nothing moved. A shared task moves its deadline through the team's
      own edit, since it has no reschedule endpoint of its own. */
+  "task-block": el => { haptic(); closeSheet();
+    save(() => api(`/api/tasks/${el.dataset.id}/block`, {method:"POST",
+      body:{reason: el.dataset.reason, until: el.dataset.until}}), state.screen, false, t("block_saved")); },
+  "task-unblock": el => { haptic(); closeSheet();
+    save(() => api(`/api/tasks/${el.dataset.id}/block`, {method:"DELETE"}), state.screen, false, t("saved")); },
   "task-reschedule": el => {
     haptic();
     const id = el.dataset.id, when = el.dataset.when;

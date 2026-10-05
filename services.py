@@ -2352,8 +2352,39 @@ def _task_dict(s: Session, ws: int, task: Task, today: date,
         "countdown": (countdowns or {}).get(task.id),
         **_timer_fields(task.timer_minutes, task.title),
         "timer": (runs or {}).get(task.id),
+        "blocked": task.blocked_reason if task.status != "done" else None,
+        "blocked_until": task.blocked_until.isoformat() if task.blocked_until else None,
+        # The day to look again has come: "has the reply arrived?"
+        "recheck": bool(task.blocked_reason and task.status != "done"
+                        and (task.blocked_until is None or task.blocked_until <= today)),
         "source": "personal",
     }
+
+
+BLOCK_REASONS = ("reply", "depends")
+
+
+def set_task_blocked(s: Session, ws: int, task_id: int, reason: str | None,
+                     until: date | None = None) -> Task:
+    """Mark a task as waiting on someone or something else, or clear that.
+
+    It stays open and keeps its deadline; it just stops standing in "Now" or
+    in a reset until `until`, when it is offered again as a check (audit #12).
+    """
+    task = _owned_task(s, ws, task_id)
+    if reason is None:
+        task.blocked_reason = task.blocked_until = None
+    else:
+        if reason not in BLOCK_REASONS:
+            raise ValueError("bad_reason")
+        task.blocked_reason, task.blocked_until = reason, until
+    s.commit()
+    return task
+
+
+def _is_parked(task: dict) -> bool:
+    """Blocked and not yet due for a re-check: out of the "Now" queue."""
+    return bool(task.get("blocked")) and not task.get("recheck")
 
 
 def _sort_open(rows: list[dict]) -> list[dict]:
@@ -4255,7 +4286,9 @@ FRESH_TODAY = 3
 def _fresh_overdue(s: Session, ws: int, today: date) -> list[Task]:
     rows = s.scalars(select(Task).where(
         Task.workspace_id == ws, Task.archived_at.is_(None),
-        Task.status == "waiting", Task.deadline < today)).all()
+        Task.status == "waiting", Task.deadline < today,
+        # Waiting on somebody else is not backlog to reshuffle.
+        Task.blocked_reason.is_(None))).all()
     # Most important first, then the oldest: that order decides who gets today.
     return sorted(rows, key=lambda t: (_PRIORITY_RANK.get(t.priority, 1), t.deadline, t.id))
 
@@ -4520,9 +4553,11 @@ def now_next(s: Session, ws: int, user: User, *,
                 "action": "wakeup", "meta": wake["target"], "reason": "wake"}
 
     team_late, team_due = _team_open_for_now(s, user, today, tz)
-    late = [t for t in list_tasks(s, ws, horizon_days=0, tz=tz)["overdue"]
-            if t["status"] != "done"]
+    listed = list_tasks(s, ws, horizon_days=0, tz=tz)
+    late = [t for t in listed["overdue"] if t["status"] != "done" and not t.get("blocked")]
     late = _sort_open(late + team_late)
+    rechecks = [t for group in ("overdue", "upcoming", "undated", "later")
+                for t in listed.get(group, []) if t.get("recheck")]
     for task in top3_tasks(s, ws, today, tz=tz):
         if task["status"] != "done":
             out = _now_task(task, "pinned")
@@ -4536,8 +4571,12 @@ def now_next(s: Session, ws: int, user: User, *,
     for task in late:
         return _now_task(task, "overdue")
 
+    # Waiting on a reply, and the day to check has come.
+    for task in rechecks:
+        return _now_task(task, "recheck")
+
     due = _sort_open([t for t in tasks_due_today(s, ws, tz=tz)
-                      if t["status"] != "done"] + team_due)
+                      if t["status"] != "done" and not _is_parked(t)] + team_due)
     ready = [t for t in due if not _not_yet(t, now)]
     later = [t for t in due if _not_yet(t, now)]
     upcoming = ({"title": later[0]["title"], "due_time": later[0]["due_time"],

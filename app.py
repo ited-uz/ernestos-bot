@@ -8843,6 +8843,33 @@ def api_task_patch(task_id: int, body: TaskPatch,
     return {"ok": True}
 
 
+class BlockIn(BaseModel):
+    #: reply — waiting for an answer; depends — waiting on other work.
+    reason: str = Field(pattern="^(reply|depends)$")
+    #: When to look again (YYYY-MM-DD). Empty: offered again from tomorrow.
+    until: str | None = Field(default=None, max_length=10)
+
+
+@app.post("/api/tasks/{task_id}/block")
+def api_task_block(task_id: int, body: BlockIn,
+                   init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Park a task that waits on someone else; it comes back on `until`."""
+    user, ws = auth(init)
+    until = _date(body.until) or svc.today_local(svc.user_tz(user)) + timedelta(days=1)
+    with SessionLocal() as s:
+        task = svc.set_task_blocked(s, ws, task_id, body.reason, until)
+        return {"ok": True, "blocked": task.blocked_reason,
+                "until": task.blocked_until.isoformat() if task.blocked_until else None}
+
+
+@app.delete("/api/tasks/{task_id}/block")
+def api_task_unblock(task_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        svc.set_task_blocked(s, ws, task_id, None)
+    return {"ok": True}
+
+
 class RescheduleIn(BaseModel):
     #: today | tomorrow | week | none
     when: str = Field(max_length=10)

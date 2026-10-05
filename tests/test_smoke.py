@@ -11037,3 +11037,26 @@ def test_the_rules_document_matches_the_code():
     assert readme.startswith(f"# ErnestOS v{version.VERSION}")
     assert version.RELEASE_NAME in (ROOT / "scripts" / "package_release.py").read_text() \
         or "from version import RELEASE_NAME" in (ROOT / "scripts" / "package_release.py").read_text()
+
+
+def test_a_task_waiting_on_a_reply_leaves_now_until_the_check_day(fresh, monkeypatch):
+    """Audit #12: a design waiting on the client's approval is not "late work"
+    in Now; on the check day it comes back as a check."""
+    today = svc.today_local()
+    late = fresh.post("/api/tasks", json={"title": "Dizayn", "deadline": (today - timedelta(days=2)).isoformat()}).json()
+    fresh.post("/api/tasks", json={"title": "Hisobot", "deadline": today.isoformat()})
+    r = fresh.post(f'/api/tasks/{late["id"]}/block', {"reason": "reply", "until": (today + timedelta(days=2)).isoformat()})
+    assert r.status_code == 200 and r.json()["blocked"] == "reply"
+    _at(monkeypatch, 9)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        user = s.get(User, fresh.user["id"])
+        assert svc.now_next(s, ws, user)["title"] == "Hisobot"
+        assert svc.fresh_start_plan(s, ws) == [], "parked work is not backlog"
+        row = s.get(db.Task, late["id"])
+        row.blocked_until = today
+        s.commit()
+        now = svc.now_next(s, ws, user)
+    assert (now["title"], now["reason"]) == ("Dizayn", "recheck")
+    assert fresh.delete(f'/api/tasks/{late["id"]}/block').status_code == 200
+    assert fresh.post(f'/api/tasks/{late["id"]}/block', {"reason": "maybe"}).status_code == 422
