@@ -67,12 +67,30 @@ u «Keyingi belgilangan» qatorida ko‘rinadi.
 - Taymer davomiyligini o‘zgartirish keyingi sessiyaga tegishli; boshlangan
   sessiya (jamoadoshlarniki ham) o‘zgarmaydi.
 
+- **Ish va tanaffus**: 50+ daqiqali sessiyada 25/5, 50/10 yoki 90/15 ritmi.
+  Blok tugashi bilan taymer o‘zi pauza qiladi; tanaffus ish vaqtiga kirmaydi.
+
+## Odatlar
+
+- O‘lchanadigan odat: maqsad (masalan 20 bet), birlik va ixtiyoriy minimal
+  variant. Maqsadga yetganda bajarilgan; minimal — alohida belgi, bajarilgan emas.
+- Ovozli agent mavjud vazifani yopishi yoki odatni belgilashi mumkin — har doim
+  tasdiq tugmasi orqali.
+
 ## Takrorlanuvchi vazifalar
 
 Kunlik/ish kunlari/haftalik/oylik vazifalar taqvim bo‘yicha chiqadi: kechagi
 nusxa belgilanmagan bo‘lsa ham bugungisi paydo bo‘ladi. Seriyada eng oxirgi
 o‘tkazib yuborilgan nusxa ochiq qoladi, undan oldingilari arxivga o‘tadi
 (o‘chirilmaydi). Bir sanaga ikkita nusxa yaratilmaydi.
+«Bajargandan N kun keyin» turi bajarilgan kundan sanaladi va taqvim bo‘yicha
+yaratilmaydi.
+
+## Kutishdagi vazifa
+
+«Javob kutilyapti» yoki «Boshqa ishga bog‘liq» deb belgilangan vazifa
+tekshirish sanasigacha «Hozir» va resetdan chiqadi, sana kelganda
+«Javobni tekshiring» bo‘lib qaytadi.
 
 ## Tanaffusdan qaytish (yengil reset)
 
@@ -87,6 +105,18 @@ o‘tkazib yuborilgan nusxa ochiq qoladi, undan oldingilari arxivga o‘tadi
 - Odat eslatmasi sozlamalarda yoqilgan bo‘lsa ishlaydi (standart: o‘chiq).
   Vaqt tanlanganda ilova holatini ko‘rsatadi va yoqishni taklif qiladi.
 - Job kechiksa ham eslatma **30** daqiqa ichida bir marta yetkaziladi.
+- Har eslatmani **15 / 60 / 180** daqiqaga surish mumkin; muddat o‘zgarmaydi.
+- Sokin soatlarda eslatmalar ovozsiz keladi.
+
+## Kun sig‘imi
+
+Bo‘sh vaqt kiritilsa, bugungi taymerli ishlar yig‘indisi bilan solishtiriladi.
+Oshsa — ogohlantirish va ko‘chirish taklifi; o‘zi hech narsa ko‘chmaydi.
+
+## Offline
+
+Belgilash (odat, vazifa, namoz, jamoa, miqdor) internet bo‘lmasa qurilmada
+navbatga tushadi va ulanganda bir marta yuboriladi.
 
 ## Bepul amallar va kanal
 
@@ -110,4 +140,5 @@ vazifa, namoz, kun xulosasi, uyg‘onish, jamoa belgisi va taymer.
 - «7 kundan keyin» tugmasi aynan +7 kunni belgilaydi va sanani ko‘rsatadi.
 - Odat matnidagi kunlar («du, chor, juma sport») jadvalga aylanadi va
   saqlashdan oldin ko‘rsatiladi.
-- Setup bitta odat bilan boshlanadi, ko‘pi bilan **3** ta tanlanadi.
+- Setup bitta odat bilan boshlanadi, ko‘pi bilan **3** ta tanlanadi; turish
+  vaqti so‘raladi va ertalabki hisobot shunga moslanadi.

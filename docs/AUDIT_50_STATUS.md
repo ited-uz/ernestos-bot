@@ -8,10 +8,12 @@ repodagi kod bilan bir xil ekani solishtirib tasdiqlandi.
 yozilgan) · ⏭ keyingi bosqich (P2 mahsulot imkoniyati, launchni ushlab
 turmaydi — auditning o‘zi shunday tavsiya qiladi).
 
-**Yakun:** 36 ✅ · 6 🟡 · 8 ⏭ (jami 50). P0 — 7/7 ✅. P1 — 30 tadan
-27 ✅, 3 🟡. Ochiq qolganlarning barchasi P2.
+**Yakun:** 50/50 ✅. P0 — 7/7, P1 — 30/30, P2 — 13/13. Har bir band
+kod va avtomatik test bilan yopilgan; faqat UI matni bo‘lgan uch band (#8, #34, #48)
+bundan mustasno — ular qo‘lda tekshiriladi. Jonli qurilma sinovlari hali
+ochiq (pastda).
 
-Testlar: `python -m pytest -q` → **1007 o‘tdi** (bazada 978 edi);
+Testlar: `python -m pytest -q` → **1022 o‘tdi** (bazada 978 edi);
 `node tests/frontend_release.cjs` va yangi `node tests/frontend_audit50.cjs`
 o‘tdi; `pyflakes` toza.
 
@@ -55,9 +57,9 @@ o‘tdi; `pyflakes` toza.
 | 8 | ✅ | «Odatlar seriyasi» 🔥 va «Izchil kunlar» 📈 — nomi, belgisi va qoida matni alohida. | UI; avtomatik test yo‘q |
 | 10 | ✅ | Har bir qadamda `ok` (boshlandi) va `complete` (to‘liq); 1/10 «boshlandi» deb ko‘rinadi. | `test_steps_count_late_work_and_separate_started_from_finished` |
 | 13 | ✅ | Jamoa vazifalari shaxsiylar bilan bitta navbatda (kechikkan va bugungi); karta jamoa nomini ko‘rsatadi, belgi faqat sizniki. | `test_now_puts_shared_work_in_the_same_queue` |
-| 14 | 🟡 | Taqvimli takrorlanish: oldingisi belgilanmasa ham yangi kunda paydo bo‘ladi, takror nusxa yo‘q; eng oxirgi o‘tkazib yuborilgani ochiq, oldingilari arxivga. **Qolgani:** «bajargandan N kun keyin» turi qo‘shilmadi. | `test_a_daily_task_appears_even_if_yesterdays_was_not_ticked`, `test_older_misses_of_a_series_are_archived_not_piled_up` |
-| 15 | 🟡 | Yangi standart rejim: eng muhim 3 tasi bugun, qolgani 6 kunga; har rejim oldindan ko‘rsatiladi. «Hafta» rejimi endi ertadan boshlanadi. **Qolgani:** har bir vazifa bo‘yicha «Hali kerakmi?» saralash; band kunlar va davomiylikni hisobga olish. | `test_focus_reset_puts_three_on_today_and_shows_it_first` |
-| 16 | 🟡 | Hafta maqsadlari ostida «Haftalik tahlil» qatori (jumadan belgilanadi); «keyingi fokus» takrorsiz keyingi hafta maqsadiga aylanadi. **Qolgani:** yukni kamaytirish / to‘siqli vazifani o‘zgartirish takliflari. | `test_the_review_is_reachable_and_feeds_next_weeks_goal_once` |
+| 14 | ✅ | Taqvimli takrorlanish: oldingisi belgilanmasa ham yangi kunda paydo bo‘ladi, takror nusxa yo‘q; eng oxirgi o‘tkazib yuborilgani ochiq, oldingilari arxivga. Yangi tur — «bajargandan 7 / 30 kun keyin» (`after:N`): bajarilgan kundan sanaladi, taqvim uni yaratmaydi. | `test_a_daily_task_appears_even_if_yesterdays_was_not_ticked`, `test_older_misses_of_a_series_are_archived_not_piled_up`, `test_a_task_repeating_after_completion_counts_from_the_day_it_was_done` |
+| 15 | ✅ | Yangi standart rejim: eng muhim 3 tasi bugun, qolgani 6 kunga; har rejim oldindan ko‘rsatiladi. «Hafta» rejimi ertadan boshlanadi. Oldindan ko‘rishda har vazifa uchun «Kerak emas» — arxivga, qolganlari qayta rejalanadi; javob kutayotgan vazifalar resetga kirmaydi. Kun sig‘imi #2 da. | `test_focus_reset_puts_three_on_today_and_shows_it_first`, `test_a_reset_asks_what_is_still_needed_first` |
+| 16 | ✅ | Hafta maqsadlari ostida «Haftalik tahlil» qatori (jumadan belgilanadi); «keyingi fokus» takrorsiz keyingi hafta maqsadiga aylanadi. Tahlil hafta raqamlaridan takliflar beradi: kechikkanlarni reset bilan taqsimlash, surilgan maqsadni bo‘lish, odatlarni kamaytirish, javob kutayotganlarni eslatish — har biri mavjud amalga bir bosish, o‘zi hech narsani o‘zgartirmaydi. | `test_the_review_is_reachable_and_feeds_next_weeks_goal_once`, `test_the_review_suggests_changes_from_the_weeks_numbers` |
 | 17 | ✅ | Ko‘chirilgan maqsad eski haftada «ko‘chirildi» bo‘lib qoladi (`carried_to/carried_from`); 2+ marta surilsa «kichikroq qadamga bo‘ling». | `test_carrying_a_goal_keeps_its_trace_in_the_old_week` |
 | 19 | ✅ | 20 amaldan keyin ham belgilash ochiq (API va bot): odat/vazifa/jamoa belgisi, namoz, kundalik, uyg‘onish, taymer. Yangi qo‘shish va tahrirlash — kanal bilan. | `test_past_the_free_run_ticking_done_work_stays_open` |
 | 24 | ✅ | Tez odat matnidagi kunlar jadvalga aylanadi va saqlashdan oldin chiplar bilan ko‘rsatiladi. | `test_a_quick_habit_line_with_days_is_scheduled_on_those_days` |
@@ -69,21 +71,21 @@ o‘tdi; `pyflakes` toza.
 
 ## 4-bosqich — keyingi rivojlantirish (P2)
 
-| # | Holat | Izoh |
-|---|---|---|
-| 2 | ⏭ | Kun sig‘imi / reja davomiyligi ogohlantirishi — yangi maydonlar va UX qarori kerak. |
-| 6 | 🟡 | Taymerli odatda qisman vaqt endi ko‘rinadi (#4, #40). Miqdorli odat (12/20 bet) va minimal variant — yo‘q. |
-| 9 | 🟡 | Foiz tagida «bu reja bajarilishi, kun qiymati emas» va reja hajmi yozildi. «Asosiy natija» alohida ko‘rsatilmadi. |
-| 12 | ⏭ | «Javob kutilyapti / boshqa ishga bog‘liq» holati — model va «Hozir» o‘zgarishi kerak. |
-| 18 | ⏭ | Umumiy offline navbat. Hozircha: kundalik qoralamasi, AI matni va ovoz qayta yuborish saqlanadi. |
-| 20 | ⏭ | Agent orqali vazifani yopish / odatni belgilash — xavfsizlik (noto‘g‘ri vazifani yopish) sinovi bilan alohida qilinishi kerak. |
-| 36 | ⏭ | Eslatmani surish (snooze). |
-| 37 | ⏭ | Umumiy sokin soatlar. |
-| 38 | ⏭ | Setup’da «Odatda qachon turasiz?» savoli; standart hali ham 05:00. |
-| 40 | ✅ | «Sessiyani yakunlash» — ishlangan vaqt saqlanadi; «To‘xtatish» — bekor. `test_finishing_a_session_early_keeps_the_time_stopping_does_not` |
-| 41 | ⏭ | Ish–tanaffus (50/10) rejimi. |
-| 43 | 🟡 | Qadam o‘tgan kunlarni SQL’da yig‘adi, kundalik matnlarini yuklamaydi. Ko‘p yillik sun’iy tarixda o‘lchov qilinmadi. |
-| 48 | ✅ | Loyiha foizi «vazifalar soni bo‘yicha — ish hajmi emas» deb yozildi. |
+| # | Holat | Nima o‘zgardi | Dalil |
+|---|---|---|---|
+| 2 | ✅ | Ixtiyoriy «bo‘sh vaqt» (daqiqa). Bugungi taymerli vazifalar va odatlar yig‘indisi u bilan solishtiriladi; oshsa Bosh sahifa ogohlantiradi va muhimligi past vazifalarni «Ertaga» tugmasi bilan taklif qiladi. O‘zi hech narsani ko‘chirmaydi. | `test_a_plan_bigger_than_the_day_is_flagged_not_changed` |
+| 6 | ✅ | O‘lchanadigan odat: maqsad, birlik va minimal variant (20 bet, og‘ir kunda 2). 12/20 ko‘rinadi, minimal alohida belgilanadi, faqat maqsadga yetganda «bajarildi». | `test_a_measured_habit_keeps_partial_work_and_a_minimal_version` |
+| 9 | ✅ | Foiz tagida «bu reja bajarilishi» izohi, reja hajmi va kunning asosiy natijasi (bugun tanlangan vazifa yoki hafta maqsadi — bajarildimi). | `test_statistics_show_whether_the_main_thing_got_done` |
+| 12 | ✅ | «Javob kutilyapti» / «Boshqa ishga bog‘liq» va tekshirish sanasi. Shunday vazifa «Hozir» va resetdan chiqadi, belgisi bilan ro‘yxatda qoladi, sanasi kelganda «Javobni tekshiring» bo‘lib qaytadi. | `test_a_task_waiting_on_a_reply_leaves_now_until_the_check_day` |
+| 18 | ✅ | Offline navbat: odat/vazifa/namoz/jamoa belgisi/miqdor internet yo‘qligida ekranda qoladi va qurilmada navbatga tushadi; ulanganda tartib bilan, o‘z idempotency kaliti bilan bir marta yuboriladi. «Sinxronlash kutilmoqda» banneri; rad etilgani tashlanadi va aytiladi. | `frontend_audit50.cjs` #18 |
+| 20 | ✅ | Ovozli agent mavjud vazifani yopadi / qayta ochadi, odatni belgilaydi. Karta «✅ Bajarildi deb belgilanadi» deydi; taymerli element taymersiz yopilmaydi; jamoa elementi faqat so‘zlovchi uchun; yangi element yaratib yopish taqiqlangan; mos element yo‘q yoki bir nechta bo‘lsa — savol. | `test_voice_can_close_an_existing_task_and_tick_a_habit`, `test_voice_cannot_create_an_item_already_done_or_skip_a_timer` |
+| 36 | ✅ | Har eslatmada «15 daq / 1 soat / 3 soat» tugmalari. Bir marta qayta keladi, ikkinchi bosish surib qo‘yadi (ikkilamaydi), bajarilgan bo‘lsa kelmaydi, muddat o‘zgarmaydi. | `test_a_snoozed_reminder_comes_back_once_and_leaves_the_deadline`, `test_reminders_in_quiet_hours_arrive_silently_with_snooze_buttons` |
+| 37 | ✅ | Sokin soatlar (yarim tundan o‘tishi mumkin): oraliqdagi eslatmalar ovozsiz keladi, yo‘qolmaydi. Sozlamalarda. | `test_quiet_hours_cross_midnight_and_are_saved` |
+| 38 | ✅ | Setup’da «Odatda soat nechada turasiz?» (05–09); uyg‘onish maqsadi va ertalabki hisobot shunga moslanadi. | `test_setup_asks_when_you_get_up_and_follows_the_answer` |
+| 40 | ✅ | «Sessiyani yakunlash» — ishlangan vaqt saqlanadi; «To‘xtatish» — bekor. | `test_finishing_a_session_early_keeps_the_time_stopping_does_not` |
+| 41 | ✅ | 50+ daqiqali taymerda 25/5, 50/10, 90/15 ritmi. Blok chegarasida o‘zi pauza qiladi, tanaffus ish vaqtiga kirmaydi, bot bir marta «Davom etish» tugmasi bilan xabar beradi. | `test_a_long_session_with_breaks_counts_only_work` |
+| 43 | ✅ | Qadam o‘tgan kunlarni SQL’da yig‘adi, kundalik matnini yuklamaydi. 3 yillik sun’iy tarixda (1095 kun, 2 KB yozuvlar) **27 ms** (SQLite). | `test_qadam_stays_fast_on_years_of_history` |
+| 48 | ✅ | Loyiha foizi «vazifalar soni bo‘yicha — ish hajmi emas» deb yozildi. | UI |
 
 ## Xatti-harakati o‘zgargan joylar (foydalanuvchiga aytish kerak)
 
@@ -96,19 +98,24 @@ o‘tdi; `pyflakes` toza.
 6. 20 amaldan keyin ham bajarilganini belgilash mumkin.
 7. Qarzni o‘chirish arxivlaydi; eski yozuvlarda `amount` hozirgi qoldiq
    (yo‘qolgan to‘lov tarixi tiklanmaydi).
+8. Setup’da yangi qadam — turish vaqti; ertalabki hisobot shu vaqtga ko‘chadi.
+9. Ovozli agent endi vazifani yopa oladi (tasdiq tugmasi bilan).
 
 ## Deploy oldidan
 
-- **Backup oling.** Yangi jadvallar (`debt_payments`, `reset_logs`)
-  `create_all` bilan, yangi ustunlar (`debts.archived_at`, `timer_runs.manual`,
-  `weekly_focus.carried_to`, `weekly_focus.carried_from`) `init_db()` ichidagi
-  avtomatik `ALTER TABLE ADD COLUMN` bilan qo‘shiladi — barchasi NULL-ga ruxsat
-  beradi, mavjud qatorlar qayta yozilmaydi. PostgreSQL’da jonli sinab
-  ko‘rilmagan (testlar SQLite’da).
+- **Backup oling.** Yangi jadvallar (`debt_payments`, `reset_logs`, `snoozes`)
+  `create_all` bilan, yangi ustunlar `init_db()` ichidagi avtomatik
+  `ALTER TABLE ADD COLUMN` bilan qo‘shiladi — barchasi NULL-ga ruxsat beradi,
+  mavjud qatorlar qayta yozilmaydi:
+  `debts.archived_at`; `timer_runs.manual, cycle_work, cycle_break, break_until,
+  break_notice_at`; `weekly_focus.carried_to, carried_from`;
+  `tasks.blocked_reason, blocked_until`; `habits.target_qty, min_qty, unit`;
+  `habit_logs.qty`; `users.quiet_from, quiet_to, day_capacity`.
+  PostgreSQL’da jonli sinab ko‘rilmagan (testlar SQLite’da).
 - Railway’da `BUILD_ID` yoki `RAILWAY_GIT_COMMIT_SHA` o‘rnatilgan bo‘lsin —
   `GET /api/version` deploy qilingan build’ni ko‘rsatadi.
-- Repo’da `.github/workflows/tests.yml` yo‘q (v15 arxivida bor edi). CI
-  tiklansa, `node tests/frontend_audit50.cjs` qatorini qo‘shing.
+- CI (`.github/workflows/tests.yml`) arxivdan tiklandi: pytest, pyflakes,
+  ikki vaqt mintaqasida ikkala frontend to‘plami va `test_agent_ui.cjs`.
 
 ## Tekshirilmagan
 

@@ -11033,6 +11033,9 @@ def test_the_rules_document_matches_the_code():
     assert f"**{int(svc.HABIT_REMINDER_WINDOW.total_seconds() // 60)}** daqiqa ichida bir marta" in doc
     assert f"Dastlabki **{deps.FREE_ACTIONS}** amal" in doc
     assert f"ko‘pi bilan **{application.SETUP_PRESET_LIMIT}** ta" in doc
+    assert "**" + " / ".join(str(m) for m in svc.SNOOZE_MINUTES) + "** daqiqaga" in doc
+    for cycle in svc.TIMER_CYCLES:
+        assert cycle in doc, cycle
     readme = (ROOT / "README.md").read_text()
     assert readme.startswith(f"# ErnestOS v{version.VERSION}")
     assert version.RELEASE_NAME in (ROOT / "scripts" / "package_release.py").read_text() \
