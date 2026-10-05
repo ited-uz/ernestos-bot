@@ -652,6 +652,26 @@ class Debt(Base):
     due: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     settled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    #: Set instead of deleting: one tap must not lose a debt for good. A
+    #: separate, confirmed purge removes the row.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class DebtPayment(Base):
+    """One partial return. `Debt.amount` stays the original sum; what is still
+    owed is that minus these rows, so the history of who paid what and when is
+    never overwritten.
+    """
+
+    __tablename__ = "debt_payments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    debt_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("debts.id", ondelete="CASCADE"), index=True)
+    amount: Mapped[int] = mapped_column(BigInteger)
+    paid_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class Feedback(Base):

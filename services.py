@@ -38,7 +38,7 @@ from db import (
     AgentAudit, AgentDraft, AgentPreference,
     Birthday, Countdown, DailyReportLog, DailyScore, Feedback, Habit, HabitLog,
     HabitPauseInterval, HabitScheduleVersion, IdempotencyKey, JobRun,
-    Debt, JournalEntry, MoneyBudget, MoneyEntry, PrayerDay, PrayerLog, Project,
+    Debt, DebtPayment, JournalEntry, MoneyBudget, MoneyEntry, PrayerDay, PrayerLog, Project,
     Referral, ReferralCode, Task,
     Team, TeamActivity, TeamDayScore, TeamHabit, TeamHabitLog, TeamJoinRequest,
     TeamMember, TeamTask, TeamTaskDone, TimerRun, User, UserAchievement,
@@ -3168,14 +3168,40 @@ def money_overview(s: Session, ws: int, *, month: date | None = None,
 DEBT_DIRECTIONS = ("lent", "borrowed")
 
 
-def _debt_dict(row: Debt, today: date | None = None) -> dict:
-    return {"id": row.id, "person": row.person, "amount": int(row.amount),
+def _debt_payments(s: Session, debt_ids: list[int]) -> dict[int, list[DebtPayment]]:
+    out: dict[int, list[DebtPayment]] = defaultdict(list)
+    if debt_ids:
+        for p in s.scalars(select(DebtPayment).where(DebtPayment.debt_id.in_(debt_ids))
+                           .order_by(DebtPayment.paid_at, DebtPayment.id)).all():
+            out[p.debt_id].append(p)
+    return out
+
+
+def _iso_utc(moment: datetime | None) -> str | None:
+    return moment.replace(tzinfo=_utc.utc).isoformat() if moment else None
+
+
+def _debt_dict(row: Debt, today: date | None = None,
+               payments: list[DebtPayment] | None = None) -> dict:
+    """`amount` is what is still owed — the figure every screen shows.
+    `original` is the sum as it was lent; `payments` is the partial history."""
+    payments = payments or []
+    paid = sum(int(p.amount) for p in payments)
+    return {"id": row.id, "person": row.person,
+            "amount": max(0, int(row.amount) - paid),
+            "original": int(row.amount), "paid": paid,
+            "payments": [{"id": p.id, "amount": int(p.amount), "paid_at": _iso_utc(p.paid_at)}
+                         for p in payments],
             "direction": row.direction, "note": row.note or "",
             "due": row.due.isoformat() if row.due else None,
             "overdue": bool(today and row.due and not row.settled_at and row.due < today),
             "settled": row.settled_at is not None,
-            "created_at": (row.created_at.replace(tzinfo=_utc.utc).isoformat()
-                           if row.created_at else None)}
+            "archived": row.archived_at is not None,
+            "created_at": _iso_utc(row.created_at)}
+
+
+def _debt_out(s: Session, row: Debt, today: date | None = None) -> dict:
+    return _debt_dict(row, today, _debt_payments(s, [row.id])[row.id])
 
 
 def add_debt(s: Session, ws: int, person: str, amount, direction: str, *,
@@ -3192,42 +3218,86 @@ def add_debt(s: Session, ws: int, person: str, amount, direction: str, *,
     return _debt_dict(row)
 
 
-def _own_debt(s: Session, ws: int, debt_id: int) -> Debt:
+def _own_debt(s: Session, ws: int, debt_id: int, *, archived: bool = False) -> Debt:
     row = s.get(Debt, debt_id)
-    if row is None or row.workspace_id != ws:
+    if row is None or row.workspace_id != ws or (row.archived_at is not None) != archived:
         raise NotFound("debt")
     return row
 
 
 def settle_debt(s: Session, ws: int, debt_id: int, settled: bool = True,
                 paid: int | None = None) -> dict:
-    """Mark returned — or, with `paid` less than the amount, take that much off."""
+    """Mark returned, reopen, or record a partial return.
+
+    A partial return is its own row: the original sum never changes. Paying
+    more than is still owed is refused rather than silently closing the debt —
+    a typo of 400 000 for 40 000 must not look like a settled loan. Paying
+    exactly the rest records that payment and closes the debt.
+    """
     row = _own_debt(s, ws, debt_id)
-    if settled and paid is not None and 0 < paid < row.amount:
-        row.amount = int(row.amount) - clean_money_amount(paid)
+    payments = _debt_payments(s, [row.id])[row.id]
+    remaining = int(row.amount) - sum(int(p.amount) for p in payments)
+    if settled and paid is not None:
+        if row.settled_at is not None:
+            raise ValueError("debt_closed")
+        paid = clean_money_amount(paid)
+        if paid > remaining:
+            raise ValueError("paid_exceeds_remaining")
+        s.add(DebtPayment(workspace_id=ws, debt_id=row.id, amount=paid))
+        if paid == remaining:
+            row.settled_at = utcnow()
+    elif settled:
+        row.settled_at = row.settled_at or utcnow()
     else:
-        row.settled_at = utcnow() if settled else None
+        row.settled_at = None
+        # Reopening a debt closed by its last payment undoes that payment —
+        # otherwise it would come back open with nothing left to return.
+        if payments and remaining <= 0:
+            s.delete(payments[-1])
     s.commit()
-    return _debt_dict(row)
+    return _debt_out(s, row)
 
 
-def delete_debt(s: Session, ws: int, debt_id: int) -> None:
-    s.delete(_own_debt(s, ws, debt_id))
+def delete_debt(s: Session, ws: int, debt_id: int) -> dict:
+    """Archive, not erase: the row and its payments stay until restored or purged."""
+    row = _own_debt(s, ws, debt_id)
+    row.archived_at = utcnow()
+    s.commit()
+    return _debt_out(s, row)
+
+
+def restore_debt(s: Session, ws: int, debt_id: int) -> dict:
+    row = _own_debt(s, ws, debt_id, archived=True)
+    row.archived_at = None
+    s.commit()
+    return _debt_out(s, row)
+
+
+def purge_debt(s: Session, ws: int, debt_id: int) -> None:
+    """Permanent removal — only for a debt already archived."""
+    row = _own_debt(s, ws, debt_id, archived=True)
+    s.execute(DebtPayment.__table__.delete().where(DebtPayment.debt_id == row.id))
+    s.delete(row)
     s.commit()
 
 
 def debts_overview(s: Session, ws: int, *, tz: ZoneInfo | None = None) -> dict:
     """Open debts, biggest first per side, the two totals, and recent history."""
     today = today_local(tz or _habit_tz(s, ws))
-    rows = s.scalars(select(Debt).where(Debt.workspace_id == ws, Debt.settled_at.is_(None))
+    live = (Debt.workspace_id == ws, Debt.archived_at.is_(None))
+    rows = s.scalars(select(Debt).where(*live, Debt.settled_at.is_(None))
                      .order_by(Debt.due.is_(None), Debt.due, Debt.id.desc())).all()
-    settled = s.scalars(select(Debt).where(Debt.workspace_id == ws, Debt.settled_at.is_not(None))
+    settled = s.scalars(select(Debt).where(*live, Debt.settled_at.is_not(None))
                         .order_by(Debt.settled_at.desc()).limit(20)).all()
-    owed_to_me = sum(int(r.amount) for r in rows if r.direction == "lent")
-    i_owe = sum(int(r.amount) for r in rows if r.direction == "borrowed")
-    return {"open": [_debt_dict(r, today) for r in rows],
-            "settled": [_debt_dict(r) for r in settled],
-            "owed_to_me": owed_to_me, "i_owe": i_owe,
+    archived = s.scalars(select(Debt).where(Debt.workspace_id == ws, Debt.archived_at.is_not(None))
+                         .order_by(Debt.archived_at.desc()).limit(20)).all()
+    pays = _debt_payments(s, [r.id for r in (*rows, *settled, *archived)])
+    open_ = [_debt_dict(r, today, pays[r.id]) for r in rows]
+    return {"open": open_,
+            "settled": [_debt_dict(r, None, pays[r.id]) for r in settled],
+            "archived": [_debt_dict(r, None, pays[r.id]) for r in archived],
+            "owed_to_me": sum(d["amount"] for d in open_ if d["direction"] == "lent"),
+            "i_owe": sum(d["amount"] for d in open_ if d["direction"] == "borrowed"),
             "overdue": sum(1 for r in rows if r.due and r.due < today)}
 
 
@@ -4420,6 +4490,12 @@ def sync_calendar(s: Session, ws: int, provider: str,
 # Data and privacy
 # ---------------------------------------------------------------------------
 
+def _export_debts(s: Session, ws: int) -> list[dict]:
+    rows = s.scalars(select(Debt).where(Debt.workspace_id == ws).order_by(Debt.id)).all()
+    pays = _debt_payments(s, [r.id for r in rows])
+    return [_debt_dict(r, None, pays[r.id]) for r in rows]
+
+
 def export_workspace(s: Session, ws: int, user: User) -> dict:
     """Everything this workspace contains, as plain JSON-ready data."""
     def habits():
@@ -4505,8 +4581,7 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
                                .where(MoneyEntry.workspace_id == ws)
                                .order_by(MoneyEntry.day, MoneyEntry.id)).all()],
         "money_budgets": money_budgets(s, ws),
-        "debts": [_debt_dict(r) for r in s.scalars(select(Debt).where(Debt.workspace_id == ws)
-                                                    .order_by(Debt.id)).all()],
+        "debts": _export_debts(s, ws),
         "agent_inbox": [
             {"id": r.id, "status": r.status, "revision": r.revision,
              "transcript": r.transcript, "language": r.detected_language, "history": json.loads(r.history),
@@ -4533,7 +4608,8 @@ WORKSPACE_TABLES = [AgentAudit, AgentDraft, AgentPreference,
                     TimerRun, HabitLog, HabitScheduleVersion, HabitPauseInterval,
                     Habit, PrayerLog, PrayerDay, Task,
                     Project, WeeklyFocus, WeeklyReview, JournalEntry, Birthday,
-                    Countdown, Feedback, DailyReportLog, MoneyEntry, MoneyBudget, Debt]
+                    Countdown, Feedback, DailyReportLog, MoneyEntry, MoneyBudget,
+                    DebtPayment, Debt]
 
 
 def wipe_workspace(s: Session, telegram_id: int) -> bool:

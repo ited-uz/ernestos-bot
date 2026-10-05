@@ -10518,6 +10518,59 @@ def test_debts_are_private_and_validated(fresh, client):
     assert fresh.post("/api/debts", {"person": "   ", "amount": 5, "direction": "lent"}).status_code == 422
 
 
+def test_partial_debt_payments_keep_the_original_and_the_history(fresh):
+    """Audit #44: 500k, then 100k and 150k back → original 500, paid 250, left 250."""
+    d = fresh.post("/api/debts", {"person": "Aziz", "amount": 500000, "direction": "lent"}).json()
+    fresh.post(f'/api/debts/{d["id"]}/settle', {"settled": True, "paid": 100000})
+    out = fresh.post(f'/api/debts/{d["id"]}/settle', {"settled": True, "paid": 150000}).json()
+    assert (out["original"], out["paid"], out["amount"]) == (500000, 250000, 250000)
+    assert [p["amount"] for p in out["payments"]] == [100000, 150000]
+    assert all(p["paid_at"] for p in out["payments"]) and not out["settled"]
+    assert fresh.get("/api/debts").json()["owed_to_me"] == 250000
+    # Paying exactly the rest closes it; reopening undoes that last payment.
+    closed = fresh.post(f'/api/debts/{d["id"]}/settle', {"settled": True, "paid": 250000}).json()
+    assert closed["settled"] and closed["amount"] == 0
+    reopened = fresh.post(f'/api/debts/{d["id"]}/settle', {"settled": False}).json()
+    assert not reopened["settled"] and reopened["amount"] == 250000
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        user = s.get(User, fresh.user["id"])
+        exported = svc.export_workspace(s, ws, user)["debts"]
+    assert exported[0]["original"] == 500000 and len(exported[0]["payments"]) == 2
+
+
+def test_overpaying_a_debt_is_refused_and_changes_nothing(fresh):
+    """Audit #45: 400k typed against a 40k debt must not silently close it."""
+    d = fresh.post("/api/debts", {"person": "Vali", "amount": 40000, "direction": "lent"}).json()
+    r = fresh.post(f'/api/debts/{d["id"]}/settle', {"settled": True, "paid": 400000})
+    assert r.status_code == 422 and r.json()["detail"] == "paid_exceeds_remaining"
+    after = fresh.get("/api/debts").json()["open"][0]
+    assert (after["amount"], after["paid"], after["settled"]) == (40000, 0, False)
+
+
+def test_deleting_a_debt_archives_it_and_can_be_undone(fresh, client):
+    """Audit #46: one tap does not lose a debt; restore brings sum and history back."""
+    d = fresh.post("/api/debts", {"person": "Aziz", "amount": 300000, "direction": "lent"}).json()
+    fresh.post(f'/api/debts/{d["id"]}/settle', {"settled": True, "paid": 50000})
+    assert fresh.delete(f'/api/debts/{d["id"]}').status_code == 200
+    ov = fresh.get("/api/debts").json()
+    assert ov["open"] == [] and ov["owed_to_me"] == 0 and ov["archived"][0]["id"] == d["id"]
+    back = fresh.post(f'/api/debts/{d["id"]}/restore', {}).json()["debt"]
+    assert (back["amount"], back["original"], back["paid"]) == (250000, 300000, 50000)
+    assert fresh.get("/api/debts").json()["owed_to_me"] == 250000
+    # Purging needs the debt archived first, then it is gone with its payments.
+    assert fresh.delete(f'/api/debts/{d["id"]}/purge').status_code == 404
+    fresh.delete(f'/api/debts/{d["id"]}')
+    other = Caller(client, {"id": next(_next_id), "first_name": "Other"})
+    assert other.delete(f'/api/debts/{d["id"]}/purge').status_code == 404
+    assert other.post(f'/api/debts/{d["id"]}/restore', {}).status_code == 404
+    assert fresh.delete(f'/api/debts/{d["id"]}/purge').status_code == 200
+    with SessionLocal() as s:
+        assert s.get(db.Debt, d["id"]) is None
+        assert s.scalar(select(func.count(db.DebtPayment.id))
+                        .where(db.DebtPayment.debt_id == d["id"])) == 0
+
+
 def test_overdue_debt_is_flagged(fresh):
     uid = fresh.user["id"]
     with SessionLocal() as s:

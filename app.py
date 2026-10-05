@@ -9425,7 +9425,7 @@ class DebtIn(BaseModel):
 
 class DebtSettleIn(BaseModel):
     settled: bool = True
-    #: Part of it returned: that much comes off and the debt stays open.
+    #: Part of it returned: recorded as a payment; more than what is left is refused.
     paid: int | None = Field(default=None, gt=0, le=svc.MONEY_MAX_AMOUNT)
 
 
@@ -9460,9 +9460,24 @@ def api_debt_settle(debt_id: int, body: DebtSettleIn,
 
 @app.delete("/api/debts/{debt_id}")
 def api_debt_delete(debt_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Archives the debt; `/restore` undoes it, `/purge` removes it for good."""
     _, ws = auth(init)
     with SessionLocal() as s:
-        svc.delete_debt(s, ws, debt_id)
+        return {"ok": True, "debt": svc.delete_debt(s, ws, debt_id)}
+
+
+@app.post("/api/debts/{debt_id}/restore")
+def api_debt_restore(debt_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        return {"ok": True, "debt": svc.restore_debt(s, ws, debt_id)}
+
+
+@app.delete("/api/debts/{debt_id}/purge")
+def api_debt_purge(debt_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        svc.purge_debt(s, ws, debt_id)
     return {"ok": True}
 
 
