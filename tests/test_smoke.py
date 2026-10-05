@@ -5138,7 +5138,8 @@ def test_the_now_card_is_not_printed_twice(alice):
     """
     html = (ROOT / "webapp" / "index.html").read_text()
     block = html[html.index("function tasksBlock("):html.index("function calendarBlock(")]
-    assert 'd.now?.kind === "task" ? d.now.id' in block
+    assert 'd.now?.kind === "task" && d.now.source !== "team"' in block
+    assert "x.id !== teamShown" in block
 
     created = alice.post("/api/tasks", json={
         "title": "The only one", "deadline": date.today().isoformat()}).json()
@@ -10601,3 +10602,61 @@ def test_journal_save_keeps_the_day_it_was_written_for(fresh):
     got = fresh.get(f"/api/journal?day={yesterday}").json()["entry"]
     assert got["answers"]["wins"] == "late" and got["updated_at"] == r["updated_at"]
     assert fresh.get(f"/api/journal?day={svc.today_local().isoformat()}").json()["entry"] is None
+
+
+def _at(monkeypatch, hh, mm=0):
+    monkeypatch.setattr(svc, "now_local",
+                        lambda tz=None: datetime.combine(svc.today_local(tz), dtime(hh, mm)))
+
+
+def test_now_does_not_offer_an_evening_meeting_in_the_morning(monkeypatch):
+    """Audit #1: at 09:00 an 18:00 meeting does not push doable work aside."""
+    uid = next(_next_id)
+    _onboard(uid)
+    today = svc.today_local()
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        user = s.get(User, uid)
+        svc.add_task(s, ws, "Uchrashuv", deadline=today, due_time=dtime(18, 0), priority="high")
+        svc.add_task(s, ws, "Hisobot", deadline=today)
+        _at(monkeypatch, 9)
+        now = svc.now_next(s, ws, user)
+        assert (now["reason"], now["title"]) == ("due_today", "Hisobot")
+        assert now["upcoming"]["title"] == "Uchrashuv" and now["upcoming"]["due_time"] == "18:00"
+        # Within the hour before it, the meeting itself is what is next.
+        _at(monkeypatch, 17, 30)
+        now = svc.now_next(s, ws, user)
+        assert (now["reason"], now["title"]) == ("due_today", "Uchrashuv")
+
+
+def test_now_offers_a_later_timed_task_when_nothing_else_waits(monkeypatch):
+    uid = next(_next_id)
+    _onboard(uid)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        user = s.get(User, uid)
+        for h in s.scalars(select(db.Habit).where(db.Habit.workspace_id == ws)).all():
+            h.archived_at = db.utcnow()
+        s.commit()
+        svc.add_task(s, ws, "Uchrashuv", deadline=svc.today_local(), due_time=dtime(18, 0))
+        _at(monkeypatch, 9)
+        now = svc.now_next(s, ws, user)
+    assert now["title"] == "Uchrashuv" and now["reason"] in {"due_later", "due_today"}
+
+
+def test_now_puts_shared_work_in_the_same_queue(monkeypatch):
+    """Audit #13: a team task due at 11:00 is offered before a personal habit."""
+    uid = next(_next_id)
+    _onboard(uid)
+    today = svc.today_local()
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        user = s.get(User, uid)
+        team = svc.create_team(s, uid, "Ofis")
+        svc.add_habit(s, ws, "Kitob")
+        svc.add_team_task(s, uid, team.id, "Mijozga javob", deadline=today,
+                          due_time=dtime(11, 0), priority="high")
+        _at(monkeypatch, 10, 30)
+        now = svc.now_next(s, ws, user)
+    assert now["title"] == "Mijozga javob" and now["source"] == "team"
+    assert now["team_name"] == "Ofis" and now["action"] == "team_task"

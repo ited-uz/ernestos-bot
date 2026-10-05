@@ -1029,7 +1029,8 @@ def render_home(data: dict, lang: str) -> str:
     # task already named under "Hozir" is not printed a second time, exactly
     # as the Mini App's Home leaves it out of its list.
     now = data.get("now") or {}
-    shown = now.get("id") if now.get("kind") == "task" else None
+    shown = (now.get("id") if now.get("kind") == "task" and now.get("source") != "team"
+             else None)
     pinned = [x for x in (data.get("top3") or []) if x.get("status") != "done"]
     rows = [x for x in pinned + [task for group in data["tasks_today"]
                                  for task in group["tasks"]]

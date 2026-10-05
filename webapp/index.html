@@ -1222,6 +1222,8 @@ const DICT = {
   why_pinned:"Siz o'zingiz tanlagansiz",
   why_overdue:"Muddati o'tgan — eng oldin shu",
   why_due_today:"Bugun muddati tugaydi",
+  why_due_later:"Bugungi belgilangan vaqtli ish — hozir boshqa ish qolmagan",
+  now_upcoming:"Keyingi belgilangan",
   why_habit:"Bugungi odat hali bajarilmagan",
   why_wake:"Kun shundan boshlanadi",
   why_prayer:"Bugungi namozlar to'liq emas",
@@ -1598,6 +1600,8 @@ const DICT = {
   why_pinned:"You pinned this one",
   why_overdue:"Late — this comes first",
   why_due_today:"Due today",
+  why_due_later:"Set for later today — nothing else is waiting now",
+  now_upcoming:"Next at a set time",
   why_habit:"Today's habit, not done yet",
   why_wake:"The day starts here",
   why_prayer:"Today's prayers are not complete",
@@ -1962,6 +1966,8 @@ const DICT = {
   why_pinned:"Вы выбрали это сами",
   why_overdue:"Просрочено — сначала это",
   why_due_today:"Срок сегодня",
+  why_due_later:"Назначено на позже сегодня — больше ничего не ждёт",
+  now_upcoming:"Следующее по времени",
   why_habit:"Сегодняшняя привычка ещё не выполнена",
   why_wake:"День начинается отсюда",
   why_prayer:"Сегодняшние намазы не завершены",
@@ -2827,7 +2833,12 @@ function nowBlock(d){
     habit:   n.timer_minutes
                ? {title: n.title, act:"timer-open", data:'data-kind="habit"'}
                : {title: n.title, act:"habit-toggle-home"},
-    task:    n.timer_minutes
+    /* A shared task is ticked for this person only, like on the team screen. */
+    task:    n.source === "team"
+               ? (n.timer_minutes
+                   ? {title: n.title, act:"timer-open", data:'data-kind="ttask"'}
+                   : {title: n.title, act:"team-toggle", data:'data-kind="task"'})
+             : n.timer_minutes
                ? {title: n.title, act:"timer-open", data:'data-kind="task"'}
                : {title: n.title, act:"task-done"},
   };
@@ -2855,7 +2866,7 @@ function nowBlock(d){
 
   /* Why this one. Kept to a single short line. */
   const REASONS = {pinned:"why_pinned", overdue:"why_overdue",
-                   due_today:"why_due_today", habit:"why_habit",
+                   due_today:"why_due_today", due_later:"why_due_later", habit:"why_habit",
                    wake:"why_wake", wake_late:"why_wake_late",
                    prayer:"why_prayer", evening:"why_evening"};
   const why = REASONS[n.reason];
@@ -2865,6 +2876,7 @@ function nowBlock(d){
   else if(n.meta && n.kind !== "task") meta.push(`<span>${esc(n.meta)}</span>`);
   if(n.priority === "high") meta.push(`<span class="tag hot">${t("high")}</span>`);
   if(n.project) meta.push(`<span>${icon("folder", 14)} ${esc(n.project)}</span>`);
+  if(n.source === "team") meta.push(`<span>${icon("users", 14)} ${esc(n.team_name || "")}</span>`);
 
   /* One clear action, named for what it does. A timed item starts its clock;
      prayer and the journal open their screen; everything else is finished. */
@@ -2883,6 +2895,9 @@ function nowBlock(d){
           role="button" tabindex="0">${icon("clock", 14)}
           <span class="grow ellipsis">${t("now_also_late")}: ${esc(n.overdue.title)}</span>
           ${n.overdue.count > 1 ? `<b class="num">+${n.overdue.count - 1}</b>` : ""}</div>` : ""}
+      ${n.upcoming ? `<div class="now-late">${icon("clock", 14)}
+          <span class="grow ellipsis">${t("now_upcoming")}: ${esc(n.upcoming.title)}</span>
+          <b class="num">${esc(n.upcoming.due_time || "")}</b></div>` : ""}
       <div class="now-acts">
         <button class="btn" data-act="${kind.act}" ${kind.data || ""}
                 ${n.id ? `data-id="${n.id}"` : ""}>${icon(glyph, 17)} ${label}</button>
@@ -2912,7 +2927,9 @@ function tasksBlock(d){
      screen; printing it again three inches lower is the same task twice. The
      backend drops the pinned ones, and the card can also be showing an
      unpinned task the ladder chose, so that one is dropped here. */
-  const shownAbove = d.now?.kind === "task" ? d.now.id : (d.top3 || [])[0]?.id;
+  const shownAbove = d.now?.kind === "task" && d.now.source !== "team"
+    ? d.now.id : (d.top3 || [])[0]?.id;
+  const teamShown = d.now?.kind === "task" && d.now.source === "team" ? d.now.id : null;
   const missionId = shownAbove;
 
   let h = `<h2>${t("next_up")}</h2>`;
@@ -2923,7 +2940,7 @@ function tasksBlock(d){
 
   const byTeam = {};
   for(const x of (d.team_today || []))
-    (byTeam[x.team_name || ""] ||= []).push({...x, source:"team"});
+    if(x.id !== teamShown) (byTeam[x.team_name || ""] ||= []).push({...x, source:"team"});
   const shared = Object.entries(byTeam).map(([name, items]) =>
     `<div class="group">${icon("users", 14)} ${esc(name)}</div>`
     + items.map(x => taskRow(x, {hideDate: true})).join("")).join("");

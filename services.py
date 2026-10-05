@@ -4256,15 +4256,53 @@ def save_weekly_review(s: Session, ws: int, *, went_well: str = "",
 DAY_CLOSE_HOUR = 20
 
 
+#: A task with a time of day is offered this long before it; earlier than
+#: that, work that can be done now comes first (audit #1).
+NOW_LEAD_MINUTES = 60
+
+
 def _now_task(task: dict, reason: str) -> dict:
     """One open task, in the shape the "now" card reads."""
+    team = task.get("source") == "team"
     return {"kind": "task", "title": task["title"], "id": task["id"],
-            "action": "task", "meta": task["due_time"] or "",
+            "action": "team_task" if team else "task",
+            "source": "team" if team else "personal",
+            "team_id": task.get("team_id"), "team_name": task.get("team_name"),
+            "meta": task["due_time"] or "",
             "reason": reason, "priority": task["priority"],
             "due_time": task["due_time"], "deadline": task["deadline"],
-            "project": task["project"],
+            "project": task.get("project"),
             "timer_minutes": task.get("timer_minutes"),
             "timer": task.get("timer")}
+
+
+def _not_yet(task: dict, now: datetime) -> bool:
+    """Due later today at a set time, and not within the lead window yet."""
+    if not task.get("due_time"):
+        return False
+    hh, mm = (int(x) for x in task["due_time"].split(":")[:2])
+    starts = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+    return starts - now > timedelta(minutes=NOW_LEAD_MINUTES)
+
+
+def _team_open_for_now(s: Session, user: User, today: date,
+                       tz: ZoneInfo | None) -> tuple[list[dict], list[dict]]:
+    """Shared tasks this person still owes: (late, due today)."""
+    late, due = [], []
+    try:
+        items = team_items_for_day(s, user.telegram_id, tz=tz)["tasks"]
+    except Exception:  # noqa: BLE001 — a team problem must not blank the card
+        log.exception("now_next: team tasks unavailable")
+        return late, due
+    iso = today.isoformat()
+    for x in items:
+        if not x.get("owed", True) or x.get("done") or not x.get("deadline"):
+            continue
+        if x["deadline"] < iso:
+            late.append(x)
+        elif x["deadline"] == iso:
+            due.append(x)
+    return late, due
 
 
 def now_next(s: Session, ws: int, user: User, *,
@@ -4273,18 +4311,23 @@ def now_next(s: Session, ws: int, user: User, *,
 
       1. get up, while it still counts
       2. whatever the user pinned as the day's main task
-      3. anything already late
-      4. anything else due today, earliest time first, then by priority
+      3. anything already late — own or shared, one queue
+      4. anything due today that can be done now: no set time, or a time
+         within the next hour; earliest time first, then by priority
       5. a habit that is due and not done
-      6. today's prayers, while any is still unrecorded
-      7. a late wake-up that was never written down — late still counts
-      8. close the day, once the evening has started
-      9. otherwise: today's important work is finished
+      6. something due later today at a set time (a 18:00 meeting at 09:00
+         waits here instead of pushing doable work aside)
+      7. today's prayers, while any is still unrecorded
+      8. a late wake-up that was never written down — late still counts
+      9. close the day, once the evening has started
+     10. otherwise: today's important work is finished
 
-    Every answer carries a `reason`, because a card that decides on the user's
-    behalf owes them the sentence explaining why this one and not another.
-    A pinned task beats a late one, but never hides it: the answer then
-    carries `overdue` — how many are late and the first one's title.
+    Shared tasks the person owes stand in the same queue as their own, marked
+    with `source: "team"`. Every answer carries a `reason`, because a card
+    that decides on the user's behalf owes them the sentence explaining why
+    this one and not another. A pinned task beats a late one, but never hides
+    it: the answer then carries `overdue`. When something other than a timed
+    task is offered, the next timed one rides along as `upcoming`.
     """
     tz = tz or user_tz(user)
     today = today_local(tz)
@@ -4295,12 +4338,15 @@ def now_next(s: Session, ws: int, user: User, *,
         return {"kind": "wake", "title": "", "id": wake["habit_id"],
                 "action": "wakeup", "meta": wake["target"], "reason": "wake"}
 
+    team_late, team_due = _team_open_for_now(s, user, today, tz)
     late = [t for t in list_tasks(s, ws, horizon_days=0, tz=tz)["overdue"]
             if t["status"] != "done"]
+    late = _sort_open(late + team_late)
     for task in top3_tasks(s, ws, today, tz=tz):
         if task["status"] != "done":
             out = _now_task(task, "pinned")
-            others = [t for t in late if t["id"] != task["id"]]
+            others = [t for t in late if not (t["id"] == task["id"]
+                                              and t.get("source") != "team")]
             if others:
                 out["overdue"] = {"count": len(others), "title": others[0]["title"],
                                   "id": others[0]["id"]}
@@ -4309,17 +4355,33 @@ def now_next(s: Session, ws: int, user: User, *,
     for task in late:
         return _now_task(task, "overdue")
 
-    for task in tasks_due_today(s, ws, tz=tz):
-        if task["status"] != "done":
-            return _now_task(task, "due_today")
+    due = _sort_open([t for t in tasks_due_today(s, ws, tz=tz)
+                      if t["status"] != "done"] + team_due)
+    ready = [t for t in due if not _not_yet(t, now)]
+    later = [t for t in due if _not_yet(t, now)]
+    upcoming = ({"title": later[0]["title"], "due_time": later[0]["due_time"],
+                 "id": later[0]["id"], "source": later[0].get("source") or "personal"}
+                if later else None)
+
+    def with_upcoming(out: dict) -> dict:
+        if upcoming:
+            out["upcoming"] = upcoming
+        return out
+
+    for task in ready:
+        return with_upcoming(_now_task(task, "due_today"))
 
     for habit in list_habits(s, ws, today, tz=tz):
         if habit["due"] and not habit["done"] and not habit["protected"]:
-            return {"kind": "habit", "title": habit["name"], "id": habit["id"],
-                    "action": "habit", "meta": habit["target_time"] or "",
-                    "reason": "habit",
-                    "timer_minutes": habit.get("timer_minutes"),
-                    "timer": habit.get("timer")}
+            return with_upcoming({
+                "kind": "habit", "title": habit["name"], "id": habit["id"],
+                "action": "habit", "meta": habit["target_time"] or "",
+                "reason": "habit",
+                "timer_minutes": habit.get("timer_minutes"),
+                "timer": habit.get("timer")})
+
+    for task in later:
+        return _now_task(task, "due_later")
 
     if prayer_owed(s, ws, today):
         prayer = prayer_state(s, ws, today, user.gender)
