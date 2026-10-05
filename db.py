@@ -125,6 +125,10 @@ class User(Base):
     evening_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     task_reminders: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     habit_reminders: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    #: Quiet hours: ordinary reminders in this window arrive without sound
+    #: (audit #37). Both NULL — off. The window may cross midnight.
+    quiet_from: Mapped[time | None] = mapped_column(Time, nullable=True)
+    quiet_to: Mapped[time | None] = mapped_column(Time, nullable=True)
 
     #: How many real actions this account has taken — a task ticked, a habit
     #: logged, a prayer recorded. The channel is not asked for until this
@@ -688,6 +692,25 @@ class ResetLog(Base):
     snapshot: Mapped[str] = mapped_column(Text, default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     undone_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class Snooze(Base):
+    """"Remind me again in 15 minutes" on one reminder (audit #36).
+
+    Sent once at `fire_at`, then marked; the item's deadline and its own
+    reminder are untouched. `kind` is task | habit | ttask | thabit.
+    """
+
+    __tablename__ = "snoozes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(8))
+    item_id: Mapped[int] = mapped_column(Integer)
+    fire_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class DebtPayment(Base):

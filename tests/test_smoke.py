@@ -11089,3 +11089,72 @@ async def test_setup_asks_when_you_get_up_and_follows_the_answer():
     await application.on_callback(_CbUpdate(uid, "setup:wake:0330"), ctx)
     with SessionLocal() as s:
         assert s.get(User, uid).morning_time == dtime(8, 0)
+
+
+def test_quiet_hours_cross_midnight_and_are_saved(fresh):
+    """Audit #37: 23:00–07:00 is quiet at 02:00 and 23:30, not at 12:00."""
+    prefs = fresh.post("/api/prefs", {"quiet_from": "23:00", "quiet_to": "07:00"}).json()["prefs"]
+    assert (prefs["quiet_from"], prefs["quiet_to"]) == ("23:00", "07:00")
+    with SessionLocal() as s:
+        user = s.get(User, fresh.user["id"])
+        day = svc.today_local()
+        at = lambda h, m=0: datetime.combine(day, dtime(h, m))  # noqa: E731
+        assert svc.in_quiet_hours(user, at(2)) and svc.in_quiet_hours(user, at(23, 30))
+        assert not svc.in_quiet_hours(user, at(12)) and not svc.in_quiet_hours(user, at(7))
+    off = fresh.post("/api/prefs", {"quiet_from": "", "quiet_to": ""}).json()["prefs"]
+    assert off["quiet_from"] == "" and off["quiet_to"] == ""
+
+
+def test_a_snoozed_reminder_comes_back_once_and_leaves_the_deadline(fresh):
+    """Audit #36: snooze 15 min → one reminder later; deadline unchanged; a
+    second snooze moves the same one; a done task is not reminded."""
+    today = svc.today_local()
+    task = fresh.post("/api/tasks", json={"title": "Qo'ng'iroq", "deadline": today.isoformat()}).json()
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        svc.snooze_reminder(s, ws, "task", task["id"], 15)
+        svc.snooze_reminder(s, ws, "task", task["id"], 60)
+        assert s.scalar(select(func.count(db.Snooze.id)).where(db.Snooze.workspace_id == ws)) == 1
+        assert svc.due_snoozes(s, ws) == []
+        later = db.utcnow() + timedelta(minutes=61)
+        due = svc.due_snoozes(s, ws, later)
+        assert [d["title"] for d in due] == ["Qo'ng'iroq"]
+        svc.mark_snooze_sent(s, due[0]["id"])
+        assert svc.due_snoozes(s, ws, later) == []
+        assert s.get(db.Task, task["id"]).deadline == today
+        with pytest.raises(ValueError):
+            svc.snooze_reminder(s, ws, "task", task["id"], 7)
+        svc.snooze_reminder(s, ws, "task", task["id"], 15)
+    fresh.patch(f'/api/tasks/{task["id"]}', json={"status": "done"})
+    with SessionLocal() as s:
+        assert svc.due_snoozes(s, ws, db.utcnow() + timedelta(hours=1)) == []
+    assert application.is_read_callback("snz", ["snz", "t", "1", "15"])
+
+
+async def test_reminders_in_quiet_hours_arrive_silently_with_snooze_buttons(fresh, monkeypatch):
+    """Audit #36/#37 end to end: a snoozed reminder is delivered by the job, with
+    snooze buttons, and without sound inside quiet hours."""
+    calls = []
+
+    class Bot:
+        async def send_message(self, chat_id, text, **kwargs):
+            calls.append(kwargs)
+            return True
+
+    task = fresh.post("/api/tasks", json={"title": "Hisobot"}).json()
+    with SessionLocal() as s:
+        uid = fresh.user["id"]
+        ws = svc.workspace_id_for(s, uid)
+        row = svc.snooze_reminder(s, ws, "task", task["id"], 15)
+        row.fire_at = db.utcnow() - timedelta(minutes=1)
+        user = s.get(User, uid)
+        user.quiet_from, user.quiet_to = dtime(0, 0), dtime(23, 59)
+        s.commit()
+    monkeypatch.setattr(svc, "in_quiet_hours", lambda user, now=None: True)
+    sent = await application._send_user_reminders(Bot(), uid, ws, "uz")
+    assert sent >= 1
+    snoozed = calls[0]
+    assert snoozed["disable_notification"] is True
+    buttons = [b.callback_data for row in snoozed["reply_markup"].inline_keyboard for b in row
+               if b.callback_data]
+    assert f'snz:t:{task["id"]}:15' in buttons

@@ -38,7 +38,7 @@ from db import (
     AgentAudit, AgentDraft, AgentPreference,
     Birthday, Countdown, DailyReportLog, DailyScore, Feedback, Habit, HabitLog,
     HabitPauseInterval, HabitScheduleVersion, IdempotencyKey, JobRun,
-    Debt, DebtPayment, JournalEntry, MoneyBudget, ResetLog, MoneyEntry, PrayerDay, PrayerLog, Project,
+    Debt, DebtPayment, JournalEntry, MoneyBudget, ResetLog, Snooze, MoneyEntry, PrayerDay, PrayerLog, Project,
     Referral, ReferralCode, Task,
     Team, TeamActivity, TeamDayScore, TeamHabit, TeamHabitLog, TeamJoinRequest,
     TeamMember, TeamTask, TeamTaskDone, TimerRun, User, UserAchievement,
@@ -4895,7 +4895,7 @@ WORKSPACE_TABLES = [AgentAudit, AgentDraft, AgentPreference,
                     Habit, PrayerLog, PrayerDay, ResetLog, Task,
                     Project, WeeklyFocus, WeeklyReview, JournalEntry, Birthday,
                     Countdown, Feedback, DailyReportLog, MoneyEntry, MoneyBudget,
-                    DebtPayment, Debt]
+                    DebtPayment, Debt, Snooze]
 
 
 def wipe_workspace(s: Session, telegram_id: int) -> bool:
@@ -6356,7 +6356,24 @@ def prefs_for(user: User) -> dict:
         "evening_time": (user.evening_time or DEFAULT_EVENING_TIME).strftime("%H:%M"),
         "task_reminders": True if user.task_reminders is None else bool(user.task_reminders),
         "habit_reminders": False if user.habit_reminders is None else bool(user.habit_reminders),
+        "quiet_from": user.quiet_from.strftime("%H:%M") if user.quiet_from else "",
+        "quiet_to": user.quiet_to.strftime("%H:%M") if user.quiet_to else "",
     }
+
+
+def in_quiet_hours(user: User, now: datetime | None = None) -> bool:
+    """Whether this local moment falls in the person's quiet hours.
+
+    23:00–07:00 crosses midnight and is handled as two halves. Reminders in
+    the window still arrive — silently — so nothing is lost (audit #37).
+    """
+    start, end = user.quiet_from, user.quiet_to
+    if start is None or end is None or start == end:
+        return False
+    moment = (now or now_local(user_tz(user))).time()
+    if start < end:
+        return start <= moment < end
+    return moment >= start or moment < end
 
 
 def save_prefs(s: Session, user: User, **fields) -> dict:
@@ -6375,8 +6392,70 @@ def save_prefs(s: Session, user: User, **fields) -> dict:
     for key in ("morning_time", "evening_time"):
         if key in fields and fields[key] is not None:
             setattr(user, key, fields[key])
+    # An empty value switches quiet hours off.
+    for key in ("quiet_from", "quiet_to"):
+        if key in fields:
+            setattr(user, key, fields[key])
     s.commit()
     return prefs_for(user)
+
+
+SNOOZE_MINUTES = (15, 60, 180)
+SNOOZE_KINDS = {"task": Task, "habit": Habit, "ttask": TeamTask, "thabit": TeamHabit}
+
+
+def snooze_reminder(s: Session, ws: int, kind: str, item_id: int, minutes: int,
+                    *, user_id: int | None = None) -> Snooze:
+    """Ask for the same reminder again later. Changes nothing on the item."""
+    if kind not in SNOOZE_KINDS or minutes not in SNOOZE_MINUTES:
+        raise ValueError("bad_snooze")
+    item = s.get(SNOOZE_KINDS[kind], item_id)
+    if item is None or getattr(item, "archived_at", None) is not None:
+        raise NotFound(kind)
+    if kind in ("task", "habit") and item.workspace_id != ws:
+        raise NotFound(kind)
+    if kind in ("ttask", "thabit") and (user_id is None or team_for(s, user_id, item.team_id) is None):
+        raise NotFound(kind)
+    # One pending snooze per item: a second tap moves it, never doubles it.
+    row = s.scalar(select(Snooze).where(Snooze.workspace_id == ws, Snooze.kind == kind,
+                                        Snooze.item_id == item_id, Snooze.sent_at.is_(None)))
+    if row is None:
+        row = Snooze(workspace_id=ws, kind=kind, item_id=item_id, fire_at=utcnow())
+        s.add(row)
+    row.fire_at = utcnow() + timedelta(minutes=minutes)
+    s.commit()
+    return row
+
+
+def due_snoozes(s: Session, ws: int, now: datetime | None = None) -> list[dict]:
+    """Snoozed reminders whose time has come and whose item is still open.
+
+    One already done (or gone) is closed quietly instead of being sent.
+    """
+    now = now or utcnow()
+    tz = _workspace_tz(s, ws)
+    today = today_local(tz)
+    out, closed = [], False
+    for row in s.scalars(select(Snooze).where(
+            Snooze.workspace_id == ws, Snooze.sent_at.is_(None),
+            Snooze.fire_at <= now)).all():
+        item = s.get(SNOOZE_KINDS.get(row.kind, Task), row.item_id)
+        if item is None or getattr(item, "archived_at", None) is not None \
+                or _item_done_for_timer(s, ws, row.kind, item, today):
+            row.sent_at, closed = now, True
+            continue
+        out.append({"id": row.id, "kind": row.kind, "item_id": row.item_id,
+                    "title": getattr(item, "title", None) or getattr(item, "name", "")})
+    if closed:
+        s.commit()
+    return out
+
+
+def mark_snooze_sent(s: Session, snooze_id: int) -> None:
+    row = s.get(Snooze, snooze_id)
+    if row is not None and row.sent_at is None:
+        row.sent_at = utcnow()
+        s.commit()
 
 
 def report_is_due(user: User, report_type: str, now: datetime) -> bool:

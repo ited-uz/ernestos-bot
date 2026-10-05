@@ -1170,6 +1170,8 @@ T["uz"].update({
     # --- setup: what to keep ---------------------------------------------
     "ask_wake": "⏰ <b>Odatda soat nechada turasiz?</b>\nUyg‘onish maqsadi va ertalabki hisobot shu vaqtga moslanadi. Keyin Sozlamalarda o‘zgartirasiz.",
     "wake_set": "⏰ Turish vaqti: <b>{time}</b>",
+    "snooze_15": "⏰ 15 daq", "snooze_60": "⏰ 1 soat", "snooze_180": "⏰ 3 soat",
+    "snoozed": "⏰ {n} daqiqadan keyin yana eslataman. Muddat o‘zgarmadi.",
     "ask_modules": ("<b>Nimalarni kuzatamiz?</b>\n"
                     "Faqat tanlaganingiz hisoblanadi. Keyin Sozlamalar → "
                     "🧩 Modullar'dan o'zgartirasiz."),
@@ -1313,6 +1315,8 @@ T["en"].update({
         "Water — 2 litres</i>"),
     "ask_wake": "⏰ <b>When do you usually get up?</b>\nThe wake-up goal and the morning report follow it. You can change it in Settings.",
     "wake_set": "⏰ Wake-up time: <b>{time}</b>",
+    "snooze_15": "⏰ 15 min", "snooze_60": "⏰ 1 h", "snooze_180": "⏰ 3 h",
+    "snoozed": "⏰ I will remind you again in {n} min. The deadline is unchanged.",
     "ask_modules": ("<b>What should we track?</b>\n"
                     "Only what you pick is counted. Change it later in Settings → "
                     "🧩 Modules."),
@@ -1450,6 +1454,8 @@ T["ru"].update({
         "Вода — 2 литра</i>"),
     "ask_wake": "⏰ <b>Во сколько вы обычно встаёте?</b>\nЦель подъёма и утренний отчёт подстроятся. Изменить можно в Настройках.",
     "wake_set": "⏰ Время подъёма: <b>{time}</b>",
+    "snooze_15": "⏰ 15 мин", "snooze_60": "⏰ 1 ч", "snooze_180": "⏰ 3 ч",
+    "snoozed": "⏰ Напомню снова через {n} мин. Срок не изменился.",
     "ask_modules": ("<b>Что будем отслеживать?</b>\n"
                     "Считается только выбранное. Изменить можно в Настройки → "
                     "🧩 Модули."),

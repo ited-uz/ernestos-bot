@@ -772,6 +772,7 @@ READ_CALLBACKS = {("habit", "back"), ("habit", "noop"),
 #: in the Mini App (audit #19): ticking a habit or task, a shared tick, and
 #: driving a timer. Creating and editing still ask for the channel.
 RECORD_CALLBACKS = {("habit", "toggle"), ("task", "done"), ("thabit", "toggle"),
+                    ("snz", "t"), ("snz", "h"), ("snz", "T"), ("snz", "H"),
                     ("ttask", "toggle"), ("tmr", "open"), ("tmr", "start"),
                     ("tmr", "pause"), ("tmr", "resume"), ("tmr", "stop")}
 
@@ -4721,6 +4722,21 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     elif action == "tmr":
         await route_timer(update, ctx, parts, user, ws, lang)
 
+    elif action == "snz" and len(parts) == 4:
+        kind = KIND_OF_CODE.get(parts[1])
+        try:
+            with SessionLocal() as s:
+                svc.snooze_reminder(s, ws, kind, int(parts[2]), int(parts[3]),
+                                    user_id=user.telegram_id)
+        except (ValueError, svc.NotFound):
+            await _notice(update, t(lang, "not_found"))
+            return
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except BadRequest:
+            pass
+        await _notice(update, t(lang, "snoozed", n=int(parts[3])))
+
     elif action in ("cd", "cds", "cdd", "cdl", "cdq"):
         await route_countdown(update, ctx, action, parts, user, ws, lang)
 
@@ -5744,8 +5760,23 @@ async def send_reminders(bot) -> None:
         log.exception("reminder job failed before any recipient")
 
 
+def reminder_keyboard(lang: str, kind: str, item_id: int) -> InlineKeyboardMarkup:
+    """Every reminder can be put off — 15 min, 1 h, 3 h — without touching the
+    deadline (audit #36); the app button stays underneath."""
+    code = CODE_OF_KIND[kind]
+    rows = [[InlineKeyboardButton(t(lang, f"snooze_{m}"), callback_data=f"snz:{code}:{item_id}:{m}")
+             for m in svc.SNOOZE_MINUTES]]
+    app_row = webapp_button(lang)
+    if app_row is not None:
+        rows += list(app_row.inline_keyboard)
+    return InlineKeyboardMarkup(rows)
+
+
 async def _send_user_reminders(bot, telegram_id: int, ws: int, lang: str) -> int:
-    """Everything due for one recipient. Returns how many messages went out."""
+    """Everything due for one recipient. Returns how many messages went out.
+
+    In the person's quiet hours they still arrive, without sound.
+    """
     with SessionLocal() as s:
         user = s.get(User, telegram_id)
         if user is None:
@@ -5753,10 +5784,26 @@ async def _send_user_reminders(bot, telegram_id: int, ws: int, lang: str) -> int
         # Read the zone while the row is still attached: everything below runs
         # after this session has closed.
         user_zone = svc.user_tz(user)
+        quiet = svc.in_quiet_hours(user)
         tasks = svc.due_task_reminders(s, ws, user)
         habits = svc.due_habit_reminders(s, ws, user)
+        snoozed = svc.due_snoozes(s, ws)
 
     sent = 0
+    for item in snoozed:
+        key = "remind_habit" if item["kind"] in HABIT_KINDS else "remind_task"
+        text = t(lang, key, **({"name": esc(item["title"])} if key == "remind_habit"
+                               else {"title": esc(item["title"])}))
+        try:
+            await bot.send_message(telegram_id, text, parse_mode=ParseMode.HTML,
+                                   disable_notification=quiet,
+                                   reply_markup=reminder_keyboard(lang, item["kind"], item["item_id"]))
+            with SessionLocal() as s:
+                svc.mark_snooze_sent(s, item["id"])
+            sent += 1
+        except TelegramError as e:
+            log.warning("snoozed reminder to %s failed: %s", telegram_id, e)
+
     for task in tasks:
         text = (t(lang, "remind_task_at", title=esc(task["title"]),
                   time=task["due_time"]) if task["due_time"]
@@ -5764,7 +5811,8 @@ async def _send_user_reminders(bot, telegram_id: int, ws: int, lang: str) -> int
         try:
             await bot.send_message(telegram_id, text,
                                    parse_mode=ParseMode.HTML,
-                                   reply_markup=webapp_button(lang))
+                                   disable_notification=quiet,
+                                   reply_markup=reminder_keyboard(lang, "task", task["id"]))
             # Marked only after Telegram accepted it, so a failure is
             # retried on the next pass instead of being lost.
             with SessionLocal() as s:
@@ -5789,7 +5837,8 @@ async def _send_user_reminders(bot, telegram_id: int, ws: int, lang: str) -> int
                     else t(lang, "remind_task", title=esc(item["title"])))
             await bot.send_message(
                 telegram_id, f"{body}\n<i>👥 {esc(item['team_name'])}</i>",
-                parse_mode=ParseMode.HTML, reply_markup=webapp_button(lang))
+                parse_mode=ParseMode.HTML, disable_notification=quiet,
+                reply_markup=reminder_keyboard(lang, "ttask", item["id"]))
             with SessionLocal() as s:
                 svc.mark_team_task_reminded(s, telegram_id, item["id"])
             sent += 1
@@ -5802,7 +5851,8 @@ async def _send_user_reminders(bot, telegram_id: int, ws: int, lang: str) -> int
                 telegram_id,
                 t(lang, "remind_habit", name=esc(item["name"]))
                 + f"\n<i>👥 {esc(item['team_name'])}</i>",
-                parse_mode=ParseMode.HTML)
+                parse_mode=ParseMode.HTML, disable_notification=quiet,
+                reply_markup=reminder_keyboard(lang, "thabit", item["id"]))
             with SessionLocal() as s:
                 svc.mark_team_habit_reminded(s, telegram_id, item["id"],
                                              tz=user_zone)
@@ -5814,7 +5864,8 @@ async def _send_user_reminders(bot, telegram_id: int, ws: int, lang: str) -> int
         try:
             await bot.send_message(
                 telegram_id, t(lang, "remind_habit", name=esc(habit["name"])),
-                parse_mode=ParseMode.HTML)
+                parse_mode=ParseMode.HTML, disable_notification=quiet,
+                reply_markup=reminder_keyboard(lang, "habit", habit["id"]))
             # Marked only once Telegram accepted it, exactly as task reminders
             # are, so a failure is retried rather than silently swallowed.
             with SessionLocal() as s:
@@ -7308,6 +7359,9 @@ class PrefsIn(BaseModel):
     evening_time: str | None = Field(default=None, max_length=5)
     task_reminders: bool | None = None
     habit_reminders: bool | None = None
+    #: Quiet hours, HH:MM; "" switches them off.
+    quiet_from: str | None = Field(default=None, max_length=5)
+    quiet_to: str | None = Field(default=None, max_length=5)
 
 
 def _time(value: str | None) -> dtime | None:
@@ -7336,7 +7390,7 @@ def api_prefs_save(body: PrefsIn,
     """
     user, _ = auth(init)
     fields = body.model_dump(exclude_unset=True)
-    for key in ("morning_time", "evening_time"):
+    for key in ("morning_time", "evening_time", "quiet_from", "quiet_to"):
         if key in fields:
             fields[key] = _time(fields[key])
     with SessionLocal() as s:
