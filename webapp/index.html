@@ -1428,7 +1428,7 @@ const DICT = {
   feedback:"Taklif va shikoyat", feedback_ph:"Nimani yaxshilashimiz kerak?",
   feedback_sent:"Rahmat! Taklifingiz yetkazildi",
   feedback_saved:"Taklifingiz saqlandi, tez orada yetkaziladi",
-  fresh_start:"Yengil reset", fresh_start_n:"{n} ta kechikkan vazifa",
+  fresh_start:"Yengil reset", fs_focus:"Eng muhim 3 tasi bugun, qolgani hafta bo'ylab", fs_preview:"Natija qanday bo'ladi", fs_apply:"Shunday qilish", fs_archive_n:"{n} ta vazifa arxivga o'tadi.", fs_undo_hint:"Keyin bir bosishda qaytarish mumkin.", fs_undone:"↩ {n} ta vazifa avvalgi sanasiga qaytdi", fs_undo_conflicts:"Qaytarildi; {n} tasini siz o'zgartirgansiz — ular tegilmadi", fresh_start_n:"{n} ta kechikkan vazifa",
   fresh_start_body:"Hech qanday vazifa o'chirilmaydi — faqat ko'chiriladi yoki arxivga o'tadi. Statistika va tarix saqlanadi.",
   fs_today:"Hammasini bugunga", fs_week:"Bir haftaga taqsimlash",
   fs_undate:"Muddatlarni olib tashlash", fs_archive:"Arxivga o'tkazish",
@@ -1795,7 +1795,7 @@ const DICT = {
   feedback:"Feedback", feedback_ph:"What should we improve?",
   feedback_sent:"Thank you — your feedback was delivered",
   feedback_saved:"Your feedback is saved and will be delivered shortly",
-  fresh_start:"Fresh start", fresh_start_n:"{n} overdue tasks",
+  fresh_start:"Fresh start", fs_focus:"Top 3 today, the rest across the week", fs_preview:"What it will look like", fs_apply:"Do it", fs_archive_n:"{n} tasks go to the archive.", fs_undo_hint:"You can put it back with one tap afterwards.", fs_undone:"↩ {n} tasks back on their old dates", fs_undo_conflicts:"Put back; {n} you changed since were left alone", fresh_start_n:"{n} overdue tasks",
   fresh_start_body:"No task is deleted — they are moved or archived. Your statistics and history stay intact.",
   fs_today:"Move all to today", fs_week:"Spread over a week",
   fs_undate:"Drop the deadlines", fs_archive:"Move to the archive",
@@ -2161,7 +2161,7 @@ const DICT = {
   feedback:"Отзыв и предложения", feedback_ph:"Что нам улучшить?",
   feedback_sent:"Спасибо — отзыв доставлен",
   feedback_saved:"Отзыв сохранён и скоро будет доставлен",
-  fresh_start:"Мягкий сброс", fresh_start_n:"{n} просроченных задач",
+  fresh_start:"Мягкий сброс", fs_focus:"3 главных сегодня, остальное — по неделе", fs_preview:"Как это будет выглядеть", fs_apply:"Применить", fs_archive_n:"{n} задач уйдут в архив.", fs_undo_hint:"Потом можно вернуть одним нажатием.", fs_undone:"↩ {n} задач вернулись на прежние даты", fs_undo_conflicts:"Возвращено; {n} изменённых вами не тронуты", fresh_start_n:"{n} просроченных задач",
   fresh_start_body:"Ни одна задача не удаляется — они переносятся или уходят в архив. Статистика и история сохраняются.",
   fs_today:"Все на сегодня", fs_week:"Распределить на неделю",
   fs_undate:"Убрать сроки", fs_archive:"Перенести в архив",
@@ -6245,17 +6245,39 @@ function reviewSheet(r){
    deleted. A reset that does not explain itself is one users are right
    to be afraid of. */
 function freshStartSheet(p){
-  const modes = [["today", t("fs_today")], ["week", t("fs_week")],
+  const modes = [["focus", t("fs_focus")], ["week", t("fs_week")], ["today", t("fs_today")],
                  ["undate", t("fs_undate")], ["archive", t("fs_archive")]];
   return `<h3>${icon("repeat", 18)} ${t("fresh_start")}</h3>
     <div class="hint"><b>${t("fresh_start_n", {n:p.overdue})}</b><br>
       ${t("fresh_start_body")}</div>
     ${p.overdue ? modes.map(([id, label]) => `
-      <button class="btn secondary" data-act="fresh-go" data-mode="${id}"
+      <button class="btn ${id === "focus" ? "" : "secondary"}" data-act="fresh-preview" data-mode="${id}"
               style="margin-top:8px">${label}</button>`).join("")
       : `<div class="empty">${t("empty")}</div>`}
     <button class="btn secondary" data-act="close" style="margin-top:12px">
       ${t("cancel")}</button>`;
+}
+
+/* The result before it happens: how many land on each day and which ones
+   are today's, then one button to do it (audit #15). */
+function freshPreviewSheet(p, mode){
+  const plan = p.plan || [];
+  const today = todayISO();
+  const byDay = {};
+  for(const x of plan) if(!x.archive) byDay[x.to || "none"] = (byDay[x.to || "none"] || 0) + 1;
+  const days = Object.keys(byDay).sort().map(d => `<div class="row small">
+      <span class="grow">${d === "none" ? t("when_none") : d === today ? t("today") : isoToLabel(d)}</span>
+      <b class="num">${byDay[d]}</b></div>`).join("");
+  const todays = plan.filter(x => x.to === today && !x.archive);
+  return `<h3>${icon("repeat", 18)} ${t("fs_preview")}</h3>
+    ${mode === "archive" ? `<div class="hint">${t("fs_archive_n", {n: plan.length})}</div>` : `
+    <div class="card">${days}</div>
+    ${todays.length ? `<label>${t("today")}</label>${todays.slice(0, 5).map(x =>
+      `<div class="small">• ${esc(x.title)}</div>`).join("")}${todays.length > 5
+      ? `<div class="t3 tiny">+${todays.length - 5}</div>` : ""}` : ""}`}
+    <div class="t3 tiny" style="margin-top:8px">${t("fs_undo_hint")}</div>
+    <button class="btn" data-act="fresh-go" data-mode="${mode}" style="margin-top:12px">${t("fs_apply")}</button>
+    <button class="btn secondary" data-act="fresh-start" style="margin-top:8px">${t("back")}</button>`;
 }
 
 /* ---------- settings ----------
@@ -8689,12 +8711,25 @@ const A = {
     try{ openSheet(freshStartSheet(await api("/api/fresh-start"))); }
     catch(e){ handleError(e); }
   },
+  "fresh-preview": async el => {
+    const mode = el.dataset.mode;
+    try{ openSheet(freshPreviewSheet(await api("/api/fresh-start?mode=" + mode), mode)); }
+    catch(e){ handleError(e); }
+  },
   "fresh-go": async el => {
     try{
       const r = await api("/api/fresh-start",
         {method:"POST", body:{mode: el.dataset.mode}});
       closeSheet();
-      toast(t("fs_done", {n:r.moved}));
+      // One tap puts the dates back; tasks edited since are left alone.
+      toast(t("fs_done", {n:r.moved}), r.undo ? t("undo") : undefined, r.undo ? async () => {
+        try{
+          const u = await api("/api/fresh-start/undo", {method:"POST"});
+          toast(u.conflicts?.length ? t("fs_undo_conflicts", {n: u.conflicts.length})
+                                    : t("fs_undone", {n: u.restored}));
+          await loadScreen(state.screen);
+        }catch(e){ handleError(e); }
+      } : undefined);
       setState({dismissedBreak:true});
       await loadScreen(state.screen);
     }catch(e){ closeSheet(); handleError(e); }

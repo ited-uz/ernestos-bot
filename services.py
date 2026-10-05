@@ -38,7 +38,7 @@ from db import (
     AgentAudit, AgentDraft, AgentPreference,
     Birthday, Countdown, DailyReportLog, DailyScore, Feedback, Habit, HabitLog,
     HabitPauseInterval, HabitScheduleVersion, IdempotencyKey, JobRun,
-    Debt, DebtPayment, JournalEntry, MoneyBudget, MoneyEntry, PrayerDay, PrayerLog, Project,
+    Debt, DebtPayment, JournalEntry, MoneyBudget, ResetLog, MoneyEntry, PrayerDay, PrayerLog, Project,
     Referral, ReferralCode, Task,
     Team, TeamActivity, TeamDayScore, TeamHabit, TeamHabitLog, TeamJoinRequest,
     TeamMember, TeamTask, TeamTaskDone, TimerRun, User, UserAchievement,
@@ -4239,6 +4239,7 @@ def break_state(s: Session, ws: int, user: User, *,
 #: What each fresh-start mode does, so the confirmation text and the code cannot
 #: disagree about it. Nothing here deletes a row.
 FRESH_START_MODES = {
+    "focus": "the three most important today, the rest over the next six days",
     "today": "move every overdue task to today",
     "week": "spread overdue tasks across the coming week",
     "undate": "drop the deadlines, keep the tasks",
@@ -4246,27 +4247,106 @@ FRESH_START_MODES = {
 }
 
 
+#: How many returning tasks land on today in "focus" mode, and at most on
+#: any one day when the rest are spread (audit #15).
+FRESH_TODAY = 3
+
+
+def _fresh_overdue(s: Session, ws: int, today: date) -> list[Task]:
+    rows = s.scalars(select(Task).where(
+        Task.workspace_id == ws, Task.archived_at.is_(None),
+        Task.status == "waiting", Task.deadline < today)).all()
+    # Most important first, then the oldest: that order decides who gets today.
+    return sorted(rows, key=lambda t: (_PRIORITY_RANK.get(t.priority, 1), t.deadline, t.id))
+
+
+def fresh_start_plan(s: Session, ws: int, *, mode: str = "focus",
+                     tz: ZoneInfo | None = None) -> list[dict]:
+    """What a reset would do, task by task, without doing it."""
+    today = today_local(tz)
+    overdue = _fresh_overdue(s, ws, today)
+    plan = []
+    rest = 0
+    for index, task in enumerate(overdue):
+        archive, target = False, today
+        if mode == "archive":
+            archive, target = True, task.deadline
+        elif mode == "undate":
+            target = None
+        elif mode == "week":
+            # From tomorrow, round the next seven days, most important first.
+            target = today + timedelta(days=1 + index % 7)
+        elif mode == "focus":
+            if index >= FRESH_TODAY:
+                target = today + timedelta(days=1 + rest % 6)
+                rest += 1
+        plan.append({"id": task.id, "title": task.title, "priority": task.priority,
+                     "from": task.deadline.isoformat() if task.deadline else None,
+                     "to": target.isoformat() if target else None,
+                     "archive": archive})
+    return plan
+
+
 def fresh_start(s: Session, ws: int, *, mode: str = "today",
                 tz: ZoneInfo | None = None) -> int:
-    """Clear the backlog in one move. Returns how many tasks were handled."""
-    today = today_local(tz)
-    overdue = s.scalars(select(Task).where(
-        Task.workspace_id == ws, Task.archived_at.is_(None),
-        Task.status == "waiting", Task.deadline < today)
-        .order_by(Task.deadline, Task.id)).all()
+    """Clear the backlog in one move. Returns how many tasks were handled.
 
-    for index, task in enumerate(overdue):
-        if mode == "archive":
+    Every change is written to a ResetLog first, so `undo_fresh_start` can
+    put the old dates back.
+    """
+    plan = fresh_start_plan(s, ws, mode=mode, tz=tz)
+    snapshot = []
+    for step in plan:
+        task = s.get(Task, step["id"])
+        before = {"id": task.id,
+                  "deadline": task.deadline.isoformat() if task.deadline else None,
+                  "archived": False}
+        if step["archive"]:
             task.archived_at = utcnow()
-        elif mode == "undate":
-            _move_deadline(s, ws, task, None)
-        elif mode == "week":
-            _move_deadline(s, ws, task, today + timedelta(days=index % 7))
         else:
-            _move_deadline(s, ws, task, today)
+            _move_deadline(s, ws, task, date.fromisoformat(step["to"]) if step["to"] else None)
         task.reminder_sent_at = None
+        snapshot.append({**before, "after_deadline": step["to"] if not step["archive"]
+                         else before["deadline"], "after_archived": step["archive"]})
+    if snapshot:
+        s.add(ResetLog(workspace_id=ws, mode=mode,
+                       snapshot=json.dumps(snapshot, ensure_ascii=False)))
     s.commit()
-    return len(overdue)
+    return len(plan)
+
+
+#: An undo is offered for this long after a reset.
+RESET_UNDO_WINDOW = timedelta(days=7)
+
+
+def undo_fresh_start(s: Session, ws: int) -> dict:
+    """Put the last reset back. A task changed since stays as the person left it."""
+    log_row = s.scalar(select(ResetLog).where(
+        ResetLog.workspace_id == ws, ResetLog.undone_at.is_(None),
+        ResetLog.created_at >= utcnow() - RESET_UNDO_WINDOW)
+        .order_by(ResetLog.id.desc()).limit(1))
+    if log_row is None:
+        raise NotFound("reset")
+    restored, conflicts = 0, []
+    for item in json.loads(log_row.snapshot or "[]"):
+        task = s.get(Task, item["id"])
+        if task is None or task.workspace_id != ws:
+            continue
+        now_deadline = task.deadline.isoformat() if task.deadline else None
+        untouched = (now_deadline == item["after_deadline"]
+                     and (task.archived_at is not None) == item["after_archived"]
+                     and task.status == "waiting")
+        if not untouched:
+            conflicts.append({"id": task.id, "title": task.title})
+            continue
+        if item["after_archived"]:
+            task.archived_at = None
+        _move_deadline(s, ws, task,
+                       date.fromisoformat(item["deadline"]) if item["deadline"] else None)
+        restored += 1
+    log_row.undone_at = utcnow()
+    s.commit()
+    return {"restored": restored, "conflicts": conflicts}
 
 
 # ---------------------------------------------------------------------------
@@ -4753,7 +4833,7 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
 #: could leave someone's rows behind — which is why the list is explicit.
 WORKSPACE_TABLES = [AgentAudit, AgentDraft, AgentPreference,
                     TimerRun, HabitLog, HabitScheduleVersion, HabitPauseInterval,
-                    Habit, PrayerLog, PrayerDay, Task,
+                    Habit, PrayerLog, PrayerDay, ResetLog, Task,
                     Project, WeeklyFocus, WeeklyReview, JournalEntry, Birthday,
                     Countdown, Feedback, DailyReportLog, MoneyEntry, MoneyBudget,
                     DebtPayment, Debt]

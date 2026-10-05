@@ -9072,7 +9072,8 @@ class FreshStartIn(BaseModel):
 
 
 @app.get("/api/fresh-start")
-def api_fresh_start_preview(init=Header(default=None,
+def api_fresh_start_preview(mode: str | None = None,
+                            init=Header(default=None,
                                         alias="X-Telegram-Init-Data")):
     """What a reset would touch, before anything is touched.
 
@@ -9083,8 +9084,12 @@ def api_fresh_start_preview(init=Header(default=None,
     with SessionLocal() as s:
         row = s.get(User, user.telegram_id)
         state = svc.break_state(s, ws, row)
+        # With a mode: exactly where each task would go, before anything moves.
+        plan = (svc.fresh_start_plan(s, ws, mode=mode, tz=svc.user_tz(user))
+                if mode in svc.FRESH_START_MODES else None)
     return {"overdue": state["overdue"], "days_away": state["days_away"],
-            "modes": list(svc.FRESH_START_MODES)}
+            "modes": list(svc.FRESH_START_MODES), "plan": plan,
+            "today_cap": svc.FRESH_TODAY}
 
 
 @app.post("/api/fresh-start")
@@ -9099,7 +9104,15 @@ def api_fresh_start(body: FreshStartIn,
     mode = body.mode if body.mode in svc.FRESH_START_MODES else "today"
     with SessionLocal() as s:
         moved = svc.fresh_start(s, ws, mode=mode, tz=svc.user_tz(user))
-    return {"ok": True, "moved": moved, "mode": mode}
+    return {"ok": True, "moved": moved, "mode": mode, "undo": bool(moved)}
+
+
+@app.post("/api/fresh-start/undo")
+def api_fresh_start_undo(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Put the last reset back; tasks edited since are listed, not overwritten."""
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        return {"ok": True, **svc.undo_fresh_start(s, ws)}
 
 
 class ReviewIn(BaseModel):

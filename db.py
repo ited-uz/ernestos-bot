@@ -665,6 +665,26 @@ class Debt(Base):
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class ResetLog(Base):
+    """What one "fresh start" changed, so it can be undone (audit #47).
+
+    `snapshot` is a JSON list of {id, deadline, archived, after_deadline,
+    after_archived}: the task's state before, and what the reset set it to.
+    Undo puts back only tasks still exactly as the reset left them; one the
+    person has edited since is reported as a conflict and left alone.
+    """
+
+    __tablename__ = "reset_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    mode: Mapped[str] = mapped_column(String(8))
+    snapshot: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    undone_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class DebtPayment(Base):
     """One partial return. `Debt.amount` stays the original sum; what is still
     owed is that minus these rows, so the history of who paid what and when is

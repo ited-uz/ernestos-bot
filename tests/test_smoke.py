@@ -3945,7 +3945,7 @@ def test_the_reset_preview_writes_nothing(alice):
     before = alice.get("/api/tasks?days=365").json()["overdue"]
     body = alice.get("/api/fresh-start").json()
     assert body["overdue"] >= 3
-    assert set(body["modes"]) == {"today", "week", "undate", "archive"}
+    assert set(body["modes"]) == {"focus", "today", "week", "undate", "archive"}
     assert len(alice.get("/api/tasks?days=365").json()["overdue"]) == len(before)
 
 
@@ -10882,3 +10882,58 @@ def test_older_misses_of_a_series_are_archived_not_piled_up(fresh):
         s.refresh(a)
         s.refresh(b)
         assert a.archived_at is not None and b.archived_at is None
+
+
+
+def test_focus_reset_puts_three_on_today_and_shows_it_first(fresh):
+    """Audit #15: a return from a break is not 12 tasks due today; the plan is
+    visible before anything moves."""
+    today = svc.today_local()
+    for n in range(12):
+        fresh.post("/api/tasks", json={"title": f"Eski {n}", "priority": "high" if n == 11 else "medium",
+                                       "deadline": (today - timedelta(days=10 - (n % 5))).isoformat()})
+    plan = fresh.get("/api/fresh-start?mode=focus").json()["plan"]
+    assert len(plan) == 12
+    on_today = [x for x in plan if x["to"] == today.isoformat()]
+    assert len(on_today) == 3 and on_today[0]["title"] == "Eski 11", "most important first"
+    per_day = {}
+    for x in plan:
+        per_day[x["to"]] = per_day.get(x["to"], 0) + 1
+    assert max(per_day.values()) <= 3
+    # The preview wrote nothing.
+    assert len(fresh.get("/api/tasks?days=365").json()["overdue"]) == 12
+    assert fresh.post("/api/fresh-start", {"mode": "focus"}).json()["moved"] == 12
+    assert len([x for x in svc_tasks_due_today(fresh) if x["title"].startswith("Eski")]) == 3
+
+
+def svc_tasks_due_today(caller):
+    with SessionLocal() as s:
+        return svc.tasks_due_today(s, svc.workspace_id_for(s, caller.user["id"]))
+
+
+def test_a_reset_can_be_undone_without_overwriting_later_edits(fresh):
+    """Audit #47: undo restores dates and archive state; a task edited since is a
+    conflict, left as the person set it."""
+    today = svc.today_local()
+    old = [(today - timedelta(days=d)).isoformat() for d in (3, 4, 5)]
+    ids = [fresh.post("/api/tasks", json={"title": f"T{n}", "deadline": d}).json()["id"]
+           for n, d in enumerate(old)]
+    fresh.post("/api/fresh-start", {"mode": "archive"})
+    with SessionLocal() as s:
+        assert all(s.get(db.Task, i).archived_at is not None for i in ids)
+    r = fresh.post("/api/fresh-start/undo", {}).json()
+    assert r["restored"] == 3 and r["conflicts"] == []
+    with SessionLocal() as s:
+        rows = [s.get(db.Task, i) for i in ids]
+        assert all(t.archived_at is None for t in rows)
+        assert [t.deadline.isoformat() for t in rows] == old
+    # Second reset, then an edit, then undo.
+    fresh.post("/api/fresh-start", {"mode": "today"})
+    edited = (today + timedelta(days=9)).isoformat()
+    fresh.patch(f"/api/tasks/{ids[0]}", json={"deadline": edited})
+    r = fresh.post("/api/fresh-start/undo", {}).json()
+    assert r["restored"] == 2 and [c["id"] for c in r["conflicts"]] == [ids[0]]
+    with SessionLocal() as s:
+        assert s.get(db.Task, ids[0]).deadline.isoformat() == edited
+        assert s.get(db.Task, ids[1]).deadline.isoformat() == old[1]
+    assert fresh.post("/api/fresh-start/undo", {}).status_code == 404
