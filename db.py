@@ -129,6 +129,9 @@ class User(Base):
     #: (audit #37). Both NULL — off. The window may cross midnight.
     quiet_from: Mapped[time | None] = mapped_column(Time, nullable=True)
     quiet_to: Mapped[time | None] = mapped_column(Time, nullable=True)
+    #: Minutes of focused time the person has on an ordinary day; NULL — not
+    #: given. Compared with today's planned minutes (audit #2).
+    day_capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     #: How many real actions this account has taken — a task ticked, a habit
     #: logged, a prayer recorded. The channel is not asked for until this

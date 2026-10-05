@@ -4750,7 +4750,51 @@ def home(s: Session, ws: int, user: User) -> dict:
         "journal_total": len(JOURNAL_KEYS),
         "active_timer": active_timer(s, ws),
         "break": break_state(s, ws, user, tz=tz),
+        "load": day_load(s, ws, user, tz=tz),
     }
+
+
+def day_load(s: Session, ws: int, user: User, *, tz: ZoneInfo | None = None) -> dict:
+    """Today's plan in minutes against the time the person said they have.
+
+    A task's length is its timer (set, or read from "2h" in the title); a
+    timed habit counts too. Nothing is changed here: when the plan is bigger
+    than the day, the least important tasks are *offered* for tomorrow, and
+    only the person moves them (audit #2).
+    """
+    tz = tz or user_tz(user)
+    today = today_local(tz)
+    tasks = [t for t in tasks_due_today(s, ws, tz=tz) if t["status"] != "done"]
+    picked = {t["id"] for t in tasks}
+    tasks += [t for t in top3_tasks(s, ws, today, tz=tz)
+              if t["status"] != "done" and t["id"] not in picked]
+    planned, unestimated = 0, 0
+    sized = []
+    for t in tasks:
+        minutes = t.get("timer_minutes") or 0
+        if minutes:
+            planned += minutes
+            sized.append(t)
+        else:
+            unestimated += 1
+    for h in list_habits(s, ws, today, tz=tz):
+        if h["due"] and not h["done"] and h.get("timer_minutes"):
+            planned += h["timer_minutes"]
+    capacity = user.day_capacity or 0
+    over = bool(capacity) and planned > capacity
+    suggest = []
+    if over:
+        excess = planned - capacity
+        # Lowest priority first, then the longest: fewest moves to fit.
+        for t in sorted(sized, key=lambda t: (-_PRIORITY_RANK.get(t["priority"], 1),
+                                              -(t["timer_minutes"] or 0))):
+            if excess <= 0 or t.get("top3"):
+                continue
+            suggest.append({"id": t["id"], "title": t["title"],
+                            "minutes": t["timer_minutes"], "priority": t["priority"]})
+            excess -= t["timer_minutes"]
+    return {"planned_min": planned, "capacity_min": capacity, "over": over,
+            "unestimated": unestimated, "suggest": suggest}
 
 
 # ---------------------------------------------------------------------------
@@ -6358,6 +6402,7 @@ def prefs_for(user: User) -> dict:
         "habit_reminders": False if user.habit_reminders is None else bool(user.habit_reminders),
         "quiet_from": user.quiet_from.strftime("%H:%M") if user.quiet_from else "",
         "quiet_to": user.quiet_to.strftime("%H:%M") if user.quiet_to else "",
+        "day_capacity": user.day_capacity or 0,
     }
 
 
@@ -6396,6 +6441,11 @@ def save_prefs(s: Session, user: User, **fields) -> dict:
     for key in ("quiet_from", "quiet_to"):
         if key in fields:
             setattr(user, key, fields[key])
+    if fields.get("day_capacity") is not None:
+        minutes = int(fields["day_capacity"])
+        if not 0 <= minutes <= 18 * 60:
+            raise ValueError("bad_capacity")
+        user.day_capacity = minutes or None
     s.commit()
     return prefs_for(user)
 

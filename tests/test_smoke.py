@@ -11158,3 +11158,22 @@ async def test_reminders_in_quiet_hours_arrive_silently_with_snooze_buttons(fres
     buttons = [b.callback_data for row in snoozed["reply_markup"].inline_keyboard for b in row
                if b.callback_data]
     assert f'snz:t:{task["id"]}:15' in buttons
+
+
+def test_a_plan_bigger_than_the_day_is_flagged_not_changed(fresh):
+    """Audit #2: 2 h free, 5 h planned → a warning and lower-priority suggestions;
+    the tasks themselves are untouched."""
+    today = svc.today_local().isoformat()
+    big = fresh.post("/api/tasks", json={"title": "Maqola", "deadline": today, "timer_minutes": 180,
+                                         "priority": "high"}).json()
+    low = fresh.post("/api/tasks", json={"title": "Pochta", "deadline": today, "timer_minutes": 120,
+                                         "priority": "low"}).json()
+    load = fresh.get("/api/home").json()["load"]
+    assert load["planned_min"] == 300 and load["capacity_min"] == 0 and not load["over"]
+    fresh.post("/api/prefs", {"day_capacity": 120})
+    load = fresh.get("/api/home").json()["load"]
+    assert load["over"] and [x["id"] for x in load["suggest"]][0] == low["id"]
+    with SessionLocal() as s:
+        assert s.get(db.Task, big["id"]).deadline.isoformat() == today
+        assert s.get(db.Task, low["id"]).deadline.isoformat() == today
+    assert fresh.post("/api/prefs", {"day_capacity": 5000}).status_code == 422

@@ -7362,6 +7362,8 @@ class PrefsIn(BaseModel):
     #: Quiet hours, HH:MM; "" switches them off.
     quiet_from: str | None = Field(default=None, max_length=5)
     quiet_to: str | None = Field(default=None, max_length=5)
+    #: Focused minutes on an ordinary day; 0 clears it.
+    day_capacity: int | None = Field(default=None, ge=0, le=18 * 60)
 
 
 def _time(value: str | None) -> dtime | None:
