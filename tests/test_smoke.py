@@ -11255,3 +11255,19 @@ def test_a_reset_asks_what_is_still_needed_first(fresh):
         assert all(s.get(db.Task, i).archived_at is not None for i in ids[:2])
         assert all(s.get(db.Task, i).archived_at is None for i in ids[2:])
     assert fresh.post("/api/fresh-start/undo", {}).json()["restored"] == 5
+
+
+def test_the_review_suggests_changes_from_the_weeks_numbers(fresh):
+    """Audit #16 (rest): late work, a goal pushed again and waiting tasks turn
+    into suggestions that point at existing actions; nothing is applied."""
+    today = svc.today_local()
+    for n in range(3):
+        fresh.post("/api/tasks", json={"title": f"Late {n}", "deadline": (today - timedelta(days=2)).isoformat()})
+    waiting = fresh.post("/api/tasks", json={"title": "Mijoz"}).json()["id"]
+    fresh.post(f"/api/tasks/{waiting}/block", {"reason": "reply"})
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        old = svc.add_focus(s, ws, "Kitob", today - timedelta(days=7))
+        svc.carry_focus_forward(s, ws, old.id)
+    keys = {x["key"] for x in fresh.get("/api/review").json()["suggestions"]}
+    assert {"reset", "shrink", "blocked"} <= keys

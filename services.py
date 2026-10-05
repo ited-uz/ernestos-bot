@@ -4515,7 +4515,33 @@ def weekly_review(s: Session, ws: int, user: User,
             "next_focus": row.next_focus if row else "",
         },
         "saved": row is not None,
+        "suggestions": _review_suggestions(s, ws, focus, missed, averages, today),
     }
+
+
+def _review_suggestions(s: Session, ws: int, focus: list[dict], overdue: int,
+                        averages: dict, today: date) -> list[dict]:
+    """What the week's numbers suggest changing — offered, never applied.
+
+    Each item names an action the app already has; the person taps it or not
+    (audit #16).
+    """
+    out = []
+    if overdue >= 3:
+        out.append({"key": "reset", "n": overdue})
+    for goal in focus:
+        if not goal["done"] and goal.get("carries", 0) >= 1:
+            out.append({"key": "shrink", "id": goal["id"], "title": goal["title"],
+                        "n": goal["carries"] + 1})
+    habits = [h for h in list_habits(s, ws, today) if h["due"] and h["scored"]]
+    if len(habits) > 3 and (averages.get("habits") or 0) < 50:
+        out.append({"key": "fewer_habits", "n": len(habits)})
+    blocked = s.scalar(select(func.count(Task.id)).where(
+        Task.workspace_id == ws, Task.archived_at.is_(None), Task.status == "waiting",
+        Task.blocked_reason.is_not(None))) or 0
+    if blocked:
+        out.append({"key": "blocked", "n": int(blocked)})
+    return out[:4]
 
 
 def save_weekly_review(s: Session, ws: int, *, went_well: str = "",

@@ -1326,7 +1326,7 @@ const DICT = {
   /* review */
   review:"Haftani yakunlash", review_prompt:"Haftani yakunlaysizmi?",
   review_q1:"Nima yaxshi ketdi?", review_q2:"Nima to'sqinlik qildi?",
-  review_q3:"Keyingi haftadagi asosiy fokus nima?", review_make_goal:"Buni keyingi hafta maqsadi qilish", review_due:"hafta yakuni", skip:"Keyinroq",
+  review_q3:"Keyingi haftadagi asosiy fokus nima?", review_make_goal:"Buni keyingi hafta maqsadi qilish", review_suggest:"Hafta raqamlari nimani taklif qiladi", rs_reset:"{n} ta vazifa kechikkan — yengil reset bilan qayta taqsimlang", rs_shrink:"«{title}» {n}-hafta suriladi — kichikroq qadamga bo'ling", rs_fewer_habits:"{n} ta odat, yarmidan kami bajarildi — kamroq odat bilan boshlang", rs_blocked:"{n} ta vazifa javob kutmoqda — kimdandir so'rang", review_due:"hafta yakuni", skip:"Keyinroq",
   /* stats */
   week:"Hafta", month:"Oy", year:"Yil", average:"O'rtacha",
   best_day:"Eng yaxshi kun", vs_prev:"oldingi davrga nisbatan",
@@ -1697,7 +1697,7 @@ const DICT = {
   mood_good:"Good", mood_great:"Great",
   review:"Close the week", review_prompt:"Close out the week?",
   review_q1:"What went well?", review_q2:"What got in the way?",
-  review_q3:"What is next week's main focus?", review_make_goal:"Make this next week's goal", review_due:"week's end", skip:"Later",
+  review_q3:"What is next week's main focus?", review_make_goal:"Make this next week's goal", review_suggest:"What the week's numbers suggest", rs_reset:"{n} tasks are late — spread them again with a fresh start", rs_shrink:"«{title}» is moving for week {n} — split it smaller", rs_fewer_habits:"{n} habits, under half done — start with fewer", rs_blocked:"{n} tasks wait on a reply — follow up", review_due:"week's end", skip:"Later",
   week:"Week", month:"Month", year:"Year", average:"Average",
   best_day:"Best day", vs_prev:"vs the previous period",
   how_calculated:"How was this calculated?",
@@ -2063,7 +2063,7 @@ const DICT = {
   mood_good:"Хорошо", mood_great:"Очень хорошо",
   review:"Итоги недели", review_prompt:"Подведём итоги недели?",
   review_q1:"Что прошло хорошо?", review_q2:"Что мешало?",
-  review_q3:"Главный фокус на следующую неделю?", review_make_goal:"Сделать целью следующей недели", review_due:"конец недели", skip:"Позже",
+  review_q3:"Главный фокус на следующую неделю?", review_make_goal:"Сделать целью следующей недели", review_suggest:"Что подсказывают цифры недели", rs_reset:"Просрочено задач — {n}, перераспределите мягким сбросом", rs_shrink:"«{title}» переносится {n}-ю неделю — разбейте на шаги", rs_fewer_habits:"Привычек {n}, выполнено меньше половины — начните с меньшего", rs_blocked:"Задач в ожидании ответа — {n}, напомните", review_due:"конец недели", skip:"Позже",
   week:"Неделя", month:"Месяц", year:"Год", average:"Среднее",
   best_day:"Лучший день", vs_prev:"к прошлому периоду",
   how_calculated:"Как это посчитано?",
@@ -6424,6 +6424,15 @@ function reviewSheet(r){
       <div class="metric wide"><div class="k">${t("habits")} · ${t("prayer")}</div>
         <div class="v num">${r.habit_pct}% <span class="k">${r.prayer_pct}%</span></div></div>
     </div>
+    ${(r.suggestions || []).length ? `<label>${t("review_suggest")}</label>
+      ${r.suggestions.map(x => {
+        const act = {reset: `data-act="fresh-start"`, shrink: `data-act="focus-open" data-id="${x.id}"
+              data-title="${esc(x.title || "")}" data-priority="medium" data-done="0"`,
+              fewer_habits: `data-act="nav" data-screen="habits"`,
+              blocked: `data-act="nav" data-screen="tasks"`}[x.key] || "";
+        return `<div class="item pressable small" ${act} style="min-height:44px;margin-top:6px">
+          <div class="grow">${t("rs_" + x.key, {n: x.n, title: esc(x.title || "")})}</div>${icon("chevron", 15)}</div>`;
+      }).join("")}` : ""}
     <label>${t("review_q1")}</label>
     <textarea id="rv-well">${esc(a.went_well || "")}</textarea>
     <label>${t("review_q2")}</label>
