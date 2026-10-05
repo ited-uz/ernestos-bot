@@ -48,9 +48,83 @@ def public(row):
         status, error = "failed", "processing_interrupted"
     return {"id": row.id, "status": status, "revision": row.revision,
             "transcript": row.transcript, "language": row.detected_language, "preview": row.preview,
+            "editable": _editable(row) if status == "ready" else [],
             "error": error, "result": json.loads(row.result),
             "created_at": row.created_at.isoformat() + "Z",
             "updated_at": row.updated_at.isoformat() + "Z"}
+
+
+#: Fields the app can change by hand on a proposal, without asking the model
+#: again — fixing the hour must not re-guess the rest (audit #29).
+EDITABLE_FIELDS = ("title", "name", "deadline", "due_time", "remind_at", "priority",
+                   "amount", "note", "person", "day")
+
+
+def _editable(row):
+    try:
+        actions = json.loads(row.plan or "{}").get("actions") or []
+    except ValueError:
+        return []
+    out = []
+    for i, a in enumerate(actions):
+        if a.get("operation") == "delete":
+            continue
+        fields = {k: v for k, v in (a.get("fields") or {}).items() if k in EDITABLE_FIELDS}
+        if a.get("operation") == "create" and a.get("entity") == "task":
+            fields.setdefault("deadline", None)
+            fields.setdefault("due_time", None)
+        if fields:
+            out.append({"index": i, "entity": a["entity"], "operation": a["operation"],
+                        "name": a.get("name"), "fields": fields})
+    return out
+
+
+def edit_field(uid, ws, draft_id, revision, index, field, value):
+    """Change one field of a ready proposal by hand.
+
+    The whole plan is validated again exactly as the model's plan was, the
+    card is redrawn, and the revision moves on — so an older AI answer (or a
+    second tab) can no longer overwrite this edit.
+    """
+    if field not in EDITABLE_FIELDS:
+        raise AgentError("invalid_fields", 422)
+    with db.SessionLocal() as s:
+        row = owned(s, ws, draft_id)
+        if row.revision != revision or row.status != "ready":
+            raise AgentError("stale_draft")
+        proposed = json.loads(row.plan or "{}")
+        actions = proposed.get("actions") or []
+        if not 0 <= index < len(actions):
+            raise AgentError("invalid_action", 422)
+        lang = s.get(db.User, uid).language or "uz"
+        specs = []
+        for i, a in enumerate(actions):
+            fields = dict(a.get("fields") or {})
+            if i == index:
+                fields[field] = value
+            specs.append({"entity": a["entity"], "operation": a["operation"], "scope": a["scope"],
+                          "team_id": a.get("team_id"), "target_id": a.get("target_id"),
+                          "changes": [{"field": k, "value": None if v is None else str(v)}
+                                      for k, v in fields.items()]})
+        try:
+            plan = Plan.model_validate({"language": lang, "understood": None, "question": None,
+                                        "actions": specs})
+            prepared = prepare(s, uid, ws, plan)
+        except (ValidationError, ValueError, TypeError):
+            raise AgentError("invalid_fields", 422) from None
+        summary = preview(prepared, lang, proposed.get("planned_day"))
+        won = s.execute(update(db.AgentDraft).where(
+            db.AgentDraft.id == draft_id, db.AgentDraft.workspace_id == ws,
+            db.AgentDraft.revision == revision, db.AgentDraft.status == "ready")
+            .values(revision=revision + 1, plan=dumps({**proposed, "actions": prepared}),
+                    preview=summary, updated_at=db.utcnow())
+            .execution_options(synchronize_session=False)).rowcount
+        if not won:
+            raise AgentError("stale_draft")
+        s.refresh(row)
+        _audit(s, row, "edited", {"index": index, "field": field})
+        s.commit()
+        return public(row)
 
 
 def get_draft(ws, draft_id):

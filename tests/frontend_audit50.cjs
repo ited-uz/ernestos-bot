@@ -149,5 +149,23 @@ const posts = url => calls.filter(c => c.method === 'POST' && c.url === url);
   assert.equal(sent[0].key, sent[1].key, 'the same request key, so it is not done twice');
   assert.equal(run('voice.kept'), null, 'dropped once the server answered');
 
+  // #29 — only the changed field is sent, on the draft's revision.
+  const edits = [];
+  ctx.fetch = async (url, opts={}) => {
+    const body = opts.body ? JSON.parse(opts.body) : null;
+    edits.push({url, body});
+    return new Response(JSON.stringify({id:'d1', status:'ready', revision: body.revision + 1, preview:'ok',
+      editable:[{index:0, entity:'task', fields:{title:'Hisobot', due_time:'15:00'}}]}), {status:200});
+  };
+  run(`voice.draft={id:'d1', status:'ready', revision:3, preview:'x',
+       editable:[{index:0, entity:'task', fields:{title:'Hisobot', due_time:'10:00'}}]};
+       openSheet(voiceCardSheet(voice.draft), 'voice');`);
+  assert.ok(document.getElementById('sheet-body').innerHTML.includes('ve-0-due_time'));
+  run(`for(const [f, v] of [['title','Hisobot'], ['due_time','15:00']]){
+         const el = document.getElementById('ve-0-' + f); el.value = v; el.dataset.orig = f === 'title' ? 'Hisobot' : '10:00'; }`);
+  await run(`A["voice-edit-save"]()`);
+  assert.equal(edits.length, 1);
+  assert.deepEqual(edits[0].body, {revision:3, index:0, field:'due_time', value:'15:00'});
+
   console.log('Audit-50 frontend checks passed');
 })().catch(e => { console.error(e); process.exitCode = 1; });

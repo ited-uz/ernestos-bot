@@ -881,3 +881,33 @@ def test_agent_cannot_edit_or_share_a_debt(person, monkeypatch):
                 action("debt", amount=5, direction="lent")):
         draft = capture(person, monkeypatch, plan(bad))
         assert draft["status"] == "failed", bad
+
+
+def test_one_field_of_a_proposal_is_fixed_by_hand_and_the_rest_kept(person, monkeypatch):
+    """Audit #29: change only the hour; title and date stay; an old revision loses."""
+    caller, uid, ws = person
+    tomorrow = (svc.today_local() + timedelta(days=1)).isoformat()
+    draft = capture(person, monkeypatch, plan(action(title="Hisobot", deadline=tomorrow, due_time="10:00")))
+    assert draft["status"] == "ready"
+    item = draft["editable"][0]
+    assert item["fields"]["due_time"] == "10:00" and item["fields"]["title"] == "Hisobot"
+    r = caller.post(f'/api/agent/drafts/{draft["id"]}/edit',
+                    {"revision": draft["revision"], "index": 0, "field": "due_time", "value": "15:00"})
+    assert r.status_code == 200
+    edited = r.json()
+    assert edited["revision"] == draft["revision"] + 1
+    fields = edited["editable"][0]["fields"]
+    assert (fields["title"], fields["deadline"], fields["due_time"]) == ("Hisobot", tomorrow, "15:00")
+    # The stale revision cannot write over it.
+    stale = caller.post(f'/api/agent/drafts/{draft["id"]}/edit',
+                        {"revision": draft["revision"], "index": 0, "field": "title", "value": "X"})
+    assert stale.status_code == 409
+    # A value the model could not have proposed is refused the same way.
+    bad = caller.post(f'/api/agent/drafts/{draft["id"]}/edit',
+                      {"revision": edited["revision"], "index": 0, "field": "due_time", "value": "25:99"})
+    assert bad.status_code == 422
+    done = caller.post(f'/api/agent/drafts/{draft["id"]}/confirm', {"revision": edited["revision"]})
+    assert done.status_code == 200
+    with db.SessionLocal() as s:
+        task = s.scalar(select(db.Task).where(db.Task.workspace_id == ws, db.Task.title == "Hisobot"))
+        assert task.due_time.strftime("%H:%M") == "15:00" and task.deadline.isoformat() == tomorrow

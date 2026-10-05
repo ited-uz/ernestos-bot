@@ -19,6 +19,17 @@ class TextIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     text: str = Field(min_length=1, max_length=6000)
     request_key: str = Field(pattern=KEY)
+    #: An answer or correction to an open proposal, as in the bot.
+    draft_id: str | None = Field(default=None, max_length=64)
+    revision: int | None = Field(default=None, ge=1)
+
+
+class FieldEdit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    revision: int = Field(ge=1)
+    index: int = Field(ge=0, le=5)
+    field: str = Field(max_length=16)
+    value: str | None = Field(default=None, max_length=300)
 
 
 class Revision(BaseModel):
@@ -65,8 +76,16 @@ def install(app, auth):
     @router.post("/text")
     async def text(body: TextIn, x_telegram_init_data: str | None = Header(None)):
         user, ws = auth(x_telegram_init_data)
-        draft = await core.ingest(user.telegram_id, ws, body.request_key, text=body.text)
+        draft = await core.ingest(user.telegram_id, ws, body.request_key, text=body.text,
+                                  draft_id=body.draft_id, revision=body.revision)
         return card(draft, user.language)
+
+    @router.post("/drafts/{draft_id}/edit")
+    def edit(draft_id: str, body: FieldEdit, x_telegram_init_data: str | None = Header(None)):
+        """Fix one field (the hour, the date, the name) without asking the model again."""
+        user, ws = auth(x_telegram_init_data)
+        return card(core.edit_field(user.telegram_id, ws, draft_id, body.revision, body.index,
+                                    body.field, body.value), user.language)
 
     @router.post("/audio")
     async def audio(request: Request, x_telegram_init_data: str | None = Header(None),
