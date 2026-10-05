@@ -5407,16 +5407,16 @@ function quickSheet(){
 async function quickTask(title, dest, deadline){
   let got = null;
   if(dest.team){
-    return save(async () => {
-      got = await api("/api/quick", {method:"POST", body:{title, preview:true, deadline: deadline || null}});
-      if(got.ask === "past_time") return;
-      if(got.money){ got = {...got, title, deadline: todayISO(), due_time: null}; }
-      await api(`/api/teams/${dest.id}/tasks`, {method:"POST", body:{
-        title: got.title, deadline: got.deadline || todayISO(), due_time: got.due_time || null}});
-    }, state.screen, false, undefined, {body:{title}}).then(() => {
-      if(got?.ask === "past_time") return askQuickDay(got, title);
-      if(got) toast(quickSaved(got));
-    });
+    /* Parse first (writes nothing, costs nothing), then create inside save()
+       so the create — not the parse — carries the idempotency key. */
+    try{ got = await api("/api/quick/parse", {method:"POST", body:{title}}); }
+    catch(e){ return handleError(e); }
+    if(deadline) got = {...got, ask: null, deadline};
+    if(got.ask === "past_time") return askQuickDay(got, title);
+    const body = {title: got.title || title, deadline: got.deadline || todayISO(),
+                  due_time: got.due_time || null};
+    return save(() => api(`/api/teams/${dest.id}/tasks`, {method:"POST", body}),
+                state.screen, false, quickSaved(got), {body});
   }
   save(async () => { got = await api("/api/quick", {method:"POST", body:{title, deadline: deadline || null}}); },
        state.screen, true, undefined, {body:{title}}).then(() => {
@@ -7660,7 +7660,9 @@ function flushQueue(){
                               headers: {"X-Idempotency-Key": item.key}});
         sent++;
       }catch(e){
-        if(isOffline(e) || e.status >= 500 || e.status === 429) break;
+        // Still being processed (the same key is in flight): try again later.
+        if(isOffline(e) || e.status >= 500 || e.status === 429
+           || (e.status === 409 && e.detail === "in_progress")) break;
         refused.push(item.label || item.path);
       }
       q = loadQueue().filter(x => x.key !== item.key);
@@ -9114,7 +9116,7 @@ const A = {
       // One tap puts the dates back; tasks edited since are left alone.
       toast(t("fs_done", {n:r.moved}), r.undo ? t("undo") : undefined, r.undo ? async () => {
         try{
-          const u = await api("/api/fresh-start/undo", {method:"POST"});
+          const u = await api("/api/fresh-start/undo", {method:"POST", body:{reset_id: r.reset_id}});
           toast(u.conflicts?.length ? t("fs_undo_conflicts", {n: u.conflicts.length})
                                     : t("fs_undone", {n: u.restored}));
           await loadScreen(state.screen);

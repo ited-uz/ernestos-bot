@@ -833,6 +833,10 @@ def log_habit_qty(s: Session, ws: int, habit_id: int, qty: int,
     12 of 20 pages is neither 20 nor zero (audit #6).
     """
     habit = _owned_habit(s, ws, habit_id)
+    if habit.archived_at is not None:
+        raise NotFound("habit")
+    if habit.is_protected:
+        raise ValueError("protected")
     if not habit.target_qty:
         raise ValueError("not_measured")
     qty = int(qty)
@@ -840,11 +844,25 @@ def log_habit_qty(s: Session, ws: int, habit_id: int, qty: int,
         raise ValueError("bad_qty")
     tz = tz or _habit_tz(s, ws)
     day = day or today_local(tz)
+    # The same gates as the tick: a paused habit is not owed, and a habit
+    # done by its timer is not reached by typing a number.
+    if calendar_for(s, [habit], tz).paused_on(habit, day):
+        raise ValueError("paused")
+    if qty >= habit.target_qty and timer_blocks(s, ws, "habit", habit, day):
+        raise ValueError("timer_required")
     row = s.scalar(select(HabitLog).where(
         HabitLog.workspace_id == ws, HabitLog.habit_id == habit_id, HabitLog.day == day))
     if row is None:
         row = HabitLog(workspace_id=ws, habit_id=habit_id, day=day, done=False)
         s.add(row)
+        try:
+            with s.begin_nested():
+                s.flush()
+        except IntegrityError:
+            # A second save raced the first; write onto the row it made.
+            row = s.scalar(select(HabitLog).where(
+                HabitLog.workspace_id == ws, HabitLog.habit_id == habit_id,
+                HabitLog.day == day))
     row.qty = qty
     row.done = qty >= habit.target_qty
     row.logged_at = now_local(tz) if qty else None
@@ -2053,6 +2071,8 @@ def add_task(s: Session, ws: int, title: str, *, deadline: date | None = None,
                 recurrence=clean_recurrence(recurrence),
                 timer_minutes=clean_timer_minutes(timer_minutes))
     s.add(task)
+    if task.recurrence:
+        _ROLLED.pop(ws, None)  # a new series may already owe today's copy
     s.commit()
     return task
 
@@ -2152,6 +2172,23 @@ def roll_recurring(s: Session, ws: int, tz: ZoneInfo | None = None) -> int:
             older.archived_at = utcnow()
     if made or any(len(c) > 1 for c in series.values()):
         s.commit()
+    return made
+
+
+#: workspace id -> the local day its series were last rolled. Rolling is
+#: needed once a day (a copy can only be missed when a day ends), so the hot
+#: read paths — Home, the task list, the reminder job — check this first
+#: instead of querying every recurring task on every request.
+_ROLLED: dict[int, date] = {}
+
+
+def roll_recurring_daily(s: Session, ws: int, tz: ZoneInfo | None = None) -> int:
+    tz = tz or _habit_tz(s, ws)
+    today = today_local(tz)
+    if _ROLLED.get(ws) == today:
+        return 0
+    made = roll_recurring(s, ws, tz)
+    _ROLLED[ws] = today
     return made
 
 
@@ -2369,6 +2406,7 @@ def update_task(s: Session, ws: int, task_id: int, **fields) -> Task:
         task.reminder_sent_at = None
     if "recurrence" in fields:
         task.recurrence = clean_recurrence(fields["recurrence"])
+        _ROLLED.pop(ws, None)
     if "project_id" in fields:
         pid = fields["project_id"]
         if pid:
@@ -2486,7 +2524,7 @@ def list_tasks(s: Session, ws: int, *, horizon_days: int = 7,
     needle = search.strip().lower()[:100]
 
     settle_timers(s, ws)
-    roll_recurring(s, ws, tz)
+    roll_recurring_daily(s, ws, tz)
     runs = open_timer_runs(s, ws, "task")
     stmt = select(Task).where(Task.workspace_id == ws, Task.archived_at.is_(None))
     if not include_done:
@@ -2552,7 +2590,7 @@ def completed_tasks(s: Session, ws: int, limit: int = 200, *, search: str = "",
 
 
 def tasks_due_today(s: Session, ws: int, *, tz: ZoneInfo | None = None) -> list[dict]:
-    roll_recurring(s, ws, tz)
+    roll_recurring_daily(s, ws, tz)
     today = today_local(tz)
     tasks = s.scalars(select(Task).where(
         Task.workspace_id == ws, Task.archived_at.is_(None),
@@ -2666,7 +2704,7 @@ def week_focus(s: Session, ws: int, when: date | None = None, *,
     return {
         "primary": primary, "supporting": supporting,
         "carried": [r for r in everything if r["carried"]],
-        "slots_free": max(MAX_FOCUS - len(everything), 0),
+        "slots_free": max(MAX_FOCUS - len(rows), 0),
         "done": sum(1 for r in rows if r["done"]), "total": len(rows),
     }
 
@@ -2700,7 +2738,8 @@ def add_focus(s: Session, ws: int, title: str, when: date | None = None, *,
         priority = DEFAULT_MISSION_PRIORITY
     start = week_start(when or today_local(tz))
     used = {r.slot for r in s.scalars(select(WeeklyFocus).where(
-        WeeklyFocus.workspace_id == ws, WeeklyFocus.week_start == start)).all()}
+        WeeklyFocus.workspace_id == ws, WeeklyFocus.week_start == start,
+        WeeklyFocus.carried_to.is_(None))).all()}
     free = next((n for n in range(1, MAX_FOCUS + 1) if n not in used), None)
     if free is None:
         raise ValueError("week is full")
@@ -2720,7 +2759,8 @@ def carry_focus_forward(s: Session, ws: int, focus_id: int, *,
 
     target = row.week_start + timedelta(days=7)
     used = {r.slot for r in s.scalars(select(WeeklyFocus).where(
-        WeeklyFocus.workspace_id == ws, WeeklyFocus.week_start == target)).all()}
+        WeeklyFocus.workspace_id == ws, WeeklyFocus.week_start == target,
+        WeeklyFocus.carried_to.is_(None))).all()}
     free = next((n for n in range(1, MAX_FOCUS + 1) if n not in used), None)
     if free is None:
         raise ValueError("week is full")
@@ -2732,8 +2772,10 @@ def carry_focus_forward(s: Session, ws: int, focus_id: int, *,
                         carried_from=row.id)
     s.add(moved)
     s.flush()
-    # The old week keeps its row, marked as moved on (audit #17).
+    # The old week keeps its row, marked as moved on (audit #17). Its slot is
+    # given up — a negative, unique number — so the week can take a new goal.
     row.carried_to = moved.id
+    row.slot = -row.id
     s.commit()
     return moved
 
@@ -4417,7 +4459,8 @@ def fresh_start_plan(s: Session, ws: int, *, mode: str = "focus",
 
 
 def fresh_start(s: Session, ws: int, *, mode: str = "today",
-                tz: ZoneInfo | None = None, drop: set[int] | None = None) -> int:
+                tz: ZoneInfo | None = None, drop: set[int] | None = None,
+                log: list | None = None) -> int:
     """Clear the backlog in one move. Returns how many tasks were handled.
 
     Every change is written to a ResetLog first, so `undo_fresh_start` can
@@ -4437,10 +4480,14 @@ def fresh_start(s: Session, ws: int, *, mode: str = "today",
         task.reminder_sent_at = None
         snapshot.append({**before, "after_deadline": step["to"] if not step["archive"]
                          else before["deadline"], "after_archived": step["archive"]})
+    row = None
     if snapshot:
-        s.add(ResetLog(workspace_id=ws, mode=mode,
-                       snapshot=json.dumps(snapshot, ensure_ascii=False)))
+        row = ResetLog(workspace_id=ws, mode=mode,
+                       snapshot=json.dumps(snapshot, ensure_ascii=False))
+        s.add(row)
     s.commit()
+    if log is not None and row is not None:
+        log.append(row.id)
     return len(plan)
 
 
@@ -4448,13 +4495,20 @@ def fresh_start(s: Session, ws: int, *, mode: str = "today",
 RESET_UNDO_WINDOW = timedelta(days=7)
 
 
-def undo_fresh_start(s: Session, ws: int) -> dict:
-    """Put the last reset back. A task changed since stays as the person left it."""
-    log_row = s.scalar(select(ResetLog).where(
-        ResetLog.workspace_id == ws, ResetLog.undone_at.is_(None),
-        ResetLog.created_at >= utcnow() - RESET_UNDO_WINDOW)
-        .order_by(ResetLog.id.desc()).limit(1))
-    if log_row is None:
+def undo_fresh_start(s: Session, ws: int, reset_id: int | None = None) -> dict:
+    """Put one reset back. A task changed since stays as the person left it.
+
+    With `reset_id` it is exactly that reset, and only once — a second tap or
+    a retried request cannot reach past it to an older one. Without it, only
+    the newest reset qualifies.
+    """
+    stmt = select(ResetLog).where(
+        ResetLog.workspace_id == ws, ResetLog.created_at >= utcnow() - RESET_UNDO_WINDOW)
+    if reset_id is not None:
+        log_row = s.scalar(stmt.where(ResetLog.id == reset_id))
+    else:
+        log_row = s.scalar(stmt.order_by(ResetLog.id.desc()).limit(1))
+    if log_row is None or log_row.undone_at is not None:
         raise NotFound("reset")
     restored, conflicts = 0, []
     for item in json.loads(log_row.snapshot or "[]"):
@@ -4587,7 +4641,8 @@ def review_to_goal(s: Session, ws: int, title: str, *,
         return None
     nxt = week_start(today_local(tz)) + timedelta(days=7)
     rows = s.scalars(select(WeeklyFocus).where(
-        WeeklyFocus.workspace_id == ws, WeeklyFocus.week_start == nxt)).all()
+        WeeklyFocus.workspace_id == ws, WeeklyFocus.week_start == nxt,
+        WeeklyFocus.carried_to.is_(None))).all()
     if any(r.title.strip().lower() == title.lower() for r in rows):
         return None
     if len(rows) >= MAX_FOCUS:
@@ -6669,7 +6724,7 @@ def due_task_reminders(s: Session, ws: int, user: User,
         return []
 
     tz = user_tz(user)
-    roll_recurring(s, ws, tz)
+    roll_recurring_daily(s, ws, tz)
     now = now or now_local(tz)
     today = now.date()
 
@@ -9403,6 +9458,22 @@ def _item_done_for_timer(s: Session, ws: int, kind: str, item, today: date) -> b
             TeamHabitLog.day == today, TeamHabitLog.done.is_(True))))
     done_by = _team_done_map(s, [item.id]).get(item.id, set())
     return team_task_done_for(item, owner, done_by)
+
+
+def own_tick(s: Session, user_id: int, kind: str, item, today: date) -> bool:
+    """Whether *this person's* own tick is on the item (not someone else's)."""
+    if kind == "task":
+        return item.status == "done"
+    if kind == "habit":
+        return bool(s.scalar(select(HabitLog.id).where(
+            HabitLog.habit_id == item.id, HabitLog.day == today, HabitLog.done.is_(True))))
+    if kind == "thabit":
+        return bool(s.scalar(select(TeamHabitLog.id).where(
+            TeamHabitLog.habit_id == item.id, TeamHabitLog.user_id == user_id,
+            TeamHabitLog.day == today, TeamHabitLog.done.is_(True))))
+    return bool(s.scalar(select(TeamTaskDone.id).where(
+        TeamTaskDone.task_id == item.id, TeamTaskDone.user_id == user_id,
+        TeamTaskDone.done.is_(True))))
 
 
 def _item_paused(s: Session, kind: str, item, today: date, tz) -> bool:

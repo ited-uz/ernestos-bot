@@ -952,3 +952,46 @@ def test_voice_cannot_create_an_item_already_done_or_skip_a_timer(person, monkey
     with db.SessionLocal() as s:
         assert s.get(db.Task, timed_id).status == "waiting"
     assert core.get_draft(ws, draft["id"])["status"] == "ready", "nothing half-done"
+
+
+def test_a_member_can_tick_a_shared_item_by_voice_but_not_edit_it(person, monkeypatch, client):
+    """Review fix: ticking needs membership (like the button), editing needs rights;
+    reopening never adds a tick on top of someone else's."""
+    _, uid, ws = person
+    owner = Caller(client, {"id": next(_next_id), "first_name": "Owner"})
+    oid = owner.user["id"]
+    with db.SessionLocal() as s:
+        team = svc.create_team(s, oid, "Team")
+        s.add(db.TeamMember(team_id=team.id, user_id=uid, role="member"))
+        s.commit()
+        tid = svc.add_team_task(s, oid, team.id, "Hisobot", completion="any")["id"]
+    edit = capture(person, monkeypatch, plan(action("task", "update", tid, scope="team", team_id=team.id, title="X")))
+    assert edit["status"] == "failed" and edit["error"] == "forbidden"
+    tick = capture(person, monkeypatch, plan(action("task", "update", tid, scope="team", team_id=team.id, status="done")))
+    assert tick["status"] == "ready"
+    # Meanwhile the owner closes it ("any": one tick closes it for all).
+    with db.SessionLocal() as s:
+        svc.toggle_team_task(s, oid, tid)
+    core.confirm(uid, ws, tick["id"], tick["revision"])
+    reopen = capture(person, monkeypatch, plan(action("task", "update", tid, scope="team", team_id=team.id, status="waiting")))
+    core.confirm(uid, ws, reopen["id"], reopen["revision"])
+    with db.SessionLocal() as s:
+        mine = s.scalar(select(db.TeamTaskDone).where(db.TeamTaskDone.task_id == tid,
+                                                      db.TeamTaskDone.user_id == uid))
+        assert mine is None or not mine.done, "no tick of the speaker's own appeared"
+
+
+def test_a_manual_edit_keeps_the_proposal_stale_check(person, monkeypatch):
+    """Review fix: fixing the hour on the card must not hide a change made to
+    the item since the proposal."""
+    caller, uid, ws = person
+    with db.SessionLocal() as s:
+        task = svc.add_task(s, ws, "Uchrashuv", deadline=svc.today_local())
+        task_id = task.id
+    draft = capture(person, monkeypatch, plan(action("task", "update", task_id, due_time="10:00")))
+    caller.patch(f"/api/tasks/{task_id}", json={"title": "Uchrashuv (ko'chdi)"})
+    edited = caller.post(f'/api/agent/drafts/{draft["id"]}/edit',
+                         {"revision": draft["revision"], "index": 0, "field": "due_time", "value": "15:00"}).json()
+    with pytest.raises(actions.AgentError) as stale:
+        core.confirm(uid, ws, draft["id"], edited["revision"])
+    assert stale.value.code == "stale_target"

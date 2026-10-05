@@ -109,8 +109,8 @@ const posts = url => calls.filter(c => c.method === 'POST' && c.url === url);
 
   // #23 — a shared task gets the same date and time the parser read.
   calls.length = 0;
-  reply = (url, m, body) => url === '/api/quick'
-    ? {ok:true, preview:true, title:'hisobot', deadline:'2026-10-06', due_time:'15:00'} : {id:1};
+  reply = (url, m, body) => url === '/api/quick/parse'
+    ? {ok:true, title:'hisobot', deadline:'2026-10-06', due_time:'15:00'} : {id:1};
   run(`state.dest='team:5'`);
   await run(`quickTask('ertaga 15:00 hisobot', destOf())`);
   await wait(10);
@@ -119,11 +119,12 @@ const posts = url => calls.filter(c => c.method === 'POST' && c.url === url);
   assert.equal(team.body.deadline, '2026-10-06');
   assert.equal(team.body.due_time, '15:00');
   assert.equal(team.body.title, 'hisobot');
-  assert.equal(calls.find(c => c.url === '/api/quick').body.preview, true);
+  assert.ok(calls.find(c => c.url === '/api/quick/parse'), 'parsed by the read-only endpoint');
+  assert.ok(!calls.find(c => c.url === '/api/quick'), 'nothing written to the personal list');
 
   // #49 — a passed bare time asks, and nothing is posted to the team.
   calls.length = 0;
-  reply = url => url === '/api/quick'
+  reply = url => url === '/api/quick/parse'
     ? {ok:false, ask:'past_time', title:'hisobot', deadline:'2026-10-05', due_time:'10:00',
        options:['2026-10-05','2026-10-06']} : {id:1};
   await run(`quickTask('10:00 hisobot', destOf())`);

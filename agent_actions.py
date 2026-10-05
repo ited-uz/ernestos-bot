@@ -108,6 +108,16 @@ def actor(s, uid, ws):
     return user
 
 
+TICK_FIELDS = {"status", "done"}
+
+
+def _tick_only(a):
+    """An update that only ticks or unticks — what any member may do with the
+    button, so it needs membership, not the right to edit the item."""
+    names = set(a.get("fields") or {}) | {c["field"] for c in (a.get("changes") or [])}
+    return a["operation"] == "update" and bool(names) and names <= TICK_FIELDS
+
+
 def target(s, uid, ws, a, *, lock=False):
     if a["scope"] == "team":
         if a["entity"] not in TEAM or not a["team_id"]:
@@ -132,7 +142,7 @@ def target(s, uid, ws, a, *, lock=False):
     row = s.scalar(stmt.with_for_update() if lock else stmt)
     if row is None or getattr(row, "archived_at", None):
         raise AgentError("not_found", 404)
-    if a["scope"] == "team" and a["operation"] in {"update", "delete"}:
+    if a["scope"] == "team" and a["operation"] in {"update", "delete"} and not _tick_only(a):
         svc._require_manage(s, uid, row.team_id, row.created_by)
     if a["entity"] == "habit" and getattr(row, "system_key", None):
         # Derived prayer/journal/wakeup habits must use their own screens.
@@ -308,7 +318,12 @@ def _set_done(s, uid, ws, kind, item_id, done, tz):
     today = svc.today_local(tz)
     if item is None:
         raise AgentError("not_found", 404)
-    if svc._item_done_for_timer(s, ws, kind, item, today) == done:
+    if done and svc._item_done_for_timer(s, ws, kind, item, today):
+        return
+    # Reopening takes back only the speaker's own tick: a shared task closed
+    # by somebody else's tick ("any") is not theirs to reopen, and must not
+    # gain a tick from them instead.
+    if not done and not svc.own_tick(s, uid, kind, item, today):
         return
     try:
         if kind == "task":

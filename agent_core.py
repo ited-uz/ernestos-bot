@@ -112,6 +112,11 @@ def edit_field(uid, ws, draft_id, revision, index, field, value):
             prepared = prepare(s, uid, ws, plan)
         except (ValidationError, ValueError, TypeError):
             raise AgentError("invalid_fields", 422) from None
+        # The item as it was when the proposal was made stays the reference:
+        # a change made to it since must still stop the confirm.
+        for new, old_action in zip(prepared, actions):
+            if old_action.get("fingerprint"):
+                new["before"], new["fingerprint"] = old_action.get("before"), old_action["fingerprint"]
         summary = preview(prepared, lang, proposed.get("planned_day"))
         won = s.execute(update(db.AgentDraft).where(
             db.AgentDraft.id == draft_id, db.AgentDraft.workspace_id == ws,

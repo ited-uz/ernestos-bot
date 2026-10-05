@@ -11324,3 +11324,97 @@ def test_a_replayed_habit_toggle_with_the_same_key_flips_once(fresh, client):
     assert first.status_code == again.status_code == 200
     assert again.headers.get("X-Idempotent-Replay") == "1"
     assert next(h for h in fresh.get("/api/habits").json()["habits"] if h["id"] == hid)["done"] is True
+
+
+def test_carrying_a_goal_frees_its_place_in_the_old_week(fresh):
+    """Review fix: a full week (3 goals) carries its main goal on and can then
+    take a new main goal; the carried row stays as history."""
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        first = svc.add_focus(s, ws, "A")
+        svc.add_focus(s, ws, "B")
+        svc.add_focus(s, ws, "C")
+        with pytest.raises(ValueError):
+            svc.add_focus(s, ws, "D")
+        svc.carry_focus_forward(s, ws, first.id)
+        assert svc.week_focus(s, ws)["slots_free"] == 1
+        new = svc.add_focus(s, ws, "Yangi asosiy")
+        assert new.slot == svc.PRIMARY_SLOT
+        week = svc.week_focus(s, ws)
+        assert week["primary"]["title"] == "Yangi asosiy"
+        assert [c["title"] for c in week["carried"]] == ["A"]
+
+
+
+def test_undo_reverts_only_the_reset_it_belongs_to(fresh):
+    """Review fix: a second undo (another tab, a retry) cannot reach past the
+    reset it was offered for and revert an older one."""
+    today = svc.today_local()
+    a = fresh.post("/api/tasks", json={"title": "A", "deadline": (today - timedelta(days=4)).isoformat()}).json()
+    first = fresh.post("/api/fresh-start", {"mode": "today"}).json()
+    b = fresh.post("/api/tasks", json={"title": "B", "deadline": (today - timedelta(days=2)).isoformat()}).json()
+    second = fresh.post("/api/fresh-start", {"mode": "today"}).json()
+    assert first["reset_id"] and second["reset_id"] and first["reset_id"] != second["reset_id"]
+    assert fresh.post("/api/fresh-start/undo", {"reset_id": second["reset_id"]}).json()["restored"] == 1
+    assert fresh.post("/api/fresh-start/undo", {"reset_id": second["reset_id"]}).status_code == 404
+    with SessionLocal() as s:
+        assert s.get(db.Task, a["id"]).deadline == today, "the older reset stands"
+        assert s.get(db.Task, b["id"]).deadline == today - timedelta(days=2)
+
+
+def test_an_amount_cannot_get_round_a_timer_or_a_pause(fresh):
+    """Review fix: logging the amount has the same gates as the tick."""
+    timed = fresh.post("/api/habits", {"name": "Yugurish", "target_qty": 5, "unit": "km",
+                                       "timer_minutes": 30}).json()["id"]
+    assert fresh.post(f"/api/habits/{timed}/qty", {"qty": 2}).status_code == 200
+    r = fresh.post(f"/api/habits/{timed}/qty", {"qty": 5})
+    assert r.status_code == 422 and r.json()["detail"] == "timer_required"
+    paused = fresh.post("/api/habits", {"name": "Kitob", "target_qty": 20}).json()["id"]
+    fresh.post(f"/api/habits/{paused}/pause", {"paused": True})
+    assert fresh.post(f"/api/habits/{paused}/qty", {"qty": 3}).json()["detail"] == "paused"
+
+
+async def test_the_timer_messages_finished_button_never_unticks(client):
+    """Review fix: 'Yes, finished' after the shared task was ticked in the app
+    leaves it ticked."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        tid = svc.add_team_task(s, one, team_id, "Birga")["id"]
+        svc.toggle_team_task(s, one, tid)
+    ctx = _Ctx()
+    await application.on_callback(_CbUpdate(one, f"ttask:done:{tid}"), ctx)
+    with SessionLocal() as s:
+        row = s.scalar(select(db.TeamTaskDone).where(db.TeamTaskDone.task_id == tid,
+                                                     db.TeamTaskDone.user_id == one))
+        assert row.done is True
+    assert application.is_read_callback("ttask", ["ttask", "done", str(tid)])
+
+
+def test_quick_parse_writes_nothing_and_spends_no_action(fresh):
+    """Review fix: the shared path's parse is free and read-only."""
+    with SessionLocal() as s:
+        before = s.get(User, fresh.user["id"]).actions_count or 0
+    tomorrow = (svc.today_local() + timedelta(days=1)).isoformat()
+    r = fresh.post("/api/quick/parse", {"title": "ertaga 15:00 hisobot"}).json()
+    assert (r["title"], r["deadline"], r["due_time"]) == ("hisobot", tomorrow, "15:00")
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        assert (s.get(User, fresh.user["id"]).actions_count or 0) == before
+        assert s.scalar(select(func.count(db.Task.id)).where(db.Task.workspace_id == ws)) == 0
+
+
+def test_recurring_series_are_rolled_once_a_day_on_the_hot_paths(fresh, monkeypatch):
+    """Review fix: Home and the reminder job do not re-query every series on
+    every read; a new recurring task still gets today's copy at once."""
+    calls = []
+    real = svc.roll_recurring
+    monkeypatch.setattr(svc, "roll_recurring", lambda s, ws, tz=None: calls.append(ws) or real(s, ws, tz))
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        svc._ROLLED.pop(ws, None)
+        for _ in range(3):
+            svc.list_tasks(s, ws)
+        assert calls.count(ws) == 1
+        svc.add_task(s, ws, "Kunlik", deadline=svc.today_local() - timedelta(days=2), recurrence="daily")
+        svc.tasks_due_today(s, ws)
+        assert calls.count(ws) == 2, "a new series is rolled straight away"

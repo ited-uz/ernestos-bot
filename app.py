@@ -772,6 +772,7 @@ READ_CALLBACKS = {("habit", "back"), ("habit", "noop"),
 #: in the Mini App (audit #19): ticking a habit or task, a shared tick, and
 #: driving a timer. Creating and editing still ask for the channel.
 RECORD_CALLBACKS = {("habit", "toggle"), ("task", "done"), ("thabit", "toggle"),
+                    ("ttask", "done"),
                     ("snz", "t"), ("snz", "h"), ("snz", "T"), ("snz", "H"),
                     ("ttask", "toggle"), ("tmr", "open"), ("tmr", "start"),
                     ("tmr", "pause"), ("tmr", "resume"), ("tmr", "stop")}
@@ -4760,11 +4761,17 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         await show_habits(update, ctx, edit=True)
 
     elif action == "ttask":
-        if len(parts) > 2 and parts[1] == "toggle":
+        if len(parts) > 2 and parts[1] in ("toggle", "done"):
             try:
                 with SessionLocal() as s:
-                    svc.toggle_team_task(s, user.telegram_id, int(parts[2]),
-                                         tz=svc.user_tz(user))
+                    # "done" (the timer message's button) only ever ticks: a
+                    # second tap after finishing in the app must not untick.
+                    item = s.get(db.TeamTask, int(parts[2]))
+                    already = parts[1] == "done" and item is not None and svc.own_tick(
+                        s, user.telegram_id, "ttask", item, svc.today_local(svc.user_tz(user)))
+                    if not already:
+                        svc.toggle_team_task(s, user.telegram_id, int(parts[2]),
+                                             tz=svc.user_tz(user))
             except PermissionError:
                 await _notice(update, t(lang, "not_found"))
                 return
@@ -5972,9 +5979,10 @@ async def _announce_timer(bot, run_id: int) -> bool:
     text = t(lang, "timer_finished_habit" if is_habit else "timer_finished_task",
              title=esc(title), dur=fmt_minutes(minutes, lang))
     # Time ran out on a task: whether it is finished is the person's answer.
+    # Both callbacks only complete, never reopen.
+    done_cb = f"task:done:{item_id}" if kind == "task" else f"ttask:done:{item_id}"
     markup = None if is_habit else InlineKeyboardMarkup([[InlineKeyboardButton(
-        t(lang, "btn_task_finished"),
-        callback_data=TICK_CALLBACK[CODE_OF_KIND[kind]].format(item_id))]])
+        t(lang, "btn_task_finished"), callback_data=done_cb)]])
     # The message that was counting down stops, and says why.
     if chat_id and message_id:
         try:
@@ -6915,7 +6923,7 @@ MUTATING_METHODS = {"POST", "PATCH", "PUT", "DELETE"}
 UNCOUNTED_PATHS = {
     "/api/subscription", "/api/settings", "/api/prefs", "/api/feedback",
     "/api/export/send", "/api/account/delete", "/api/stats/export",
-    "/api/money/preview", "/api/habits/parse",
+    "/api/money/preview", "/api/habits/parse", "/api/quick/parse",
 }
 
 
@@ -9245,6 +9253,29 @@ def api_habit_parse(body: HabitParseIn,
     return svc.parse_habit_text(body.text)
 
 
+class QuickParseIn(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+
+
+@app.post("/api/quick/parse")
+def api_quick_parse(body: QuickParseIn,
+                    init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Read the date and time out of a line without saving anything — the
+    shared-task path uses it so both destinations parse alike (audit #23).
+    Spends no free action and is open to every account: it writes nothing."""
+    user, _ = auth(init)
+    tz = svc.user_tz(user)
+    parsed = svc.parse_quick_capture(body.title.strip(), svc.today_local(tz), svc.now_local(tz).time())
+    out = {"title": parsed["title"],
+           "deadline": parsed["deadline"].isoformat() if parsed["deadline"] else None,
+           "due_time": parsed["due_time"].strftime("%H:%M") if parsed["due_time"] else None}
+    if parsed["past_time"]:
+        tomorrow = svc.today_local(tz) + timedelta(days=1)
+        return {"ok": False, "ask": "past_time", **out,
+                "options": [out["deadline"], tomorrow.isoformat()]}
+    return {"ok": True, **out}
+
+
 @app.post("/api/quick")
 def api_quick_add(body: QuickAddIn,
                   init=Header(default=None, alias="X-Telegram-Init-Data")):
@@ -9320,16 +9351,24 @@ def api_fresh_start(body: FreshStartIn,
     user, ws = auth(init)
     mode = body.mode if body.mode in svc.FRESH_START_MODES else "today"
     with SessionLocal() as s:
-        moved = svc.fresh_start(s, ws, mode=mode, tz=svc.user_tz(user), drop=set(body.drop))
-    return {"ok": True, "moved": moved, "mode": mode, "undo": bool(moved)}
+        logged: list[int] = []
+        moved = svc.fresh_start(s, ws, mode=mode, tz=svc.user_tz(user), drop=set(body.drop),
+                                log=logged)
+    return {"ok": True, "moved": moved, "mode": mode, "undo": bool(moved),
+            "reset_id": logged[0] if logged else None}
+
+
+class FreshUndoIn(BaseModel):
+    reset_id: int | None = Field(default=None, ge=1)
 
 
 @app.post("/api/fresh-start/undo")
-def api_fresh_start_undo(init=Header(default=None, alias="X-Telegram-Init-Data")):
-    """Put the last reset back; tasks edited since are listed, not overwritten."""
+def api_fresh_start_undo(body: FreshUndoIn | None = None,
+                         init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Put one reset back; tasks edited since are listed, not overwritten."""
     _, ws = auth(init)
     with SessionLocal() as s:
-        return {"ok": True, **svc.undo_fresh_start(s, ws)}
+        return {"ok": True, **svc.undo_fresh_start(s, ws, body.reset_id if body else None)}
 
 
 class ReviewIn(BaseModel):
