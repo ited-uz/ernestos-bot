@@ -10591,3 +10591,13 @@ def test_steps_read_today_live_without_a_stored_score(fresh):
         assert s.scalar(select(db.DailyScore).where(db.DailyScore.user_id == uid)) is None
     tasks = fresh.get("/api/progress/me").json()["steps"]["today"][0]
     assert tasks == {"key": "tasks", "done": 0, "total": 2, "ok": False}
+
+
+def test_journal_save_keeps_the_day_it_was_written_for(fresh):
+    """Audit #31: a save sent after midnight lands on the day the entry was opened for."""
+    yesterday = (svc.today_local() - timedelta(days=1)).isoformat()
+    r = fresh.post("/api/journal", {"answers": {"wins": "late"}, "day": yesterday}).json()
+    assert r["day"] == yesterday and r["updated_at"]
+    got = fresh.get(f"/api/journal?day={yesterday}").json()["entry"]
+    assert got["answers"]["wins"] == "late" and got["updated_at"] == r["updated_at"]
+    assert fresh.get(f"/api/journal?day={svc.today_local().isoformat()}").json()["entry"] is None

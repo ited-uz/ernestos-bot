@@ -8966,6 +8966,7 @@ def api_journal_save(body: JournalIn, init=Header(default=None, alias="X-Telegra
                                day=_date(body.day), mood=body.mood, tz=tz)
         entry = svc.get_journal(s, ws, row.day, tz=tz)
     return {"ok": True, "day": row.day.isoformat(),
+            "updated_at": entry["updated_at"] if entry else None,
             "answered": entry["answered"] if entry else 0,
             "total": len(svc.JOURNAL_KEYS),
             "complete": bool(entry and entry["complete"])}

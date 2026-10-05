@@ -2665,6 +2665,7 @@ def get_journal(s: Session, ws: int, day: date | None = None, *,
     except json.JSONDecodeError:
         answers = {}
     return {"day": row.day.isoformat(), "text": row.text, "mood": row.mood,
+            "updated_at": _iso_utc(row.updated_at),
             "answers": answers, "answered": journal_answered(answers),
             "total": len(JOURNAL_KEYS),
             "written": journal_is_written(answers),
