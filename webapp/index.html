@@ -1212,7 +1212,7 @@ const DICT = {
   now_clear:"Bugungi muhim ishlar tugadi", now_clear_hint:"Xohlasangiz yana ish qo'shing",
   now_open:"Ochish", now_done:"Bajarildi",
   quote_ph:"O'zingizga kuch beradigan gap", quote_add:"Quote qo'shish",
-  overall:"Umumiy", streak_short:"Ketma-ket", prayer:"Namoz",
+  overall:"Umumiy", overall_means:"Bu foiz — bugungi rejaning qancha bajarilgani, kun qanchalik muhim o'tgani emas. Yuklamasi turli kunlarni shu raqam bilan solishtirmang.", overall_plan_size:"Bugun rejada {n} ta vazifa.", streak_short:"Ketma-ket", prayer:"Namoz",
   overall_sub:"Kun · hafta · oy", today_parts:"Bugungi ko'rsatkichlar",
   overall_section:"Umumiy ko'rsatkichlar",
   vs_yesterday:"kechagiga nisbatan", vs_yesterday_none:"Kecha o'lchanmagan",
@@ -1279,7 +1279,7 @@ const DICT = {
   status:"Holat", st_active:"Faol", st_done:"Tugallangan", st_archived:"Arxivlangan",
   mark_done:"Tugallandi deb belgilash", mark_active:"Faolga qaytarish",
   archive:"Arxivlash", unarchive:"Arxivdan chiqarish",
-  of_tasks:"{total} ta vazifadan {done} tasi bajarilgan",
+  of_tasks:"{total} ta vazifadan {done} tasi bajarilgan", pr_pct_tasks:"vazifalar soni bo'yicha — ish hajmi emas",
   of_habits:"{total} ta odatdan {done} tasi bajarilgan",
   remaining:"Qolgan", completed:"Bajarilgan",
   no_projects:"Hozircha loyiha yo'q", add_first_project:"Birinchi loyihani qo'shish",
@@ -1449,7 +1449,7 @@ const DICT = {
   timer_off:"O'chiq", timer_auto:"nomidan", timer_from_name:"Nomidan (masalan: 5h)",
   timer_custom_ph:"Daqiqa, masalan 50",
   timer_rule_habit:"Odat taymer tugagach o'zi belgilanadi.",
-  timer_rule_task:"Taymer ishlagan vaqtni yozadi. Vazifa tugaganini o'zingiz belgilaysiz.", timer_worked:"{dur} ishlandi", timer_manual:"qo'lda {dur}", timer_ask_done:"Vazifa tugadimi?", timer_yes_done:"Ha, tugadi", timer_more:"Yana bir sessiya", timer_log_lbl:"Taymersiz bajardim", timer_log_ph:"Necha daqiqa?", timer_log_btn:"Qayd qilish", timer_running:"Taymer ishlayapti — avval uni to'xtating.",
+  timer_rule_task:"Taymer ishlagan vaqtni yozadi. Vazifa tugaganini o'zingiz belgilaysiz.", timer_worked:"{dur} ishlandi", timer_finish:"Sessiyani yakunlash", timer_finish_hint:"Yakunlash — ishlangan vaqt saqlanadi. To'xtatish — sessiya bekor qilinadi.", timer_manual:"qo'lda {dur}", timer_ask_done:"Vazifa tugadimi?", timer_yes_done:"Ha, tugadi", timer_more:"Yana bir sessiya", timer_log_lbl:"Taymersiz bajardim", timer_log_ph:"Necha daqiqa?", timer_log_btn:"Qayd qilish", timer_running:"Taymer ishlayapti — avval uni to'xtating.",
   timer_off_hint:"Taymer o'chiq — oddiy belgilanadi. Vaqt kerak bo'lsa, pastdan tanlang.",
   timer_done_today:"Bugun bajarildi", timer_done:"Bajarildi",
   timer_finished:"Vaqt tugadi — belgilandi ✓",
@@ -1590,7 +1590,7 @@ const DICT = {
   now_clear:"Today's important work is done", now_clear_hint:"Add something else if you want",
   now_open:"Open", now_done:"Done",
   quote_ph:"Something that keeps you going", quote_add:"Add a quote",
-  overall:"Overall", streak_short:"Streak", prayer:"Prayer",
+  overall:"Overall", overall_means:"This is how much of today's plan got done — not how much the day mattered. Days with different loads are not comparable by it.", overall_plan_size:"Tasks planned today: {n}.", streak_short:"Streak", prayer:"Prayer",
   overall_sub:"Day · week · month", today_parts:"Today's numbers",
   overall_section:"Overall numbers",
   vs_yesterday:"vs yesterday", vs_yesterday_none:"Nothing measured yesterday",
@@ -1654,7 +1654,7 @@ const DICT = {
   status:"Status", st_active:"Active", st_done:"Completed", st_archived:"Archived",
   mark_done:"Mark as completed", mark_active:"Make active again",
   archive:"Archive", unarchive:"Restore from archive",
-  of_tasks:"{done} of {total} tasks done",
+  of_tasks:"{done} of {total} tasks done", pr_pct_tasks:"by number of tasks — not by size of work",
   of_habits:"{done} of {total} habits done",
   remaining:"Remaining", completed:"Completed",
   no_projects:"No projects yet", add_first_project:"Add your first project",
@@ -1815,7 +1815,7 @@ const DICT = {
   timer_off:"Off", timer_auto:"from name", timer_from_name:"From the name (e.g. 5h)",
   timer_custom_ph:"Minutes, e.g. 50",
   timer_rule_habit:"The habit ticks itself when the timer ends.",
-  timer_rule_task:"The timer records the time worked. You mark the task finished.", timer_worked:"{dur} worked", timer_manual:"{dur} logged by hand", timer_ask_done:"Is the task finished?", timer_yes_done:"Yes, finished", timer_more:"Another session", timer_log_lbl:"Did it without the timer", timer_log_ph:"How many minutes?", timer_log_btn:"Log it", timer_running:"A timer is running — stop it first.",
+  timer_rule_task:"The timer records the time worked. You mark the task finished.", timer_worked:"{dur} worked", timer_finish:"Finish session", timer_finish_hint:"Finish keeps the time worked. Stop cancels the session.", timer_manual:"{dur} logged by hand", timer_ask_done:"Is the task finished?", timer_yes_done:"Yes, finished", timer_more:"Another session", timer_log_lbl:"Did it without the timer", timer_log_ph:"How many minutes?", timer_log_btn:"Log it", timer_running:"A timer is running — stop it first.",
   timer_off_hint:"Timer is off — tick it as usual. Pick a length below if it needs one.",
   timer_done_today:"Done for today", timer_done:"Done",
   timer_finished:"Time's up — ticked ✓",
@@ -1956,7 +1956,7 @@ const DICT = {
   now_clear:"Важные дела на сегодня закрыты", now_clear_hint:"Можно добавить ещё",
   now_open:"Открыть", now_done:"Выполнено",
   quote_ph:"Фраза, которая вас держит", quote_add:"Добавить цитату",
-  overall:"Общий результат", streak_short:"Серия", prayer:"Намаз",
+  overall:"Общий результат", overall_means:"Это доля выполненного плана на сегодня, а не ценность дня. Дни с разной нагрузкой по нему не сравнить.", overall_plan_size:"Задач на сегодня: {n}.", streak_short:"Серия", prayer:"Намаз",
   overall_sub:"День · неделя · месяц", today_parts:"Показатели дня",
   overall_section:"Общие показатели",
   vs_yesterday:"по сравнению со вчера", vs_yesterday_none:"Вчера ничего не измерено",
@@ -2020,7 +2020,7 @@ const DICT = {
   status:"Статус", st_active:"Активный", st_done:"Завершён", st_archived:"В архиве",
   mark_done:"Отметить завершённым", mark_active:"Вернуть в активные",
   archive:"В архив", unarchive:"Вернуть из архива",
-  of_tasks:"{done} из {total} задач выполнено",
+  of_tasks:"{done} из {total} задач выполнено", pr_pct_tasks:"по числу задач — не по объёму работы",
   of_habits:"{done} из {total} привычек выполнено",
   remaining:"Осталось", completed:"Выполнено",
   no_projects:"Проектов пока нет", add_first_project:"Добавить первый проект",
@@ -2181,7 +2181,7 @@ const DICT = {
   timer_off:"Выкл", timer_auto:"из названия", timer_from_name:"Из названия (напр. 5h)",
   timer_custom_ph:"Минуты, напр. 50",
   timer_rule_habit:"Привычка отметится сама, когда таймер закончится.",
-  timer_rule_task:"Таймер записывает время работы. Готовность задачи отмечаете вы.", timer_worked:"отработано {dur}", timer_manual:"вручную {dur}", timer_ask_done:"Задача готова?", timer_yes_done:"Да, готово", timer_more:"Ещё одна сессия", timer_log_lbl:"Сделал без таймера", timer_log_ph:"Сколько минут?", timer_log_btn:"Записать", timer_running:"Таймер идёт — сначала остановите его.",
+  timer_rule_task:"Таймер записывает время работы. Готовность задачи отмечаете вы.", timer_worked:"отработано {dur}", timer_finish:"Завершить сессию", timer_finish_hint:"Завершить — время сохранится. Стоп — сессия отменяется.", timer_manual:"вручную {dur}", timer_ask_done:"Задача готова?", timer_yes_done:"Да, готово", timer_more:"Ещё одна сессия", timer_log_lbl:"Сделал без таймера", timer_log_ph:"Сколько минут?", timer_log_btn:"Записать", timer_running:"Таймер идёт — сначала остановите его.",
   timer_off_hint:"Таймер выключен — отмечается как обычно. Если нужно время, выберите ниже.",
   timer_done_today:"Сегодня выполнено", timer_done:"Выполнено",
   timer_finished:"Время вышло — отмечено ✓",
@@ -4069,7 +4069,10 @@ function timerSheet(info){
           ${t(running ? "timer_pause" : "timer_resume")}</button>
         <button class="btn secondary" data-act="timer-run" data-verb="stop"
                 data-id="${run.id}">${icon("x", 16)} ${t("timer_stop")}</button>
-      </div>`;
+      </div>
+      <button class="btn secondary" data-act="timer-run" data-verb="finish" data-id="${run.id}"
+              style="margin-top:8px">${icon("check", 16)} ${t("timer_finish")}</button>
+      <div class="t3 tiny" style="text-align:center;margin-top:4px">${t("timer_finish_hint")}</div>`;
   } else {
     body = `<div class="clock-big">${fmtClock(minutes * 60)}</div>
       <div class="hint" style="text-align:center">${t(kind === "habit" || kind === "thabit"
@@ -4883,7 +4886,8 @@ SCREENS.project = () => {
   h += `<div class="card" style="margin-top:12px">
       <div class="row">
         <div class="grow">
-          <div style="font-size:24px;font-weight:750" class="num">${p.progress}%</div>
+          <div style="font-size:24px;font-weight:750" class="num">${p.progress}%
+            <span class="t3 tiny" style="font-weight:400">${t("pr_pct_tasks")}</span></div>
           <div class="t2 small">${t("of_tasks", {done:p.tasks_done,
             total:p.tasks_total})}</div>
         </div>
@@ -5475,6 +5479,9 @@ SCREENS.stats = () => {
              ${t("vs_yesterday")} <span class="t2">(${yesterday}%)</span>`
           : t("vs_yesterday_none")}</div>
       <div style="margin-top:var(--s2)">${bar(today.overall)}</div>
+      <div class="tiny" style="margin-top:var(--s1);opacity:.85">${t("overall_means")}${
+        state.summary?.today?.tasks_total !== undefined
+          ? " " + t("overall_plan_size", {n: (state.summary.today.tasks_total || 0)}) : ""}</div>
     </div>`;
 
   /* The three parts of today, each its own block in its own hue — the same
@@ -6386,6 +6393,7 @@ function settingsSheet(){
   return `
     <h3>${icon("settings", 18)} ${t("settings")}</h3>
     <div class="t2 small" style="margin-bottom:var(--s3)">
+      ${me.version ? `<span class="t3 tiny">ErnestOS v${esc(me.version)} · ${esc(me.build || "")}</span><br>` : ""}
       ${t("member")} #${me.member_no ?? "—"}
       ${me.username ? `· @${esc(me.username)}` : ""}</div>
 

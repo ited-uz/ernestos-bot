@@ -5,8 +5,9 @@ from pathlib import Path
 import sys
 import zipfile
 
-VERSION = "ErnestOS-v12.2"
 root = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(root))
+from version import RELEASE_NAME as VERSION  # noqa: E402 — the single source
 destination = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else root.parent.parent / f"{VERSION}.zip"
 if destination.exists():
     raise SystemExit(f"Refusing to overwrite: {destination}")

@@ -45,6 +45,7 @@ from agent_bot import AgentBot
 import config
 import db
 import dependencies as deps
+import version
 import ratelimit
 import scheduler as scheduling
 import security
@@ -7163,11 +7164,18 @@ def _agent_consent(uid: int) -> bool:
     return agent_core.preferences(ws)["consent"]
 
 
+@app.get("/api/version")
+def api_version():
+    """Which release and which commit is answering — no account needed."""
+    return {"version": version.VERSION, "build": version.BUILD, "name": version.RELEASE_NAME}
+
+
 @app.get("/api/me")
 def api_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, _ = auth(init, require_onboarded=False)
     trial = deps.trial_state(user)
     return {"telegram_id": user.telegram_id, "member_no": user.member_no,
+            "version": version.VERSION, "build": version.BUILD,
             "first_name": user.first_name, "last_name": user.last_name,
             "username": user.username,
             "language": user.language, "gender": user.gender,
@@ -8607,7 +8615,7 @@ def api_timer_run(run_id: int, verb: str,
     """Pause, resume or stop a run. Answers with the item's timer screen."""
     user, ws = auth(init)
     action = {"pause": svc.pause_timer, "resume": svc.resume_timer,
-              "stop": svc.stop_timer}.get(verb)
+              "stop": svc.stop_timer, "finish": svc.finish_timer}.get(verb)
     if action is None:
         raise HTTPException(status_code=404, detail="not_found")
     with SessionLocal() as s:

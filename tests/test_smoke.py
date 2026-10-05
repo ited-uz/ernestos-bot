@@ -10996,3 +10996,16 @@ def test_a_quick_habit_line_with_days_is_scheduled_on_those_days(fresh):
         ws = svc.workspace_id_for(s, fresh.user["id"])
         row = next(h for h in svc.list_habits(s, ws, tuesday) if h["id"] == hid)
         assert row["due"] is False
+
+
+def test_finishing_a_session_early_keeps_the_time_stopping_does_not(fresh):
+    """Audit #40: 35 of 60 minutes finished count as 35 minutes; stop records none."""
+    task_id = fresh.post("/api/tasks", json={"title": "Maqola", "timer_minutes": 60}).json()["id"]
+    run = fresh.post(f"/api/timers/task/{task_id}/start").json()["run"]
+    _age_run(run["id"], 35 * 60)
+    info = fresh.post(f'/api/timers/runs/{run["id"]}/finish').json()
+    assert info["worked_sec"] == 35 * 60 and info["ask_done"] and info["run"] is None
+    other = fresh.post("/api/tasks", json={"title": "Hisobot", "timer_minutes": 60}).json()["id"]
+    run = fresh.post(f"/api/timers/task/{other}/start").json()["run"]
+    _age_run(run["id"], 10 * 60)
+    assert fresh.post(f'/api/timers/runs/{run["id"]}/stop').json()["worked_sec"] == 0

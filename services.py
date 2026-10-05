@@ -30,7 +30,7 @@ from collections import defaultdict
 from datetime import date, datetime, time as dtime, timedelta, timezone as _utc
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import event, func, or_, select, text as sql_text, update as sql_update
+from sqlalchemy import case, event, func, or_, select, text as sql_text, update as sql_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -5882,7 +5882,13 @@ def steps_snapshot(s: Session, user_id: int, ws: int, *, tz: ZoneInfo | None = N
     zone = tz or user_tz(s.get(User, user_id))
     today = today_local(zone)
     modules = modules_for(s, ws)
-    rows = s.scalars(select(DailyScore).where(DailyScore.user_id == user_id)).all()
+    # Past days are counted in the database, not by loading every row of
+    # history into the request (audit #43).
+    past_steps = int(s.scalar(select(func.coalesce(func.sum(
+        case((DailyScore.tasks_done > 0, 1), else_=0)
+        + case((DailyScore.habits_done > 0, 1), else_=0)
+        + case((DailyScore.prayer_performed > 0, 1), else_=0)), 0))
+        .where(DailyScore.user_id == user_id, DailyScore.day != today)) or 0)
 
     def wrote(answers_json) -> bool:
         # The same rule as the journal habit: an answer with content (audit #33).
@@ -5908,8 +5914,7 @@ def steps_snapshot(s: Session, user_id: int, ws: int, *, tz: ZoneInfo | None = N
     worked = tasks_completed_on(s, ws, today, tz=zone)
     habits_done, habits_total = habit_progress(s, ws, today, include_team=False)
     prayed = prayer_state(s, ws, today, getattr(s.get(User, user_id), "gender", None))["performed"]
-    total = sum(((r.tasks_done or 0) > 0) + ((r.habits_done or 0) > 0) + ((r.prayer_performed or 0) > 0)
-                for r in rows if r.day != today)
+    total = past_steps
     total += (worked > 0) + (habits_done > 0) + (prayed > 0)
     total += len(journal_days) + sum(1 for g in goals if focus_is_done(g, linked))
 
@@ -9141,6 +9146,27 @@ def stop_timer(s: Session, ws: int, run_id: int, *,
     if run.status in TIMER_OPEN:
         _pause_run(run, now)
         run.status = "cancelled"
+        s.commit()
+    return timer_run_dict(run, now, _workspace_tz(s, ws))
+
+
+def finish_timer(s: Session, ws: int, run_id: int, *,
+                 now: datetime | None = None) -> dict:
+    """End a session early and keep the time worked (audit #40).
+
+    "Stop" gives up and records nothing; "finish" closes the session with the
+    minutes actually run, so 35 of 60 minutes count as 35 minutes of work. A
+    habit's target is still only met by its full time; a task then asks
+    whether it is done.
+    """
+    now = now or utcnow()
+    settle_timers(s, ws, now)
+    run = _owned_run(s, ws, run_id)
+    if run.status in TIMER_OPEN:
+        _pause_run(run, now)
+        run.status, run.finished_at, run.notified_at = "finished", now, now
+        if run.elapsed_sec >= run.duration_sec:
+            _complete_by_timer(s, run, now)
         s.commit()
     return timer_run_dict(run, now, _workspace_tz(s, ws))
 
