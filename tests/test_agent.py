@@ -911,3 +911,44 @@ def test_one_field_of_a_proposal_is_fixed_by_hand_and_the_rest_kept(person, monk
     with db.SessionLocal() as s:
         task = s.scalar(select(db.Task).where(db.Task.workspace_id == ws, db.Task.title == "Hisobot"))
         assert task.due_time.strftime("%H:%M") == "15:00" and task.deadline.isoformat() == tomorrow
+
+
+def test_voice_can_close_an_existing_task_and_tick_a_habit(person, monkeypatch):
+    """Audit #20: "hisobotni tugatdim" closes that task; "kitob o'qidim" ticks the
+    habit; nothing new is created and the card says what will be ticked."""
+    _, uid, ws = person
+    with db.SessionLocal() as s:
+        task = svc.add_task(s, ws, "Hisobot", deadline=svc.today_local())
+        habit = svc.add_habit(s, ws, "Kitob o'qish")
+        task_id, habit_id = task.id, habit.id
+    n = count(db.Task, ws)
+    draft = capture(person, monkeypatch, plan(
+        action("task", "update", target_id=task_id, status="done"),
+        action("habit", "update", target_id=habit_id, done="yes")), text="hisobotni tugatdim, kitob o'qidim")
+    assert draft["status"] == "ready" and "Bajarildi" in draft["preview"]
+    assert core.confirm(uid, ws, draft["id"], draft["revision"])["status"] == "executed"
+    with db.SessionLocal() as s:
+        assert s.get(db.Task, task_id).status == "done"
+        assert next(h for h in svc.list_habits(s, ws) if h["id"] == habit_id)["done"]
+    assert count(db.Task, ws) == n
+    # Reopening by voice works the same way.
+    again = capture(person, monkeypatch, plan(action("task", "update", target_id=task_id, status="waiting")))
+    core.confirm(uid, ws, again["id"], again["revision"])
+    with db.SessionLocal() as s:
+        assert s.get(db.Task, task_id).status == "waiting"
+
+
+def test_voice_cannot_create_an_item_already_done_or_skip_a_timer(person, monkeypatch):
+    _, uid, ws = person
+    bad = capture(person, monkeypatch, plan(action(title="Yangi", status="done")))
+    assert bad["status"] == "failed"
+    with db.SessionLocal() as s:
+        timed = svc.add_task(s, ws, "Maqola", timer_minutes=60)
+        timed_id = timed.id
+    draft = capture(person, monkeypatch, plan(action("task", "update", target_id=timed_id, status="done")))
+    with pytest.raises(actions.AgentError) as refused:
+        core.confirm(uid, ws, draft["id"], draft["revision"])
+    assert refused.value.code == "timer_required"
+    with db.SessionLocal() as s:
+        assert s.get(db.Task, timed_id).status == "waiting"
+    assert core.get_draft(ws, draft["id"])["status"] == "ready", "nothing half-done"
