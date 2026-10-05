@@ -2943,7 +2943,7 @@ def test_setup_is_four_taps_and_one_answer():
     # v9.1: after the three rituals, the seven ordinary ready-made habits —
     # all ticked, one tap each to drop — so an account starts with ten.
     assert application.ONBOARDING_STEPS == [
-        "language", "name", "modules", "presets", "done"]
+        "language", "name", "modules", "wake", "presets", "done"]
     source = (ROOT / "app.py").read_text()
     assert 'user.onboarding_step = "phone"' not in source
     assert 'user.onboarding_step = "subscribe"' not in source, \
@@ -11060,3 +11060,32 @@ def test_a_task_waiting_on_a_reply_leaves_now_until_the_check_day(fresh, monkeyp
     assert (now["title"], now["reason"]) == ("Dizayn", "recheck")
     assert fresh.delete(f'/api/tasks/{late["id"]}/block').status_code == 200
     assert fresh.post(f'/api/tasks/{late["id"]}/block', {"reason": "maybe"}).status_code == 422
+
+
+
+async def test_setup_asks_when_you_get_up_and_follows_the_answer():
+    """Audit #38: 08:00 chosen → wake goal and morning report at 08:00, not 05:00."""
+    uid = next(_next_id)
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, uid)
+        s.get(User, uid).onboarding_step = "modules"
+        s.commit()
+    ctx = _Ctx()
+    ctx.user_data["setup"] = {"modules": ["wake"]}
+    await application.on_callback(_CbUpdate(uid, "setup:mod_done"), ctx)
+    with SessionLocal() as s:
+        assert s.get(User, uid).onboarding_step == "wake"
+    await application.on_callback(_CbUpdate(uid, "setup:wake:0800"), ctx)
+    with SessionLocal() as s:
+        user = s.get(User, uid)
+        ws = svc.workspace_id_for(s, uid)
+        assert user.onboarding_step == "presets"
+        assert user.morning_time == dtime(8, 0)
+        assert svc.wake_habit(s, ws).target_time == dtime(8, 0)
+    # A forged value is re-asked, not stored.
+    with SessionLocal() as s:
+        s.get(User, uid).onboarding_step = "wake"
+        s.commit()
+    await application.on_callback(_CbUpdate(uid, "setup:wake:0330"), ctx)
+    with SessionLocal() as s:
+        assert s.get(User, uid).morning_time == dtime(8, 0)

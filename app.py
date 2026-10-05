@@ -559,7 +559,11 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 #:   * the channel, asked after `FREE_ACTIONS` real actions instead;
 #:   * the phone number, not asked anywhere;
 #:   * gender, asked the first time prayer is opened.
-ONBOARDING_STEPS = ["language", "name", "modules", "presets", "done"]
+ONBOARDING_STEPS = ["language", "name", "modules", "wake", "presets", "done"]
+
+#: "When do you usually get up?" — the wake goal and the morning report follow
+#: the answer instead of 05:00 for everyone (audit #38).
+SETUP_WAKE_TIMES = ["05:00", "06:00", "07:00", "08:00", "09:00"]
 
 #: The choices on the modules step, in the order they are shown. Three are the
 #: rituals `services.MODULES` drives; "team" is a promise to offer a team at
@@ -669,6 +673,14 @@ async def resume_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         chosen = set(setup_data(ctx).setdefault("modules", []))
         await message.reply_text(t(lang, "ask_modules"), parse_mode=ParseMode.HTML,
                                  reply_markup=modules_keyboard(lang, chosen))
+
+    elif step == "wake":
+        rows = [[InlineKeyboardButton(v, callback_data=f"setup:wake:{v.replace(':', '')}")
+                 for v in SETUP_WAKE_TIMES[:3]],
+                [InlineKeyboardButton(v, callback_data=f"setup:wake:{v.replace(':', '')}")
+                 for v in SETUP_WAKE_TIMES[3:]]]
+        await message.reply_text(t(lang, "ask_wake"), parse_mode=ParseMode.HTML,
+                                 reply_markup=InlineKeyboardMarkup(rows))
 
     elif step == "presets":
         await message.reply_text(t(lang, "setup_presets"), parse_mode=ParseMode.HTML,
@@ -4359,6 +4371,24 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             await query.edit_message_text(
                 t(lang, "modules_set", list=", ".join(labels) if labels
                   else t(lang, "modules_none")), parse_mode=ParseMode.HTML)
+            return await advance_setup(update, ctx, "wake")
+
+        if parts[1] == "wake" and len(parts) > 2:
+            raw = parts[2]
+            value = f"{raw[:2]}:{raw[2:]}" if len(raw) == 4 else ""
+            if value not in SETUP_WAKE_TIMES:
+                return await resume_onboarding(update, ctx, "wake")
+            chosen = dtime(int(value[:2]), int(value[3:]))
+            with SessionLocal() as s:
+                user = s.get(User, uid)
+                ws = svc.workspace_id_for(s, uid)
+                # The morning report comes when the person gets up.
+                user.morning_time = chosen
+                s.commit()
+                if svc.wake_habit(s, ws) is not None:
+                    svc.set_wake_time(s, ws, chosen)
+            await query.edit_message_text(t(lang, "wake_set", time=value),
+                                          parse_mode=ParseMode.HTML)
             return await advance_setup(update, ctx, "presets")
 
         if parts[1] == "pre" and len(parts) > 2:

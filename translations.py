@@ -1168,6 +1168,8 @@ T["uz"].update({
         "10 000 qadam\n"
         "Suv — 2 litr</i>"),
     # --- setup: what to keep ---------------------------------------------
+    "ask_wake": "⏰ <b>Odatda soat nechada turasiz?</b>\nUyg‘onish maqsadi va ertalabki hisobot shu vaqtga moslanadi. Keyin Sozlamalarda o‘zgartirasiz.",
+    "wake_set": "⏰ Turish vaqti: <b>{time}</b>",
     "ask_modules": ("<b>Nimalarni kuzatamiz?</b>\n"
                     "Faqat tanlaganingiz hisoblanadi. Keyin Sozlamalar → "
                     "🧩 Modullar'dan o'zgartirasiz."),
@@ -1309,6 +1311,8 @@ T["en"].update({
         "Read 30 minutes in the morning\n"
         "10,000 steps\n"
         "Water — 2 litres</i>"),
+    "ask_wake": "⏰ <b>When do you usually get up?</b>\nThe wake-up goal and the morning report follow it. You can change it in Settings.",
+    "wake_set": "⏰ Wake-up time: <b>{time}</b>",
     "ask_modules": ("<b>What should we track?</b>\n"
                     "Only what you pick is counted. Change it later in Settings → "
                     "🧩 Modules."),
@@ -1444,6 +1448,8 @@ T["ru"].update({
         "30 минут чтения утром\n"
         "10 000 шагов\n"
         "Вода — 2 литра</i>"),
+    "ask_wake": "⏰ <b>Во сколько вы обычно встаёте?</b>\nЦель подъёма и утренний отчёт подстроятся. Изменить можно в Настройках.",
+    "wake_set": "⏰ Время подъёма: <b>{time}</b>",
     "ask_modules": ("<b>Что будем отслеживать?</b>\n"
                     "Считается только выбранное. Изменить можно в Настройки → "
                     "🧩 Модули."),
