@@ -458,6 +458,9 @@ class TimerRun(Base):
     status: Mapped[str] = mapped_column(String(10), default="running", index=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    #: Logged by hand afterwards ("did 60 min without the timer"), not measured.
+    #: NULL on rows from before the column existed — those were all measured.
+    manual: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
     #: The bot message showing this timer, so the job can keep it counting.
     chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)

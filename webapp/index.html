@@ -1449,7 +1449,7 @@ const DICT = {
   timer_off:"O'chiq", timer_auto:"nomidan", timer_from_name:"Nomidan (masalan: 5h)",
   timer_custom_ph:"Daqiqa, masalan 50",
   timer_rule_habit:"Odat taymer tugagach o'zi belgilanadi.",
-  timer_rule_task:"Vazifa taymer tugagach o'zi bajariladi.",
+  timer_rule_task:"Taymer ishlagan vaqtni yozadi. Vazifa tugaganini o'zingiz belgilaysiz.", timer_worked:"{dur} ishlandi", timer_manual:"qo'lda {dur}", timer_ask_done:"Vazifa tugadimi?", timer_yes_done:"Ha, tugadi", timer_more:"Yana bir sessiya", timer_log_lbl:"Taymersiz bajardim", timer_log_ph:"Necha daqiqa?", timer_log_btn:"Qayd qilish", timer_running:"Taymer ishlayapti — avval uni to'xtating.",
   timer_off_hint:"Taymer o'chiq — oddiy belgilanadi. Vaqt kerak bo'lsa, pastdan tanlang.",
   timer_done_today:"Bugun bajarildi", timer_done:"Bajarildi",
   timer_finished:"Vaqt tugadi — belgilandi ✓",
@@ -1815,7 +1815,7 @@ const DICT = {
   timer_off:"Off", timer_auto:"from name", timer_from_name:"From the name (e.g. 5h)",
   timer_custom_ph:"Minutes, e.g. 50",
   timer_rule_habit:"The habit ticks itself when the timer ends.",
-  timer_rule_task:"The task completes itself when the timer ends.",
+  timer_rule_task:"The timer records the time worked. You mark the task finished.", timer_worked:"{dur} worked", timer_manual:"{dur} logged by hand", timer_ask_done:"Is the task finished?", timer_yes_done:"Yes, finished", timer_more:"Another session", timer_log_lbl:"Did it without the timer", timer_log_ph:"How many minutes?", timer_log_btn:"Log it", timer_running:"A timer is running — stop it first.",
   timer_off_hint:"Timer is off — tick it as usual. Pick a length below if it needs one.",
   timer_done_today:"Done for today", timer_done:"Done",
   timer_finished:"Time's up — ticked ✓",
@@ -2181,7 +2181,7 @@ const DICT = {
   timer_off:"Выкл", timer_auto:"из названия", timer_from_name:"Из названия (напр. 5h)",
   timer_custom_ph:"Минуты, напр. 50",
   timer_rule_habit:"Привычка отметится сама, когда таймер закончится.",
-  timer_rule_task:"Задача выполнится сама, когда таймер закончится.",
+  timer_rule_task:"Таймер записывает время работы. Готовность задачи отмечаете вы.", timer_worked:"отработано {dur}", timer_manual:"вручную {dur}", timer_ask_done:"Задача готова?", timer_yes_done:"Да, готово", timer_more:"Ещё одна сессия", timer_log_lbl:"Сделал без таймера", timer_log_ph:"Сколько минут?", timer_log_btn:"Записать", timer_running:"Таймер идёт — сначала остановите его.",
   timer_off_hint:"Таймер выключен — отмечается как обычно. Если нужно время, выберите ниже.",
   timer_done_today:"Сегодня выполнено", timer_done:"Выполнено",
   timer_finished:"Время вышло — отмечено ✓",
@@ -4014,11 +4014,36 @@ function timerSheet(info){
   const minutes = info.timer_minutes;
   const kind = info.kind;
 
+  const worked = info.worked_sec ? `<div class="t2 small" style="text-align:center;margin-top:var(--s1)">
+      ${t("timer_worked", {dur: fmtMinutes(Math.round(info.worked_sec / 60))})}${info.manual_sec
+        ? ` · ${t("timer_manual", {dur: fmtMinutes(Math.round(info.manual_sec / 60))})}` : ""}</div>` : "";
+  /* Work done away from the phone counts too — logged by hand, shown apart
+     from measured time, and never while a clock is counting the same work. */
+  const logLine = !info.done && !counting && minutes && !info.protected ? `
+    <label>${icon("check", 13)} ${t("timer_log_lbl")}</label>
+    <div class="row" style="gap:var(--s2)">
+      <input id="timer-log" type="number" min="1" max="1440" inputmode="numeric"
+             placeholder="${t("timer_log_ph")}" style="flex:1" />
+      <button class="btn sm secondary" data-act="timer-log" data-kind="${kind}"
+              data-id="${info.id}" style="min-width:96px">${t("timer_log_btn")}</button>
+    </div>` : "";
+
   let body;
-  if(info.done && !counting){
+  if(info.ask_done && !counting){
+    /* The clock ran out on a task: time was worked, the result is the
+       person's to confirm. */
+    body = `<div class="clock-big">⏱</div>${worked}
+      <div class="hint" style="text-align:center">${t("timer_ask_done")}</div>
+      <div class="btns" style="margin-top:var(--s3)">
+        <button class="btn" data-act="timer-tick" data-kind="${kind}" data-id="${info.id}">
+          ${icon("check", 16)} ${t("timer_yes_done")}</button>
+        <button class="btn secondary" data-act="timer-start" data-kind="${kind}" data-id="${info.id}">
+          ${icon("play", 16)} ${t("timer_more")}</button>
+      </div>`;
+  } else if(info.done && !counting){
     body = `<div class="clock-big">✓</div>
       <div class="hint" style="text-align:center">${t(kind === "habit" || kind === "thabit"
-        ? "timer_done_today" : "timer_done")}</div>`;
+        ? "timer_done_today" : "timer_done")}</div>${worked}`;
   } else if(!minutes){
     body = `<div class="hint">${t("timer_off_hint")}</div>`;
   } else if(counting){
@@ -4041,6 +4066,7 @@ function timerSheet(info){
     body = `<div class="clock-big">${fmtClock(minutes * 60)}</div>
       <div class="hint" style="text-align:center">${t(kind === "habit" || kind === "thabit"
         ? "timer_rule_habit" : "timer_rule_task")}</div>
+      ${worked}
       <button class="btn" data-act="timer-start" data-kind="${kind}" data-id="${info.id}"
               style="margin-top:var(--s3)">${icon("play", 16)} ${t("timer_start")}</button>`;
   }
@@ -4076,7 +4102,7 @@ function timerSheet(info){
 
   return `<h3>${icon("clock", 18)} ${esc(info.title)}</h3>
     ${info.team_id ? `<div class="t3 tiny">${t("timer_team_own")}</div>` : ""}
-    ${body}${chooser}${tick}
+    ${body}${logLine}${chooser}${tick}
     <button class="btn secondary" data-act="close" style="margin-top:8px">
       ${t("close")}</button>`;
 }
@@ -7951,6 +7977,18 @@ const A = {
       await timerChanged(await api(`/api/timers/${el.dataset.kind}/${el.dataset.id}`,
         {method:"PUT", body:{minutes}}));
     }catch(e){ handleError(e); }
+  },
+  "timer-log": async el => {
+    const minutes = Math.round(Number(val("timer-log")));
+    if(!minutes || minutes < 1 || minutes > 1440) return toast(t("timer_log_ph"));
+    try{
+      await timerChanged(await api(`/api/timers/${el.dataset.kind}/${el.dataset.id}/log`,
+        {method:"POST", body:{minutes}}));
+      notify("success");
+    }catch(e){
+      if(e.status === 409 && e.detail === "timer_running") return toast(t("timer_running"));
+      handleError(e);
+    }
   },
   "timer-custom": async el => {
     const minutes = Math.round(Number(val("timer-min")));

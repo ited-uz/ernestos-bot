@@ -5826,11 +5826,16 @@ async def _announce_timer(bot, run_id: int) -> bool:
         lang = user.language or "uz"
         chat_id, message_id = run.chat_id, run.message_id
         kind, title, minutes = run.kind, run.title, run.duration_sec // 60
+        item_id = run.item_id
         telegram_id = user.telegram_id
 
-    text = t(lang, "timer_finished_habit" if kind == "habit"
-             else "timer_finished_task",
+    is_habit = kind in HABIT_KINDS
+    text = t(lang, "timer_finished_habit" if is_habit else "timer_finished_task",
              title=esc(title), dur=fmt_minutes(minutes, lang))
+    # Time ran out on a task: whether it is finished is the person's answer.
+    markup = None if is_habit else InlineKeyboardMarkup([[InlineKeyboardButton(
+        t(lang, "btn_task_finished"),
+        callback_data=TICK_CALLBACK[CODE_OF_KIND[kind]].format(item_id))]])
     # The message that was counting down stops, and says why.
     if chat_id and message_id:
         try:
@@ -5840,7 +5845,8 @@ async def _announce_timer(bot, run_id: int) -> bool:
             pass
     try:
         # A new message as well, because an edit does not make the phone ring.
-        await bot.send_message(telegram_id, text, parse_mode=ParseMode.HTML)
+        await bot.send_message(telegram_id, text, parse_mode=ParseMode.HTML,
+                               reply_markup=markup)
         return True
     except (Forbidden, BadRequest) as e:
         log.info("timer %s announcement refused: %s", run_id, e)
@@ -8480,6 +8486,11 @@ def api_habit_preset_set(body: PresetIn,
 
 # --- timers ------------------------------------------------------------------
 
+class TimerLogIn(BaseModel):
+    """Work done without the clock, in minutes."""
+    minutes: int = Field(ge=1, le=24 * 60)
+
+
 class TimerSetIn(BaseModel):
     #: Minutes; 0 switches the timer off, null goes back to reading the name.
     minutes: int | None = Field(default=None, ge=0, le=24 * 60)
@@ -8535,6 +8546,19 @@ def api_timer_set(kind: str, item_id: int, body: TimerSetIn,
         try:
             return svc.set_item_timer(s, ws, _timer_kind(kind), item_id,
                                       body.minutes)
+        except ValueError as e:
+            raise _timer_refused(e)
+
+
+@app.post("/api/timers/{kind}/{item_id}/log")
+def api_timer_log(kind: str, item_id: int, body: TimerLogIn,
+                  init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """"I already did it: 60 min" — recorded apart from measured time."""
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        try:
+            return svc.log_manual_time(s, ws, _timer_kind(kind), item_id, body.minutes,
+                                       tz=svc.user_tz(user))
         except ValueError as e:
             raise _timer_refused(e)
 

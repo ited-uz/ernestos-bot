@@ -8616,7 +8616,8 @@ def test_stopping_a_timer_ticks_nothing(fresh):
     assert fresh.get(f"/api/timers/habit/{habit_id}").json()["run"] is None
 
 
-def test_a_timed_task_is_completed_by_its_timer(fresh):
+def test_a_timed_task_records_time_and_waits_for_the_person(fresh):
+    """Audit #3: the clock running out records the work; it does not close the task."""
     today = svc.today_local().isoformat()
     task_id = fresh.post("/api/tasks", json={
         "title": "Hisobot 2h", "deadline": today,
@@ -8628,6 +8629,12 @@ def test_a_timed_task_is_completed_by_its_timer(fresh):
     _age_run(run["id"], 7300)
     with SessionLocal() as s:
         svc.settle_timers(s)
+        assert s.get(db.Task, task_id).status == "waiting"
+    info = fresh.get(f"/api/timers/task/{task_id}").json()
+    assert info["ask_done"] is True and info["worked_sec"] == 7200 and not info["done"]
+    # The person says it is finished.
+    assert fresh.patch(f"/api/tasks/{task_id}", json={"status": "done"}).status_code == 200
+    with SessionLocal() as s:
         task = s.get(db.Task, task_id)
         assert task.status == "done"
         # The next occurrence of a recurring task keeps its timer.
@@ -10660,3 +10667,35 @@ def test_now_puts_shared_work_in_the_same_queue(monkeypatch):
         now = svc.now_next(s, ws, user)
     assert now["title"] == "Mijozga javob" and now["source"] == "team"
     assert now["team_name"] == "Ofis" and now["action"] == "team_task"
+
+
+def test_changing_the_timer_length_leaves_the_running_session_alone(fresh):
+    """Audit #39: 25 min chosen at minute 40 of 60 does not end the session."""
+    task_id = fresh.post("/api/tasks", json={"title": "Maqola", "timer_minutes": 60}).json()["id"]
+    run = fresh.post(f"/api/timers/task/{task_id}/start").json()["run"]
+    _age_run(run["id"], 40 * 60)
+    info = fresh.put(f"/api/timers/task/{task_id}", json={"minutes": 25}).json()
+    assert info["timer_minutes"] == 25
+    assert info["run"]["status"] == "running" and info["run"]["duration_sec"] == 3600
+    with SessionLocal() as s:
+        assert svc.settle_timers(s) == []
+
+
+def test_work_done_without_the_timer_can_be_logged_once(fresh):
+    """Audit #4: "I read for an hour" is recorded apart and unlocks the tick."""
+    habit = fresh.post("/api/habits", json={"name": "Kitob", "timer_minutes": 60}).json()
+    hid = habit.get("id") or habit.get("habit", {}).get("id")
+    partial = fresh.post(f"/api/timers/habit/{hid}/log", json={"minutes": 20}).json()
+    assert partial["worked_sec"] == 1200 and partial["manual_sec"] == 1200 and not partial["done"]
+    full = fresh.post(f"/api/timers/habit/{hid}/log", json={"minutes": 40}).json()
+    assert full["done"] and full["worked_sec"] == 3600
+    assert fresh.post(f"/api/timers/habit/{hid}/log", json={"minutes": 5}).status_code == 409
+    # Never on top of a clock counting the same work.
+    task_id = fresh.post("/api/tasks", json={"title": "Maqola", "timer_minutes": 60}).json()["id"]
+    fresh.post(f"/api/timers/task/{task_id}/start")
+    r = fresh.post(f"/api/timers/task/{task_id}/log", json={"minutes": 30})
+    assert r.status_code == 409 and r.json()["detail"] == "timer_running"
+    other = fresh.post("/api/tasks", json={"title": "Hisobot", "timer_minutes": 60}).json()["id"]
+    logged = fresh.post(f"/api/timers/task/{other}/log", json={"minutes": 30}).json()
+    assert logged["ask_done"] and not logged["done"]
+    assert fresh.patch(f"/api/tasks/{other}", json={"status": "done"}).status_code == 200

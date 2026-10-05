@@ -8694,8 +8694,16 @@ def open_timer_runs(s: Session, ws: int, kind: str, *,
     return out
 
 
+#: Kinds whose timer *is* the goal ("read 30 min"): running out ticks them.
+#: A task's goal is its result, so its timer only records the time worked and
+#: the person says whether it is finished (audit #3).
+TIMER_COMPLETES = ("habit", "thabit")
+
+
 def _complete_by_timer(s: Session, run: TimerRun, moment: datetime) -> None:
-    """Tick the item a finished run belongs to — the timer's whole purpose."""
+    """Tick a habit whose time target was met. Tasks are never closed by time."""
+    if run.kind not in TIMER_COMPLETES:
+        return
     ws = run.workspace_id
     tz = _workspace_tz(s, ws)
     at = moment.replace(tzinfo=_utc.utc).astimezone(tz).replace(tzinfo=None)
@@ -8799,6 +8807,10 @@ def timer_blocks(s: Session, ws: int, kind: str, item, day: date | None = None) 
     stmt = select(TimerRun.id).where(
         TimerRun.workspace_id == ws, TimerRun.kind == kind,
         TimerRun.item_id == item.id, TimerRun.status == "finished")
+    # A habit needs its whole time; for a task any recorded work lets the
+    # person say it is finished — the result, not the clock, closes it.
+    if kind in TIMER_COMPLETES:
+        stmt = stmt.where(TimerRun.elapsed_sec >= TimerRun.duration_sec)
     if _day_bound(kind) and day is not None:
         stmt = stmt.where(TimerRun.day == day)
     return s.scalar(stmt.limit(1)) is None
@@ -8940,8 +8952,13 @@ def timer_for(s: Session, ws: int, kind: str, item_id: int, *,
     if kind in TEAM_TIMER_KINDS:
         owner = workspace_owner(s, ws)
         can_set = _may_manage(s, owner, item.team_id, item.created_by)
+    worked = _worked_seconds(s, ws, kind, item.id, today if _day_bound(kind) else None)
     s.commit()
     return {"kind": kind, "id": item.id, "title": title, "done": done,
+            "worked_sec": worked["total"], "manual_sec": worked["manual"],
+            # Time ran out on a task: it is the person who says it is finished.
+            "ask_done": (kind not in TIMER_COMPLETES and not done and run is None
+                         and worked["total"] > 0),
             "protected": protected, "can_set": can_set and not protected,
             "team_id": getattr(item, "team_id", None),
             **_timer_fields(configured, title, protected=protected),
@@ -8950,11 +8967,67 @@ def timer_for(s: Session, ws: int, kind: str, item_id: int, *,
             "presets": TIMER_PRESETS}
 
 
+def _worked_seconds(s: Session, ws: int, kind: str, item_id: int,
+                    day: date | None) -> dict:
+    """Time recorded on one item: measured by the clock plus logged by hand."""
+    stmt = select(TimerRun.elapsed_sec, TimerRun.manual).where(
+        TimerRun.workspace_id == ws, TimerRun.kind == kind,
+        TimerRun.item_id == item_id, TimerRun.status == "finished")
+    if day is not None:
+        stmt = stmt.where(TimerRun.day == day)
+    total = manual = 0
+    for sec, by_hand in s.execute(stmt).all():
+        total += int(sec or 0)
+        if by_hand:
+            manual += int(sec or 0)
+    return {"total": total, "manual": manual}
+
+
+def log_manual_time(s: Session, ws: int, kind: str, item_id: int, minutes: int, *,
+                    tz: ZoneInfo | None = None) -> dict:
+    """Record work done without the clock ("I read for an hour, phone away").
+
+    Kept apart from measured time (`manual`), never on top of a run that is
+    still counting — that would count the same minutes twice. A habit is
+    ticked when the logged time reaches its target; a task only records the
+    time, and the person says when it is finished.
+    """
+    tz = tz or _workspace_tz(s, ws)
+    settle_timers(s, ws)
+    item, length, title = _timer_item(s, ws, kind, item_id)
+    minutes = int(minutes or 0)
+    if not 1 <= minutes <= 24 * 60:
+        raise ValueError("bad_minutes")
+    today = today_local(tz)
+    if _item_done_for_timer(s, ws, kind, item, today):
+        raise ValueError("already_done")
+    if _open_run(s, ws, kind, item.id, today if _day_bound(kind) else None):
+        raise ValueError("timer_running")
+    now = utcnow()
+    run = TimerRun(workspace_id=ws, kind=kind, item_id=item.id, day=today,
+                   title=(title or "")[:300], manual=True,
+                   duration_sec=max(minutes, length or minutes) * 60,
+                   elapsed_sec=minutes * 60, started_at=None, status="finished",
+                   finished_at=now, notified_at=now)
+    s.add(run)
+    s.flush()
+    # Logged pieces add up: 20 min and then 40 min meet a 60-min target.
+    worked = _worked_seconds(s, ws, kind, item.id, today if _day_bound(kind) else None)
+    if length and worked["total"] >= length * 60:
+        run.duration_sec = min(run.duration_sec, run.elapsed_sec)
+        _complete_by_timer(s, run, now)
+    s.commit()
+    return timer_for(s, ws, kind, item.id, tz=tz)
+
+
 def _apply_timer_setting(s: Session, ws: int, kind: str, item, value) -> None:
     """Change how long an item's timer runs, or switch it off.
 
-    A run already counting follows the change. For a shared item every
-    member's open run follows it, since the length is the team's setting.
+    The new length is for the next session: a run already counting keeps the
+    length it started with, so changing the default at minute 40 of 60 cannot
+    finish it on the spot (audit #39) — and on a shared item one member's
+    change never touches another member's clock. Switching the timer off
+    stops only the asking person's own open run.
     """
     item.timer_minutes = clean_timer_minutes(value)
     name = item.name if kind in ("habit", "thabit") else item.title
@@ -8962,17 +9035,13 @@ def _apply_timer_setting(s: Session, ws: int, kind: str, item, value) -> None:
                  else bool(getattr(item, "system_key", "")) if kind == "thabit"
                  else False)
     minutes = timer_minutes_for(item.timer_minutes, name, protected=protected)
-    stmt = select(TimerRun).where(TimerRun.kind == kind,
-                                  TimerRun.item_id == item.id,
-                                  TimerRun.status.in_(TIMER_OPEN))
-    if kind not in TEAM_TIMER_KINDS:
-        stmt = stmt.where(TimerRun.workspace_id == ws)
-    for run in s.scalars(stmt).all():
-        if minutes:
-            run.duration_sec = minutes * 60
-        else:
-            _pause_run(run, utcnow())
-            run.status = "cancelled"
+    if minutes:
+        return
+    for run in s.scalars(select(TimerRun).where(
+            TimerRun.kind == kind, TimerRun.item_id == item.id,
+            TimerRun.workspace_id == ws, TimerRun.status.in_(TIMER_OPEN))).all():
+        _pause_run(run, utcnow())
+        run.status = "cancelled"
 
 
 def set_item_timer(s: Session, ws: int, kind: str, item_id: int,
