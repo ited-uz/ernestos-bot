@@ -26,7 +26,7 @@ const localStorage = {getItem:k=>storage.has(k)?storage.get(k):null, setItem:(k,
 const calls = [];
 let reply = () => ({});
 const ctx = {console, document, URL, URLSearchParams, Date, Intl, AbortSignal, AbortController,
-  Response, TextEncoder, setTimeout, clearTimeout, setInterval(){}, clearInterval(){},
+  Response, TextEncoder, Blob, setTimeout, clearTimeout, setInterval(){}, clearInterval(){},
   navigator:{}, location:{search:'',href:'http://localhost/'}, localStorage,
   innerHeight:800, addEventListener(){}, matchMedia:()=>({matches:false,addEventListener(){}}),
   fetch: async (url, opts={}) => {
@@ -131,6 +131,23 @@ const posts = url => calls.filter(c => c.method === 'POST' && c.url === url);
   assert.equal(calls.filter(c => c.url === '/api/teams/5/tasks').length, 0);
   assert.ok(document.getElementById('sheet-body').innerHTML.includes('2026-10-06'));
   run(`state.dest='personal'`);
+
+  // #28 — a failed voice send keeps the recording; resend sends the same
+  // audio with the same request key.
+  const sent = [];
+  ctx.fetch = async (url, opts={}) => {
+    sent.push({url, body: opts.body, key: opts.headers?.['X-Agent-Request-Key']});
+    if(sent.length === 1) throw new Error('offline');
+    return new Response(JSON.stringify({id: 9, status: 'ready', preview: 'ok', revision: 1}), {status: 200});
+  };
+  run(`voice.chunks=['abc']; voice.mime='audio/webm'; voice.target='agent';`);
+  await run('voiceSend()');
+  assert.ok(document.getElementById('sheet-body').innerHTML.includes('voice-resend'));
+  await run(`A["voice-resend"]()`);
+  assert.equal(sent.length, 2);
+  assert.equal(sent[0].body, sent[1].body, 'the same recording is sent again');
+  assert.equal(sent[0].key, sent[1].key, 'the same request key, so it is not done twice');
+  assert.equal(run('voice.kept'), null, 'dropped once the server answered');
 
   console.log('Audit-50 frontend checks passed');
 })().catch(e => { console.error(e); process.exitCode = 1; });

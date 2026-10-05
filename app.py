@@ -6801,7 +6801,7 @@ MUTATING_METHODS = {"POST", "PATCH", "PUT", "DELETE"}
 UNCOUNTED_PATHS = {
     "/api/subscription", "/api/settings", "/api/prefs", "/api/feedback",
     "/api/export/send", "/api/account/delete", "/api/stats/export",
-    "/api/money/preview",
+    "/api/money/preview", "/api/habits/parse",
 }
 
 
@@ -9042,6 +9042,18 @@ class QuickAddIn(BaseModel):
     #: Read only, write nothing: the shared-task path reuses this parser so
     #: "ertaga 15:00 hisobot" means the same in both places (audit #23).
     preview: bool = False
+
+
+class HabitParseIn(BaseModel):
+    text: str = Field(min_length=1, max_length=200)
+
+
+@app.post("/api/habits/parse")
+def api_habit_parse(body: HabitParseIn,
+                    init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Read the days out of a quick habit line, without saving anything."""
+    auth(init)
+    return svc.parse_habit_text(body.text)
 
 
 @app.post("/api/quick")

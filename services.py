@@ -9504,6 +9504,59 @@ _WEEKDAY_WORDS = {
 }
 _TIME_RE = re.compile(r"(?:\bsoat\s*)?\b([01]?\d|2[0-3])[:.]([0-5]\d)\b(?:\s*da\b)?")
 
+#: Short and plural forms a habit line uses: "du, chor, juma sport",
+#: "по понедельникам", "on Mondays".
+_HABIT_DAY_WORDS = {
+    **_WEEKDAY_WORDS,
+    "du": 0, "se": 1, "chor": 2, "pay": 3, "sha": 5, "yak": 6,
+    "dushanbalari": 0, "seshanbalari": 1, "chorshanbalari": 2, "payshanbalari": 3,
+    "jumalari": 4, "shanbalari": 5, "yakshanbalari": 6,
+    "mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6,
+    "mondays": 0, "tuesdays": 1, "wednesdays": 2, "thursdays": 3,
+    "fridays": 4, "saturdays": 5, "sundays": 6,
+    "пн": 0, "вт": 1, "ср": 2, "чт": 3, "пт": 4, "сб": 5, "вс": 6,
+    "понедельникам": 0, "вторникам": 1, "средам": 2, "четвергам": 3,
+    "пятницам": 4, "субботам": 5, "воскресеньям": 6,
+}
+_HABIT_FILLER = {"va", "and", "и", "по", "on", "har", "every", "kuni", "kunlari", ","}
+
+
+def parse_habit_text(text: str) -> dict:
+    """"Dushanba, chorshanba, juma sport" → name "Sport", those three days.
+
+    Day words found anywhere become the schedule; everything else is the
+    name. No day words → daily. The result is shown before saving, so a
+    wrong guess is one tap to fix, never a silent rule (audit #24).
+    """
+    words = " ".join((text or "").replace(",", " , ").split()).split(" ")
+    days, kept = set(), []
+    for word in words:
+        key = word.lower().strip(".!?")
+        if key in _HABIT_DAY_WORDS:
+            days.add(_HABIT_DAY_WORDS[key])
+        elif key in _HABIT_FILLER and (days or not kept):
+            continue
+        else:
+            kept.append(word)
+    kept = [w for w in kept if w != ","]
+    while kept and kept[-1].lower() in _HABIT_FILLER:
+        kept.pop()
+    while kept and kept[0].lower() in _HABIT_FILLER:
+        kept.pop(0)
+    if not days:
+        name = " ".join((text or "").split())
+    else:
+        name = " ".join(kept).strip(" ,.-") or " ".join((text or "").split())
+        name = name[:1].upper() + name[1:]
+    ordered = sorted(days)
+    if not ordered or len(ordered) == 7:
+        schedule = SCHEDULE_DAILY
+    elif ordered == [0, 1, 2, 3, 4]:
+        schedule = SCHEDULE_WEEKDAYS
+    else:
+        schedule = SCHEDULE_PREFIX_DAYS + ",".join(str(d) for d in ordered)
+    return {"name": name[:120], "schedule": schedule, "days": ordered}
+
 
 _EVENING = r"kechqurun|kechki|kechasi|tushdan\s+keyin|вечера|вечером|дня|pm|p\.m\."
 _MORNING = r"ertalab|ertalabki|tongda|утра|утром|am|a\.m\."

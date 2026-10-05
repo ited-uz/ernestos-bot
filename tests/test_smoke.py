@@ -10981,3 +10981,18 @@ def test_past_the_free_run_ticking_done_work_stays_open(client, monkeypatch):
     assert client.post("/api/tasks", headers=h, json={"title": "yangi"}).status_code == 403
     assert application.is_read_callback("habit", ["habit", "toggle", "1"])
     assert not application.is_read_callback("habit", ["habit", "del", "1"])
+
+
+def test_a_quick_habit_line_with_days_is_scheduled_on_those_days(fresh):
+    """Audit #24: three-day sport is not owed on Tuesday."""
+    parsed = fresh.post("/api/habits/parse", {"text": "Dushanba, chorshanba, juma sport"}).json()
+    assert parsed == {"name": "Sport", "schedule": "days:0,2,4", "days": [0, 2, 4]}
+    assert fresh.post("/api/habits/parse", {"text": "Kitob o'qish"}).json()["schedule"] == "daily"
+    assert svc.parse_habit_text("Read on Mondays and Fridays")["name"] == "Read"
+    hid = fresh.post("/api/habits", {"name": parsed["name"], "schedule": parsed["schedule"]}).json()["id"]
+    today = svc.today_local()
+    tuesday = today + timedelta(days=(1 - today.weekday()) % 7)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        row = next(h for h in svc.list_habits(s, ws, tuesday) if h["id"] == hid)
+        assert row["due"] is False
