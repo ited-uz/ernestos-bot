@@ -1960,11 +1960,24 @@ DEFAULT_REMIND_BEFORE = 30
 MAX_REMIND_BEFORE = 60 * 24 * 7
 
 
+#: "after:7" — the next copy comes 7 days after the previous one is *done*,
+#: not on a calendar date: "change the filter a week after I last did" (audit #14).
+RECURRENCE_AFTER = "after:"
+
+
+def recurrence_after_days(value: str | None) -> int | None:
+    value = clean_recurrence(value)
+    return int(value[len(RECURRENCE_AFTER):]) if value.startswith(RECURRENCE_AFTER) else None
+
+
 def clean_recurrence(value: str | None) -> str:
     """Normalise a recurrence, or return "" for a one-off task."""
     value = (value or "").strip().lower()
     if value in RECURRENCES:
         return value
+    if value.startswith(RECURRENCE_AFTER):
+        days = value[len(RECURRENCE_AFTER):]
+        return value if days.isdigit() and 1 <= int(days) <= 365 else ""
     if value.startswith(SCHEDULE_PREFIX_DAYS):
         days = sorted({int(x) for x in value[len(SCHEDULE_PREFIX_DAYS):].split(",")
                        if x.strip().isdigit() and 0 <= int(x) <= 6})
@@ -1982,6 +1995,8 @@ def next_occurrence(recurrence: str | None, after: date, *,
     rule = clean_recurrence(recurrence)
     if not rule:
         return None
+    if rule.startswith(RECURRENCE_AFTER):
+        return after + timedelta(days=int(rule[len(RECURRENCE_AFTER):]))
     if rule == "daily":
         return after + timedelta(days=1)
     if rule == "weekly":
@@ -2061,7 +2076,9 @@ def _spawn_next_occurrence(s: Session, ws: int, task: Task,
     if not rule:
         return None
 
-    base = task.deadline or today_local(tz)
+    after_done = rule.startswith(RECURRENCE_AFTER)
+    # Counted from the day it was finished, not from the date it carried.
+    base = today_local(tz) if after_done else (task.deadline or today_local(tz))
     anchor = task.anchor_day or (base.day if rule == "monthly" else None)
     nxt = next_occurrence(rule, base, anchor_day=anchor)
     if nxt is None:
@@ -2119,7 +2136,9 @@ def roll_recurring(s: Session, ws: int, tz: ZoneInfo | None = None) -> int:
         Task.status == "waiting", Task.recurrence.is_not(None))).all()
     series: dict[int, list[Task]] = defaultdict(list)
     for task in rows:
-        if clean_recurrence(task.recurrence):
+        rule = clean_recurrence(task.recurrence)
+        # "N days after done" repeats only on completion, never by the calendar.
+        if rule and not rule.startswith(RECURRENCE_AFTER):
             series[task.series_id or task.id].append(task)
     made = 0
     for copies in series.values():

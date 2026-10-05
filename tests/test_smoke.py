@@ -11219,3 +11219,21 @@ def test_a_long_session_with_breaks_counts_only_work(fresh):
     info = fresh.get(f"/api/timers/task/{task_id}").json()
     assert info["run"]["elapsed_sec"] == 100 * 60 and info["run"]["on_break"]
     assert fresh.post(f"/api/timers/task/{task_id}/start", {"cycle": "7/3"}).status_code == 409
+
+
+def test_a_task_repeating_after_completion_counts_from_the_day_it_was_done(fresh):
+    """Audit #14: "7 days after done" — finished 3 days late, the next one is 7
+    days from the day it was finished; the calendar never spawns it."""
+    today = svc.today_local()
+    task = fresh.post("/api/tasks", json={"title": "Filtrni almashtirish", "recurrence": "after:7",
+                                          "deadline": (today - timedelta(days=3)).isoformat()}).json()
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        assert svc.roll_recurring(s, ws) == 0, "not spawned by the calendar"
+    fresh.patch(f'/api/tasks/{task["id"]}', json={"status": "done"})
+    with SessionLocal() as s:
+        nxt = s.scalars(select(db.Task).where(db.Task.workspace_id == ws,
+                                              db.Task.title == "Filtrni almashtirish",
+                                              db.Task.status == "waiting")).all()
+    assert [t.deadline for t in nxt] == [today + timedelta(days=7)]
+    assert svc.clean_recurrence("after:0") == "" and svc.clean_recurrence("after:400") == ""

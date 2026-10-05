@@ -1263,7 +1263,7 @@ const DICT = {
   remind_60:"1 soat oldin", remind_1440:"1 kun oldin",
   repeat:"Takrorlanish", repeat_none:"Takrorlanmaydi", repeat_daily:"Har kuni",
   repeat_weekdays:"Ish kunlari", repeat_weekly:"Har hafta", repeat_monthly:"Har oy",
-  repeat_custom:"Tanlangan kunlarda",
+  repeat_custom:"Tanlangan kunlarda", repeat_after:"Bajargandan {n} kun keyin",
   overdue:"Kechikkan", upcoming:"Yaqin kunlar", later:"Keyinroq", no_date:"Muddatsiz",
   done_tab:"Bajarilgan", open_tab:"Ochiq", main_tab:"Asosiy",
   reopen:"Qayta ochish",
@@ -1639,7 +1639,7 @@ const DICT = {
   remind_60:"1 hour before", remind_1440:"1 day before",
   repeat:"Repeat", repeat_none:"Does not repeat", repeat_daily:"Every day",
   repeat_weekdays:"Weekdays", repeat_weekly:"Every week", repeat_monthly:"Every month",
-  repeat_custom:"Chosen days",
+  repeat_custom:"Chosen days", repeat_after:"{n} days after done",
   overdue:"Overdue", upcoming:"Coming up", later:"Later", no_date:"No date",
   done_tab:"Done", open_tab:"Open", main_tab:"Main",
   reopen:"Reopen",
@@ -2005,7 +2005,7 @@ const DICT = {
   remind_60:"За 1 час", remind_1440:"За 1 день",
   repeat:"Повтор", repeat_none:"Не повторяется", repeat_daily:"Каждый день",
   repeat_weekdays:"По рабочим дням", repeat_weekly:"Каждую неделю",
-  repeat_monthly:"Каждый месяц", repeat_custom:"Выбранные дни",
+  repeat_monthly:"Каждый месяц", repeat_custom:"Выбранные дни", repeat_after:"Через {n} дн. после выполнения",
   overdue:"Просрочено", upcoming:"Ближайшие", later:"Позже", no_date:"Без срока",
   done_tab:"Выполнено", open_tab:"Открытые", main_tab:"Главное",
   reopen:"Открыть снова",
@@ -5821,9 +5821,9 @@ function taskSheet(task, presetProject){
 
       <label>🔁 ${t("repeat")}</label>
       <div class="chips">
-        ${["", "daily", "weekdays", "weekly", "monthly"].map(r => `<div class="chip sm
+        ${["", "daily", "weekdays", "weekly", "monthly", "after:7", "after:30"].map(r => `<div class="chip sm
              ${(f.recurrence || "") === r ? "on" : ""}" data-act="task-repeat"
-             data-value="${r}">${r ? t("repeat_" + r) : t("none_short")}</div>`).join("")}
+             data-value="${r}">${r ? repeatLabel(r) : t("none_short")}</div>`).join("")}
       </div>
 
       <label>${t("priority")}</label>
@@ -5853,6 +5853,13 @@ function taskSheet(task, presetProject){
       ${icon("trash", 15)} ${t("delete")}</button>` : ""}
     <button class="btn secondary" data-act="close" style="margin-top:8px">
       ${t("cancel")}</button>`;
+}
+
+/* "after:7" is counted from the day it was finished, not from the calendar. */
+function repeatLabel(r){
+  if(String(r).startsWith("after:")) return t("repeat_after", {n: r.slice(6)});
+  if(String(r).startsWith("days:")) return t("repeat_custom");
+  return t("repeat_" + r);
 }
 
 /* A measured habit's goal, its unit and the minimal version for a hard day.
@@ -5933,7 +5940,7 @@ function taskSettingsLine(f){
   if(f.due_time) bits.push("🕐 " + f.due_time);
   if(f.remind_before !== null && f.remind_before !== undefined && f.remind_before !== "")
     bits.push("🔔 " + t("remind_s_" + f.remind_before));
-  if(f.recurrence) bits.push("🔁 " + t("repeat_" + f.recurrence));
+  if(f.recurrence) bits.push("🔁 " + repeatLabel(f.recurrence));
   if(f.priority === "high") bits.push("🔴 " + t("high"));
   return bits.length ? `<span class="t3 small sumline">${bits.join(" · ")}</span>` : "";
 }
