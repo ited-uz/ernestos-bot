@@ -1428,7 +1428,7 @@ const DICT = {
   feedback:"Taklif va shikoyat", feedback_ph:"Nimani yaxshilashimiz kerak?",
   feedback_sent:"Rahmat! Taklifingiz yetkazildi",
   feedback_saved:"Taklifingiz saqlandi, tez orada yetkaziladi",
-  fresh_start:"Yengil reset", fs_focus:"Eng muhim 3 tasi bugun, qolgani hafta bo'ylab", fs_preview:"Natija qanday bo'ladi", fs_apply:"Shunday qilish", fs_archive_n:"{n} ta vazifa arxivga o'tadi.", fs_undo_hint:"Keyin bir bosishda qaytarish mumkin.", fs_undone:"↩ {n} ta vazifa avvalgi sanasiga qaytdi", fs_undo_conflicts:"Qaytarildi; {n} tasini siz o'zgartirgansiz — ular tegilmadi", fresh_start_n:"{n} ta kechikkan vazifa",
+  fresh_start:"Yengil reset", fs_focus:"Eng muhim 3 tasi bugun, qolgani hafta bo'ylab", fs_preview:"Natija qanday bo'ladi", fs_apply:"Shunday qilish", fs_triage:"Hali kerakmi? ({n} ta) — keraksizini belgilang", fs_not_needed:"Kerak emas", fs_archive_n:"{n} ta vazifa arxivga o'tadi.", fs_undo_hint:"Keyin bir bosishda qaytarish mumkin.", fs_undone:"↩ {n} ta vazifa avvalgi sanasiga qaytdi", fs_undo_conflicts:"Qaytarildi; {n} tasini siz o'zgartirgansiz — ular tegilmadi", fresh_start_n:"{n} ta kechikkan vazifa",
   fresh_start_body:"Hech qanday vazifa o'chirilmaydi — faqat ko'chiriladi yoki arxivga o'tadi. Statistika va tarix saqlanadi.",
   fs_today:"Hammasini bugunga", fs_week:"Bir haftaga taqsimlash",
   fs_undate:"Muddatlarni olib tashlash", fs_archive:"Arxivga o'tkazish",
@@ -1795,7 +1795,7 @@ const DICT = {
   feedback:"Feedback", feedback_ph:"What should we improve?",
   feedback_sent:"Thank you — your feedback was delivered",
   feedback_saved:"Your feedback is saved and will be delivered shortly",
-  fresh_start:"Fresh start", fs_focus:"Top 3 today, the rest across the week", fs_preview:"What it will look like", fs_apply:"Do it", fs_archive_n:"{n} tasks go to the archive.", fs_undo_hint:"You can put it back with one tap afterwards.", fs_undone:"↩ {n} tasks back on their old dates", fs_undo_conflicts:"Put back; {n} you changed since were left alone", fresh_start_n:"{n} overdue tasks",
+  fresh_start:"Fresh start", fs_focus:"Top 3 today, the rest across the week", fs_preview:"What it will look like", fs_apply:"Do it", fs_triage:"Still needed? ({n}) — mark what is not", fs_not_needed:"Not needed", fs_archive_n:"{n} tasks go to the archive.", fs_undo_hint:"You can put it back with one tap afterwards.", fs_undone:"↩ {n} tasks back on their old dates", fs_undo_conflicts:"Put back; {n} you changed since were left alone", fresh_start_n:"{n} overdue tasks",
   fresh_start_body:"No task is deleted — they are moved or archived. Your statistics and history stay intact.",
   fs_today:"Move all to today", fs_week:"Spread over a week",
   fs_undate:"Drop the deadlines", fs_archive:"Move to the archive",
@@ -2161,7 +2161,7 @@ const DICT = {
   feedback:"Отзыв и предложения", feedback_ph:"Что нам улучшить?",
   feedback_sent:"Спасибо — отзыв доставлен",
   feedback_saved:"Отзыв сохранён и скоро будет доставлен",
-  fresh_start:"Мягкий сброс", fs_focus:"3 главных сегодня, остальное — по неделе", fs_preview:"Как это будет выглядеть", fs_apply:"Применить", fs_archive_n:"{n} задач уйдут в архив.", fs_undo_hint:"Потом можно вернуть одним нажатием.", fs_undone:"↩ {n} задач вернулись на прежние даты", fs_undo_conflicts:"Возвращено; {n} изменённых вами не тронуты", fresh_start_n:"{n} просроченных задач",
+  fresh_start:"Мягкий сброс", fs_focus:"3 главных сегодня, остальное — по неделе", fs_preview:"Как это будет выглядеть", fs_apply:"Применить", fs_triage:"Ещё нужно? ({n}) — отметьте лишнее", fs_not_needed:"Не нужно", fs_archive_n:"{n} задач уйдут в архив.", fs_undo_hint:"Потом можно вернуть одним нажатием.", fs_undone:"↩ {n} задач вернулись на прежние даты", fs_undo_conflicts:"Возвращено; {n} изменённых вами не тронуты", fresh_start_n:"{n} просроченных задач",
   fresh_start_body:"Ни одна задача не удаляется — они переносятся или уходят в архив. Статистика и история сохраняются.",
   fs_today:"Все на сегодня", fs_week:"Распределить на неделю",
   fs_undate:"Убрать сроки", fs_archive:"Перенести в архив",
@@ -6460,7 +6460,17 @@ function freshStartSheet(p){
 /* The result before it happens: how many land on each day and which ones
    are today's, then one button to do it (audit #15). */
 function freshPreviewSheet(p, mode){
-  const plan = p.plan || [];
+  state.freshPlan = {p, mode};
+  const drop = state.freshDrop || (state.freshDrop = new Set());
+  const plan = (p.plan || []).filter(x => !drop.has(x.id));
+  /* "Still needed?" first: what is not needed goes to the archive and takes
+     no day from what is (audit #15). */
+  const triage = mode === "archive" ? "" : `<details style="margin-top:8px">
+      <summary>${t("fs_triage", {n: (p.plan || []).length})}</summary>
+      ${(p.plan || []).map(x => `<div class="row small" style="gap:8px;margin-top:6px">
+        <span class="grow ellipsis ${drop.has(x.id) ? "strike t3" : ""}">${esc(x.title)}</span>
+        <div class="chip sm ${drop.has(x.id) ? "on" : ""}" data-act="fresh-drop" data-id="${x.id}">${t("fs_not_needed")}</div>
+      </div>`).join("")}</details>`;
   const today = todayISO();
   const byDay = {};
   for(const x of plan) if(!x.archive) byDay[x.to || "none"] = (byDay[x.to || "none"] || 0) + 1;
@@ -6474,6 +6484,8 @@ function freshPreviewSheet(p, mode){
     ${todays.length ? `<label>${t("today")}</label>${todays.slice(0, 5).map(x =>
       `<div class="small">• ${esc(x.title)}</div>`).join("")}${todays.length > 5
       ? `<div class="t3 tiny">+${todays.length - 5}</div>` : ""}` : ""}`}
+    ${triage}
+    ${drop.size ? `<div class="t2 small" style="margin-top:8px">${t("fs_archive_n", {n: drop.size})}</div>` : ""}
     <div class="t3 tiny" style="margin-top:8px">${t("fs_undo_hint")}</div>
     <button class="btn" data-act="fresh-go" data-mode="${mode}" style="margin-top:12px">${t("fs_apply")}</button>
     <button class="btn secondary" data-act="fresh-start" style="margin-top:8px">${t("back")}</button>`;
@@ -9064,13 +9076,26 @@ const A = {
   },
   "fresh-preview": async el => {
     const mode = el.dataset.mode;
+    state.freshDrop = new Set();
     try{ openSheet(freshPreviewSheet(await api("/api/fresh-start?mode=" + mode), mode)); }
     catch(e){ handleError(e); }
+  },
+  /* Dropping one re-plans the rest on the server, so the preview stays true. */
+  "fresh-drop": async el => {
+    const id = Number(el.dataset.id), drop = state.freshDrop || new Set();
+    drop.has(id) ? drop.delete(id) : drop.add(id);
+    state.freshDrop = drop;
+    const {mode} = state.freshPlan || {};
+    try{
+      const p = await api(`/api/fresh-start?mode=${mode}&drop=${[...drop].join(",")}`);
+      openSheet(freshPreviewSheet(p, mode));
+    }catch(e){ handleError(e); }
   },
   "fresh-go": async el => {
     try{
       const r = await api("/api/fresh-start",
-        {method:"POST", body:{mode: el.dataset.mode}});
+        {method:"POST", body:{mode: el.dataset.mode, drop: [...(state.freshDrop || [])]}});
+      state.freshDrop = new Set();
       closeSheet();
       // One tap puts the dates back; tasks edited since are left alone.
       toast(t("fs_done", {n:r.moved}), r.undo ? t("undo") : undefined, r.undo ? async () => {

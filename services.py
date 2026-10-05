@@ -4376,11 +4376,22 @@ def _fresh_overdue(s: Session, ws: int, today: date) -> list[Task]:
 
 
 def fresh_start_plan(s: Session, ws: int, *, mode: str = "focus",
-                     tz: ZoneInfo | None = None) -> list[dict]:
-    """What a reset would do, task by task, without doing it."""
+                     tz: ZoneInfo | None = None,
+                     drop: set[int] | None = None) -> list[dict]:
+    """What a reset would do, task by task, without doing it.
+
+    `drop` are the tasks the person answered "no longer needed" for: they go
+    to the archive and take no day from the ones that are still wanted.
+    """
     today = today_local(tz)
+    drop = drop or set()
     overdue = _fresh_overdue(s, ws, today)
-    plan = []
+    plan = [{"id": t.id, "title": t.title, "priority": t.priority,
+             "from": t.deadline.isoformat() if t.deadline else None,
+             "to": t.deadline.isoformat() if t.deadline else None,
+             "archive": True, "dropped": True}
+            for t in overdue if t.id in drop]
+    overdue = [t for t in overdue if t.id not in drop]
     rest = 0
     for index, task in enumerate(overdue):
         archive, target = False, today
@@ -4403,13 +4414,13 @@ def fresh_start_plan(s: Session, ws: int, *, mode: str = "focus",
 
 
 def fresh_start(s: Session, ws: int, *, mode: str = "today",
-                tz: ZoneInfo | None = None) -> int:
+                tz: ZoneInfo | None = None, drop: set[int] | None = None) -> int:
     """Clear the backlog in one move. Returns how many tasks were handled.
 
     Every change is written to a ResetLog first, so `undo_fresh_start` can
     put the old dates back.
     """
-    plan = fresh_start_plan(s, ws, mode=mode, tz=tz)
+    plan = fresh_start_plan(s, ws, mode=mode, tz=tz, drop=drop)
     snapshot = []
     for step in plan:
         task = s.get(Task, step["id"])

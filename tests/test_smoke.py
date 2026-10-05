@@ -11237,3 +11237,21 @@ def test_a_task_repeating_after_completion_counts_from_the_day_it_was_done(fresh
                                               db.Task.status == "waiting")).all()
     assert [t.deadline for t in nxt] == [today + timedelta(days=7)]
     assert svc.clean_recurrence("after:0") == "" and svc.clean_recurrence("after:400") == ""
+
+
+def test_a_reset_asks_what_is_still_needed_first(fresh):
+    """Audit #15 (rest): tasks marked "not needed" are archived and take no day;
+    the rest are spread as before, and undo brings all of them back."""
+    today = svc.today_local()
+    ids = [fresh.post("/api/tasks", json={"title": f"Eski {n}",
+                                          "deadline": (today - timedelta(days=3)).isoformat()}).json()["id"]
+           for n in range(5)]
+    plan = fresh.get(f"/api/fresh-start?mode=focus&drop={ids[0]},{ids[1]}").json()["plan"]
+    dropped = [x for x in plan if x.get("dropped")]
+    assert sorted(x["id"] for x in dropped) == sorted(ids[:2])
+    assert len([x for x in plan if x["to"] == today.isoformat() and not x.get("dropped")]) == 3
+    assert fresh.post("/api/fresh-start", {"mode": "focus", "drop": ids[:2]}).json()["moved"] == 5
+    with SessionLocal() as s:
+        assert all(s.get(db.Task, i).archived_at is not None for i in ids[:2])
+        assert all(s.get(db.Task, i).archived_at is None for i in ids[2:])
+    assert fresh.post("/api/fresh-start/undo", {}).json()["restored"] == 5

@@ -9283,10 +9283,12 @@ def api_quick_add(body: QuickAddIn,
 
 class FreshStartIn(BaseModel):
     mode: str = Field(default="today", max_length=8)
+    #: Tasks answered "no longer needed": archived, not rescheduled.
+    drop: list[int] = Field(default_factory=list, max_length=500)
 
 
 @app.get("/api/fresh-start")
-def api_fresh_start_preview(mode: str | None = None,
+def api_fresh_start_preview(mode: str | None = None, drop: str = "",
                             init=Header(default=None,
                                         alias="X-Telegram-Init-Data")):
     """What a reset would touch, before anything is touched.
@@ -9299,7 +9301,8 @@ def api_fresh_start_preview(mode: str | None = None,
         row = s.get(User, user.telegram_id)
         state = svc.break_state(s, ws, row)
         # With a mode: exactly where each task would go, before anything moves.
-        plan = (svc.fresh_start_plan(s, ws, mode=mode, tz=svc.user_tz(user))
+        dropped = {int(x) for x in drop.split(",")[:500] if x.strip().isdigit()}
+        plan = (svc.fresh_start_plan(s, ws, mode=mode, tz=svc.user_tz(user), drop=dropped)
                 if mode in svc.FRESH_START_MODES else None)
     return {"overdue": state["overdue"], "days_away": state["days_away"],
             "modes": list(svc.FRESH_START_MODES), "plan": plan,
@@ -9317,7 +9320,7 @@ def api_fresh_start(body: FreshStartIn,
     user, ws = auth(init)
     mode = body.mode if body.mode in svc.FRESH_START_MODES else "today"
     with SessionLocal() as s:
-        moved = svc.fresh_start(s, ws, mode=mode, tz=svc.user_tz(user))
+        moved = svc.fresh_start(s, ws, mode=mode, tz=svc.user_tz(user), drop=set(body.drop))
     return {"ok": True, "moved": moved, "mode": mode, "undo": bool(moved)}
 
 
