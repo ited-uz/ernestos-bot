@@ -778,7 +778,8 @@ def _apply_pause(s: Session, kind: str, habit, paused: bool, *, today: date,
 
 
 def _habit_dict(habit: Habit, day: date, done: bool,
-                run: dict | None = None, cal: DueCalendar | None = None) -> dict:
+                run: dict | None = None, cal: DueCalendar | None = None,
+                qty: int | None = None) -> dict:
     paused_now = cal.paused_on(habit, day) if cal else habit.paused_at is not None
     pending = cal.pause_pending(habit, day) if cal else None
     return {
@@ -802,7 +803,54 @@ def _habit_dict(habit: Habit, day: date, done: bool,
         **_timer_fields(habit.timer_minutes, habit.name,
                         protected=habit.is_protected),
         "timer": run,
+        "target_qty": habit.target_qty, "min_qty": habit.min_qty, "unit": habit.unit or "",
+        "qty": qty or 0,
+        # Something real was done, short of the goal: the minimal version.
+        "minimal": bool(habit.target_qty and not done and habit.min_qty
+                        and (qty or 0) >= habit.min_qty),
     }
+
+
+def clean_quantity(target, minimum, unit) -> tuple[int | None, int | None, str | None]:
+    """Validate a measured habit's goal, minimal version and unit."""
+    if not target:
+        return None, None, None
+    target = int(target)
+    if not 1 <= target <= 100_000:
+        raise ValueError("bad_target")
+    minimum = int(minimum) if minimum else None
+    if minimum is not None and not 1 <= minimum < target:
+        raise ValueError("bad_minimum")
+    unit = " ".join(str(unit or "").split())[:16] or None
+    return target, minimum, unit
+
+
+def log_habit_qty(s: Session, ws: int, habit_id: int, qty: int,
+                  day: date | None = None, *, tz: ZoneInfo | None = None) -> dict:
+    """Write how much of a measured habit was done today.
+
+    Reaching the goal ticks it; anything less is kept as the amount done —
+    12 of 20 pages is neither 20 nor zero (audit #6).
+    """
+    habit = _owned_habit(s, ws, habit_id)
+    if not habit.target_qty:
+        raise ValueError("not_measured")
+    qty = int(qty)
+    if not 0 <= qty <= 1_000_000:
+        raise ValueError("bad_qty")
+    tz = tz or _habit_tz(s, ws)
+    day = day or today_local(tz)
+    row = s.scalar(select(HabitLog).where(
+        HabitLog.workspace_id == ws, HabitLog.habit_id == habit_id, HabitLog.day == day))
+    if row is None:
+        row = HabitLog(workspace_id=ws, habit_id=habit_id, day=day, done=False)
+        s.add(row)
+    row.qty = qty
+    row.done = qty >= habit.target_qty
+    row.logged_at = now_local(tz) if qty else None
+    s.commit()
+    return {"qty": qty, "done": row.done, "target_qty": habit.target_qty,
+            "minimal": bool(not row.done and habit.min_qty and qty >= habit.min_qty)}
 
 
 def _active_habits(s: Session, ws: int) -> list[Habit]:
@@ -855,7 +903,11 @@ def list_habits(s: Session, ws: int, day: date | None = None, *,
     ).all())
     runs = open_timer_runs(s, ws, "habit", day=day)
     cal = calendar_for(s, habits, tz)
-    return [_habit_dict(h, day, h.id in done_ids, runs.get(h.id), cal) for h in habits]
+    qtys = dict(s.execute(select(HabitLog.habit_id, HabitLog.qty).where(
+        HabitLog.workspace_id == ws, HabitLog.day == day,
+        HabitLog.qty.is_not(None))).all())
+    return [_habit_dict(h, day, h.id in done_ids, runs.get(h.id), cal, qtys.get(h.id))
+            for h in habits]
 
 
 def habits_by_category(s: Session, ws: int, day: date | None = None, *,
@@ -885,7 +937,9 @@ def habits_by_category(s: Session, ws: int, day: date | None = None, *,
 def add_habit(s: Session, ws: int, name: str, category: str = "target", *,
               schedule: str | None = None, remind_at: dtime | None = None,
               timer_minutes: int | None = None,
-              start: str | None = None, tz: ZoneInfo | None = None) -> Habit:
+              start: str | None = None, tz: ZoneInfo | None = None,
+              target_qty: int | None = None, min_qty: int | None = None,
+              unit: str | None = None) -> Habit:
     """A new habit, owed from today or — when `start == "tomorrow"` — from tomorrow.
 
     Adding a habit at 22:00 that is owed today lowers a day that is nearly
@@ -901,8 +955,10 @@ def add_habit(s: Session, ws: int, name: str, category: str = "target", *,
     tz = tz or _habit_tz(s, ws)
     today = today_local(tz)
     top = s.scalar(select(func.max(Habit.position)).where(Habit.workspace_id == ws)) or 0
+    target_qty, min_qty, unit = clean_quantity(target_qty, min_qty, unit)
     habit = Habit(workspace_id=ws, name=name, category=category, position=top + 1,
                   schedule=clean_schedule(schedule), remind_at=remind_at,
+                  target_qty=target_qty, min_qty=min_qty, unit=unit,
                   timer_minutes=clean_timer_minutes(timer_minutes),
                   active_from=today + timedelta(days=1) if start == "tomorrow" else today)
     s.add(habit)
@@ -947,6 +1003,13 @@ def update_habit(s: Session, ws: int, habit_id: int, **fields) -> Habit:
         habit.target_time = fields["target_time"]
     if "timer_minutes" in fields and not habit.is_protected:
         _apply_timer_setting(s, ws, "habit", habit, fields["timer_minutes"])
+    if "target_qty" in fields and not habit.is_protected:
+        habit.target_qty, habit.min_qty, habit.unit = clean_quantity(
+            fields["target_qty"], fields.get("min_qty", habit.min_qty),
+            fields.get("unit", habit.unit))
+    elif "min_qty" in fields and habit.target_qty:
+        habit.target_qty, habit.min_qty, habit.unit = clean_quantity(
+            habit.target_qty, fields["min_qty"], fields.get("unit", habit.unit))
     s.commit()
     return habit
 

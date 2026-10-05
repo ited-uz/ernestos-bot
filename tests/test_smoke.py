@@ -11177,3 +11177,24 @@ def test_a_plan_bigger_than_the_day_is_flagged_not_changed(fresh):
         assert s.get(db.Task, big["id"]).deadline.isoformat() == today
         assert s.get(db.Task, low["id"]).deadline.isoformat() == today
     assert fresh.post("/api/prefs", {"day_capacity": 5000}).status_code == 422
+
+
+def test_a_measured_habit_keeps_partial_work_and_a_minimal_version(fresh):
+    """Audit #6: 12 of 20 pages is shown as 12/20, 2 pages on a hard day is the
+    minimal version — and neither counts as the full goal."""
+    hid = fresh.post("/api/habits", {"name": "Kitob", "target_qty": 20, "min_qty": 2,
+                                     "unit": "bet"}).json()["id"]
+    row = lambda: next(h for h in fresh.get("/api/habits").json()["habits"] if h["id"] == hid)  # noqa: E731
+    assert (row()["target_qty"], row()["unit"], row()["qty"], row()["done"]) == (20, "bet", 0, False)
+    r = fresh.post(f"/api/habits/{hid}/qty", {"qty": 12}).json()
+    assert r["qty"] == 12 and not r["done"] and r["minimal"]
+    assert row()["qty"] == 12 and row()["minimal"] and not row()["done"]
+    assert fresh.post(f"/api/habits/{hid}/qty", {"qty": 20}).json()["done"] is True
+    assert row()["done"] and not row()["minimal"]
+    # Validation: a minimal version must be below the goal.
+    assert fresh.post("/api/habits", {"name": "X", "target_qty": 5, "min_qty": 9}).status_code == 422
+    plain = fresh.post("/api/habits", {"name": "Suv"}).json()["id"]
+    assert fresh.post(f"/api/habits/{plain}/qty", {"qty": 3}).status_code == 422
+    # Turning it back into a yes/no habit.
+    fresh.patch(f"/api/habits/{hid}", {"target_qty": 0})
+    assert row()["target_qty"] is None

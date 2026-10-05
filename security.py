@@ -130,7 +130,7 @@ UNGATED_WRITES = ("/api/settings", "/api/prefs", "/api/feedback",
 #: still gated. A task PATCH is let through here and narrowed to a bare
 #: status change in its handler, which can read the body.
 UNGATED_RECORDING = re.compile(
-    r"^/api/(?:habits/\d+/toggle|teams/(?:tasks|habits)/\d+/toggle|tasks/\d+"
+    r"^/api/(?:habits/\d+/(?:toggle|qty)|teams/(?:tasks|habits)/\d+/toggle|tasks/\d+"
     r"|prayers(?:/clear|/excused)?|journal|wakeup|focus/\d+/toggle"
     r"|timers/[a-z]+/\d+/(?:start|log)|timers/runs/\d+/[a-z]+)$")
 

@@ -219,6 +219,12 @@ class Habit(Base):
     #: Set explicitly when somebody adds a habit "from tomorrow", so adding one
     #: late in the evening cannot drag down a day that is already under way.
     active_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    #: A measured habit: "20 bet", "60 daqiqa". Done at `target_qty`; a day at
+    #: `min_qty` or more is the minimal version — shown, never counted as the
+    #: full goal (audit #6). NULL — an ordinary yes/no habit.
+    target_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    min_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    unit: Mapped[str | None] = mapped_column(String(16), nullable=True)
     #: Soft delete — historical reports must not change retroactively. A habit
     #: stays owed on every day up to and including the day it was archived.
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -283,6 +289,8 @@ class HabitLog(Base):
         Integer, ForeignKey("habits.id", ondelete="CASCADE"), index=True)
     day: Mapped[date] = mapped_column(Date, index=True)
     done: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: How much of a measured habit was done that day (12 of 20 pages).
+    qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
     #: Local wall-clock time the habit was ticked. The wake-up habit shows it
     #: back as "✓ 04:53" — "recorded" tells the user nothing they did not
     #: already know. Nullable: rows written before the column have no time.

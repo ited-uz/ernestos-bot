@@ -1352,7 +1352,7 @@ const DICT = {
   theme_fixed:"Bu tema o'z ko'rinishida ishlaydi",
   timezone:"Vaqt mintaqasi", tz_common:"Tez-tez ishlatiladigan", notifications:"Eslatmalar va hisobotlar",
   morning_report:"Ertalabki hisobot", evening_report:"Kechqurungi hisobot",
-  task_reminders:"Vazifa eslatmalari", habit_reminders:"Odat eslatmalari", quiet_hours:"Sokin soatlar", quiet_from:"dan", quiet_to:"gacha", quiet_hint:"Bu oraliqda eslatmalar ovozsiz keladi — yo'qolmaydi. Masalan, tundan ertalabgacha.", quiet_off:"O'chirish", habit_remind_off:"Odat eslatmalari o'chiq — bu vaqtda xabar kelmaydi.", habit_remind_enable:"Odat eslatmalarini yoqish", habit_remind_on:"Eslatma yoqilgan",
+  task_reminders:"Vazifa eslatmalari", habit_reminders:"Odat eslatmalari", qty_minimal:"minimal", qty_goal:"Maqsad {n} {u}", qty_min_is:"minimal {n}", qty_all:"Hammasi", qty_label:"Miqdor (ixtiyoriy)", qty_target_ph:"Maqsad, masalan 20", qty_unit_ph:"Birlik, masalan bet", qty_min_ph:"Og'ir kunda minimal, masalan 2", quiet_hours:"Sokin soatlar", quiet_from:"dan", quiet_to:"gacha", quiet_hint:"Bu oraliqda eslatmalar ovozsiz keladi — yo'qolmaydi. Masalan, tundan ertalabgacha.", quiet_off:"O'chirish", habit_remind_off:"Odat eslatmalari o'chiq — bu vaqtda xabar kelmaydi.", habit_remind_enable:"Odat eslatmalarini yoqish", habit_remind_on:"Eslatma yoqilgan",
   reminders:"Eslatmalar", report_at:"Yuboriladigan vaqt",
   morning_report_hint:"Xayrli tong, kechagi natija va bugungi reja",
   evening_report_hint:"Kun yakuni, natijalar va xayrli tun",
@@ -1721,7 +1721,7 @@ const DICT = {
   theme_fixed:"This theme keeps its own appearance",
   timezone:"Time zone", tz_common:"Common", notifications:"Reminders and reports",
   morning_report:"Morning report", evening_report:"Evening report",
-  task_reminders:"Task reminders", habit_reminders:"Habit reminders", quiet_hours:"Quiet hours", quiet_from:"from", quiet_to:"to", quiet_hint:"Reminders in this window arrive silently — nothing is lost. E.g. from night until morning.", quiet_off:"Turn off", habit_remind_off:"Habit reminders are off — no message will come at this time.", habit_remind_enable:"Turn on habit reminders", habit_remind_on:"Reminder is on",
+  task_reminders:"Task reminders", habit_reminders:"Habit reminders", qty_minimal:"minimal", qty_goal:"Goal {n} {u}", qty_min_is:"minimal {n}", qty_all:"All of it", qty_label:"Amount (optional)", qty_target_ph:"Goal, e.g. 20", qty_unit_ph:"Unit, e.g. pages", qty_min_ph:"Minimal on a hard day, e.g. 2", quiet_hours:"Quiet hours", quiet_from:"from", quiet_to:"to", quiet_hint:"Reminders in this window arrive silently — nothing is lost. E.g. from night until morning.", quiet_off:"Turn off", habit_remind_off:"Habit reminders are off — no message will come at this time.", habit_remind_enable:"Turn on habit reminders", habit_remind_on:"Reminder is on",
   reminders:"Reminders", report_at:"Sent at",
   morning_report_hint:"Good morning, yesterday's score and today's plan",
   evening_report_hint:"How the day landed, then good night",
@@ -2087,7 +2087,7 @@ const DICT = {
   theme_fixed:"Эта тема сохраняет своё оформление",
   timezone:"Часовой пояс", tz_common:"Частые", notifications:"Напоминания и отчёты",
   morning_report:"Утренний отчёт", evening_report:"Вечерний отчёт",
-  task_reminders:"Напоминания о задачах", habit_reminders:"Напоминания о привычках", quiet_hours:"Тихие часы", quiet_from:"с", quiet_to:"до", quiet_hint:"В это время напоминания приходят без звука — ничего не теряется. Например, с ночи до утра.", quiet_off:"Выключить", habit_remind_off:"Напоминания о привычках выключены — сообщение не придёт.", habit_remind_enable:"Включить напоминания о привычках", habit_remind_on:"Напоминание включено",
+  task_reminders:"Напоминания о задачах", habit_reminders:"Напоминания о привычках", qty_minimal:"минимум", qty_goal:"Цель {n} {u}", qty_min_is:"минимум {n}", qty_all:"Всё", qty_label:"Количество (необязательно)", qty_target_ph:"Цель, например 20", qty_unit_ph:"Единица, например стр.", qty_min_ph:"Минимум в трудный день, например 2", quiet_hours:"Тихие часы", quiet_from:"с", quiet_to:"до", quiet_hint:"В это время напоминания приходят без звука — ничего не теряется. Например, с ночи до утра.", quiet_off:"Выключить", habit_remind_off:"Напоминания о привычках выключены — сообщение не придёт.", habit_remind_enable:"Включить напоминания о привычках", habit_remind_on:"Напоминание включено",
   reminders:"Напоминания", report_at:"Время отправки",
   morning_report_hint:"Доброе утро, вчерашний результат и план на день",
   evening_report_hint:"Итоги дня, а затем — спокойной ночи",
@@ -3557,6 +3557,10 @@ function habitRow(x, cat, wake){
   const shared = x.source === "team";
   const timed = !x.protected && !x.mirrored && Boolean(x.timer_minutes);
   if(timed) meta.push(timerMeta(x));
+  // A measured habit says how far it got: 12/20 bet, or "minimal".
+  const measured = !shared && Boolean(x.target_qty);
+  if(measured) meta.push(`<span class="num">${x.qty || 0}/${x.target_qty} ${esc(x.unit || "")}</span>${
+    x.minimal ? ` · <span class="tag">${t("qty_minimal")}</span>` : ""}`);
 
   /* A shared habit's box is the reader's own share — a mirrored ritual is
      read from their personal habit and never ticked twice. */
@@ -3565,6 +3569,9 @@ function habitRow(x, cat, wake){
       ? `<div class="check lock" aria-hidden="true"></div>`
     /* Done by its timer: the box starts the clock instead of ticking. Once
        the timer has done its part the box is an ordinary one again. */
+    : measured && !x.done
+      ? `<div class="check ${x.qty ? "timed" : ""}" data-act="habit-qty" data-id="${x.id}" role="button"
+             tabindex="0" aria-label="${esc(x.name)} · ${x.qty || 0}/${x.target_qty}">${x.qty ? `<span class="tiny num">${x.qty}</span>` : ""}</div>`
     : timed && !x.done
       ? `<div class="check timed" data-act="timer-open" data-kind="habit"
              data-id="${x.id}" role="button" tabindex="0"
@@ -5842,6 +5849,40 @@ function taskSheet(task, presetProject){
       ${t("cancel")}</button>`;
 }
 
+/* A measured habit's goal, its unit and the minimal version for a hard day.
+   On an existing habit each change saves at once. */
+function qtyFields(h, live){
+  const act = live ? `data-act="habit-qty-set" data-id="${h.id}"` : "";
+  return `<label>${t("qty_label")}</label>
+    <div class="row" style="gap:var(--s2)">
+      <input id="hq-target" type="number" min="0" max="100000" inputmode="numeric" style="flex:1"
+             value="${h.target_qty || ""}" placeholder="${t("qty_target_ph")}" ${act} />
+      <input id="hq-unit" maxlength="16" style="flex:1" value="${esc(h.unit || "")}"
+             placeholder="${t("qty_unit_ph")}" ${act} /></div>
+    <input id="hq-min" type="number" min="0" max="100000" inputmode="numeric" style="margin-top:8px"
+           value="${h.min_qty || ""}" placeholder="${t("qty_min_ph")}" ${act} />`;
+}
+function readQty(){
+  const target = Math.round(Number(val("hq-target")) || 0);
+  const min = Math.round(Number(val("hq-min")) || 0);
+  return {target_qty: target, min_qty: target && min && min < target ? min : null,
+          unit: target ? val("hq-unit").trim() : null};
+}
+
+/* How much of a measured habit was done today (audit #6). */
+function habitQtySheet(h){
+  const steps = [1, 5, 10].filter(n => n < h.target_qty);
+  return `<h3>${esc(h.name)}</h3>
+    <div class="hint">${t("qty_goal", {n: h.target_qty, u: esc(h.unit || "")})}${h.min_qty
+      ? " · " + t("qty_min_is", {n: h.min_qty}) : ""}</div>
+    <input id="habit-qty" type="number" min="0" max="1000000" inputmode="numeric"
+           value="${h.qty || ""}" placeholder="0" style="margin-top:10px" />
+    <div class="chips" style="margin-top:8px">${steps.map(n =>
+      `<div class="chip sm" data-act="habit-qty-add" data-n="${n}">+${n}</div>`).join("")}
+      <div class="chip sm" data-act="habit-qty-add" data-n="${h.target_qty}" data-set="1">${t("qty_all")}</div></div>
+    <button class="btn" data-act="habit-qty-save" data-id="${h.id}" style="margin-top:14px">${t("save")}</button>`;
+}
+
 /* Waiting on somebody else: the task stays, out of "Now" until the day to
    check again (audit #12). */
 function blockPicker(task){
@@ -6065,6 +6106,7 @@ function habitSheet(h){
     ${h.remind_at ? reminderSwitchNote() : ""}`}
 
     ${locked || h.protected ? "" : timerSetting(team ? "thabit" : "habit", h)}
+    ${team || h.protected ? "" : qtyFields(h, true)}
 
     ${ritualSharePicker(h)}
 
@@ -8382,6 +8424,7 @@ const A = {
     const body = {name, category: f.category || "target", schedule: f.schedule || "daily",
                   remind_at: f.remind_at || null, timer_minutes: pickedTimer("habit-timer")};
     const dest = destOf();
+    if(!dest.team && document.getElementById("hq-target")) Object.assign(body, readQty());
     if(dest.team)
       // A shared habit has no category: tiers weigh a personal day, and the
       // team's number is a plain count of what the two of you agreed to do.
@@ -8402,6 +8445,23 @@ const A = {
     habitSet(el.dataset.id, {schedule: value === "custom" ? "days:0,2,4" : value});
   },
   /* Switched on from the habit's own sheet, which stays open. */
+  "habit-qty-set": el => habitSet(el.dataset.id, readQty()),
+  "habit-qty": el => {
+    haptic();
+    const h = (state.habits?.habits || []).find(x => String(x.id) === el.dataset.id);
+    if(h) openSheet(habitQtySheet(h));
+  },
+  "habit-qty-add": el => {
+    const input = document.getElementById("habit-qty");
+    if(!input) return;
+    input.value = el.dataset.set ? el.dataset.n : (Number(input.value) || 0) + Number(el.dataset.n);
+  },
+  "habit-qty-save": el => {
+    const qty = Math.max(0, Math.round(Number(val("habit-qty")) || 0));
+    closeSheet();
+    save(() => api(`/api/habits/${el.dataset.id}/qty`, {method:"POST", body:{qty}}),
+         "habits", false, t("saved"));
+  },
   "habit-remind-enable": async () => {
     haptic();
     await prefSave({habit_reminders: true}, false);
@@ -9296,6 +9356,7 @@ function habitAddSheet(){
       .map(v => chip("remind_at", v, v)).join("")}</div>
     ${f.remind_at ? reminderSwitchNote() : ""}
     ${timerPicker("habit-timer", f.timer)}
+    ${destOf().team ? "" : qtyFields({}, false)}
     <button class="btn" data-act="habit-save" style="margin-top:16px">${t("save")}</button>`;
 }
 

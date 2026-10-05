@@ -6935,6 +6935,10 @@ class HabitIn(BaseModel):
     timer_minutes: int | None = Field(default=None, ge=0, le=24 * 60)
     #: "today" (default) or "tomorrow" — whether today already owes it.
     start: str | None = Field(default=None, max_length=10)
+    #: A measured habit: goal, optional minimal version, unit ("bet").
+    target_qty: int | None = Field(default=None, ge=0, le=100_000)
+    min_qty: int | None = Field(default=None, ge=0, le=100_000)
+    unit: str | None = Field(default=None, max_length=16)
 
 
 class PrayerIn(BaseModel):
@@ -8413,12 +8417,34 @@ def api_habits(day: str | None = None, init=Header(default=None, alias="X-Telegr
 def api_habit_add(body: HabitIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, ws = auth(init)
     with SessionLocal() as s:
-        habit = svc.add_habit(s, ws, body.name, body.category,
-                              schedule=body.schedule,
-                              remind_at=_time(body.remind_at),
-                              timer_minutes=body.timer_minutes,
-                              start=body.start, tz=svc.user_tz(user))
+        try:
+            habit = svc.add_habit(s, ws, body.name, body.category,
+                                  schedule=body.schedule,
+                                  remind_at=_time(body.remind_at),
+                                  timer_minutes=body.timer_minutes,
+                                  start=body.start, tz=svc.user_tz(user),
+                                  target_qty=body.target_qty, min_qty=body.min_qty,
+                                  unit=body.unit)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
     return {"ok": True, "id": habit.id}
+
+
+class HabitQtyIn(BaseModel):
+    qty: int = Field(ge=0, le=1_000_000)
+
+
+@app.post("/api/habits/{habit_id}/qty")
+def api_habit_qty(habit_id: int, body: HabitQtyIn,
+                  init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """How much of a measured habit was done today: 12 of 20 pages."""
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        try:
+            return {"ok": True, **svc.log_habit_qty(s, ws, habit_id, body.qty,
+                                                    tz=svc.user_tz(user))}
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
 
 
 class HabitPatch(BaseModel):
@@ -8429,6 +8455,10 @@ class HabitPatch(BaseModel):
     target_time: str | None = Field(default=None, max_length=5)
     #: Timer length in minutes: 0 switches it off, null reads it from the name.
     timer_minutes: int | None = Field(default=None, ge=0, le=24 * 60)
+    #: 0 makes it an ordinary yes/no habit again.
+    target_qty: int | None = Field(default=None, ge=0, le=100_000)
+    min_qty: int | None = Field(default=None, ge=0, le=100_000)
+    unit: str | None = Field(default=None, max_length=16)
 
 
 class HabitPauseIn(BaseModel):
