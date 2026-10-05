@@ -579,12 +579,18 @@ def modules_keyboard(lang: str, chosen: set[str], *, prefix: str = "setup:mod",
     return InlineKeyboardMarkup(rows)
 
 
-def setup_presets_keyboard(lang: str, chosen: set[str]) -> InlineKeyboardMarkup:
-    """The seven ordinary ready-made habits, all ticked to start with.
+#: A first day with sport, deep work, reading and a language all at once is
+#: a plan to fail. Setup starts with one habit ticked and allows three; the
+#: rest are one tap away later (audit #5).
+SETUP_PRESET_DEFAULT = ["plan"]
+SETUP_PRESET_LIMIT = 3
 
-    The three rituals were the step before; together they make the ten. An
-    account starts with the list a person would most likely build anyway and
-    takes away what does not fit, rather than facing an empty screen.
+
+def setup_presets_keyboard(lang: str, chosen: set[str]) -> InlineKeyboardMarkup:
+    """The seven ordinary ready-made habits; one ticked, up to three allowed.
+
+    The three rituals were the step before. Every commitment here is a
+    conscious tick rather than something to untick.
     """
     rows = [[InlineKeyboardButton(
         f"{'✅' if key in chosen else '⬜'} {svc.preset_name(key, lang)}",
@@ -597,7 +603,7 @@ def setup_presets_keyboard(lang: str, chosen: set[str]) -> InlineKeyboardMarkup:
 def _setup_presets(ctx: ContextTypes.DEFAULT_TYPE) -> set[str]:
     data = setup_data(ctx)
     if "presets" not in data:
-        data["presets"] = list(svc.ORDINARY_PRESET_KEYS)
+        data["presets"] = list(SETUP_PRESET_DEFAULT)
     return set(data["presets"])
 
 #: Steps from older builds, and where somebody parked on one continues. The
@@ -4347,6 +4353,9 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if parts[1] == "pre" and len(parts) > 2:
             chosen = _setup_presets(ctx)
             if parts[2] in svc.ORDINARY_PRESET_KEYS:
+                if parts[2] not in chosen and len(chosen) >= SETUP_PRESET_LIMIT:
+                    await _notice(update, t(lang, "setup_presets_limit"))
+                    return
                 chosen ^= {parts[2]}
             setup_data(ctx)["presets"] = sorted(chosen)
             try:

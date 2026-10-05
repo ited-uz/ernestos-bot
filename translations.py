@@ -1571,9 +1571,10 @@ T["uz"].update({
     "presets_hint": ("Eng kerakli 10 ta odat. ✅ — ro'yxatingizda, ➕ — yo'q. "
                      "Bossangiz qo'shiladi yoki olib tashlanadi; olib tashlangani "
                      "tarixi bilan saqlanadi."),
-    "setup_presets": ("📋 <b>Tayyor odatlar</b>\n\nEng kerakli yettitasi belgilab "
-                      "qo'yilgan. Keraksizini olib tashlang — keyin Odatlar → "
-                      "📋 Tayyor odatlar'dan istalgan payt qaytarasiz."),
+    "setup_presets": ("📋 <b>Tayyor odatlar</b>\n\nBittadan boshlang — bittasi "
+                      "belgilangan. Xohlasangiz yana ikkitasini tanlang (ko'pi bilan 3). "
+                      "Qolganini keyin Odatlar → 📋 Tayyor odatlar'dan qo'shasiz."),
+    "setup_presets_limit": "Boshida ko'pi bilan 3 ta odat. Qolganini keyin qo'shing.",
     "presets_set": "✅ Odatlar tayyor.",
     "menu_money": "💰 Pul",
     "money_title": "Pul",
@@ -1609,9 +1610,10 @@ T["en"].update({
     "presets_title": "📋 Ready-made habits",
     "presets_hint": ("The ten most useful habits. ✅ — on your list, ➕ — not yet. "
                      "A tap adds or removes one; a removed one keeps its history."),
-    "setup_presets": ("📋 <b>Ready-made habits</b>\n\nThe seven most useful are "
-                      "ticked. Untick what you do not need — Habits → 📋 "
-                      "Ready-made habits brings any of them back later."),
+    "setup_presets": ("📋 <b>Ready-made habits</b>\n\nStart with one — one is "
+                      "ticked. Pick up to two more if you like (3 at most). Add the "
+                      "rest later from Habits → 📋 Ready-made habits."),
+    "setup_presets_limit": "At most 3 habits to start. Add the rest later.",
     "presets_set": "✅ Habits ready.",
     "menu_money": "💰 Money",
     "money_title": "Money",
@@ -1647,9 +1649,10 @@ T["ru"].update({
     "presets_title": "📋 Готовые привычки",
     "presets_hint": ("Десять самых полезных привычек. ✅ — в вашем списке, ➕ — нет. "
                      "Нажатие добавляет или убирает; убранная хранит историю."),
-    "setup_presets": ("📋 <b>Готовые привычки</b>\n\nСемь самых полезных уже "
-                      "отмечены. Снимите лишние — вернуть можно в любой момент: "
-                      "Привычки → 📋 Готовые привычки."),
+    "setup_presets": ("📋 <b>Готовые привычки</b>\n\nНачните с одной — она "
+                      "отмечена. Можно выбрать ещё две (не больше 3). Остальные "
+                      "добавите позже: Привычки → 📋 Готовые привычки."),
+    "setup_presets_limit": "Для начала не больше 3 привычек. Остальные — позже.",
     "presets_set": "✅ Привычки готовы.",
     "menu_money": "💰 Деньги",
     "money_title": "Деньги",

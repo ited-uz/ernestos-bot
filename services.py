@@ -2039,6 +2039,40 @@ def _spawn_next_occurrence(s: Session, ws: int, task: Task,
     return clone
 
 
+def roll_recurring(s: Session, ws: int, tz: ZoneInfo | None = None) -> int:
+    """Keep calendar repeats on the calendar (audit #14).
+
+    A daily task used to appear for Tuesday only once Monday's copy was
+    ticked, so one missed day stopped the series. Now, when a series has no
+    open copy for today or later, the next date from today is created — the
+    missed copy stays as it was. Only the most recent missed copy stays open:
+    older misses of the same series are archived (never deleted), so a week
+    away leaves one late reminder, not seven. Returns how many were created.
+    """
+    tz = tz or _habit_tz(s, ws)
+    today = today_local(tz)
+    rows = s.scalars(select(Task).where(
+        Task.workspace_id == ws, Task.archived_at.is_(None),
+        Task.status == "waiting", Task.recurrence.is_not(None))).all()
+    series: dict[int, list[Task]] = defaultdict(list)
+    for task in rows:
+        if clean_recurrence(task.recurrence):
+            series[task.series_id or task.id].append(task)
+    made = 0
+    for copies in series.values():
+        if any(c.deadline is None or c.deadline >= today for c in copies):
+            continue
+        copies.sort(key=lambda c: (c.deadline, c.id))
+        latest = copies[-1]
+        if _spawn_next_occurrence(s, ws, latest, tz) is not None:
+            made += 1
+        for older in copies[:-1]:
+            older.archived_at = utcnow()
+    if made or any(len(c) > 1 for c in series.values()):
+        s.commit()
+    return made
+
+
 def _finish_task(s: Session, ws: int, task: Task, tz: ZoneInfo | None,
                  moment: datetime | None = None) -> bool:
     """Mark a task done if it is still open. True when *this* call did it.
@@ -2339,6 +2373,7 @@ def list_tasks(s: Session, ws: int, *, horizon_days: int = 7,
     needle = search.strip().lower()[:100]
 
     settle_timers(s, ws)
+    roll_recurring(s, ws, tz)
     runs = open_timer_runs(s, ws, "task")
     stmt = select(Task).where(Task.workspace_id == ws, Task.archived_at.is_(None))
     if not include_done:
@@ -2404,6 +2439,7 @@ def completed_tasks(s: Session, ws: int, limit: int = 200, *, search: str = "",
 
 
 def tasks_due_today(s: Session, ws: int, *, tz: ZoneInfo | None = None) -> list[dict]:
+    roll_recurring(s, ws, tz)
     today = today_local(tz)
     tasks = s.scalars(select(Task).where(
         Task.workspace_id == ws, Task.archived_at.is_(None),
@@ -6227,6 +6263,7 @@ def due_task_reminders(s: Session, ws: int, user: User,
         return []
 
     tz = user_tz(user)
+    roll_recurring(s, ws, tz)
     now = now or now_local(tz)
     today = now.date()
 

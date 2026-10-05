@@ -10136,7 +10136,8 @@ async def test_the_bot_ready_made_list_flips_one_habit_per_tap():
         assert "2 litr suv ichish" not in [h["name"] for h in svc.list_habits(s, ws)]
 
 
-async def test_setup_offers_the_seven_and_adds_what_stays_ticked():
+async def test_setup_starts_with_one_habit_and_allows_three():
+    """Audit #5: the default path does not create a pile of unchosen habits."""
     uid = next(_next_id)
     with SessionLocal() as s:
         svc.get_or_create_user(s, uid)
@@ -10145,15 +10146,32 @@ async def test_setup_offers_the_seven_and_adds_what_stays_ticked():
         s.commit()
     ctx = _Ctx()
     ctx.user_data["setup"] = {}
-    await application.on_callback(_CbUpdate(uid, "setup:pre:language"), ctx)
-    assert "language" not in ctx.user_data["setup"]["presets"]
+    for key in ("sport", "read", "language"):
+        await application.on_callback(_CbUpdate(uid, f"setup:pre:{key}"), ctx)
+    chosen = ctx.user_data["setup"]["presets"]
+    assert sorted(chosen) == ["plan", "read", "sport"], "a fourth is refused"
     await application.on_callback(_CbUpdate(uid, "setup:pre_done"), ctx)
     with SessionLocal() as s:
         ws = svc.workspace_id_for(s, uid)
         names = [h["name"] for h in svc.list_habits(s, ws)]
         assert s.get(User, uid).onboarded is True
-    assert len(names) == 3 + 6
+    assert len(names) == 3 + 3
     assert "Til o'rganish" not in names and "Sport" in names
+
+
+async def test_setup_left_as_it_is_adds_a_single_habit():
+    uid = next(_next_id)
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, uid)
+        s.get(User, uid).onboarding_step = "presets"
+        s.commit()
+    ctx = _Ctx()
+    ctx.user_data["setup"] = {}
+    await application.on_callback(_CbUpdate(uid, "setup:pre_done"), ctx)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        names = [h["name"] for h in svc.list_habits(s, ws)]
+    assert len(names) == 3 + 1 and "Kunni rejalashtirish" in names
 
 
 # ==========================================================================
@@ -10822,3 +10840,45 @@ def test_quick_preview_parses_without_saving(fresh):
     with SessionLocal() as s:
         ws = svc.workspace_id_for(s, fresh.user["id"])
         assert s.scalar(select(func.count(db.Task.id)).where(db.Task.workspace_id == ws)) == 0
+
+
+def test_a_daily_task_appears_even_if_yesterdays_was_not_ticked(fresh):
+    """Audit #14: a missed day does not stop a calendar repeat, and no duplicates."""
+    today = svc.today_local()
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        first = svc.add_task(s, ws, "Kunlik hisobot", deadline=today - timedelta(days=3),
+                             recurrence="daily")
+        first_id = first.id
+        svc.roll_recurring(s, ws)
+        svc.roll_recurring(s, ws)  # twice: still one copy for today
+        open_rows = s.scalars(select(db.Task).where(
+            db.Task.workspace_id == ws, db.Task.title == "Kunlik hisobot",
+            db.Task.archived_at.is_(None), db.Task.status == "waiting")).all()
+        assert sorted(r.deadline for r in open_rows) == [today - timedelta(days=3), today]
+        # The next day: today's copy is missed too; one late copy stays, not two.
+        svc.roll_recurring(s, ws)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        today_rows = [t for t in svc.tasks_due_today(s, ws)
+                      if t["title"] == "Kunlik hisobot"]
+        assert len(today_rows) == 1
+        # Ticking the late copy does not make a second copy for today.
+        svc.complete_task(s, ws, first_id)
+        assert len([t for t in svc.tasks_due_today(s, ws)
+                    if t["title"] == "Kunlik hisobot"]) == 1
+
+
+def test_older_misses_of_a_series_are_archived_not_piled_up(fresh):
+    today = svc.today_local()
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        a = svc.add_task(s, ws, "Suv", deadline=today - timedelta(days=2), recurrence="daily")
+        b = svc.add_task(s, ws, "Suv", deadline=today - timedelta(days=1), recurrence="daily")
+        b.series_id = a.id
+        a.series_id = a.id
+        s.commit()
+        svc.roll_recurring(s, ws)
+        s.refresh(a)
+        s.refresh(b)
+        assert a.archived_at is not None and b.archived_at is None
