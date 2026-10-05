@@ -481,6 +481,13 @@ class TimerRun(Base):
     #: Logged by hand afterwards ("did 60 min without the timer"), not measured.
     #: NULL on rows from before the column existed — those were all measured.
     manual: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
+    #: Work/break rhythm, e.g. 50/10: after each `cycle_work` minutes the run
+    #: pauses itself for a `cycle_break` minute break that is never counted as
+    #: work (audit #41). NULL — one straight session.
+    cycle_work: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cycle_break: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    break_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    break_notice_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     #: The bot message showing this timer, so the job can keep it counting.
     chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)

@@ -1449,7 +1449,7 @@ const DICT = {
   timer_off:"O'chiq", timer_auto:"nomidan", timer_from_name:"Nomidan (masalan: 5h)",
   timer_custom_ph:"Daqiqa, masalan 50",
   timer_rule_habit:"Odat taymer tugagach o'zi belgilanadi.",
-  timer_rule_task:"Taymer ishlagan vaqtni yozadi. Vazifa tugaganini o'zingiz belgilaysiz.", timer_worked:"{dur} ishlandi", timer_finish:"Sessiyani yakunlash", timer_finish_hint:"Yakunlash — ishlangan vaqt saqlanadi. To'xtatish — sessiya bekor qilinadi.", timer_manual:"qo'lda {dur}", timer_ask_done:"Vazifa tugadimi?", timer_yes_done:"Ha, tugadi", timer_more:"Yana bir sessiya", timer_log_lbl:"Taymersiz bajardim", timer_log_ph:"Necha daqiqa?", timer_log_btn:"Qayd qilish", timer_running:"Taymer ishlayapti — avval uni to'xtating.",
+  timer_rule_task:"Taymer ishlagan vaqtni yozadi. Vazifa tugaganini o'zingiz belgilaysiz.", timer_worked:"{dur} ishlandi", timer_rhythm:"Ish va tanaffus", timer_one_go:"Bir martada", timer_rhythm_hint:"Masalan 50/10 — 50 daqiqa ish, 10 daqiqa tanaffus. Tanaffus ish vaqtiga kirmaydi.", timer_on_break:"Tanaffus {time} gacha", timer_finish:"Sessiyani yakunlash", timer_finish_hint:"Yakunlash — ishlangan vaqt saqlanadi. To'xtatish — sessiya bekor qilinadi.", timer_manual:"qo'lda {dur}", timer_ask_done:"Vazifa tugadimi?", timer_yes_done:"Ha, tugadi", timer_more:"Yana bir sessiya", timer_log_lbl:"Taymersiz bajardim", timer_log_ph:"Necha daqiqa?", timer_log_btn:"Qayd qilish", timer_running:"Taymer ishlayapti — avval uni to'xtating.",
   timer_off_hint:"Taymer o'chiq — oddiy belgilanadi. Vaqt kerak bo'lsa, pastdan tanlang.",
   timer_done_today:"Bugun bajarildi", timer_done:"Bajarildi",
   timer_finished:"Vaqt tugadi — belgilandi ✓",
@@ -1815,7 +1815,7 @@ const DICT = {
   timer_off:"Off", timer_auto:"from name", timer_from_name:"From the name (e.g. 5h)",
   timer_custom_ph:"Minutes, e.g. 50",
   timer_rule_habit:"The habit ticks itself when the timer ends.",
-  timer_rule_task:"The timer records the time worked. You mark the task finished.", timer_worked:"{dur} worked", timer_finish:"Finish session", timer_finish_hint:"Finish keeps the time worked. Stop cancels the session.", timer_manual:"{dur} logged by hand", timer_ask_done:"Is the task finished?", timer_yes_done:"Yes, finished", timer_more:"Another session", timer_log_lbl:"Did it without the timer", timer_log_ph:"How many minutes?", timer_log_btn:"Log it", timer_running:"A timer is running — stop it first.",
+  timer_rule_task:"The timer records the time worked. You mark the task finished.", timer_worked:"{dur} worked", timer_rhythm:"Work and breaks", timer_one_go:"In one go", timer_rhythm_hint:"E.g. 50/10 — 50 min of work, 10 min break. Breaks are not counted as work.", timer_on_break:"Break until {time}", timer_finish:"Finish session", timer_finish_hint:"Finish keeps the time worked. Stop cancels the session.", timer_manual:"{dur} logged by hand", timer_ask_done:"Is the task finished?", timer_yes_done:"Yes, finished", timer_more:"Another session", timer_log_lbl:"Did it without the timer", timer_log_ph:"How many minutes?", timer_log_btn:"Log it", timer_running:"A timer is running — stop it first.",
   timer_off_hint:"Timer is off — tick it as usual. Pick a length below if it needs one.",
   timer_done_today:"Done for today", timer_done:"Done",
   timer_finished:"Time's up — ticked ✓",
@@ -2181,7 +2181,7 @@ const DICT = {
   timer_off:"Выкл", timer_auto:"из названия", timer_from_name:"Из названия (напр. 5h)",
   timer_custom_ph:"Минуты, напр. 50",
   timer_rule_habit:"Привычка отметится сама, когда таймер закончится.",
-  timer_rule_task:"Таймер записывает время работы. Готовность задачи отмечаете вы.", timer_worked:"отработано {dur}", timer_finish:"Завершить сессию", timer_finish_hint:"Завершить — время сохранится. Стоп — сессия отменяется.", timer_manual:"вручную {dur}", timer_ask_done:"Задача готова?", timer_yes_done:"Да, готово", timer_more:"Ещё одна сессия", timer_log_lbl:"Сделал без таймера", timer_log_ph:"Сколько минут?", timer_log_btn:"Записать", timer_running:"Таймер идёт — сначала остановите его.",
+  timer_rule_task:"Таймер записывает время работы. Готовность задачи отмечаете вы.", timer_worked:"отработано {dur}", timer_rhythm:"Работа и перерывы", timer_one_go:"Без перерывов", timer_rhythm_hint:"Например 50/10 — 50 мин работы, 10 мин перерыв. Перерыв не считается работой.", timer_on_break:"Перерыв до {time}", timer_finish:"Завершить сессию", timer_finish_hint:"Завершить — время сохранится. Стоп — сессия отменяется.", timer_manual:"вручную {dur}", timer_ask_done:"Задача готова?", timer_yes_done:"Да, готово", timer_more:"Ещё одна сессия", timer_log_lbl:"Сделал без таймера", timer_log_ph:"Сколько минут?", timer_log_btn:"Записать", timer_running:"Таймер идёт — сначала остановите его.",
   timer_off_hint:"Таймер выключен — отмечается как обычно. Если нужно время, выберите ниже.",
   timer_done_today:"Сегодня выполнено", timer_done:"Выполнено",
   timer_finished:"Время вышло — отмечено ✓",
@@ -4102,7 +4102,8 @@ function timerSheet(info){
       ${liveBar(run)}
       <div class="t2 small" style="text-align:center;margin-top:var(--s2)">
         ${running && run.ends_at ? t("timer_ends_at", {time: run.ends_at})
-                                 : t("timer_paused_lbl")}
+          : run.on_break ? `☕ ${t("timer_on_break", {time: run.break_until || ""})}`
+          : t("timer_paused_lbl")}${run.cycle ? ` · ${run.cycle}` : ""}
         · ${fmtMinutes(minutes)}</div>
       <div class="btns" style="margin-top:var(--s3)">
         <button class="btn" data-act="timer-run" data-verb="${running ? "pause" : "resume"}"
@@ -4119,6 +4120,11 @@ function timerSheet(info){
       <div class="hint" style="text-align:center">${t(kind === "habit" || kind === "thabit"
         ? "timer_rule_habit" : "timer_rule_task")}</div>
       ${worked}
+      ${minutes >= 50 ? `<label>${t("timer_rhythm")}</label>
+        <div class="chips">${["", "25/5", "50/10", "90/15"].filter(c => !c || Number(c.split("/")[0]) < minutes)
+          .map(c => `<div class="chip sm ${(state.timerCycle || "") === c ? "on" : ""}" data-act="timer-cycle"
+            data-value="${c}">${c || t("timer_one_go")}</div>`).join("")}</div>
+        <div class="t3 tiny" style="margin-top:4px">${t("timer_rhythm_hint")}</div>` : ""}
       <button class="btn" data-act="timer-start" data-kind="${kind}" data-id="${info.id}"
               style="margin-top:var(--s3)">${icon("play", 16)} ${t("timer_start")}</button>`;
   }
@@ -8290,7 +8296,8 @@ const A = {
     haptic("medium");
     try{
       await timerChanged(await api(
-        `/api/timers/${el.dataset.kind}/${el.dataset.id}/start`, {method:"POST"}));
+        `/api/timers/${el.dataset.kind}/${el.dataset.id}/start`,
+        {method:"POST", body:{cycle: state.timerCycle || null}}));
     }catch(e){ handleError(e); }
   },
   "timer-run": async el => {
@@ -8308,6 +8315,12 @@ const A = {
       await timerChanged(await api(`/api/timers/${el.dataset.kind}/${el.dataset.id}`,
         {method:"PUT", body:{minutes}}));
     }catch(e){ handleError(e); }
+  },
+  "timer-cycle": el => {
+    haptic();
+    state.timerCycle = el.dataset.value;
+    for(const chip of document.querySelectorAll('[data-act="timer-cycle"]'))
+      chip.classList.toggle("on", chip.dataset.value === state.timerCycle);
   },
   "timer-log": async el => {
     const minutes = Math.round(Number(val("timer-log")));

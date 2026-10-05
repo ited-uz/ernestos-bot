@@ -11198,3 +11198,24 @@ def test_a_measured_habit_keeps_partial_work_and_a_minimal_version(fresh):
     # Turning it back into a yes/no habit.
     fresh.patch(f"/api/habits/{hid}", {"target_qty": 0})
     assert row()["target_qty"] is None
+
+
+def test_a_long_session_with_breaks_counts_only_work(fresh):
+    """Audit #41: 50/10 on a 120-min timer pauses at 50 min; the break is not
+    work; two work blocks add up; the person resumes after the break."""
+    task_id = fresh.post("/api/tasks", json={"title": "Kitob yozish", "timer_minutes": 120}).json()["id"]
+    run = fresh.post(f"/api/timers/task/{task_id}/start", {"cycle": "50/10"}).json()["run"]
+    assert run["cycle"] == "50/10"
+    _age_run(run["id"], 65 * 60)  # 50 min of work and 15 min more on the clock
+    info = fresh.get(f"/api/timers/task/{task_id}").json()
+    assert info["run"]["status"] == "paused" and info["run"]["on_break"]
+    assert info["run"]["elapsed_sec"] == 50 * 60, "the break is not counted as work"
+    with SessionLocal() as s:
+        assert [r.id for r in svc.unannounced_breaks(s)] == [run["id"]]
+        assert svc.claim_break_notice(s, run["id"]) and not svc.claim_break_notice(s, run["id"])
+    resumed = fresh.post(f'/api/timers/runs/{run["id"]}/resume').json()["run"]
+    assert resumed["status"] == "running" and not resumed["on_break"]
+    _age_run(run["id"], 50 * 60)
+    info = fresh.get(f"/api/timers/task/{task_id}").json()
+    assert info["run"]["elapsed_sec"] == 100 * 60 and info["run"]["on_break"]
+    assert fresh.post(f"/api/timers/task/{task_id}/start", {"cycle": "7/3"}).status_code == 409

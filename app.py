@@ -5897,7 +5897,13 @@ async def tick_timers(bot) -> None:
             with SessionLocal() as s:
                 svc.settle_timers(s)
                 finished = [r.id for r in svc.unannounced_timers(s)]
+                breaks = [r.id for r in svc.unannounced_breaks(s)]
                 live = [r.id for r in svc.live_timer_messages(s)]
+            for run_id in breaks:
+                try:
+                    await _announce_break(bot, run_id)
+                except Exception:
+                    log.exception("announcing break %s failed", run_id)
             for run_id in finished:
                 try:
                     await _announce_timer(bot, run_id)
@@ -5910,6 +5916,32 @@ async def tick_timers(bot) -> None:
                     log.exception("refreshing timer %s failed", run_id)
     except Exception:
         log.exception("timer job failed")
+
+
+async def _announce_break(bot, run_id: int) -> None:
+    """A work block is over: say so, and offer to carry on after the break."""
+    from db import TimerRun
+
+    with SessionLocal() as s:
+        if not svc.claim_break_notice(s, run_id):
+            return
+        run = s.get(TimerRun, run_id)
+        user = _timer_owner(s, run) if run else None
+        if run is None or user is None:
+            return
+        lang = user.language or "uz"
+        text = t(lang, "timer_break", title=esc(run.title), work=run.cycle_work,
+                 rest=run.cycle_break,
+                 until=svc.timer_run_dict(run, tz=svc.user_tz(user))["break_until"] or "")
+        telegram_id, quiet = user.telegram_id, svc.in_quiet_hours(user)
+    try:
+        await bot.send_message(telegram_id, text, parse_mode=ParseMode.HTML,
+                               disable_notification=quiet,
+                               reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
+                                   t(lang, "btn_timer_resume"),
+                                   callback_data=f"tmr:resume:{run_id}")]]))
+    except TelegramError as e:
+        log.info("break notice %s not delivered: %s", run_id, e)
 
 
 def _timer_owner(s, run) -> User | None:
@@ -8712,14 +8744,20 @@ def api_timer_log(kind: str, item_id: int, body: TimerLogIn,
             raise _timer_refused(e)
 
 
+class TimerStartIn(BaseModel):
+    #: Optional work/break rhythm: 25/5, 50/10 or 90/15.
+    cycle: str | None = Field(default=None, max_length=6)
+
+
 @app.post("/api/timers/{kind}/{item_id}/start")
-def api_timer_start(kind: str, item_id: int,
+def api_timer_start(kind: str, item_id: int, body: TimerStartIn | None = None,
                     init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, ws = auth(init)
     tz = svc.user_tz(user)
     with SessionLocal() as s:
         try:
-            svc.start_timer(s, ws, _timer_kind(kind), item_id, tz=tz)
+            svc.start_timer(s, ws, _timer_kind(kind), item_id, tz=tz,
+                            cycle=(body.cycle if body else None) or None)
         except ValueError as e:
             raise _timer_refused(e)
         return svc.timer_for(s, ws, kind, item_id, tz=tz)

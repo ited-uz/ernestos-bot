@@ -9102,7 +9102,11 @@ def timer_run_dict(run: TimerRun, now: datetime | None = None,
             "title": run.title, "status": run.status,
             "duration_sec": run.duration_sec, "remaining_sec": remaining,
             "elapsed_sec": max(0, run.duration_sec - remaining),
-            "ends_at": ends, "day": run.day.isoformat()}
+            "ends_at": ends, "day": run.day.isoformat(),
+            "cycle": f"{run.cycle_work}/{run.cycle_break}" if run.cycle_work else None,
+            "on_break": run.status == "paused" and run.break_until is not None,
+            "break_until": (run.break_until.replace(tzinfo=_utc.utc).astimezone(tz or TZ)
+                            .strftime("%H:%M") if run.break_until else None)}
 
 
 def _day_bound(kind: str) -> bool:
@@ -9207,9 +9211,39 @@ def _complete_by_timer(s: Session, run: TimerRun, moment: datetime) -> None:
                 row.day = run.day
 
 
+#: The rhythms offered for a long session (work minutes, break minutes).
+TIMER_CYCLES = {"25/5": (25, 5), "50/10": (50, 10), "90/15": (90, 15)}
+
+
+def _take_break(run: TimerRun, now: datetime) -> bool:
+    """Pause a cycled run at the end of its work block. True if it did.
+
+    The run stops exactly at the block boundary, so the break — and anything
+    after it until the person resumes — is never counted as work.
+    """
+    if not run.cycle_work or run.status != "running" or run.started_at is None:
+        return False
+    block = run.cycle_work * 60
+    done_before = run.elapsed_sec or 0
+    boundary = (done_before // block + 1) * block
+    if boundary >= run.duration_sec:
+        return False
+    ran = done_before + int((now - run.started_at).total_seconds())
+    if ran < boundary:
+        return False
+    at = run.started_at + timedelta(seconds=boundary - done_before)
+    run.elapsed_sec, run.started_at, run.status = boundary, None, "paused"
+    run.break_until = at + timedelta(minutes=run.cycle_break or 0)
+    run.break_notice_at = None
+    return True
+
+
 def settle_timers(s: Session, ws: int | None = None,
                   now: datetime | None = None) -> list[int]:
-    """Finish every running timer whose time is up. Returns their ids."""
+    """Finish every running timer whose time is up. Returns their ids.
+
+    A run with a work/break rhythm is paused for its break instead.
+    """
     now = now or utcnow()
     stmt = select(TimerRun).where(TimerRun.status == "running")
     if ws is not None:
@@ -9217,6 +9251,9 @@ def settle_timers(s: Session, ws: int | None = None,
     finished: list[int] = []
     cancelled = False
     for run in s.scalars(stmt).all():
+        if _take_break(run, now):
+            cancelled = True  # something changed: commit below
+            continue
         if _run_remaining(run, now) > 0:
             continue
         if _run_is_stale(s, run, date.min):
@@ -9306,7 +9343,7 @@ def _item_paused(s: Session, kind: str, item, today: date, tz) -> bool:
 
 def start_timer(s: Session, ws: int, kind: str, item_id: int, *,
                 tz: ZoneInfo | None = None,
-                now: datetime | None = None) -> dict:
+                now: datetime | None = None, cycle: str | None = None) -> dict:
     """Start (or resume) the timer on one item.
 
     One clock at a time: whatever else was running is paused, not lost.
@@ -9328,16 +9365,24 @@ def start_timer(s: Session, ws: int, kind: str, item_id: int, *,
         if not (other.kind == kind and other.item_id == item.id):
             _pause_run(other, now)
 
+    if cycle is not None and cycle not in TIMER_CYCLES:
+        raise ValueError("bad_cycle")
     run = _open_run(s, ws, kind, item.id, today if _day_bound(kind) else None)
     if run is None:
+        work, rest = TIMER_CYCLES.get(cycle, (None, None))
+        # A rhythm longer than the session is just one session.
+        if work and work >= minutes:
+            work = rest = None
         run = TimerRun(workspace_id=ws, kind=kind, item_id=item.id,
                        day=today, title=(title or "")[:300],
                        duration_sec=minutes * 60, elapsed_sec=0,
-                       started_at=now, status="running")
+                       started_at=now, status="running",
+                       cycle_work=work, cycle_break=rest)
         s.add(run)
     elif run.status == "paused":
         run.started_at = now
         run.status = "running"
+        run.break_until = run.break_notice_at = None
     s.commit()
     return timer_run_dict(run, now, tz)
 
@@ -9598,6 +9643,22 @@ def unannounced_timers(s: Session, limit: int = 200) -> list[TimerRun]:
     return list(s.scalars(select(TimerRun).where(
         TimerRun.status == "finished", TimerRun.notified_at.is_(None))
         .order_by(TimerRun.id).limit(limit)).all())
+
+
+def unannounced_breaks(s: Session, limit: int = 200) -> list[TimerRun]:
+    """Runs that just paused for a break nobody has been told about."""
+    return list(s.scalars(select(TimerRun).where(
+        TimerRun.status == "paused", TimerRun.break_until.is_not(None),
+        TimerRun.break_notice_at.is_(None)).order_by(TimerRun.id).limit(limit)).all())
+
+
+def claim_break_notice(s: Session, run_id: int) -> bool:
+    won = s.execute(sql_update(TimerRun).where(
+        TimerRun.id == run_id, TimerRun.break_notice_at.is_(None))
+        .values(break_notice_at=utcnow())
+        .execution_options(synchronize_session=False)).rowcount
+    s.commit()
+    return bool(won)
 
 
 def live_timer_messages(s: Session) -> list[TimerRun]:
