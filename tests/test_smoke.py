@@ -11271,3 +11271,41 @@ def test_the_review_suggests_changes_from_the_weeks_numbers(fresh):
         svc.carry_focus_forward(s, ws, old.id)
     keys = {x["key"] for x in fresh.get("/api/review").json()["suggestions"]}
     assert {"reset", "shrink", "blocked"} <= keys
+
+
+def test_statistics_show_whether_the_main_thing_got_done(fresh):
+    """Audit #9 (rest): beside the %, the day's main task and whether it is done."""
+    small = fresh.post("/api/tasks", json={"title": "Pochta", "deadline": svc.today_local().isoformat()}).json()
+    main = fresh.post("/api/tasks", json={"title": "Investor taqdimoti"}).json()
+    fresh.post(f'/api/tasks/{main["id"]}/top3', {"picked": True})
+    fresh.patch(f'/api/tasks/{small["id"]}', json={"status": "done"})
+    today = fresh.get("/api/stats").json()["today"]
+    assert today["main"] == {"kind": "task", "title": "Investor taqdimoti", "done": False}
+
+
+def test_qadam_stays_fast_on_years_of_history(fresh):
+    """Audit #43 (rest): three years of day scores and long journal entries.
+    The total is summed in the database and the journal text is never loaded;
+    the profile stays well under a second on SQLite."""
+    import time as _time
+    uid = fresh.user["id"]
+    today = svc.today_local()
+    long_text = "x" * 2000
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        s.add_all([db.DailyScore(user_id=uid, day=today - timedelta(days=n), total_score=70,
+                                 grade="B", tasks_done=1, habits_done=n % 2, prayer_performed=0)
+                   for n in range(1, 1096)])
+        s.add_all([db.JournalEntry(workspace_id=ws, day=today - timedelta(days=n), text=long_text,
+                                   answers='{"wins": "%s"}' % long_text) for n in range(1, 1096)])
+        s.commit()
+        started = _time.perf_counter()
+        snap = svc.steps_snapshot(s, uid, ws)
+        took = _time.perf_counter() - started
+    # 1095 days with a task, 548 with a habit (odd n), 1095 written journals.
+    assert snap["total"] >= 1095 + 548 + 1095
+    print(f"steps_snapshot on 3 years: {took * 1000:.0f} ms")
+    assert took < 1.0, f"steps_snapshot took {took:.2f}s on 3 years"
+    src = (ROOT / "services.py").read_text()
+    body = src[src.index("def steps_snapshot("):src.index("def platform_progress_stats(")]
+    assert "select(DailyScore)" not in body and "JournalEntry.text" not in body

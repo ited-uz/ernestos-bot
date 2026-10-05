@@ -4147,6 +4147,9 @@ def stats(s: Session, ws: int, period: str = "week", *,
             "prayer_performed": prayer_today["performed"],
             "prayer_required": PRAYER_REQUIRED,
             "streak": streak,
+            # The day's main result beside the percentage: did the one thing
+            # that mattered get done? A full score can hide that it did not (audit #9).
+            "main": _main_result(s, ws, today, tz),
         },
     }
 
@@ -4517,6 +4520,17 @@ def weekly_review(s: Session, ws: int, user: User,
         "saved": row is not None,
         "suggestions": _review_suggestions(s, ws, focus, missed, averages, today),
     }
+
+
+def _main_result(s: Session, ws: int, today: date, tz: ZoneInfo | None) -> dict | None:
+    """Today's pinned task, else the week's main goal — and whether it is done."""
+    pinned = top3_tasks(s, ws, today, tz=tz)
+    if pinned:
+        return {"kind": "task", "title": pinned[0]["title"], "done": pinned[0]["status"] == "done"}
+    goal = primary_focus(s, ws, today, tz=tz)
+    if goal:
+        return {"kind": "goal", "title": goal["title"], "done": bool(goal["done"])}
+    return None
 
 
 def _review_suggestions(s: Session, ws: int, focus: list[dict], overdue: int,

@@ -1212,7 +1212,7 @@ const DICT = {
   now_clear:"Bugungi muhim ishlar tugadi", now_clear_hint:"Xohlasangiz yana ish qo'shing",
   now_open:"Ochish", now_done:"Bajarildi",
   quote_ph:"O'zingizga kuch beradigan gap", quote_add:"Quote qo'shish",
-  overall:"Umumiy", overall_means:"Bu foiz — bugungi rejaning qancha bajarilgani, kun qanchalik muhim o'tgani emas. Yuklamasi turli kunlarni shu raqam bilan solishtirmang.", overall_plan_size:"Bugun rejada {n} ta vazifa.", streak_short:"Ketma-ket", prayer:"Namoz",
+  overall:"Umumiy", main_task:"Bugungi asosiy ish", main_goal:"Hafta maqsadi", overall_means:"Bu foiz — bugungi rejaning qancha bajarilgani, kun qanchalik muhim o'tgani emas. Yuklamasi turli kunlarni shu raqam bilan solishtirmang.", overall_plan_size:"Bugun rejada {n} ta vazifa.", streak_short:"Ketma-ket", prayer:"Namoz",
   overall_sub:"Kun · hafta · oy", today_parts:"Bugungi ko'rsatkichlar",
   overall_section:"Umumiy ko'rsatkichlar",
   vs_yesterday:"kechagiga nisbatan", vs_yesterday_none:"Kecha o'lchanmagan",
@@ -1590,7 +1590,7 @@ const DICT = {
   now_clear:"Today's important work is done", now_clear_hint:"Add something else if you want",
   now_open:"Open", now_done:"Done",
   quote_ph:"Something that keeps you going", quote_add:"Add a quote",
-  overall:"Overall", overall_means:"This is how much of today's plan got done — not how much the day mattered. Days with different loads are not comparable by it.", overall_plan_size:"Tasks planned today: {n}.", streak_short:"Streak", prayer:"Prayer",
+  overall:"Overall", main_task:"Today's main task", main_goal:"Week goal", overall_means:"This is how much of today's plan got done — not how much the day mattered. Days with different loads are not comparable by it.", overall_plan_size:"Tasks planned today: {n}.", streak_short:"Streak", prayer:"Prayer",
   overall_sub:"Day · week · month", today_parts:"Today's numbers",
   overall_section:"Overall numbers",
   vs_yesterday:"vs yesterday", vs_yesterday_none:"Nothing measured yesterday",
@@ -1956,7 +1956,7 @@ const DICT = {
   now_clear:"Важные дела на сегодня закрыты", now_clear_hint:"Можно добавить ещё",
   now_open:"Открыть", now_done:"Выполнено",
   quote_ph:"Фраза, которая вас держит", quote_add:"Добавить цитату",
-  overall:"Общий результат", overall_means:"Это доля выполненного плана на сегодня, а не ценность дня. Дни с разной нагрузкой по нему не сравнить.", overall_plan_size:"Задач на сегодня: {n}.", streak_short:"Серия", prayer:"Намаз",
+  overall:"Общий результат", main_task:"Главное дело дня", main_goal:"Цель недели", overall_means:"Это доля выполненного плана на сегодня, а не ценность дня. Дни с разной нагрузкой по нему не сравнить.", overall_plan_size:"Задач на сегодня: {n}.", streak_short:"Серия", prayer:"Намаз",
   overall_sub:"День · неделя · месяц", today_parts:"Показатели дня",
   overall_section:"Общие показатели",
   vs_yesterday:"по сравнению со вчера", vs_yesterday_none:"Вчера ничего не измерено",
@@ -5528,6 +5528,9 @@ SCREENS.stats = () => {
              ${t("vs_yesterday")} <span class="t2">(${yesterday}%)</span>`
           : t("vs_yesterday_none")}</div>
       <div style="margin-top:var(--s2)">${bar(today.overall)}</div>
+      ${today.main ? `<div class="small" style="margin-top:var(--s2)">
+        ${today.main.done ? "✅" : "⬜"} ${t(today.main.kind === "task" ? "main_task" : "main_goal")}:
+        <b>${esc(today.main.title)}</b></div>` : ""}
       <div class="tiny" style="margin-top:var(--s1);opacity:.85">${t("overall_means")}${
         state.summary?.today?.tasks_total !== undefined
           ? " " + t("overall_plan_size", {n: (state.summary.today.tasks_total || 0)}) : ""}</div>
