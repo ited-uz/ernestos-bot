@@ -1,0 +1,13 @@
+.env
+.env.local
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.db
+*.db-wal
+*.db-shm
+.pytest_cache/
+.DS_Store
+.ruff_cache/
+ZIP_MANIFEST.json
