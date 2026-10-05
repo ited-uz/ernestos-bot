@@ -3451,14 +3451,15 @@ def test_unpicking_frees_a_slot(alice):
                       json={"picked": True}).status_code == 200
 
 
-def test_picking_a_task_for_today_also_dates_it_today(alice):
-    """Calling something one of today's three says it is due today."""
+def test_picking_a_task_for_today_does_not_date_it(alice):
+    """Audit #21: the pick is the day it is worked on; an undated task stays
+    undated, so not finishing it today does not make it "late" tomorrow."""
     _clear_top3(ALICE["id"])
     task_id = alice.post("/api/tasks", json={"title": "Undated"}).json()["id"]
     alice.post(f"/api/tasks/{task_id}/top3", json={"picked": True})
     picked = next(x for x in alice.get("/api/home").json()["top3"]
                   if x["id"] == task_id)
-    assert picked["deadline"] == svc.today_local().isoformat()
+    assert picked["deadline"] is None
 
 
 def test_a_picked_task_is_not_listed_twice_on_home(alice):
@@ -10598,7 +10599,8 @@ def test_steps_read_today_live_without_a_stored_score(fresh):
         s.commit()
         assert s.scalar(select(db.DailyScore).where(db.DailyScore.user_id == uid)) is None
     tasks = fresh.get("/api/progress/me").json()["steps"]["today"][0]
-    assert tasks == {"key": "tasks", "done": 0, "total": 2, "ok": False}
+    assert {k: tasks[k] for k in ("key", "done", "total", "ok", "complete")} == {
+        "key": "tasks", "done": 0, "total": 2, "ok": False, "complete": False}
 
 
 def test_journal_save_keeps_the_day_it_was_written_for(fresh):
@@ -10699,3 +10701,92 @@ def test_work_done_without_the_timer_can_be_logged_once(fresh):
     logged = fresh.post(f"/api/timers/task/{other}/log", json={"minutes": 30}).json()
     assert logged["ask_done"] and not logged["done"]
     assert fresh.patch(f"/api/tasks/{other}", json={"status": "done"}).status_code == 200
+
+
+def _steps(caller):
+    return {c["key"]: c for c in caller.get("/api/progress/me").json()["steps"]["today"]}
+
+
+def test_steps_count_late_work_and_separate_started_from_finished(fresh):
+    """Audit #7 and #10: yesterday's task finished today is today's work, and
+    1 of 2 is "started", not "complete"."""
+    today = svc.today_local()
+    late = fresh.post("/api/tasks", json={"title": "Kechagi hisobot",
+                                          "deadline": (today - timedelta(days=1)).isoformat()}).json()
+    a = fresh.post("/api/tasks", json={"title": "A", "deadline": today.isoformat()}).json()
+    fresh.post("/api/tasks", json={"title": "B", "deadline": today.isoformat()})
+    fresh.patch(f'/api/tasks/{late["id"]}', json={"status": "done"})
+    step = _steps(fresh)["tasks"]
+    assert step["done"] == 1 and step["ok"] and not step["complete"] and step["planned_done"] == 0
+    assert fresh.get("/api/home").json()["counts"]["tasks"]["finished"] == 1
+    fresh.patch(f'/api/tasks/{a["id"]}', json={"status": "done"})
+    step = _steps(fresh)["tasks"]
+    assert step["done"] == 2 and step["planned_done"] == 1 and not step["complete"]
+
+
+def test_a_week_goal_done_through_its_task_counts_everywhere(fresh):
+    """Audit #11: tick the linked task → goals list and Qadam agree."""
+    task = fresh.post("/api/tasks", json={"title": "Taqdimot"}).json()
+    fresh.post("/api/focus", {"title": "Taqdimot tayyor", "task_id": task["id"]})
+    assert _steps(fresh)["goal"]["done"] == 0
+    fresh.patch(f'/api/tasks/{task["id"]}', json={"status": "done"})
+    assert _steps(fresh)["goal"]["done"] == 1 and _steps(fresh)["goal"]["complete"]
+    assert all(f["done"] for f in fresh.get("/api/focus").json()["focus"])
+    # Reopening agrees too.
+    fresh.patch(f'/api/tasks/{task["id"]}', json={"status": "waiting"})
+    assert _steps(fresh)["goal"]["done"] == 0
+
+
+def test_no_week_goal_is_not_an_unmet_step(fresh):
+    """Audit #42: no goal → an offer, not a 0/1."""
+    goal = _steps(fresh)["goal"]
+    assert goal["empty"] and goal["total"] == 0
+    steps = fresh.get("/api/progress/me").json()["steps"]
+    assert steps["today_counted"] == len(steps["today"]) - 1
+
+
+def test_an_empty_journal_is_not_a_written_step(fresh):
+    """Audit #33: keys with empty answers do not count."""
+    fresh.post("/api/journal", {"answers": {"wins": "", "lesson": "  "}})
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        row = s.scalar(select(db.JournalEntry).where(db.JournalEntry.workspace_id == ws))
+        row.answers = '{"wins": ""}'
+        s.commit()
+        snap = svc.steps_snapshot(s, fresh.user["id"], ws)
+    assert all(c["done"] == 0 for c in snap["today"] if c["key"] == "journal")
+
+
+def test_carrying_a_goal_keeps_its_trace_in_the_old_week(fresh):
+    """Audit #17: moved twice → both old weeks still show it, one live copy."""
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        first = svc.add_focus(s, ws, "Kitob yozish")
+        second = svc.carry_focus_forward(s, ws, first.id)
+        third = svc.carry_focus_forward(s, ws, second.id)
+        old = svc.list_focus(s, ws, first.week_start, include_carried=True)
+        assert old[0]["carried"] and old[0]["title"] == "Kitob yozish"
+        assert svc.list_focus(s, ws, first.week_start) == []
+        mid = svc.list_focus(s, ws, second.week_start, include_carried=True)
+        assert mid[0]["carried"]
+        live = svc.list_focus(s, ws, third.week_start)
+        assert len(live) == 1 and live[0]["carries"] == 2 and not live[0]["carried"]
+        with pytest.raises(ValueError):
+            svc.carry_focus_forward(s, ws, first.id)
+
+
+def test_picking_a_task_for_today_keeps_its_deadline(fresh):
+    """Audit #21: working on Friday's article on Monday leaves Friday as the deadline."""
+    friday = (svc.today_local() + timedelta(days=4)).isoformat()
+    task = fresh.post("/api/tasks", json={"title": "Maqola", "deadline": friday}).json()
+    fresh.post(f'/api/tasks/{task["id"]}/top3', json={"picked": True})
+    with SessionLocal() as s:
+        row = s.get(db.Task, task["id"])
+        assert row.deadline.isoformat() == friday and row.focus_day == svc.today_local()
+
+
+def test_the_seven_day_option_says_what_it_does():
+    """Audit #22: the label matches the +7 days that is saved."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert 'when_week:"7 kundan keyin"' in html and 'when_week:"In 7 days"' in html
+    assert 'if(f.when === "week") return shiftISO(today, 7);' in html

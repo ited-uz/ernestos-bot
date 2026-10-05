@@ -2107,7 +2107,7 @@ def _move_deadline(s: Session, ws: int, task: Task, new: date | None) -> None:
 
 def reschedule_task(s: Session, ws: int, task_id: int, when: str, *,
                     tz: ZoneInfo | None = None) -> Task:
-    """Move a task's deadline with one tap: today, tomorrow, next week or none."""
+    """Move a task's deadline with one tap: today, tomorrow, in 7 days or none."""
     task = _owned_task(s, ws, task_id)
     today = today_local(tz)
     targets = {"today": today, "tomorrow": today + timedelta(days=1),
@@ -2145,10 +2145,9 @@ def set_top3(s: Session, ws: int, task_id: int, picked: bool,
         else:
             raise ValueError("top3 full")
 
+    # The day it is worked on, not the day it is due: picking Friday's article
+    # for Monday leaves Friday as its deadline (audit #21).
     task.focus_day = day
-    # Picking a task for today is also a statement that it is due today.
-    if task.deadline is None or task.deadline > day:
-        _move_deadline(s, ws, task, day)
     s.commit()
     return {"picked": True, "count": len(current) + 1}
 
@@ -2449,10 +2448,22 @@ MISSION_PRIORITIES = ["high", "medium", "low"]
 DEFAULT_MISSION_PRIORITY = "medium"
 
 
-def _focus_dict(row: WeeklyFocus, linked: dict[int, Task] | None = None) -> dict:
+def focus_is_done(row: WeeklyFocus, linked: dict[int, Task] | None = None) -> bool:
+    """The one rule for whether a week goal is done, for every screen: a goal
+    delivered by a task is done when that task is (audit #11)."""
     task = (linked or {}).get(row.task_id) if row.task_id else None
-    done = (task.status == "done") if task is not None else row.done
+    return bool((task.status == "done") if task is not None else row.done)
+
+
+def _focus_dict(row: WeeklyFocus, linked: dict[int, Task] | None = None,
+                carries: int = 0) -> dict:
+    task = (linked or {}).get(row.task_id) if row.task_id else None
+    done = focus_is_done(row, linked)
     return {"id": row.id, "slot": row.slot, "title": row.title,
+            # Moved on to a later week: kept here as history, not counted.
+            "carried": row.carried_to is not None,
+            # How many weeks running it has been pushed — a hint to shrink it.
+            "carries": carries,
             "priority": row.priority if row.priority in MISSION_PRIORITIES
                         else DEFAULT_MISSION_PRIORITY,
             "primary": row.slot == PRIMARY_SLOT,
@@ -2473,24 +2484,40 @@ def _linked_tasks(s: Session, ws: int, rows: list[WeeklyFocus]) -> dict[int, Tas
 
 
 def list_focus(s: Session, ws: int, when: date | None = None, *,
-               tz: ZoneInfo | None = None) -> list[dict]:
+               tz: ZoneInfo | None = None,
+               include_carried: bool = False) -> list[dict]:
+    """The week's goals. A goal moved on to a later week stays in its old
+    week as history; it is listed only when asked for, and never counted."""
     start = week_start(when or today_local(tz))
-    rows = s.scalars(select(WeeklyFocus).where(
+    stmt = select(WeeklyFocus).where(
         WeeklyFocus.workspace_id == ws, WeeklyFocus.week_start == start)
-        .order_by(WeeklyFocus.slot, WeeklyFocus.id)).all()
+    if not include_carried:
+        stmt = stmt.where(WeeklyFocus.carried_to.is_(None))
+    rows = s.scalars(stmt.order_by(WeeklyFocus.slot, WeeklyFocus.id)).all()
     linked = _linked_tasks(s, ws, rows)
-    return [_focus_dict(r, linked) for r in rows]
+    return [_focus_dict(r, linked, _carry_count(s, r)) for r in rows]
+
+
+def _carry_count(s: Session, row: WeeklyFocus) -> int:
+    n, seen = 0, set()
+    while row is not None and row.carried_from and row.carried_from not in seen and n < 52:
+        seen.add(row.carried_from)
+        row = s.get(WeeklyFocus, row.carried_from)
+        n += 1
+    return n
 
 
 def week_focus(s: Session, ws: int, when: date | None = None, *,
                tz: ZoneInfo | None = None) -> dict:
     """The week split into its one goal and its supporting priorities."""
-    rows = list_focus(s, ws, when, tz=tz)
+    everything = list_focus(s, ws, when, tz=tz, include_carried=True)
+    rows = [r for r in everything if not r["carried"]]
     primary = next((r for r in rows if r["slot"] == PRIMARY_SLOT), None)
     supporting = [r for r in rows if r["slot"] != PRIMARY_SLOT]
     return {
         "primary": primary, "supporting": supporting,
-        "slots_free": max(MAX_FOCUS - len(rows), 0),
+        "carried": [r for r in everything if r["carried"]],
+        "slots_free": max(MAX_FOCUS - len(everything), 0),
         "done": sum(1 for r in rows if r["done"]), "total": len(rows),
     }
 
@@ -2549,10 +2576,15 @@ def carry_focus_forward(s: Session, ws: int, focus_id: int, *,
     if free is None:
         raise ValueError("week is full")
 
+    if row.carried_to is not None:
+        raise ValueError("already_carried")
     moved = WeeklyFocus(workspace_id=ws, week_start=target, slot=free,
-                        title=row.title, priority=row.priority, task_id=row.task_id)
+                        title=row.title, priority=row.priority, task_id=row.task_id,
+                        carried_from=row.id)
     s.add(moved)
-    s.delete(row)
+    s.flush()
+    # The old week keeps its row, marked as moved on (audit #17).
+    row.carried_to = moved.id
     s.commit()
     return moved
 
@@ -3478,6 +3510,19 @@ def today_task_progress(s: Session, ws: int, day: date | None = None, *,
         Task.deadline == day, Task.status == "done")) or 0
     shared = due_team_tasks(s, ws, day) if include_team else []
     return done + sum(1 for _, ok in shared if ok), total + len(shared)
+
+
+def tasks_completed_on(s: Session, ws: int, day: date | None = None, *,
+                       tz: ZoneInfo | None = None) -> int:
+    """Own tasks finished on this local day, whatever their deadline — late,
+    undated or due today. "What I got done", kept apart from "what I
+    promised for today" (`today_task_progress`)."""
+    tz = tz or _habit_tz(s, ws)
+    day = day or today_local(tz)
+    start, end = utc_window(day, day, tz)
+    return int(s.scalar(select(func.count(Task.id)).where(
+        Task.workspace_id == ws, Task.archived_at.is_(None), Task.status == "done",
+        Task.completed_at >= start, Task.completed_at < end)) or 0)
 
 
 def today_task_score(s: Session, ws: int, day: date | None = None, *,
@@ -4465,7 +4510,10 @@ def home_counts(s: Session, ws: int, user: User, day: date | None = None, *,
     shared = due_team_habits(s, ws, day) + due_team_tasks(s, ws, day)
     prayer = prayer or prayer_state(s, ws, day, user.gender)
     return {
-        "tasks": {"done": tasks_done, "total": tasks_total},
+        # done/total is today's promises; `finished` is everything completed
+        # today, late and undated work included (audit #7).
+        "tasks": {"done": tasks_done, "total": tasks_total,
+                  "finished": tasks_completed_on(s, ws, day, tz=tz)},
         "habits": {"done": habits_done, "total": habits_total},
         "team": {"done": sum(1 for _, ok in shared if ok), "total": len(shared)},
         "prayer": {"done": prayer["performed"], "total": PRAYER_REQUIRED,
@@ -5700,34 +5748,58 @@ def steps_snapshot(s: Session, user_id: int, ws: int, *, tz: ZoneInfo | None = N
     modules = modules_for(s, ws)
     rows = s.scalars(select(DailyScore).where(DailyScore.user_id == user_id)).all()
 
-    def wrote(entry) -> bool:
-        return bool(entry and ((entry.text or "").strip() or (entry.answers or "{}") not in ("{}", "")))
+    def wrote(answers_json) -> bool:
+        # The same rule as the journal habit: an answer with content (audit #33).
+        try:
+            return journal_is_written(json.loads(answers_json or "{}"))
+        except (ValueError, TypeError):
+            return False
 
-    journal_days = [e for e in s.scalars(select(JournalEntry).where(JournalEntry.workspace_id == ws)).all() if wrote(e)]
-    goals = s.scalars(select(WeeklyFocus).where(WeeklyFocus.workspace_id == ws)).all()
+    # Only the two columns needed — never the entry text (audit #43).
+    journal_days = {day for day, answers in s.execute(
+        select(JournalEntry.day, JournalEntry.answers)
+        .where(JournalEntry.workspace_id == ws)).all() if wrote(answers)}
+    goals = s.scalars(select(WeeklyFocus).where(WeeklyFocus.workspace_id == ws,
+                                                WeeklyFocus.carried_to.is_(None))).all()
+    linked = _linked_tasks(s, ws, list(goals))
     week_goals = [g for g in goals if g.week_start == week_start(today)]
 
     # Today is read live: its stored snapshot is only written when a score is
     # computed, and the first open of the day would otherwise show 0/0.
-    tasks_done, tasks_total = today_task_progress(s, ws, today, tz=zone, include_team=False)
+    promised_done, tasks_total = today_task_progress(s, ws, today, tz=zone, include_team=False)
+    # Work finished today counts whatever date it carried — yesterday's
+    # report finished today is today's work (audit #7).
+    worked = tasks_completed_on(s, ws, today, tz=zone)
     habits_done, habits_total = habit_progress(s, ws, today, include_team=False)
     prayed = prayer_state(s, ws, today, getattr(s.get(User, user_id), "gender", None))["performed"]
     total = sum(((r.tasks_done or 0) > 0) + ((r.habits_done or 0) > 0) + ((r.prayer_performed or 0) > 0)
                 for r in rows if r.day != today)
-    total += (tasks_done > 0) + (habits_done > 0) + (prayed > 0)
-    total += len({e.day for e in journal_days}) + sum(1 for g in goals if g.done)
+    total += (worked > 0) + (habits_done > 0) + (prayed > 0)
+    total += len(journal_days) + sum(1 for g in goals if focus_is_done(g, linked))
 
+    # `ok` is "started" — one done is a step. `complete` is the whole plan
+    # for the day; the two are never shown as the same thing (audit #10).
     checks = [
-        {"key": "tasks", "done": tasks_done, "total": tasks_total},
-        {"key": "habits", "done": habits_done, "total": habits_total},
+        {"key": "tasks", "done": worked, "total": tasks_total,
+         "planned_done": promised_done,
+         "complete": tasks_total > 0 and promised_done >= tasks_total},
+        {"key": "habits", "done": habits_done, "total": habits_total,
+         "complete": habits_total > 0 and habits_done >= habits_total},
     ]
     if modules.get("prayer"):
-        checks.append({"key": "prayer", "done": prayed, "total": 5})
+        checks.append({"key": "prayer", "done": prayed, "total": 5, "complete": prayed >= 5})
     if modules.get("journal"):
-        checks.append({"key": "journal", "done": int(any(e.day == today for e in journal_days)), "total": 1})
-    checks.append({"key": "goal", "done": sum(1 for g in week_goals if g.done), "total": len(week_goals) or 1})
+        wrote_today = int(today in journal_days)
+        checks.append({"key": "journal", "done": wrote_today, "total": 1,
+                       "complete": bool(wrote_today)})
+    goals_done = sum(1 for g in week_goals if focus_is_done(g, linked))
+    # No goal this week is an offer to add one, not an unmet step (audit #42).
+    checks.append({"key": "goal", "done": goals_done, "total": len(week_goals),
+                   "empty": not week_goals,
+                   "complete": bool(week_goals) and goals_done >= len(week_goals)})
     for c in checks:
         c["ok"] = c["done"] > 0
+        c.setdefault("empty", False)
 
     index = max(i for i, (_k, low) in enumerate(STEP_LEVELS) if total >= low)
     nxt = STEP_LEVELS[index + 1][1] if index + 1 < len(STEP_LEVELS) else None
@@ -5742,7 +5814,8 @@ def steps_snapshot(s: Session, user_id: int, ws: int, *, tz: ZoneInfo | None = N
                     "max": (STEP_LEVELS[i + 1][1] - 1) if i + 1 < len(STEP_LEVELS) else None}
                    for i, (k, low) in enumerate(STEP_LEVELS)],
         "today": checks,
-        "today_done": sum(c["ok"] for c in checks),
+        "today_done": sum(c["ok"] for c in checks if not c["empty"]),
+        "today_counted": sum(1 for c in checks if not c["empty"]),
         "freeze": max(RECOVERY_DAYS_PER_MONTH - used, 0),
     }
 

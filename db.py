@@ -530,6 +530,11 @@ class WeeklyFocus(Base):
     #: live tables, where existing rows have no value; readers default it.
     priority: Mapped[str | None] = mapped_column(String(6), nullable=True)
     done: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: Set on the old week's row when the goal is moved on: the row stays, so
+    #: a goal pushed three weeks running leaves three visible traces.
+    carried_to: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: On the new week's row: the row it was moved from.
+    carried_from: Mapped[int | None] = mapped_column(Integer, nullable=True)
     #: The task this mission is delivered by, if any.
     task_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
