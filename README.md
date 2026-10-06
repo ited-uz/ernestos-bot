@@ -20,7 +20,14 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 TZ=Asia/Tashkent node tests/frontend_release.cjs
 node tests/frontend_audit50.cjs
+# Xuddi shu to'plam PostgreSQL'da (bo'sh baza):
+TEST_DATABASE_URL=postgresql+psycopg://user:pass@host:5432/test python -m pytest -q
+# Haqiqiy Mini App brauzerda (headless Chromium, Node + playwright kerak):
+scripts/e2e.sh        # skrinshotlar: tests/e2e/out/
 ```
+
+CI (`.github/workflows/tests.yml`) har push’da uchalasini ishlatadi: SQLite,
+PostgreSQL 16 va brauzer.
 
 Jonli Telegram, Railway va AI provayderlari bilan tekshiruv bu relizda
 bajarilmagan. Avtomatik testlar o‘tishi xatosiz ishlash kafolati emas.
