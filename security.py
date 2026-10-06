@@ -25,6 +25,7 @@ import hmac
 import html
 import json
 import logging
+import re
 from contextvars import ContextVar
 from datetime import datetime
 from urllib.parse import parse_qsl
@@ -122,11 +123,25 @@ UNGATED_WRITES = ("/api/settings", "/api/prefs", "/api/feedback",
                   "/api/export", "/api/account/", "/api/modules", "/api/agent/history")
 
 
+#: Recording what was already done — ticking a habit or a task, a prayer,
+#: the journal, getting up, a timer — stays open once the free run is spent.
+#: The channel ask belongs next to new work, not between a person and the
+#: tick for the habit they just did (audit #19). Creating new things is
+#: still gated. A task PATCH is let through here and narrowed to a bare
+#: status change in its handler, which can read the body.
+UNGATED_RECORDING = re.compile(
+    r"^/api/(?:habits/\d+/(?:toggle|qty)|teams/(?:tasks|habits)/\d+/toggle|tasks/\d+"
+    r"|prayers(?:/clear|/excused)?|journal|wakeup|focus/\d+/toggle|quick/parse"
+    r"|timers/[a-z]+/\d+/(?:start|log)|timers/runs/\d+/[a-z]+)$")
+
+
 def gate_allows(method: str, path: str) -> bool:
-    """Whether a gated account may make this request: reads, and the writes
-    above. The gate stops new work; it never locks anybody out of their own
-    record (#15)."""
+    """Whether a gated account may make this request: reads, the writes
+    above, and recording work already done. The gate stops new work; it never
+    locks anybody out of their own record (#15)."""
     if method in ("GET", "HEAD", "OPTIONS"):
+        return True
+    if method in ("POST", "PATCH") and UNGATED_RECORDING.match(path):
         return True
     return path.startswith(UNGATED_WRITES)
 

@@ -1212,7 +1212,7 @@ const DICT = {
   now_clear:"Bugungi muhim ishlar tugadi", now_clear_hint:"Xohlasangiz yana ish qo'shing",
   now_open:"Ochish", now_done:"Bajarildi",
   quote_ph:"O'zingizga kuch beradigan gap", quote_add:"Quote qo'shish",
-  overall:"Umumiy", streak_short:"Ketma-ket", prayer:"Namoz",
+  overall:"Umumiy", main_task:"Bugungi asosiy ish", main_goal:"Hafta maqsadi", overall_means:"Bu foiz — bugungi rejaning qancha bajarilgani, kun qanchalik muhim o'tgani emas. Yuklamasi turli kunlarni shu raqam bilan solishtirmang.", overall_plan_size:"Bugun rejada {n} ta vazifa.", streak_short:"Ketma-ket", prayer:"Namoz",
   overall_sub:"Kun · hafta · oy", today_parts:"Bugungi ko'rsatkichlar",
   overall_section:"Umumiy ko'rsatkichlar",
   vs_yesterday:"kechagiga nisbatan", vs_yesterday_none:"Kecha o'lchanmagan",
@@ -1221,7 +1221,9 @@ const DICT = {
   mission_change:"Bugun uchun tanlash",
   why_pinned:"Siz o'zingiz tanlagansiz",
   why_overdue:"Muddati o'tgan — eng oldin shu",
-  why_due_today:"Bugun muddati tugaydi",
+  why_due_today:"Bugun muddati tugaydi", why_recheck:"Kutayotgan javobingizni tekshiring", block_label:"Boshqaga bog'liqmi?", block_reply:"Javob kutilyapti", block_depends:"Boshqa ishga bog'liq", block_in:"{n} kundan keyin tekshirish", block_until:"{d} da tekshiriladi", block_clear:"Kutish tugadi", block_saved:"⏳ Kutishga olindi — «Hozir»da ko'rinmaydi", block_recheck:"tekshirish vaqti",
+  why_due_later:"Bugungi belgilangan vaqtli ish — hozir boshqa ish qolmagan",
+  now_upcoming:"Keyingi belgilangan",
   why_habit:"Bugungi odat hali bajarilmagan",
   why_wake:"Kun shundan boshlanadi",
   why_prayer:"Bugungi namozlar to'liq emas",
@@ -1249,19 +1251,19 @@ const DICT = {
   /* quick capture */
   quick_add:"Tez qo'shish", quick_ph:"Nima esingizga tushdi?",
   inbox_saved:"Saqlandi — Vazifalarda",
-  quick_saved:"✓ Vazifa", next_up:"Keyingi", home_more_tasks:"Yana {n} ta ish", voice_title:"Ovoz bilan qo'shish", voice_listening:"Gapiring… To'xtatsangiz, tahlil qilaman.", voice_stop:"To'xtatish", voice_thinking:"Tushunishga harakat qilyapman…", voice_confirm:"Tasdiqlash", voice_retry:"Qayta yozish", voice_done:"✅ Tasdiqlandi", voice_failed:"Ovoz yuborilmadi. Qayta urinib ko'ring.", voice_too_long:"Ovoz 2 daqiqadan oshmasin.", voice_denied:"Mikrofonga ruxsat yo'q — botda ovoz yuboring.", voice_consent:"Ovozingiz matnga aylantirish va tushunish uchun AI xizmatlariga (ElevenLabs, Groq, Google — AQSh) yuboriladi. Audio saqlanmaydi. Hech narsa siz tasdiqlamaguningizcha o'zgarmaydi.", voice_agree:"Roziman, boshlash", voice_consent_needed:"Avval rozilik bering.", tab_list:"Ro'yxat", nav_money:"Moliya", quick_more:"Batafsil (vaqt, eslatma, loyiha)", quick_more_habit:"Batafsil (kunlar, eslatma, muhimlik)", nav_steps:"Qadam", steps_to_next:"«{name}» darajasigacha yana {n} qadam", steps_max:"Eng yuqori daraja — barakalla!", steps_freeze_short:"Muzlatish", steps_rank_in:"{n} kundan keyin", steps_next:"Keyingi qadam", steps_all_done:"Bugungi qadamlar bajarildi 🎉", steps_more:"Yutuqlar va reyting", steps_title:"Qadam", steps_motto:"Har bir yaxshi ish — kelajakdagi yutuqqa qadam.", steps_freeze:"Ketma-ketlikni saqlab qoladigan kunlar", steps_level_n:"{n}-daraja", steps_total:"Jami qadamlar", steps_path:"Sizning yo'lingiz", steps_today:"Bugungi qadamlar", steps_go:"Qadamni davom ettir", step_lvl_starter:"Boshlovchi", step_lvl_builder:"Quruvchi", step_lvl_discipline:"Intizom", step_lvl_steady:"Barqarorlik", step_lvl_master:"O'z ustida ishlash", step_tasks:"Vazifa", step_habits:"Odat", step_prayer:"Namoz", step_journal:"Xulosa", step_goal:"Maqsad", task_word:"Vazifa", habit_word:"Odat", quick_habit_ph:"Masalan: Har kuni kitob o'qish", quick_habit_hint:"Har kuni takrorlanadi. Keyin o'zgartirsa bo'ladi.", quick_habit_saved:"✓ Odat", nav_tracker:"Kundalik", nav_profile:"Profil", quick_hint:"Masalan: «Ertaga soat 10 da hisobot» yoki «Tushlik 45 ming»", quick_voice:"Ovoz bilan aytish", jai_title:"AI bilan to'ldirish", jai_hint:"Kuningizni erkin gapirib yoki yozib bering — AI uni 5 savolga ajratib, xatolarini to'g'rilaydi. Siz tekshirib, saqlaysiz.", jai_voice:"Gapirish", jai_text:"Yozish", jai_ph:"Masalan: bugun mijoz bilan shartnoma yopdim, onamga rahmat, vaqtni rejalashtira olmadim, ertaga hisobotni tugataman…", jai_sort:"Savollarga ajratish", jai_done:"✨ {n} ta javob to'ldirildi — tekshirib, Saqlang", jai_nothing:"Savollarga mos gap topilmadi. Batafsilroq ayting.",
+  quick_saved:"✓ Vazifa", next_up:"Keyingi", home_more_tasks:"Yana {n} ta ish", voice_title:"Ovoz bilan qo'shish", voice_listening:"Gapiring… To'xtatsangiz, tahlil qilaman.", voice_stop:"To'xtatish", voice_thinking:"Tushunishga harakat qilyapman…", voice_confirm:"Tasdiqlash", voice_retry:"Qayta yozish", voice_edit:"Tahrirlash", voice_answer_ph:"Javobingizni yozing…", voice_send:"Yuborish", ve_title:"Nomi", ve_name:"Nomi", ve_deadline:"Sana", ve_day:"Kun", ve_due_time:"Soat", ve_remind_at:"Eslatma vaqti", ve_priority:"Muhimlik", ve_amount:"Summa", ve_note:"Izoh", ve_person:"Kim", voice_resend:"Shu yozuvni qayta yuborish", voice_done:"✅ Tasdiqlandi", voice_failed:"Ovoz yuborilmadi. Qayta urinib ko'ring.", voice_too_long:"Ovoz 2 daqiqadan oshmasin.", voice_denied:"Mikrofonga ruxsat yo'q — botda ovoz yuboring.", voice_consent:"Ovozingiz matnga aylantirish va tushunish uchun AI xizmatlariga (ElevenLabs, Groq, Google — AQSh) yuboriladi. Audio saqlanmaydi. Hech narsa siz tasdiqlamaguningizcha o'zgarmaydi.", voice_agree:"Roziman, boshlash", voice_consent_needed:"Avval rozilik bering.", tab_list:"Ro'yxat", nav_money:"Moliya", quick_more:"Batafsil (vaqt, eslatma, loyiha)", quick_more_habit:"Batafsil (kunlar, eslatma, muhimlik)", nav_steps:"Qadam", steps_to_next:"«{name}» darajasigacha yana {n} qadam", steps_max:"Eng yuqori daraja — barakalla!", steps_freeze_short:"Muzlatish", steps_rank_in:"{n} kundan keyin", steps_next:"Keyingi qadam", steps_all_done:"Bugungi qadamlar bajarildi 🎉", steps_more:"Yutuqlar va reyting", steps_title:"Qadam", steps_motto:"Har bir yaxshi ish — kelajakdagi yutuqqa qadam.", steps_freeze:"Ketma-ketlikni saqlab qoladigan kunlar", steps_level_n:"{n}-daraja", steps_total:"Jami qadamlar", steps_path:"Sizning yo'lingiz", steps_today:"Bugungi qadamlar", steps_go:"Qadamni davom ettir", step_lvl_starter:"Boshlovchi", step_lvl_builder:"Quruvchi", step_lvl_discipline:"Intizom", step_lvl_steady:"Barqarorlik", step_lvl_master:"O'z ustida ishlash", step_tasks:"Vazifa", step_habits:"Odat", step_prayer:"Namoz", step_journal:"Xulosa", step_goal:"Maqsad", step_started:"boshlandi", step_goal_add:"Maqsad qo'shish", focus_carried_n:"{n} hafta surildi — kichikroq qadamga bo'ling", focus_moved:"Keyingi haftaga ko'chirildi", cnt_finished:"bugun bajarildi", task_word:"Vazifa", habit_word:"Odat", quick_habit_ph:"Masalan: Har kuni kitob o'qish", quick_habit_hint:"Har kuni takrorlanadi — kunlarni yozsangiz («du, chor, juma sport»), faqat o'sha kunlari. Keyin o'zgartirsa bo'ladi.", quick_habit_days_hint:"Matndan shu kunlar topildi. Tekshiring, keyin saqlang.", quick_habit_saved:"✓ Odat", nav_tracker:"Kundalik", nav_profile:"Profil", quick_hint:"Masalan: «Ertaga soat 10 da hisobot» yoki «Tushlik 45 ming»", quick_voice:"Ovoz bilan aytish", jai_title:"AI bilan to'ldirish", jai_hint:"Kuningizni erkin gapirib yoki yozib bering — AI uni 5 savolga ajratib, xatolarini to'g'rilaydi. Siz tekshirib, saqlaysiz.", jai_voice:"Gapirish", jai_text:"Yozish", jai_ph:"Masalan: bugun mijoz bilan shartnoma yopdim, onamga rahmat, vaqtni rejalashtira olmadim, ertaga hisobotni tugataman…", jai_sort:"Savollarga ajratish", jai_done:"✨ {n} ta javob to'ldirildi — tekshirib, Saqlang", jai_review:"AI taklifi hali saqlanmadi. Tekshiring, keyin qabul qiling.", jai_accept:"Qabul qilish", jai_reject:"Bekor qilish", journal_for_day:"{d} kuni uchun yozilmoqda", jai_nothing:"Savollarga mos gap topilmadi. Batafsilroq ayting.",
   /* tasks */
   add_task:"Vazifa", task_name:"Vazifa nomi", task_desc:"Batafsil",
   deadline:"Muddat", due_time:"Vaqt", priority:"Muhimlik", project:"Loyiha",
   standalone:"Alohida", high:"Yuqori", medium:"O'rta", low:"Past",
-  when_today:"Bugun", when_tomorrow:"Ertaga", when_week:"Shu hafta",
+  when_today:"Bugun", when_tomorrow:"Ertaga", when_week:"7 kundan keyin",
   when_none:"Sanasiz", when_pick:"Sana tanlash",
   reminder:"Eslatma", remind_none:"Kerak emas", remind_0:"Aynan vaqtida",
   remind_10:"10 minut oldin", remind_30:"30 minut oldin",
   remind_60:"1 soat oldin", remind_1440:"1 kun oldin",
   repeat:"Takrorlanish", repeat_none:"Takrorlanmaydi", repeat_daily:"Har kuni",
   repeat_weekdays:"Ish kunlari", repeat_weekly:"Har hafta", repeat_monthly:"Har oy",
-  repeat_custom:"Tanlangan kunlarda",
+  repeat_custom:"Tanlangan kunlarda", repeat_after:"Bajargandan {n} kun keyin",
   overdue:"Kechikkan", upcoming:"Yaqin kunlar", later:"Keyinroq", no_date:"Muddatsiz",
   done_tab:"Bajarilgan", open_tab:"Ochiq", main_tab:"Asosiy",
   reopen:"Qayta ochish",
@@ -1277,7 +1279,7 @@ const DICT = {
   status:"Holat", st_active:"Faol", st_done:"Tugallangan", st_archived:"Arxivlangan",
   mark_done:"Tugallandi deb belgilash", mark_active:"Faolga qaytarish",
   archive:"Arxivlash", unarchive:"Arxivdan chiqarish",
-  of_tasks:"{total} ta vazifadan {done} tasi bajarilgan",
+  of_tasks:"{total} ta vazifadan {done} tasi bajarilgan", pr_pct_tasks:"vazifalar soni bo'yicha — ish hajmi emas",
   of_habits:"{total} ta odatdan {done} tasi bajarilgan",
   remaining:"Qolgan", completed:"Bajarilgan",
   no_projects:"Hozircha loyiha yo'q", add_first_project:"Birinchi loyihani qo'shish",
@@ -1294,7 +1296,7 @@ const DICT = {
   edit_habit:"Odatni tahrirlash", schedule:"Kunlar", every_day:"Har kuni",
   weekdays_only:"Ish kunlari", pick_days:"Tanlangan kunlar",
   pause:"To'xtatib turish", resume:"Davom etish", paused:"To'xtatilgan",
-  not_today:"Bugun rejada yo'q", history:"Tarix", streak:"Ketma-ket",
+  not_today:"Bugun rejada yo'q", history:"Tarix", streak:"Ketma-ket", streak_habits:"Odatlar seriyasi", streak_habits_hint:"Rejadagi barcha odatlar bajarilgan kunlar ketma-ket", streak_days:"Izchil kunlar", streak_days_hint:"{n}+ ball to'plangan kunlar ketma-ket (himoya kunlari bilan)",
   last7:"Oxirgi 7 kun", last30:"Oxirgi 30 kun", completion:"Bajarilish",
   auto_habit:"Bu odat avtomatik belgilanadi", habit_auto_prayer:"Namoz bo'limidan",
   habit_always_daily:"o'zgartirib bo'lmaydi",
@@ -1324,7 +1326,7 @@ const DICT = {
   /* review */
   review:"Haftani yakunlash", review_prompt:"Haftani yakunlaysizmi?",
   review_q1:"Nima yaxshi ketdi?", review_q2:"Nima to'sqinlik qildi?",
-  review_q3:"Keyingi haftadagi asosiy fokus nima?", skip:"Keyinroq",
+  review_q3:"Keyingi haftadagi asosiy fokus nima?", review_make_goal:"Buni keyingi hafta maqsadi qilish", review_suggest:"Hafta raqamlari nimani taklif qiladi", rs_reset:"{n} ta vazifa kechikkan — yengil reset bilan qayta taqsimlang", rs_shrink:"«{title}» {n}-hafta suriladi — kichikroq qadamga bo'ling", rs_fewer_habits:"{n} ta odat, yarmidan kami bajarildi — kamroq odat bilan boshlang", rs_blocked:"{n} ta vazifa javob kutmoqda — kimdandir so'rang", review_due:"hafta yakuni", skip:"Keyinroq",
   /* stats */
   week:"Hafta", month:"Oy", year:"Yil", average:"O'rtacha",
   best_day:"Eng yaxshi kun", vs_prev:"oldingi davrga nisbatan",
@@ -1350,7 +1352,7 @@ const DICT = {
   theme_fixed:"Bu tema o'z ko'rinishida ishlaydi",
   timezone:"Vaqt mintaqasi", tz_common:"Tez-tez ishlatiladigan", notifications:"Eslatmalar va hisobotlar",
   morning_report:"Ertalabki hisobot", evening_report:"Kechqurungi hisobot",
-  task_reminders:"Vazifa eslatmalari", habit_reminders:"Odat eslatmalari",
+  task_reminders:"Vazifa eslatmalari", habit_reminders:"Odat eslatmalari", qty_minimal:"minimal", qty_goal:"Maqsad {n} {u}", qty_min_is:"minimal {n}", qty_all:"Hammasi", qty_label:"Miqdor (ixtiyoriy)", qty_target_ph:"Maqsad, masalan 20", qty_unit_ph:"Birlik, masalan bet", qty_min_ph:"Og'ir kunda minimal, masalan 2", quiet_hours:"Sokin soatlar", quiet_from:"dan", quiet_to:"gacha", quiet_hint:"Bu oraliqda eslatmalar ovozsiz keladi — yo'qolmaydi. Masalan, tundan ertalabgacha.", quiet_off:"O'chirish", habit_remind_off:"Odat eslatmalari o'chiq — bu vaqtda xabar kelmaydi.", habit_remind_enable:"Odat eslatmalarini yoqish", habit_remind_on:"Eslatma yoqilgan",
   reminders:"Eslatmalar", report_at:"Yuboriladigan vaqt",
   morning_report_hint:"Xayrli tong, kechagi natija va bugungi reja",
   evening_report_hint:"Kun yakuni, natijalar va xayrli tun",
@@ -1426,7 +1428,7 @@ const DICT = {
   feedback:"Taklif va shikoyat", feedback_ph:"Nimani yaxshilashimiz kerak?",
   feedback_sent:"Rahmat! Taklifingiz yetkazildi",
   feedback_saved:"Taklifingiz saqlandi, tez orada yetkaziladi",
-  fresh_start:"Yengil reset", fresh_start_n:"{n} ta kechikkan vazifa",
+  fresh_start:"Yengil reset", fs_focus:"Eng muhim 3 tasi bugun, qolgani hafta bo'ylab", fs_preview:"Natija qanday bo'ladi", fs_apply:"Shunday qilish", fs_triage:"Hali kerakmi? ({n} ta) — keraksizini belgilang", fs_not_needed:"Kerak emas", fs_archive_n:"{n} ta vazifa arxivga o'tadi.", fs_undo_hint:"Keyin bir bosishda qaytarish mumkin.", fs_undone:"↩ {n} ta vazifa avvalgi sanasiga qaytdi", fs_undo_conflicts:"Qaytarildi; {n} tasini siz o'zgartirgansiz — ular tegilmadi", fresh_start_n:"{n} ta kechikkan vazifa",
   fresh_start_body:"Hech qanday vazifa o'chirilmaydi — faqat ko'chiriladi yoki arxivga o'tadi. Statistika va tarix saqlanadi.",
   fs_today:"Hammasini bugunga", fs_week:"Bir haftaga taqsimlash",
   fs_undate:"Muddatlarni olib tashlash", fs_archive:"Arxivga o'tkazish",
@@ -1447,7 +1449,7 @@ const DICT = {
   timer_off:"O'chiq", timer_auto:"nomidan", timer_from_name:"Nomidan (masalan: 5h)",
   timer_custom_ph:"Daqiqa, masalan 50",
   timer_rule_habit:"Odat taymer tugagach o'zi belgilanadi.",
-  timer_rule_task:"Vazifa taymer tugagach o'zi bajariladi.",
+  timer_rule_task:"Taymer ishlagan vaqtni yozadi. Vazifa tugaganini o'zingiz belgilaysiz.", timer_worked:"{dur} ishlandi", timer_rhythm:"Ish va tanaffus", timer_one_go:"Bir martada", timer_rhythm_hint:"Masalan 50/10 — 50 daqiqa ish, 10 daqiqa tanaffus. Tanaffus ish vaqtiga kirmaydi.", timer_on_break:"Tanaffus {time} gacha", timer_finish:"Sessiyani yakunlash", timer_finish_hint:"Yakunlash — ishlangan vaqt saqlanadi. To'xtatish — sessiya bekor qilinadi.", timer_manual:"qo'lda {dur}", timer_ask_done:"Vazifa tugadimi?", timer_yes_done:"Ha, tugadi", timer_more:"Yana bir sessiya", timer_log_lbl:"Taymersiz bajardim", timer_log_ph:"Necha daqiqa?", timer_log_btn:"Qayd qilish", timer_running:"Taymer ishlayapti — avval uni to'xtating.",
   timer_off_hint:"Taymer o'chiq — oddiy belgilanadi. Vaqt kerak bo'lsa, pastdan tanlang.",
   timer_done_today:"Bugun bajarildi", timer_done:"Bajarildi",
   timer_finished:"Vaqt tugadi — belgilandi ✓",
@@ -1502,7 +1504,7 @@ const DICT = {
   act_countdown_del:"countdownni o'chirdi", act_project_add:"loyiha qo'shdi",
   act_project_remove:"loyihani olib tashladi",
   forbidden:"Buni faqat yaratgan kishi, admin yoki jamoa egasi qila oladi",
-  read_only:"Faqat ko'rish rejimi — o'zgartirish uchun kanalga qo'shiling",
+  read_only:"Bajarganlaringizni belgilash ochiq. Yangi qo'shish va tahrirlash uchun kanalga qo'shiling",
   setup_title:"Sozlash botda yakunlanadi",
   setup_body:"ErnestOS botiga qayting va bir necha savolga javob bering — keyin hammasi shu yerda ochiladi.",
   back_to_bot:"Botga qaytish",
@@ -1514,7 +1516,7 @@ const DICT = {
   pause_note:"Bugundan desangiz, bugungi hisobdan ham chiqadi",
   pts:"p.", team_join_hint:"Taklif havolasini bosing — jamoani ko'rib, keyin qo'shilasiz",
   nav_home:"Asosiy", nav_stats:"Statistika", money:"Pul", money_add:"Pul yozuvi",
-  money_this_month:"bu oy", money_tab_entries:"Yozuvlar", money_tab_cats:"Kategoriyalar", money_tab_debts:"Qarzlar", debt_overdue_n:"{n} tasi muddati o'tgan", debt_owed_to_me:"Sizga qaytarishadi", debt_i_owe:"Siz qaytarasiz", debt_add:"Qarz yozish", debt_empty:"Hozircha qarz yo'q. Kimgadir pul bersangiz yoki olsangiz — shu yerga yozing, unutilmaydi.", debt_settled:"Yopilganlar", debt_lent_meta:"men berdim", debt_borrowed_meta:"men oldim", debt_overdue:"muddati o'tdi", debt_until:"{d} gacha", debt_returned:"Qaytdi", debt_returned_full:"To'liq qaytdi", debt_lent:"Men berdim", debt_borrowed:"Men oldim", debt_person:"Kim? Ismini yozing", debt_amount:"Summa (200 ming, 1,5 mln…)", debt_due:"Qachongacha qaytariladi", debt_due_week:"1 haftada", debt_due_month:"1 oyda", debt_note:"Izoh (ixtiyoriy)", debt_bad_amount:"Summani yozing — 200 ming yoki 200000", debt_saved:"✓ Qarz yozildi", debt_closed:"✓ Qarz yopildi", debt_partial:"Bir qismi qaytdimi?", debt_partial_ph:"Qancha? Masalan, 50 ming", debt_reopen:"Qayta ochish",
+  money_this_month:"bu oy", money_tab_entries:"Yozuvlar", money_tab_cats:"Kategoriyalar", money_tab_debts:"Qarzlar", debt_overdue_n:"{n} tasi muddati o'tgan", debt_owed_to_me:"Sizga qaytarishadi", debt_i_owe:"Siz qaytarasiz", debt_add:"Qarz yozish", debt_empty:"Hozircha qarz yo'q. Kimgadir pul bersangiz yoki olsangiz — shu yerga yozing, unutilmaydi.", debt_settled:"Yopilganlar", debt_lent_meta:"men berdim", debt_borrowed_meta:"men oldim", debt_overdue:"muddati o'tdi", debt_until:"{d} gacha", debt_returned:"Qaytdi", debt_returned_full:"To'liq qaytdi", debt_lent:"Men berdim", debt_borrowed:"Men oldim", debt_person:"Kim? Ismini yozing", debt_amount:"Summa (200 ming, 1,5 mln…)", debt_due:"Qachongacha qaytariladi", debt_due_week:"1 haftada", debt_due_month:"1 oyda", debt_note:"Izoh (ixtiyoriy)", debt_bad_amount:"Summani yozing — 200 ming yoki 200000", debt_saved:"✓ Qarz yozildi", debt_closed:"✓ Qarz yopildi", debt_partial:"Bir qismi qaytdimi?", debt_partial_ph:"Qancha? Masalan, 50 ming", debt_reopen:"Qayta ochish", debt_paid_more:"Bu summa qolgan qarzdan ko'p. Qolgani: {n}", debt_of:"jami {n}", debt_payments:"To'lovlar", debt_delete_q:"Qarzni o'chirasizmi?", debt_archived:"O'chirilganlar", debt_restore:"Qaytarish", debt_purge:"Butunlay o'chirish", debt_purge_q:"Butunlay o'chirilsinmi? Buni qaytarib bo'lmaydi.",
   money_apart:"Alohida bo'lim — hech qanday foiz, streak yoki reytingga qo'shilmaydi.",
   money_balance:"Umumiy balans", money_income:"Kirim", money_expense:"Chiqim",
   money_unit:"so'm", date_day:"Kun", date_month:"Oy", date_year:"Yil",
@@ -1545,7 +1547,7 @@ const DICT = {
   day_free:"Bu kun hozircha bo'sh", moved_toast:"Ko'chirildi",
   team_graph:"Jamoa natijasi", team_graph_hint:"Har a'zo — o'z rangida, ko'k — o'rtacha. Davr bo'yicha {n}", team_avg:"O'rtacha",
   team_graph_empty:"Grafik uchun kamida ikki kunlik ma'lumot kerak",
-  cnt_tasks:"Vazifa", cnt_habits:"Odat", cnt_prayer:"Namoz",
+  cnt_tasks:"Vazifa", queued_offline:"Internet yo'q — qurilmada saqlandi, ulanganda yuboriladi", queue_pending:"Sinxronlash kutilmoqda — {n} ta amal", queue_synced:"✓ {n} ta amal yuborildi", queue_refused:"{n} ta amal qabul qilinmadi — ro'yxatni tekshiring", load_planned:"Bugungi reja ≈ {t}", load_set:"bo'sh vaqtingizni kiriting", load_fits:"Reja {t} · bo'sh vaqt {c}", load_over:"Reja {t}, bo'sh vaqt {c} — sig'maydi", load_suggest:"Muhimligi pastlari — ertaga o'tkazish mumkin", load_change:"Bo'sh vaqtni o'zgartirish", load_q:"Odatiy kunda nechta soat bo'sh?", load_hint:"Taymerli ishlar shu vaqt bilan solishtiriladi. Reja sig'masa, ogohlantiramiz — hech narsa o'zi ko'chmaydi.", quick_past_q:"Bugun {time} o'tib ketdi. Qaysi kun?", cnt_habits:"Odat", cnt_prayer:"Namoz",
   dow:["Du","Se","Ch","Pa","Ju","Sh","Ya"],
   dow_full:["Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba","Yakshanba"],
   months:["Yanvar","Fevral","Mart","Aprel","May","Iyun","Iyul","Avgust","Sentabr","Oktabr","Noyabr","Dekabr"],
@@ -1588,7 +1590,7 @@ const DICT = {
   now_clear:"Today's important work is done", now_clear_hint:"Add something else if you want",
   now_open:"Open", now_done:"Done",
   quote_ph:"Something that keeps you going", quote_add:"Add a quote",
-  overall:"Overall", streak_short:"Streak", prayer:"Prayer",
+  overall:"Overall", main_task:"Today's main task", main_goal:"Week goal", overall_means:"This is how much of today's plan got done — not how much the day mattered. Days with different loads are not comparable by it.", overall_plan_size:"Tasks planned today: {n}.", streak_short:"Streak", prayer:"Prayer",
   overall_sub:"Day · week · month", today_parts:"Today's numbers",
   overall_section:"Overall numbers",
   vs_yesterday:"vs yesterday", vs_yesterday_none:"Nothing measured yesterday",
@@ -1597,7 +1599,9 @@ const DICT = {
   mission_change:"Choose for today",
   why_pinned:"You pinned this one",
   why_overdue:"Late — this comes first",
-  why_due_today:"Due today",
+  why_due_today:"Due today", why_recheck:"Check on the reply you were waiting for", block_label:"Waiting on someone?", block_reply:"Waiting for a reply", block_depends:"Depends on other work", block_in:"check in {n} days", block_until:"check on {d}", block_clear:"No longer waiting", block_saved:"⏳ Parked — out of «Now» until then", block_recheck:"time to check",
+  why_due_later:"Set for later today — nothing else is waiting now",
+  now_upcoming:"Next at a set time",
   why_habit:"Today's habit, not done yet",
   why_wake:"The day starts here",
   why_prayer:"Today's prayers are not complete",
@@ -1624,18 +1628,18 @@ const DICT = {
   wake_late_at:"{time} — later than today's target", wake_target:"Target",
   quick_add:"Quick add", quick_ph:"What came to mind?",
   inbox_saved:"Saved — see Tasks",
-  quick_saved:"✓ Task", next_up:"Up next", home_more_tasks:"{n} more", voice_title:"Add by voice", voice_listening:"Speak… Stop when done and I'll analyse it.", voice_stop:"Stop", voice_thinking:"Understanding…", voice_confirm:"Confirm", voice_retry:"Record again", voice_done:"✅ Confirmed", voice_failed:"Voice was not sent. Try again.", voice_too_long:"Keep it under 2 minutes.", voice_denied:"No microphone access — send a voice message in the bot.", voice_consent:"Your voice is sent to AI services (ElevenLabs, Groq, Google — USA) to transcribe and understand it. Audio is not stored. Nothing changes until you confirm.", voice_agree:"I agree, start", voice_consent_needed:"Please give consent first.", tab_list:"List", nav_money:"Money", quick_more:"More options (time, reminder, project)", quick_more_habit:"More options (days, reminder, importance)", nav_steps:"Steps", steps_to_next:"{n} steps to «{name}»", steps_max:"Top level — well done!", steps_freeze_short:"Freezes", steps_rank_in:"in {n} days", steps_next:"Next step", steps_all_done:"All of today's steps are done 🎉", steps_more:"Achievements and rank", steps_title:"Steps", steps_motto:"Every good thing you do is a step forward.", steps_freeze:"Days that keep your streak alive", steps_level_n:"Level {n}", steps_total:"Total steps", steps_path:"Your path", steps_today:"Today's steps", steps_go:"Keep going", step_lvl_starter:"Beginner", step_lvl_builder:"Builder", step_lvl_discipline:"Discipline", step_lvl_steady:"Consistency", step_lvl_master:"Self-mastery", step_tasks:"Task", step_habits:"Habit", step_prayer:"Prayer", step_journal:"Summary", step_goal:"Goal", task_word:"Task", habit_word:"Habit", quick_habit_ph:"E.g. Read a book every day", quick_habit_hint:"Repeats every day. You can change it later.", quick_habit_saved:"✓ Habit", nav_tracker:"Tracker", nav_profile:"Profile", quick_hint:"E.g. “Report tomorrow at 10” or “Lunch 45 thousand”", quick_voice:"Say it by voice", jai_title:"Fill with AI", jai_hint:"Talk or write about your day freely — the AI sorts it into the 5 questions and fixes mistakes. You check and save.", jai_voice:"Speak", jai_text:"Write", jai_ph:"E.g. closed a deal with a client today, thankful to my mom, failed to plan my time, tomorrow I finish the report…", jai_sort:"Sort into questions", jai_done:"✨ {n} answers filled — check and Save", jai_nothing:"Nothing matched the questions. Say a bit more.",
+  quick_saved:"✓ Task", next_up:"Up next", home_more_tasks:"{n} more", voice_title:"Add by voice", voice_listening:"Speak… Stop when done and I'll analyse it.", voice_stop:"Stop", voice_thinking:"Understanding…", voice_confirm:"Confirm", voice_retry:"Record again", voice_edit:"Edit", voice_answer_ph:"Type your answer…", voice_send:"Send", ve_title:"Title", ve_name:"Name", ve_deadline:"Date", ve_day:"Day", ve_due_time:"Time", ve_remind_at:"Reminder time", ve_priority:"Priority", ve_amount:"Amount", ve_note:"Note", ve_person:"Who", voice_resend:"Send this recording again", voice_done:"✅ Confirmed", voice_failed:"Voice was not sent. Try again.", voice_too_long:"Keep it under 2 minutes.", voice_denied:"No microphone access — send a voice message in the bot.", voice_consent:"Your voice is sent to AI services (ElevenLabs, Groq, Google — USA) to transcribe and understand it. Audio is not stored. Nothing changes until you confirm.", voice_agree:"I agree, start", voice_consent_needed:"Please give consent first.", tab_list:"List", nav_money:"Money", quick_more:"More options (time, reminder, project)", quick_more_habit:"More options (days, reminder, importance)", nav_steps:"Steps", steps_to_next:"{n} steps to «{name}»", steps_max:"Top level — well done!", steps_freeze_short:"Freezes", steps_rank_in:"in {n} days", steps_next:"Next step", steps_all_done:"All of today's steps are done 🎉", steps_more:"Achievements and rank", steps_title:"Steps", steps_motto:"Every good thing you do is a step forward.", steps_freeze:"Days that keep your streak alive", steps_level_n:"Level {n}", steps_total:"Total steps", steps_path:"Your path", steps_today:"Today's steps", steps_go:"Keep going", step_lvl_starter:"Beginner", step_lvl_builder:"Builder", step_lvl_discipline:"Discipline", step_lvl_steady:"Consistency", step_lvl_master:"Self-mastery", step_tasks:"Task", step_habits:"Habit", step_prayer:"Prayer", step_journal:"Summary", step_goal:"Goal", step_started:"started", step_goal_add:"Add a goal", focus_carried_n:"Moved {n} weeks running — split it smaller", focus_moved:"Moved to next week", cnt_finished:"done today", task_word:"Task", habit_word:"Habit", quick_habit_ph:"E.g. Read a book every day", quick_habit_hint:"Repeats every day — name days («Mon, Wed, Fri run») and it is only those. You can change it later.", quick_habit_days_hint:"These days were read from the text. Check them, then save.", quick_habit_saved:"✓ Habit", nav_tracker:"Tracker", nav_profile:"Profile", quick_hint:"E.g. “Report tomorrow at 10” or “Lunch 45 thousand”", quick_voice:"Say it by voice", jai_title:"Fill with AI", jai_hint:"Talk or write about your day freely — the AI sorts it into the 5 questions and fixes mistakes. You check and save.", jai_voice:"Speak", jai_text:"Write", jai_ph:"E.g. closed a deal with a client today, thankful to my mom, failed to plan my time, tomorrow I finish the report…", jai_sort:"Sort into questions", jai_done:"✨ {n} answers filled — check and Save", jai_review:"The AI suggestion is not saved yet. Check it, then accept.", jai_accept:"Accept", jai_reject:"Discard", journal_for_day:"Writing for {d}", jai_nothing:"Nothing matched the questions. Say a bit more.",
   add_task:"Task", task_name:"Task name", task_desc:"Details",
   deadline:"Date", due_time:"Time", priority:"Priority", project:"Project",
   standalone:"Standalone", high:"High", medium:"Medium", low:"Low",
-  when_today:"Today", when_tomorrow:"Tomorrow", when_week:"This week",
+  when_today:"Today", when_tomorrow:"Tomorrow", when_week:"In 7 days",
   when_none:"No date", when_pick:"Pick a date",
   reminder:"Reminder", remind_none:"None", remind_0:"At the time",
   remind_10:"10 minutes before", remind_30:"30 minutes before",
   remind_60:"1 hour before", remind_1440:"1 day before",
   repeat:"Repeat", repeat_none:"Does not repeat", repeat_daily:"Every day",
   repeat_weekdays:"Weekdays", repeat_weekly:"Every week", repeat_monthly:"Every month",
-  repeat_custom:"Chosen days",
+  repeat_custom:"Chosen days", repeat_after:"{n} days after done",
   overdue:"Overdue", upcoming:"Coming up", later:"Later", no_date:"No date",
   done_tab:"Done", open_tab:"Open", main_tab:"Main",
   reopen:"Reopen",
@@ -1650,7 +1654,7 @@ const DICT = {
   status:"Status", st_active:"Active", st_done:"Completed", st_archived:"Archived",
   mark_done:"Mark as completed", mark_active:"Make active again",
   archive:"Archive", unarchive:"Restore from archive",
-  of_tasks:"{done} of {total} tasks done",
+  of_tasks:"{done} of {total} tasks done", pr_pct_tasks:"by number of tasks — not by size of work",
   of_habits:"{done} of {total} habits done",
   remaining:"Remaining", completed:"Completed",
   no_projects:"No projects yet", add_first_project:"Add your first project",
@@ -1666,7 +1670,7 @@ const DICT = {
   edit_habit:"Edit habit", schedule:"Days", every_day:"Every day",
   weekdays_only:"Weekdays", pick_days:"Chosen days",
   pause:"Pause", resume:"Resume", paused:"Paused",
-  not_today:"Not scheduled today", history:"History", streak:"Streak",
+  not_today:"Not scheduled today", history:"History", streak:"Streak", streak_habits:"Habit streak", streak_habits_hint:"Days in a row with every scheduled habit done", streak_days:"Steady days", streak_days_hint:"Days in a row scoring {n}+ (protected days count)",
   last7:"Last 7 days", last30:"Last 30 days", completion:"Completion",
   auto_habit:"This habit is marked automatically", habit_auto_prayer:"from the Prayer tab",
   habit_always_daily:"cannot be changed",
@@ -1693,7 +1697,7 @@ const DICT = {
   mood_good:"Good", mood_great:"Great",
   review:"Close the week", review_prompt:"Close out the week?",
   review_q1:"What went well?", review_q2:"What got in the way?",
-  review_q3:"What is next week's main focus?", skip:"Later",
+  review_q3:"What is next week's main focus?", review_make_goal:"Make this next week's goal", review_suggest:"What the week's numbers suggest", rs_reset:"{n} tasks are late — spread them again with a fresh start", rs_shrink:"«{title}» is moving for week {n} — split it smaller", rs_fewer_habits:"{n} habits, under half done — start with fewer", rs_blocked:"{n} tasks wait on a reply — follow up", review_due:"week's end", skip:"Later",
   week:"Week", month:"Month", year:"Year", average:"Average",
   best_day:"Best day", vs_prev:"vs the previous period",
   how_calculated:"How was this calculated?",
@@ -1717,7 +1721,7 @@ const DICT = {
   theme_fixed:"This theme keeps its own appearance",
   timezone:"Time zone", tz_common:"Common", notifications:"Reminders and reports",
   morning_report:"Morning report", evening_report:"Evening report",
-  task_reminders:"Task reminders", habit_reminders:"Habit reminders",
+  task_reminders:"Task reminders", habit_reminders:"Habit reminders", qty_minimal:"minimal", qty_goal:"Goal {n} {u}", qty_min_is:"minimal {n}", qty_all:"All of it", qty_label:"Amount (optional)", qty_target_ph:"Goal, e.g. 20", qty_unit_ph:"Unit, e.g. pages", qty_min_ph:"Minimal on a hard day, e.g. 2", quiet_hours:"Quiet hours", quiet_from:"from", quiet_to:"to", quiet_hint:"Reminders in this window arrive silently — nothing is lost. E.g. from night until morning.", quiet_off:"Turn off", habit_remind_off:"Habit reminders are off — no message will come at this time.", habit_remind_enable:"Turn on habit reminders", habit_remind_on:"Reminder is on",
   reminders:"Reminders", report_at:"Sent at",
   morning_report_hint:"Good morning, yesterday's score and today's plan",
   evening_report_hint:"How the day landed, then good night",
@@ -1791,7 +1795,7 @@ const DICT = {
   feedback:"Feedback", feedback_ph:"What should we improve?",
   feedback_sent:"Thank you — your feedback was delivered",
   feedback_saved:"Your feedback is saved and will be delivered shortly",
-  fresh_start:"Fresh start", fresh_start_n:"{n} overdue tasks",
+  fresh_start:"Fresh start", fs_focus:"Top 3 today, the rest across the week", fs_preview:"What it will look like", fs_apply:"Do it", fs_triage:"Still needed? ({n}) — mark what is not", fs_not_needed:"Not needed", fs_archive_n:"{n} tasks go to the archive.", fs_undo_hint:"You can put it back with one tap afterwards.", fs_undone:"↩ {n} tasks back on their old dates", fs_undo_conflicts:"Put back; {n} you changed since were left alone", fresh_start_n:"{n} overdue tasks",
   fresh_start_body:"No task is deleted — they are moved or archived. Your statistics and history stay intact.",
   fs_today:"Move all to today", fs_week:"Spread over a week",
   fs_undate:"Drop the deadlines", fs_archive:"Move to the archive",
@@ -1811,7 +1815,7 @@ const DICT = {
   timer_off:"Off", timer_auto:"from name", timer_from_name:"From the name (e.g. 5h)",
   timer_custom_ph:"Minutes, e.g. 50",
   timer_rule_habit:"The habit ticks itself when the timer ends.",
-  timer_rule_task:"The task completes itself when the timer ends.",
+  timer_rule_task:"The timer records the time worked. You mark the task finished.", timer_worked:"{dur} worked", timer_rhythm:"Work and breaks", timer_one_go:"In one go", timer_rhythm_hint:"E.g. 50/10 — 50 min of work, 10 min break. Breaks are not counted as work.", timer_on_break:"Break until {time}", timer_finish:"Finish session", timer_finish_hint:"Finish keeps the time worked. Stop cancels the session.", timer_manual:"{dur} logged by hand", timer_ask_done:"Is the task finished?", timer_yes_done:"Yes, finished", timer_more:"Another session", timer_log_lbl:"Did it without the timer", timer_log_ph:"How many minutes?", timer_log_btn:"Log it", timer_running:"A timer is running — stop it first.",
   timer_off_hint:"Timer is off — tick it as usual. Pick a length below if it needs one.",
   timer_done_today:"Done for today", timer_done:"Done",
   timer_finished:"Time's up — ticked ✓",
@@ -1866,7 +1870,7 @@ const DICT = {
   act_countdown_del:"removed a countdown", act_project_add:"added a project",
   act_project_remove:"removed a project",
   forbidden:"Only its creator, an admin or the team owner can do this",
-  read_only:"Read-only mode — join the channel to make changes",
+  read_only:"Ticking off what you did stays open. Join the channel to add or edit",
   setup_title:"Setup finishes in the bot",
   setup_body:"Go back to the ErnestOS bot and answer a few questions — then everything opens here.",
   back_to_bot:"Back to the bot",
@@ -1878,7 +1882,7 @@ const DICT = {
   pause_note:"From today takes today out of the count as well",
   pts:"pts", team_join_hint:"Open an invite link — you see the team first, then join",
   nav_home:"Home", nav_stats:"Stats", money:"Money", money_add:"Money entry",
-  money_this_month:"this month", money_tab_entries:"Entries", money_tab_cats:"Categories", money_tab_debts:"Debts", debt_overdue_n:"{n} overdue", debt_owed_to_me:"Owed to you", debt_i_owe:"You owe", debt_add:"Record a debt", debt_empty:"No debts yet. Lend or borrow money — write it here and it won't be forgotten.", debt_settled:"Closed", debt_lent_meta:"I lent", debt_borrowed_meta:"I borrowed", debt_overdue:"overdue", debt_until:"by {d}", debt_returned:"Returned", debt_returned_full:"Fully returned", debt_lent:"I lent", debt_borrowed:"I borrowed", debt_person:"Who? Type a name", debt_amount:"Amount (200k, 1.5 mln…)", debt_due:"Return by", debt_due_week:"In 1 week", debt_due_month:"In 1 month", debt_note:"Note (optional)", debt_bad_amount:"Type an amount — 200 ming or 200000", debt_saved:"✓ Debt recorded", debt_closed:"✓ Debt closed", debt_partial:"Part of it returned?", debt_partial_ph:"How much? E.g. 50 ming", debt_reopen:"Reopen",
+  money_this_month:"this month", money_tab_entries:"Entries", money_tab_cats:"Categories", money_tab_debts:"Debts", debt_overdue_n:"{n} overdue", debt_owed_to_me:"Owed to you", debt_i_owe:"You owe", debt_add:"Record a debt", debt_empty:"No debts yet. Lend or borrow money — write it here and it won't be forgotten.", debt_settled:"Closed", debt_lent_meta:"I lent", debt_borrowed_meta:"I borrowed", debt_overdue:"overdue", debt_until:"by {d}", debt_returned:"Returned", debt_returned_full:"Fully returned", debt_lent:"I lent", debt_borrowed:"I borrowed", debt_person:"Who? Type a name", debt_amount:"Amount (200k, 1.5 mln…)", debt_due:"Return by", debt_due_week:"In 1 week", debt_due_month:"In 1 month", debt_note:"Note (optional)", debt_bad_amount:"Type an amount — 200 ming or 200000", debt_saved:"✓ Debt recorded", debt_closed:"✓ Debt closed", debt_partial:"Part of it returned?", debt_partial_ph:"How much? E.g. 50 ming", debt_reopen:"Reopen", debt_paid_more:"That is more than what is left. Remaining: {n}", debt_of:"of {n}", debt_payments:"Payments", debt_delete_q:"Delete this debt?", debt_archived:"Deleted", debt_restore:"Restore", debt_purge:"Delete forever", debt_purge_q:"Delete forever? This cannot be undone.",
   money_apart:"A separate section — never counted in any percentage, streak or rank.",
   money_balance:"Balance", money_income:"Income", money_expense:"Spent",
   money_unit:"UZS", date_day:"Day", date_month:"Month", date_year:"Year",
@@ -1909,7 +1913,7 @@ const DICT = {
   day_free:"Nothing planned for this day yet", moved_toast:"Moved",
   team_graph:"Team result", team_graph_hint:"Each member in their own colour, blue is the average. For the period {n}", team_avg:"Average",
   team_graph_empty:"The graph needs at least two days of data",
-  cnt_tasks:"Tasks", cnt_habits:"Habits", cnt_prayer:"Prayer",
+  cnt_tasks:"Tasks", queued_offline:"No connection — saved on this device, sent when back online", queue_pending:"Waiting to sync — {n} actions", queue_synced:"✓ {n} actions sent", queue_refused:"{n} actions were not accepted — check the list", load_planned:"Today's plan ≈ {t}", load_set:"enter your free time", load_fits:"Plan {t} · free time {c}", load_over:"Plan {t}, free time {c} — it does not fit", load_suggest:"Lower priority — can move to tomorrow", load_change:"Change free time", load_q:"How many free hours on an ordinary day?", load_hint:"Timed work is compared with this. If the plan does not fit, you get a warning — nothing moves by itself.", quick_past_q:"{time} has passed today. Which day?", cnt_habits:"Habits", cnt_prayer:"Prayer",
   dow:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
   dow_full:["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],
   months:["January","February","March","April","May","June","July","August","September","October","November","December"],
@@ -1952,7 +1956,7 @@ const DICT = {
   now_clear:"Важные дела на сегодня закрыты", now_clear_hint:"Можно добавить ещё",
   now_open:"Открыть", now_done:"Выполнено",
   quote_ph:"Фраза, которая вас держит", quote_add:"Добавить цитату",
-  overall:"Общий результат", streak_short:"Серия", prayer:"Намаз",
+  overall:"Общий результат", main_task:"Главное дело дня", main_goal:"Цель недели", overall_means:"Это доля выполненного плана на сегодня, а не ценность дня. Дни с разной нагрузкой по нему не сравнить.", overall_plan_size:"Задач на сегодня: {n}.", streak_short:"Серия", prayer:"Намаз",
   overall_sub:"День · неделя · месяц", today_parts:"Показатели дня",
   overall_section:"Общие показатели",
   vs_yesterday:"по сравнению со вчера", vs_yesterday_none:"Вчера ничего не измерено",
@@ -1961,7 +1965,9 @@ const DICT = {
   mission_change:"Выбрать на сегодня",
   why_pinned:"Вы выбрали это сами",
   why_overdue:"Просрочено — сначала это",
-  why_due_today:"Срок сегодня",
+  why_due_today:"Срок сегодня", why_recheck:"Проверьте ответ, которого ждали", block_label:"Зависит от других?", block_reply:"Жду ответа", block_depends:"Зависит от другой задачи", block_in:"проверить через {n} дн.", block_until:"проверить {d}", block_clear:"Больше не жду", block_saved:"⏳ Отложено — не в «Сейчас» до проверки", block_recheck:"пора проверить",
+  why_due_later:"Назначено на позже сегодня — больше ничего не ждёт",
+  now_upcoming:"Следующее по времени",
   why_habit:"Сегодняшняя привычка ещё не выполнена",
   why_wake:"День начинается отсюда",
   why_prayer:"Сегодняшние намазы не завершены",
@@ -1988,18 +1994,18 @@ const DICT = {
   wake_late_at:"{time} — позже сегодняшней цели", wake_target:"Цель",
   quick_add:"Быстро добавить", quick_ph:"Что пришло в голову?",
   inbox_saved:"Сохранено — в Задачах",
-  quick_saved:"✓ Задача", next_up:"Дальше", home_more_tasks:"Ещё {n}", voice_title:"Добавить голосом", voice_listening:"Говорите… Остановите — и я разберу.", voice_stop:"Стоп", voice_thinking:"Разбираю…", voice_confirm:"Подтвердить", voice_retry:"Записать заново", voice_done:"✅ Подтверждено", voice_failed:"Голос не отправлен. Попробуйте ещё раз.", voice_too_long:"Не длиннее 2 минут.", voice_denied:"Нет доступа к микрофону — отправьте голосовое в боте.", voice_consent:"Голос отправляется AI-сервисам (ElevenLabs, Groq, Google — США) для распознавания. Аудио не хранится. Ничего не меняется без вашего подтверждения.", voice_agree:"Согласен, начать", voice_consent_needed:"Сначала дайте согласие.", tab_list:"Список", nav_money:"Финансы", quick_more:"Подробнее (время, напоминание, проект)", quick_more_habit:"Подробнее (дни, напоминание, важность)", nav_steps:"Шаги", steps_to_next:"До уровня «{name}» ещё {n} шагов", steps_max:"Высший уровень — отлично!", steps_freeze_short:"Заморозки", steps_rank_in:"через {n} дн.", steps_next:"Следующий шаг", steps_all_done:"Все шаги на сегодня сделаны 🎉", steps_more:"Достижения и рейтинг", steps_title:"Шаги", steps_motto:"Каждое доброе дело — шаг вперёд.", steps_freeze:"Дни, которые сохраняют серию", steps_level_n:"{n}-й уровень", steps_total:"Всего шагов", steps_path:"Ваш путь", steps_today:"Шаги сегодня", steps_go:"Продолжить", step_lvl_starter:"Новичок", step_lvl_builder:"Строитель", step_lvl_discipline:"Дисциплина", step_lvl_steady:"Стабильность", step_lvl_master:"Работа над собой", step_tasks:"Задача", step_habits:"Привычка", step_prayer:"Намаз", step_journal:"Итоги", step_goal:"Цель", task_word:"Задача", habit_word:"Привычка", quick_habit_ph:"Например: Читать книгу каждый день", quick_habit_hint:"Повторяется каждый день. Можно изменить позже.", quick_habit_saved:"✓ Привычка", nav_tracker:"Трекер", nav_profile:"Профиль", quick_hint:"Например: «Завтра в 10 отчёт» или «Обед 45 тысяч»", quick_voice:"Сказать голосом", jai_title:"Заполнить с AI", jai_hint:"Расскажите о дне голосом или текстом — AI разложит всё по 5 вопросам и исправит ошибки. Вы проверяете и сохраняете.", jai_voice:"Сказать", jai_text:"Написать", jai_ph:"Например: сегодня закрыл сделку с клиентом, благодарен маме, не успел спланировать время, завтра закончу отчёт…", jai_sort:"Разложить по вопросам", jai_done:"✨ Заполнено ответов: {n} — проверьте и Сохраните", jai_nothing:"Ничего не подошло к вопросам. Расскажите подробнее.",
+  quick_saved:"✓ Задача", next_up:"Дальше", home_more_tasks:"Ещё {n}", voice_title:"Добавить голосом", voice_listening:"Говорите… Остановите — и я разберу.", voice_stop:"Стоп", voice_thinking:"Разбираю…", voice_confirm:"Подтвердить", voice_retry:"Записать заново", voice_edit:"Изменить", voice_answer_ph:"Напишите ответ…", voice_send:"Отправить", ve_title:"Название", ve_name:"Название", ve_deadline:"Дата", ve_day:"День", ve_due_time:"Время", ve_remind_at:"Время напоминания", ve_priority:"Важность", ve_amount:"Сумма", ve_note:"Заметка", ve_person:"Кто", voice_resend:"Отправить эту запись ещё раз", voice_done:"✅ Подтверждено", voice_failed:"Голос не отправлен. Попробуйте ещё раз.", voice_too_long:"Не длиннее 2 минут.", voice_denied:"Нет доступа к микрофону — отправьте голосовое в боте.", voice_consent:"Голос отправляется AI-сервисам (ElevenLabs, Groq, Google — США) для распознавания. Аудио не хранится. Ничего не меняется без вашего подтверждения.", voice_agree:"Согласен, начать", voice_consent_needed:"Сначала дайте согласие.", tab_list:"Список", nav_money:"Финансы", quick_more:"Подробнее (время, напоминание, проект)", quick_more_habit:"Подробнее (дни, напоминание, важность)", nav_steps:"Шаги", steps_to_next:"До уровня «{name}» ещё {n} шагов", steps_max:"Высший уровень — отлично!", steps_freeze_short:"Заморозки", steps_rank_in:"через {n} дн.", steps_next:"Следующий шаг", steps_all_done:"Все шаги на сегодня сделаны 🎉", steps_more:"Достижения и рейтинг", steps_title:"Шаги", steps_motto:"Каждое доброе дело — шаг вперёд.", steps_freeze:"Дни, которые сохраняют серию", steps_level_n:"{n}-й уровень", steps_total:"Всего шагов", steps_path:"Ваш путь", steps_today:"Шаги сегодня", steps_go:"Продолжить", step_lvl_starter:"Новичок", step_lvl_builder:"Строитель", step_lvl_discipline:"Дисциплина", step_lvl_steady:"Стабильность", step_lvl_master:"Работа над собой", step_tasks:"Задача", step_habits:"Привычка", step_prayer:"Намаз", step_journal:"Итоги", step_goal:"Цель", step_started:"начато", step_goal_add:"Добавить цель", focus_carried_n:"Переносится {n} нед. подряд — разбейте на шаги", focus_moved:"Перенесено на следующую неделю", cnt_finished:"сделано сегодня", task_word:"Задача", habit_word:"Привычка", quick_habit_ph:"Например: Читать книгу каждый день", quick_habit_hint:"Каждый день — или укажите дни («пн, ср, пт бег»). Можно изменить позже.", quick_habit_days_hint:"Эти дни найдены в тексте. Проверьте и сохраните.", quick_habit_saved:"✓ Привычка", nav_tracker:"Трекер", nav_profile:"Профиль", quick_hint:"Например: «Завтра в 10 отчёт» или «Обед 45 тысяч»", quick_voice:"Сказать голосом", jai_title:"Заполнить с AI", jai_hint:"Расскажите о дне голосом или текстом — AI разложит всё по 5 вопросам и исправит ошибки. Вы проверяете и сохраняете.", jai_voice:"Сказать", jai_text:"Написать", jai_ph:"Например: сегодня закрыл сделку с клиентом, благодарен маме, не успел спланировать время, завтра закончу отчёт…", jai_sort:"Разложить по вопросам", jai_done:"✨ Заполнено ответов: {n} — проверьте и Сохраните", jai_review:"Предложение ИИ ещё не сохранено. Проверьте и примите.", jai_accept:"Принять", jai_reject:"Отменить", journal_for_day:"Запись за {d}", jai_nothing:"Ничего не подошло к вопросам. Расскажите подробнее.",
   add_task:"Задача", task_name:"Название", task_desc:"Подробнее",
   deadline:"Дата", due_time:"Время", priority:"Приоритет", project:"Проект",
   standalone:"Отдельно", high:"Высокий", medium:"Средний", low:"Низкий",
-  when_today:"Сегодня", when_tomorrow:"Завтра", when_week:"Эта неделя",
+  when_today:"Сегодня", when_tomorrow:"Завтра", when_week:"Через 7 дней",
   when_none:"Без срока", when_pick:"Выбрать дату",
   reminder:"Напоминание", remind_none:"Не нужно", remind_0:"Точно в срок",
   remind_10:"За 10 минут", remind_30:"За 30 минут",
   remind_60:"За 1 час", remind_1440:"За 1 день",
   repeat:"Повтор", repeat_none:"Не повторяется", repeat_daily:"Каждый день",
   repeat_weekdays:"По рабочим дням", repeat_weekly:"Каждую неделю",
-  repeat_monthly:"Каждый месяц", repeat_custom:"Выбранные дни",
+  repeat_monthly:"Каждый месяц", repeat_custom:"Выбранные дни", repeat_after:"Через {n} дн. после выполнения",
   overdue:"Просрочено", upcoming:"Ближайшие", later:"Позже", no_date:"Без срока",
   done_tab:"Выполнено", open_tab:"Открытые", main_tab:"Главное",
   reopen:"Открыть снова",
@@ -2014,7 +2020,7 @@ const DICT = {
   status:"Статус", st_active:"Активный", st_done:"Завершён", st_archived:"В архиве",
   mark_done:"Отметить завершённым", mark_active:"Вернуть в активные",
   archive:"В архив", unarchive:"Вернуть из архива",
-  of_tasks:"{done} из {total} задач выполнено",
+  of_tasks:"{done} из {total} задач выполнено", pr_pct_tasks:"по числу задач — не по объёму работы",
   of_habits:"{done} из {total} привычек выполнено",
   remaining:"Осталось", completed:"Выполнено",
   no_projects:"Проектов пока нет", add_first_project:"Добавить первый проект",
@@ -2030,7 +2036,7 @@ const DICT = {
   edit_habit:"Изменить привычку", schedule:"Дни", every_day:"Каждый день",
   weekdays_only:"По рабочим дням", pick_days:"Выбранные дни",
   pause:"Приостановить", resume:"Продолжить", paused:"Приостановлена",
-  not_today:"Сегодня не запланировано", history:"История", streak:"Серия",
+  not_today:"Сегодня не запланировано", history:"История", streak:"Серия", streak_habits:"Серия привычек", streak_habits_hint:"Дни подряд, когда выполнены все запланированные привычки", streak_days:"Стабильные дни", streak_days_hint:"Дни подряд с {n}+ баллами (с днями защиты)",
   last7:"Последние 7 дней", last30:"Последние 30 дней", completion:"Выполнение",
   auto_habit:"Эта привычка отмечается автоматически", habit_auto_prayer:"из раздела Намаз",
   habit_always_daily:"нельзя изменить",
@@ -2057,7 +2063,7 @@ const DICT = {
   mood_good:"Хорошо", mood_great:"Очень хорошо",
   review:"Итоги недели", review_prompt:"Подведём итоги недели?",
   review_q1:"Что прошло хорошо?", review_q2:"Что мешало?",
-  review_q3:"Главный фокус на следующую неделю?", skip:"Позже",
+  review_q3:"Главный фокус на следующую неделю?", review_make_goal:"Сделать целью следующей недели", review_suggest:"Что подсказывают цифры недели", rs_reset:"Просрочено задач — {n}, перераспределите мягким сбросом", rs_shrink:"«{title}» переносится {n}-ю неделю — разбейте на шаги", rs_fewer_habits:"Привычек {n}, выполнено меньше половины — начните с меньшего", rs_blocked:"Задач в ожидании ответа — {n}, напомните", review_due:"конец недели", skip:"Позже",
   week:"Неделя", month:"Месяц", year:"Год", average:"Среднее",
   best_day:"Лучший день", vs_prev:"к прошлому периоду",
   how_calculated:"Как это посчитано?",
@@ -2081,7 +2087,7 @@ const DICT = {
   theme_fixed:"Эта тема сохраняет своё оформление",
   timezone:"Часовой пояс", tz_common:"Частые", notifications:"Напоминания и отчёты",
   morning_report:"Утренний отчёт", evening_report:"Вечерний отчёт",
-  task_reminders:"Напоминания о задачах", habit_reminders:"Напоминания о привычках",
+  task_reminders:"Напоминания о задачах", habit_reminders:"Напоминания о привычках", qty_minimal:"минимум", qty_goal:"Цель {n} {u}", qty_min_is:"минимум {n}", qty_all:"Всё", qty_label:"Количество (необязательно)", qty_target_ph:"Цель, например 20", qty_unit_ph:"Единица, например стр.", qty_min_ph:"Минимум в трудный день, например 2", quiet_hours:"Тихие часы", quiet_from:"с", quiet_to:"до", quiet_hint:"В это время напоминания приходят без звука — ничего не теряется. Например, с ночи до утра.", quiet_off:"Выключить", habit_remind_off:"Напоминания о привычках выключены — сообщение не придёт.", habit_remind_enable:"Включить напоминания о привычках", habit_remind_on:"Напоминание включено",
   reminders:"Напоминания", report_at:"Время отправки",
   morning_report_hint:"Доброе утро, вчерашний результат и план на день",
   evening_report_hint:"Итоги дня, а затем — спокойной ночи",
@@ -2155,7 +2161,7 @@ const DICT = {
   feedback:"Отзыв и предложения", feedback_ph:"Что нам улучшить?",
   feedback_sent:"Спасибо — отзыв доставлен",
   feedback_saved:"Отзыв сохранён и скоро будет доставлен",
-  fresh_start:"Мягкий сброс", fresh_start_n:"{n} просроченных задач",
+  fresh_start:"Мягкий сброс", fs_focus:"3 главных сегодня, остальное — по неделе", fs_preview:"Как это будет выглядеть", fs_apply:"Применить", fs_triage:"Ещё нужно? ({n}) — отметьте лишнее", fs_not_needed:"Не нужно", fs_archive_n:"{n} задач уйдут в архив.", fs_undo_hint:"Потом можно вернуть одним нажатием.", fs_undone:"↩ {n} задач вернулись на прежние даты", fs_undo_conflicts:"Возвращено; {n} изменённых вами не тронуты", fresh_start_n:"{n} просроченных задач",
   fresh_start_body:"Ни одна задача не удаляется — они переносятся или уходят в архив. Статистика и история сохраняются.",
   fs_today:"Все на сегодня", fs_week:"Распределить на неделю",
   fs_undate:"Убрать сроки", fs_archive:"Перенести в архив",
@@ -2175,7 +2181,7 @@ const DICT = {
   timer_off:"Выкл", timer_auto:"из названия", timer_from_name:"Из названия (напр. 5h)",
   timer_custom_ph:"Минуты, напр. 50",
   timer_rule_habit:"Привычка отметится сама, когда таймер закончится.",
-  timer_rule_task:"Задача выполнится сама, когда таймер закончится.",
+  timer_rule_task:"Таймер записывает время работы. Готовность задачи отмечаете вы.", timer_worked:"отработано {dur}", timer_rhythm:"Работа и перерывы", timer_one_go:"Без перерывов", timer_rhythm_hint:"Например 50/10 — 50 мин работы, 10 мин перерыв. Перерыв не считается работой.", timer_on_break:"Перерыв до {time}", timer_finish:"Завершить сессию", timer_finish_hint:"Завершить — время сохранится. Стоп — сессия отменяется.", timer_manual:"вручную {dur}", timer_ask_done:"Задача готова?", timer_yes_done:"Да, готово", timer_more:"Ещё одна сессия", timer_log_lbl:"Сделал без таймера", timer_log_ph:"Сколько минут?", timer_log_btn:"Записать", timer_running:"Таймер идёт — сначала остановите его.",
   timer_off_hint:"Таймер выключен — отмечается как обычно. Если нужно время, выберите ниже.",
   timer_done_today:"Сегодня выполнено", timer_done:"Выполнено",
   timer_finished:"Время вышло — отмечено ✓",
@@ -2230,7 +2236,7 @@ const DICT = {
   act_countdown_del:"удалил отсчёт", act_project_add:"добавил проект",
   act_project_remove:"убрал проект",
   forbidden:"Это может только автор, админ или владелец команды",
-  read_only:"Режим просмотра — вступите в канал, чтобы вносить изменения",
+  read_only:"Отмечать сделанное можно. Чтобы добавлять и редактировать — вступите в канал",
   setup_title:"Настройка завершается в боте",
   setup_body:"Вернитесь в бот ErnestOS и ответьте на несколько вопросов — затем здесь откроется всё.",
   back_to_bot:"Вернуться в бот",
@@ -2242,7 +2248,7 @@ const DICT = {
   pause_note:"С сегодня — сегодняшний день тоже не считается",
   pts:"п.", team_join_hint:"Откройте ссылку-приглашение — сначала увидите команду, потом вступите",
   nav_home:"Главная", nav_stats:"Итоги", money:"Деньги", money_add:"Запись о деньгах",
-  money_this_month:"за месяц", money_tab_entries:"Записи", money_tab_cats:"Категории", money_tab_debts:"Долги", debt_overdue_n:"просрочено: {n}", debt_owed_to_me:"Вам должны", debt_i_owe:"Вы должны", debt_add:"Записать долг", debt_empty:"Долгов пока нет. Дали или взяли деньги — запишите здесь, и это не забудется.", debt_settled:"Закрытые", debt_lent_meta:"я дал", debt_borrowed_meta:"я взял", debt_overdue:"просрочен", debt_until:"до {d}", debt_returned:"Вернули", debt_returned_full:"Вернули полностью", debt_lent:"Я дал", debt_borrowed:"Я взял", debt_person:"Кто? Введите имя", debt_amount:"Сумма (200 тыс, 1,5 млн…)", debt_due:"Вернуть до", debt_due_week:"Через неделю", debt_due_month:"Через месяц", debt_note:"Заметка (необязательно)", debt_bad_amount:"Введите сумму — 200 тыс или 200000", debt_saved:"✓ Долг записан", debt_closed:"✓ Долг закрыт", debt_partial:"Вернули часть?", debt_partial_ph:"Сколько? Например, 50 тыс", debt_reopen:"Открыть снова",
+  money_this_month:"за месяц", money_tab_entries:"Записи", money_tab_cats:"Категории", money_tab_debts:"Долги", debt_overdue_n:"просрочено: {n}", debt_owed_to_me:"Вам должны", debt_i_owe:"Вы должны", debt_add:"Записать долг", debt_empty:"Долгов пока нет. Дали или взяли деньги — запишите здесь, и это не забудется.", debt_settled:"Закрытые", debt_lent_meta:"я дал", debt_borrowed_meta:"я взял", debt_overdue:"просрочен", debt_until:"до {d}", debt_returned:"Вернули", debt_returned_full:"Вернули полностью", debt_lent:"Я дал", debt_borrowed:"Я взял", debt_person:"Кто? Введите имя", debt_amount:"Сумма (200 тыс, 1,5 млн…)", debt_due:"Вернуть до", debt_due_week:"Через неделю", debt_due_month:"Через месяц", debt_note:"Заметка (необязательно)", debt_bad_amount:"Введите сумму — 200 тыс или 200000", debt_saved:"✓ Долг записан", debt_closed:"✓ Долг закрыт", debt_partial:"Вернули часть?", debt_partial_ph:"Сколько? Например, 50 тыс", debt_reopen:"Открыть снова", debt_paid_more:"Это больше остатка долга. Осталось: {n}", debt_of:"из {n}", debt_payments:"Платежи", debt_delete_q:"Удалить долг?", debt_archived:"Удалённые", debt_restore:"Вернуть", debt_purge:"Удалить навсегда", debt_purge_q:"Удалить навсегда? Это нельзя отменить.",
   money_apart:"Отдельный раздел — не входит ни в какие проценты, серии и рейтинги.",
   money_balance:"Баланс", money_income:"Доход", money_expense:"Расход",
   money_unit:"сум", date_day:"День", date_month:"Месяц", date_year:"Год",
@@ -2273,7 +2279,7 @@ const DICT = {
   day_free:"На этот день пока ничего нет", moved_toast:"Перенесено",
   team_graph:"Результат команды", team_graph_hint:"Каждый участник своим цветом, синяя — среднее. За период {n}", team_avg:"Среднее",
   team_graph_empty:"Для графика нужно хотя бы два дня данных",
-  cnt_tasks:"Задачи", cnt_habits:"Привычки", cnt_prayer:"Намаз",
+  cnt_tasks:"Задачи", queued_offline:"Нет сети — сохранено на устройстве, отправим при подключении", queue_pending:"Ожидает синхронизации — {n} действий", queue_synced:"✓ Отправлено действий — {n}", queue_refused:"Не принято действий — {n}, проверьте список", load_planned:"План на сегодня ≈ {t}", load_set:"укажите свободное время", load_fits:"План {t} · свободно {c}", load_over:"План {t}, свободно {c} — не помещается", load_suggest:"Менее важные — можно перенести на завтра", load_change:"Изменить свободное время", load_q:"Сколько свободных часов в обычный день?", load_hint:"С этим сравниваются задачи с таймером. Если план не помещается — предупредим, сами ничего не перенесём.", quick_past_q:"{time} сегодня уже прошло. Какой день?", cnt_habits:"Привычки", cnt_prayer:"Намаз",
   dow:["Пн","Вт","Ср","Чт","Пт","Сб","Вс"],
   dow_full:["Понедельник","Вторник","Среда","Четверг","Пятница","Суббота","Воскресенье"],
   months:["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"],
@@ -2444,6 +2450,9 @@ function setState(patch){ Object.assign(state, patch); render(); }
    exactly how `handleError` already recognises "no connection": the user gets
    the offline message and keeps whatever they had typed. */
 const API_TIMEOUT_MS = 15000;
+//: The AI endpoints may try a fallback model; the server gives up at 150 s,
+//: so the app waits a little longer than that instead of 15 s.
+const AGENT_TIMEOUT_MS = 155000;
 
 /* The key a create is sent with. `save` sets it before the request and a
    retry of the same draft reuses it, so the server answers a repeat from the
@@ -2459,7 +2468,7 @@ async function api(path, options = {}){
   if(method === "POST" && idemKey){ extra["X-Idempotency-Key"] = idemKey; idemKey = null; }
   const res = await fetch(path, {
     ...options,
-    signal: options.signal || requestTimeout(API_TIMEOUT_MS),
+    signal: options.signal || requestTimeout(options.timeout || API_TIMEOUT_MS),
     headers:{"Content-Type":"application/json",
              "X-Telegram-Init-Data": tg?.initData || "", ...extra,
              ...(options.headers||{})},
@@ -2705,11 +2714,44 @@ SCREENS.home = () => {
        + timerBanner(d.active_timer)
        + nowBlock(d)
        + countsRow(d)
+       + loadBlock(d)
        + homeGoal(d)
        + tasksBlock(d)
        + presetsOffer(d)
        + privacyNote();
 };
+
+/* ---------- today's plan against today's time (audit #2) ----------
+   Shown only once something has a length. Over the limit, the least
+   important tasks are offered for tomorrow — one tap each, never moved
+   behind the person's back. */
+function loadBlock(d){
+  const l = d.load;
+  if(!l || !l.planned_min) return "";
+  const hm = m => fmtMinutes(m);
+  if(!l.capacity_min) return `<div class="t2 small" style="margin-top:var(--s1)">
+      ${icon("clock", 13)} ${t("load_planned", {t: hm(l.planned_min)})} ·
+      <span class="link" data-act="capacity-ask" role="button" tabindex="0">${t("load_set")}</span></div>`;
+  if(!l.over) return `<div class="t2 small" style="margin-top:var(--s1)">
+      ${icon("clock", 13)} ${t("load_fits", {t: hm(l.planned_min), c: hm(l.capacity_min)})}</div>`;
+  return `<div class="card tight" style="margin-top:var(--s2);border-color:var(--warn, var(--danger))">
+      <div class="small"><b>${t("load_over", {t: hm(l.planned_min), c: hm(l.capacity_min)})}</b></div>
+      ${l.suggest.length ? `<div class="t2 tiny" style="margin:6px 0">${t("load_suggest")}</div>
+        ${l.suggest.map(x => `<div class="row small" style="gap:8px;margin-top:4px">
+          <span class="grow ellipsis">${esc(x.title)} · ${hm(x.minutes)}</span>
+          <div class="chip sm" data-act="task-reschedule" data-id="${x.id}" data-when="tomorrow"
+               role="button" tabindex="0">${t("when_tomorrow")}</div></div>`).join("")}` : ""}
+      <div class="t3 tiny" style="margin-top:6px"><span class="link" data-act="capacity-ask"
+        role="button" tabindex="0">${t("load_change")}</span></div></div>`;
+}
+function capacitySheet(){
+  const cur = state.me?.prefs?.day_capacity || 0;
+  return `<h3>${icon("clock", 18)} ${t("load_q")}</h3>
+    <div class="hint">${t("load_hint")}</div>
+    <div class="chips" style="margin-top:10px">${[60, 120, 180, 240, 360, 480].map(m =>
+      `<div class="chip sm ${cur === m ? "on" : ""}" data-act="capacity-set" data-value="${m}">${fmtMinutes(m)}</div>`).join("")}
+      <div class="chip sm ${cur ? "" : "on"}" data-act="capacity-set" data-value="0">${t("none_short")}</div></div>`;
+}
 
 /* ---------- today, in counts ----------
    "Vazifa 1/3 · Odat 2/6 · Namoz 3/5" — something a person can check against
@@ -2722,6 +2764,10 @@ function countsRow(d){
   const parts = [];
   if(c.tasks.total) parts.push(`${t("cnt_tasks")}
     <b>${c.tasks.done}/${c.tasks.total}</b>`);
+  // Late or undated work finished today is work done too, shown beside the
+  // day's promises rather than mixed into them.
+  const extraDone = (c.tasks.finished || 0) - (c.tasks.done || 0);
+  if(extraDone > 0) parts.push(`${c.tasks.total ? "+" : `${t("cnt_tasks")} `}<b>${extraDone}</b> ${t("cnt_finished")}`);
   if(c.habits.total) parts.push(`${t("cnt_habits")}
     <b>${c.habits.done}/${c.habits.total}</b>`);
   if(c.team?.total) parts.push(`${t("team")}
@@ -2729,7 +2775,10 @@ function countsRow(d){
   if(c.prayer.owed !== false && d.modules?.prayer !== false)
     parts.push(`${t("cnt_prayer")}
       <b>${c.prayer.excused ? "✓" : `${c.prayer.done}/${c.prayer.total}`}</b>`);
-  if(d.streak) parts.push(`${icon("flame", 15)} <b>${d.streak}</b>`);
+  // The habit streak — every scheduled habit done — named, so it is not
+  // read as the score-based "steady days" on the Steps screen (audit #8).
+  if(d.streak) parts.push(`<span title="${esc(t("streak_habits_hint"))}">${icon("flame", 15)} <b>${d.streak}</b>
+    <span class="t3 tiny">${t("streak_habits")}</span></span>`);
   if(!parts.length) return "";
   return `<div class="counts" data-act="nav" data-screen="stats" role="button"
       tabindex="0" aria-label="${t("stats")}">
@@ -2824,7 +2873,12 @@ function nowBlock(d){
     habit:   n.timer_minutes
                ? {title: n.title, act:"timer-open", data:'data-kind="habit"'}
                : {title: n.title, act:"habit-toggle-home"},
-    task:    n.timer_minutes
+    /* A shared task is ticked for this person only, like on the team screen. */
+    task:    n.source === "team"
+               ? (n.timer_minutes
+                   ? {title: n.title, act:"timer-open", data:'data-kind="ttask"'}
+                   : {title: n.title, act:"team-toggle", data:'data-kind="task"'})
+             : n.timer_minutes
                ? {title: n.title, act:"timer-open", data:'data-kind="task"'}
                : {title: n.title, act:"task-done"},
   };
@@ -2852,7 +2906,8 @@ function nowBlock(d){
 
   /* Why this one. Kept to a single short line. */
   const REASONS = {pinned:"why_pinned", overdue:"why_overdue",
-                   due_today:"why_due_today", habit:"why_habit",
+                   due_today:"why_due_today", due_later:"why_due_later", habit:"why_habit",
+                   recheck:"why_recheck",
                    wake:"why_wake", wake_late:"why_wake_late",
                    prayer:"why_prayer", evening:"why_evening"};
   const why = REASONS[n.reason];
@@ -2862,6 +2917,7 @@ function nowBlock(d){
   else if(n.meta && n.kind !== "task") meta.push(`<span>${esc(n.meta)}</span>`);
   if(n.priority === "high") meta.push(`<span class="tag hot">${t("high")}</span>`);
   if(n.project) meta.push(`<span>${icon("folder", 14)} ${esc(n.project)}</span>`);
+  if(n.source === "team") meta.push(`<span>${icon("users", 14)} ${esc(n.team_name || "")}</span>`);
 
   /* One clear action, named for what it does. A timed item starts its clock;
      prayer and the journal open their screen; everything else is finished. */
@@ -2880,6 +2936,9 @@ function nowBlock(d){
           role="button" tabindex="0">${icon("clock", 14)}
           <span class="grow ellipsis">${t("now_also_late")}: ${esc(n.overdue.title)}</span>
           ${n.overdue.count > 1 ? `<b class="num">+${n.overdue.count - 1}</b>` : ""}</div>` : ""}
+      ${n.upcoming ? `<div class="now-late">${icon("clock", 14)}
+          <span class="grow ellipsis">${t("now_upcoming")}: ${esc(n.upcoming.title)}</span>
+          <b class="num">${esc(n.upcoming.due_time || "")}</b></div>` : ""}
       <div class="now-acts">
         <button class="btn" data-act="${kind.act}" ${kind.data || ""}
                 ${n.id ? `data-id="${n.id}"` : ""}>${icon(glyph, 17)} ${label}</button>
@@ -2909,7 +2968,9 @@ function tasksBlock(d){
      screen; printing it again three inches lower is the same task twice. The
      backend drops the pinned ones, and the card can also be showing an
      unpinned task the ladder chose, so that one is dropped here. */
-  const shownAbove = d.now?.kind === "task" ? d.now.id : (d.top3 || [])[0]?.id;
+  const shownAbove = d.now?.kind === "task" && d.now.source !== "team"
+    ? d.now.id : (d.top3 || [])[0]?.id;
+  const teamShown = d.now?.kind === "task" && d.now.source === "team" ? d.now.id : null;
   const missionId = shownAbove;
 
   let h = `<h2>${t("next_up")}</h2>`;
@@ -2920,7 +2981,7 @@ function tasksBlock(d){
 
   const byTeam = {};
   for(const x of (d.team_today || []))
-    (byTeam[x.team_name || ""] ||= []).push({...x, source:"team"});
+    if(x.id !== teamShown) (byTeam[x.team_name || ""] ||= []).push({...x, source:"team"});
   const shared = Object.entries(byTeam).map(([name, items]) =>
     `<div class="group">${icon("users", 14)} ${esc(name)}</div>`
     + items.map(x => taskRow(x, {hideDate: true})).join("")).join("");
@@ -3429,8 +3490,8 @@ function habitsTab(){
   h += `<div class="dash">
       <div class="dash-top">
         <div class="grow bt">${t("today")} <span class="t2 num">${done}/${due.length}</span></div>
-        ${data.streak ? `<div class="num" style="font-weight:700">
-          ${icon("flame", 16)} ${data.streak}</div>` : ""}
+        ${data.streak ? `<div class="num" style="font-weight:700" title="${esc(t("streak_habits_hint"))}">
+          ${icon("flame", 16)} ${data.streak} <span class="t3 tiny">${t("streak_habits")}</span></div>` : ""}
       </div>
       <div style="margin-top:var(--s2)">${bar(ratio)}</div>
       <div class="t2 small">${t("planned_count", {n:due.length})}</div>
@@ -3496,6 +3557,10 @@ function habitRow(x, cat, wake){
   const shared = x.source === "team";
   const timed = !x.protected && !x.mirrored && Boolean(x.timer_minutes);
   if(timed) meta.push(timerMeta(x));
+  // A measured habit says how far it got: 12/20 bet, or "minimal".
+  const measured = !shared && Boolean(x.target_qty);
+  if(measured) meta.push(`<span class="num">${x.qty || 0}/${x.target_qty} ${esc(x.unit || "")}</span>${
+    x.minimal ? ` · <span class="tag">${t("qty_minimal")}</span>` : ""}`);
 
   /* A shared habit's box is the reader's own share — a mirrored ritual is
      read from their personal habit and never ticked twice. */
@@ -3504,6 +3569,9 @@ function habitRow(x, cat, wake){
       ? `<div class="check lock" aria-hidden="true"></div>`
     /* Done by its timer: the box starts the clock instead of ticking. Once
        the timer has done its part the box is an ordinary one again. */
+    : measured && !x.done
+      ? `<div class="check ${x.qty ? "timed" : ""}" data-act="habit-qty" data-id="${x.id}" role="button"
+             tabindex="0" aria-label="${esc(x.name)} · ${x.qty || 0}/${x.target_qty}">${x.qty ? `<span class="tiny num">${x.qty}</span>` : ""}</div>`
     : timed && !x.done
       ? `<div class="check timed" data-act="timer-open" data-kind="habit"
              data-id="${x.id}" role="button" tabindex="0"
@@ -3647,16 +3715,23 @@ function journalTab(){
   if(!questions.length) return `<div class="spin"></div>`;
   const answers = entry?.answers || {};
   const draft = loadDraft();
-  const answered = questions.filter(q =>
-    String(draft[q.id] ?? answers[q.id] ?? "").trim()).length;
+  const ai = state.jaiPending || {};
+  const valueOf = q => ai[q.id] ?? draft[q.id] ?? answers[q.id] ?? "";
+  const answered = questions.filter(q => String(valueOf(q)).trim()).length;
 
   let h = `<div class="row" style="margin-bottom:12px">
       <div class="grow small ${answered === questions.length ? "" : "t2"}" id="jcount"
            aria-live="polite">
         ${answered === questions.length ? `✓ ${t("journal_complete")}`
           : t("journal_progress", {done:answered, total:questions.length})}</div>
-      <div class="t3 tiny" id="jsave"></div>
+      <div class="t3 tiny" id="jsave">${journalDay() !== todayISO()
+        ? t("journal_for_day", {d: isoToLabel(journalDay())}) : ""}</div>
     </div>`;
+  if(hasJaiPending()) h += `<div class="card jai" id="jai-review">
+      <div class="small">✨ ${t("jai_review")}</div>
+      <div class="btns" style="margin-top:10px">
+        <button class="btn" data-act="jai-accept">${t("jai_accept")}</button>
+        <button class="btn secondary" data-act="jai-reject">${t("jai_reject")}</button></div></div>`;
 
   // Speak or write freely; the AI sorts it into the five answers for review.
   if(state.me?.agent?.available) h += `<div class="card jai">
@@ -3669,9 +3744,9 @@ function journalTab(){
   else h += `<div class="t3 tiny" style="margin-bottom:10px">${t("journal_hint")}</div>`;
 
   questions.forEach((q, i) => {
-    const value = draft[q.id] ?? answers[q.id] ?? "";
+    const value = valueOf(q);
     h += `<label>${i + 1}. ${esc(q.text)}</label>
-      <textarea id="jq-${q.id}" data-journal="${q.id}"
+      <textarea id="jq-${q.id}" data-journal="${q.id}" class="${q.id in ai ? "jai-new" : ""}"
         style="min-height:72px">${esc(value)}</textarea>`;
   });
 
@@ -3708,49 +3783,94 @@ function journalTab(){
    write a long entry again, so every keystroke goes to localStorage and
    the backend gets a debounced save. */
 /* Per account as well as per day: two people sharing a phone must never be
-   handed each other's unsent entry. */
-const draftKey = () =>
-  `ernestos-journal-${state.me?.telegram_id || "anon"}-${todayISO()}`;
+   handed each other's unsent entry. The day is the one the entry was opened
+   for, not the clock's: a save that lands after midnight stays on its day. */
+const journalDay = () => state.journalDay || todayISO();
+const draftPrefix = () => `ernestos-journal-${state.me?.telegram_id || "anon"}-`;
+const draftKey = () => draftPrefix() + journalDay();
+const jaiKey = () => `ernestos-jai-${state.me?.telegram_id || "anon"}`;
 
+/* A draft remembers which saved version it was typed over (`_base`). If the
+   entry was saved since — from another phone or the computer — the old draft
+   is stale and is dropped rather than painted over the newer text. */
 function loadDraft(){
-  try{ return JSON.parse(localStorage.getItem(draftKey()) || "{}"); }
+  let draft;
+  try{ draft = JSON.parse(localStorage.getItem(draftKey()) || "{}"); }
   catch(_){ return {}; }
+  const server = state.journal?.updated_at || null;
+  if("_base" in draft && draft._base !== server && state.journalDay === journalDay()){
+    clearDraft();
+    return {};
+  }
+  const out = {};
+  for(const [k, v] of Object.entries(draft)) if(!k.startsWith("_")) out[k] = v;
+  return out;
+}
+function writeDraft(fields, base){
+  try{
+    const keys = Object.keys(fields);
+    if(!keys.length) return localStorage.removeItem(draftKey());
+    localStorage.setItem(draftKey(), JSON.stringify({...fields, _base: base}));
+  }catch(_){}
 }
 function saveDraft(id, value){
-  try{
-    const draft = loadDraft();
-    draft[id] = value;
-    localStorage.setItem(draftKey(), JSON.stringify(draft));
-  }catch(_){}
+  const draft = loadDraft();
+  draft[id] = value;
+  writeDraft(draft, state.journal?.updated_at || null);
 }
 function clearDraft(){
   try{ localStorage.removeItem(draftKey()); }catch(_){}
 }
+/* Wiping data or deleting the account: stop the pending autosave and forget
+   every unsent entry and AI text this account left on the phone. */
+async function forgetLocalDrafts(){
+  clearTimeout(journalTimer);
+  journalPending = {};
+  state.jaiPending = {};
+  voice.kept = null;
+  try{ await journalChain; }catch(_){}
+  try{
+    const prefix = draftPrefix(), jai = jaiKey();
+    for(let i = localStorage.length - 1; i >= 0; i--){
+      const k = localStorage.key(i);
+      if(k && (k.startsWith(prefix) || k === jai || k === queueKey())) localStorage.removeItem(k);
+    }
+  }catch(_){}
+}
+const journalPendingCount = () => Object.keys(journalPending || {}).length;
+const hasJaiPending = () => Object.keys(state.jaiPending || {}).length > 0;
 
-/* The AI's five answers land in the fields, never straight into the saved
-   entry: the person reads them, fixes a word if needed, and saves. A field
-   that already has text keeps it and gets the new sentence after it. */
+/* The AI's answers are a proposal, not an entry: they are shown in the
+   fields, marked, and nothing reaches the server or the local draft until the
+   person taps Accept (or edits that field, or Saves). Discard puts the fields
+   back as they were. A field that already has text keeps it and gets the new
+   sentence after it. */
 function journalFilled(r){
   closeSheet();
   const answers = r?.answers || {};
   const keys = Object.keys(answers);
   if(!keys.length){ notify("warning"); return toast(t("jai_nothing")); }
+  const pending = state.jaiPending || (state.jaiPending = {});
   for(const id of keys){
     const el = document.getElementById("jq-" + id);
-    if(!el) continue;
-    const old = el.value.trim();
-    el.value = old ? `${old} ${answers[id]}` : answers[id];
-    el.classList.add("jai-new");
-    onJournalInput(el);
+    const old = (pending[id] ?? el?.value ?? "").trim();
+    pending[id] = old ? `${old} ${answers[id]}` : answers[id];
   }
+  render();
   notify("success");
   toast(t("jai_done", {n: keys.length}));
-  document.getElementById("jq-" + keys[0])?.scrollIntoView({behavior:"smooth", block:"center"});
+  document.getElementById("jai-review")?.scrollIntoView({behavior:"smooth", block:"center"});
+}
+/* What was typed for the AI is kept on the phone until the AI has answered,
+   so a timeout or a server error hands the same text back instead of losing it. */
+function loadJaiText(){ try{ return localStorage.getItem(jaiKey()) || ""; }catch(_){ return ""; } }
+function storeJaiText(v){
+  try{ v ? localStorage.setItem(jaiKey(), v) : localStorage.removeItem(jaiKey()); }catch(_){}
 }
 function jaiTextSheet(){
   return `<h3>✍️ ${t("jai_title")}</h3>
     <div class="t3 tiny" style="margin:4px 0 10px">${t("jai_hint")}</div>
-    <textarea id="jai-text" style="min-height:160px" placeholder="${t("jai_ph")}"></textarea>
+    <textarea id="jai-text" style="min-height:160px" placeholder="${t("jai_ph")}">${esc(loadJaiText())}</textarea>
     <button class="btn" data-act="jai-send" style="margin-top:12px">✨ ${t("jai_sort")}</button>`;
 }
 
@@ -3771,11 +3891,15 @@ function updateJournalCounter(){
 }
 
 function onJournalInput(el){
+  // Editing a field the AI filled is accepting that field.
+  if(state.jaiPending) delete state.jaiPending[el.dataset.journal];
+  el.classList.remove("jai-new");
   saveDraft(el.dataset.journal, el.value);
   journalPending[el.dataset.journal] = el.value;
   updateJournalCounter();
   const note = document.getElementById("jsave");
-  if(note) note.textContent = t("autosaved");
+  if(note) note.textContent = journalDay() !== todayISO()
+    ? t("journal_for_day", {d: isoToLabel(journalDay())}) : t("autosaved");
   clearTimeout(journalTimer);
   journalTimer = setTimeout(flushJournal, 900);
 }
@@ -3786,13 +3910,20 @@ function flushJournal(){
   journalPending = {};
   if(!Object.keys(answers).length) return journalChain;
   const seq = ++journalSeq;
+  const day = journalDay();
   journalChain = journalChain.then(async () => {
     const note = document.getElementById("jsave");
     try{
-      const r = await api("/api/journal", {method:"POST", body:{answers}});
+      const r = await api("/api/journal", {method:"POST", body:{answers, day}});
+      if(day !== journalDay()) return;
       state.journal = {...(state.journal || {}), answered:r.answered,
-                       complete:r.complete,
+                       complete:r.complete, updated_at:r.updated_at,
                        answers:{...(state.journal?.answers || {}), ...answers}};
+      // What the server now holds no longer needs the local copy; a field
+      // typed again since stays, rebased on the version just saved.
+      const draft = loadDraftRaw();
+      for(const [k, v] of Object.entries(answers)) if(draft[k] === v) delete draft[k];
+      writeDraft(draft, r.updated_at || null);
       if(seq === journalSeq && note) note.textContent = "✓";
     }catch(_){
       // The draft is on disk; the answers wait for the next pause or Save.
@@ -3802,8 +3933,16 @@ function flushJournal(){
   });
   return journalChain;
 }
+function loadDraftRaw(){
+  try{
+    const d = JSON.parse(localStorage.getItem(draftKey()) || "{}");
+    delete d._base;
+    return d;
+  }catch(_){ return {}; }
+}
 document.addEventListener("visibilitychange", () => { if(document.hidden) flushJournal(); });
 document.addEventListener("input", e => {
+  if(e.target.id === "jai-text") return storeJaiText(e.target.value);
   const el = e.target.closest("[data-journal]");
   if(el) onJournalInput(el);
 });
@@ -3924,11 +4063,36 @@ function timerSheet(info){
   const minutes = info.timer_minutes;
   const kind = info.kind;
 
+  const worked = info.worked_sec ? `<div class="t2 small" style="text-align:center;margin-top:var(--s1)">
+      ${t("timer_worked", {dur: fmtMinutes(Math.round(info.worked_sec / 60))})}${info.manual_sec
+        ? ` · ${t("timer_manual", {dur: fmtMinutes(Math.round(info.manual_sec / 60))})}` : ""}</div>` : "";
+  /* Work done away from the phone counts too — logged by hand, shown apart
+     from measured time, and never while a clock is counting the same work. */
+  const logLine = !info.done && !counting && minutes && !info.protected ? `
+    <label>${icon("check", 13)} ${t("timer_log_lbl")}</label>
+    <div class="row" style="gap:var(--s2)">
+      <input id="timer-log" type="number" min="1" max="1440" inputmode="numeric"
+             placeholder="${t("timer_log_ph")}" style="flex:1" />
+      <button class="btn sm secondary" data-act="timer-log" data-kind="${kind}"
+              data-id="${info.id}" style="min-width:96px">${t("timer_log_btn")}</button>
+    </div>` : "";
+
   let body;
-  if(info.done && !counting){
+  if(info.ask_done && !counting){
+    /* The clock ran out on a task: time was worked, the result is the
+       person's to confirm. */
+    body = `<div class="clock-big">⏱</div>${worked}
+      <div class="hint" style="text-align:center">${t("timer_ask_done")}</div>
+      <div class="btns" style="margin-top:var(--s3)">
+        <button class="btn" data-act="timer-tick" data-kind="${kind}" data-id="${info.id}">
+          ${icon("check", 16)} ${t("timer_yes_done")}</button>
+        <button class="btn secondary" data-act="timer-start" data-kind="${kind}" data-id="${info.id}">
+          ${icon("play", 16)} ${t("timer_more")}</button>
+      </div>`;
+  } else if(info.done && !counting){
     body = `<div class="clock-big">✓</div>
       <div class="hint" style="text-align:center">${t(kind === "habit" || kind === "thabit"
-        ? "timer_done_today" : "timer_done")}</div>`;
+        ? "timer_done_today" : "timer_done")}</div>${worked}`;
   } else if(!minutes){
     body = `<div class="hint">${t("timer_off_hint")}</div>`;
   } else if(counting){
@@ -3938,7 +4102,8 @@ function timerSheet(info){
       ${liveBar(run)}
       <div class="t2 small" style="text-align:center;margin-top:var(--s2)">
         ${running && run.ends_at ? t("timer_ends_at", {time: run.ends_at})
-                                 : t("timer_paused_lbl")}
+          : run.on_break ? `☕ ${t("timer_on_break", {time: run.break_until || ""})}`
+          : t("timer_paused_lbl")}${run.cycle ? ` · ${run.cycle}` : ""}
         · ${fmtMinutes(minutes)}</div>
       <div class="btns" style="margin-top:var(--s3)">
         <button class="btn" data-act="timer-run" data-verb="${running ? "pause" : "resume"}"
@@ -3946,11 +4111,20 @@ function timerSheet(info){
           ${t(running ? "timer_pause" : "timer_resume")}</button>
         <button class="btn secondary" data-act="timer-run" data-verb="stop"
                 data-id="${run.id}">${icon("x", 16)} ${t("timer_stop")}</button>
-      </div>`;
+      </div>
+      <button class="btn secondary" data-act="timer-run" data-verb="finish" data-id="${run.id}"
+              style="margin-top:8px">${icon("check", 16)} ${t("timer_finish")}</button>
+      <div class="t3 tiny" style="text-align:center;margin-top:4px">${t("timer_finish_hint")}</div>`;
   } else {
     body = `<div class="clock-big">${fmtClock(minutes * 60)}</div>
       <div class="hint" style="text-align:center">${t(kind === "habit" || kind === "thabit"
         ? "timer_rule_habit" : "timer_rule_task")}</div>
+      ${worked}
+      ${minutes >= 50 ? `<label>${t("timer_rhythm")}</label>
+        <div class="chips">${["", "25/5", "50/10", "90/15"].filter(c => !c || Number(c.split("/")[0]) < minutes)
+          .map(c => `<div class="chip sm ${(state.timerCycle || "") === c ? "on" : ""}" data-act="timer-cycle"
+            data-value="${c}">${c || t("timer_one_go")}</div>`).join("")}</div>
+        <div class="t3 tiny" style="margin-top:4px">${t("timer_rhythm_hint")}</div>` : ""}
       <button class="btn" data-act="timer-start" data-kind="${kind}" data-id="${info.id}"
               style="margin-top:var(--s3)">${icon("play", 16)} ${t("timer_start")}</button>`;
   }
@@ -3986,9 +4160,21 @@ function timerSheet(info){
 
   return `<h3>${icon("clock", 18)} ${esc(info.title)}</h3>
     ${info.team_id ? `<div class="t3 tiny">${t("timer_team_own")}</div>` : ""}
-    ${body}${chooser}${tick}
+    ${body}${logLine}${chooser}${tick}
     <button class="btn secondary" data-act="close" style="margin-top:8px">
       ${t("close")}</button>`;
+}
+
+/* A time on a habit does nothing while habit reminders are off in Settings
+   (the default). Say so where the time is chosen, with the switch right
+   there, instead of letting the person believe 07:00 is set (audit #34). */
+function reminderSwitchNote(){
+  if(state.me?.prefs?.habit_reminders) return `<div class="t3 tiny" id="remind-note" style="margin-top:6px">
+      ${icon("bell", 12)} ${t("habit_remind_on")}</div>`;
+  return `<div class="card tight" id="remind-note" style="margin-top:8px">
+      <div class="small">${t("habit_remind_off")}</div>
+      <button class="btn sm secondary" data-act="habit-remind-enable"
+              style="margin-top:8px">${t("habit_remind_enable")}</button></div>`;
 }
 
 /* The timer line inside a habit's or task's own sheet. */
@@ -4346,6 +4532,13 @@ function weekFocusBlock(){
       ? `<span class="act" data-act="focus-add" data-slot="supporting">
            ${icon("plus", 14)} ${t("add_supporting")}</span>` : "");
 
+  /* The weekly review lives next to the goals it feeds; from Friday on it is
+     pointed out (audit #16). */
+  const weekEnd = new Date().getDay() >= 5 || new Date().getDay() === 0;
+  const reviewRow = `<div class="item pressable" data-act="review-open" style="min-height:44px;margin-top:6px">
+      ${icon("chart", 16)}<div class="grow small">${t("review")}${weekEnd
+        ? ` <span class="tag ok">${t("review_due")}</span>` : ""}</div>${icon("chevron", 15)}</div>`;
+
   if(!primary){
     // One row, not a panel: the block printed "Add a main goal" as a line of
     // text and again on the button under it, and spent a third of the screen
@@ -4355,7 +4548,7 @@ function weekFocusBlock(){
                      data-slot="primary" style="min-height:48px">
         ${icon("target", 17)}
         <div class="grow t2">${t("add_mission")}</div>
-        ${icon("plus", 16)}</div>`;
+        ${icon("plus", 16)}</div>` + reviewRow;
   }
 
   h += `<div class="tinted block tone-3">
@@ -4369,6 +4562,8 @@ function weekFocusBlock(){
           <div class="wrap ${primary.done ? "strike" : ""}"
                style="font-size:16px;font-weight:600;margin-top:2px">
             ${esc(primary.title)}</div>
+          ${primary.carries >= 2 && !primary.done
+            ? `<div class="t2 tiny">${t("focus_carried_n", {n: primary.carries})}</div>` : ""}
         </div>
         ${icon("chevron", 16)}
       </div></div>`;
@@ -4383,10 +4578,16 @@ function weekFocusBlock(){
         <div class="grow small wrap ${row.done ? "strike" : ""}"
              data-act="focus-open" data-id="${row.id}"
              data-title="${esc(row.title)}" data-priority="${row.priority}"
-             data-done="${row.done ? 1 : 0}">${esc(row.title)}</div>
+             data-done="${row.done ? 1 : 0}">${esc(row.title)}${row.carries >= 2 && !row.done
+               ? `<div class="t2 tiny">${t("focus_carried_n", {n: row.carries})}</div>` : ""}</div>
       </div>`).join("");
   }
-  return h;
+  // Goals moved on from this week stay visible as what they were.
+  for(const row of (focus.carried || []))
+    h += `<div class="item" style="min-height:40px;margin-top:6px;opacity:.7">
+        ${icon("chevron", 14)}<div class="grow small wrap">${esc(row.title)}
+          <div class="t3 tiny">${t("focus_moved")}</div></div></div>`;
+  return h + reviewRow;
 }
 
 /* The inbox: every open task there is, in one place.
@@ -4537,6 +4738,8 @@ function taskRow(task, opts){
   // Urgency is written, not only painted: the edge colour repeats the word.
   if(task.priority === "high" && task.status !== "done")
     meta.unshift(`<span class="tag hot">${t("high")}</span>`);
+  if(task.blocked && task.status !== "done")
+    meta.unshift(`<span class="tag">⏳ ${t(task.recheck ? "block_recheck" : "block_" + task.blocked)}</span>`);
   if(task.project && !opts?.hideProject) meta.push(esc(task.project));
   // Same reasoning for the date under a heading that already says "today":
   // six rows each reading "13 August" beneath "Today's tasks" is a second
@@ -4732,7 +4935,8 @@ SCREENS.project = () => {
   h += `<div class="card" style="margin-top:12px">
       <div class="row">
         <div class="grow">
-          <div style="font-size:24px;font-weight:750" class="num">${p.progress}%</div>
+          <div style="font-size:24px;font-weight:750" class="num">${p.progress}%
+            <span class="t3 tiny" style="font-weight:400">${t("pr_pct_tasks")}</span></div>
           <div class="t2 small">${t("of_tasks", {done:p.tasks_done,
             total:p.tasks_total})}</div>
         </div>
@@ -4948,6 +5152,9 @@ function debtsView(d){
   if(d.settled.length) h += `<details style="margin-top:var(--s2)">
       <summary>${icon("chevron", 15)} ${t("debt_settled")} · ${d.settled.length}</summary>
       ${d.settled.map(debtRow).join("")}</details>`;
+  if((d.archived || []).length) h += `<details style="margin-top:var(--s2)">
+      <summary>${icon("chevron", 15)} ${t("debt_archived")} · ${d.archived.length}</summary>
+      ${d.archived.map(debtRow).join("")}</details>`;
   return h;
 }
 function debtRow(x){
@@ -4956,13 +5163,15 @@ function debtRow(x){
     x.due ? (x.overdue ? `<span class="neg">${t("debt_overdue")} · ${isoToLabel(x.due)}</span>`
                        : t("debt_until", {d: isoToLabel(x.due)})) : "",
     x.note ? esc(x.note) : ""].filter(Boolean).join(" · ");
-  return `<div class="item drow ${x.settled ? "settled" : ""}" data-act="debt-open" data-id="${x.id}">
-      ${x.settled ? `<span class="check on" aria-hidden="true">${icon("check", 14)}</span>`
+  const done = x.settled || x.archived;
+  return `<div class="item drow ${done ? "settled" : ""}" data-act="debt-open" data-id="${x.id}">
+      ${done ? `<span class="check ${x.settled ? "on" : ""}" aria-hidden="true">${x.settled ? icon("check", 14) : ""}</span>`
         : `<button class="check" data-act="debt-settle" data-id="${x.id}"
            aria-label="${t("debt_returned")}" title="${t("debt_returned")}"></button>`}
       <div class="grow"><div class="ellipsis"><b>${esc(x.person)}</b></div>
         <div class="meta">${meta}</div></div>
-      <div class="amount ${x.settled ? "t3" : lent ? "pos" : "neg"}">${lent ? "+" : "−"}${moneyNum(x.amount)}</div>
+      <div class="amount ${done ? "t3" : lent ? "pos" : "neg"}">${lent ? "+" : "−"}${moneyNum(done ? (x.original ?? x.amount) : x.amount)}
+        ${!done && x.paid ? `<div class="meta">${t("debt_of", {n: moneyNum(x.original)})}</div>` : ""}</div>
     </div>`;
 }
 function debtSheet(){
@@ -5095,37 +5304,78 @@ function voiceBusySheet(){
   return `<div class="voice-box"><div class="spin"></div>
       <div class="t2 small" style="margin-top:10px">${t("voice_thinking")}</div></div>`;
 }
+/* One field of the proposal fixed by hand — the hour, the date, the name —
+   without asking the AI again; and a box to answer its question in words
+   (audit #29). */
+const VOICE_FIELD_INPUT = {deadline:"date", day:"date", due_time:"time", remind_at:"time", amount:"number"};
+function voiceEditFields(d){
+  if(d.status !== "ready" || !(d.editable || []).length) return "";
+  return `<details class="voice-edit" style="margin:8px 0">
+      <summary>✏️ ${t("voice_edit")}</summary>
+      ${d.editable.map(item => Object.entries(item.fields).map(([field, value]) => {
+        const id = `ve-${item.index}-${field}`;
+        const input = field === "priority"
+          ? `<select id="${id}" data-orig="${esc(value || "")}">${["low", "medium", "high"].map(p =>
+              `<option value="${p}" ${p === value ? "selected" : ""}>${t(p)}</option>`).join("")}</select>`
+          : `<input id="${id}" type="${VOICE_FIELD_INPUT[field] || "text"}" value="${esc(value ?? "")}"
+               data-orig="${esc(value ?? "")}" />`;
+        return `<label>${t("ve_" + field)}</label>${input}`;
+      }).join("")).join("")}
+      <button class="btn secondary" data-act="voice-edit-save" style="margin-top:10px">${t("save")}</button>
+    </details>`;
+}
 function voiceCardSheet(d){
   const body = d.message ? esc(d.message) : (d.preview || "").replace(/\n/g, "<br>");
   const ready = d.status === "ready";
-  return `<div class="voice-card">${body}</div>
+  const answer = d.status === "needs_input" && d.id ? `
+    <textarea id="voice-answer" style="min-height:64px;margin-top:8px" placeholder="${t("voice_answer_ph")}"></textarea>
+    <button class="btn" data-act="voice-answer" style="margin-top:8px">${t("voice_send")}</button>` : "";
+  return `<div class="voice-card">${body}</div>${voiceEditFields(d)}${answer}
     ${ready ? `<button class="btn" data-act="voice-confirm">✅ ${t("voice_confirm")}</button>` : ""}
+    ${d.status === "failed" && keptVoice() ? `<button class="btn" data-act="voice-resend">↻ ${t("voice_resend")}</button>` : ""}
     <div class="voice-row">
       <button class="btn secondary" data-act="voice-retry">🔄 ${t("voice_retry")}</button>
       <button class="btn secondary" data-act="voice-dismiss">✖ ${t("cancel")}</button>
     </div>`;
 }
-async function voiceSend(){
-  const blob = new Blob(voice.chunks, {type: voice.mime});
+/* The recording is kept (in memory only, for at most ten minutes) until the
+   server has answered, so a dropped connection is "send it again", not
+   "say it all again" (audit #28). The same request key goes with a resend,
+   so a first attempt that did reach the server is not done twice. */
+const VOICE_KEEP_MS = 10 * 60 * 1000;
+function keptVoice(){
+  const k = voice.kept;
+  if(k && Date.now() - k.at > VOICE_KEEP_MS) voice.kept = null;
+  return voice.kept;
+}
+async function voiceSend(resend){
+  const kept = resend ? keptVoice() : null;
+  if(resend && !kept) return A["voice-start"]();
+  if(!kept) voice.kept = {blob: new Blob(voice.chunks, {type: voice.mime}), mime: voice.mime,
+                          target: voice.target, key: newKey(), at: Date.now()};
+  const {blob, mime, target, key} = voice.kept;
   voice.chunks = [];
   openSheet(voiceBusySheet(), "voice");
-  const journal = voice.target === "journal";
+  const journal = target === "journal";
   try{
     const res = await fetch(journal ? "/api/agent/journal/audio" : "/api/agent/audio", {method:"POST", body:blob,
       signal: requestTimeout(150000),
-      headers:{"Content-Type": voice.mime.split(";")[0] || "audio/webm",
-               "X-Telegram-Init-Data": tg?.initData || "", "X-Agent-Request-Key": newKey()}});
+      headers:{"Content-Type": mime.split(";")[0] || "audio/webm",
+               "X-Telegram-Init-Data": tg?.initData || "", "X-Agent-Request-Key": key}});
     if(!res.ok){
       const err = new Error("http_" + res.status); err.status = res.status;
       try{ err.detail = (await res.json())?.detail; }catch(_){}
       throw err;
     }
+    voice.kept = null;
     if(journal) return journalFilled(await res.json());
     voice.draft = await res.json();
     openSheet(voiceCardSheet(voice.draft), "voice");
     notify(voice.draft.status === "ready" ? "success" : "warning");
   }catch(e){
     voice.draft = null;
+    // A refusal the same audio cannot fix (too long, no consent) drops it.
+    if(e.status === 413 || e.detail === "consent_required") voice.kept = null;
     openSheet(voiceCardSheet({status:"failed", message: e.detail === "consent_required"
       ? t("voice_consent_needed") : e.status === 413 ? t("voice_too_long") : t("voice_failed")}), "voice");
   }
@@ -5148,6 +5398,67 @@ function quickSheet(){
     ${habit ? "" : destPicker()}
     <button class="btn" data-act="quick-save" style="margin-top:12px">${t("save")}</button>
     <button class="btn secondary" data-act="${habit ? "habit-add" : "task-add"}" style="margin-top:8px">${t(habit ? "quick_more_habit" : "quick_more")}</button>`;
+}
+
+/* One parser for both places: the server reads date and time out of the
+   line, and a shared task is saved with exactly what a private one would
+   get (audit #23). A bare time that has already passed today is asked
+   about rather than guessed (audit #49). */
+async function quickTask(title, dest, deadline){
+  let got = null;
+  if(dest.team){
+    /* Parse first (writes nothing, costs nothing), then create inside save()
+       so the create — not the parse — carries the idempotency key. */
+    try{ got = await api("/api/quick/parse", {method:"POST", body:{title}}); }
+    catch(e){ return handleError(e); }
+    if(deadline) got = {...got, ask: null, deadline};
+    if(got.ask === "past_time") return askQuickDay(got, title);
+    const body = {title: got.title || title, deadline: got.deadline || todayISO(),
+                  due_time: got.due_time || null};
+    return save(() => api(`/api/teams/${dest.id}/tasks`, {method:"POST", body}),
+                state.screen, false, quickSaved(got), {body});
+  }
+  save(async () => { got = await api("/api/quick", {method:"POST", body:{title, deadline: deadline || null}}); },
+       state.screen, true, undefined, {body:{title}}).then(() => {
+    if(got?.money) return moneyText(title, "manual");
+    if(got?.ask === "past_time") return askQuickDay(got, title);
+    if(got?.id) toast(quickSaved(got));
+  });
+}
+function askQuickDay(got, title){
+  const [today, tomorrow] = got.options || [];
+  openSheet(`<h3>${t("quick_past_q", {time: esc(got.due_time || "")})}</h3>
+    <div class="t2 small">${esc(got.title)}</div>
+    <div class="btns" style="margin-top:var(--s3)">
+      <button class="btn secondary" data-act="quick-day" data-value="${today}" data-title="${esc(title)}">
+        ${t("today")} ${esc(got.due_time || "")}</button>
+      <button class="btn" data-act="quick-day" data-value="${tomorrow}" data-title="${esc(title)}">
+        ${t("tomorrow")} ${esc(got.due_time || "")}</button></div>`);
+}
+
+/* "Dushanba, chorshanba, juma sport": the days are read out of the line and
+   shown as chips to check before saving — never a silent daily habit that
+   is "missed" on Tuesday (audit #24). A line with no days saves at once. */
+async function quickHabit(title){
+  let parsed = {name: title, schedule: "daily", days: []};
+  try{ parsed = await api("/api/habits/parse", {method:"POST", body:{text: title}}); }catch(_){}
+  if(!parsed.days?.length) return saveQuickHabit(title, "daily");
+  state.quickHabit = {name: parsed.name, days: parsed.days};
+  openSheet(quickHabitSheet());
+}
+function quickHabitSheet(){
+  const q = state.quickHabit;
+  return `<h3>${icon("plus", 18)} ${esc(q.name)}</h3>
+    <label>${t("schedule")}</label>
+    <div class="chips">${D().dow.map((label, i) => `<div class="chip sm ${q.days.includes(i) ? "on" : ""}"
+      data-act="quick-habit-day" data-day="${i}">${label}</div>`).join("")}</div>
+    <div class="t3 tiny" style="margin-top:6px">${t("quick_habit_days_hint")}</div>
+    <button class="btn" data-act="quick-habit-save" style="margin-top:14px">${t("save")}</button>`;
+}
+function saveQuickHabit(name, schedule){
+  return save(() => api("/api/habits", {method:"POST", body:{name, category:"target", schedule}}),
+              state.screen === "habits" ? "habits" : state.screen, false,
+              `${t("quick_habit_saved")}: ${name}`, {body:{name}});
 }
 
 /* What quick add understood, said back: "Saved: hisobot · Tomorrow 10:00". */
@@ -5217,6 +5528,12 @@ SCREENS.stats = () => {
              ${t("vs_yesterday")} <span class="t2">(${yesterday}%)</span>`
           : t("vs_yesterday_none")}</div>
       <div style="margin-top:var(--s2)">${bar(today.overall)}</div>
+      ${today.main ? `<div class="small" style="margin-top:var(--s2)">
+        ${today.main.done ? "✅" : "⬜"} ${t(today.main.kind === "task" ? "main_task" : "main_goal")}:
+        <b>${esc(today.main.title)}</b></div>` : ""}
+      <div class="tiny" style="margin-top:var(--s1);opacity:.85">${t("overall_means")}${
+        state.summary?.today?.tasks_total !== undefined
+          ? " " + t("overall_plan_size", {n: (state.summary.today.tasks_total || 0)}) : ""}</div>
     </div>`;
 
   /* The three parts of today, each its own block in its own hue — the same
@@ -5461,8 +5778,11 @@ function taskSheet(task, presetProject){
     `<option value="${p.id}" ${String(p.id) === String(f.project_id) ? "selected" : ""}
       >${esc(p.name)}</option>`).join("");
 
+  /* "week" is seven days from today — the label says so and shows the date,
+     so a Monday tap reads "next Monday", not "this week". */
   const chips = [["today", t("when_today")], ["tomorrow", t("when_tomorrow")],
-                 ["week", t("when_week")], ["none", t("when_none")]];
+                 ["week", `${t("when_week")} · ${isoToLabel(shiftISO(todayISO(), 7))}`],
+                 ["none", t("when_none")]];
 
   return `
     <h3>${icon("list", 18)} ${editing ? t("edit") : t("add_task")}</h3>
@@ -5504,9 +5824,9 @@ function taskSheet(task, presetProject){
 
       <label>🔁 ${t("repeat")}</label>
       <div class="chips">
-        ${["", "daily", "weekdays", "weekly", "monthly"].map(r => `<div class="chip sm
+        ${["", "daily", "weekdays", "weekly", "monthly", "after:7", "after:30"].map(r => `<div class="chip sm
              ${(f.recurrence || "") === r ? "on" : ""}" data-act="task-repeat"
-             data-value="${r}">${r ? t("repeat_" + r) : t("none_short")}</div>`).join("")}
+             data-value="${r}">${r ? repeatLabel(r) : t("none_short")}</div>`).join("")}
       </div>
 
       <label>${t("priority")}</label>
@@ -5530,11 +5850,73 @@ function taskSheet(task, presetProject){
       ${editing ? `data-act="task-update" data-id="${task.id}"`
                 : `data-act="task-save"${presetProject ? ` data-project="${presetProject}"` : ""}`}
       >${t("save")}</button>
+    ${editing && !shared && task.status !== "done" ? blockPicker(task) : ""}
     ${editing ? `<button class="btn danger" data-act="task-delete-go"
       data-id="${task.id}" style="margin-top:8px">
       ${icon("trash", 15)} ${t("delete")}</button>` : ""}
     <button class="btn secondary" data-act="close" style="margin-top:8px">
       ${t("cancel")}</button>`;
+}
+
+/* "after:7" is counted from the day it was finished, not from the calendar. */
+function repeatLabel(r){
+  if(String(r).startsWith("after:")) return t("repeat_after", {n: r.slice(6)});
+  if(String(r).startsWith("days:")) return t("repeat_custom");
+  return t("repeat_" + r);
+}
+
+/* A measured habit's goal, its unit and the minimal version for a hard day.
+   On an existing habit each change saves at once. */
+function qtyFields(h, live){
+  const act = live ? `data-act="habit-qty-set" data-id="${h.id}"` : "";
+  return `<label>${t("qty_label")}</label>
+    <div class="row" style="gap:var(--s2)">
+      <input id="hq-target" type="number" min="0" max="100000" inputmode="numeric" style="flex:1"
+             value="${h.target_qty || ""}" placeholder="${t("qty_target_ph")}" ${act} />
+      <input id="hq-unit" maxlength="16" style="flex:1" value="${esc(h.unit || "")}"
+             placeholder="${t("qty_unit_ph")}" ${act} /></div>
+    <input id="hq-min" type="number" min="0" max="100000" inputmode="numeric" style="margin-top:8px"
+           value="${h.min_qty || ""}" placeholder="${t("qty_min_ph")}" ${act} />`;
+}
+function readQty(){
+  const target = Math.round(Number(val("hq-target")) || 0);
+  const min = Math.round(Number(val("hq-min")) || 0);
+  return {target_qty: target, min_qty: target && min && min < target ? min : null,
+          unit: target ? val("hq-unit").trim() : null};
+}
+
+/* How much of a measured habit was done today (audit #6). */
+function habitQtySheet(h){
+  const steps = [1, 5, 10].filter(n => n < h.target_qty);
+  return `<h3>${esc(h.name)}</h3>
+    <div class="hint">${t("qty_goal", {n: h.target_qty, u: esc(h.unit || "")})}${h.min_qty
+      ? " · " + t("qty_min_is", {n: h.min_qty}) : ""}</div>
+    <input id="habit-qty" type="number" min="0" max="1000000" inputmode="numeric"
+           value="${h.qty || ""}" placeholder="0" style="margin-top:10px" />
+    <div class="chips" style="margin-top:8px">${steps.map(n =>
+      `<div class="chip sm" data-act="habit-qty-add" data-n="${n}">+${n}</div>`).join("")}
+      <div class="chip sm" data-act="habit-qty-add" data-n="${h.target_qty}" data-set="1">${t("qty_all")}</div></div>
+    <button class="btn" data-act="habit-qty-save" data-id="${h.id}" style="margin-top:14px">${t("save")}</button>`;
+}
+
+/* Waiting on somebody else: the task stays, out of "Now" until the day to
+   check again (audit #12). */
+function blockPicker(task){
+  if(task.blocked) return `<div class="card tight" style="margin-top:12px">
+      <div class="small">⏳ ${t("block_" + task.blocked)}${task.blocked_until
+        ? ` · ${t("block_until", {d: isoToLabel(task.blocked_until)})}` : ""}</div>
+      <button class="btn sm secondary" data-act="task-unblock" data-id="${task.id}"
+              style="margin-top:8px">${t("block_clear")}</button></div>`;
+  const today = todayISO();
+  return `<label>⏳ ${t("block_label")}</label>
+    <div class="chips">
+      <div class="chip sm" data-act="task-block" data-id="${task.id}" data-reason="reply"
+           data-until="${shiftISO(today, 2)}">${t("block_reply")} · ${t("block_in", {n: 2})}</div>
+      <div class="chip sm" data-act="task-block" data-id="${task.id}" data-reason="reply"
+           data-until="${shiftISO(today, 7)}">${t("block_reply")} · ${t("block_in", {n: 7})}</div>
+      <div class="chip sm" data-act="task-block" data-id="${task.id}" data-reason="depends"
+           data-until="${shiftISO(today, 3)}">${t("block_depends")} · ${t("block_in", {n: 3})}</div>
+    </div>`;
 }
 
 /* Who does a shared task: everybody, any one of you, or the named people (#24). */
@@ -5561,7 +5943,7 @@ function taskSettingsLine(f){
   if(f.due_time) bits.push("🕐 " + f.due_time);
   if(f.remind_before !== null && f.remind_before !== undefined && f.remind_before !== "")
     bits.push("🔔 " + t("remind_s_" + f.remind_before));
-  if(f.recurrence) bits.push("🔁 " + t("repeat_" + f.recurrence));
+  if(f.recurrence) bits.push("🔁 " + repeatLabel(f.recurrence));
   if(f.priority === "high") bits.push("🔴 " + t("high"));
   return bits.length ? `<span class="t3 small sumline">${bits.join(" · ")}</span>` : "";
 }
@@ -5736,9 +6118,11 @@ function habitSheet(h){
            data-act="habit-remind-pick" data-id="${h.id}" data-value="${v}">${v}</div>`).join("")}
     </div>
     <input type="time" id="habit-remind" value="${h.remind_at || ""}" style="margin-top:8px"
-           aria-label="${t("reminder")}" data-act="habit-remind-set" data-id="${h.id}" />`}
+           aria-label="${t("reminder")}" data-act="habit-remind-set" data-id="${h.id}" />
+    ${h.remind_at ? reminderSwitchNote() : ""}`}
 
     ${locked || h.protected ? "" : timerSetting(team ? "thabit" : "habit", h)}
+    ${team || h.protected ? "" : qtyFields(h, true)}
 
     ${ritualSharePicker(h)}
 
@@ -6043,12 +6427,24 @@ function reviewSheet(r){
       <div class="metric wide"><div class="k">${t("habits")} · ${t("prayer")}</div>
         <div class="v num">${r.habit_pct}% <span class="k">${r.prayer_pct}%</span></div></div>
     </div>
+    ${(r.suggestions || []).length ? `<label>${t("review_suggest")}</label>
+      ${r.suggestions.map(x => {
+        const act = {reset: `data-act="fresh-start"`, shrink: `data-act="focus-open" data-id="${x.id}"
+              data-title="${esc(x.title || "")}" data-priority="medium" data-done="0"`,
+              fewer_habits: `data-act="nav" data-screen="habits"`,
+              blocked: `data-act="nav" data-screen="tasks"`}[x.key] || "";
+        return `<div class="item pressable small" ${act} style="min-height:44px;margin-top:6px">
+          <div class="grow">${t("rs_" + x.key, {n: x.n, title: esc(x.title || "")})}</div>${icon("chevron", 15)}</div>`;
+      }).join("")}` : ""}
     <label>${t("review_q1")}</label>
     <textarea id="rv-well">${esc(a.went_well || "")}</textarea>
     <label>${t("review_q2")}</label>
     <textarea id="rv-blocked">${esc(a.blocked || "")}</textarea>
     <label>${t("review_q3")}</label>
     <textarea id="rv-next">${esc(a.next_focus || "")}</textarea>
+    <label class="row" style="gap:8px;margin-top:8px">
+      <input type="checkbox" id="rv-goal" checked style="width:auto;min-height:0" />
+      <span class="small">${t("review_make_goal")}</span></label>
     <button class="btn" data-act="review-save" style="margin-top:14px">
       ${t("save")}</button>
     <button class="btn secondary" data-act="review-dismiss" style="margin-top:8px">
@@ -6060,17 +6456,52 @@ function reviewSheet(r){
    deleted. A reset that does not explain itself is one users are right
    to be afraid of. */
 function freshStartSheet(p){
-  const modes = [["today", t("fs_today")], ["week", t("fs_week")],
+  const modes = [["focus", t("fs_focus")], ["week", t("fs_week")], ["today", t("fs_today")],
                  ["undate", t("fs_undate")], ["archive", t("fs_archive")]];
   return `<h3>${icon("repeat", 18)} ${t("fresh_start")}</h3>
     <div class="hint"><b>${t("fresh_start_n", {n:p.overdue})}</b><br>
       ${t("fresh_start_body")}</div>
     ${p.overdue ? modes.map(([id, label]) => `
-      <button class="btn secondary" data-act="fresh-go" data-mode="${id}"
+      <button class="btn ${id === "focus" ? "" : "secondary"}" data-act="fresh-preview" data-mode="${id}"
               style="margin-top:8px">${label}</button>`).join("")
       : `<div class="empty">${t("empty")}</div>`}
     <button class="btn secondary" data-act="close" style="margin-top:12px">
       ${t("cancel")}</button>`;
+}
+
+/* The result before it happens: how many land on each day and which ones
+   are today's, then one button to do it (audit #15). */
+function freshPreviewSheet(p, mode){
+  state.freshPlan = {p, mode};
+  const drop = state.freshDrop || (state.freshDrop = new Set());
+  const plan = (p.plan || []).filter(x => !drop.has(x.id));
+  /* "Still needed?" first: what is not needed goes to the archive and takes
+     no day from what is (audit #15). */
+  // Stays open once something is marked, so several can be marked in a row.
+  const triage = mode === "archive" ? "" : `<details style="margin-top:8px" ${drop.size ? "open" : ""}>
+      <summary>${t("fs_triage", {n: (p.plan || []).length})}</summary>
+      ${(p.plan || []).map(x => `<div class="row small" style="gap:8px;margin-top:6px">
+        <span class="grow ellipsis ${drop.has(x.id) ? "strike t3" : ""}">${esc(x.title)}</span>
+        <div class="chip sm ${drop.has(x.id) ? "on" : ""}" data-act="fresh-drop" data-id="${x.id}">${t("fs_not_needed")}</div>
+      </div>`).join("")}</details>`;
+  const today = todayISO();
+  const byDay = {};
+  for(const x of plan) if(!x.archive) byDay[x.to || "none"] = (byDay[x.to || "none"] || 0) + 1;
+  const days = Object.keys(byDay).sort().map(d => `<div class="row small">
+      <span class="grow">${d === "none" ? t("when_none") : d === today ? t("today") : isoToLabel(d)}</span>
+      <b class="num">${byDay[d]}</b></div>`).join("");
+  const todays = plan.filter(x => x.to === today && !x.archive);
+  return `<h3>${icon("repeat", 18)} ${t("fs_preview")}</h3>
+    ${mode === "archive" ? `<div class="hint">${t("fs_archive_n", {n: plan.length})}</div>` : `
+    <div class="card">${days}</div>
+    ${todays.length ? `<label>${t("today")}</label>${todays.slice(0, 5).map(x =>
+      `<div class="small">• ${esc(x.title)}</div>`).join("")}${todays.length > 5
+      ? `<div class="t3 tiny">+${todays.length - 5}</div>` : ""}` : ""}`}
+    ${triage}
+    ${drop.size ? `<div class="t2 small" style="margin-top:8px">${t("fs_archive_n", {n: drop.size})}</div>` : ""}
+    <div class="t3 tiny" style="margin-top:8px">${t("fs_undo_hint")}</div>
+    <button class="btn" data-act="fresh-go" data-mode="${mode}" style="margin-top:12px">${t("fs_apply")}</button>
+    <button class="btn secondary" data-act="fresh-start" style="margin-top:8px">${t("back")}</button>`;
 }
 
 /* ---------- settings ----------
@@ -6099,6 +6530,7 @@ function settingsSheet(){
   return `
     <h3>${icon("settings", 18)} ${t("settings")}</h3>
     <div class="t2 small" style="margin-bottom:var(--s3)">
+      ${me.version ? `<span class="t3 tiny">ErnestOS v${esc(me.version)} · ${esc(me.build || "")}</span><br>` : ""}
       ${t("member")} #${me.member_no ?? "—"}
       ${me.username ? `· @${esc(me.username)}` : ""}</div>
 
@@ -6237,6 +6669,17 @@ function notifySheet(){
     ${sw("task_reminders", t("task_reminders"))}
     ${sw("habit_reminders", t("habit_reminders"))}
 
+    <label>${t("quiet_hours")}</label>
+    <div class="row" style="gap:var(--s2)">
+      <input type="time" value="${prefs.quiet_from || ""}" data-act="pref-time" data-key="quiet_from"
+             aria-label="${t("quiet_hours")} — ${t("quiet_from")}" style="flex:1" />
+      <span class="t3">—</span>
+      <input type="time" value="${prefs.quiet_to || ""}" data-act="pref-time" data-key="quiet_to"
+             aria-label="${t("quiet_hours")} — ${t("quiet_to")}" style="flex:1" />
+    </div>
+    <div class="t3 tiny" style="margin-top:var(--s0)">${t("quiet_hint")}${prefs.quiet_from
+      ? ` <span class="link" data-act="quiet-off" role="button" tabindex="0">${t("quiet_off")}</span>` : ""}</div>
+
     <label>${t("timezone")}</label>
     ${timezonePicker(me.timezones || [], prefs.timezone)}
     <div class="t3 tiny" style="margin-top:var(--s0)">${t("timezone_hint")}</div>
@@ -6373,7 +6816,8 @@ SCREENS.steps = () => {
         <div class="nm">${t("step_lvl_" + l.key)}</div>
         <div class="rg">${l.max === null ? l.min + "+" : `${l.min}–${l.max}`}</div></div>`;
   }).join('<div class="step-line"></div>');
-  const next = st.today.find(c => !c.ok);
+  const next = st.today.find(c => !c.ok && !c.empty);
+  const counted = st.today_counted ?? st.today.length;
   return `<div class="qhero">
       <div class="qtop">
         <div class="badge">${STEP_ICON[lvl.key]}</div>
@@ -6387,7 +6831,7 @@ SCREENS.steps = () => {
       <div class="t2 small">${nextLvl ? t("steps_to_next", {n: st.next - st.total, name: t("step_lvl_" + nextLvl.key)})
         : t("steps_max")}</div>
       <div class="qstats" data-act="progress-open" role="button" tabindex="0">
-        <div><b class="num">🔥 ${streak}</b><span>${t("streak")}</span></div>
+        <div><b class="num">📈 ${streak}</b><span>${t("streak_days")}</span></div>
         <div><b class="num">❄️ ${st.freeze || 0}</b><span>${t("steps_freeze_short")}</span></div>
         <div><b class="num">🏆 ${rank.eligible ? "#" + rank.global : "—"}</b><span>${rank.eligible
           ? t("rank_global") : t("steps_rank_in", {n: rank.days_remaining ?? 0})}</span></div>
@@ -6395,13 +6839,23 @@ SCREENS.steps = () => {
     </div>
 
     <div class="steps-sub row"><span class="grow">${t("steps_today")}</span>
-      <span class="t2 small num">${st.today_done}/${st.today.length}</span></div>
-    <div class="card qlist">${st.today.map(c => `<div class="qrow ${c.ok ? "ok" : ""}"
+      <span class="t2 small num">${st.today_done}/${counted}</span></div>
+    <div class="card qlist">${st.today.map(c => {
+      /* A full tick only for the whole plan; one of ten is "started". An
+         empty goal row is an offer, not a miss. */
+      const full = c.complete ?? c.ok;
+      if(c.empty) return `<div class="qrow" data-act="steps-go" data-key="${c.key}" role="button" tabindex="0">
+        <span class="ci">${STEP_TODAY_ICON[c.key] || "•"}</span>
+        <div class="grow t2">${t("step_goal_add")}</div>${icon("plus", 14)}</div>`;
+      const count = c.total ? (c.done > c.total ? `${c.done}` : `${c.done}/${c.total}`) : `${c.done}`;
+      return `<div class="qrow ${full ? "ok" : ""}"
         data-act="steps-go" data-key="${c.key}" role="button" tabindex="0">
         <span class="ci">${STEP_TODAY_ICON[c.key] || "•"}</span>
-        <div class="grow">${t("step_" + c.key)}</div>
-        <span class="t2 small num">${c.done}/${c.total}</span>
-        <span class="ck">${c.ok ? icon("check", 14) : ""}</span></div>`).join("")}</div>
+        <div class="grow">${t("step_" + c.key)}${c.ok && !full
+          ? ` <span class="t3 tiny">· ${t("step_started")}</span>` : ""}</div>
+        <span class="t2 small num">${count}</span>
+        <span class="ck">${full ? icon("check", 14) : c.ok ? "·" : ""}</span></div>`;
+    }).join("")}</div>
     ${next ? `<button class="btn steps-go" data-act="steps-go" data-key="${next.key}">
         ${t("steps_next")}: ${t("step_" + next.key)} →</button>`
       : `<div class="hint" style="text-align:center;margin-top:12px">${t("steps_all_done")}</div>`}
@@ -6461,8 +6915,8 @@ function progressSheet(){
 
   h += `<label>${t("consistency")}</label>
     <div class="metrics">
-      <div class="metric"><div class="k">${t("streak")}</div>
-        <div class="v num">${icon("flame", 17)} ${p.streak.current}</div></div>
+      <div class="metric"><div class="k">${t("streak_days")}</div>
+        <div class="v num">📈 ${p.streak.current}</div></div>
       <div class="metric"><div class="k">${t("best")}</div>
         <div class="v num">${p.streak.best}</div></div>
       <div class="metric"><div class="k">${t("perfect_days")}</div>
@@ -6471,7 +6925,7 @@ function progressSheet(){
         <div class="v num">${p.streak.recovery_remaining} / 2</div></div>
     </div>
     <div class="t3 tiny" style="margin-top:var(--s1)">
-      ${t("recovery_hint", {n: p.streak.threshold})}</div>`;
+      ${t("streak_days_hint", {n: p.streak.threshold})}. ${t("recovery_hint", {n: p.streak.threshold})}</div>`;
 
   h += `<label>${t("rank")}</label>`;
   if(!rank.eligible){
@@ -6871,7 +7325,7 @@ function render(){
   else if(state.needsSetup) app.innerHTML = setupScreen();
   else if(state.error)      app.innerHTML = errorScreen();
   else if(state.loading)    app.innerHTML = `<div class="spin"></div>`;
-  else app.innerHTML = readOnlyBanner() + (state.screen === "home" ? trialBanner() : "")
+  else app.innerHTML = readOnlyBanner() + queueBanner() + (state.screen === "home" ? trialBanner() : "")
     + groupBar(state.screen)
     + (state.screenError ? `<div class="empty">${esc(state.screenError)}
       <button class="btn secondary" data-act="retry-screen">${t("retry_screen")}</button></div>`
@@ -6932,11 +7386,15 @@ async function loadScreen(screen){
       state.teamGraph = {};
       setState({team, teams: (team.teams || []).map(x => ({id:x.id, name:x.name}))});
     } else if(screen === "habits"){
+      // The entry is pinned to the day it was opened for: text typed at 23:59
+      // and saved after midnight still belongs to that day.
+      const day = (state.journalDay && (journalPendingCount() || hasJaiPending()))
+        ? state.journalDay : todayISO();
       const [habits, prayer, journal] = await Promise.all([
         api("/api/habits"), api("/api/prayers"),
-        api("/api/journal?day=" + todayISO()),
+        api("/api/journal?day=" + day),
       ]);
-      setState({habits, prayer, journal: journal.entry,
+      setState({habits, prayer, journal: journal.entry, journalDay: day,
                 journalQuestions: journal.questions,
                 teams: habits.teams || state.teams});
     } else if(screen === "tasks"){
@@ -7150,18 +7608,80 @@ async function save(request, reload, quiet, message, draft){
 /* An optimistic tick: the row changes now, the request follows, and a
    failure puts it back. Waiting 300ms for a checkbox is what makes an
    app feel like a web page. */
-function optimistic(mutate, request, reload){
+function optimistic(mutate, request, reload, queued){
   const snapshot = JSON.stringify({home:state.home, habits:state.habits,
                                    tasks:state.tasks, project:state.project});
   mutate();
   render();
   request().then(() => { state.calendarStale = true; if(reload) loadScreen(reload); })
     .catch(e => {
+      // No connection at all: the tick stays on screen and waits in the
+      // queue instead of being undone (audit #18).
+      if(queued && isOffline(e)){ enqueue(queued); return; }
       const back = JSON.parse(snapshot);
       setState(back);
       handleError(e);
     });
 }
+
+/* ---------- offline queue (audit #18) ----------
+   Recording what was done — a habit tick, a task done, a prayer, an amount —
+   must not need a signal. Such an action that fails for want of a network is
+   kept on the phone with its own idempotency key and sent, in order, once
+   the connection is back; the server answers a repeat of the same key with
+   the first answer, so nothing is applied twice. A refusal (4xx) is dropped
+   and named, never retried forever. */
+const queueKey = () => `ernestos-queue-${state.me?.telegram_id || "anon"}`;
+const isOffline = e => !e?.status && (e?.name === "TypeError" || e?.name === "AbortError"
+  || e?.name === "TimeoutError" || /fetch|network|Failed/i.test(String(e?.message || "")));
+function loadQueue(){ try{ return JSON.parse(localStorage.getItem(queueKey()) || "[]"); }catch(_){ return []; } }
+function storeQueue(q){
+  try{ q.length ? localStorage.setItem(queueKey(), JSON.stringify(q)) : localStorage.removeItem(queueKey()); }
+  catch(_){}
+}
+function enqueue(item){
+  const q = loadQueue();
+  // The key the first attempt already carried, if any: a request that timed
+  // out may have reached the server, and its replay must not apply twice.
+  q.push({...item, key: item.key || newKey(), at: Date.now()});
+  storeQueue(q);
+  toast(t("queued_offline"));
+  render();
+}
+let flushing = null;
+function flushQueue(){
+  if(flushing) return flushing;
+  flushing = (async () => {
+    let q = loadQueue(), sent = 0;
+    const refused = [];
+    while(q.length){
+      const item = q[0];
+      try{
+        await api(item.path, {method: item.method, body: item.body,
+                              headers: {"X-Idempotency-Key": item.key}});
+        sent++;
+      }catch(e){
+        // Still being processed (the same key is in flight): try again later.
+        if(isOffline(e) || e.status >= 500 || e.status === 429
+           || (e.status === 409 && e.detail === "in_progress")) break;
+        refused.push(item.label || item.path);
+      }
+      q = loadQueue().filter(x => x.key !== item.key);
+      storeQueue(q);
+    }
+    if(refused.length) toast(t("queue_refused", {n: refused.length}));
+    else if(sent) toast(t("queue_synced", {n: sent}));
+    if(sent || refused.length){ state.calendarStale = true; await loadScreen(state.screen); }
+  })().finally(() => { flushing = null; render(); });
+  return flushing;
+}
+function queueBanner(){
+  const n = loadQueue().length;
+  return n ? `<div class="banner" data-act="queue-flush" role="button" tabindex="0">
+      ${icon("clock", 16)} <div class="grow">${t("queue_pending", {n})}</div>${icon("repeat", 15)}</div>` : "";
+}
+window.addEventListener("online", () => flushQueue());
+document.addEventListener("visibilitychange", () => { if(!document.hidden && loadQueue().length) flushQueue(); });
 
 const A = {
   "tasks-more": moreTasks,
@@ -7271,11 +7791,65 @@ const A = {
   "jai-send": async () => {
     const text = trimmed("jai-text");
     if(!text) return;
+    storeJaiText(val("jai-text"));
     openSheet(voiceBusySheet(), "voice");
-    try{ journalFilled(await api("/api/agent/journal/text", {method:"POST", body:{text}})); }
-    catch(e){ closeSheet(); handleError(e); }
+    try{
+      const r = await api("/api/agent/journal/text",
+                          {method:"POST", body:{text}, timeout: AGENT_TIMEOUT_MS});
+      storeJaiText("");
+      journalFilled(r);
+    }catch(e){
+      // The same text comes back in the editor, not a blank box.
+      openSheet(jaiTextSheet());
+      handleError(e);
+    }
+  },
+  "jai-accept": () => {
+    haptic();
+    for(const id of Object.keys(state.jaiPending || {})){
+      const el = document.getElementById("jq-" + id);
+      if(el) onJournalInput(el);
+    }
+    state.jaiPending = {};
+    render();
+  },
+  "jai-reject": () => { haptic(); state.jaiPending = {}; render(); },
+  "voice-resend": () => { haptic(); return voiceSend(true); },
+  "voice-edit-save": async () => {
+    let d = voice.draft;
+    if(!d) return;
+    const changed = [];
+    for(const item of (d.editable || []))
+      for(const field of Object.keys(item.fields)){
+        const el = document.getElementById(`ve-${item.index}-${field}`);
+        if(el && el.value !== (el.dataset.orig || "")) changed.push([item.index, field, el.value || null]);
+      }
+    if(!changed.length) return;
+    try{
+      // One field at a time, each on the revision the last one returned.
+      for(const [index, field, value] of changed)
+        d = await api(`/api/agent/drafts/${d.id}/edit`, {method:"POST",
+          body:{revision: d.revision, index, field, value}});
+      voice.draft = d;
+      openSheet(voiceCardSheet(d), "voice");
+      notify("success");
+    }catch(e){
+      if(e.status === 422) return toast(t("invalid_input"));
+      handleError(e);
+    }
+  },
+  "voice-answer": async () => {
+    const d = voice.draft, text = trimmed("voice-answer");
+    if(!d || !text) return;
+    openSheet(voiceBusySheet(), "voice");
+    try{
+      voice.draft = await api("/api/agent/text", {method:"POST", timeout: AGENT_TIMEOUT_MS,
+        body:{text, request_key: newKey(), draft_id: d.id, revision: d.revision}});
+      openSheet(voiceCardSheet(voice.draft), "voice");
+    }catch(e){ openSheet(voiceCardSheet(d), "voice"); handleError(e); }
   },
   "voice-retry": () => {
+    voice.kept = null;
     const d = voice.draft;
     if(d?.id && ["ready", "needs_input", "failed"].includes(d.status))
       api(`/api/agent/drafts/${d.id}/cancel`, {method:"POST", body:{revision:d.revision}}).catch(() => {});
@@ -7308,21 +7882,22 @@ const A = {
   "quick-save": () => {
     const title = trimmed("quick-title");
     if(!title) return;
-    if(state.quickType === "habit")
-      return save(() => api("/api/habits", {method:"POST", body:{name:title, category:"target"}}),
-                  state.screen === "habits" ? "habits" : state.screen, false, `${t("quick_habit_saved")}: ${title}`,
-                  {body:{name:title}});
-    const dest = destOf();
-    if(dest.team)
-      return save(() => api(`/api/teams/${dest.id}/tasks`,
-        {method:"POST", body:{title, deadline: todayISO()}}), state.screen,
-        false, t("inbox_saved"));
-    let got = null;
-    save(async () => { got = await api("/api/quick", {method:"POST", body:{title}}); },
-         state.screen, true, undefined, {body:{title}}).then(() => {
-      if(got?.money) return moneyText(title, "manual");
-      if(got?.id) toast(quickSaved(got));
-    });
+    if(state.quickType === "habit") return quickHabit(title);
+    quickTask(title, destOf());
+  },
+  /* "10:00 hisobot" typed after 10:00: the person picks the day. */
+  "quick-day": el => { closeSheet(); quickTask(el.dataset.title, destOf(), el.dataset.value); },
+  "quick-habit-day": el => {
+    const q = state.quickHabit, d = Number(el.dataset.day);
+    q.days = q.days.includes(d) ? q.days.filter(x => x !== d) : [...q.days, d].sort();
+    openSheet(quickHabitSheet());
+  },
+  "quick-habit-save": () => {
+    const q = state.quickHabit;
+    const days = q.days || [];
+    const schedule = !days.length || days.length === 7 ? "daily" : "days:" + days.join(",");
+    closeSheet();
+    saveQuickHabit(q.name, schedule);
   },
   "retry-draft": () => {
     const draft = lastDraft;
@@ -7475,7 +8050,7 @@ const A = {
 
   "team-toggle": el => {
     haptic();
-    const id = Number(el.dataset.id);
+    const id = Number(el.dataset.id), key = newKey();
     const kind = el.dataset.kind;
     optimistic(() => {
       /* The same row can be on screen in several places — the Team tab, the
@@ -7493,8 +8068,8 @@ const A = {
             if(flipped === null) flipped = !row.done;
             row.done = flipped;
           }
-    }, () => api(`/api/teams/${kind}s/${id}/toggle`, {method:"POST"}),
-       state.screen);
+    }, () => api(`/api/teams/${kind}s/${id}/toggle`, {method:"POST", headers:{"X-Idempotency-Key": key}}),
+       state.screen, {path:`/api/teams/${kind}s/${id}/toggle`, method:"POST", key});
   },
 
   /* A shared task opens the full task sheet, headed for the team. */
@@ -7592,12 +8167,21 @@ const A = {
     }catch(e){ handleError(e); }
   },
   "debt-open": el => {
-    const all = [...(state.money?.debts?.open || []), ...(state.money?.debts?.settled || [])];
+    const all = [...(state.money?.debts?.open || []), ...(state.money?.debts?.settled || []),
+                 ...(state.money?.debts?.archived || [])];
     const x = all.find(d => String(d.id) === el.dataset.id);
     if(!x) return;
+    const pays = (x.payments || []).map(p => `<div class="meta">${isoToLabel((p.paid_at || "").slice(0, 10))}
+        · <span class="num">${moneyFmt(p.amount)}</span></div>`).join("");
+    if(x.archived) return openSheet(`<h3>🤝 ${esc(x.person)}</h3>
+      <div class="hint"><b class="num">${moneyFmt(x.original ?? x.amount)}</b>${x.note ? " · " + esc(x.note) : ""}</div>
+      <button class="btn" data-act="debt-restore" data-id="${x.id}" style="margin-top:12px">${t("debt_restore")}</button>
+      <button class="btn danger" data-act="debt-purge" data-id="${x.id}" style="margin-top:12px">
+        ${icon("trash", 15)} ${t("debt_purge")}</button>`);
     openSheet(`<h3>🤝 ${esc(x.person)}</h3>
       <div class="hint">${t(x.direction === "lent" ? "debt_lent_meta" : "debt_borrowed_meta")}
-        · <b class="num">${moneyFmt(x.amount)}</b>${x.note ? " · " + esc(x.note) : ""}</div>
+        · <b class="num">${moneyFmt(x.amount)}</b>${x.paid ? " " + t("debt_of", {n: moneyFmt(x.original)}) : ""}${x.note ? " · " + esc(x.note) : ""}</div>
+      ${pays ? `<label>${t("debt_payments")}</label>${pays}` : ""}
       ${x.settled ? `<button class="btn secondary" data-act="debt-reopen" data-id="${x.id}"
           style="margin-top:12px">${t("debt_reopen")}</button>` : `
       <button class="btn" data-act="debt-settle" data-id="${x.id}" style="margin-top:12px">✓ ${t("debt_returned_full")}</button>
@@ -7610,10 +8194,17 @@ const A = {
   "debt-partial": async el => {
     const paid = parseMoneyInput(val("debt-paid"));
     if(!paid) return toast(t("debt_bad_amount"));
+    const x = (state.money?.debts?.open || []).find(d => String(d.id) === el.dataset.id);
+    // The server refuses it too; checking here keeps the typed amount on screen.
+    if(x && paid > x.amount) return toast(t("debt_paid_more", {n: moneyFmt(x.amount)}));
     try{
       await api(`/api/debts/${el.dataset.id}/settle`, {method:"POST", body:{settled:true, paid}});
       notify("success"); closeSheet(); toast(t("saved")); reloadDebts();
-    }catch(e){ handleError(e); }
+    }catch(e){
+      if(e.status === 422 && e.detail === "paid_exceeds_remaining")
+        return toast(t("debt_paid_more", {n: moneyFmt(x?.amount || 0)}));
+      handleError(e);
+    }
   },
   "debt-reopen": async el => {
     try{
@@ -7621,9 +8212,30 @@ const A = {
       closeSheet(); reloadDebts();
     }catch(e){ handleError(e); }
   },
-  "debt-delete": async el => {
+  /* Deleting asks first, then archives with Undo; only an archived debt can
+     be removed for good, and that asks again. */
+  "debt-delete": el => confirmSheet("debt-delete-go", el.dataset.id, t("debt_delete_q")),
+  "debt-delete-go": async el => {
+    const id = el.dataset.id;
     try{
-      await api(`/api/debts/${el.dataset.id}`, {method:"DELETE"});
+      await api(`/api/debts/${id}`, {method:"DELETE"});
+      closeSheet(); reloadDebts();
+      toast(t("deleted"), t("undo"), async () => {
+        try{ await api(`/api/debts/${id}/restore`, {method:"POST"}); reloadDebts(); }
+        catch(e){ handleError(e); }
+      });
+    }catch(e){ handleError(e); }
+  },
+  "debt-restore": async el => {
+    try{
+      await api(`/api/debts/${el.dataset.id}/restore`, {method:"POST"});
+      closeSheet(); reloadDebts();
+    }catch(e){ handleError(e); }
+  },
+  "debt-purge": el => confirmSheet("debt-purge-go", el.dataset.id, t("debt_purge_q")),
+  "debt-purge-go": async el => {
+    try{
+      await api(`/api/debts/${el.dataset.id}/purge`, {method:"DELETE"});
       closeSheet(); toast(t("deleted")); reloadDebts();
     }catch(e){ handleError(e); }
   },
@@ -7778,7 +8390,8 @@ const A = {
     haptic("medium");
     try{
       await timerChanged(await api(
-        `/api/timers/${el.dataset.kind}/${el.dataset.id}/start`, {method:"POST"}));
+        `/api/timers/${el.dataset.kind}/${el.dataset.id}/start`,
+        {method:"POST", body:{cycle: state.timerCycle || null}}));
     }catch(e){ handleError(e); }
   },
   "timer-run": async el => {
@@ -7796,6 +8409,24 @@ const A = {
       await timerChanged(await api(`/api/timers/${el.dataset.kind}/${el.dataset.id}`,
         {method:"PUT", body:{minutes}}));
     }catch(e){ handleError(e); }
+  },
+  "timer-cycle": el => {
+    haptic();
+    state.timerCycle = el.dataset.value;
+    for(const chip of document.querySelectorAll('[data-act="timer-cycle"]'))
+      chip.classList.toggle("on", chip.dataset.value === state.timerCycle);
+  },
+  "timer-log": async el => {
+    const minutes = Math.round(Number(val("timer-log")));
+    if(!minutes || minutes < 1 || minutes > 1440) return toast(t("timer_log_ph"));
+    try{
+      await timerChanged(await api(`/api/timers/${el.dataset.kind}/${el.dataset.id}/log`,
+        {method:"POST", body:{minutes}}));
+      notify("success");
+    }catch(e){
+      if(e.status === 409 && e.detail === "timer_running") return toast(t("timer_running"));
+      handleError(e);
+    }
   },
   "timer-custom": async el => {
     const minutes = Math.round(Number(val("timer-min")));
@@ -7859,13 +8490,14 @@ const A = {
 
   "habit-toggle": el => {
     haptic();
-    const id = Number(el.dataset.id);
+    const id = Number(el.dataset.id), key = newKey();
     optimistic(() => {
       const row = state.habits?.habits?.find(x => x.id === id);
       if(row) row.done = !row.done;
       for(const cat of Object.values(state.habits?.grouped || {}))
         for(const x of cat) if(x.id === id) x.done = row ? row.done : x.done;
-    }, () => api(`/api/habits/${id}/toggle`, {method:"POST"}), "habits");
+    }, () => api(`/api/habits/${id}/toggle`, {method:"POST", headers:{"X-Idempotency-Key": key}}), "habits",
+       {path:`/api/habits/${id}/toggle`, method:"POST", key, label: el.dataset.name || ""});
   },
   "habit-toggle-home": el => {
     haptic();
@@ -7900,6 +8532,7 @@ const A = {
     const body = {name, category: f.category || "target", schedule: f.schedule || "daily",
                   remind_at: f.remind_at || null, timer_minutes: pickedTimer("habit-timer")};
     const dest = destOf();
+    if(!dest.team && document.getElementById("hq-target")) Object.assign(body, readQty());
     if(dest.team)
       // A shared habit has no category: tiers weigh a personal day, and the
       // team's number is a plain count of what the two of you agreed to do.
@@ -7918,6 +8551,32 @@ const A = {
     const value = el.dataset.value;
     // A custom schedule starts from the working week rather than from nothing.
     habitSet(el.dataset.id, {schedule: value === "custom" ? "days:0,2,4" : value});
+  },
+  /* Switched on from the habit's own sheet, which stays open. */
+  "habit-qty-set": el => habitSet(el.dataset.id, readQty()),
+  "habit-qty": el => {
+    haptic();
+    const h = (state.habits?.habits || []).find(x => String(x.id) === el.dataset.id);
+    if(h) openSheet(habitQtySheet(h));
+  },
+  "habit-qty-add": el => {
+    const input = document.getElementById("habit-qty");
+    if(!input) return;
+    input.value = el.dataset.set ? el.dataset.n : (Number(input.value) || 0) + Number(el.dataset.n);
+  },
+  "habit-qty-save": el => {
+    const qty = Math.max(0, Math.round(Number(val("habit-qty")) || 0));
+    const path = `/api/habits/${el.dataset.id}/qty`;
+    closeSheet();
+    api(path, {method:"POST", body:{qty}}).then(() => { toast(t("saved")); loadScreen("habits"); })
+      .catch(e => isOffline(e) ? enqueue({path, method:"POST", body:{qty}}) : handleError(e));
+  },
+  "queue-flush": () => { haptic(); flushQueue(); },
+  "habit-remind-enable": async () => {
+    haptic();
+    await prefSave({habit_reminders: true}, false);
+    const note = document.getElementById("remind-note");
+    if(note && state.me?.prefs?.habit_reminders) note.outerHTML = reminderSwitchNote();
   },
   "habit-remind-pick": el => habitSet(el.dataset.id, {remind_at: el.dataset.value || null}),
   "habit-remind-set": el => habitSet(el.dataset.id, {remind_at: el.value || null}),
@@ -8034,7 +8693,7 @@ const A = {
         state.prayer = await api("/api/prayers", {method:"POST", body:{prayer, status}});
         await refreshHabits();
         render();
-      });
+      }, null, {path:"/api/prayers", method:"POST", body:{prayer, status}});
   },
   "prayer-clear": el => {
     haptic();
@@ -8059,16 +8718,22 @@ const A = {
     // flight, so it cannot land after this and undo it.
     clearTimeout(journalTimer);
     journalPending = {};
+    state.jaiPending = {};
+    const day = journalDay();
     save(async () => {
       await journalChain;
-      const r = await api("/api/journal", {method:"POST", body:{answers}});
+      const r = await api("/api/journal", {method:"POST", body:{answers, day}});
       clearDraft();
+      state.journalDay = null;
       return r;
     }, "habits");
   },
   mood: el => { haptic();
-    save(() => api("/api/journal", {method:"POST",
-      body:{mood: el.dataset.value}}), "habits", true); },
+    const day = journalDay();
+    // Typed answers go first, so the mood's save cannot make them look stale.
+    save(async () => { await flushJournal();
+      return api("/api/journal", {method:"POST", body:{mood: el.dataset.value, day}}); },
+      "habits", true); },
   "journal-history": async () => {
     try{ setState({journalHistory:(await api("/api/journal")).entries}); }
     catch(e){ handleError(e); }
@@ -8132,7 +8797,11 @@ const A = {
       toast(t("task_done_toast"), t("undo"), () =>
         save(() => api(`/api/tasks/${id}`,
                        {method:"PATCH", body:{status:"waiting"}}), screen, true));
-    }catch(e){ handleError(e); }
+    }catch(e){
+      // Done is done, signal or not: it goes out when the connection is back.
+      if(isOffline(e)) return enqueue({path:`/api/tasks/${id}`, method:"PATCH", body:{status:"done"}});
+      handleError(e);
+    }
   },
   "task-reopen": el => { haptic();
     save(() => api(`/api/tasks/${el.dataset.id}`,
@@ -8143,6 +8812,11 @@ const A = {
      every one of these chips sent the task to a team endpoint with no team
      and nothing moved. A shared task moves its deadline through the team's
      own edit, since it has no reschedule endpoint of its own. */
+  "task-block": el => { haptic(); closeSheet();
+    save(() => api(`/api/tasks/${el.dataset.id}/block`, {method:"POST",
+      body:{reason: el.dataset.reason, until: el.dataset.until}}), state.screen, false, t("block_saved")); },
+  "task-unblock": el => { haptic(); closeSheet();
+    save(() => api(`/api/tasks/${el.dataset.id}/block`, {method:"DELETE"}), state.screen, false, t("saved")); },
   "task-reschedule": el => {
     haptic();
     const id = el.dataset.id, when = el.dataset.when;
@@ -8407,7 +9081,8 @@ const A = {
   "review-save": () => save(() => api("/api/review", {method:"POST", body:{
     went_well: val("rv-well"), blocked: val("rv-blocked"),
     next_focus: val("rv-next"),
-  }}), "home"),
+    make_goal: Boolean(document.getElementById("rv-goal")?.checked) && Boolean(val("rv-next").trim()),
+  }}), state.screen, false, t("saved")),
   "review-dismiss": () => closeSheet(),
   "break-dismiss": () => setState({dismissedBreak:true}),
 
@@ -8416,12 +9091,38 @@ const A = {
     try{ openSheet(freshStartSheet(await api("/api/fresh-start"))); }
     catch(e){ handleError(e); }
   },
+  "fresh-preview": async el => {
+    const mode = el.dataset.mode;
+    state.freshDrop = new Set();
+    try{ openSheet(freshPreviewSheet(await api("/api/fresh-start?mode=" + mode), mode)); }
+    catch(e){ handleError(e); }
+  },
+  /* Dropping one re-plans the rest on the server, so the preview stays true. */
+  "fresh-drop": async el => {
+    const id = Number(el.dataset.id), drop = state.freshDrop || new Set();
+    drop.has(id) ? drop.delete(id) : drop.add(id);
+    state.freshDrop = drop;
+    const {mode} = state.freshPlan || {};
+    try{
+      const p = await api(`/api/fresh-start?mode=${mode}&drop=${[...drop].join(",")}`);
+      openSheet(freshPreviewSheet(p, mode));
+    }catch(e){ handleError(e); }
+  },
   "fresh-go": async el => {
     try{
       const r = await api("/api/fresh-start",
-        {method:"POST", body:{mode: el.dataset.mode}});
+        {method:"POST", body:{mode: el.dataset.mode, drop: [...(state.freshDrop || [])]}});
+      state.freshDrop = new Set();
       closeSheet();
-      toast(t("fs_done", {n:r.moved}));
+      // One tap puts the dates back; tasks edited since are left alone.
+      toast(t("fs_done", {n:r.moved}), r.undo ? t("undo") : undefined, r.undo ? async () => {
+        try{
+          const u = await api("/api/fresh-start/undo", {method:"POST", body:{reset_id: r.reset_id}});
+          toast(u.conflicts?.length ? t("fs_undo_conflicts", {n: u.conflicts.length})
+                                    : t("fs_undone", {n: u.restored}));
+          await loadScreen(state.screen);
+        }catch(e){ handleError(e); }
+      } : undefined);
       setState({dismissedBreak:true});
       await loadScreen(state.screen);
     }catch(e){ closeSheet(); handleError(e); }
@@ -8448,6 +9149,13 @@ const A = {
     haptic();
     const key = el.dataset.key;
     prefSave({[key]: !(state.me?.prefs || {})[key]});
+  },
+  "quiet-off": () => prefSave({quiet_from: "", quiet_to: ""}),
+  "capacity-ask": () => { haptic(); openSheet(capacitySheet()); },
+  "capacity-set": async el => {
+    haptic(); closeSheet();
+    await prefSave({day_capacity: Number(el.dataset.value)}, false);
+    await loadScreen(state.screen);
   },
   "pref-time": el => {
     // An empty field is the picker being cleared, not a request to save 00:00.
@@ -8562,7 +9270,11 @@ const A = {
     // Step two of two. The first tap opened a sheet naming what goes; this one
     // sends the word the server insists on, so a stray tap cannot reach here.
     try{
+      // No autosave may land after the wipe and bring an entry back.
+      await forgetLocalDrafts();
       await api("/api/account/wipe", {method:"POST", body:{confirm:"WIPE"}});
+      await forgetLocalDrafts();
+      state.journal = null;
       closeSheet();
       toast(t("wipe_done"));
       state.calendar = null;
@@ -8584,8 +9296,10 @@ const A = {
   "delete-account-go": async () => {
     if(trimmed("del-confirm").toUpperCase() !== "DELETE") return;
     try{
+      await forgetLocalDrafts();
       await api("/api/account/delete", {method:"POST",
         body:{confirm:"DELETE"}});
+      await forgetLocalDrafts();
       closeSheet();
       setState({error:t("account_deleted"), loading:false, me:null, home:null});
       tg?.close?.();
@@ -8767,7 +9481,9 @@ function habitAddSheet(){
     <label>🔔 ${t("reminder")}</label>
     <div class="chips">${chip("remind_at", "", t("none_short"))}${["07:00", "12:00", "21:00"]
       .map(v => chip("remind_at", v, v)).join("")}</div>
+    ${f.remind_at ? reminderSwitchNote() : ""}
     ${timerPicker("habit-timer", f.timer)}
+    ${destOf().team ? "" : qtyFields({}, false)}
     <button class="btn" data-act="habit-save" style="margin-top:16px">${t("save")}</button>`;
 }
 
@@ -9051,6 +9767,8 @@ async function boot(){
       state.home = home;
     }
     setState({me, loading:false, blocked:null, error:null, needsSetup:false});
+    // Ticks recorded while offline in an earlier session go out now.
+    if(loadQueue().length) flushQueue();
     if(!first) await loadScreen(state.screen);
     if(Object.keys(loadDraft()).length) toast(t("draft_restored"));
   }catch(e){

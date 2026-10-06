@@ -125,6 +125,13 @@ class User(Base):
     evening_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     task_reminders: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     habit_reminders: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    #: Quiet hours: ordinary reminders in this window arrive without sound
+    #: (audit #37). Both NULL — off. The window may cross midnight.
+    quiet_from: Mapped[time | None] = mapped_column(Time, nullable=True)
+    quiet_to: Mapped[time | None] = mapped_column(Time, nullable=True)
+    #: Minutes of focused time the person has on an ordinary day; NULL — not
+    #: given. Compared with today's planned minutes (audit #2).
+    day_capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     #: How many real actions this account has taken — a task ticked, a habit
     #: logged, a prayer recorded. The channel is not asked for until this
@@ -212,6 +219,12 @@ class Habit(Base):
     #: Set explicitly when somebody adds a habit "from tomorrow", so adding one
     #: late in the evening cannot drag down a day that is already under way.
     active_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    #: A measured habit: "20 bet", "60 daqiqa". Done at `target_qty`; a day at
+    #: `min_qty` or more is the minimal version — shown, never counted as the
+    #: full goal (audit #6). NULL — an ordinary yes/no habit.
+    target_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    min_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    unit: Mapped[str | None] = mapped_column(String(16), nullable=True)
     #: Soft delete — historical reports must not change retroactively. A habit
     #: stays owed on every day up to and including the day it was archived.
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -276,6 +289,8 @@ class HabitLog(Base):
         Integer, ForeignKey("habits.id", ondelete="CASCADE"), index=True)
     day: Mapped[date] = mapped_column(Date, index=True)
     done: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: How much of a measured habit was done that day (12 of 20 pages).
+    qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
     #: Local wall-clock time the habit was ticked. The wake-up habit shows it
     #: back as "✓ 04:53" — "recorded" tells the user nothing they did not
     #: already know. Nullable: rows written before the column have no time.
@@ -408,6 +423,11 @@ class Task(Base):
     day_priority_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(10), default="waiting")  # waiting|done
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    #: Waiting on something outside the person's hands: "reply" (an answer
+    #: from someone) or "depends" (another piece of work). Not done, not late
+    #: by their own doing; offered again on `blocked_until` (audit #12).
+    blocked_reason: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    blocked_until: Mapped[date | None] = mapped_column(Date, nullable=True)
     #: Same three states as `Habit.timer_minutes`: NULL reads the title,
     #: 0 is off, a number is that many minutes.
     timer_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -458,6 +478,16 @@ class TimerRun(Base):
     status: Mapped[str] = mapped_column(String(10), default="running", index=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    #: Logged by hand afterwards ("did 60 min without the timer"), not measured.
+    #: NULL on rows from before the column existed — those were all measured.
+    manual: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
+    #: Work/break rhythm, e.g. 50/10: after each `cycle_work` minutes the run
+    #: pauses itself for a `cycle_break` minute break that is never counted as
+    #: work (audit #41). NULL — one straight session.
+    cycle_work: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cycle_break: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    break_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    break_notice_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     #: The bot message showing this timer, so the job can keep it counting.
     chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -527,6 +557,11 @@ class WeeklyFocus(Base):
     #: live tables, where existing rows have no value; readers default it.
     priority: Mapped[str | None] = mapped_column(String(6), nullable=True)
     done: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: Set on the old week's row when the goal is moved on: the row stays, so
+    #: a goal pushed three weeks running leaves three visible traces.
+    carried_to: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: On the new week's row: the row it was moved from.
+    carried_from: Mapped[int | None] = mapped_column(Integer, nullable=True)
     #: The task this mission is delivered by, if any.
     task_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -652,6 +687,65 @@ class Debt(Base):
     due: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     settled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    #: Set instead of deleting: one tap must not lose a debt for good. A
+    #: separate, confirmed purge removes the row.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ResetLog(Base):
+    """What one "fresh start" changed, so it can be undone (audit #47).
+
+    `snapshot` is a JSON list of {id, deadline, archived, after_deadline,
+    after_archived}: the task's state before, and what the reset set it to.
+    Undo puts back only tasks still exactly as the reset left them; one the
+    person has edited since is reported as a conflict and left alone.
+    """
+
+    __tablename__ = "reset_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    mode: Mapped[str] = mapped_column(String(8))
+    snapshot: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    undone_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class Snooze(Base):
+    """"Remind me again in 15 minutes" on one reminder (audit #36).
+
+    Sent once at `fire_at`, then marked; the item's deadline and its own
+    reminder are untouched. `kind` is task | habit | ttask | thabit.
+    """
+
+    __tablename__ = "snoozes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(8))
+    item_id: Mapped[int] = mapped_column(Integer)
+    fire_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class DebtPayment(Base):
+    """One partial return. `Debt.amount` stays the original sum; what is still
+    owed is that minus these rows, so the history of who paid what and when is
+    never overwritten.
+    """
+
+    __tablename__ = "debt_payments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    debt_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("debts.id", ondelete="CASCADE"), index=True)
+    amount: Mapped[int] = mapped_column(BigInteger)
+    paid_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class Feedback(Base):

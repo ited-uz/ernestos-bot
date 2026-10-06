@@ -25,7 +25,8 @@ class Change(BaseModel):
     field: Literal["title", "name", "description", "deadline", "due_time",
                    "priority", "project_id", "recurrence", "remind_before",
                    "timer_minutes", "category", "schedule", "remind_at",
-                   "start", "day", "kind", "amount", "note", "person", "direction"]
+                   "start", "day", "kind", "amount", "note", "person", "direction",
+                   "status", "done"]
     value: str | None
 
 
@@ -71,9 +72,11 @@ class AtomicSession(Session):
 
 
 FIELDS = {
+    # `status` (task) and `done` (habit) close or reopen an EXISTING item —
+    # "hisobotni tugatdim" — on update only (audit #20).
     "task": {"title", "description", "deadline", "due_time", "priority",
-             "project_id", "recurrence", "remind_before", "timer_minutes"},
-    "habit": {"name", "category", "schedule", "remind_at", "timer_minutes", "start"},
+             "project_id", "recurrence", "remind_before", "timer_minutes", "status"},
+    "habit": {"name", "category", "schedule", "remind_at", "timer_minutes", "start", "done"},
     "project": {"name", "description", "deadline"},
     "money": {"kind", "amount", "category", "note", "day"},
     # Create only: closing or changing a debt is one tap in the app.
@@ -105,6 +108,16 @@ def actor(s, uid, ws):
     return user
 
 
+TICK_FIELDS = {"status", "done"}
+
+
+def _tick_only(a):
+    """An update that only ticks or unticks — what any member may do with the
+    button, so it needs membership, not the right to edit the item."""
+    names = set(a.get("fields") or {}) | {c["field"] for c in (a.get("changes") or [])}
+    return a["operation"] == "update" and bool(names) and names <= TICK_FIELDS
+
+
 def target(s, uid, ws, a, *, lock=False):
     if a["scope"] == "team":
         if a["entity"] not in TEAM or not a["team_id"]:
@@ -129,7 +142,7 @@ def target(s, uid, ws, a, *, lock=False):
     row = s.scalar(stmt.with_for_update() if lock else stmt)
     if row is None or getattr(row, "archived_at", None):
         raise AgentError("not_found", 404)
-    if a["scope"] == "team" and a["operation"] in {"update", "delete"}:
+    if a["scope"] == "team" and a["operation"] in {"update", "delete"} and not _tick_only(a):
         svc._require_manage(s, uid, row.team_id, row.created_by)
     if a["entity"] == "habit" and getattr(row, "system_key", None):
         # Derived prayer/journal/wakeup habits must use their own screens.
@@ -165,7 +178,8 @@ def _value(key, raw):
         raise AgentError("invalid_fields", 422)
     choices = {"priority": {"low", "medium", "high"}, "kind": {"income", "expense"},
                "start": {"today", "tomorrow"}, "recurrence": {"", "daily", "weekly", "monthly"},
-               "direction": {"lent", "borrowed"}}
+               "direction": {"lent", "borrowed"}, "status": {"done", "waiting"},
+               "done": {"yes", "no"}}
     if key in choices and raw not in choices[key]:
         raise AgentError("invalid_fields", 422)
     if key == "schedule" and raw not in {"daily", "weekdays"} and not re.fullmatch(r"days:[0-6](?:,[0-6])*", raw):
@@ -204,6 +218,8 @@ def prepare(s, uid, ws, plan: Plan, allowed_catalog=None):
         if op == "update" and not fields:
             raise AgentError("invalid_fields", 422)
         if entity == "habit" and op == "update" and "start" in fields:
+            raise AgentError("invalid_fields", 422)
+        if op == "create" and ({"status", "done"} & set(fields)):
             raise AgentError("invalid_fields", 422)
         if op == "create":
             required = {"task": "title", "habit": "name", "project": "name", "money": "amount",
@@ -291,6 +307,37 @@ def catalog(s, uid, ws):
                             "items": items, "truncated": truncated}))
 
 
+def _set_done(s, uid, ws, kind, item_id, done, tz):
+    """Tick or untick one item for this person, only if it is not already so.
+
+    The same services the buttons use: a timed item still has to be finished
+    by its timer, and a shared item is ticked for the speaker only.
+    """
+    model = {"task": db.Task, "habit": db.Habit, "ttask": db.TeamTask, "thabit": db.TeamHabit}[kind]
+    item = s.get(model, item_id)
+    today = svc.today_local(tz)
+    if item is None:
+        raise AgentError("not_found", 404)
+    if done and svc._item_done_for_timer(s, ws, kind, item, today):
+        return
+    # Reopening takes back only the speaker's own tick: a shared task closed
+    # by somebody else's tick ("any") is not theirs to reopen, and must not
+    # gain a tick from them instead.
+    if not done and not svc.own_tick(s, uid, kind, item, today):
+        return
+    try:
+        if kind == "task":
+            svc.update_task(s, ws, item_id, status="done" if done else "waiting")
+        elif kind == "habit":
+            svc.toggle_habit(s, ws, item_id, tz=tz)
+        elif kind == "ttask":
+            svc.toggle_team_task(s, uid, item_id, tz=tz)
+        else:
+            svc.toggle_team_habit(s, uid, item_id, tz=tz)
+    except ValueError as e:
+        raise AgentError("timer_required" if str(e) == "timer_required" else "invalid_action", 409) from None
+
+
 def execute(s, uid, ws, a):
     user = actor(s, uid, ws)
     tz = svc.user_tz(user)
@@ -303,18 +350,27 @@ def execute(s, uid, ws, a):
     entity, op, tid = a["entity"], a["operation"], a["target_id"]
     team = a["scope"] == "team"
     out = None
+    want_done = None
+    if op == "update" and ("status" in fields or "done" in fields):
+        want_done = fields.pop("status", None) == "done" if entity == "task" else fields.pop("done") == "yes"
     if entity == "task":
         if op == "create":
             out = svc.add_team_task(s, uid, a["team_id"], **fields) if team else svc.add_task(s, ws, **fields)
         elif op == "update":
-            out = svc.edit_team_task(s, uid, tid, **fields) if team else svc.update_task(s, ws, tid, **fields)
+            if fields:
+                out = svc.edit_team_task(s, uid, tid, **fields) if team else svc.update_task(s, ws, tid, **fields)
+            if want_done is not None:
+                _set_done(s, uid, ws, "ttask" if team else "task", tid, want_done, tz)
         else:
             out = svc.archive_team_task(s, uid, tid) if team else svc.delete_task(s, ws, tid)
     elif entity == "habit":
         if op == "create":
             out = svc.add_team_habit(s, uid, a["team_id"], tz=tz, **fields) if team else svc.add_habit(s, ws, tz=tz, **fields)
         elif op == "update":
-            out = svc.edit_team_habit(s, uid, tid, **fields) if team else svc.update_habit(s, ws, tid, **fields)
+            if fields:
+                out = svc.edit_team_habit(s, uid, tid, **fields) if team else svc.update_habit(s, ws, tid, **fields)
+            if want_done is not None:
+                _set_done(s, uid, ws, "thabit" if team else "habit", tid, want_done, tz)
         else:
             out = svc.archive_team_habit(s, uid, tid) if team else svc.delete_habit(s, ws, tid)
     elif entity == "project":
@@ -374,6 +430,9 @@ HEADINGS = {
            ("money", "update"): "✏️ Edit money entry", ("money", "delete"): "🗑 Delete money entry",
            ("debt", "lent"): "🤝 You lent", ("debt", "borrowed"): "🤝 You borrowed"},
 }
+DONE_HEADINGS = {"uz": {True: "✅ Bajarildi deb belgilanadi", False: "↩ Qayta ochiladi"},
+                 "ru": {True: "✅ Отметить выполненным", False: "↩ Открыть снова"},
+                 "en": {True: "✅ Mark as done", False: "↩ Reopen"}}
 MONTHS = {"uz": ["yanvar", "fevral", "mart", "aprel", "may", "iyun", "iyul", "avgust", "sentabr", "oktabr", "noyabr", "dekabr"],
           "ru": ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"],
           "en": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]}
@@ -432,7 +491,11 @@ def _block(a, lang, today):
         if extra:
             lines.append("   ".join(extra))
         return "\n".join(lines)
-    if entity == "money" and op == "create":
+    closes = f.get("status") or f.get("done")
+    if op == "update" and closes and set(f) <= {"status", "done"}:
+        # "Hisobotni tugatdim": the card says what will be ticked, nothing else.
+        heading = DONE_HEADINGS.get(lang, DONE_HEADINGS["uz"])[closes in ("done", "yes")]
+    elif entity == "money" and op == "create":
         heading = HEADINGS.get(lang, HEADINGS["uz"])[("money", f.get("kind", "expense"))]
     else:
         heading = HEADINGS.get(lang, HEADINGS["uz"])[(entity, op)]
@@ -486,6 +549,8 @@ def _block(a, lang, today):
                 parts.append(detail["start_tomorrow"] if value == "tomorrow" else words.get(value, value))
             elif key == "description":
                 parts.append(f"💬 {escape(str(value))}" if value else "💬 —")
+            elif key in {"status", "done"} and set(f) - {"status", "done"}:
+                parts.append(DONE_HEADINGS.get(lang, DONE_HEADINGS["uz"])[value in ("done", "yes")])
     if a["scope"] == "team":
         parts.append(f'👥 {escape(str(a.get("team_name") or ""))}')
     if parts:

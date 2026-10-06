@@ -45,6 +45,7 @@ from agent_bot import AgentBot
 import config
 import db
 import dependencies as deps
+import version
 import ratelimit
 import scheduler as scheduling
 import security
@@ -558,7 +559,11 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 #:   * the channel, asked after `FREE_ACTIONS` real actions instead;
 #:   * the phone number, not asked anywhere;
 #:   * gender, asked the first time prayer is opened.
-ONBOARDING_STEPS = ["language", "name", "modules", "presets", "done"]
+ONBOARDING_STEPS = ["language", "name", "modules", "wake", "presets", "done"]
+
+#: "When do you usually get up?" — the wake goal and the morning report follow
+#: the answer instead of 05:00 for everyone (audit #38).
+SETUP_WAKE_TIMES = ["05:00", "06:00", "07:00", "08:00", "09:00"]
 
 #: The choices on the modules step, in the order they are shown. Three are the
 #: rituals `services.MODULES` drives; "team" is a promise to offer a team at
@@ -579,12 +584,18 @@ def modules_keyboard(lang: str, chosen: set[str], *, prefix: str = "setup:mod",
     return InlineKeyboardMarkup(rows)
 
 
-def setup_presets_keyboard(lang: str, chosen: set[str]) -> InlineKeyboardMarkup:
-    """The seven ordinary ready-made habits, all ticked to start with.
+#: A first day with sport, deep work, reading and a language all at once is
+#: a plan to fail. Setup starts with one habit ticked and allows three; the
+#: rest are one tap away later (audit #5).
+SETUP_PRESET_DEFAULT = ["plan"]
+SETUP_PRESET_LIMIT = 3
 
-    The three rituals were the step before; together they make the ten. An
-    account starts with the list a person would most likely build anyway and
-    takes away what does not fit, rather than facing an empty screen.
+
+def setup_presets_keyboard(lang: str, chosen: set[str]) -> InlineKeyboardMarkup:
+    """The seven ordinary ready-made habits; one ticked, up to three allowed.
+
+    The three rituals were the step before. Every commitment here is a
+    conscious tick rather than something to untick.
     """
     rows = [[InlineKeyboardButton(
         f"{'✅' if key in chosen else '⬜'} {svc.preset_name(key, lang)}",
@@ -597,7 +608,7 @@ def setup_presets_keyboard(lang: str, chosen: set[str]) -> InlineKeyboardMarkup:
 def _setup_presets(ctx: ContextTypes.DEFAULT_TYPE) -> set[str]:
     data = setup_data(ctx)
     if "presets" not in data:
-        data["presets"] = list(svc.ORDINARY_PRESET_KEYS)
+        data["presets"] = list(SETUP_PRESET_DEFAULT)
     return set(data["presets"])
 
 #: Steps from older builds, and where somebody parked on one continues. The
@@ -662,6 +673,14 @@ async def resume_onboarding(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         chosen = set(setup_data(ctx).setdefault("modules", []))
         await message.reply_text(t(lang, "ask_modules"), parse_mode=ParseMode.HTML,
                                  reply_markup=modules_keyboard(lang, chosen))
+
+    elif step == "wake":
+        rows = [[InlineKeyboardButton(v, callback_data=f"setup:wake:{v.replace(':', '')}")
+                 for v in SETUP_WAKE_TIMES[:3]],
+                [InlineKeyboardButton(v, callback_data=f"setup:wake:{v.replace(':', '')}")
+                 for v in SETUP_WAKE_TIMES[3:]]]
+        await message.reply_text(t(lang, "ask_wake"), parse_mode=ParseMode.HTML,
+                                 reply_markup=InlineKeyboardMarkup(rows))
 
     elif step == "presets":
         await message.reply_text(t(lang, "setup_presets"), parse_mode=ParseMode.HTML,
@@ -749,9 +768,21 @@ READ_CALLBACKS = {("habit", "back"), ("habit", "noop"),
                   ("money", "show"), ("money", "limits")}
 
 
+#: Recording work already done stays open past the free run, in the bot as
+#: in the Mini App (audit #19): ticking a habit or task, a shared tick, and
+#: driving a timer. Creating and editing still ask for the channel.
+RECORD_CALLBACKS = {("habit", "toggle"), ("task", "done"), ("thabit", "toggle"),
+                    ("ttask", "done"),
+                    ("snz", "t"), ("snz", "h"), ("snz", "T"), ("snz", "H"),
+                    ("ttask", "toggle"), ("tmr", "open"), ("tmr", "start"),
+                    ("tmr", "pause"), ("tmr", "resume"), ("tmr", "stop")}
+
+
 def is_read_callback(action: str, parts: list[str]) -> bool:
+    """Callbacks that do not need the channel: reads, and recording work done."""
     sub = parts[1] if len(parts) > 1 else ""
-    return action == "home" or (action, sub) in READ_CALLBACKS
+    return (action == "home" or (action, sub) in READ_CALLBACKS
+            or (action, sub) in RECORD_CALLBACKS)
 
 
 async def on_contact(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1029,7 +1060,8 @@ def render_home(data: dict, lang: str) -> str:
     # task already named under "Hozir" is not printed a second time, exactly
     # as the Mini App's Home leaves it out of its list.
     now = data.get("now") or {}
-    shown = now.get("id") if now.get("kind") == "task" else None
+    shown = (now.get("id") if now.get("kind") == "task" and now.get("source") != "team"
+             else None)
     pinned = [x for x in (data.get("top3") or []) if x.get("status") != "done"]
     rows = [x for x in pinned + [task for group in data["tasks_today"]
                                  for task in group["tasks"]]
@@ -4115,7 +4147,9 @@ async def offer_capture(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
                                       callback_data=f"cap:{capture_id}:x")]]))
         return
     with SessionLocal() as s:
-        parsed = svc.parse_quick_capture(text[:300], svc.today_local(svc.user_tz(user)))
+        tz = svc.user_tz(user)
+        parsed = svc.parse_quick_capture(text[:300], svc.today_local(tz),
+                                         svc.now_local(tz).time())
         teams = svc.teams_for(s, user.telegram_id)
     capture_id = uuid.uuid4().hex[:6]
     ctx.user_data["capture"] = {
@@ -4131,6 +4165,10 @@ async def offer_capture(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     body = f"📥 <b>{esc(parsed['title'])}</b>"
     if when:
         body += "\n" + " · ".join(when)
+    if parsed.get("past_time"):
+        # The time has passed today: say the guess out loud (audit #49).
+        body += "\n" + t(lang, "capture_past_time",
+                         time=parsed["due_time"].strftime("%H:%M"))
     body += f"\n\n{t(lang, 'capture_ask')}"
     rows = [[InlineKeyboardButton(t(lang, "capture_save"),
                                   callback_data=f"cap:{capture_id}:p")]]
@@ -4335,11 +4373,32 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             await query.edit_message_text(
                 t(lang, "modules_set", list=", ".join(labels) if labels
                   else t(lang, "modules_none")), parse_mode=ParseMode.HTML)
+            return await advance_setup(update, ctx, "wake")
+
+        if parts[1] == "wake" and len(parts) > 2:
+            raw = parts[2]
+            value = f"{raw[:2]}:{raw[2:]}" if len(raw) == 4 else ""
+            if value not in SETUP_WAKE_TIMES:
+                return await resume_onboarding(update, ctx, "wake")
+            chosen = dtime(int(value[:2]), int(value[3:]))
+            with SessionLocal() as s:
+                user = s.get(User, uid)
+                ws = svc.workspace_id_for(s, uid)
+                # The morning report comes when the person gets up.
+                user.morning_time = chosen
+                s.commit()
+                if svc.wake_habit(s, ws) is not None:
+                    svc.set_wake_time(s, ws, chosen)
+            await query.edit_message_text(t(lang, "wake_set", time=value),
+                                          parse_mode=ParseMode.HTML)
             return await advance_setup(update, ctx, "presets")
 
         if parts[1] == "pre" and len(parts) > 2:
             chosen = _setup_presets(ctx)
             if parts[2] in svc.ORDINARY_PRESET_KEYS:
+                if parts[2] not in chosen and len(chosen) >= SETUP_PRESET_LIMIT:
+                    await _notice(update, t(lang, "setup_presets_limit"))
+                    return
                 chosen ^= {parts[2]}
             setup_data(ctx)["presets"] = sorted(chosen)
             try:
@@ -4664,6 +4723,21 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     elif action == "tmr":
         await route_timer(update, ctx, parts, user, ws, lang)
 
+    elif action == "snz" and len(parts) == 4:
+        kind = KIND_OF_CODE.get(parts[1])
+        try:
+            with SessionLocal() as s:
+                svc.snooze_reminder(s, ws, kind, int(parts[2]), int(parts[3]),
+                                    user_id=user.telegram_id)
+        except (ValueError, svc.NotFound):
+            await _notice(update, t(lang, "not_found"))
+            return
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except BadRequest:
+            pass
+        await _notice(update, t(lang, "snoozed", n=int(parts[3])))
+
     elif action in ("cd", "cds", "cdd", "cdl", "cdq"):
         await route_countdown(update, ctx, action, parts, user, ws, lang)
 
@@ -4687,11 +4761,17 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
         await show_habits(update, ctx, edit=True)
 
     elif action == "ttask":
-        if len(parts) > 2 and parts[1] == "toggle":
+        if len(parts) > 2 and parts[1] in ("toggle", "done"):
             try:
                 with SessionLocal() as s:
-                    svc.toggle_team_task(s, user.telegram_id, int(parts[2]),
-                                         tz=svc.user_tz(user))
+                    # "done" (the timer message's button) only ever ticks: a
+                    # second tap after finishing in the app must not untick.
+                    item = s.get(db.TeamTask, int(parts[2]))
+                    already = parts[1] == "done" and item is not None and svc.own_tick(
+                        s, user.telegram_id, "ttask", item, svc.today_local(svc.user_tz(user)))
+                    if not already:
+                        svc.toggle_team_task(s, user.telegram_id, int(parts[2]),
+                                             tz=svc.user_tz(user))
             except PermissionError:
                 await _notice(update, t(lang, "not_found"))
                 return
@@ -5687,8 +5767,23 @@ async def send_reminders(bot) -> None:
         log.exception("reminder job failed before any recipient")
 
 
+def reminder_keyboard(lang: str, kind: str, item_id: int) -> InlineKeyboardMarkup:
+    """Every reminder can be put off — 15 min, 1 h, 3 h — without touching the
+    deadline (audit #36); the app button stays underneath."""
+    code = CODE_OF_KIND[kind]
+    rows = [[InlineKeyboardButton(t(lang, f"snooze_{m}"), callback_data=f"snz:{code}:{item_id}:{m}")
+             for m in svc.SNOOZE_MINUTES]]
+    app_row = webapp_button(lang)
+    if app_row is not None:
+        rows += list(app_row.inline_keyboard)
+    return InlineKeyboardMarkup(rows)
+
+
 async def _send_user_reminders(bot, telegram_id: int, ws: int, lang: str) -> int:
-    """Everything due for one recipient. Returns how many messages went out."""
+    """Everything due for one recipient. Returns how many messages went out.
+
+    In the person's quiet hours they still arrive, without sound.
+    """
     with SessionLocal() as s:
         user = s.get(User, telegram_id)
         if user is None:
@@ -5696,10 +5791,26 @@ async def _send_user_reminders(bot, telegram_id: int, ws: int, lang: str) -> int
         # Read the zone while the row is still attached: everything below runs
         # after this session has closed.
         user_zone = svc.user_tz(user)
+        quiet = svc.in_quiet_hours(user)
         tasks = svc.due_task_reminders(s, ws, user)
         habits = svc.due_habit_reminders(s, ws, user)
+        snoozed = svc.due_snoozes(s, ws)
 
     sent = 0
+    for item in snoozed:
+        key = "remind_habit" if item["kind"] in HABIT_KINDS else "remind_task"
+        text = t(lang, key, **({"name": esc(item["title"])} if key == "remind_habit"
+                               else {"title": esc(item["title"])}))
+        try:
+            await bot.send_message(telegram_id, text, parse_mode=ParseMode.HTML,
+                                   disable_notification=quiet,
+                                   reply_markup=reminder_keyboard(lang, item["kind"], item["item_id"]))
+            with SessionLocal() as s:
+                svc.mark_snooze_sent(s, item["id"])
+            sent += 1
+        except TelegramError as e:
+            log.warning("snoozed reminder to %s failed: %s", telegram_id, e)
+
     for task in tasks:
         text = (t(lang, "remind_task_at", title=esc(task["title"]),
                   time=task["due_time"]) if task["due_time"]
@@ -5707,7 +5818,8 @@ async def _send_user_reminders(bot, telegram_id: int, ws: int, lang: str) -> int
         try:
             await bot.send_message(telegram_id, text,
                                    parse_mode=ParseMode.HTML,
-                                   reply_markup=webapp_button(lang))
+                                   disable_notification=quiet,
+                                   reply_markup=reminder_keyboard(lang, "task", task["id"]))
             # Marked only after Telegram accepted it, so a failure is
             # retried on the next pass instead of being lost.
             with SessionLocal() as s:
@@ -5732,7 +5844,8 @@ async def _send_user_reminders(bot, telegram_id: int, ws: int, lang: str) -> int
                     else t(lang, "remind_task", title=esc(item["title"])))
             await bot.send_message(
                 telegram_id, f"{body}\n<i>👥 {esc(item['team_name'])}</i>",
-                parse_mode=ParseMode.HTML, reply_markup=webapp_button(lang))
+                parse_mode=ParseMode.HTML, disable_notification=quiet,
+                reply_markup=reminder_keyboard(lang, "ttask", item["id"]))
             with SessionLocal() as s:
                 svc.mark_team_task_reminded(s, telegram_id, item["id"])
             sent += 1
@@ -5745,7 +5858,8 @@ async def _send_user_reminders(bot, telegram_id: int, ws: int, lang: str) -> int
                 telegram_id,
                 t(lang, "remind_habit", name=esc(item["name"]))
                 + f"\n<i>👥 {esc(item['team_name'])}</i>",
-                parse_mode=ParseMode.HTML)
+                parse_mode=ParseMode.HTML, disable_notification=quiet,
+                reply_markup=reminder_keyboard(lang, "thabit", item["id"]))
             with SessionLocal() as s:
                 svc.mark_team_habit_reminded(s, telegram_id, item["id"],
                                              tz=user_zone)
@@ -5757,7 +5871,8 @@ async def _send_user_reminders(bot, telegram_id: int, ws: int, lang: str) -> int
         try:
             await bot.send_message(
                 telegram_id, t(lang, "remind_habit", name=esc(habit["name"])),
-                parse_mode=ParseMode.HTML)
+                parse_mode=ParseMode.HTML, disable_notification=quiet,
+                reply_markup=reminder_keyboard(lang, "habit", habit["id"]))
             # Marked only once Telegram accepted it, exactly as task reminders
             # are, so a failure is retried rather than silently swallowed.
             with SessionLocal() as s:
@@ -5789,7 +5904,13 @@ async def tick_timers(bot) -> None:
             with SessionLocal() as s:
                 svc.settle_timers(s)
                 finished = [r.id for r in svc.unannounced_timers(s)]
+                breaks = [r.id for r in svc.unannounced_breaks(s)]
                 live = [r.id for r in svc.live_timer_messages(s)]
+            for run_id in breaks:
+                try:
+                    await _announce_break(bot, run_id)
+                except Exception:
+                    log.exception("announcing break %s failed", run_id)
             for run_id in finished:
                 try:
                     await _announce_timer(bot, run_id)
@@ -5802,6 +5923,32 @@ async def tick_timers(bot) -> None:
                     log.exception("refreshing timer %s failed", run_id)
     except Exception:
         log.exception("timer job failed")
+
+
+async def _announce_break(bot, run_id: int) -> None:
+    """A work block is over: say so, and offer to carry on after the break."""
+    from db import TimerRun
+
+    with SessionLocal() as s:
+        if not svc.claim_break_notice(s, run_id):
+            return
+        run = s.get(TimerRun, run_id)
+        user = _timer_owner(s, run) if run else None
+        if run is None or user is None:
+            return
+        lang = user.language or "uz"
+        text = t(lang, "timer_break", title=esc(run.title), work=run.cycle_work,
+                 rest=run.cycle_break,
+                 until=svc.timer_run_dict(run, tz=svc.user_tz(user))["break_until"] or "")
+        telegram_id, quiet = user.telegram_id, svc.in_quiet_hours(user)
+    try:
+        await bot.send_message(telegram_id, text, parse_mode=ParseMode.HTML,
+                               disable_notification=quiet,
+                               reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
+                                   t(lang, "btn_timer_resume"),
+                                   callback_data=f"tmr:resume:{run_id}")]]))
+    except TelegramError as e:
+        log.info("break notice %s not delivered: %s", run_id, e)
 
 
 def _timer_owner(s, run) -> User | None:
@@ -5825,11 +5972,17 @@ async def _announce_timer(bot, run_id: int) -> bool:
         lang = user.language or "uz"
         chat_id, message_id = run.chat_id, run.message_id
         kind, title, minutes = run.kind, run.title, run.duration_sec // 60
+        item_id = run.item_id
         telegram_id = user.telegram_id
 
-    text = t(lang, "timer_finished_habit" if kind == "habit"
-             else "timer_finished_task",
+    is_habit = kind in HABIT_KINDS
+    text = t(lang, "timer_finished_habit" if is_habit else "timer_finished_task",
              title=esc(title), dur=fmt_minutes(minutes, lang))
+    # Time ran out on a task: whether it is finished is the person's answer.
+    # Both callbacks only complete, never reopen.
+    done_cb = f"task:done:{item_id}" if kind == "task" else f"ttask:done:{item_id}"
+    markup = None if is_habit else InlineKeyboardMarkup([[InlineKeyboardButton(
+        t(lang, "btn_task_finished"), callback_data=done_cb)]])
     # The message that was counting down stops, and says why.
     if chat_id and message_id:
         try:
@@ -5839,7 +5992,8 @@ async def _announce_timer(bot, run_id: int) -> bool:
             pass
     try:
         # A new message as well, because an edit does not make the phone ring.
-        await bot.send_message(telegram_id, text, parse_mode=ParseMode.HTML)
+        await bot.send_message(telegram_id, text, parse_mode=ParseMode.HTML,
+                               reply_markup=markup)
         return True
     except (Forbidden, BadRequest) as e:
         log.info("timer %s announcement refused: %s", run_id, e)
@@ -6769,7 +6923,7 @@ MUTATING_METHODS = {"POST", "PATCH", "PUT", "DELETE"}
 UNCOUNTED_PATHS = {
     "/api/subscription", "/api/settings", "/api/prefs", "/api/feedback",
     "/api/export/send", "/api/account/delete", "/api/stats/export",
-    "/api/money/preview",
+    "/api/money/preview", "/api/habits/parse", "/api/quick/parse",
 }
 
 
@@ -6821,6 +6975,10 @@ class HabitIn(BaseModel):
     timer_minutes: int | None = Field(default=None, ge=0, le=24 * 60)
     #: "today" (default) or "tomorrow" — whether today already owes it.
     start: str | None = Field(default=None, max_length=10)
+    #: A measured habit: goal, optional minimal version, unit ("bet").
+    target_qty: int | None = Field(default=None, ge=0, le=100_000)
+    min_qty: int | None = Field(default=None, ge=0, le=100_000)
+    unit: str | None = Field(default=None, max_length=16)
 
 
 class PrayerIn(BaseModel):
@@ -7131,11 +7289,18 @@ def _agent_consent(uid: int) -> bool:
     return agent_core.preferences(ws)["consent"]
 
 
+@app.get("/api/version")
+def api_version():
+    """Which release and which commit is answering — no account needed."""
+    return {"version": version.VERSION, "build": version.BUILD, "name": version.RELEASE_NAME}
+
+
 @app.get("/api/me")
 def api_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, _ = auth(init, require_onboarded=False)
     trial = deps.trial_state(user)
     return {"telegram_id": user.telegram_id, "member_no": user.member_no,
+            "version": version.VERSION, "build": version.BUILD,
             "first_name": user.first_name, "last_name": user.last_name,
             "username": user.username,
             "language": user.language, "gender": user.gender,
@@ -7238,6 +7403,11 @@ class PrefsIn(BaseModel):
     evening_time: str | None = Field(default=None, max_length=5)
     task_reminders: bool | None = None
     habit_reminders: bool | None = None
+    #: Quiet hours, HH:MM; "" switches them off.
+    quiet_from: str | None = Field(default=None, max_length=5)
+    quiet_to: str | None = Field(default=None, max_length=5)
+    #: Focused minutes on an ordinary day; 0 clears it.
+    day_capacity: int | None = Field(default=None, ge=0, le=18 * 60)
 
 
 def _time(value: str | None) -> dtime | None:
@@ -7266,7 +7436,7 @@ def api_prefs_save(body: PrefsIn,
     """
     user, _ = auth(init)
     fields = body.model_dump(exclude_unset=True)
-    for key in ("morning_time", "evening_time"):
+    for key in ("morning_time", "evening_time", "quiet_from", "quiet_to"):
         if key in fields:
             fields[key] = _time(fields[key])
     with SessionLocal() as s:
@@ -8287,12 +8457,34 @@ def api_habits(day: str | None = None, init=Header(default=None, alias="X-Telegr
 def api_habit_add(body: HabitIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, ws = auth(init)
     with SessionLocal() as s:
-        habit = svc.add_habit(s, ws, body.name, body.category,
-                              schedule=body.schedule,
-                              remind_at=_time(body.remind_at),
-                              timer_minutes=body.timer_minutes,
-                              start=body.start, tz=svc.user_tz(user))
+        try:
+            habit = svc.add_habit(s, ws, body.name, body.category,
+                                  schedule=body.schedule,
+                                  remind_at=_time(body.remind_at),
+                                  timer_minutes=body.timer_minutes,
+                                  start=body.start, tz=svc.user_tz(user),
+                                  target_qty=body.target_qty, min_qty=body.min_qty,
+                                  unit=body.unit)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
     return {"ok": True, "id": habit.id}
+
+
+class HabitQtyIn(BaseModel):
+    qty: int = Field(ge=0, le=1_000_000)
+
+
+@app.post("/api/habits/{habit_id}/qty")
+def api_habit_qty(habit_id: int, body: HabitQtyIn,
+                  init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """How much of a measured habit was done today: 12 of 20 pages."""
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        try:
+            return {"ok": True, **svc.log_habit_qty(s, ws, habit_id, body.qty,
+                                                    tz=svc.user_tz(user))}
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
 
 
 class HabitPatch(BaseModel):
@@ -8303,6 +8495,10 @@ class HabitPatch(BaseModel):
     target_time: str | None = Field(default=None, max_length=5)
     #: Timer length in minutes: 0 switches it off, null reads it from the name.
     timer_minutes: int | None = Field(default=None, ge=0, le=24 * 60)
+    #: 0 makes it an ordinary yes/no habit again.
+    target_qty: int | None = Field(default=None, ge=0, le=100_000)
+    min_qty: int | None = Field(default=None, ge=0, le=100_000)
+    unit: str | None = Field(default=None, max_length=16)
 
 
 class HabitPauseIn(BaseModel):
@@ -8479,6 +8675,11 @@ def api_habit_preset_set(body: PresetIn,
 
 # --- timers ------------------------------------------------------------------
 
+class TimerLogIn(BaseModel):
+    """Work done without the clock, in minutes."""
+    minutes: int = Field(ge=1, le=24 * 60)
+
+
 class TimerSetIn(BaseModel):
     #: Minutes; 0 switches the timer off, null goes back to reading the name.
     minutes: int | None = Field(default=None, ge=0, le=24 * 60)
@@ -8538,14 +8739,33 @@ def api_timer_set(kind: str, item_id: int, body: TimerSetIn,
             raise _timer_refused(e)
 
 
+@app.post("/api/timers/{kind}/{item_id}/log")
+def api_timer_log(kind: str, item_id: int, body: TimerLogIn,
+                  init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """"I already did it: 60 min" — recorded apart from measured time."""
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        try:
+            return svc.log_manual_time(s, ws, _timer_kind(kind), item_id, body.minutes,
+                                       tz=svc.user_tz(user))
+        except ValueError as e:
+            raise _timer_refused(e)
+
+
+class TimerStartIn(BaseModel):
+    #: Optional work/break rhythm: 25/5, 50/10 or 90/15.
+    cycle: str | None = Field(default=None, max_length=6)
+
+
 @app.post("/api/timers/{kind}/{item_id}/start")
-def api_timer_start(kind: str, item_id: int,
+def api_timer_start(kind: str, item_id: int, body: TimerStartIn | None = None,
                     init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, ws = auth(init)
     tz = svc.user_tz(user)
     with SessionLocal() as s:
         try:
-            svc.start_timer(s, ws, _timer_kind(kind), item_id, tz=tz)
+            svc.start_timer(s, ws, _timer_kind(kind), item_id, tz=tz,
+                            cycle=(body.cycle if body else None) or None)
         except ValueError as e:
             raise _timer_refused(e)
         return svc.timer_for(s, ws, kind, item_id, tz=tz)
@@ -8557,7 +8777,7 @@ def api_timer_run(run_id: int, verb: str,
     """Pause, resume or stop a run. Answers with the item's timer screen."""
     user, ws = auth(init)
     action = {"pause": svc.pause_timer, "resume": svc.resume_timer,
-              "stop": svc.stop_timer}.get(verb)
+              "stop": svc.stop_timer, "finish": svc.finish_timer}.get(verb)
     if action is None:
         raise HTTPException(status_code=404, detail="not_found")
     with SessionLocal() as s:
@@ -8766,8 +8986,11 @@ def api_task_add(body: TaskIn, init=Header(default=None, alias="X-Telegram-Init-
 @app.patch("/api/tasks/{task_id}")
 def api_task_patch(task_id: int, body: TaskPatch,
                    init=Header(default=None, alias="X-Telegram-Init-Data")):
-    _, ws = auth(init)
+    user, ws = auth(init)
     fields = body.model_dump(exclude_unset=True)
+    # Past the free run, ticking a task stays open; editing it does not.
+    if deps.trial_state(user).gated and set(fields) - {"status"}:
+        raise HTTPException(status_code=403, detail="subscription_required")
     if "deadline" in fields:
         fields["deadline"] = _date(fields["deadline"])
     if "due_time" in fields:
@@ -8779,6 +9002,33 @@ def api_task_patch(task_id: int, body: TaskPatch,
             if str(e) == "timer_required":
                 raise HTTPException(status_code=409, detail="timer_required")
             raise HTTPException(status_code=422, detail=str(e))
+    return {"ok": True}
+
+
+class BlockIn(BaseModel):
+    #: reply — waiting for an answer; depends — waiting on other work.
+    reason: str = Field(pattern="^(reply|depends)$")
+    #: When to look again (YYYY-MM-DD). Empty: offered again from tomorrow.
+    until: str | None = Field(default=None, max_length=10)
+
+
+@app.post("/api/tasks/{task_id}/block")
+def api_task_block(task_id: int, body: BlockIn,
+                   init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Park a task that waits on someone else; it comes back on `until`."""
+    user, ws = auth(init)
+    until = _date(body.until) or svc.today_local(svc.user_tz(user)) + timedelta(days=1)
+    with SessionLocal() as s:
+        task = svc.set_task_blocked(s, ws, task_id, body.reason, until)
+        return {"ok": True, "blocked": task.blocked_reason,
+                "until": task.blocked_until.isoformat() if task.blocked_until else None}
+
+
+@app.delete("/api/tasks/{task_id}/block")
+def api_task_unblock(task_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        svc.set_task_blocked(s, ws, task_id, None)
     return {"ok": True}
 
 
@@ -8966,6 +9216,7 @@ def api_journal_save(body: JournalIn, init=Header(default=None, alias="X-Telegra
                                day=_date(body.day), mood=body.mood, tz=tz)
         entry = svc.get_journal(s, ws, row.day, tz=tz)
     return {"ok": True, "day": row.day.isoformat(),
+            "updated_at": entry["updated_at"] if entry else None,
             "answered": entry["answered"] if entry else 0,
             "total": len(svc.JOURNAL_KEYS),
             "complete": bool(entry and entry["complete"])}
@@ -8982,6 +9233,47 @@ def api_journal_delete(day: str, init=Header(default=None, alias="X-Telegram-Ini
 class QuickAddIn(BaseModel):
     """The whole of quick capture: a line of text, nothing else."""
     title: str = Field(min_length=1, max_length=300)
+    #: The person's answer when a bare time has already passed today
+    #: ("10:00" at 20:00): the day they meant. Without it the app is asked.
+    deadline: str | None = Field(default=None, max_length=10)
+    #: Read only, write nothing: the shared-task path reuses this parser so
+    #: "ertaga 15:00 hisobot" means the same in both places (audit #23).
+    preview: bool = False
+
+
+class HabitParseIn(BaseModel):
+    text: str = Field(min_length=1, max_length=200)
+
+
+@app.post("/api/habits/parse")
+def api_habit_parse(body: HabitParseIn,
+                    init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Read the days out of a quick habit line, without saving anything."""
+    auth(init)
+    return svc.parse_habit_text(body.text)
+
+
+class QuickParseIn(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+
+
+@app.post("/api/quick/parse")
+def api_quick_parse(body: QuickParseIn,
+                    init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Read the date and time out of a line without saving anything — the
+    shared-task path uses it so both destinations parse alike (audit #23).
+    Spends no free action and is open to every account: it writes nothing."""
+    user, _ = auth(init)
+    tz = svc.user_tz(user)
+    parsed = svc.parse_quick_capture(body.title.strip(), svc.today_local(tz), svc.now_local(tz).time())
+    out = {"title": parsed["title"],
+           "deadline": parsed["deadline"].isoformat() if parsed["deadline"] else None,
+           "due_time": parsed["due_time"].strftime("%H:%M") if parsed["due_time"] else None}
+    if parsed["past_time"]:
+        tomorrow = svc.today_local(tz) + timedelta(days=1)
+        return {"ok": False, "ask": "past_time", **out,
+                "options": [out["deadline"], tomorrow.isoformat()]}
+    return {"ok": True, **out}
 
 
 @app.post("/api/quick")
@@ -9000,21 +9292,35 @@ def api_quick_add(body: QuickAddIn,
     if svc.looks_like_money(text) and svc.parse_money_text(text) is not None:
         return {"ok": True, "money": True}
     # "Ertaga soat 10 da hisobot" → "hisobot", tomorrow, 10:00 — like the bot.
-    parsed = svc.parse_quick_capture(text, svc.today_local(svc.user_tz(user)))
+    tz = svc.user_tz(user)
+    parsed = svc.parse_quick_capture(text, svc.today_local(tz), svc.now_local(tz).time())
+    if body.deadline:
+        parsed["deadline"], parsed["past_time"] = _date(body.deadline), False
+    out = {"title": parsed["title"],
+           "deadline": parsed["deadline"].isoformat() if parsed["deadline"] else None,
+           "due_time": parsed["due_time"].strftime("%H:%M") if parsed["due_time"] else None}
+    if parsed["past_time"]:
+        # Not saved: the app asks "today or tomorrow?" and sends the answer.
+        tomorrow = svc.today_local(tz) + timedelta(days=1)
+        return {"ok": False, "ask": "past_time", **out,
+                "options": [out["deadline"], tomorrow.isoformat()]}
+    if body.preview:
+        return {"ok": True, "preview": True, **out}
     with SessionLocal() as s:
         task = svc.add_task(s, ws, parsed["title"], deadline=parsed["deadline"],
                             due_time=parsed["due_time"])
-    return {"ok": True, "id": task.id, "title": parsed["title"],
-            "deadline": parsed["deadline"].isoformat() if parsed["deadline"] else None,
-            "due_time": parsed["due_time"].strftime("%H:%M") if parsed["due_time"] else None}
+    return {"ok": True, "id": task.id, **out}
 
 
 class FreshStartIn(BaseModel):
     mode: str = Field(default="today", max_length=8)
+    #: Tasks answered "no longer needed": archived, not rescheduled.
+    drop: list[int] = Field(default_factory=list, max_length=500)
 
 
 @app.get("/api/fresh-start")
-def api_fresh_start_preview(init=Header(default=None,
+def api_fresh_start_preview(mode: str | None = None, drop: str = "",
+                            init=Header(default=None,
                                         alias="X-Telegram-Init-Data")):
     """What a reset would touch, before anything is touched.
 
@@ -9025,8 +9331,13 @@ def api_fresh_start_preview(init=Header(default=None,
     with SessionLocal() as s:
         row = s.get(User, user.telegram_id)
         state = svc.break_state(s, ws, row)
+        # With a mode: exactly where each task would go, before anything moves.
+        dropped = {int(x) for x in drop.split(",")[:500] if x.strip().isdigit()}
+        plan = (svc.fresh_start_plan(s, ws, mode=mode, tz=svc.user_tz(user), drop=dropped)
+                if mode in svc.FRESH_START_MODES else None)
     return {"overdue": state["overdue"], "days_away": state["days_away"],
-            "modes": list(svc.FRESH_START_MODES)}
+            "modes": list(svc.FRESH_START_MODES), "plan": plan,
+            "today_cap": svc.FRESH_TODAY}
 
 
 @app.post("/api/fresh-start")
@@ -9040,14 +9351,32 @@ def api_fresh_start(body: FreshStartIn,
     user, ws = auth(init)
     mode = body.mode if body.mode in svc.FRESH_START_MODES else "today"
     with SessionLocal() as s:
-        moved = svc.fresh_start(s, ws, mode=mode, tz=svc.user_tz(user))
-    return {"ok": True, "moved": moved, "mode": mode}
+        logged: list[int] = []
+        moved = svc.fresh_start(s, ws, mode=mode, tz=svc.user_tz(user), drop=set(body.drop),
+                                log=logged)
+    return {"ok": True, "moved": moved, "mode": mode, "undo": bool(moved),
+            "reset_id": logged[0] if logged else None}
+
+
+class FreshUndoIn(BaseModel):
+    reset_id: int | None = Field(default=None, ge=1)
+
+
+@app.post("/api/fresh-start/undo")
+def api_fresh_start_undo(body: FreshUndoIn | None = None,
+                         init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Put one reset back; tasks edited since are listed, not overwritten."""
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        return {"ok": True, **svc.undo_fresh_start(s, ws, body.reset_id if body else None)}
 
 
 class ReviewIn(BaseModel):
     went_well: str = Field(default="", max_length=2000)
     blocked: str = Field(default="", max_length=2000)
     next_focus: str = Field(default="", max_length=2000)
+    #: Also make `next_focus` next week's goal (never twice).
+    make_goal: bool = False
 
 
 @app.get("/api/review")
@@ -9060,11 +9389,19 @@ def api_review(init=Header(default=None, alias="X-Telegram-Init-Data")):
 @app.post("/api/review")
 def api_review_save(body: ReviewIn,
                     init=Header(default=None, alias="X-Telegram-Init-Data")):
-    _, ws = auth(init)
+    user, ws = auth(init)
+    tz = svc.user_tz(user)
+    goal_id = None
     with SessionLocal() as s:
         svc.save_weekly_review(s, ws, went_well=body.went_well,
-                               blocked=body.blocked, next_focus=body.next_focus)
-    return {"ok": True}
+                               blocked=body.blocked, next_focus=body.next_focus, tz=tz)
+        if body.make_goal:
+            try:
+                goal = svc.review_to_goal(s, ws, body.next_focus, tz=tz)
+            except ValueError as e:
+                raise HTTPException(status_code=422, detail=str(e))
+            goal_id = goal.id if goal else None
+    return {"ok": True, "goal_id": goal_id}
 
 
 @app.get("/api/stats")
@@ -9425,7 +9762,7 @@ class DebtIn(BaseModel):
 
 class DebtSettleIn(BaseModel):
     settled: bool = True
-    #: Part of it returned: that much comes off and the debt stays open.
+    #: Part of it returned: recorded as a payment; more than what is left is refused.
     paid: int | None = Field(default=None, gt=0, le=svc.MONEY_MAX_AMOUNT)
 
 
@@ -9460,9 +9797,24 @@ def api_debt_settle(debt_id: int, body: DebtSettleIn,
 
 @app.delete("/api/debts/{debt_id}")
 def api_debt_delete(debt_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Archives the debt; `/restore` undoes it, `/purge` removes it for good."""
     _, ws = auth(init)
     with SessionLocal() as s:
-        svc.delete_debt(s, ws, debt_id)
+        return {"ok": True, "debt": svc.delete_debt(s, ws, debt_id)}
+
+
+@app.post("/api/debts/{debt_id}/restore")
+def api_debt_restore(debt_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        return {"ok": True, "debt": svc.restore_debt(s, ws, debt_id)}
+
+
+@app.delete("/api/debts/{debt_id}/purge")
+def api_debt_purge(debt_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        svc.purge_debt(s, ws, debt_id)
     return {"ok": True}
 
 

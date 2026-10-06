@@ -348,9 +348,11 @@ T: dict[str, dict[str, str]] = {
         "timer_list_habits": "⏱ <b>Odat taymerlari</b>\n\nQaysi odatga taymer qo'yamiz yoki o'zgartiramiz?",
         "timer_list_tasks": "⏱ <b>Vazifa taymerlari</b>\n\nQaysi vazifaga taymer qo'yamiz yoki o'zgartiramiz?",
         "timer_finished_habit": "⏰ <b>Vaqt tugadi!</b>\n{title} — {dur}\n\n✅ Odat belgilandi. Barakalla!",
-        "timer_finished_task": "⏰ <b>Vaqt tugadi!</b>\n{title} — {dur}\n\n✅ Vazifa bajarildi. Barakalla!",
+        "timer_finished_task": "⏰ <b>Vaqt tugadi!</b>\n{title} — {dur} ishladingiz.\n\nVazifa tugadimi? Tugagan bo'lsa, belgilang — bo'lmasa, yana bir sessiya boshlang.",
+        "btn_task_finished": "✅ Ha, tugadi",
         "timer_required": "⏱ Bu taymer bilan bajariladi — avval taymerni ishga tushiring.",
         "timer_already_done": "Bu allaqachon bajarilgan.",
+        "timer_break": "☕ <b>{title}</b> — {work} daqiqa ishladingiz.\n{rest} daqiqa tanaffus ({until} gacha). Tanaffus ish vaqtiga qo‘shilmaydi — tayyor bo‘lsangiz davom ettiring.",
         "timer_is_paused": "Bu odat pauzada — avval davom ettiring.",
         "timer_none_active": "Hozir ishlayotgan taymer yo'q.",
         "habit_added_timer": "⏱ Nomida vaqt bor — <b>{dur}</b> taymer qo'yildi. Odat taymer tugagach belgilanadi.\nO'zgartirish yoki o'chirish: Odatlar → ⏱ Taymer.",
@@ -712,9 +714,11 @@ T: dict[str, dict[str, str]] = {
         "timer_list_habits": "⏱ <b>Habit timers</b>\n\nWhich habit gets a timer?",
         "timer_list_tasks": "⏱ <b>Task timers</b>\n\nWhich task gets a timer?",
         "timer_finished_habit": "⏰ <b>Time's up!</b>\n{title} — {dur}\n\n✅ Habit ticked. Well done!",
-        "timer_finished_task": "⏰ <b>Time's up!</b>\n{title} — {dur}\n\n✅ Task done. Well done!",
+        "timer_finished_task": "⏰ <b>Time's up!</b>\n{title} — you worked {dur}.\n\nIs the task finished? Tick it if so — if not, start another session.",
+        "btn_task_finished": "✅ Yes, finished",
         "timer_required": "⏱ This one is done by its timer — start the timer first.",
         "timer_already_done": "That's already done.",
+        "timer_break": "☕ <b>{title}</b> — {work} min of work done.\n{rest} min break (until {until}). The break is not counted as work — carry on when ready.",
         "timer_is_paused": "This habit is paused — resume it first.",
         "timer_none_active": "No timer is running right now.",
         "habit_added_timer": "⏱ The name has a length — a <b>{dur}</b> timer is on. The habit ticks when it ends.\nChange or turn off: Habits → ⏱ Timer.",
@@ -1077,9 +1081,11 @@ T: dict[str, dict[str, str]] = {
         "timer_list_habits": "⏱ <b>Таймеры привычек</b>\n\nДля какой привычки поставить таймер?",
         "timer_list_tasks": "⏱ <b>Таймеры задач</b>\n\nДля какой задачи поставить таймер?",
         "timer_finished_habit": "⏰ <b>Время вышло!</b>\n{title} — {dur}\n\n✅ Привычка отмечена. Молодец!",
-        "timer_finished_task": "⏰ <b>Время вышло!</b>\n{title} — {dur}\n\n✅ Задача выполнена. Молодец!",
+        "timer_finished_task": "⏰ <b>Время вышло!</b>\n{title} — вы работали {dur}.\n\nЗадача готова? Если да — отметьте, если нет — начните ещё одну сессию.",
+        "btn_task_finished": "✅ Да, готово",
         "timer_required": "⏱ Это выполняется по таймеру — сначала запустите таймер.",
         "timer_already_done": "Это уже выполнено.",
+        "timer_break": "☕ <b>{title}</b> — {work} мин работы.\nПерерыв {rest} мин (до {until}). Перерыв не считается работой — продолжайте, когда будете готовы.",
         "timer_is_paused": "Привычка на паузе — сначала возобновите её.",
         "timer_none_active": "Сейчас таймер не идёт.",
         "habit_added_timer": "⏱ В названии есть время — поставлен таймер на <b>{dur}</b>. Привычка отметится, когда он закончится.\nИзменить или выключить: Привычки → ⏱ Таймер.",
@@ -1165,6 +1171,10 @@ T["uz"].update({
         "10 000 qadam\n"
         "Suv — 2 litr</i>"),
     # --- setup: what to keep ---------------------------------------------
+    "ask_wake": "⏰ <b>Odatda soat nechada turasiz?</b>\nUyg‘onish maqsadi va ertalabki hisobot shu vaqtga moslanadi. Keyin Sozlamalarda o‘zgartirasiz.",
+    "wake_set": "⏰ Turish vaqti: <b>{time}</b>",
+    "snooze_15": "⏰ 15 daq", "snooze_60": "⏰ 1 soat", "snooze_180": "⏰ 3 soat",
+    "snoozed": "⏰ {n} daqiqadan keyin yana eslataman. Muddat o‘zgarmadi.",
     "ask_modules": ("<b>Nimalarni kuzatamiz?</b>\n"
                     "Faqat tanlaganingiz hisoblanadi. Keyin Sozlamalar → "
                     "🧩 Modullar'dan o'zgartirasiz."),
@@ -1217,6 +1227,7 @@ T["uz"].update({
     "team_not_assigned": "Bu vazifa sizga tayinlanmagan.",
     # --- quick capture -----------------------------------------------------
     "capture_ask": "Vazifa sifatida saqlaymi?",
+    "capture_past_time": "⚠️ Bugun {time} o'tib ketgan — bugunga yozildi. Ertaga uchun bo'lsa: «ertaga {time} …» deb yozing.",
     "capture_save": "👤 Shaxsiy vazifa",
     "capture_skip": "✖️ Kerak emas",
     "capture_saved": "📥 Saqlandi: <b>{title}</b> · {where}",
@@ -1305,6 +1316,10 @@ T["en"].update({
         "Read 30 minutes in the morning\n"
         "10,000 steps\n"
         "Water — 2 litres</i>"),
+    "ask_wake": "⏰ <b>When do you usually get up?</b>\nThe wake-up goal and the morning report follow it. You can change it in Settings.",
+    "wake_set": "⏰ Wake-up time: <b>{time}</b>",
+    "snooze_15": "⏰ 15 min", "snooze_60": "⏰ 1 h", "snooze_180": "⏰ 3 h",
+    "snoozed": "⏰ I will remind you again in {n} min. The deadline is unchanged.",
     "ask_modules": ("<b>What should we track?</b>\n"
                     "Only what you pick is counted. Change it later in Settings → "
                     "🧩 Modules."),
@@ -1352,6 +1367,7 @@ T["en"].update({
                        "it in your personal list; it is never counted twice."),
     "team_not_assigned": "This task isn't assigned to you.",
     "capture_ask": "Save it as a task?",
+    "capture_past_time": "⚠️ {time} has already passed today — saved for today. For tomorrow, write «tomorrow {time} …».",
     "capture_save": "👤 Personal task",
     "capture_skip": "✖️ No thanks",
     "capture_saved": "📥 Saved: <b>{title}</b> · {where}",
@@ -1439,6 +1455,10 @@ T["ru"].update({
         "30 минут чтения утром\n"
         "10 000 шагов\n"
         "Вода — 2 литра</i>"),
+    "ask_wake": "⏰ <b>Во сколько вы обычно встаёте?</b>\nЦель подъёма и утренний отчёт подстроятся. Изменить можно в Настройках.",
+    "wake_set": "⏰ Время подъёма: <b>{time}</b>",
+    "snooze_15": "⏰ 15 мин", "snooze_60": "⏰ 1 ч", "snooze_180": "⏰ 3 ч",
+    "snoozed": "⏰ Напомню снова через {n} мин. Срок не изменился.",
     "ask_modules": ("<b>Что будем отслеживать?</b>\n"
                     "Считается только выбранное. Изменить можно в Настройки → "
                     "🧩 Модули."),
@@ -1486,6 +1506,7 @@ T["ru"].update({
                        "отмечайте его в личном списке, дважды он не считается."),
     "team_not_assigned": "Эта задача назначена не вам.",
     "capture_ask": "Сохранить как задачу?",
+    "capture_past_time": "⚠️ {time} сегодня уже прошло — записано на сегодня. Если на завтра, напишите «завтра {time} …».",
     "capture_save": "👤 Личная задача",
     "capture_skip": "✖️ Не нужно",
     "capture_saved": "📥 Сохранено: <b>{title}</b> · {where}",
@@ -1565,9 +1586,10 @@ T["uz"].update({
     "presets_hint": ("Eng kerakli 10 ta odat. ✅ — ro'yxatingizda, ➕ — yo'q. "
                      "Bossangiz qo'shiladi yoki olib tashlanadi; olib tashlangani "
                      "tarixi bilan saqlanadi."),
-    "setup_presets": ("📋 <b>Tayyor odatlar</b>\n\nEng kerakli yettitasi belgilab "
-                      "qo'yilgan. Keraksizini olib tashlang — keyin Odatlar → "
-                      "📋 Tayyor odatlar'dan istalgan payt qaytarasiz."),
+    "setup_presets": ("📋 <b>Tayyor odatlar</b>\n\nBittadan boshlang — bittasi "
+                      "belgilangan. Xohlasangiz yana ikkitasini tanlang (ko'pi bilan 3). "
+                      "Qolganini keyin Odatlar → 📋 Tayyor odatlar'dan qo'shasiz."),
+    "setup_presets_limit": "Boshida ko'pi bilan 3 ta odat. Qolganini keyin qo'shing.",
     "presets_set": "✅ Odatlar tayyor.",
     "menu_money": "💰 Pul",
     "money_title": "Pul",
@@ -1603,9 +1625,10 @@ T["en"].update({
     "presets_title": "📋 Ready-made habits",
     "presets_hint": ("The ten most useful habits. ✅ — on your list, ➕ — not yet. "
                      "A tap adds or removes one; a removed one keeps its history."),
-    "setup_presets": ("📋 <b>Ready-made habits</b>\n\nThe seven most useful are "
-                      "ticked. Untick what you do not need — Habits → 📋 "
-                      "Ready-made habits brings any of them back later."),
+    "setup_presets": ("📋 <b>Ready-made habits</b>\n\nStart with one — one is "
+                      "ticked. Pick up to two more if you like (3 at most). Add the "
+                      "rest later from Habits → 📋 Ready-made habits."),
+    "setup_presets_limit": "At most 3 habits to start. Add the rest later.",
     "presets_set": "✅ Habits ready.",
     "menu_money": "💰 Money",
     "money_title": "Money",
@@ -1641,9 +1664,10 @@ T["ru"].update({
     "presets_title": "📋 Готовые привычки",
     "presets_hint": ("Десять самых полезных привычек. ✅ — в вашем списке, ➕ — нет. "
                      "Нажатие добавляет или убирает; убранная хранит историю."),
-    "setup_presets": ("📋 <b>Готовые привычки</b>\n\nСемь самых полезных уже "
-                      "отмечены. Снимите лишние — вернуть можно в любой момент: "
-                      "Привычки → 📋 Готовые привычки."),
+    "setup_presets": ("📋 <b>Готовые привычки</b>\n\nНачните с одной — она "
+                      "отмечена. Можно выбрать ещё две (не больше 3). Остальные "
+                      "добавите позже: Привычки → 📋 Готовые привычки."),
+    "setup_presets_limit": "Для начала не больше 3 привычек. Остальные — позже.",
     "presets_set": "✅ Привычки готовы.",
     "menu_money": "💰 Деньги",
     "money_title": "Деньги",

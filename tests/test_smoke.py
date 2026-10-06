@@ -30,11 +30,22 @@ sys.path.insert(0, str(ROOT))
 TOKEN = "123456:TEST-TOKEN"
 os.environ.update({
     "BOT_TOKEN": TOKEN,
-    "DATABASE_URL": f"sqlite:///{tempfile.mkdtemp()}/test.db",
+    # SQLite by default; CI also runs the whole suite on PostgreSQL by setting
+    # TEST_DATABASE_URL to an empty database (production runs on Postgres).
+    "DATABASE_URL": os.environ.get("TEST_DATABASE_URL")
+                    or f"sqlite:///{tempfile.mkdtemp()}/test.db",
     "ENVIRONMENT": "test",
     "REQUIRED_CHANNEL_ID": "",       # subscription gate off unless a test sets it
     "ADMIN_LOG_CHANNEL_ID": "",
 })
+
+#: Tests that hand-build a legacy schema in SQLite syntax (AUTOINCREMENT,
+#: implicit rowid ids) or rely on SQLite not enforcing foreign keys. They
+#: test the migration helpers, not dialect behaviour, and are skipped when the
+#: suite runs on PostgreSQL; everything else runs on both.
+SQLITE_ONLY = pytest.mark.skipif(
+    not os.environ["DATABASE_URL"].startswith("sqlite"),
+    reason="fixture builds a legacy schema with SQLite DDL")
 
 import app as application  # noqa: E402
 import config  # noqa: E402
@@ -1171,6 +1182,7 @@ def _tables() -> set[str]:
     return set(inspect(db.engine).get_table_names())
 
 
+@SQLITE_ONLY
 def test_the_migration_takes_goals_out_of_the_live_schema():
     _make_legacy_goals_table()
     result = migrations.m0002_retire_goals()
@@ -1179,6 +1191,7 @@ def test_the_migration_takes_goals_out_of_the_live_schema():
     _drop(migrations.GOALS_ARCHIVE_TABLE)
 
 
+@SQLITE_ONLY
 def test_the_migration_keeps_every_row(alice):
     """A removed screen must never mean deleted data."""
     from sqlalchemy import text
@@ -1191,6 +1204,7 @@ def test_the_migration_keeps_every_row(alice):
     _drop(migrations.GOALS_ARCHIVE_TABLE)
 
 
+@SQLITE_ONLY
 def test_the_migration_is_safe_to_run_twice():
     _make_legacy_goals_table()
     migrations.m0002_retire_goals()
@@ -1204,6 +1218,7 @@ def test_the_migration_does_nothing_on_a_fresh_database():
     assert migrations.m0002_retire_goals()["status"] == "nothing to do"
 
 
+@SQLITE_ONLY
 def test_the_archive_can_be_renamed_back():
     """The documented rollback has to actually work."""
     from sqlalchemy import text
@@ -2943,7 +2958,7 @@ def test_setup_is_four_taps_and_one_answer():
     # v9.1: after the three rituals, the seven ordinary ready-made habits —
     # all ticked, one tap each to drop — so an account starts with ten.
     assert application.ONBOARDING_STEPS == [
-        "language", "name", "modules", "presets", "done"]
+        "language", "name", "modules", "wake", "presets", "done"]
     source = (ROOT / "app.py").read_text()
     assert 'user.onboarding_step = "phone"' not in source
     assert 'user.onboarding_step = "subscribe"' not in source, \
@@ -3351,10 +3366,14 @@ def test_habit_reminders_are_off_by_default_and_fire_in_one_window(fresh):
         user = s.get(User, fresh.user["id"])
         ws = _ws(fresh.user["id"])
         assert len(svc.due_habit_reminders(s, ws, user, at)) == 1
-        # Exactly one job interval wide: there is nothing to mark as sent, so a
-        # wider window would repeat the nudge on every pass.
         outside = at + svc.HABIT_REMINDER_WINDOW
         assert svc.due_habit_reminders(s, ws, user, outside) == []
+        # Audit #35: a job seven minutes late still sends it — once.
+        late = at + timedelta(minutes=7)
+        due = svc.due_habit_reminders(s, ws, user, late)
+        assert len(due) == 1
+        svc.mark_habit_reminder_sent(s, ws, due[0]["id"], day=today)
+        assert svc.due_habit_reminders(s, ws, user, late + timedelta(minutes=5)) == []
     fresh.post("/api/prefs", json={"habit_reminders": False})
 
 
@@ -3451,14 +3470,15 @@ def test_unpicking_frees_a_slot(alice):
                       json={"picked": True}).status_code == 200
 
 
-def test_picking_a_task_for_today_also_dates_it_today(alice):
-    """Calling something one of today's three says it is due today."""
+def test_picking_a_task_for_today_does_not_date_it(alice):
+    """Audit #21: the pick is the day it is worked on; an undated task stays
+    undated, so not finishing it today does not make it "late" tomorrow."""
     _clear_top3(ALICE["id"])
     task_id = alice.post("/api/tasks", json={"title": "Undated"}).json()["id"]
     alice.post(f"/api/tasks/{task_id}/top3", json={"picked": True})
     picked = next(x for x in alice.get("/api/home").json()["top3"]
                   if x["id"] == task_id)
-    assert picked["deadline"] == svc.today_local().isoformat()
+    assert picked["deadline"] is None
 
 
 def test_a_picked_task_is_not_listed_twice_on_home(alice):
@@ -3635,8 +3655,8 @@ def test_the_report_job_interval_is_shared_with_the_scheduler():
     assert minute_of("reminders") == f"*/{svc.REMINDER_JOB_MINUTES}"
     for report_type in ("morning", "evening"):
         assert minute_of(report_type) == f"*/{application.REPORT_TICK_MINUTES}"
-    assert svc.HABIT_REMINDER_WINDOW == timedelta(
-        minutes=svc.REMINDER_JOB_MINUTES)
+    # Wider than a tick so a late job still delivers; marking keeps it single.
+    assert svc.HABIT_REMINDER_WINDOW > timedelta(minutes=svc.REMINDER_JOB_MINUTES)
 
 
 def test_no_scheduled_job_may_overlap_itself():
@@ -3940,7 +3960,7 @@ def test_the_reset_preview_writes_nothing(alice):
     before = alice.get("/api/tasks?days=365").json()["overdue"]
     body = alice.get("/api/fresh-start").json()
     assert body["overdue"] >= 3
-    assert set(body["modes"]) == {"today", "week", "undate", "archive"}
+    assert set(body["modes"]) == {"focus", "today", "week", "undate", "archive"}
     assert len(alice.get("/api/tasks?days=365").json()["overdue"]) == len(before)
 
 
@@ -5138,7 +5158,8 @@ def test_the_now_card_is_not_printed_twice(alice):
     """
     html = (ROOT / "webapp" / "index.html").read_text()
     block = html[html.index("function tasksBlock("):html.index("function calendarBlock(")]
-    assert 'd.now?.kind === "task" ? d.now.id' in block
+    assert 'd.now?.kind === "task" && d.now.source !== "team"' in block
+    assert "x.id !== teamShown" in block
 
     created = alice.post("/api/tasks", json={
         "title": "The only one", "deadline": date.today().isoformat()}).json()
@@ -6186,6 +6207,7 @@ def test_going_quiet_lowers_the_rolling_index_on_its_own():
     assert stale < fresh_index
 
 
+@SQLITE_ONLY
 def test_a_personal_best_rank_only_ever_improves():
     uid = _progress_user()
     with SessionLocal() as s:
@@ -7082,6 +7104,7 @@ def _break_the_outbox_key(engine) -> None:
         """))
 
 
+@SQLITE_ONLY
 def test_a_stale_outbox_key_is_detected_and_worked_around(client):
     """The outbox is unusable, and the report still has to go out.
 
@@ -7118,6 +7141,7 @@ def test_a_stale_outbox_key_is_detected_and_worked_around(client):
         db.init_db()
 
 
+@SQLITE_ONLY
 def test_starting_up_repairs_a_stale_outbox_key(client):
     """The repair has to happen on boot: the affected deploys have no shell."""
     telegram_id = next(_next_id)
@@ -7147,6 +7171,7 @@ def test_starting_up_repairs_a_stale_outbox_key(client):
         svc.CLAIM_ANOMALIES.clear()
 
 
+@SQLITE_ONLY
 def test_the_repair_keeps_the_rows_it_finds(client):
     """A schema fix must not throw away what was already delivered."""
     telegram_id = next(_next_id)
@@ -8615,7 +8640,8 @@ def test_stopping_a_timer_ticks_nothing(fresh):
     assert fresh.get(f"/api/timers/habit/{habit_id}").json()["run"] is None
 
 
-def test_a_timed_task_is_completed_by_its_timer(fresh):
+def test_a_timed_task_records_time_and_waits_for_the_person(fresh):
+    """Audit #3: the clock running out records the work; it does not close the task."""
     today = svc.today_local().isoformat()
     task_id = fresh.post("/api/tasks", json={
         "title": "Hisobot 2h", "deadline": today,
@@ -8627,6 +8653,12 @@ def test_a_timed_task_is_completed_by_its_timer(fresh):
     _age_run(run["id"], 7300)
     with SessionLocal() as s:
         svc.settle_timers(s)
+        assert s.get(db.Task, task_id).status == "waiting"
+    info = fresh.get(f"/api/timers/task/{task_id}").json()
+    assert info["ask_done"] is True and info["worked_sec"] == 7200 and not info["done"]
+    # The person says it is finished.
+    assert fresh.patch(f"/api/tasks/{task_id}", json={"status": "done"}).status_code == 200
+    with SessionLocal() as s:
         task = s.get(db.Task, task_id)
         assert task.status == "done"
         # The next occurrence of a recurring task keeps its timer.
@@ -10123,7 +10155,8 @@ async def test_the_bot_ready_made_list_flips_one_habit_per_tap():
         assert "2 litr suv ichish" not in [h["name"] for h in svc.list_habits(s, ws)]
 
 
-async def test_setup_offers_the_seven_and_adds_what_stays_ticked():
+async def test_setup_starts_with_one_habit_and_allows_three():
+    """Audit #5: the default path does not create a pile of unchosen habits."""
     uid = next(_next_id)
     with SessionLocal() as s:
         svc.get_or_create_user(s, uid)
@@ -10132,15 +10165,32 @@ async def test_setup_offers_the_seven_and_adds_what_stays_ticked():
         s.commit()
     ctx = _Ctx()
     ctx.user_data["setup"] = {}
-    await application.on_callback(_CbUpdate(uid, "setup:pre:language"), ctx)
-    assert "language" not in ctx.user_data["setup"]["presets"]
+    for key in ("sport", "read", "language"):
+        await application.on_callback(_CbUpdate(uid, f"setup:pre:{key}"), ctx)
+    chosen = ctx.user_data["setup"]["presets"]
+    assert sorted(chosen) == ["plan", "read", "sport"], "a fourth is refused"
     await application.on_callback(_CbUpdate(uid, "setup:pre_done"), ctx)
     with SessionLocal() as s:
         ws = svc.workspace_id_for(s, uid)
         names = [h["name"] for h in svc.list_habits(s, ws)]
         assert s.get(User, uid).onboarded is True
-    assert len(names) == 3 + 6
+    assert len(names) == 3 + 3
     assert "Til o'rganish" not in names and "Sport" in names
+
+
+async def test_setup_left_as_it_is_adds_a_single_habit():
+    uid = next(_next_id)
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, uid)
+        s.get(User, uid).onboarding_step = "presets"
+        s.commit()
+    ctx = _Ctx()
+    ctx.user_data["setup"] = {}
+    await application.on_callback(_CbUpdate(uid, "setup:pre_done"), ctx)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        names = [h["name"] for h in svc.list_habits(s, ws)]
+    assert len(names) == 3 + 1 and "Kunni rejalashtirish" in names
 
 
 # ==========================================================================
@@ -10518,6 +10568,59 @@ def test_debts_are_private_and_validated(fresh, client):
     assert fresh.post("/api/debts", {"person": "   ", "amount": 5, "direction": "lent"}).status_code == 422
 
 
+def test_partial_debt_payments_keep_the_original_and_the_history(fresh):
+    """Audit #44: 500k, then 100k and 150k back → original 500, paid 250, left 250."""
+    d = fresh.post("/api/debts", {"person": "Aziz", "amount": 500000, "direction": "lent"}).json()
+    fresh.post(f'/api/debts/{d["id"]}/settle', {"settled": True, "paid": 100000})
+    out = fresh.post(f'/api/debts/{d["id"]}/settle', {"settled": True, "paid": 150000}).json()
+    assert (out["original"], out["paid"], out["amount"]) == (500000, 250000, 250000)
+    assert [p["amount"] for p in out["payments"]] == [100000, 150000]
+    assert all(p["paid_at"] for p in out["payments"]) and not out["settled"]
+    assert fresh.get("/api/debts").json()["owed_to_me"] == 250000
+    # Paying exactly the rest closes it; reopening undoes that last payment.
+    closed = fresh.post(f'/api/debts/{d["id"]}/settle', {"settled": True, "paid": 250000}).json()
+    assert closed["settled"] and closed["amount"] == 0
+    reopened = fresh.post(f'/api/debts/{d["id"]}/settle', {"settled": False}).json()
+    assert not reopened["settled"] and reopened["amount"] == 250000
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        user = s.get(User, fresh.user["id"])
+        exported = svc.export_workspace(s, ws, user)["debts"]
+    assert exported[0]["original"] == 500000 and len(exported[0]["payments"]) == 2
+
+
+def test_overpaying_a_debt_is_refused_and_changes_nothing(fresh):
+    """Audit #45: 400k typed against a 40k debt must not silently close it."""
+    d = fresh.post("/api/debts", {"person": "Vali", "amount": 40000, "direction": "lent"}).json()
+    r = fresh.post(f'/api/debts/{d["id"]}/settle', {"settled": True, "paid": 400000})
+    assert r.status_code == 422 and r.json()["detail"] == "paid_exceeds_remaining"
+    after = fresh.get("/api/debts").json()["open"][0]
+    assert (after["amount"], after["paid"], after["settled"]) == (40000, 0, False)
+
+
+def test_deleting_a_debt_archives_it_and_can_be_undone(fresh, client):
+    """Audit #46: one tap does not lose a debt; restore brings sum and history back."""
+    d = fresh.post("/api/debts", {"person": "Aziz", "amount": 300000, "direction": "lent"}).json()
+    fresh.post(f'/api/debts/{d["id"]}/settle', {"settled": True, "paid": 50000})
+    assert fresh.delete(f'/api/debts/{d["id"]}').status_code == 200
+    ov = fresh.get("/api/debts").json()
+    assert ov["open"] == [] and ov["owed_to_me"] == 0 and ov["archived"][0]["id"] == d["id"]
+    back = fresh.post(f'/api/debts/{d["id"]}/restore', {}).json()["debt"]
+    assert (back["amount"], back["original"], back["paid"]) == (250000, 300000, 50000)
+    assert fresh.get("/api/debts").json()["owed_to_me"] == 250000
+    # Purging needs the debt archived first, then it is gone with its payments.
+    assert fresh.delete(f'/api/debts/{d["id"]}/purge').status_code == 404
+    fresh.delete(f'/api/debts/{d["id"]}')
+    other = Caller(client, {"id": next(_next_id), "first_name": "Other"})
+    assert other.delete(f'/api/debts/{d["id"]}/purge').status_code == 404
+    assert other.post(f'/api/debts/{d["id"]}/restore', {}).status_code == 404
+    assert fresh.delete(f'/api/debts/{d["id"]}/purge').status_code == 200
+    with SessionLocal() as s:
+        assert s.get(db.Debt, d["id"]) is None
+        assert s.scalar(select(func.count(db.DebtPayment.id))
+                        .where(db.DebtPayment.debt_id == d["id"])) == 0
+
+
 def test_overdue_debt_is_flagged(fresh):
     uid = fresh.user["id"]
     with SessionLocal() as s:
@@ -10537,4 +10640,800 @@ def test_steps_read_today_live_without_a_stored_score(fresh):
         s.commit()
         assert s.scalar(select(db.DailyScore).where(db.DailyScore.user_id == uid)) is None
     tasks = fresh.get("/api/progress/me").json()["steps"]["today"][0]
-    assert tasks == {"key": "tasks", "done": 0, "total": 2, "ok": False}
+    assert {k: tasks[k] for k in ("key", "done", "total", "ok", "complete")} == {
+        "key": "tasks", "done": 0, "total": 2, "ok": False, "complete": False}
+
+
+def test_journal_save_keeps_the_day_it_was_written_for(fresh):
+    """Audit #31: a save sent after midnight lands on the day the entry was opened for."""
+    yesterday = (svc.today_local() - timedelta(days=1)).isoformat()
+    r = fresh.post("/api/journal", {"answers": {"wins": "late"}, "day": yesterday}).json()
+    assert r["day"] == yesterday and r["updated_at"]
+    got = fresh.get(f"/api/journal?day={yesterday}").json()["entry"]
+    assert got["answers"]["wins"] == "late" and got["updated_at"] == r["updated_at"]
+    assert fresh.get(f"/api/journal?day={svc.today_local().isoformat()}").json()["entry"] is None
+
+
+def _at(monkeypatch, hh, mm=0):
+    monkeypatch.setattr(svc, "now_local",
+                        lambda tz=None: datetime.combine(svc.today_local(tz), dtime(hh, mm)))
+
+
+def test_now_does_not_offer_an_evening_meeting_in_the_morning(monkeypatch):
+    """Audit #1: at 09:00 an 18:00 meeting does not push doable work aside."""
+    uid = next(_next_id)
+    _onboard(uid)
+    today = svc.today_local()
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        user = s.get(User, uid)
+        svc.add_task(s, ws, "Uchrashuv", deadline=today, due_time=dtime(18, 0), priority="high")
+        svc.add_task(s, ws, "Hisobot", deadline=today)
+        _at(monkeypatch, 9)
+        now = svc.now_next(s, ws, user)
+        assert (now["reason"], now["title"]) == ("due_today", "Hisobot")
+        assert now["upcoming"]["title"] == "Uchrashuv" and now["upcoming"]["due_time"] == "18:00"
+        # Within the hour before it, the meeting itself is what is next.
+        _at(monkeypatch, 17, 30)
+        now = svc.now_next(s, ws, user)
+        assert (now["reason"], now["title"]) == ("due_today", "Uchrashuv")
+
+
+def test_now_offers_a_later_timed_task_when_nothing_else_waits(monkeypatch):
+    uid = next(_next_id)
+    _onboard(uid)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        user = s.get(User, uid)
+        for h in s.scalars(select(db.Habit).where(db.Habit.workspace_id == ws)).all():
+            h.archived_at = db.utcnow()
+        s.commit()
+        svc.add_task(s, ws, "Uchrashuv", deadline=svc.today_local(), due_time=dtime(18, 0))
+        _at(monkeypatch, 9)
+        now = svc.now_next(s, ws, user)
+    assert now["title"] == "Uchrashuv" and now["reason"] in {"due_later", "due_today"}
+
+
+def test_now_puts_shared_work_in_the_same_queue(monkeypatch):
+    """Audit #13: a team task due at 11:00 is offered before a personal habit."""
+    uid = next(_next_id)
+    _onboard(uid)
+    today = svc.today_local()
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        user = s.get(User, uid)
+        team = svc.create_team(s, uid, "Ofis")
+        svc.add_habit(s, ws, "Kitob")
+        svc.add_team_task(s, uid, team.id, "Mijozga javob", deadline=today,
+                          due_time=dtime(11, 0), priority="high")
+        _at(monkeypatch, 10, 30)
+        now = svc.now_next(s, ws, user)
+    assert now["title"] == "Mijozga javob" and now["source"] == "team"
+    assert now["team_name"] == "Ofis" and now["action"] == "team_task"
+
+
+def test_changing_the_timer_length_leaves_the_running_session_alone(fresh):
+    """Audit #39: 25 min chosen at minute 40 of 60 does not end the session."""
+    task_id = fresh.post("/api/tasks", json={"title": "Maqola", "timer_minutes": 60}).json()["id"]
+    run = fresh.post(f"/api/timers/task/{task_id}/start").json()["run"]
+    _age_run(run["id"], 40 * 60)
+    info = fresh.put(f"/api/timers/task/{task_id}", json={"minutes": 25}).json()
+    assert info["timer_minutes"] == 25
+    assert info["run"]["status"] == "running" and info["run"]["duration_sec"] == 3600
+    with SessionLocal() as s:
+        assert svc.settle_timers(s) == []
+
+
+def test_work_done_without_the_timer_can_be_logged_once(fresh):
+    """Audit #4: "I read for an hour" is recorded apart and unlocks the tick."""
+    habit = fresh.post("/api/habits", json={"name": "Kitob", "timer_minutes": 60}).json()
+    hid = habit.get("id") or habit.get("habit", {}).get("id")
+    partial = fresh.post(f"/api/timers/habit/{hid}/log", json={"minutes": 20}).json()
+    assert partial["worked_sec"] == 1200 and partial["manual_sec"] == 1200 and not partial["done"]
+    full = fresh.post(f"/api/timers/habit/{hid}/log", json={"minutes": 40}).json()
+    assert full["done"] and full["worked_sec"] == 3600
+    assert fresh.post(f"/api/timers/habit/{hid}/log", json={"minutes": 5}).status_code == 409
+    # Never on top of a clock counting the same work.
+    task_id = fresh.post("/api/tasks", json={"title": "Maqola", "timer_minutes": 60}).json()["id"]
+    fresh.post(f"/api/timers/task/{task_id}/start")
+    r = fresh.post(f"/api/timers/task/{task_id}/log", json={"minutes": 30})
+    assert r.status_code == 409 and r.json()["detail"] == "timer_running"
+    other = fresh.post("/api/tasks", json={"title": "Hisobot", "timer_minutes": 60}).json()["id"]
+    logged = fresh.post(f"/api/timers/task/{other}/log", json={"minutes": 30}).json()
+    assert logged["ask_done"] and not logged["done"]
+    assert fresh.patch(f"/api/tasks/{other}", json={"status": "done"}).status_code == 200
+
+
+def _steps(caller):
+    return {c["key"]: c for c in caller.get("/api/progress/me").json()["steps"]["today"]}
+
+
+def test_steps_count_late_work_and_separate_started_from_finished(fresh):
+    """Audit #7 and #10: yesterday's task finished today is today's work, and
+    1 of 2 is "started", not "complete"."""
+    today = svc.today_local()
+    late = fresh.post("/api/tasks", json={"title": "Kechagi hisobot",
+                                          "deadline": (today - timedelta(days=1)).isoformat()}).json()
+    a = fresh.post("/api/tasks", json={"title": "A", "deadline": today.isoformat()}).json()
+    fresh.post("/api/tasks", json={"title": "B", "deadline": today.isoformat()})
+    fresh.patch(f'/api/tasks/{late["id"]}', json={"status": "done"})
+    step = _steps(fresh)["tasks"]
+    assert step["done"] == 1 and step["ok"] and not step["complete"] and step["planned_done"] == 0
+    assert fresh.get("/api/home").json()["counts"]["tasks"]["finished"] == 1
+    fresh.patch(f'/api/tasks/{a["id"]}', json={"status": "done"})
+    step = _steps(fresh)["tasks"]
+    assert step["done"] == 2 and step["planned_done"] == 1 and not step["complete"]
+
+
+def test_a_week_goal_done_through_its_task_counts_everywhere(fresh):
+    """Audit #11: tick the linked task → goals list and Qadam agree."""
+    task = fresh.post("/api/tasks", json={"title": "Taqdimot"}).json()
+    fresh.post("/api/focus", {"title": "Taqdimot tayyor", "task_id": task["id"]})
+    assert _steps(fresh)["goal"]["done"] == 0
+    fresh.patch(f'/api/tasks/{task["id"]}', json={"status": "done"})
+    assert _steps(fresh)["goal"]["done"] == 1 and _steps(fresh)["goal"]["complete"]
+    assert all(f["done"] for f in fresh.get("/api/focus").json()["focus"])
+    # Reopening agrees too.
+    fresh.patch(f'/api/tasks/{task["id"]}', json={"status": "waiting"})
+    assert _steps(fresh)["goal"]["done"] == 0
+
+
+def test_no_week_goal_is_not_an_unmet_step(fresh):
+    """Audit #42: no goal → an offer, not a 0/1."""
+    goal = _steps(fresh)["goal"]
+    assert goal["empty"] and goal["total"] == 0
+    steps = fresh.get("/api/progress/me").json()["steps"]
+    assert steps["today_counted"] == len(steps["today"]) - 1
+
+
+def test_an_empty_journal_is_not_a_written_step(fresh):
+    """Audit #33: keys with empty answers do not count."""
+    fresh.post("/api/journal", {"answers": {"wins": "", "lesson": "  "}})
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        row = s.scalar(select(db.JournalEntry).where(db.JournalEntry.workspace_id == ws))
+        row.answers = '{"wins": ""}'
+        s.commit()
+        snap = svc.steps_snapshot(s, fresh.user["id"], ws)
+    assert all(c["done"] == 0 for c in snap["today"] if c["key"] == "journal")
+
+
+def test_carrying_a_goal_keeps_its_trace_in_the_old_week(fresh):
+    """Audit #17: moved twice → both old weeks still show it, one live copy."""
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        first = svc.add_focus(s, ws, "Kitob yozish")
+        second = svc.carry_focus_forward(s, ws, first.id)
+        third = svc.carry_focus_forward(s, ws, second.id)
+        old = svc.list_focus(s, ws, first.week_start, include_carried=True)
+        assert old[0]["carried"] and old[0]["title"] == "Kitob yozish"
+        assert svc.list_focus(s, ws, first.week_start) == []
+        mid = svc.list_focus(s, ws, second.week_start, include_carried=True)
+        assert mid[0]["carried"]
+        live = svc.list_focus(s, ws, third.week_start)
+        assert len(live) == 1 and live[0]["carries"] == 2 and not live[0]["carried"]
+        with pytest.raises(ValueError):
+            svc.carry_focus_forward(s, ws, first.id)
+
+
+def test_picking_a_task_for_today_keeps_its_deadline(fresh):
+    """Audit #21: working on Friday's article on Monday leaves Friday as the deadline."""
+    friday = (svc.today_local() + timedelta(days=4)).isoformat()
+    task = fresh.post("/api/tasks", json={"title": "Maqola", "deadline": friday}).json()
+    fresh.post(f'/api/tasks/{task["id"]}/top3', json={"picked": True})
+    with SessionLocal() as s:
+        row = s.get(db.Task, task["id"])
+        assert row.deadline.isoformat() == friday and row.focus_day == svc.today_local()
+
+
+def test_the_seven_day_option_says_what_it_does():
+    """Audit #22: the label matches the +7 days that is saved."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert 'when_week:"7 kundan keyin"' in html and 'when_week:"In 7 days"' in html
+    assert 'if(f.when === "week") return shiftISO(today, 7);' in html
+
+
+def test_a_bare_time_that_has_passed_is_asked_about(fresh, monkeypatch):
+    """Audit #49: "10:00 hisobot" at 20:00 is not silently put in the past."""
+    _at(monkeypatch, 20)
+    r = fresh.post("/api/quick", {"title": "10:00 hisobot"}).json()
+    today = svc.today_local()
+    assert r["ok"] is False and r["ask"] == "past_time" and r["due_time"] == "10:00"
+    assert r["options"] == [today.isoformat(), (today + timedelta(days=1)).isoformat()]
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        assert s.scalar(select(func.count(db.Task.id)).where(db.Task.workspace_id == ws)) == 0
+    saved = fresh.post("/api/quick", {"title": "10:00 hisobot", "deadline": r["options"][1]}).json()
+    assert saved["id"] and saved["deadline"] == r["options"][1] and saved["due_time"] == "10:00"
+    # A time still ahead, or a day said outright, is not asked about.
+    assert fresh.post("/api/quick", {"title": "21:00 qo'ng'iroq"}).json()["id"]
+    assert fresh.post("/api/quick", {"title": "ertaga 10:00 hisobot"}).json()["id"]
+
+
+def test_quick_preview_parses_without_saving(fresh):
+    """Audit #23: the shared-task path reads date and time with the same parser."""
+    tomorrow = (svc.today_local() + timedelta(days=1)).isoformat()
+    r = fresh.post("/api/quick", {"title": "ertaga 15:00 hisobot", "preview": True}).json()
+    assert r == {"ok": True, "preview": True, "title": "hisobot",
+                 "deadline": tomorrow, "due_time": "15:00"}
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        assert s.scalar(select(func.count(db.Task.id)).where(db.Task.workspace_id == ws)) == 0
+
+
+def test_a_daily_task_appears_even_if_yesterdays_was_not_ticked(fresh):
+    """Audit #14: a missed day does not stop a calendar repeat, and no duplicates."""
+    today = svc.today_local()
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        first = svc.add_task(s, ws, "Kunlik hisobot", deadline=today - timedelta(days=3),
+                             recurrence="daily")
+        first_id = first.id
+        svc.roll_recurring(s, ws)
+        svc.roll_recurring(s, ws)  # twice: still one copy for today
+        open_rows = s.scalars(select(db.Task).where(
+            db.Task.workspace_id == ws, db.Task.title == "Kunlik hisobot",
+            db.Task.archived_at.is_(None), db.Task.status == "waiting")).all()
+        assert sorted(r.deadline for r in open_rows) == [today - timedelta(days=3), today]
+        # The next day: today's copy is missed too; one late copy stays, not two.
+        svc.roll_recurring(s, ws)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        today_rows = [t for t in svc.tasks_due_today(s, ws)
+                      if t["title"] == "Kunlik hisobot"]
+        assert len(today_rows) == 1
+        # Ticking the late copy does not make a second copy for today.
+        svc.complete_task(s, ws, first_id)
+        assert len([t for t in svc.tasks_due_today(s, ws)
+                    if t["title"] == "Kunlik hisobot"]) == 1
+
+
+def test_older_misses_of_a_series_are_archived_not_piled_up(fresh):
+    today = svc.today_local()
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        a = svc.add_task(s, ws, "Suv", deadline=today - timedelta(days=2), recurrence="daily")
+        b = svc.add_task(s, ws, "Suv", deadline=today - timedelta(days=1), recurrence="daily")
+        b.series_id = a.id
+        a.series_id = a.id
+        s.commit()
+        svc.roll_recurring(s, ws)
+        s.refresh(a)
+        s.refresh(b)
+        assert a.archived_at is not None and b.archived_at is None
+
+
+
+def test_focus_reset_puts_three_on_today_and_shows_it_first(fresh):
+    """Audit #15: a return from a break is not 12 tasks due today; the plan is
+    visible before anything moves."""
+    today = svc.today_local()
+    for n in range(12):
+        fresh.post("/api/tasks", json={"title": f"Eski {n}", "priority": "high" if n == 11 else "medium",
+                                       "deadline": (today - timedelta(days=10 - (n % 5))).isoformat()})
+    plan = fresh.get("/api/fresh-start?mode=focus").json()["plan"]
+    assert len(plan) == 12
+    on_today = [x for x in plan if x["to"] == today.isoformat()]
+    assert len(on_today) == 3 and on_today[0]["title"] == "Eski 11", "most important first"
+    per_day = {}
+    for x in plan:
+        per_day[x["to"]] = per_day.get(x["to"], 0) + 1
+    assert max(per_day.values()) <= 3
+    # The preview wrote nothing.
+    assert len(fresh.get("/api/tasks?days=365").json()["overdue"]) == 12
+    assert fresh.post("/api/fresh-start", {"mode": "focus"}).json()["moved"] == 12
+    assert len([x for x in svc_tasks_due_today(fresh) if x["title"].startswith("Eski")]) == 3
+
+
+def svc_tasks_due_today(caller):
+    with SessionLocal() as s:
+        return svc.tasks_due_today(s, svc.workspace_id_for(s, caller.user["id"]))
+
+
+def test_a_reset_can_be_undone_without_overwriting_later_edits(fresh):
+    """Audit #47: undo restores dates and archive state; a task edited since is a
+    conflict, left as the person set it."""
+    today = svc.today_local()
+    old = [(today - timedelta(days=d)).isoformat() for d in (3, 4, 5)]
+    ids = [fresh.post("/api/tasks", json={"title": f"T{n}", "deadline": d}).json()["id"]
+           for n, d in enumerate(old)]
+    fresh.post("/api/fresh-start", {"mode": "archive"})
+    with SessionLocal() as s:
+        assert all(s.get(db.Task, i).archived_at is not None for i in ids)
+    r = fresh.post("/api/fresh-start/undo", {}).json()
+    assert r["restored"] == 3 and r["conflicts"] == []
+    with SessionLocal() as s:
+        rows = [s.get(db.Task, i) for i in ids]
+        assert all(t.archived_at is None for t in rows)
+        assert [t.deadline.isoformat() for t in rows] == old
+    # Second reset, then an edit, then undo.
+    fresh.post("/api/fresh-start", {"mode": "today"})
+    edited = (today + timedelta(days=9)).isoformat()
+    fresh.patch(f"/api/tasks/{ids[0]}", json={"deadline": edited})
+    r = fresh.post("/api/fresh-start/undo", {}).json()
+    assert r["restored"] == 2 and [c["id"] for c in r["conflicts"]] == [ids[0]]
+    with SessionLocal() as s:
+        assert s.get(db.Task, ids[0]).deadline.isoformat() == edited
+        assert s.get(db.Task, ids[1]).deadline.isoformat() == old[1]
+    assert fresh.post("/api/fresh-start/undo", {}).status_code == 404
+
+
+def test_the_review_is_reachable_and_feeds_next_weeks_goal_once(fresh):
+    """Audit #16: an entry point exists, and next_focus becomes next week's goal once."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    block = html[html.index("function weekFocusBlock("):html.index("function openTab(")]
+    assert 'data-act="review-open"' in block
+    body = {"went_well": "a", "blocked": "b", "next_focus": "Sotuv voronkasi", "make_goal": True}
+    first = fresh.post("/api/review", body).json()
+    again = fresh.post("/api/review", body).json()
+    assert first["goal_id"] and again["goal_id"] is None
+    nxt = svc.week_start(svc.today_local()) + timedelta(days=7)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        titles = [g["title"] for g in svc.list_focus(s, ws, nxt)]
+    assert titles == ["Sotuv voronkasi"]
+
+
+
+def test_past_the_free_run_ticking_done_work_stays_open(client, monkeypatch):
+    """Audit #19: the channel ask never stands between a person and the tick for
+    a habit they did; new work still asks."""
+    monkeypatch.setattr(deps, "REQUIRED_CHANNEL_ID", "-1001234567890")
+    uid = next(_next_id)
+    _onboard(uid)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        habit = svc.add_habit(s, ws, "Kitob")
+        task = svc.add_task(s, ws, "Hisobot", deadline=svc.today_local())
+        habit_id, task_id = habit.id, task.id
+        user = s.get(User, uid)
+        user.is_subscribed = False
+        user.actions_count = deps.FREE_ACTIONS
+        s.commit()
+    h = {"X-Telegram-Init-Data": init_data({"id": uid, "first_name": "G"})}
+    assert client.post(f"/api/habits/{habit_id}/toggle", headers=h, json={}).status_code == 200
+    assert client.patch(f"/api/tasks/{task_id}", headers=h, json={"status": "done"}).status_code == 200
+    assert client.post("/api/journal", headers=h, json={"answers": {"wins": "ok"}}).status_code == 200
+    # Editing or creating is still new work.
+    r = client.patch(f"/api/tasks/{task_id}", headers=h, json={"title": "Boshqa"})
+    assert r.status_code == 403 and r.json()["detail"] == "subscription_required"
+    assert client.post("/api/tasks", headers=h, json={"title": "yangi"}).status_code == 403
+    assert application.is_read_callback("habit", ["habit", "toggle", "1"])
+    assert not application.is_read_callback("habit", ["habit", "del", "1"])
+
+
+def test_a_quick_habit_line_with_days_is_scheduled_on_those_days(fresh):
+    """Audit #24: three-day sport is not owed on Tuesday."""
+    parsed = fresh.post("/api/habits/parse", {"text": "Dushanba, chorshanba, juma sport"}).json()
+    assert parsed == {"name": "Sport", "schedule": "days:0,2,4", "days": [0, 2, 4]}
+    assert fresh.post("/api/habits/parse", {"text": "Kitob o'qish"}).json()["schedule"] == "daily"
+    assert svc.parse_habit_text("Read on Mondays and Fridays")["name"] == "Read"
+    hid = fresh.post("/api/habits", {"name": parsed["name"], "schedule": parsed["schedule"]}).json()["id"]
+    today = svc.today_local()
+    tuesday = today + timedelta(days=(1 - today.weekday()) % 7)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        row = next(h for h in svc.list_habits(s, ws, tuesday) if h["id"] == hid)
+        assert row["due"] is False
+
+
+def test_finishing_a_session_early_keeps_the_time_stopping_does_not(fresh):
+    """Audit #40: 35 of 60 minutes finished count as 35 minutes; stop records none."""
+    task_id = fresh.post("/api/tasks", json={"title": "Maqola", "timer_minutes": 60}).json()["id"]
+    run = fresh.post(f"/api/timers/task/{task_id}/start").json()["run"]
+    _age_run(run["id"], 35 * 60)
+    info = fresh.post(f'/api/timers/runs/{run["id"]}/finish').json()
+    assert info["worked_sec"] == 35 * 60 and info["ask_done"] and info["run"] is None
+    other = fresh.post("/api/tasks", json={"title": "Hisobot", "timer_minutes": 60}).json()["id"]
+    run = fresh.post(f"/api/timers/task/{other}/start").json()["run"]
+    _age_run(run["id"], 10 * 60)
+    assert fresh.post(f'/api/timers/runs/{run["id"]}/stop').json()["worked_sec"] == 0
+
+
+def test_the_rules_document_matches_the_code():
+    """Audit #50: the written rules carry the numbers the code uses."""
+    import version
+    doc = (ROOT / "docs" / "AMALDAGI_QOIDALAR.md").read_text()
+    assert f"(v{version.VERSION})" in doc
+    for part, label in (("tasks", "Vazifa"), ("habits", "Odat"), ("team", "Jamoa"), ("prayer", "Namoz")):
+        assert f"| {label} | {round(svc.OVERALL_WEIGHTS[part] * 100)}% |" in doc, part
+    w = svc.TASK_PRIORITY_WEIGHTS
+    assert f"yuqori {w['high']}, o‘rta {w['medium']}, past {w['low']}" in doc
+    h = svc.HABIT_TIER_WEIGHTS
+    assert f"majburiy {h['non_negotiable']}, maqsad {h['target']}, bonus {h['bonus']}" in doc
+    assert f"kamida **{svc.STREAK_THRESHOLD}** ball" in doc
+    assert f"oyiga **{svc.RECOVERY_DAYS_PER_MONTH}** ta himoya" in doc
+    assert f"**{svc.PERFECT_DAY_SCORE}**+ ball" in doc
+    assert f"Kamida **{svc.JOURNAL_DONE_MIN}** ta mazmunli javob" in doc
+    assert " · ".join(str(low) for _k, low in svc.STEP_LEVELS) + " qadam" in doc
+    assert f"**{svc.NOW_LEAD_MINUTES}** daqiqa ichida" in doc
+    assert f"eng muhim **{svc.FRESH_TODAY}** ta" in doc
+    assert f"**{svc.RESET_UNDO_WINDOW.days}** kun ichida" in doc
+    assert f"**{int(svc.HABIT_REMINDER_WINDOW.total_seconds() // 60)}** daqiqa ichida bir marta" in doc
+    assert f"Dastlabki **{deps.FREE_ACTIONS}** amal" in doc
+    assert f"ko‘pi bilan **{application.SETUP_PRESET_LIMIT}** ta" in doc
+    assert "**" + " / ".join(str(m) for m in svc.SNOOZE_MINUTES) + "** daqiqaga" in doc
+    for cycle in svc.TIMER_CYCLES:
+        assert cycle in doc, cycle
+    readme = (ROOT / "README.md").read_text()
+    assert readme.startswith(f"# ErnestOS v{version.VERSION}")
+    assert version.RELEASE_NAME in (ROOT / "scripts" / "package_release.py").read_text() \
+        or "from version import RELEASE_NAME" in (ROOT / "scripts" / "package_release.py").read_text()
+
+
+def test_a_task_waiting_on_a_reply_leaves_now_until_the_check_day(fresh, monkeypatch):
+    """Audit #12: a design waiting on the client's approval is not "late work"
+    in Now; on the check day it comes back as a check."""
+    today = svc.today_local()
+    late = fresh.post("/api/tasks", json={"title": "Dizayn", "deadline": (today - timedelta(days=2)).isoformat()}).json()
+    fresh.post("/api/tasks", json={"title": "Hisobot", "deadline": today.isoformat()})
+    r = fresh.post(f'/api/tasks/{late["id"]}/block', {"reason": "reply", "until": (today + timedelta(days=2)).isoformat()})
+    assert r.status_code == 200 and r.json()["blocked"] == "reply"
+    _at(monkeypatch, 9)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        user = s.get(User, fresh.user["id"])
+        assert svc.now_next(s, ws, user)["title"] == "Hisobot"
+        assert svc.fresh_start_plan(s, ws) == [], "parked work is not backlog"
+        row = s.get(db.Task, late["id"])
+        row.blocked_until = today
+        s.commit()
+        now = svc.now_next(s, ws, user)
+    assert (now["title"], now["reason"]) == ("Dizayn", "recheck")
+    assert fresh.delete(f'/api/tasks/{late["id"]}/block').status_code == 200
+    assert fresh.post(f'/api/tasks/{late["id"]}/block', {"reason": "maybe"}).status_code == 422
+
+
+
+async def test_setup_asks_when_you_get_up_and_follows_the_answer():
+    """Audit #38: 08:00 chosen → wake goal and morning report at 08:00, not 05:00."""
+    uid = next(_next_id)
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, uid)
+        s.get(User, uid).onboarding_step = "modules"
+        s.commit()
+    ctx = _Ctx()
+    ctx.user_data["setup"] = {"modules": ["wake"]}
+    await application.on_callback(_CbUpdate(uid, "setup:mod_done"), ctx)
+    with SessionLocal() as s:
+        assert s.get(User, uid).onboarding_step == "wake"
+    await application.on_callback(_CbUpdate(uid, "setup:wake:0800"), ctx)
+    with SessionLocal() as s:
+        user = s.get(User, uid)
+        ws = svc.workspace_id_for(s, uid)
+        assert user.onboarding_step == "presets"
+        assert user.morning_time == dtime(8, 0)
+        assert svc.wake_habit(s, ws).target_time == dtime(8, 0)
+    # A forged value is re-asked, not stored.
+    with SessionLocal() as s:
+        s.get(User, uid).onboarding_step = "wake"
+        s.commit()
+    await application.on_callback(_CbUpdate(uid, "setup:wake:0330"), ctx)
+    with SessionLocal() as s:
+        assert s.get(User, uid).morning_time == dtime(8, 0)
+
+
+def test_quiet_hours_cross_midnight_and_are_saved(fresh):
+    """Audit #37: 23:00–07:00 is quiet at 02:00 and 23:30, not at 12:00."""
+    prefs = fresh.post("/api/prefs", {"quiet_from": "23:00", "quiet_to": "07:00"}).json()["prefs"]
+    assert (prefs["quiet_from"], prefs["quiet_to"]) == ("23:00", "07:00")
+    with SessionLocal() as s:
+        user = s.get(User, fresh.user["id"])
+        day = svc.today_local()
+        at = lambda h, m=0: datetime.combine(day, dtime(h, m))  # noqa: E731
+        assert svc.in_quiet_hours(user, at(2)) and svc.in_quiet_hours(user, at(23, 30))
+        assert not svc.in_quiet_hours(user, at(12)) and not svc.in_quiet_hours(user, at(7))
+    off = fresh.post("/api/prefs", {"quiet_from": "", "quiet_to": ""}).json()["prefs"]
+    assert off["quiet_from"] == "" and off["quiet_to"] == ""
+
+
+def test_a_snoozed_reminder_comes_back_once_and_leaves_the_deadline(fresh):
+    """Audit #36: snooze 15 min → one reminder later; deadline unchanged; a
+    second snooze moves the same one; a done task is not reminded."""
+    today = svc.today_local()
+    task = fresh.post("/api/tasks", json={"title": "Qo'ng'iroq", "deadline": today.isoformat()}).json()
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        svc.snooze_reminder(s, ws, "task", task["id"], 15)
+        svc.snooze_reminder(s, ws, "task", task["id"], 60)
+        assert s.scalar(select(func.count(db.Snooze.id)).where(db.Snooze.workspace_id == ws)) == 1
+        assert svc.due_snoozes(s, ws) == []
+        later = db.utcnow() + timedelta(minutes=61)
+        due = svc.due_snoozes(s, ws, later)
+        assert [d["title"] for d in due] == ["Qo'ng'iroq"]
+        svc.mark_snooze_sent(s, due[0]["id"])
+        assert svc.due_snoozes(s, ws, later) == []
+        assert s.get(db.Task, task["id"]).deadline == today
+        with pytest.raises(ValueError):
+            svc.snooze_reminder(s, ws, "task", task["id"], 7)
+        svc.snooze_reminder(s, ws, "task", task["id"], 15)
+    fresh.patch(f'/api/tasks/{task["id"]}', json={"status": "done"})
+    with SessionLocal() as s:
+        assert svc.due_snoozes(s, ws, db.utcnow() + timedelta(hours=1)) == []
+    assert application.is_read_callback("snz", ["snz", "t", "1", "15"])
+
+
+async def test_reminders_in_quiet_hours_arrive_silently_with_snooze_buttons(fresh, monkeypatch):
+    """Audit #36/#37 end to end: a snoozed reminder is delivered by the job, with
+    snooze buttons, and without sound inside quiet hours."""
+    calls = []
+
+    class Bot:
+        async def send_message(self, chat_id, text, **kwargs):
+            calls.append(kwargs)
+            return True
+
+    task = fresh.post("/api/tasks", json={"title": "Hisobot"}).json()
+    with SessionLocal() as s:
+        uid = fresh.user["id"]
+        ws = svc.workspace_id_for(s, uid)
+        row = svc.snooze_reminder(s, ws, "task", task["id"], 15)
+        row.fire_at = db.utcnow() - timedelta(minutes=1)
+        user = s.get(User, uid)
+        user.quiet_from, user.quiet_to = dtime(0, 0), dtime(23, 59)
+        s.commit()
+    monkeypatch.setattr(svc, "in_quiet_hours", lambda user, now=None: True)
+    sent = await application._send_user_reminders(Bot(), uid, ws, "uz")
+    assert sent >= 1
+    snoozed = calls[0]
+    assert snoozed["disable_notification"] is True
+    buttons = [b.callback_data for row in snoozed["reply_markup"].inline_keyboard for b in row
+               if b.callback_data]
+    assert f'snz:t:{task["id"]}:15' in buttons
+
+
+def test_a_plan_bigger_than_the_day_is_flagged_not_changed(fresh):
+    """Audit #2: 2 h free, 5 h planned → a warning and lower-priority suggestions;
+    the tasks themselves are untouched."""
+    today = svc.today_local().isoformat()
+    big = fresh.post("/api/tasks", json={"title": "Maqola", "deadline": today, "timer_minutes": 180,
+                                         "priority": "high"}).json()
+    low = fresh.post("/api/tasks", json={"title": "Pochta", "deadline": today, "timer_minutes": 120,
+                                         "priority": "low"}).json()
+    load = fresh.get("/api/home").json()["load"]
+    assert load["planned_min"] == 300 and load["capacity_min"] == 0 and not load["over"]
+    fresh.post("/api/prefs", {"day_capacity": 120})
+    load = fresh.get("/api/home").json()["load"]
+    assert load["over"] and [x["id"] for x in load["suggest"]][0] == low["id"]
+    with SessionLocal() as s:
+        assert s.get(db.Task, big["id"]).deadline.isoformat() == today
+        assert s.get(db.Task, low["id"]).deadline.isoformat() == today
+    assert fresh.post("/api/prefs", {"day_capacity": 5000}).status_code == 422
+
+
+def test_a_measured_habit_keeps_partial_work_and_a_minimal_version(fresh):
+    """Audit #6: 12 of 20 pages is shown as 12/20, 2 pages on a hard day is the
+    minimal version — and neither counts as the full goal."""
+    hid = fresh.post("/api/habits", {"name": "Kitob", "target_qty": 20, "min_qty": 2,
+                                     "unit": "bet"}).json()["id"]
+    row = lambda: next(h for h in fresh.get("/api/habits").json()["habits"] if h["id"] == hid)  # noqa: E731
+    assert (row()["target_qty"], row()["unit"], row()["qty"], row()["done"]) == (20, "bet", 0, False)
+    r = fresh.post(f"/api/habits/{hid}/qty", {"qty": 12}).json()
+    assert r["qty"] == 12 and not r["done"] and r["minimal"]
+    assert row()["qty"] == 12 and row()["minimal"] and not row()["done"]
+    assert fresh.post(f"/api/habits/{hid}/qty", {"qty": 20}).json()["done"] is True
+    assert row()["done"] and not row()["minimal"]
+    # Validation: a minimal version must be below the goal.
+    assert fresh.post("/api/habits", {"name": "X", "target_qty": 5, "min_qty": 9}).status_code == 422
+    plain = fresh.post("/api/habits", {"name": "Suv"}).json()["id"]
+    assert fresh.post(f"/api/habits/{plain}/qty", {"qty": 3}).status_code == 422
+    # Turning it back into a yes/no habit.
+    fresh.patch(f"/api/habits/{hid}", {"target_qty": 0})
+    assert row()["target_qty"] is None
+
+
+def test_a_long_session_with_breaks_counts_only_work(fresh):
+    """Audit #41: 50/10 on a 120-min timer pauses at 50 min; the break is not
+    work; two work blocks add up; the person resumes after the break."""
+    task_id = fresh.post("/api/tasks", json={"title": "Kitob yozish", "timer_minutes": 120}).json()["id"]
+    run = fresh.post(f"/api/timers/task/{task_id}/start", {"cycle": "50/10"}).json()["run"]
+    assert run["cycle"] == "50/10"
+    _age_run(run["id"], 65 * 60)  # 50 min of work and 15 min more on the clock
+    info = fresh.get(f"/api/timers/task/{task_id}").json()
+    assert info["run"]["status"] == "paused" and info["run"]["on_break"]
+    assert info["run"]["elapsed_sec"] == 50 * 60, "the break is not counted as work"
+    with SessionLocal() as s:
+        assert [r.id for r in svc.unannounced_breaks(s)] == [run["id"]]
+        assert svc.claim_break_notice(s, run["id"]) and not svc.claim_break_notice(s, run["id"])
+    resumed = fresh.post(f'/api/timers/runs/{run["id"]}/resume').json()["run"]
+    assert resumed["status"] == "running" and not resumed["on_break"]
+    _age_run(run["id"], 50 * 60)
+    info = fresh.get(f"/api/timers/task/{task_id}").json()
+    assert info["run"]["elapsed_sec"] == 100 * 60 and info["run"]["on_break"]
+    assert fresh.post(f"/api/timers/task/{task_id}/start", {"cycle": "7/3"}).status_code == 409
+
+
+def test_a_task_repeating_after_completion_counts_from_the_day_it_was_done(fresh):
+    """Audit #14: "7 days after done" — finished 3 days late, the next one is 7
+    days from the day it was finished; the calendar never spawns it."""
+    today = svc.today_local()
+    task = fresh.post("/api/tasks", json={"title": "Filtrni almashtirish", "recurrence": "after:7",
+                                          "deadline": (today - timedelta(days=3)).isoformat()}).json()
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        assert svc.roll_recurring(s, ws) == 0, "not spawned by the calendar"
+    fresh.patch(f'/api/tasks/{task["id"]}', json={"status": "done"})
+    with SessionLocal() as s:
+        nxt = s.scalars(select(db.Task).where(db.Task.workspace_id == ws,
+                                              db.Task.title == "Filtrni almashtirish",
+                                              db.Task.status == "waiting")).all()
+    assert [t.deadline for t in nxt] == [today + timedelta(days=7)]
+    assert svc.clean_recurrence("after:0") == "" and svc.clean_recurrence("after:400") == ""
+
+
+def test_a_reset_asks_what_is_still_needed_first(fresh):
+    """Audit #15 (rest): tasks marked "not needed" are archived and take no day;
+    the rest are spread as before, and undo brings all of them back."""
+    today = svc.today_local()
+    ids = [fresh.post("/api/tasks", json={"title": f"Eski {n}",
+                                          "deadline": (today - timedelta(days=3)).isoformat()}).json()["id"]
+           for n in range(5)]
+    plan = fresh.get(f"/api/fresh-start?mode=focus&drop={ids[0]},{ids[1]}").json()["plan"]
+    dropped = [x for x in plan if x.get("dropped")]
+    assert sorted(x["id"] for x in dropped) == sorted(ids[:2])
+    assert len([x for x in plan if x["to"] == today.isoformat() and not x.get("dropped")]) == 3
+    assert fresh.post("/api/fresh-start", {"mode": "focus", "drop": ids[:2]}).json()["moved"] == 5
+    with SessionLocal() as s:
+        assert all(s.get(db.Task, i).archived_at is not None for i in ids[:2])
+        assert all(s.get(db.Task, i).archived_at is None for i in ids[2:])
+    assert fresh.post("/api/fresh-start/undo", {}).json()["restored"] == 5
+
+
+def test_the_review_suggests_changes_from_the_weeks_numbers(fresh):
+    """Audit #16 (rest): late work, a goal pushed again and waiting tasks turn
+    into suggestions that point at existing actions; nothing is applied."""
+    today = svc.today_local()
+    for n in range(3):
+        fresh.post("/api/tasks", json={"title": f"Late {n}", "deadline": (today - timedelta(days=2)).isoformat()})
+    waiting = fresh.post("/api/tasks", json={"title": "Mijoz"}).json()["id"]
+    fresh.post(f"/api/tasks/{waiting}/block", {"reason": "reply"})
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        old = svc.add_focus(s, ws, "Kitob", today - timedelta(days=7))
+        svc.carry_focus_forward(s, ws, old.id)
+    keys = {x["key"] for x in fresh.get("/api/review").json()["suggestions"]}
+    assert {"reset", "shrink", "blocked"} <= keys
+
+
+def test_statistics_show_whether_the_main_thing_got_done(fresh):
+    """Audit #9 (rest): beside the %, the day's main task and whether it is done."""
+    small = fresh.post("/api/tasks", json={"title": "Pochta", "deadline": svc.today_local().isoformat()}).json()
+    main = fresh.post("/api/tasks", json={"title": "Investor taqdimoti"}).json()
+    fresh.post(f'/api/tasks/{main["id"]}/top3', {"picked": True})
+    fresh.patch(f'/api/tasks/{small["id"]}', json={"status": "done"})
+    today = fresh.get("/api/stats").json()["today"]
+    assert today["main"] == {"kind": "task", "title": "Investor taqdimoti", "done": False}
+
+
+def test_qadam_stays_fast_on_years_of_history(fresh):
+    """Audit #43 (rest): three years of day scores and long journal entries.
+    The total is summed in the database and the journal text is never loaded;
+    the profile stays well under a second on SQLite."""
+    import time as _time
+    uid = fresh.user["id"]
+    today = svc.today_local()
+    long_text = "x" * 2000
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        s.add_all([db.DailyScore(user_id=uid, day=today - timedelta(days=n), total_score=70,
+                                 grade="B", tasks_done=1, habits_done=n % 2, prayer_performed=0)
+                   for n in range(1, 1096)])
+        s.add_all([db.JournalEntry(workspace_id=ws, day=today - timedelta(days=n), text=long_text,
+                                   answers='{"wins": "%s"}' % long_text) for n in range(1, 1096)])
+        s.commit()
+        started = _time.perf_counter()
+        snap = svc.steps_snapshot(s, uid, ws)
+        took = _time.perf_counter() - started
+    # 1095 days with a task, 548 with a habit (odd n), 1095 written journals.
+    assert snap["total"] >= 1095 + 548 + 1095
+    print(f"steps_snapshot on 3 years: {took * 1000:.0f} ms")
+    assert took < 1.0, f"steps_snapshot took {took:.2f}s on 3 years"
+    src = (ROOT / "services.py").read_text()
+    body = src[src.index("def steps_snapshot("):src.index("def platform_progress_stats(")]
+    assert "select(DailyScore)" not in body and "JournalEntry.text" not in body
+
+
+def test_a_replayed_habit_toggle_with_the_same_key_flips_once(fresh, client):
+    """Audit #18: the offline queue's replay of a toggle that already reached
+    the server is answered from the first result, not applied again."""
+    hid = fresh.post("/api/habits", {"name": "Kitob"}).json()["id"]
+    headers = {"X-Telegram-Init-Data": init_data(fresh.user), "X-Idempotency-Key": "queue-test-key-0001"}
+    first = client.post(f"/api/habits/{hid}/toggle", headers=headers, json={})
+    again = client.post(f"/api/habits/{hid}/toggle", headers=headers, json={})
+    assert first.status_code == again.status_code == 200
+    assert again.headers.get("X-Idempotent-Replay") == "1"
+    assert next(h for h in fresh.get("/api/habits").json()["habits"] if h["id"] == hid)["done"] is True
+
+
+def test_carrying_a_goal_frees_its_place_in_the_old_week(fresh):
+    """Review fix: a full week (3 goals) carries its main goal on and can then
+    take a new main goal; the carried row stays as history."""
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        first = svc.add_focus(s, ws, "A")
+        svc.add_focus(s, ws, "B")
+        svc.add_focus(s, ws, "C")
+        with pytest.raises(ValueError):
+            svc.add_focus(s, ws, "D")
+        svc.carry_focus_forward(s, ws, first.id)
+        assert svc.week_focus(s, ws)["slots_free"] == 1
+        new = svc.add_focus(s, ws, "Yangi asosiy")
+        assert new.slot == svc.PRIMARY_SLOT
+        week = svc.week_focus(s, ws)
+        assert week["primary"]["title"] == "Yangi asosiy"
+        assert [c["title"] for c in week["carried"]] == ["A"]
+
+
+
+def test_undo_reverts_only_the_reset_it_belongs_to(fresh):
+    """Review fix: a second undo (another tab, a retry) cannot reach past the
+    reset it was offered for and revert an older one."""
+    today = svc.today_local()
+    a = fresh.post("/api/tasks", json={"title": "A", "deadline": (today - timedelta(days=4)).isoformat()}).json()
+    first = fresh.post("/api/fresh-start", {"mode": "today"}).json()
+    b = fresh.post("/api/tasks", json={"title": "B", "deadline": (today - timedelta(days=2)).isoformat()}).json()
+    second = fresh.post("/api/fresh-start", {"mode": "today"}).json()
+    assert first["reset_id"] and second["reset_id"] and first["reset_id"] != second["reset_id"]
+    assert fresh.post("/api/fresh-start/undo", {"reset_id": second["reset_id"]}).json()["restored"] == 1
+    assert fresh.post("/api/fresh-start/undo", {"reset_id": second["reset_id"]}).status_code == 404
+    with SessionLocal() as s:
+        assert s.get(db.Task, a["id"]).deadline == today, "the older reset stands"
+        assert s.get(db.Task, b["id"]).deadline == today - timedelta(days=2)
+
+
+def test_an_amount_cannot_get_round_a_timer_or_a_pause(fresh):
+    """Review fix: logging the amount has the same gates as the tick."""
+    timed = fresh.post("/api/habits", {"name": "Yugurish", "target_qty": 5, "unit": "km",
+                                       "timer_minutes": 30}).json()["id"]
+    assert fresh.post(f"/api/habits/{timed}/qty", {"qty": 2}).status_code == 200
+    r = fresh.post(f"/api/habits/{timed}/qty", {"qty": 5})
+    assert r.status_code == 422 and r.json()["detail"] == "timer_required"
+    paused = fresh.post("/api/habits", {"name": "Kitob", "target_qty": 20}).json()["id"]
+    fresh.post(f"/api/habits/{paused}/pause", {"paused": True})
+    assert fresh.post(f"/api/habits/{paused}/qty", {"qty": 3}).json()["detail"] == "paused"
+
+
+async def test_the_timer_messages_finished_button_never_unticks(client):
+    """Review fix: 'Yes, finished' after the shared task was ticked in the app
+    leaves it ticked."""
+    one, two, team_id = _pair(client)
+    with SessionLocal() as s:
+        tid = svc.add_team_task(s, one, team_id, "Birga")["id"]
+        svc.toggle_team_task(s, one, tid)
+    ctx = _Ctx()
+    await application.on_callback(_CbUpdate(one, f"ttask:done:{tid}"), ctx)
+    with SessionLocal() as s:
+        row = s.scalar(select(db.TeamTaskDone).where(db.TeamTaskDone.task_id == tid,
+                                                     db.TeamTaskDone.user_id == one))
+        assert row.done is True
+    assert application.is_read_callback("ttask", ["ttask", "done", str(tid)])
+
+
+def test_quick_parse_writes_nothing_and_spends_no_action(fresh):
+    """Review fix: the shared path's parse is free and read-only."""
+    with SessionLocal() as s:
+        before = s.get(User, fresh.user["id"]).actions_count or 0
+    tomorrow = (svc.today_local() + timedelta(days=1)).isoformat()
+    r = fresh.post("/api/quick/parse", {"title": "ertaga 15:00 hisobot"}).json()
+    assert (r["title"], r["deadline"], r["due_time"]) == ("hisobot", tomorrow, "15:00")
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        assert (s.get(User, fresh.user["id"]).actions_count or 0) == before
+        assert s.scalar(select(func.count(db.Task.id)).where(db.Task.workspace_id == ws)) == 0
+
+
+def test_recurring_series_are_rolled_once_a_day_on_the_hot_paths(fresh, monkeypatch):
+    """Review fix: Home and the reminder job do not re-query every series on
+    every read; a new recurring task still gets today's copy at once."""
+    calls = []
+    real = svc.roll_recurring
+    monkeypatch.setattr(svc, "roll_recurring", lambda s, ws, tz=None: calls.append(ws) or real(s, ws, tz))
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, fresh.user["id"])
+        svc._ROLLED.pop(ws, None)
+        for _ in range(3):
+            svc.list_tasks(s, ws)
+        assert calls.count(ws) == 1
+        svc.add_task(s, ws, "Kunlik", deadline=svc.today_local() - timedelta(days=2), recurrence="daily")
+        svc.tasks_due_today(s, ws)
+        assert calls.count(ws) == 2, "a new series is rolled straight away"
