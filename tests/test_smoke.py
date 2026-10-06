@@ -30,11 +30,22 @@ sys.path.insert(0, str(ROOT))
 TOKEN = "123456:TEST-TOKEN"
 os.environ.update({
     "BOT_TOKEN": TOKEN,
-    "DATABASE_URL": f"sqlite:///{tempfile.mkdtemp()}/test.db",
+    # SQLite by default; CI also runs the whole suite on PostgreSQL by setting
+    # TEST_DATABASE_URL to an empty database (production runs on Postgres).
+    "DATABASE_URL": os.environ.get("TEST_DATABASE_URL")
+                    or f"sqlite:///{tempfile.mkdtemp()}/test.db",
     "ENVIRONMENT": "test",
     "REQUIRED_CHANNEL_ID": "",       # subscription gate off unless a test sets it
     "ADMIN_LOG_CHANNEL_ID": "",
 })
+
+#: Tests that hand-build a legacy schema in SQLite syntax (AUTOINCREMENT,
+#: implicit rowid ids) or rely on SQLite not enforcing foreign keys. They
+#: test the migration helpers, not dialect behaviour, and are skipped when the
+#: suite runs on PostgreSQL; everything else runs on both.
+SQLITE_ONLY = pytest.mark.skipif(
+    not os.environ["DATABASE_URL"].startswith("sqlite"),
+    reason="fixture builds a legacy schema with SQLite DDL")
 
 import app as application  # noqa: E402
 import config  # noqa: E402
@@ -1171,6 +1182,7 @@ def _tables() -> set[str]:
     return set(inspect(db.engine).get_table_names())
 
 
+@SQLITE_ONLY
 def test_the_migration_takes_goals_out_of_the_live_schema():
     _make_legacy_goals_table()
     result = migrations.m0002_retire_goals()
@@ -1179,6 +1191,7 @@ def test_the_migration_takes_goals_out_of_the_live_schema():
     _drop(migrations.GOALS_ARCHIVE_TABLE)
 
 
+@SQLITE_ONLY
 def test_the_migration_keeps_every_row(alice):
     """A removed screen must never mean deleted data."""
     from sqlalchemy import text
@@ -1191,6 +1204,7 @@ def test_the_migration_keeps_every_row(alice):
     _drop(migrations.GOALS_ARCHIVE_TABLE)
 
 
+@SQLITE_ONLY
 def test_the_migration_is_safe_to_run_twice():
     _make_legacy_goals_table()
     migrations.m0002_retire_goals()
@@ -1204,6 +1218,7 @@ def test_the_migration_does_nothing_on_a_fresh_database():
     assert migrations.m0002_retire_goals()["status"] == "nothing to do"
 
 
+@SQLITE_ONLY
 def test_the_archive_can_be_renamed_back():
     """The documented rollback has to actually work."""
     from sqlalchemy import text
@@ -6192,6 +6207,7 @@ def test_going_quiet_lowers_the_rolling_index_on_its_own():
     assert stale < fresh_index
 
 
+@SQLITE_ONLY
 def test_a_personal_best_rank_only_ever_improves():
     uid = _progress_user()
     with SessionLocal() as s:
@@ -7088,6 +7104,7 @@ def _break_the_outbox_key(engine) -> None:
         """))
 
 
+@SQLITE_ONLY
 def test_a_stale_outbox_key_is_detected_and_worked_around(client):
     """The outbox is unusable, and the report still has to go out.
 
@@ -7124,6 +7141,7 @@ def test_a_stale_outbox_key_is_detected_and_worked_around(client):
         db.init_db()
 
 
+@SQLITE_ONLY
 def test_starting_up_repairs_a_stale_outbox_key(client):
     """The repair has to happen on boot: the affected deploys have no shell."""
     telegram_id = next(_next_id)
@@ -7153,6 +7171,7 @@ def test_starting_up_repairs_a_stale_outbox_key(client):
         svc.CLAIM_ANOMALIES.clear()
 
 
+@SQLITE_ONLY
 def test_the_repair_keeps_the_rows_it_finds(client):
     """A schema fix must not throw away what was already delivered."""
     telegram_id = next(_next_id)

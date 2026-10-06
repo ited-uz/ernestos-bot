@@ -111,7 +111,14 @@ o‘tdi; `pyflakes` toza.
   break_notice_at`; `weekly_focus.carried_to, carried_from`;
   `tasks.blocked_reason, blocked_until`; `habits.target_qty, min_qty, unit`;
   `habit_logs.qty`; `users.quiet_from, quiet_to, day_capacity`.
-  PostgreSQL’da jonli sinab ko‘rilmagan (testlar SQLite’da).
+  **PostgreSQL 16 da tekshirildi:** v12.2 kodi bilan yaratilgan va real
+  ma’lumot (qisman to‘langan qarz, ko‘chirilgan maqsad, ishlab turgan
+  taymer, jamoa) yozilgan baza v13 kodi bilan ko‘tarildi — 17 ustun va 3
+  jadval qo‘shildi, ikkinchi ishga tushirish hech narsa qilmadi, barcha
+  yangi funksiyalar va ma’lumotni o‘chirish shu bazada ishladi. To‘liq test
+  to‘plami ham PostgreSQL’da o‘tdi (1023 o‘tdi; 8 tasi SQLite sintaksisida
+  eski sxema quradigan fixture, Postgres’da o‘tkazib yuboriladi). CI endi
+  har push’da ikkala bazada ishlaydi. Production’dagi backup baribir shart.
 - Railway’da `BUILD_ID` yoki `RAILWAY_GIT_COMMIT_SHA` o‘rnatilgan bo‘lsin —
   `GET /api/version` deploy qilingan build’ni ko‘rsatadi.
 - CI (`.github/workflows/tests.yml`) arxivdan tiklandi: pytest, pyflakes,
@@ -120,6 +127,6 @@ o‘tdi; `pyflakes` toza.
 ## Tekshirilmagan
 
 Haqiqiy Telegram (iOS/Android), jonli AI provayderlari (Groq/ElevenLabs/Gemini),
-PostgreSQL, ko‘p foydalanuvchili yuklama, 23:59 → 00:00 ni haqiqiy qurilmada
+ko‘p foydalanuvchili yuklama, 23:59 → 00:00 ni haqiqiy qurilmada
 o‘tkazish, ikki qurilmada ketma-ket tahrir. Audit hujjatidagi «Haqiqiy
 foydalanish sinovlari» ro‘yxati to‘liq ochiq — launchdan oldin qo‘lda o‘tish kerak.
