@@ -124,9 +124,17 @@ o‘tdi; `pyflakes` toza.
 - CI (`.github/workflows/tests.yml`) arxivdan tiklandi: pytest, pyflakes,
   ikki vaqt mintaqasida ikkala frontend to‘plami va `test_agent_ui.cjs`.
 
+## Brauzerda tekshirildi
+
+`scripts/e2e.sh` — haqiqiy server va headless Chromium’da Mini App (Telegram
+imzosi bilan): tez qo‘shish, odat belgisi, offline navbat (internet o‘chirib
+yoqilganda bir marta yuborilishi), qarz, reset oldindan ko‘rish va «kerak emas»,
+taymer, sokin soatlar, statistika, barcha ekranlar va JavaScript xatosizligi —
+11/11. CI’da ham ishlaydi, skrinshotlar artefakt sifatida saqlanadi.
+
 ## Tekshirilmagan
 
-Haqiqiy Telegram (iOS/Android), jonli AI provayderlari (Groq/ElevenLabs/Gemini),
+Haqiqiy Telegram ilovasi ichida (iOS/Android WebView), jonli AI provayderlari (Groq/ElevenLabs/Gemini),
 ko‘p foydalanuvchili yuklama, 23:59 → 00:00 ni haqiqiy qurilmada
 o‘tkazish, ikki qurilmada ketma-ket tahrir. Audit hujjatidagi «Haqiqiy
 foydalanish sinovlari» ro‘yxati to‘liq ochiq — launchdan oldin qo‘lda o‘tish kerak.
