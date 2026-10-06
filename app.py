@@ -22,6 +22,7 @@ from datetime import date, datetime, time as dtime, timedelta
 from urllib.parse import quote
 
 from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select, text as sql_text
@@ -38,6 +39,7 @@ from telegram.ext import (
 )
 
 import accounts
+import app_auth
 import agent_api
 import agent_core
 import agent_provider
@@ -506,6 +508,9 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             svc.claim_referral(s, uid, payload,
                                source="bot", newly_created=True)
     team_code = svc.parse_team_payload(payload)
+    # `t.me/<bot>?start=app` — the phone app's "Get a code" button.
+    if payload == "app" and not created:
+        return await cmd_app_code(update, ctx)
 
     with SessionLocal() as s:
         user = s.get(User, uid)
@@ -6625,9 +6630,50 @@ async def show_report_health(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
     await message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
 
 
+APP_CODE_TEXT = {
+    "uz": ("📱 <b>ErnestOS ilovasiga kirish kodi</b>\n\n<code>{code}</code>\n\n"
+           "Kodni ilovaga kiriting. U 10 daqiqa ishlaydi va faqat bir marta. "
+           "Kodni hech kimga bermang."),
+    "en": ("📱 <b>Your ErnestOS app sign-in code</b>\n\n<code>{code}</code>\n\n"
+           "Type it into the app. It works for 10 minutes, once. "
+           "Never share it with anyone."),
+    "ru": ("📱 <b>Код входа в приложение ErnestOS</b>\n\n<code>{code}</code>\n\n"
+           "Введите его в приложении. Код действует 10 минут, один раз. "
+           "Никому его не сообщайте."),
+}
+APP_CODE_NOT_READY = {
+    "uz": "Avval botda ro'yxatdan o'ting: /start",
+    "en": "Finish setting up in the bot first: /start",
+    "ru": "Сначала завершите настройку в боте: /start",
+}
+
+
+async def cmd_app_code(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """A one-time code for signing the Android/iOS app in (`app_auth`).
+
+    Issued to the Telegram that asked, in a private chat only, so the code is
+    never posted where somebody else can read it."""
+    tg_user, message = update.effective_user, update.effective_message
+    chat = update.effective_chat
+    if tg_user is None or message is None or (chat and chat.type != "private"):
+        return
+    uid = account_of(update)
+    with SessionLocal() as s:
+        user = s.get(User, uid)
+        lang = (user.language if user else None) or "uz"
+        if user is None or not user.onboarded:
+            await message.reply_text(APP_CODE_NOT_READY.get(lang, APP_CODE_NOT_READY["uz"]))
+            return
+        code = app_auth.issue_code(s, tg_user.id)
+    await message.reply_text(
+        APP_CODE_TEXT.get(lang, APP_CODE_TEXT["uz"]).format(code=app_auth.format_code(code)),
+        parse_mode=ParseMode.HTML)
+
+
 BOT_COMMANDS = [
     # Signing in with a login from another Telegram, signing out of it, and
     # the account screen itself.
+    ("app", lambda u, c: cmd_app_code(u, c)),
     ("login", lambda u, c: cmd_login(u, c)),
     ("logout", lambda u, c: cmd_logout(u, c)),
     ("account", lambda u, c: show_account(u, c)),
@@ -6781,7 +6827,9 @@ app = FastAPI(title="ErnestOS", lifespan=lifespan)
 
 #: Per-user token buckets. Reads are cheap, writes cost more, and exports hit
 #: Telegram, so each class gets its own budget (audit 012).
-RATE_LIMITS = {"read": (60, 60), "write": (30, 60), "heavy": (5, 60)}
+RATE_LIMITS = {"read": (60, 60), "write": (30, 60), "heavy": (5, 60),
+               # Sign-in codes: ten tries per ten minutes per address.
+               "auth": (10, 600)}
 #: The suite drives hundreds of writes as one user in a few seconds, which is
 #: not the traffic this limit describes. Tests exercise it explicitly instead.
 RATE_LIMIT_ENABLED = ENVIRONMENT != "test"
@@ -6799,6 +6847,8 @@ def _rate_class(request: Request) -> str:
     path = request.url.path
     if path.startswith(("/api/stats/export", "/api/avatar")):
         return "heavy"
+    if path == "/api/app/login":
+        return "auth"
     return "read" if request.method == "GET" else "write"
 
 
@@ -10014,6 +10064,39 @@ def api_wake_time(body: WakeTimeIn, init=Header(default=None, alias="X-Telegram-
     return {"ok": True, "time": value.strftime("%H:%M")}
 
 
+# --- Phone app sign-in (Android / iOS) ---
+
+class AppLoginIn(BaseModel):
+    code: str = Field(max_length=32)
+    device: str = Field(default="", max_length=80)
+
+
+@app.get("/api/app/config")
+def api_app_config():
+    """What the phone app needs before anybody is signed in. Public."""
+    return {"bot_username": BOT_USERNAME, "version": version.VERSION}
+
+
+@app.post("/api/app/login")
+def api_app_login(body: AppLoginIn):
+    """Trade the bot's one-time code for a session. Wrong, used and expired
+    codes all get the same answer, and the `auth` rate class keeps guessing
+    slow."""
+    with SessionLocal() as s:
+        token = app_auth.redeem_code(s, body.code, body.device)
+    if token is None:
+        raise HTTPException(status_code=401, detail="bad_code")
+    return {"token": app_auth.TOKEN_PREFIX + token}
+
+
+@app.post("/api/app/logout")
+def api_app_logout(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    if not app_auth.is_app_token(init):
+        return {"ok": False}
+    with SessionLocal() as s:
+        return {"ok": app_auth.revoke_token(s, init)}
+
+
 # --- Mini App static file ---
 
 WEBAPP_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -10026,3 +10109,18 @@ def index():
 
 
 agent_api.install(app, auth)
+
+# The phone app's pages are served from inside the app (Capacitor:
+# `https://localhost` on Android, `capacitor://localhost` on iOS), so its
+# calls here are cross-origin. Added last, so it wraps every other
+# middleware and answers the browser's preflight itself. No cookies are
+# involved: credentials travel in a header, so `allow_credentials` stays off.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=config.APP_ORIGINS,
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
+    allow_headers=["Content-Type", "X-Telegram-Init-Data", "X-Idempotency-Key",
+                   "X-Agent-Request-Key"],
+    expose_headers=["X-Trial-Remaining", "Retry-After"],
+    max_age=600,
+)

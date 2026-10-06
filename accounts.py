@@ -290,6 +290,9 @@ def remove_link(s: Session, account_id: int, telegram_id: int) -> bool:
 
 def forget_account(s: Session, account_id: int) -> None:
     """Everything this module holds about an account. The caller commits."""
+    # Phones signed in through this account's Telegrams stop working too.
+    import app_auth
+    app_auth.forget(s, [account_id, *linked_ids(s, account_id)])
     s.execute(sql_delete(LinkedTelegram).where(
         (LinkedTelegram.account_id == account_id)
         | (LinkedTelegram.telegram_id == account_id)))

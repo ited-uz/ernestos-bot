@@ -11437,3 +11437,118 @@ def test_recurring_series_are_rolled_once_a_day_on_the_hot_paths(fresh, monkeypa
         svc.add_task(s, ws, "Kunlik", deadline=svc.today_local() - timedelta(days=2), recurrence="daily")
         svc.tasks_due_today(s, ws)
         assert calls.count(ws) == 2, "a new series is rolled straight away"
+
+
+# ---------------------------------------------------------------------------
+# Phone app sign-in: a one-time code from the bot, then a session token
+# ---------------------------------------------------------------------------
+
+import app_auth  # noqa: E402
+
+APP_USER = {"id": 7301, "first_name": "Ilova", "username": "ilova"}
+
+
+def _app_login(client, telegram_id: int, device: str = "test phone") -> str:
+    with SessionLocal() as s:
+        code = app_auth.issue_code(s, telegram_id)
+    r = client.post("/api/app/login", json={"code": code, "device": device})
+    assert r.status_code == 200, r.text
+    token = r.json()["token"]
+    assert token.startswith("app:")
+    return token
+
+
+def test_app_code_signs_the_phone_in_as_the_same_account(client):
+    mini = Caller(client, APP_USER)
+    created = mini.post("/api/habits", json={"name": "Yugurish"})
+    assert created.status_code == 200, created.text
+    token = _app_login(client, APP_USER["id"])
+    phone = {"X-Telegram-Init-Data": token}
+    me = client.get("/api/me", headers=phone)
+    assert me.status_code == 200
+    assert me.json()["first_name"] == "Ilova", "the token renames nobody"
+    assert me.json()["telegram_id"] == APP_USER["id"]
+    names = [h["name"] for h in client.get("/api/habits", headers=phone).json()["habits"]]
+    assert "Yugurish" in names
+    # Writes from the phone land in the same workspace the Mini App reads.
+    assert client.post("/api/habits", headers=phone, json={"name": "Kitob"}).status_code == 200
+    assert "Kitob" in [h["name"] for h in mini.get("/api/habits").json()["habits"]]
+
+
+def test_app_code_is_single_use_case_insensitive_and_replaced_by_a_new_one(client):
+    _onboard(7302)
+    with SessionLocal() as s:
+        first = app_auth.issue_code(s, 7302)
+        second = app_auth.issue_code(s, 7302)
+    # A new code cancels the old one.
+    assert client.post("/api/app/login", json={"code": first}).status_code == 401
+    typed = app_auth.format_code(second).lower()          # "abcd-2345"
+    assert client.post("/api/app/login", json={"code": typed}).status_code == 200
+    again = client.post("/api/app/login", json={"code": second})
+    assert again.status_code == 401 and again.json()["detail"] == "bad_code"
+    assert client.post("/api/app/login", json={"code": "ZZZZ-ZZZZ"}).status_code == 401
+
+
+def test_app_code_expires_after_ten_minutes(client):
+    _onboard(7303)
+    with SessionLocal() as s:
+        code = app_auth.issue_code(s, 7303)
+        row = s.scalar(select(db.AppLoginCode).where(db.AppLoginCode.telegram_id == 7303,
+                                                     db.AppLoginCode.used_at.is_(None)))
+        row.expires_at = db.utcnow() - timedelta(seconds=1)
+        s.commit()
+    assert client.post("/api/app/login", json={"code": code}).status_code == 401
+
+
+def test_app_logout_and_unknown_tokens_are_refused(client):
+    _onboard(7304)
+    token = _app_login(client, 7304)
+    phone = {"X-Telegram-Init-Data": token}
+    assert client.get("/api/me", headers=phone).status_code == 200
+    assert client.post("/api/app/logout", headers=phone).json() == {"ok": True}
+    assert client.get("/api/me", headers=phone).status_code == 401
+    assert client.get("/api/me", headers={"X-Telegram-Init-Data": "app:nope"}).status_code == 401
+    assert client.get("/api/me", headers={"X-Telegram-Init-Data": "app:"}).status_code == 401
+
+
+def test_app_session_expires_and_only_its_digest_is_stored(client):
+    _onboard(7305)
+    token = _app_login(client, 7305)
+    with SessionLocal() as s:
+        row = s.scalar(select(db.AppSession).where(db.AppSession.telegram_id == 7305))
+        assert token[4:] not in (row.token_hash, row.device)
+        row.expires_at = db.utcnow() - timedelta(seconds=1)
+        s.commit()
+    assert client.get("/api/me", headers={"X-Telegram-Init-Data": token}).status_code == 401
+
+
+def test_deleting_the_account_signs_every_phone_out(client):
+    _onboard(7306)
+    token = _app_login(client, 7306)
+    with SessionLocal() as s:
+        assert svc.delete_account(s, 7306)
+    with SessionLocal() as s:
+        assert not s.scalars(select(db.AppSession).where(db.AppSession.telegram_id == 7306)).all()
+    assert client.get("/api/me", headers={"X-Telegram-Init-Data": token}).status_code == 401
+
+
+def test_app_config_is_public_and_cors_admits_only_the_app(client):
+    r = client.get("/api/app/config")
+    assert r.status_code == 200 and "bot_username" in r.json()
+    for origin in ("https://localhost", "capacitor://localhost"):
+        pre = client.options("/api/me", headers={
+            "Origin": origin, "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "x-telegram-init-data"})
+        assert pre.status_code == 200, origin
+        assert pre.headers["access-control-allow-origin"] == origin
+    evil = client.options("/api/me", headers={
+        "Origin": "https://evil.example", "Access-Control-Request-Method": "GET"})
+    assert evil.headers.get("access-control-allow-origin") is None
+
+
+def test_app_login_has_its_own_tight_rate_class():
+    from starlette.requests import Request
+    req = Request({"type": "http", "method": "POST", "path": "/api/app/login",
+                   "headers": [], "query_string": b""})
+    assert application._rate_class(req) == "auth"
+    assert application.RATE_LIMITS["auth"][0] <= 10

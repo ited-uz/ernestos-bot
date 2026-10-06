@@ -1144,6 +1144,10 @@ details[open] > summary .i{transform:rotate(90deg)}
    ================================================================== */
 
 const tg = window.Telegram?.WebApp;
+/* Where the API lives. Empty in Telegram (same origin); the phone app's
+   config.js names the server, and native.js sends fetch() there. Only an
+   <img src> has to spell it out, since no fetch() is involved. */
+const API_BASE = (window.ERNEST_CONFIG?.api || "").replace(/\/+$/, "");
 tg?.ready();
 tg?.expand();
 tg?.disableVerticalSwipes?.();
@@ -1362,6 +1366,7 @@ const DICT = {
   account_hint:"Ma'lumotlar, maxfiylik va export",
   profile:"Profil", member:"Foydalanuvchi", photo_hint:"Telegram rasmi ishlatiladi",
   data_privacy:"Ma'lumotlar va maxfiylik",
+  app_sign_out:"Ilovadan chiqish", app_sign_out_ask:"Bu telefondan chiqasizmi? Ma'lumotlaringiz saqlanadi.",
   export_data:"Ma'lumotlarimni export qilish", export_sent:"Fayl botga yuborildi",
   privacy_info:"Maxfiylik haqida",
   privacy_data:"Maxfiylik va ma'lumotlar", privacy_hint:"Ma'lumotlaringiz sizniki",
@@ -1731,6 +1736,7 @@ const DICT = {
   account_hint:"Data, privacy and export",
   profile:"Profile", member:"Member", photo_hint:"Your Telegram photo is used",
   data_privacy:"Data and privacy",
+  app_sign_out:"Sign out of the app", app_sign_out_ask:"Sign out on this phone? Your data stays.",
   export_data:"Export my data", export_sent:"File sent to the bot chat",
   privacy_info:"About privacy",
   privacy_data:"Privacy & data", privacy_hint:"Your data belongs to you",
@@ -2097,6 +2103,7 @@ const DICT = {
   account_hint:"Данные, приватность и экспорт",
   profile:"Профиль", member:"Участник", photo_hint:"Используется фото из Telegram",
   data_privacy:"Данные и приватность",
+  app_sign_out:"Выйти из приложения", app_sign_out_ask:"Выйти на этом телефоне? Данные сохранятся.",
   export_data:"Экспорт моих данных", export_sent:"Файл отправлен в чат бота",
   privacy_info:"О приватности",
   privacy_data:"Приватность и данные", privacy_hint:"Ваши данные принадлежат вам",
@@ -2810,7 +2817,7 @@ function headBlock(d){
   const avatar = tgPhoto
     ? `<img src="${esc(tgPhoto)}" alt="" />`
     : state.me?.has_photo
-      ? `<img src="/api/avatar?token=${encodeURIComponent(state.me?.avatar_token || "")}" alt="" />`
+      ? `<img src="${API_BASE}/api/avatar?token=${encodeURIComponent(state.me?.avatar_token || "")}" alt="" />`
       : esc(initial);
 
   let h = `
@@ -6756,6 +6763,7 @@ function accountSheet(){
     ${row("privacy-info", "shield", "tone-5", t("privacy_info"))}
     ${row("fresh-start", "repeat", "tone-4", t("fresh_start"))}
     ${row("feedback", "message", "tone-3", t("feedback"))}
+    ${tg?.isErnestApp ? row("app-sign-out", "user", "tone-2", t("app_sign_out")) : ""}
     <div class="item pressable" style="min-height:48px;margin-top:var(--s2)"
          data-act="delete-account">
       <span style="color:var(--danger)">${icon("trash", 17)}</span>
@@ -9234,6 +9242,10 @@ const A = {
   "set-privacy": () => { haptic(); openSettings("privacy"); },
   "privacy-info": () => openSheet(privacySheet()),
   sessions: () => openSheet(sessionsSheet()),
+  /* Phone app only (native.js): end this phone's session. Data stays. */
+  "app-sign-out": () => {
+    if(confirm(t("app_sign_out_ask"))) window.ErnestApp?.signOut();
+  },
   export: async () => {
     try{ await api("/api/export/send", {method:"POST"});
          toast(t("export_sent")); }

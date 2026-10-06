@@ -1106,6 +1106,45 @@ class IdempotencyKey(Base):
 
 
 # ---------------------------------------------------------------------------
+# Phone app sign-in — a one-time code from the bot, then a session token
+# ---------------------------------------------------------------------------
+#
+# The Android/iOS app has no Telegram signature. The person asks the bot for a
+# code, types it into the app, and the app gets a long random token that it
+# sends where the Mini App sends initData. Both rows keep only a SHA-256 of
+# the secret, so a copy of the database cannot be used to sign in.
+
+class AppLoginCode(Base):
+    """A short code the bot gave to one Telegram account. Single use."""
+
+    __tablename__ = "app_login_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    code_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class AppSession(Base):
+    """One signed-in phone. Revoked by signing out or deleting the account."""
+
+    __tablename__ = "app_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    #: The Telegram that asked for the code. Served exactly as that Telegram's
+    #: Mini App is, so a Telegram signed in to another account stays there.
+    telegram_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    device: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    last_used_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+# ---------------------------------------------------------------------------
 # ErnestOS accounts — a login and a password on top of the Telegram id
 # ---------------------------------------------------------------------------
 #

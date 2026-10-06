@@ -119,6 +119,12 @@ BOT_USERNAME = _bot_username(os.environ.get("BOT_USERNAME", ""))
 
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "").strip().rstrip("/")
 
+#: Origins the Android/iOS app calls the API from. Capacitor serves the app's
+#: pages from these; anything else stays same-origin only.
+APP_ORIGINS = [o.strip().rstrip("/") for o in os.environ.get(
+    "APP_ORIGINS", "https://localhost,capacitor://localhost,http://localhost").split(",")
+    if o.strip()]
+
 #: Telegram initData older than this is rejected, so a captured URL cannot be
 #: replayed days later.
 INIT_DATA_MAX_AGE = int(os.environ.get("INIT_DATA_MAX_AGE", "86400"))

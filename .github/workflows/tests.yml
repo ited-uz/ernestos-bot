@@ -97,6 +97,12 @@ jobs:
         env:
           PYTHON: python
         run: NODE_PATH="$(npm root -g)" scripts/e2e.sh
+      # The phone app's web layer: sign-in code, the Mini App through
+      # native.js, cross-origin calls, session end.
+      - name: Phone app checks
+        env:
+          PYTHON: python
+        run: NODE_PATH="$(npm root -g)" scripts/e2e_app.sh
       - name: Screenshots
         if: always()
         uses: actions/upload-artifact@v4
