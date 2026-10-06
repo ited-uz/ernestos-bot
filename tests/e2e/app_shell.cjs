@@ -117,10 +117,25 @@ const step = async (name, fn) => {
     await page.waitForSelector('[data-act="inbox-action"]');
     await shot('07-inbox');
     await page.click(`[data-act="inbox-action"][data-cb="habit:toggle:${hid}"]`);
-    await page.waitForTimeout(600);
-    const habits = await page.evaluate(() => api('/api/habits'));
-    assert.ok(habits.habits.find(h => h.id === hid).done, 'ticked from the notification');
-    assert.equal(await page.locator('.bell-badge').count(), 0, 'read once opened');
+    // The server answers, then the app reloads its screen: wait on the server.
+    let done = false;
+    for (let i = 0; i < 20 && !done; i++) {
+      const habits = await page.evaluate(() => api('/api/habits'));
+      done = habits.habits.find(h => h.id === hid).done;
+      if (!done) await page.waitForTimeout(250);
+    }
+    assert.ok(done, 'ticked from the notification');
+    await page.waitForFunction(() => !document.querySelector('.bell-badge'), null, { timeout: 5000 });
+  });
+
+  await step('Opening the inbox again does not redraw an unchanged list', async () => {
+    const before = await page.evaluate(() => {
+      window.__chip = document.querySelector('[data-act="inbox-action"]');
+      return Boolean(window.__chip);
+    });
+    assert.ok(before, 'the list is open');
+    await page.evaluate(() => refreshInbox());
+    assert.ok(await page.evaluate(() => window.__chip.isConnected), 'same nodes, a tap is never lost');
     await page.evaluate(() => closeSheet());
   });
 
@@ -135,7 +150,7 @@ const step = async (name, fn) => {
   });
 
   await step('Back closes an open sheet first', async () => {
-    await page.evaluate(() => goto('home'));
+    await page.evaluate(() => { closeSheet(); goto('home'); });
     await page.click('.fab-add');
     await page.waitForTimeout(300);
     assert.ok(await page.evaluate(() => Telegram.WebApp.BackButton.isVisible), 'back shown with a sheet');

@@ -2862,8 +2862,14 @@ function inboxSheet(){
 async function refreshInbox(){
   if(!IS_APP || !state.me) return;
   try{
-    state.inbox = await api("/api/app/notifications");
-    state.inboxUnread = state.inbox.unread;
+    const box = await api("/api/app/notifications");
+    /* Redraw only when something changed. Replacing the open list under a
+       finger turns a tap into a press on one node and a release on another,
+       and the tap is lost. */
+    const same = JSON.stringify(box) === JSON.stringify(state.inbox);
+    state.inbox = box;
+    state.inboxUnread = box.unread;
+    if(same) return;
     if(state.sheetView === "inbox") openSheet(inboxSheet(), "inbox");
     else if(state.screen === "home") render();
   }catch(_){ /* the badge waits for the next try */ }
@@ -9321,8 +9327,14 @@ const A = {
     openSheet(inboxSheet(), "inbox");
     await refreshInbox();
     if(state.inboxUnread){
-      try{ await api("/api/app/notifications/read", {method:"POST", body:{}});
-           state.inboxUnread = 0; render(); }catch(_){}
+      try{
+        await api("/api/app/notifications/read", {method:"POST", body:{}});
+        // Mirror the server so the next refresh finds nothing to redraw.
+        state.inbox = {...state.inbox, unread:0,
+                       items: state.inbox.items.map(n => ({...n, read:true}))};
+        state.inboxUnread = 0;
+        render();
+      }catch(_){}
     }
   },
   "inbox-action": async el => {
