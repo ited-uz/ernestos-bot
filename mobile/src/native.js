@@ -29,6 +29,7 @@
     clear: function () { try { localStorage.removeItem(TOKEN_KEY); } catch (e) {} },
   };
   var onLoginPage = /login\.html$/.test(location.pathname);
+  var pendingInbox = false;
   var token = store.get();
 
   window.ErnestApp = {
@@ -45,6 +46,27 @@
       location.replace("login.html");
     },
     open: function (url) { openExternal(url); },
+    /* A tapped push asked for the inbox; the Mini App takes the request once. */
+    takePendingInbox: function () {
+      var wanted = pendingInbox;
+      pendingInbox = false;
+      return wanted;
+    },
+    /* Data export: write the file into the app's cache, then hand it to the
+       phone's share sheet, where the person picks Files, Drive, Telegram… */
+    saveFile: function (name, text, mime) {
+      var fs = plugin("Filesystem"), share = plugin("Share");
+      if (!fs || !share) return Promise.reject(new Error("no_filesystem"));
+      var safe = String(name || "ernestos.txt").replace(/[^A-Za-z0-9._-]/g, "_");
+      return fs.writeFile({ path: safe, data: String(text), directory: "CACHE", encoding: "utf8" })
+        .then(function (res) {
+          return share.share({ title: safe, files: [res.uri], dialogTitle: safe })
+            .catch(function (e) {
+              // Closing the share sheet is not an error worth showing.
+              if (!/cancel/i.test(String(e && e.message))) throw e;
+            });
+        });
+    },
   };
 
   if (!token && !onLoginPage) { location.replace("login.html"); return; }
@@ -68,6 +90,20 @@
      Telegram, mail), so a plain navigation is the whole implementation. ---- */
   function openExternal(url) {
     if (!url) return;
+    // Telegram's "share" link becomes the phone's own share sheet, so an
+    // invite can go to WhatsApp, SMS or anywhere else, Telegram included.
+    var share = plugin("Share");
+    var m = /^https:\/\/t\.me\/share\/url\?(.*)$/.exec(url);
+    if (share && m) {
+      var q = {};
+      m[1].split("&").forEach(function (kv) {
+        var i = kv.indexOf("=");
+        if (i > 0) q[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1).replace(/\+/g, " "));
+      });
+      share.share({ text: [q.text, q.url].filter(Boolean).join("\n"), url: q.url })
+        .catch(function () {});
+      return;
+    }
     var browser = plugin("Browser");
     if (browser && /^https?:/.test(url) && !/^https?:\/\/t\.me\//.test(url)) {
       browser.open({ url: url }).catch(function () { location.href = url; });
@@ -165,6 +201,46 @@
       }
     });
   }
+
+  /* ---- push: register this phone with Firebase and the server ----
+     Only in builds made with a google-services.json (config.js says so):
+     without Firebase, registering would fail natively. The inbox works
+     either way. */
+  function setUpPush() {
+    var push = plugin("PushNotifications");
+    if (!push || !CFG.push || !token) return;
+    var channels = [
+      { id: "reminders", name: "Eslatmalar", description: "Eslatmalar, hisobotlar, taymerlar",
+        importance: 4, visibility: 1, vibration: true },
+      { id: "quiet", name: "Sokin soatlar", description: "Sokin soatlarda ovozsiz",
+        importance: 2, visibility: 1, vibration: false },
+    ];
+    channels.forEach(function (c) { if (push.createChannel) push.createChannel(c).catch(noop); });
+    push.addListener("registration", function (reg) {
+      nativeFetch(API + "/api/app/push-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Telegram-Init-Data": token },
+        body: JSON.stringify({ token: reg.value, platform: WebApp.platform }),
+      }).catch(noop);
+    });
+    push.addListener("registrationError", function (e) {
+      console.warn("push registration failed", e && e.error);
+    });
+    push.addListener("pushNotificationReceived", function () {
+      window.dispatchEvent(new Event("ernest:push"));
+    });
+    push.addListener("pushNotificationActionPerformed", function () {
+      pendingInbox = true;
+      window.dispatchEvent(new Event("ernest:open-inbox"));
+    });
+    push.checkPermissions().then(function (p) {
+      if (p.receive === "granted") return p;
+      return push.requestPermissions();
+    }).then(function (p) {
+      if (p.receive === "granted") return push.register();
+    }).catch(noop);
+  }
+  if (!onLoginPage) document.addEventListener("DOMContentLoaded", setUpPush);
 
   function refreshViewport() {
     WebApp.viewportHeight = WebApp.viewportStableHeight = window.innerHeight;

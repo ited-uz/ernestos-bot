@@ -966,6 +966,17 @@ details[open] > summary .i{transform:rotate(90deg)}
   padding:8px 10px;border-radius:var(--radius-sm);font-size:13.5px;
   color:var(--danger);background:color-mix(in srgb, var(--danger) 9%, transparent);
   cursor:pointer;min-height:40px}
+/* Phone app only: the inbox bell beside the avatar, with its unread count. */
+.bellbtn{width:44px;height:44px;border-radius:50%;flex:none;border:0;padding:0;
+  display:grid;place-items:center;position:relative;cursor:pointer;
+  background:var(--surface);color:var(--text);box-shadow:0 0 0 1px var(--border)}
+.bellbtn:focus-visible{outline:0;box-shadow:var(--ring)}
+.bell-badge{position:absolute;top:-3px;right:-3px;min-width:19px;height:19px;
+  padding:0 5px;border-radius:10px;background:var(--danger);color:var(--on-primary);
+  font-size:11px;font-weight:700;display:grid;place-items:center;
+  box-shadow:0 0 0 2px var(--bg)}
+.inbox-item{margin-top:var(--s2)}
+.inbox-item.unread{box-shadow:inset 3px 0 0 var(--primary)}
 .avatar-gear{position:absolute;right:-3px;bottom:-3px;width:19px;height:19px;
   border-radius:50%;display:grid;place-items:center;background:var(--surface);
   color:var(--text-2);box-shadow:0 0 0 1.5px var(--border)}
@@ -1148,6 +1159,9 @@ const tg = window.Telegram?.WebApp;
    config.js names the server, and native.js sends fetch() there. Only an
    <img src> has to spell it out, since no fetch() is involved. */
 const API_BASE = (window.ERNEST_CONFIG?.api || "").replace(/\/+$/, "");
+/* The Android/iOS app (native.js), as opposed to Telegram's Mini App. Strict:
+   only native.js sets this flag to the literal `true`. */
+const IS_APP = tg?.isErnestApp === true;
 tg?.ready();
 tg?.expand();
 tg?.disableVerticalSwipes?.();
@@ -1366,6 +1380,9 @@ const DICT = {
   account_hint:"Ma'lumotlar, maxfiylik va export",
   profile:"Profil", member:"Foydalanuvchi", photo_hint:"Telegram rasmi ishlatiladi",
   data_privacy:"Ma'lumotlar va maxfiylik",
+  file_ready:"Fayl tayyor — saqlash joyini tanlang",
+  inbox:"Xabarlar", inbox_empty:"Hozircha xabar yo'q. Eslatmalar, hisobotlar va taymerlar shu yerga keladi.",
+  inbox_snoozed:"{n} daqiqadan keyin yana eslataman", inbox_done:"Bajarildi ✓",
   app_sign_out:"Ilovadan chiqish", app_sign_out_ask:"Bu telefondan chiqasizmi? Ma'lumotlaringiz saqlanadi.",
   export_data:"Ma'lumotlarimni export qilish", export_sent:"Fayl botga yuborildi",
   privacy_info:"Maxfiylik haqida",
@@ -1736,6 +1753,9 @@ const DICT = {
   account_hint:"Data, privacy and export",
   profile:"Profile", member:"Member", photo_hint:"Your Telegram photo is used",
   data_privacy:"Data and privacy",
+  file_ready:"File ready — choose where to save it",
+  inbox:"Notifications", inbox_empty:"Nothing yet. Reminders, reports and timers arrive here.",
+  inbox_snoozed:"I'll remind you again in {n} min", inbox_done:"Done ✓",
   app_sign_out:"Sign out of the app", app_sign_out_ask:"Sign out on this phone? Your data stays.",
   export_data:"Export my data", export_sent:"File sent to the bot chat",
   privacy_info:"About privacy",
@@ -2103,6 +2123,9 @@ const DICT = {
   account_hint:"Данные, приватность и экспорт",
   profile:"Профиль", member:"Участник", photo_hint:"Используется фото из Telegram",
   data_privacy:"Данные и приватность",
+  file_ready:"Файл готов — выберите, куда сохранить",
+  inbox:"Уведомления", inbox_empty:"Пока пусто. Сюда приходят напоминания, отчёты и таймеры.",
+  inbox_snoozed:"Напомню снова через {n} мин", inbox_done:"Готово ✓",
   app_sign_out:"Выйти из приложения", app_sign_out_ask:"Выйти на этом телефоне? Данные сохранятся.",
   export_data:"Экспорт моих данных", export_sent:"Файл отправлен в чат бота",
   privacy_info:"О приватности",
@@ -2807,6 +2830,45 @@ function calendarSheet(){
       ${t("close")}</button>`;
 }
 
+/* ---------- phone app inbox ----------
+   Everything the bot sends on its own (reports, reminders, timers, team
+   news) also lands here when the account has the phone app; push brings the
+   phone's attention to it. Buttons are the message's own: snooze, done. */
+function inboxWhen(iso){
+  const d = new Date(iso);
+  if(isNaN(d)) return "";
+  const hm = `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+  const today = new Date();
+  return d.toDateString() === today.toDateString() ? hm
+    : `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")} ${hm}`;
+}
+function inboxSheet(){
+  const box = state.inbox;
+  const items = box?.items || [];
+  const list = !box ? `<div class="hint">…</div>`
+    : !items.length ? `<div class="hint">${t("inbox_empty")}</div>`
+    : items.map(n => `
+      <div class="card tight inbox-item ${n.read ? "" : "unread"}">
+        <div class="row"><b class="grow wrap">${esc(n.title)}</b>
+          <span class="t3 tiny">${esc(inboxWhen(n.created_at))}</span></div>
+        ${n.body ? `<div class="t2 small wrap" style="white-space:pre-line;margin-top:4px">${esc(n.body)}</div>` : ""}
+        ${n.actions?.length ? `<div class="chips" style="margin-top:8px">${n.actions.map(a =>
+          `<div class="chip sm" data-act="inbox-action" data-id="${n.id}" data-cb="${esc(a.cb)}">${esc(a.label)}</div>`
+        ).join("")}</div>` : ""}
+      </div>`).join("");
+  return `<h3>${icon("bell", 18)} ${t("inbox")}</h3>${list}
+    <button class="btn secondary" data-act="close" style="margin-top:var(--s3)">${t("close")}</button>`;
+}
+async function refreshInbox(){
+  if(!IS_APP || !state.me) return;
+  try{
+    state.inbox = await api("/api/app/notifications");
+    state.inboxUnread = state.inbox.unread;
+    if(state.sheetView === "inbox") openSheet(inboxSheet(), "inbox");
+    else if(state.screen === "home") render();
+  }catch(_){ /* the badge waits for the next try */ }
+}
+
 function headBlock(d){
   const initial = (d.name || "E").charAt(0).toUpperCase();
   /* Telegram already knows the user's photo and hands it to the Mini App in
@@ -2828,6 +2890,10 @@ function headBlock(d){
                 aria-label="${t("calendar")} · ${esc(d.date_label)}">
           ${icon("calendar", 15)}<span>${esc(d.date_label)}</span></button>
       </div>
+      ${IS_APP ? `<button class="bellbtn" data-act="inbox-open"
+              aria-label="${t("inbox")}">${icon("bell", 20)}${state.inboxUnread
+                ? `<span class="bell-badge">${state.inboxUnread > 99 ? "99+" : state.inboxUnread}</span>`
+                : ""}</button>` : ""}
       <button class="avatar" data-act="settings"
               aria-label="${t("settings")}">${avatar}
         <span class="avatar-gear" aria-hidden="true">${icon("settings", 11)}</span></button>
@@ -6763,7 +6829,7 @@ function accountSheet(){
     ${row("privacy-info", "shield", "tone-5", t("privacy_info"))}
     ${row("fresh-start", "repeat", "tone-4", t("fresh_start"))}
     ${row("feedback", "message", "tone-3", t("feedback"))}
-    ${tg?.isErnestApp ? row("app-sign-out", "user", "tone-2", t("app_sign_out")) : ""}
+    ${IS_APP ? row("app-sign-out", "user", "tone-2", t("app_sign_out")) : ""}
     <div class="item pressable" style="min-height:48px;margin-top:var(--s2)"
          data-act="delete-account">
       <span style="color:var(--danger)">${icon("trash", 17)}</span>
@@ -7690,6 +7756,14 @@ function queueBanner(){
 }
 window.addEventListener("online", () => flushQueue());
 document.addEventListener("visibilitychange", () => { if(!document.hidden && loadQueue().length) flushQueue(); });
+/* Phone app: a push while open refreshes the bell; a tapped one opens the
+   inbox; coming back to the app catches up on what arrived meanwhile. */
+window.addEventListener("ernest:push", () => refreshInbox());
+window.addEventListener("ernest:open-inbox", () => {
+  window.ErnestApp?.takePendingInbox?.();
+  if(state.me) A["inbox-open"]();
+});
+document.addEventListener("visibilitychange", () => { if(!document.hidden) refreshInbox(); });
 
 const A = {
   "tasks-more": moreTasks,
@@ -9242,11 +9316,39 @@ const A = {
   "set-privacy": () => { haptic(); openSettings("privacy"); },
   "privacy-info": () => openSheet(privacySheet()),
   sessions: () => openSheet(sessionsSheet()),
+  "inbox-open": async () => {
+    haptic();
+    openSheet(inboxSheet(), "inbox");
+    await refreshInbox();
+    if(state.inboxUnread){
+      try{ await api("/api/app/notifications/read", {method:"POST", body:{}});
+           state.inboxUnread = 0; render(); }catch(_){}
+    }
+  },
+  "inbox-action": async el => {
+    haptic("medium");
+    const cb = el.dataset.cb, parts = cb.split(":");
+    try{
+      const r = await api(`/api/app/notifications/${el.dataset.id}/action`,
+                          {method:"POST", body:{cb}});
+      toast(r.snoozed ? t("inbox_snoozed", {n:r.snoozed}) : t("inbox_done"));
+      notify();
+      await loadScreen(state.screen);
+    }catch(e){
+      if(e.status === 409 && e.detail === "timer_required"){
+        closeSheet();
+        return openTimer(parts[0], parts[2]);   // task | habit | ttask | thabit
+      }
+      handleError(e);
+    }
+  },
   /* Phone app only (native.js): end this phone's session. Data stays. */
   "app-sign-out": () => {
     if(confirm(t("app_sign_out_ask"))) window.ErnestApp?.signOut();
   },
   export: async () => {
+    // The phone app keeps the file on the phone; Telegram gets it in the chat.
+    if(window.ErnestApp?.saveFile) return A.backup();
     try{ await api("/api/export/send", {method:"POST"});
          toast(t("export_sent")); }
     catch(e){ handleError(e); }
@@ -9257,6 +9359,15 @@ const A = {
      works rather than failing silently — a backup button that does nothing is
      worse than no backup button. */
   backup: async () => {
+    if(window.ErnestApp?.saveFile){
+      try{
+        const data = await api("/api/export");
+        await window.ErnestApp.saveFile(`ernestos-${todayISO()}.json`,
+          JSON.stringify(data, null, 2), "application/json");
+        toast(t("file_ready"));
+      }catch(e){ handleError(e); }
+      return;
+    }
     try{
       const data = await api("/api/export");
       const blob = new Blob([JSON.stringify(data, null, 2)],
@@ -9330,6 +9441,18 @@ const A = {
     // The bot sends the file into the chat: Telegram's browser blocks
     // plain downloads, and putting the credential in a URL would leak it.
     haptic("medium");
+    if(window.ErnestApp?.saveFile){
+      try{
+        const res = await fetch("/api/stats/csv?period=" + state.statsPeriod,
+                                {headers:{"X-Telegram-Init-Data": tg?.initData || ""}});
+        if(!res.ok){ const err = new Error("http_" + res.status); err.status = res.status; throw err; }
+        const name = (res.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1]
+                     || `ernestos-${state.statsPeriod}-${todayISO()}.csv`;
+        await window.ErnestApp.saveFile(name, await res.text(), "text/csv");
+        toast(t("file_ready"));
+      }catch(e){ handleError(e); }
+      return;
+    }
     try{
       await api("/api/stats/export?period=" + state.statsPeriod, {method:"POST"});
       toast(t("report_sent"));
@@ -9781,6 +9904,11 @@ async function boot(){
     setState({me, loading:false, blocked:null, error:null, needsSetup:false});
     // Ticks recorded while offline in an earlier session go out now.
     if(loadQueue().length) flushQueue();
+    if(IS_APP){
+      refreshInbox();
+      // A tapped push opens the inbox, whether it woke the app or not.
+      if(window.ErnestApp?.takePendingInbox?.()) A["inbox-open"]();
+    }
     if(!first) await loadScreen(state.screen);
     if(Object.keys(loadDraft()).length) toast(t("draft_restored"));
   }catch(e){

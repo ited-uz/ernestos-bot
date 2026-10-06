@@ -119,6 +119,10 @@ BOT_USERNAME = _bot_username(os.environ.get("BOT_USERNAME", ""))
 
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "").strip().rstrip("/")
 
+#: Firebase service-account key (JSON, or base64 of it) for phone push.
+#: Empty: push is off; the app's inbox still receives every message.
+FCM_SERVICE_ACCOUNT = os.environ.get("FCM_SERVICE_ACCOUNT", "").strip()
+
 #: Origins the Android/iOS app calls the API from. Capacitor serves the app's
 #: pages from these; anything else stays same-origin only.
 APP_ORIGINS = [o.strip().rstrip("/") for o in os.environ.get(

@@ -42,6 +42,24 @@ jobs:
         working-directory: mobile
         run: npm ci
 
+      # Push notifications need Firebase's google-services.json. Store it as
+      # the GOOGLE_SERVICES_JSON secret (the file's text, or base64 of it);
+      # without it the app builds with push off and the inbox still works.
+      - name: Firebase config
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            if echo "$GOOGLE_SERVICES_JSON" | head -c1 | grep -q '{'; then
+              printf '%s' "$GOOGLE_SERVICES_JSON" > mobile/android/app/google-services.json
+            else
+              printf '%s' "$GOOGLE_SERVICES_JSON" | base64 -d > mobile/android/app/google-services.json
+            fi
+            echo "Firebase config written: push on."
+          else
+            echo "::notice::GOOGLE_SERVICES_JSON secret not set — APK built without push notifications."
+          fi
+
       - name: Build the web layer
         working-directory: mobile
         run: |

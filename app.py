@@ -40,6 +40,7 @@ from telegram.ext import (
 
 import accounts
 import app_auth
+import app_push
 import agent_api
 import agent_core
 import agent_provider
@@ -5529,15 +5530,26 @@ class AccountFanOut:
     the copies are best-effort and never fail the job.
     """
 
-    def __init__(self, bot):
+    def __init__(self, bot, kind: str = "bot"):
         self._bot = bot
+        #: What these messages are, for the phone app's inbox ("report", …).
+        self._kind = kind
 
     def __getattr__(self, name):
         return getattr(self._bot, name)
 
     async def send_message(self, *args, **kwargs):
-        result = await self._bot.send_message(*args, **kwargs)
         chat_id = kwargs.get("chat_id", args[0] if args else None)
+        try:
+            result = await self._bot.send_message(*args, **kwargs)
+        except TelegramError:
+            # The phone app is a channel of its own: when the message reached
+            # it, Telegram refusing (blocked bot, deleted chat) is not a lost
+            # message, and the caller must not retry it into the inbox again.
+            if await self._to_app(chat_id, args, kwargs):
+                return None
+            raise
+        await self._to_app(chat_id, args, kwargs)
         try:
             with SessionLocal() as s:
                 others = accounts.linked_ids(s, int(chat_id))
@@ -5555,6 +5567,12 @@ class AccountFanOut:
             except Exception as e:
                 log.info("copy to signed-in Telegram %s failed: %s", other, e)
         return result
+
+    async def _to_app(self, chat_id, args, kwargs) -> bool:
+        text = kwargs.get("text", args[1] if len(args) > 1 else "")
+        return await app_push.deliver(chat_id, text, kwargs.get("reply_markup"),
+                                      kind=self._kind,
+                                      quiet=bool(kwargs.get("disable_notification")))
 
 
 async def send_reports(bot, report_type: str) -> None:
@@ -5576,7 +5594,7 @@ async def send_reports(bot, report_type: str) -> None:
         with svc.JobLock(SessionLocal, f"report:{report_type}") as lock:
             if not lock.acquired:
                 return
-            await _send_reports_locked(AccountFanOut(bot), report_type, None)
+            await _send_reports_locked(AccountFanOut(bot, "report"), report_type, None)
     except Exception:
         log.exception("%s report job failed before any recipient", report_type)
 
@@ -5753,7 +5771,7 @@ async def send_reminders(bot) -> None:
                 recipients = svc.active_recipients(s)
 
             sent = failed = 0
-            bot = AccountFanOut(bot)
+            bot = AccountFanOut(bot, "reminder")
             for telegram_id, ws, lang in recipients:
                 try:
                     sent += await _send_user_reminders(bot, telegram_id, ws, lang)
@@ -5999,9 +6017,12 @@ async def _announce_timer(bot, run_id: int) -> bool:
         # A new message as well, because an edit does not make the phone ring.
         await bot.send_message(telegram_id, text, parse_mode=ParseMode.HTML,
                                reply_markup=markup)
+        await app_push.deliver(telegram_id, text, markup, kind="timer")
         return True
     except (Forbidden, BadRequest) as e:
         log.info("timer %s announcement refused: %s", run_id, e)
+        # Telegram will never take it; the phone app still can.
+        return await app_push.deliver(telegram_id, text, markup, kind="timer")
     except TelegramError as e:
         # Transient: give the claim back so the next tick tries again.
         log.warning("timer %s announcement failed, will retry: %s", run_id, e)
@@ -7594,7 +7615,7 @@ async def notify_teammates(team_id: int, actor_id: int, key: str,
         log.exception("could not work out who to tell about team %s", team_id)
         return 0
 
-    bot = AccountFanOut(telegram_app.bot)
+    bot = AccountFanOut(telegram_app.bot, "team")
     for uid, lang in recipients:
         lang = lang or "uz"
         try:
@@ -9606,6 +9627,24 @@ async def api_stats_export(period: str = "month",
     return {"ok": True, "delivered": "telegram"}
 
 
+@app.get("/api/stats/csv")
+def api_stats_csv(period: str = "month",
+                  init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """The same statistics CSV, returned directly — for the phone app, which
+    saves it on the device instead of receiving it in the bot chat. The
+    credential travels in the header, never in a URL, as in every call."""
+    user, ws = auth(init)
+    if period not in ("week", "month", "year"):
+        period = "month"
+    with SessionLocal() as s:
+        body = svc.stats_csv(s, ws, period, gender=user.gender,
+                             tz=svc.user_tz(user))
+    stamp = datetime.now(svc.user_tz(user)).strftime("%Y-%m-%d")
+    return Response(content=body.encode("utf-8"), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition":
+                             f'attachment; filename="ernestos-{period}-{stamp}.csv"'})
+
+
 @app.get("/api/calendar")
 def api_calendar(year: int | None = None, month: int | None = None,
                  init=Header(default=None, alias="X-Telegram-Init-Data")):
@@ -10089,6 +10128,106 @@ def api_app_login(body: AppLoginIn):
     return {"token": app_auth.TOKEN_PREFIX + token}
 
 
+class PushTokenIn(BaseModel):
+    token: str = Field(min_length=20, max_length=512)
+    platform: str = Field(default="android", max_length=16)
+
+
+def _app_session(init):
+    """The phone session behind this request, and the account it serves.
+    Inbox and push belong to the app; a Mini App request gets 403."""
+    user, _ = auth(init, require_onboarded=False)
+    if not app_auth.is_app_token(init):
+        raise HTTPException(status_code=403, detail="app_only")
+    with SessionLocal() as s:
+        session = app_auth.session_for(s, init)
+        session_id = session.id if session else None
+    return user, session_id
+
+
+@app.post("/api/app/push-token")
+def api_app_push_token(body: PushTokenIn,
+                       init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, session_id = _app_session(init)
+    with SessionLocal() as s:
+        app_push.register_device(s, user.telegram_id, session_id, body.token, body.platform)
+    return {"ok": True, "push": app_push.fcm.configured}
+
+
+@app.get("/api/app/notifications")
+def api_app_notifications(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = _app_session(init)
+    with SessionLocal() as s:
+        return app_push.inbox(s, user.telegram_id)
+
+
+class NotificationsReadIn(BaseModel):
+    ids: list[int] | None = Field(default=None, max_length=200)
+
+
+@app.post("/api/app/notifications/read")
+def api_app_notifications_read(body: NotificationsReadIn,
+                               init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = _app_session(init)
+    with SessionLocal() as s:
+        return {"ok": True, "marked": app_push.mark_read(s, user.telegram_id, body.ids)}
+
+
+class NotificationActionIn(BaseModel):
+    cb: str = Field(max_length=64)
+
+
+@app.post("/api/app/notifications/{notification_id}/action")
+def api_app_notification_action(notification_id: int, body: NotificationActionIn,
+                                init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Run one of a notification's own buttons: snooze, or "done".
+
+    Only a button the notification carries can run, and "done" only ever
+    ticks — the same rule as the timer message's button in the bot."""
+    user, _ = _app_session(init)
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        row = app_push.get_owned(s, user.telegram_id, notification_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="not_found")
+        allowed = {a.get("cb") for a in app_push.as_dict(row)["actions"]}
+        if body.cb not in allowed:
+            raise HTTPException(status_code=422, detail="unknown_action")
+        parts = body.cb.split(":")
+        tz = svc.user_tz(user)
+        try:
+            if parts[0] == "snz":
+                minutes = int(parts[3])
+                svc.snooze_reminder(s, ws, KIND_OF_CODE[parts[1]], int(parts[2]), minutes,
+                                    user_id=user.telegram_id)
+                result = {"ok": True, "snoozed": minutes}
+            else:
+                kind, item_id = parts[0], int(parts[2])
+                model = {"task": db.Task, "habit": db.Habit,
+                         "ttask": db.TeamTask, "thabit": db.TeamHabit}[kind]
+                item = s.get(model, item_id)
+                if item is None or (kind in ("task", "habit")
+                                    and item.workspace_id != ws):
+                    raise svc.NotFound()
+                if not svc.own_tick(s, user.telegram_id, kind, item, svc.today_local(tz)):
+                    if kind == "task":
+                        svc.complete_task(s, ws, item_id, tz=tz)
+                    elif kind == "habit":
+                        svc.toggle_habit(s, ws, item_id, tz=tz)
+                    elif kind == "ttask":
+                        svc.toggle_team_task(s, user.telegram_id, item_id, tz=tz)
+                    else:
+                        svc.toggle_team_habit(s, user.telegram_id, item_id, tz=tz)
+                result = {"ok": True, "done": True}
+        except (svc.NotFound, PermissionError, KeyError):
+            raise HTTPException(status_code=404, detail="not_found")
+        except ValueError as e:
+            # timer_required, not_assigned…: the app opens the item instead.
+            raise HTTPException(status_code=409, detail=str(e) or "conflict")
+        app_push.mark_read(s, user.telegram_id, [notification_id])
+    return result
+
+
 @app.post("/api/app/logout")
 def api_app_logout(init=Header(default=None, alias="X-Telegram-Init-Data")):
     if not app_auth.is_app_token(init):
@@ -10121,6 +10260,6 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
     allow_headers=["Content-Type", "X-Telegram-Init-Data", "X-Idempotency-Key",
                    "X-Agent-Request-Key"],
-    expose_headers=["X-Trial-Remaining", "Retry-After"],
+    expose_headers=["X-Trial-Remaining", "Retry-After", "Content-Disposition"],
     max_age=600,
 )

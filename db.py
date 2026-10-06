@@ -1144,6 +1144,41 @@ class AppSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class AppNotification(Base):
+    """What the bot told an account, kept for the phone app's inbox.
+
+    Written only for accounts with a phone signed in, so a Telegram-only
+    account costs nothing. `actions` is a JSON list of the message's buttons
+    the app can run (snooze, done); the text is plain, tags stripped."""
+
+    __tablename__ = "app_notifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    kind: Mapped[str] = mapped_column(String(24), default="bot")
+    title: Mapped[str] = mapped_column(String(160), default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    actions: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class PushDevice(Base):
+    """A phone's Firebase Cloud Messaging token, tied to the app session that
+    registered it, so signing out stops that phone's notifications."""
+
+    __tablename__ = "push_devices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    session_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    token: Mapped[str] = mapped_column(String(512), unique=True)
+    platform: Mapped[str] = mapped_column(String(16), default="android")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 # ---------------------------------------------------------------------------
 # ErnestOS accounts — a login and a password on top of the Telegram id
 # ---------------------------------------------------------------------------

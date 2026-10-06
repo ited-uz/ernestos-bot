@@ -11552,3 +11552,178 @@ def test_app_login_has_its_own_tight_rate_class():
                    "headers": [], "query_string": b""})
     assert application._rate_class(req) == "auth"
     assert application.RATE_LIMITS["auth"][0] <= 10
+
+
+# ---------------------------------------------------------------------------
+# Phone app notifications: inbox, buttons, push devices, FCM
+# ---------------------------------------------------------------------------
+
+import asyncio as _asyncio  # noqa: E402
+import app_push  # noqa: E402
+
+
+def _markup(*pairs):
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    return InlineKeyboardMarkup([[InlineKeyboardButton(label, callback_data=cb)
+                                  for label, cb in pairs]])
+
+
+def test_plain_text_strips_telegram_html():
+    text = app_push.plain_text("⏰ <b>Hisobot</b> &amp; xat<br>\n\n\n<i>👥 Ofis</i>")
+    assert text == "⏰ Hisobot & xat\n\n👥 Ofis"
+    assert app_push.split_title(text) == ("⏰ Hisobot & xat", "👥 Ofis")
+
+
+def test_inbox_is_written_only_for_accounts_with_the_app(client):
+    _onboard(7401)
+    assert _asyncio.run(app_push.deliver(7401, "<b>Salom</b>")) is False
+    with SessionLocal() as s:
+        assert app_push.inbox(s, 7401)["items"] == []
+    _app_login(client, 7401)
+    markup = _markup(("15 min", "snz:t:5:15"), ("Ilova", "open:menu"))
+    assert _asyncio.run(app_push.deliver(7401, "<b>Vazifa</b>\nhisobot", markup,
+                                         kind="reminder")) is True
+    with SessionLocal() as s:
+        box = app_push.inbox(s, 7401)
+    assert box["unread"] == 1
+    note = box["items"][0]
+    assert (note["title"], note["body"], note["kind"]) == ("Vazifa", "hisobot", "reminder")
+    assert note["actions"] == [{"label": "15 min", "cb": "snz:t:5:15"}], "only runnable buttons"
+
+
+def test_fan_out_counts_the_app_as_delivery_when_telegram_refuses(client):
+    from telegram.error import Forbidden
+
+    class Refusing:
+        async def send_message(self, *a, **k):
+            raise Forbidden("bot was blocked by the user")
+
+    _onboard(7402)
+    bot = application.AccountFanOut(Refusing(), "reminder")
+    with pytest.raises(Forbidden):
+        _asyncio.run(bot.send_message(7402, "<b>Eslatma</b>"))
+    _app_login(client, 7402)
+    assert _asyncio.run(bot.send_message(7402, "<b>Eslatma</b>")) is None
+    with SessionLocal() as s:
+        assert app_push.inbox(s, 7402)["items"][0]["title"] == "Eslatma"
+
+
+def test_inbox_api_lists_marks_read_and_is_app_only(client):
+    mini = Caller(client, {"id": 7403, "first_name": "Ilova"})
+    phone = {"X-Telegram-Init-Data": _app_login(client, 7403)}
+    _asyncio.run(app_push.deliver(7403, "Birinchi"))
+    _asyncio.run(app_push.deliver(7403, "Ikkinchi"))
+    box = client.get("/api/app/notifications", headers=phone).json()
+    assert [n["title"] for n in box["items"]] == ["Ikkinchi", "Birinchi"] and box["unread"] == 2
+    first = box["items"][1]["id"]
+    assert client.post("/api/app/notifications/read", headers=phone,
+                       json={"ids": [first]}).json()["marked"] == 1
+    assert client.get("/api/app/notifications", headers=phone).json()["unread"] == 1
+    client.post("/api/app/notifications/read", headers=phone, json={})
+    assert client.get("/api/app/notifications", headers=phone).json()["unread"] == 0
+    assert mini.get("/api/app/notifications").status_code == 403
+
+
+def test_notification_buttons_snooze_and_tick_once(client):
+    mini = Caller(client, {"id": 7404, "first_name": "Ilova"})
+    phone = {"X-Telegram-Init-Data": _app_login(client, 7404)}
+    habit = mini.post("/api/habits", json={"name": "Kitob"}).json()
+    hid = habit.get("id") or habit.get("habit", {}).get("id")
+    task = mini.post("/api/tasks", json={"title": "Hisobot"}).json()
+    tid = task.get("id") or task.get("task", {}).get("id")
+    _asyncio.run(app_push.deliver(7404, "Odat", _markup(("Bajarildi", f"habit:toggle:{hid}"))))
+    _asyncio.run(app_push.deliver(7404, "Vazifa", _markup(("15", f"snz:t:{tid}:15"),
+                                                          ("Bajarildi", f"task:done:{tid}"))))
+    items = client.get("/api/app/notifications", headers=phone).json()["items"]
+    task_note, habit_note = items[0]["id"], items[1]["id"]
+    act = lambda nid, cb: client.post(f"/api/app/notifications/{nid}/action",  # noqa: E731
+                                      headers=phone, json={"cb": cb})
+    assert act(habit_note, f"habit:toggle:{hid}").json()["done"] is True
+    assert act(habit_note, f"habit:toggle:{hid}").status_code == 200
+    habits = mini.get("/api/habits").json()["habits"]
+    assert next(h for h in habits if h["id"] == hid)["done"] is True, "second tap never unticks"
+    assert act(task_note, f"snz:t:{tid}:15").json()["snoozed"] == 15
+    assert act(task_note, f"task:done:{tid}").json()["done"] is True
+    with SessionLocal() as s:
+        assert s.get(db.Task, tid).status == "done"
+    # Only the notification's own buttons, only on one's own notifications.
+    assert act(task_note, f"task:done:{tid + 999}").status_code == 422
+    _onboard(7405)
+    other = {"X-Telegram-Init-Data": _app_login(client, 7405)}
+    assert client.post(f"/api/app/notifications/{task_note}/action", headers=other,
+                       json={"cb": f"task:done:{tid}"}).status_code == 404
+
+
+def test_push_device_follows_the_session(client):
+    _onboard(7406)
+    token = _app_login(client, 7406)
+    phone = {"X-Telegram-Init-Data": token}
+    fcm_token = "f" * 40
+    r = client.post("/api/app/push-token", headers=phone, json={"token": fcm_token})
+    assert r.status_code == 200 and r.json()["ok"] is True
+    with SessionLocal() as s:
+        assert app_push.device_tokens(s, 7406) == [fcm_token]
+    client.post("/api/app/logout", headers=phone)
+    with SessionLocal() as s:
+        assert app_push.device_tokens(s, 7406) == [], "signed out: no more pushes"
+    phone = {"X-Telegram-Init-Data": _app_login(client, 7406)}
+    client.post("/api/app/push-token", headers=phone, json={"token": fcm_token})
+    _asyncio.run(app_push.deliver(7406, "Salom"))
+    with SessionLocal() as s:
+        assert svc.delete_account(s, 7406)
+    with SessionLocal() as s:
+        assert not s.scalars(select(db.PushDevice).where(db.PushDevice.account_id == 7406)).all()
+        assert not s.scalars(select(db.AppNotification)
+                             .where(db.AppNotification.account_id == 7406)).all()
+
+
+def test_fcm_signs_a_valid_assertion_and_drops_dead_tokens(monkeypatch):
+    import base64 as b64
+    import httpx
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding, rsa
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                            serialization.NoEncryption()).decode()
+    raw = json.dumps({"project_id": "ernest-test", "client_email": "bot@ernest-test.iam",
+                      "private_key": pem, "token_uri": "https://oauth2.example/token"})
+    fcm = app_push.FCM(b64.b64encode(raw.encode()).decode())
+    assert fcm.configured
+
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        if request.url.host == "oauth2.example":
+            assertion = dict(x.split("=") for x in request.content.decode().split("&"))["assertion"]
+            head, claims, sig = assertion.split(".")
+            pad = lambda v: v + "=" * (-len(v) % 4)  # noqa: E731
+            key.public_key().verify(b64.urlsafe_b64decode(pad(sig)), f"{head}.{claims}".encode(),
+                                    padding.PKCS1v15(), hashes.SHA256())
+            body = json.loads(b64.urlsafe_b64decode(pad(claims)))
+            assert body["scope"].endswith("firebase.messaging") and body["iss"] == "bot@ernest-test.iam"
+            return httpx.Response(200, json={"access_token": "ya29.x", "expires_in": 3600})
+        assert request.headers["Authorization"] == "Bearer ya29.x"
+        message = json.loads(request.content)["message"]
+        assert message["android"]["notification"]["channel_id"] == "quiet"
+        if message["token"] == "dead":
+            return httpx.Response(404, json={"error": {"status": "NOT_FOUND"}})
+        return httpx.Response(200, json={"name": "projects/x/messages/1"})
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient",
+                        lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    dropped = []
+    monkeypatch.setattr(app_push, "disable_token", dropped.append)
+    sent = _asyncio.run(fcm.send(["alive", "dead"], "Salom", "matn", {"notification_id": 1},
+                                 quiet=True))
+    assert sent == 1 and dropped == ["dead"]
+    assert seen[1].url.path == "/v1/projects/ernest-test/messages:send"
+
+
+def test_stats_csv_comes_back_as_a_file(alice):
+    r = alice.get("/api/stats/csv?period=week")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/csv")
+    assert 'filename="ernestos-week-' in r.headers["content-disposition"]

@@ -5,5 +5,13 @@
   "android": {
     "allowMixedContent": false
   },
-  "plugins": {}
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": [
+        "badge",
+        "sound",
+        "alert"
+      ]
+    }
+  }
 }

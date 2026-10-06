@@ -1,7 +1,7 @@
 // Builds mobile/www from the Mini App: the same index.html Telegram serves,
 // with the Telegram script swapped for native.js and a config.js naming the
 // server. Run with ERNEST_API_URL=https://your-server (no trailing slash).
-import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,8 +31,11 @@ html = html.replace(telegramScript,
   '<script src="config.js"></script>\n<script src="native.js"></script>');
 writeFileSync(join(www, "index.html"), html);
 
+// Push is on only in builds that carry Firebase's google-services.json;
+// registering without it would fail natively.
+const push = existsSync(join(mobile, "android", "app", "google-services.json"));
 writeFileSync(join(www, "config.js"),
-  `window.ERNEST_CONFIG = ${JSON.stringify({ api, built: new Date().toISOString() })};\n`);
+  `window.ERNEST_CONFIG = ${JSON.stringify({ api, push, built: new Date().toISOString() })};\n`);
 copyFileSync(join(mobile, "src", "native.js"), join(www, "native.js"));
 copyFileSync(join(mobile, "src", "login.html"), join(www, "login.html"));
-console.log(`www built for ${api}`);
+console.log(`www built for ${api} (push ${push ? "on" : "off: no google-services.json"})`);

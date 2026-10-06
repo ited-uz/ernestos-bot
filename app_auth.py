@@ -104,6 +104,12 @@ def is_app_token(value: str | None) -> bool:
 
 def resolve_token(s: Session, header_value: str) -> int | None:
     """The Telegram id an `app:<token>` header stands for, or None."""
+    row = session_for(s, header_value)
+    return row.telegram_id if row is not None else None
+
+
+def session_for(s: Session, header_value: str) -> AppSession | None:
+    """The live session an `app:<token>` header names, or None."""
     token = str(header_value)[len(TOKEN_PREFIX):]
     if not token:
         return None
@@ -115,7 +121,7 @@ def resolve_token(s: Session, header_value: str) -> int | None:
         row.last_used_at = now
         row.expires_at = now + timedelta(days=SESSION_DAYS)
         s.commit()
-    return row.telegram_id
+    return row
 
 
 def revoke_token(s: Session, header_value: str) -> bool:
@@ -123,10 +129,13 @@ def revoke_token(s: Session, header_value: str) -> bool:
     token = str(header_value)[len(TOKEN_PREFIX):]
     if not token:
         return False
-    ended = s.execute(update(AppSession)
-                      .where(AppSession.token_hash == _digest(token),
-                             AppSession.revoked_at.is_(None))
-                      .values(revoked_at=utcnow())).rowcount or 0
+    ids = list(s.scalars(select(AppSession.id).where(
+        AppSession.token_hash == _digest(token), AppSession.revoked_at.is_(None))).all())
+    ended = s.execute(update(AppSession).where(AppSession.id.in_(ids))
+                      .values(revoked_at=utcnow())).rowcount or 0 if ids else 0
+    # That phone stops getting pushes too.
+    import app_push
+    app_push.disable_session_devices(s, ids)
     s.commit()
     return bool(ended)
 
@@ -136,5 +145,7 @@ def forget(s: Session, telegram_ids) -> None:
     ids = list(telegram_ids)
     if not ids:
         return
+    import app_push
+    app_push.forget(s, ids)
     s.execute(sql_delete(AppSession).where(AppSession.telegram_id.in_(ids)))
     s.execute(sql_delete(AppLoginCode).where(AppLoginCode.telegram_id.in_(ids)))

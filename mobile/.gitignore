@@ -10,3 +10,5 @@ android/app/src/main/assets/capacitor.plugins.json
 android/capacitor-cordova-android-plugins/
 ios/App/Pods/
 ios/App/App/public/
+# Firebase config is injected by CI from the GOOGLE_SERVICES_JSON secret.
+android/app/google-services.json
