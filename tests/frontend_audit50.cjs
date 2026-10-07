@@ -338,5 +338,15 @@ const posts = url => calls.filter(c => c.method === 'POST' && c.url === url);
   assert.ok(!calls.some(c => c.url === '/api/money' && c.method === 'POST'), 'no new entry');
   run('closeSheet(); state.money=null; state.moneyForm=null;');
 
+  // K01 — leaving the voice sheet by any road stops the recorder and the mic.
+  run(`globalThis.__rec = {state:'recording', stopped:0, stop(){ this.stopped++; this.state='inactive'; }};
+       globalThis.__track = {stopped:0, stop(){ this.stopped++; }};
+       voice.rec = __rec; voice.stream = {getTracks:() => [__track]}; voice.session = 3;
+       openSheet('<div></div>', 'voice'); closeSheet();`);
+  assert.equal(run('__rec.stopped'), 1, 'closing the sheet stops the recorder');
+  assert.equal(run('__track.stopped'), 1, 'and releases the microphone');
+  assert.equal(run('voice.session'), 4, 'a late answer lands nowhere');
+  assert.equal(run('voice.cancelled'), true);
+
   console.log('Audit-50 frontend checks passed');
 })().catch(e => { console.error(e); process.exitCode = 1; });
