@@ -306,5 +306,23 @@ const posts = url => calls.filter(c => c.method === 'POST' && c.url === url);
   assert.ok(run('state.error'));
   run('forgetLastGood()');
 
+  // K16 — the last project visited does not follow the person to other screens.
+  run(`state.project={project:{id:42, name:'P'}, tasks:[]}; state.screen='tasks'; A["task-add"]({dataset:{}})`);
+  assert.equal(run('state.form.project_id'), null);
+  run(`state.screen='project'; A["task-add"]({dataset:{}})`);
+  assert.equal(run('state.form.project_id'), 42);
+  run(`closeSheet(); state.screen='home'; state.project=null;`);
+
+  // K17 — a chip on the habit sheet keeps every field typed so far.
+  run(`A["habit-add"]({dataset:{name:'Suv'}});
+       document.getElementById('habit-name').value='Suv ichish';
+       document.getElementById('hq-target').value='8';
+       document.getElementById('hq-unit').value='stakan';
+       A["habit-form"]({dataset:{field:'category', value:'bonus'}});`);
+  const sheetHtml = run(`document.getElementById('sheet-body').innerHTML`);
+  assert.ok(sheetHtml.includes('value="8"') && sheetHtml.includes('value="stakan"'), 'amount survives a chip tap');
+  assert.ok(sheetHtml.includes('value="Suv ichish"'));
+  run('closeSheet()');
+
   console.log('Audit-50 frontend checks passed');
 })().catch(e => { console.error(e); process.exitCode = 1; });

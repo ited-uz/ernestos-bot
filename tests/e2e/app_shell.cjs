@@ -59,9 +59,19 @@ const step = async (name, fn) => {
     await shot('01-login');
   });
 
+  await step('The sign-in language is picked there and remembered', async () => {
+    await page.click('[data-lang="ru"]');
+    assert.match(await page.textContent('#t-lead'), /Войдите/);
+    await page.reload();
+    await page.waitForSelector('#code');
+    assert.match(await page.textContent('#t-lead'), /Войдите/);
+    await page.click('[data-lang="uz"]');
+    assert.match(await page.textContent('#t-lead'), /kirig|kod bilan/);
+  });
+
   await step('A wrong code is refused in place', async () => {
+    // A complete code is sent by itself — no button press needed.
     await page.fill('#code', 'ZZZZZZZZ');
-    await page.click('#submit');
     await page.waitForFunction(() => document.getElementById('msg').textContent.length > 0);
     assert.match(await page.textContent('#msg'), /noto'g'ri|wrong|неверный/);
     await shot('02-bad-code');
@@ -69,8 +79,6 @@ const step = async (name, fn) => {
 
   await step('The bot code signs in and the Mini App home renders', async () => {
     await page.fill('#code', issue().toLowerCase());
-    assert.match(await page.inputValue('#code'), /^[A-Z0-9]{4}-[A-Z0-9]{4}$/, 'typed code is formatted');
-    await page.click('#submit');
     await page.waitForURL(/index\.html$/);
     await page.waitForFunction(() => typeof state !== 'undefined' && state.me && !state.loading, null, { timeout: 15000 });
     await page.waitForTimeout(500);
@@ -202,7 +210,6 @@ const step = async (name, fn) => {
 
   await step('Sign out from settings ends the session on the server too', async () => {
     await page.fill('#code', issue());
-    await page.click('#submit');
     await page.waitForURL(/index\.html$/);
     await page.waitForFunction(() => typeof state !== 'undefined' && state.me && !state.loading, null, { timeout: 15000 });
     const token = await page.evaluate(() => localStorage.getItem('ernest.app.token'));

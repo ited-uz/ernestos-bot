@@ -1080,14 +1080,18 @@ def test_goals_are_unreachable_from_either_surface():
 
 
 def test_the_mini_app_navigation_is_four_places():
-    """v12.2: Asosiy · Kundalik · Moliya · Profil. Kundalik switches Habits ↔
-    Tasks and Profil switches Statistics ↔ Team at the top, while the bar stays,
+    """Bugun · Reja · Moliya · Profil (K13). Reja switches Habits ↔ Tasks and
+    Profil switches Steps ↔ Statistics ↔ Team at the top, while the bar stays,
     so leaving is always one tap."""
     html = (ROOT / "webapp" / "index.html").read_text()
     nav = html[html.index("const NAV = ["):html.index("const NAV_OF")]
     assert [line.split('id:"')[1].split('"')[0]
             for line in nav.splitlines() if 'id:"' in line] == \
         ["home", "tracker", "money", "profile"]
+    labels = [line.split('key:"')[1].split('"')[0] for line in nav.splitlines() if 'key:"' in line]
+    assert labels == ["nav_home", "nav_tracker", "nav_money", "nav_profile"]
+    for word in ('nav_home:"Bugun"', 'nav_tracker:"Reja"', 'nav_money:"Moliya"', 'nav_profile:"Profil"'):
+        assert word in html, word
     group = html[html.index("function groupBar(screen){"):html.index("const offerKey")]
     assert '[["habits", "habits"], ["tasks", "tasks"]]' in group
     assert '[["steps", "nav_steps"], ["stats", "nav_stats"], ["team", "team"]]' in group
