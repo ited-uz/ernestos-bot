@@ -83,8 +83,15 @@
 
   const DB = {
     me:{telegram_id:1, name:"Ernest", language:LANG, onboarded:true, gated:false,
-        today:TODAY, trial:{required:true, remaining:17, free_actions:20, subscribed:false, channel:""},
+        today:TODAY, trial:{required:false, remaining:17, free_actions:20, subscribed:false, channel:""},
         agent:{enabled:false, available:false},
+        // ?plan=pro|max|free (default free, so the limits can be tried).
+        plan:{enabled:true, tier:Q.get("plan") || "free", until:null, days_left:null,
+              channel_bonus_used:false, channel_bonus_days:7, channel:"https://t.me/ernestos_channel",
+              products:[{key:"pro_month", tier:"pro", days:30, stars:125, uzs:29000},
+                        {key:"pro_year", tier:"pro", days:365, stars:1100, uzs:249000},
+                        {key:"max_month", tier:"max", days:30, stars:350, uzs:79000},
+                        {key:"max_year", tier:"max", days:365, stars:3000, uzs:690000}]},
         theme:Q.get("theme") || "ocean", gender:"male",
         modules:{wake:true, prayer:true, journal:true}, member_no:128, username:"ernest",
         has_photo:false, avatar_token:"",
@@ -369,13 +376,16 @@
       supporting:[{id:302, title:s.f2, priority:"medium", done:true}], slots_free:1}})],
     [/^\/api\/calendar$/, calendar],
     [/^\/api\/countdowns$/, () => ({countdowns:home().countdowns})],
-    [/^\/api\/stats$/, (q) => stats(q.get("period") || "week")],
+    [/^\/api\/stats$/, (q) => (q.get("period") || "week") !== "week" && DB.me.plan.tier === "free"
+      ? {__status:402, detail:"plan_limit", key:"stats_history", limit:null, tier:"free", needs:"pro"}
+      : stats(q.get("period") || "week")],
     [/^\/api\/timers\/candidates\/\w+$/, () => ({items:[{id:4, kind:"habit", title:s.h4,
       timer_minutes:120}]})],
     [/^\/api\/timers\/(\w+)\/(\d+)$/, (q, m) => ({kind:m[1], id:Number(m[2]), title:s.h4,
       timer_minutes:120, timer_mode:"set", parsed_minutes:120, presets:[15,25,45,60,90,120],
       run:null, done:false, protected:false})],
     [/^\/api\/subscription$/, () => ({subscribed:true})],
+    [/^\/api\/plans$/, () => DB.me.plan],
     [/^\/api\/app\/notifications$/, () => ({items:DB.inbox,
       unread:DB.inbox.filter(n => !n.read).length})],
     [/^\/api\/fresh-start$/, () => {
@@ -406,6 +416,17 @@
                                            priority:body?.priority || "medium"});
       DB.tasks.push(row);
       return {ok:true, ...row};
+    }
+    if(path === "/api/plans/invoice"){
+      // The preview "pays" at once: no Telegram, no Stars.
+      const product = DB.me.plan.products.find(x => x.key === body?.product);
+      if(product) Object.assign(DB.me.plan, {tier:product.tier, days_left:product.days,
+        until:new Date(Date.now() + product.days * 864e5).toISOString()});
+      return {url:"preview:paid"};
+    }
+    if(path === "/api/habits" && method === "POST" && DB.me.plan.tier === "free"
+       && DB.habits.filter(h => !h.system_key).length >= 3){
+      return {__status:402, detail:"plan_limit", key:"habits", limit:3, tier:"free", needs:"pro"};
     }
     if(path === "/api/habits" && method === "POST"){
       const h = {id:++nextId, name:body?.name || "Odat", cat:body?.category || "target", done:false,
@@ -471,13 +492,16 @@
     if(method !== "GET"){
       await wait(650);   // long enough to see the saving state
       let body = null; try{ body = JSON.parse(opts.body || "null"); }catch(_){}
-      return reply(mutate(method, url.pathname, body));
+      const out = mutate(method, url.pathname, body);
+      if(out && out.__status){ const {__status, ...rest} = out; return reply(rest, __status); }
+      return reply(out);
     }
     await wait(180);
     for(const [re, fn] of ROUTES){
       const m = url.pathname.match(re);
       if(m){
         const data = fn(url.searchParams, m);
+        if(data && data.__status){ const {__status, ...rest} = data; return reply(rest, __status); }
         if(typeof data === "string") return new Response(data, {status:200, headers:{"Content-Type":"text/csv",
           "Content-Disposition":`attachment; filename="ernestos-${url.searchParams.get("period") || "month"}-${TODAY}.csv"`}});
         return reply(data);

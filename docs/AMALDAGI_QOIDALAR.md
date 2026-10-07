@@ -1,4 +1,4 @@
-# ErnestOS — amaldagi qoidalar (v13.0)
+# ErnestOS — amaldagi qoidalar (v13.1)
 
 Bu hujjat kod hozir qanday ishlashini qisqa yozadi. Raqamlar
 `tests/test_smoke.py::test_the_rules_document_matches_the_code` testi bilan
@@ -118,11 +118,34 @@ Oshsa — ogohlantirish va ko‘chirish taklifi; o‘zi hech narsa ko‘chmaydi.
 Belgilash (odat, vazifa, namoz, jamoa, miqdor) internet bo‘lmasa qurilmada
 navbatga tushadi va ulanganda bir marta yuboriladi.
 
-## Bepul amallar va kanal
+## Tariflar: Free, Pro, Max (`plans.py`)
 
-Dastlabki **20** amal bepul. Keyin yangi narsa qo‘shish va tahrirlash uchun
-kanalga a’zolik so‘raladi. **Bajarilganini belgilash ochiq qoladi**: odat,
-vazifa, namoz, kun xulosasi, uyg‘onish, jamoa belgisi va taymer.
+| | Free | Pro | Max |
+|---|---|---|---|
+| Odatlar (marosimlardan tashqari) | **3** | **25** | cheksiz |
+| Faol vazifalar | **30** | cheksiz | cheksiz |
+| Takrorlanuvchi vazifalar | **3** | **25** | cheksiz |
+| Loyihalar | **1** | **15** | cheksiz |
+| Ochiq qarzlar | **3** | cheksiz | cheksiz |
+| O‘zi yaratgan jamoalar | **0** | **2** | **10** |
+| Jamoa a’zolari (egasining tarifi) | **8** | **10** | **50** |
+| Ovozli buyruq | **5** / hafta | **30** / kun | **100** / kun |
+| AI kun xulosasi, taymer ritmi, oylik/yillik statistika | — | bor | bor |
+| Statistikani faylga yuklash | — | — | bor |
+
+- Yangi akkaunt **3** kunlik Pro bilan boshlanadi. Tariflar yoqilgunga qadar
+  bor bo‘lgan akkauntlarga bir marta **14** kun Pro sovg‘a.
+- Kanalga qo‘shilish: **+7** kun Pro, bir akkauntga bir marta.
+  Taklif qilingan odam faol bo‘lsa: ikkalasiga **+3** kun, oyiga ko‘pi bilan **30** kun.
+- Bir tarifning muddatlari ketma-ket qo‘shiladi: sinov paytida to‘lansa, to‘lov
+  sinovdan keyin boshlanadi. Max Pro’dan ustun.
+- To‘lov: Telegram Stars — Pro 125⭐/oy, 1100⭐/yil; Max 350⭐/oy, 3000⭐/yil.
+- Muddat tugashidan bir kun oldin bot ogohlantiradi. Tugagach Free:
+  **hech narsa o‘chmaydi**, ortiqcha narsalar ko‘rinadi va belgilanadi,
+  faqat yangisini qo‘shib bo‘lmaydi.
+- Tariflar yoqilganda kanal **devor emas**, bonus. `PLANS_ENABLED=0` bo‘lsa eski
+  qoida qaytadi: Dastlabki **20** amal bepul, keyin yangi narsa qo‘shish uchun
+  kanalga a’zolik so‘raladi; bajarilganini belgilash har doim ochiq.
 
 ## Qarzlar
 

@@ -39,7 +39,7 @@ from db import Credential, LinkedTelegram, SessionLocal, User, utcnow
 #: accounts are made and nobody is attacking them.
 ITERATIONS = int(os.environ.get(
     "PASSWORD_ITERATIONS",
-    "1000" if os.environ.get("ENVIRONMENT", "").lower() == "test" else "240000"))
+    "1000" if os.environ.get("ENVIRONMENT", "").lower() == "test" else "600000"))
 
 LOGIN_RE = re.compile(r"^[a-z0-9_.]{4,32}$")
 PASSWORD_MIN, PASSWORD_MAX = 6, 64
@@ -292,7 +292,9 @@ def forget_account(s: Session, account_id: int) -> None:
     """Everything this module holds about an account. The caller commits."""
     # Phones signed in through this account's Telegrams stop working too.
     import app_auth
+    import plans
     app_auth.forget(s, [account_id, *linked_ids(s, account_id)])
+    plans.forget(s, [account_id])
     s.execute(sql_delete(LinkedTelegram).where(
         (LinkedTelegram.account_id == account_id)
         | (LinkedTelegram.telegram_id == account_id)))

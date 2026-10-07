@@ -966,6 +966,19 @@ details[open] > summary .i{transform:rotate(90deg)}
   padding:8px 10px;border-radius:var(--radius-sm);font-size:13.5px;
   color:var(--danger);background:color-mix(in srgb, var(--danger) 9%, transparent);
   cursor:pointer;min-height:40px}
+/* Plans: three columns of what each plan gives, the current one marked. */
+.plan-cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:var(--s2)}
+.plan-col{border:var(--border-w) solid var(--border);border-radius:var(--radius-sm);padding:10px;
+  background:var(--surface);min-width:0}
+.plan-col.on{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary) inset}
+.plan-col h4{margin:0 0 6px;font-size:15px}
+.plan-col ul{margin:0;padding:0;list-style:none;font-size:12.5px;color:var(--text-2);display:grid;gap:4px}
+.plan-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:var(--radius-pill);
+  font-size:12.5px;font-weight:650;background:color-mix(in srgb, var(--primary) 14%, transparent);color:var(--primary)}
+.plan-buy{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:var(--s2)}
+.plan-buy .btn{min-height:56px;flex-direction:column;gap:0;font-size:14.5px}
+.plan-buy .btn small{font-weight:500;opacity:.85;font-size:12px}
+@media (max-width:360px){ .plan-cols{grid-template-columns:1fr} }
 /* Phone app only: the inbox bell beside the avatar, with its unread count. */
 .bellbtn{width:44px;height:44px;border-radius:50%;flex:none;border:0;padding:0;
   display:grid;place-items:center;position:relative;cursor:pointer;
@@ -1380,6 +1393,21 @@ const DICT = {
   account_hint:"Ma'lumotlar, maxfiylik va export",
   profile:"Profil", member:"Foydalanuvchi", photo_hint:"Telegram rasmi ishlatiladi",
   data_privacy:"Ma'lumotlar va maxfiylik",
+  plan_title:"Tarif", plan_now:"{plan} tarifi", plan_until:"{plan} · yana {n} kun",
+  plan_month:"1 oy", plan_year:"1 yil", plan_paid:"To'lov qabul qilindi — rahmat!",
+  plan_keep:"Ma'lumotlaringiz o'chmaydi — faqat yangisini qo'shib bo'lmaydi.",
+  plan_needs:"Bu {plan} tarifda ochiladi.", plan_limit_generic:"Tarif limiti",
+  plan_limit_habits:"3 tadan ko'p odat", plan_limit_active_tasks:"30 tadan ko'p faol vazifa",
+  plan_limit_recurring_tasks:"Ko'proq takrorlanuvchi vazifa", plan_limit_projects:"Ko'proq loyiha",
+  plan_limit_open_debts:"Ko'proq ochiq qarz", plan_limit_teams_owned:"Jamoa yaratish",
+  plan_limit_team_members:"Jamoada ko'proq a'zo", plan_limit_timer_rhythm:"Ish va tanaffus ritmi",
+  plan_limit_stats_history:"Oylik va yillik statistika", plan_limit_stats_csv:"Statistikani faylga yuklash",
+  plan_limit_journal_ai:"AI bilan kun xulosasi", plan_limit_voice_week:"Ko'proq ovozli buyruq",
+  plan_free_lines:"3 odat|30 faol vazifa|1 loyiha|Ovoz: 5/hafta|7 kunlik statistika",
+  plan_pro_lines:"25 odat|Cheksiz vazifa|15 loyiha|2 jamoa, 10 kishi|Ovoz: 30/kun|To'liq statistika|AI kun xulosasi",
+  plan_max_lines:"Hammasi cheksiz|10 jamoa, 50 kishi|Ovoz: 100/kun|Statistika faylda",
+  plan_channel:"Kanalga qo'shiling — +{n} kun Pro bepul",
+  plan_stars_note:"To'lov Telegram Stars orqali. Muddat tugagach Free'ga o'tasiz, ma'lumotlar saqlanadi.",
   file_ready:"Fayl tayyor — saqlash joyini tanlang",
   inbox:"Xabarlar", inbox_empty:"Hozircha xabar yo'q. Eslatmalar, hisobotlar va taymerlar shu yerga keladi.",
   inbox_snoozed:"{n} daqiqadan keyin yana eslataman", inbox_done:"Bajarildi ✓",
@@ -1753,6 +1781,21 @@ const DICT = {
   account_hint:"Data, privacy and export",
   profile:"Profile", member:"Member", photo_hint:"Your Telegram photo is used",
   data_privacy:"Data and privacy",
+  plan_title:"Plan", plan_now:"{plan} plan", plan_until:"{plan} · {n} days left",
+  plan_month:"1 month", plan_year:"1 year", plan_paid:"Payment received — thank you!",
+  plan_keep:"Nothing is deleted — you just can't add more.",
+  plan_needs:"This comes with {plan}.", plan_limit_generic:"Plan limit",
+  plan_limit_habits:"More than 3 habits", plan_limit_active_tasks:"More than 30 open tasks",
+  plan_limit_recurring_tasks:"More repeating tasks", plan_limit_projects:"More projects",
+  plan_limit_open_debts:"More open debts", plan_limit_teams_owned:"Creating teams",
+  plan_limit_team_members:"More team members", plan_limit_timer_rhythm:"Work and break rhythm",
+  plan_limit_stats_history:"Month and year statistics", plan_limit_stats_csv:"Statistics as a file",
+  plan_limit_journal_ai:"AI day summary", plan_limit_voice_week:"More voice commands",
+  plan_free_lines:"3 habits|30 open tasks|1 project|Voice: 5/week|7 days of statistics",
+  plan_pro_lines:"25 habits|Unlimited tasks|15 projects|2 teams, 10 people|Voice: 30/day|Full statistics|AI day summary",
+  plan_max_lines:"Everything unlimited|10 teams, 50 people|Voice: 100/day|Statistics as a file",
+  plan_channel:"Join the channel — +{n} days of Pro free",
+  plan_stars_note:"Paid with Telegram Stars. When it ends you are on Free and your data stays.",
   file_ready:"File ready — choose where to save it",
   inbox:"Notifications", inbox_empty:"Nothing yet. Reminders, reports and timers arrive here.",
   inbox_snoozed:"I'll remind you again in {n} min", inbox_done:"Done ✓",
@@ -2123,6 +2166,21 @@ const DICT = {
   account_hint:"Данные, приватность и экспорт",
   profile:"Профиль", member:"Участник", photo_hint:"Используется фото из Telegram",
   data_privacy:"Данные и приватность",
+  plan_title:"Тариф", plan_now:"Тариф {plan}", plan_until:"{plan} · ещё {n} дн.",
+  plan_month:"1 месяц", plan_year:"1 год", plan_paid:"Оплата получена — спасибо!",
+  plan_keep:"Данные не удаляются — нельзя только добавлять новое.",
+  plan_needs:"Доступно на тарифе {plan}.", plan_limit_generic:"Лимит тарифа",
+  plan_limit_habits:"Больше 3 привычек", plan_limit_active_tasks:"Больше 30 активных задач",
+  plan_limit_recurring_tasks:"Больше повторяющихся задач", plan_limit_projects:"Больше проектов",
+  plan_limit_open_debts:"Больше открытых долгов", plan_limit_teams_owned:"Создание команд",
+  plan_limit_team_members:"Больше участников", plan_limit_timer_rhythm:"Ритм работы и отдыха",
+  plan_limit_stats_history:"Статистика за месяц и год", plan_limit_stats_csv:"Выгрузка статистики",
+  plan_limit_journal_ai:"AI-итоги дня", plan_limit_voice_week:"Больше голосовых команд",
+  plan_free_lines:"3 привычки|30 активных задач|1 проект|Голос: 5/нед.|Статистика за 7 дней",
+  plan_pro_lines:"25 привычек|Задачи без лимита|15 проектов|2 команды, 10 чел.|Голос: 30/день|Полная статистика|AI-итоги дня",
+  plan_max_lines:"Всё без лимита|10 команд, 50 чел.|Голос: 100/день|Статистика файлом",
+  plan_channel:"Подпишитесь на канал — +{n} дн. Pro бесплатно",
+  plan_stars_note:"Оплата Telegram Stars. После окончания — тариф Free, данные сохраняются.",
   file_ready:"Файл готов — выберите, куда сохранить",
   inbox:"Уведомления", inbox_empty:"Пока пусто. Сюда приходят напоминания, отчёты и таймеры.",
   inbox_snoozed:"Напомню снова через {n} мин", inbox_done:"Готово ✓",
@@ -2508,7 +2566,7 @@ async function api(path, options = {}){
     const err = new Error("http_" + res.status);
     err.status = res.status;
     err.retryAfter = Number(res.headers.get("Retry-After")) || 30;
-    try{ err.detail = (await res.json())?.detail; }catch(_){}
+    try{ err.body = await res.json(); err.detail = err.body?.detail; }catch(_){}
     throw err;
   }
   const remaining = res.headers.get("X-Trial-Remaining");
@@ -2828,6 +2886,54 @@ function calendarSheet(){
     <div style="margin-top:var(--s2)">${calendarBlock()}</div>
     <button class="btn secondary" data-act="close" style="margin-top:var(--s2)">
       ${t("close")}</button>`;
+}
+
+/* ---------- plans: Free / Pro / Max ----------
+   The plan sheet says where the account stands and what each plan gives;
+   buying opens a Telegram Stars invoice (in Telegram) or the same invoice
+   link in Telegram (in the phone app). A limit the server refuses (402)
+   opens the same sheet with the reason on top. */
+const PLAN_NAME = {free:"Free", pro:"Pro", max:"Max"};
+const fmtSom = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+function planLine(){
+  const p = state.me?.plan;
+  if(!p?.enabled) return "";
+  return p.until ? t("plan_until", {plan:PLAN_NAME[p.tier], n:p.days_left})
+                 : t("plan_now", {plan:PLAN_NAME[p.tier]});
+}
+function plansSheet(limit){
+  const p = state.me?.plan || {tier:"free", products:[]};
+  const col = (tier, lines) => `<div class="plan-col ${p.tier === tier ? "on" : ""}">
+      <h4>${PLAN_NAME[tier]}</h4><ul>${lines.map(l => `<li>${l}</li>`).join("")}</ul></div>`;
+  const price = key => (p.products || []).find(x => x.key === key) || {};
+  const buy = key => { const x = price(key);
+    return `<button class="btn ${x.tier === "max" ? "" : "secondary"}" data-act="plan-buy" data-key="${key}">
+      ${PLAN_NAME[x.tier] || ""} · ${t(x.days > 100 ? "plan_year" : "plan_month")}
+      <small>⭐ ${x.stars ?? ""} · ≈ ${fmtSom(x.uzs ?? "")} so'm</small></button>`; };
+  const reason = limit ? (DICT[state.lang]?.["plan_limit_" + limit.key] ? t("plan_limit_" + limit.key)
+                                                                       : t("plan_limit_generic")) : "";
+  return `<h3>${icon("star", 18)} ${t("plan_title")}</h3>
+    ${limit ? `<div class="card tight" style="border-color:var(--warn)">
+        <b>🔒 ${reason}</b>
+        <div class="t2 small">${t("plan_needs", {plan:PLAN_NAME[limit.needs] || "Pro"})}</div>
+        <div class="t3 tiny" style="margin-top:4px">${t("plan_keep")}</div></div>` : ""}
+    <div class="row" style="margin-top:var(--s2);gap:8px;flex-wrap:wrap">
+      <span class="plan-pill">${icon("star", 13)} ${PLAN_NAME[p.tier]}</span>
+      <span class="t2 small">${esc(planLine())}</span></div>
+    <div class="plan-cols">
+      ${col("free", t("plan_free_lines").split("|"))}
+      ${col("pro", t("plan_pro_lines").split("|"))}
+      ${col("max", t("plan_max_lines").split("|"))}
+    </div>
+    ${p.channel && !p.channel_bonus_used ? `<button class="btn secondary" data-act="sub-join"
+        data-url="${esc(p.channel)}" style="margin-top:var(--s3)">
+        🎁 ${t("plan_channel", {n:p.channel_bonus_days})}</button>` : ""}
+    <div class="plan-buy">${buy("pro_month")}${buy("pro_year")}${buy("max_month")}${buy("max_year")}</div>
+    <div class="t3 tiny" style="margin-top:8px">${t("plan_stars_note")}</div>
+    <button class="btn secondary" data-act="close" style="margin-top:var(--s3)">${t("close")}</button>`;
+}
+async function refreshPlan(){
+  try{ const me = await api("/api/me"); state.me.plan = me.plan; }catch(_){}
 }
 
 /* ---------- phone app inbox ----------
@@ -5449,7 +5555,7 @@ async function voiceSend(resend){
                "X-Telegram-Init-Data": tg?.initData || "", "X-Agent-Request-Key": key}});
     if(!res.ok){
       const err = new Error("http_" + res.status); err.status = res.status;
-      try{ err.detail = (await res.json())?.detail; }catch(_){}
+      try{ err.body = await res.json(); err.detail = err.body?.detail; }catch(_){}
       throw err;
     }
     voice.kept = null;
@@ -6619,6 +6725,7 @@ function settingsSheet(){
       ${t("member")} #${me.member_no ?? "—"}
       ${me.username ? `· @${esc(me.username)}` : ""}</div>
 
+    ${me.plan?.enabled ? row("set-plan", "star", "tone-2", t("plan_title"), esc(planLine())) : ""}
     ${row("set-look", "sun", "tone-4", t("appearance"), t("appearance_hint"))}
     ${row("set-notify", "bell", "tone-1", t("notifications"), t("notify_hint"))}
     ${row("set-modules", "check", "tone-4", t("modules"), t("modules_hint"))}
@@ -7606,6 +7713,10 @@ function handleError(e, draft){
     checkSubscription(true);
     return;
   }
+  if(e.status === 402 && e.detail === "plan_limit"){
+    haptic("medium");
+    return openSheet(plansSheet(e.body), "plans");
+  }
   if(e.status === 409 && e.detail === "onboarding_required"){
     setState({needsSetup:true, loading:false}); return; }
   if(e.status === 409 && e.detail === "mirrored"){ toast(t("habit_mirrored")); return; }
@@ -7776,6 +7887,12 @@ window.addEventListener("ernest:open-inbox", () => {
   if(state.me) A["inbox-open"]();
 });
 document.addEventListener("visibilitychange", () => { if(!document.hidden) refreshInbox(); });
+document.addEventListener("visibilitychange", async () => {
+  if(document.hidden || !state.planPending) return;
+  state.planPending = false;
+  await refreshPlan();
+  if(state.sheetView === "plans") openSheet(plansSheet(), "plans");
+});
 
 const A = {
   "tasks-more": moreTasks,
@@ -9328,6 +9445,23 @@ const A = {
   "set-privacy": () => { haptic(); openSettings("privacy"); },
   "privacy-info": () => openSheet(privacySheet()),
   sessions: () => openSheet(sessionsSheet()),
+  "set-plan": () => { haptic(); openSheet(plansSheet(), "plans"); },
+  "plan-buy": async el => {
+    haptic("medium");
+    let link;
+    try{ link = (await api("/api/plans/invoice", {method:"POST", body:{product: el.dataset.key}})).url; }
+    catch(e){ return handleError(e); }
+    const done = async status => {
+      if(status === "paid"){ notify(); toast(t("plan_paid")); await refreshPlan(); closeSheet(); render(); }
+      else if(status === "failed") toast(t("error"));
+    };
+    if(link === "preview:paid"){ await done("paid"); return; }   // design preview only
+    if(tg?.openInvoice && !IS_APP) return tg.openInvoice(link, done);
+    // Phone app: the invoice opens in Telegram; the plan updates when the
+    // app comes back to the front.
+    (window.ErnestApp?.open || (u => window.open(u, "_blank")))(link);
+    state.planPending = true;
+  },
   "inbox-open": async () => {
     haptic();
     openSheet(inboxSheet(), "inbox");
@@ -9463,7 +9597,11 @@ const A = {
       try{
         const res = await fetch("/api/stats/csv?period=" + state.statsPeriod,
                                 {headers:{"X-Telegram-Init-Data": tg?.initData || ""}});
-        if(!res.ok){ const err = new Error("http_" + res.status); err.status = res.status; throw err; }
+        if(!res.ok){
+          const err = new Error("http_" + res.status); err.status = res.status;
+          try{ err.body = await res.json(); err.detail = err.body?.detail; }catch(_){}
+          throw err;
+        }
         const name = (res.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1]
                      || `ernestos-${state.statsPeriod}-${todayISO()}.csv`;
         await window.ErnestApp.saveFile(name, await res.text(), "text/csv");

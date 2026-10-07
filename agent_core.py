@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 import config
 import db
+import plans
 import services as svc
 from agent_actions import AgentError, AtomicSession, Plan, actor, catalog, dumps, execute, prepare, preview
 from agent_text import tr
@@ -181,9 +182,20 @@ def _budget(s, uid, ws):
     s.refresh(p)
     if p.usage_day != today:
         p.usage_day, p.usage_count = today, 0
-    if p.usage_count >= config.AGENT_DAILY_REQUESTS:
+    monday = today - timedelta(days=today.weekday())
+    if p.usage_week != monday:
+        p.usage_week, p.week_count = monday, 0
+    # The plan sets the budget: per day on Pro and Max, per week on Free.
+    # With plans off, the operator's AGENT_DAILY_REQUESTS applies as before.
+    tier = plans.tier_of(s, uid)
+    per_day = plans.LIMITS["voice_day"][tier] if plans.ENABLED else config.AGENT_DAILY_REQUESTS
+    per_week = plans.LIMITS["voice_week"][tier] if plans.ENABLED else None
+    if per_week is not None and (p.week_count or 0) >= per_week:
+        raise AgentError("plan_limit", 402)
+    if per_day is not None and p.usage_count >= per_day:
         raise AgentError("daily_limit", 429)
     p.usage_count += 1
+    p.week_count = (p.week_count or 0) + 1
 
 
 def editing(ws, draft_id=None, revision=None, *, clear=False):
@@ -434,6 +446,8 @@ async def journal_fill(uid, ws, *, text="", audio=None, mime=None):
     """
     import agent_provider
     with db.SessionLocal() as s:
+        if plans.ENABLED and plans.tier_of(s, uid) not in plans.FEATURES["journal_ai"]:
+            raise AgentError("plan_limit", 402)
         _budget(s, uid, ws)
         lang = s.get(db.User, uid).language or "uz"
         s.commit()

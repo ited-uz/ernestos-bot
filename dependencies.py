@@ -81,7 +81,10 @@ def trial_state(user: User | None) -> Trial:
     """
     used = (user.actions_count or 0) if user is not None else 0
     remaining = max(FREE_ACTIONS - used, 0)
-    if not REQUIRED_CHANNEL_ID:
+    import plans
+    if plans.ENABLED or not REQUIRED_CHANNEL_ID:
+        # With plans on, the channel is a bonus, never a wall: what an
+        # account may do is its plan's business (`plans.require`).
         return Trial(used=used, remaining=remaining, gated=False, free=True)
     if user is not None and user.is_subscribed:
         # Already a member: the trial is irrelevant, they are simply in.
@@ -104,6 +107,10 @@ def record_membership(s, telegram_id: int, subscribed: bool, source: str) -> boo
     user.is_subscribed = subscribed
     user.sub_checked_at = db.utcnow()
     user.sub_source = source
+    if subscribed:
+        # Joining the channel is worth a week of Pro, once per account.
+        import plans
+        plans.channel_bonus(s, user.telegram_id)
     return changed
 
 

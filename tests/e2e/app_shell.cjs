@@ -9,6 +9,7 @@ const assert = require('assert/strict');
 const SHELL = process.env.APP_SHELL_BASE;        // where mobile/www is served
 const OUT = process.env.E2E_OUT;
 const PY = process.env.PY;
+const py = code => execFileSync(PY, ['-c', code], { encoding: 'utf8' });
 const issue = () => execFileSync(PY, ['-c',
   'import db, app_auth\nwith db.SessionLocal() as s: print(app_auth.issue_code(s, 777001))'],
   { encoding: 'utf8' }).trim();
@@ -47,7 +48,8 @@ const step = async (name, fn) => {
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
-  page.on('console', m => { if (m.type() === 'error' && !/401|ErnestOS:/.test(m.text())) errors.push('console: ' + m.text()); });
+  // 401 (signed out) and 402 (plan limit) are answers the app handles.
+  page.on('console', m => { if (m.type() === 'error' && !/401|402|ErnestOS:/.test(m.text())) errors.push('console: ' + m.text()); });
   const shot = n => page.screenshot({ path: path.join(OUT, 'app-' + n + '.png') });
 
   await step('No session: the app opens on the sign-in screen', async () => {
@@ -96,9 +98,17 @@ const step = async (name, fn) => {
     assert.deepEqual(await page.evaluate(() => window.__shared.files), ['file:///cache/' + saved.path]);
   });
 
-  await step('Statistics CSV is saved on the phone', async () => {
+  await step('Statistics file is a Max feature: Pro is offered the plan', async () => {
     await page.evaluate(() => goto('stats'));
     await page.waitForTimeout(400);
+    await page.evaluate(() => A['stats-download']());
+    await page.waitForSelector('#sheet-body [data-act="plan-buy"]', { timeout: 5000 });
+    assert.equal(await page.evaluate(() => (window.__saved || []).length), 1, 'nothing saved');
+    await page.evaluate(() => closeSheet());
+  });
+
+  await step('Statistics CSV is saved on the phone', async () => {
+    py('import db, plans\nwith db.SessionLocal() as s:\n plans.grant(s, 777001, "max", 30, "admin"); s.commit()');
     await page.evaluate(() => A['stats-download']());
     await page.waitForFunction(() => window.__saved.length === 2, null, { timeout: 5000 });
     const saved = await page.evaluate(() => window.__saved[1]);

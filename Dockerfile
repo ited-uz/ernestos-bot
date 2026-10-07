@@ -11,4 +11,4 @@ COPY . .
 RUN useradd --create-home ernest && chown -R ernest:ernest /app
 USER ernest
 # One polling worker. Do not start a second instance with the same bot token.
-CMD ["sh", "-c", "exec uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
+CMD ["sh", "-c", "exec uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --no-server-header"]

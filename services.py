@@ -34,6 +34,8 @@ from sqlalchemy import case, event, func, or_, select, text as sql_text, update 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+import plans
+
 from db import (
     AgentAudit, AgentDraft, AgentPreference,
     Birthday, Countdown, DailyReportLog, DailyScore, Feedback, Habit, HabitLog,
@@ -293,6 +295,8 @@ def get_or_create_user(s: Session, telegram_id: int, *, first_name: str = "",
     """Return (user, created). Creating a user also builds their workspace."""
     user = s.get(User, telegram_id)
     if user is not None:
+        if user.plan_started_at is None and plans.ENABLED:
+            plans.ensure_started(s, user, created=False)   # launch gift, once
         # Keep Telegram profile fields fresh, but never overwrite with blanks.
         if first_name and not user.onboarded:
             user.first_name = first_name
@@ -329,6 +333,7 @@ def get_or_create_user(s: Session, telegram_id: int, *, first_name: str = "",
     s.flush()
 
     seed_default_habits(s, workspace.id)
+    plans.ensure_started(s, user, created=True)   # the Pro trial
     s.commit()
     return user, True
 
@@ -972,6 +977,11 @@ def add_habit(s: Session, ws: int, name: str, category: str = "target", *,
         category = "target"
     tz = tz or _habit_tz(s, ws)
     today = today_local(tz)
+    # The three rituals do not count against the plan; everything else does.
+    plans.require_in_workspace(s, ws, "habits", s.scalar(
+        select(func.count(Habit.id)).where(Habit.workspace_id == ws,
+                                           Habit.archived_at.is_(None),
+                                           Habit.system_key == "")) or 0)
     top = s.scalar(select(func.max(Habit.position)).where(Habit.workspace_id == ws)) or 0
     target_qty, min_qty, unit = clean_quantity(target_qty, min_qty, unit)
     habit = Habit(workspace_id=ws, name=name, category=category, position=top + 1,
@@ -1885,6 +1895,10 @@ def add_project(s: Session, ws: int, name: str, *, description: str = "",
     name = name.strip()[:200]
     if not name:
         raise ValueError("empty project name")
+    plans.require_in_workspace(s, ws, "projects", s.scalar(
+        select(func.count(Project.id)).where(Project.workspace_id == ws,
+                                             Project.team_id.is_(None),
+                                             Project.archived_at.is_(None))) or 0)
     project = Project(workspace_id=ws, name=name,
                       description=description.strip()[:2000], deadline=deadline,
                       created_by=workspace_owner(s, ws))
@@ -2063,6 +2077,13 @@ def add_task(s: Session, ws: int, title: str, *, deadline: date | None = None,
         if project is None or project.workspace_id != ws or project.team_id is not None:
             raise NotFound("project")
 
+    if plans.ENABLED:
+        open_tasks = select(func.count(Task.id)).where(
+            Task.workspace_id == ws, Task.status != "done", Task.archived_at.is_(None))
+        plans.require_in_workspace(s, ws, "active_tasks", s.scalar(open_tasks) or 0)
+        if clean_recurrence(recurrence):
+            plans.require_in_workspace(s, ws, "recurring_tasks", s.scalar(
+                open_tasks.where(Task.recurrence.is_not(None), Task.recurrence != "")) or 0)
     task = Task(workspace_id=ws, title=title, deadline=deadline,
                 project_id=project_id, priority=priority,
                 description=description.strip()[:4000],
@@ -3435,6 +3456,9 @@ def add_debt(s: Session, ws: int, person: str, amount, direction: str, *,
         raise ValueError("bad_person")
     if direction not in DEBT_DIRECTIONS:
         raise ValueError("bad_direction")
+    plans.require_in_workspace(s, ws, "open_debts", s.scalar(
+        select(func.count(Debt.id)).where(Debt.workspace_id == ws, Debt.settled_at.is_(None),
+                                          Debt.archived_at.is_(None))) or 0)
     row = Debt(workspace_id=ws, person=person, amount=clean_money_amount(amount),
                direction=direction, note=str(note or "").strip()[:200], due=due)
     s.add(row)
@@ -5280,6 +5304,21 @@ def idempotency_cleanup(s: Session) -> int:
     return result.rowcount or 0
 
 
+#: How long the voice agent's audit trail is kept. Long enough to answer
+#: "what did it do last month?", short enough that a busy account does not
+#: grow the table without end.
+AGENT_AUDIT_KEEP = timedelta(days=180)
+
+
+def agent_audit_cleanup(s: Session) -> int:
+    from sqlalchemy import delete as sql_delete
+    from db import AgentAudit
+    result = s.execute(sql_delete(AgentAudit).where(
+        AgentAudit.created_at < utcnow() - AGENT_AUDIT_KEEP))
+    s.commit()
+    return result.rowcount or 0
+
+
 # ---------------------------------------------------------------------------
 # Referrals
 # ---------------------------------------------------------------------------
@@ -5390,6 +5429,9 @@ def maybe_qualify_referral(s: Session, user_id: int) -> int | None:
     if not won:
         return None
     s.expire(referral)
+    for account in (referral.inviter_user_id, user_id):
+        plans.referral_bonus(s, account)
+    s.commit()
     return referral.inviter_user_id
 
 
@@ -6934,6 +6976,15 @@ class JobLock:
 
 #: A shared space is for people working together, not an audience.
 MAX_TEAM_MEMBERS = 8
+
+
+def team_member_cap(s: Session, team) -> int:
+    """How many people this team may hold: set by its owner's plan. With
+    plans off it is the old fixed size."""
+    if not plans.ENABLED:
+        return MAX_TEAM_MEMBERS
+    tier = plans.tier_of(s, team.owner_id)
+    return plans.LIMITS["team_members"][tier] or MAX_TEAM_MEMBERS
 #: How many teams one account may belong to.
 MAX_TEAMS_PER_USER = 5
 #: Bytes of randomness in an invite code.
@@ -6986,6 +7037,9 @@ def create_team(s: Session, user_id: int, name: str) -> Team:
         raise ValueError("empty_name")
     if len(teams_for(s, user_id)) >= MAX_TEAMS_PER_USER:
         raise ValueError("too_many_teams")
+    plans.require(s, user_id, "teams_owned", s.scalar(
+        select(func.count(Team.id)).where(Team.owner_id == user_id,
+                                          Team.archived_at.is_(None))) or 0)
 
     for _ in range(5):
         team = Team(name=name, owner_id=user_id,
@@ -7198,7 +7252,7 @@ def preview_invite(s: Session, code: str) -> dict | None:
     members = team_members(s, team.id)
     return {"team_id": team.id, "name": team.name, "code": team.code,
             "owner": _display_name(owner), "members": len(members),
-            "max_members": MAX_TEAM_MEMBERS, **invite_info(team)}
+            "max_members": team_member_cap(s, team), **invite_info(team)}
 
 
 def join_team(s: Session, user_id: int, code: str) -> tuple[Team | None, str]:
@@ -7229,7 +7283,7 @@ def join_team(s: Session, user_id: int, code: str) -> tuple[Team | None, str]:
     count = s.scalar(select(func.count()).select_from(TeamMember)
                      .where(TeamMember.team_id == team.id,
                             TeamMember.left_at.is_(None))) or 0
-    if count >= MAX_TEAM_MEMBERS:
+    if count >= team_member_cap(s, team):
         return team, "full"
     if len(teams_for(s, user_id)) >= MAX_TEAMS_PER_USER:
         return team, "full"
@@ -7293,7 +7347,7 @@ def decide_join_request(s: Session, user_id: int, request_id: int,
     count = s.scalar(select(func.count()).select_from(TeamMember)
                      .where(TeamMember.team_id == team.id,
                             TeamMember.left_at.is_(None))) or 0
-    if count >= MAX_TEAM_MEMBERS:
+    if count >= team_member_cap(s, team):
         request.status = "declined"
         s.commit()
         return request, team, "full"

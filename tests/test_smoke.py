@@ -36,6 +36,9 @@ os.environ.update({
                     or f"sqlite:///{tempfile.mkdtemp()}/test.db",
     "ENVIRONMENT": "test",
     "REQUIRED_CHANNEL_ID": "",       # subscription gate off unless a test sets it
+    # Plans off for the suite as a whole: the older tests describe the app
+    # without limits. The plan tests switch them on themselves (`plans_on`).
+    "PLANS_ENABLED": "0",
     "ADMIN_LOG_CHANNEL_ID": "",
 })
 
@@ -11051,6 +11054,19 @@ def test_the_rules_document_matches_the_code():
     assert f"**{svc.RESET_UNDO_WINDOW.days}** kun ichida" in doc
     assert f"**{int(svc.HABIT_REMINDER_WINDOW.total_seconds() // 60)}** daqiqa ichida bir marta" in doc
     assert f"Dastlabki **{deps.FREE_ACTIONS}** amal" in doc
+    import plans as _plans
+    L = _plans.LIMITS
+    assert f"| Odatlar (marosimlardan tashqari) | **{L['habits']['free']}** | **{L['habits']['pro']}** |" in doc
+    assert f"| Faol vazifalar | **{L['active_tasks']['free']}** |" in doc
+    assert f"| Loyihalar | **{L['projects']['free']}** | **{L['projects']['pro']}** |" in doc
+    assert (f"| Ovozli buyruq | **{L['voice_week']['free']}** / hafta | **{L['voice_day']['pro']}** / kun"
+            f" | **{L['voice_day']['max']}** / kun |") in doc
+    assert f"**{_plans.TRIAL_DAYS}** kunlik Pro" in doc
+    assert f"bir marta **{_plans.LAUNCH_GIFT_DAYS}** kun Pro" in doc
+    assert f"**+{_plans.CHANNEL_BONUS_DAYS}** kun Pro" in doc
+    P = _plans.PRODUCTS
+    assert (f"Pro {P['pro_month'].stars}⭐/oy, {P['pro_year'].stars}⭐/yil; "
+            f"Max {P['max_month'].stars}⭐/oy, {P['max_year'].stars}⭐/yil") in doc
     assert f"ko‘pi bilan **{application.SETUP_PRESET_LIMIT}** ta" in doc
     assert "**" + " / ".join(str(m) for m in svc.SNOOZE_MINUTES) + "** daqiqaga" in doc
     for cycle in svc.TIMER_CYCLES:
@@ -11727,3 +11743,214 @@ def test_stats_csv_comes_back_as_a_file(alice):
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/csv")
     assert 'filename="ernestos-week-' in r.headers["content-disposition"]
+
+
+# ---------------------------------------------------------------------------
+# Plans: Free / Pro / Max
+# ---------------------------------------------------------------------------
+
+import plans  # noqa: E402
+
+
+@pytest.fixture()
+def plans_on(monkeypatch):
+    monkeypatch.setattr(plans, "ENABLED", True)
+    yield
+
+
+def _fresh_account(uid: int) -> None:
+    """A brand-new account as /start makes it, under plans."""
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, uid, first_name="P")
+        user = s.get(User, uid)
+        user.onboarded = True
+        s.commit()
+
+
+def _expire_grants(uid: int) -> None:
+    with SessionLocal() as s:
+        for row in s.scalars(select(db.PlanGrant).where(db.PlanGrant.account_id == uid)):
+            row.starts_at = db.utcnow() - timedelta(days=40)
+            row.ends_at = db.utcnow() - timedelta(seconds=1)
+        s.commit()
+
+
+def test_new_account_starts_with_three_days_of_pro(plans_on):
+    _fresh_account(7501)
+    with SessionLocal() as s:
+        info = plans.summary(s, 7501)
+        grants = s.scalars(select(db.PlanGrant).where(db.PlanGrant.account_id == 7501)).all()
+    assert info["tier"] == "pro" and info["days_left"] == plans.TRIAL_DAYS
+    assert [g.source for g in grants] == ["trial"]
+    # A second visit does not grant again.
+    _fresh_account(7501)
+    with SessionLocal() as s:
+        assert s.scalar(select(func.count(db.PlanGrant.id))
+                        .where(db.PlanGrant.account_id == 7501)) == 1
+
+
+def test_existing_account_gets_the_launch_gift_once(plans_on, monkeypatch):
+    monkeypatch.setattr(plans, "ENABLED", False)
+    _fresh_account(7502)                    # an account from before plans
+    monkeypatch.setattr(plans, "ENABLED", True)
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, 7502)     # its first request under plans
+        s.commit()
+        svc.get_or_create_user(s, 7502)
+        s.commit()
+        rows = s.scalars(select(db.PlanGrant).where(db.PlanGrant.account_id == 7502)).all()
+    assert [(g.source, (g.ends_at - g.starts_at).days) for g in rows] == [("gift", plans.LAUNCH_GIFT_DAYS)]
+
+
+def test_free_limits_refuse_new_items_and_keep_old_ones(client, plans_on):
+    _fresh_account(7503)
+    _expire_grants(7503)
+    caller = Caller(client, {"id": 7503, "first_name": "P"})
+    with SessionLocal() as s:
+        assert plans.tier_of(s, 7503) == "free"
+    made = [caller.post("/api/habits", json={"name": f"Odat {i}"}).status_code for i in range(4)]
+    assert made == [200, 200, 200, 402]
+    refused = caller.post("/api/habits", json={"name": "Yana"}).json()
+    assert refused == {"detail": "plan_limit", "key": "habits", "limit": 3, "tier": "free", "needs": "pro"}
+    habits = caller.get("/api/habits").json()["habits"]
+    target = next(h for h in habits if h["name"] == "Odat 0")
+    assert caller.post(f"/api/habits/{target['id']}/toggle").status_code == 200, "ticking stays open"
+    assert caller.post("/api/projects", json={"name": "A"}).status_code == 200
+    assert caller.post("/api/projects", json={"name": "B"}).status_code == 402
+    assert caller.get("/api/stats?period=month").status_code == 402
+    assert caller.get("/api/stats?period=week").status_code == 200
+    assert caller.get("/api/stats/csv?period=week").status_code == 402
+    assert caller.post("/api/teams", json={"name": "Jamoa"}).status_code == 402
+
+
+def test_pro_raises_the_limits_and_max_lifts_them(client, plans_on):
+    _fresh_account(7504)                    # on the Pro trial
+    caller = Caller(client, {"id": 7504, "first_name": "P"})
+    for i in range(5):
+        assert caller.post("/api/habits", json={"name": f"H{i}"}).status_code == 200
+    assert caller.get("/api/stats?period=year").status_code == 200
+    assert caller.get("/api/stats/csv?period=week").status_code == 402, "files are Max"
+    with SessionLocal() as s:
+        plans.grant(s, 7504, "max", 30, "admin")
+        s.commit()
+        assert plans.tier_of(s, 7504) == "max"
+    assert caller.get("/api/stats/csv?period=week").status_code == 200
+
+
+def test_channel_bonus_is_a_week_once_and_queues_after_the_trial(plans_on):
+    _fresh_account(7505)
+    with SessionLocal() as s:
+        deps.record_membership(s, 7505, True, "event")
+        deps.record_membership(s, 7505, True, "event")
+        s.commit()
+        rows = s.scalars(select(db.PlanGrant).where(db.PlanGrant.account_id == 7505)
+                         .order_by(db.PlanGrant.starts_at)).all()
+        info = plans.summary(s, 7505)
+    assert [r.source for r in rows] == ["trial", "channel"]
+    assert rows[1].starts_at == rows[0].ends_at, "the bonus waits for the trial to end"
+    assert info["days_left"] == plans.TRIAL_DAYS + plans.CHANNEL_BONUS_DAYS
+    assert info["channel_bonus_used"] is True
+
+
+def test_stars_payment_is_applied_once_per_charge(plans_on):
+    _fresh_account(7506)
+    _expire_grants(7506)
+    with SessionLocal() as s:
+        first = plans.apply_payment(s, 7506, "max_month", "charge-1", 350)
+        again = plans.apply_payment(s, 7506, "max_month", "charge-1", 350)
+        s.commit()
+        assert first is not None and again is None
+        assert plans.tier_of(s, 7506) == "max"
+        assert plans.summary(s, 7506)["days_left"] == 30
+
+
+def test_checkout_accepts_only_our_invoice_at_its_price():
+    from types import SimpleNamespace as NS
+    payload = plans.invoice_payload(42, "pro_month")
+    good = NS(invoice_payload=payload, currency="XTR", total_amount=plans.PRODUCTS["pro_month"].stars)
+    assert plans.checkout_matches(good) == ("pro_month", 42)
+    assert plans.checkout_matches(NS(**{**good.__dict__, "total_amount": 1})) is None
+    assert plans.checkout_matches(NS(**{**good.__dict__, "currency": "USD"})) is None
+    assert plans.checkout_matches(NS(**{**good.__dict__, "invoice_payload": "plan:gold:42"})) is None
+
+
+def test_referral_bonus_is_capped_per_month(plans_on):
+    _fresh_account(7507)
+    with SessionLocal() as s:
+        given = [plans.referral_bonus(s, 7507) is not None for _ in range(15)]
+        s.commit()
+    assert sum(given) == plans.REFERRAL_MONTHLY_CAP // plans.REFERRAL_BONUS_DAYS
+
+
+def test_plan_reaches_me_and_plans_api(client, plans_on):
+    _fresh_account(7508)
+    caller = Caller(client, {"id": 7508, "first_name": "P"})
+    me = caller.get("/api/me").json()
+    assert me["plan"]["tier"] == "pro" and me["trial"]["required"] is False
+    info = caller.get("/api/plans").json()
+    assert {p["key"] for p in info["products"]} == set(plans.PRODUCTS)
+    assert info["all_limits"]["habits"] == {"free": 3, "pro": 25, "max": None}
+    assert caller.post("/api/plans/invoice", json={"product": "gold"}).status_code == 422
+
+
+def test_free_voice_budget_is_weekly(plans_on, monkeypatch):
+    import agent_core
+    monkeypatch.setattr(config, "AGENT_ENABLED", True)
+    _fresh_account(7509)
+    _expire_grants(7509)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, 7509)
+        s.add(db.AgentPreference(workspace_id=ws, consent_at=db.utcnow()))
+        s.commit()
+        for _ in range(plans.LIMITS["voice_week"]["free"]):
+            agent_core._budget(s, 7509, ws)
+            s.commit()
+        with pytest.raises(agent_core.AgentError) as err:
+            agent_core._budget(s, 7509, ws)
+    assert err.value.code == "plan_limit"
+
+
+def test_ending_notice_is_sent_once_per_end(plans_on):
+    _fresh_account(7510)
+    with SessionLocal() as s:
+        row = s.scalar(select(db.PlanGrant).where(db.PlanGrant.account_id == 7510))
+        row.ends_at = db.utcnow() + timedelta(hours=5)
+        s.commit()
+        due = [d for d in plans.ending_soon(s) if d[0] == 7510]
+        assert len(due) == 1
+        plans.mark_notified(s, 7510, due[0][1])
+        assert not [d for d in plans.ending_soon(s) if d[0] == 7510]
+
+
+def test_plans_off_means_no_limits(client):
+    caller = Caller(client, {"id": 7511, "first_name": "P"})
+    for i in range(6):
+        assert caller.post("/api/habits", json={"name": f"H{i}"}).status_code == 200
+
+
+def test_api_map_is_hidden_in_production_and_pages_are_compressed(client):
+    import importlib
+    assert application._API_MAP is True            # the suite is not production
+    page = client.get("/", headers={"Accept-Encoding": "gzip"})
+    assert page.headers.get("content-encoding") == "gzip"
+    source = (ROOT / "app.py").read_text()
+    assert "openapi_url=\"/openapi.json\" if _API_MAP else None" in source
+    assert importlib.util.find_spec("cryptography") is not None
+
+
+def test_command_menu_lists_only_commands_the_bot_answers():
+    answered = {name for name, _ in application.BOT_COMMANDS} | {"start", "home", "guide", "agent"}
+    for lang, rows in application.BOT_MENU.items():
+        assert rows, lang
+        for name, text in rows:
+            assert name in answered, (lang, name)
+            assert 3 <= len(text) <= 256
+    sent = []
+
+    class Bot:
+        async def set_my_commands(self, commands, language_code=None):
+            sent.append((language_code, [c.command for c in commands]))
+
+    import asyncio
+    asyncio.run(application.set_command_menu(Bot()))
+    assert {lang for lang, _ in sent} == {"uz", "ru", "en", None}
