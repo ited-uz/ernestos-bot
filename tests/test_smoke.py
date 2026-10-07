@@ -12075,3 +12075,73 @@ def test_a_chosen_avatar_is_served_checked_and_forgotten(client):
     with SessionLocal() as s:
         assert svc.delete_account(s, 7522)
         assert s.get(db.UserAvatar, 7522) is None
+
+
+def test_deleting_an_owner_never_takes_the_team_with_it(tmp_path):
+    """K02, on a database that enforces foreign keys as Postgres does:
+    `teams.owner_id` cascades, so deleting the owner used to delete the team
+    and every other member's work in it."""
+    from sqlalchemy import create_engine, event
+    from sqlalchemy.orm import sessionmaker
+
+    eng = create_engine(f"sqlite:///{tmp_path / 'fk.db'}")
+
+    @event.listens_for(eng, "connect")
+    def _fk(conn, _record):
+        conn.execute("PRAGMA foreign_keys=ON")
+
+    db.Base.metadata.create_all(eng)
+    Session_ = sessionmaker(bind=eng, expire_on_commit=False)
+    one, two = 9100001, 9100002
+    with Session_() as s:
+        for uid in (one, two):
+            svc.get_or_create_user(s, uid, first_name=str(uid))
+        team = svc.create_team(s, one, "Do'kon")
+        svc.join_team(s, two, team.code)
+        task = svc.add_team_task(s, two, team.id, "Yetkazib berish")
+        task_id = task["id"] if isinstance(task, dict) else task.id
+
+        # A live team with someone else in it: refused, nothing deleted.
+        with pytest.raises(ValueError, match="owner_must_transfer"):
+            svc.delete_account(s, one)
+        s.rollback()
+        assert s.get(User, one) is not None
+        assert s.get(db.Team, team.id) is not None
+
+        # Closed (archived) team: the account goes, the team and the other
+        # member's work stay, owned by that member now.
+        svc.delete_team(s, one, team.id)
+        assert svc.delete_account(s, one)
+        kept = s.get(db.Team, team.id)
+        assert kept is not None and kept.owner_id == two
+        assert s.get(db.TeamTask, task_id) is not None
+
+        # A team nobody else was ever in goes with its owner.
+        three = 9100003
+        svc.get_or_create_user(s, three, first_name="3")
+        solo_id = svc.create_team(s, three, "Yolg'iz").id
+        assert svc.delete_account(s, three)
+        assert s.get(db.Team, solo_id) is None
+
+
+def test_a_journal_save_never_overwrites_text_saved_elsewhere(fresh):
+    """K03: with `base`, a field that changed elsewhere since is refused with
+    both versions; without `base` (old clients, the bot) nothing changes."""
+    first = fresh.post("/api/journal", {"answers": {"wins": "laptop"}, "base": ""})
+    assert first.status_code == 200, first.text
+    seen = first.json()["updated_at"]
+    # Another device saves on top.
+    fresh.post("/api/journal", {"answers": {"wins": "bot"}})
+    stale = fresh.post("/api/journal", {"answers": {"wins": "phone", "lesson": "x"}, "base": seen})
+    assert stale.status_code == 409
+    body = stale.json()
+    assert body["detail"] == "journal_conflict" and body["server"] == {"wins": "bot"}
+    today = first.json()["day"]
+    assert fresh.get(f"/api/journal?day={today}").json()["entry"]["answers"]["wins"] == "bot", \
+        "nothing was overwritten"
+    # Resolved against the current version: accepted.
+    ok = fresh.post("/api/journal", {"answers": {"wins": "bot\n\nphone"}, "base": body["updated_at"]})
+    assert ok.status_code == 200
+    # A field nobody else touched is never a conflict.
+    fresh = fresh.post("/api/journal", {"answers": {"lesson": "new"}, "base": seen})
+    assert fresh.status_code == 200

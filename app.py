@@ -7429,6 +7429,11 @@ class JournalIn(BaseModel):
     day: str | None = Field(default=None, max_length=10)
     #: One of services.MOODS, or empty. Optional by design.
     mood: str = Field(default="", max_length=20)
+    #: The entry's `updated_at` the writer last saw ("" — there was none).
+    #: When the entry has changed since (another phone, the bot) and a field
+    #: sent here would overwrite different text, the save is refused with
+    #: both versions instead of silently picking one (K03). None: no check.
+    base: str | None = Field(default=None, max_length=40)
 
     @field_validator("answers")
     @classmethod
@@ -9664,6 +9669,16 @@ def api_journal_save(body: JournalIn, init=Header(default=None, alias="X-Telegra
     user, ws = auth(init)
     tz = svc.user_tz(user)
     with SessionLocal() as s:
+        if body.base is not None and body.answers:
+            current = svc.get_journal(s, ws, _date(body.day), tz=tz) or {}
+            if (current.get("updated_at") or "") != body.base:
+                theirs = current.get("answers") or {}
+                clash = {k: theirs[k] for k, v in body.answers.items()
+                         if str(theirs.get(k) or "").strip() and theirs.get(k) != v}
+                if clash:
+                    return JSONResponse(status_code=409, content={
+                        "detail": "journal_conflict", "server": clash,
+                        "updated_at": current.get("updated_at")})
         row = svc.save_journal(s, ws, answers=body.answers, text=body.text,
                                day=_date(body.day), mood=body.mood, tz=tz)
         entry = svc.get_journal(s, ws, row.day, tz=tz)
@@ -10530,7 +10545,13 @@ def api_account_delete(body: DeleteAccountIn,
     if body.confirm.strip().upper() != "DELETE":
         raise HTTPException(status_code=422, detail="confirmation_required")
     with SessionLocal() as s:
-        svc.delete_account(s, user.telegram_id)
+        try:
+            svc.delete_account(s, user.telegram_id)
+        except ValueError as e:
+            # A team with other people in it needs a new owner first (K02).
+            # Nothing was deleted.
+            s.rollback()
+            raise HTTPException(status_code=409, detail=str(e))
     log.info("account deleted on request: %s", user.telegram_id)
     return {"ok": True, "deleted": True}
 

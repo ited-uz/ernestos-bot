@@ -5188,6 +5188,29 @@ def delete_account(s: Session, telegram_id: int) -> bool:
     if user is None:
         return False
 
+    # Teams this account owns (K02). `teams.owner_id` cascades on delete, so
+    # erasing the owner would erase the team — and every other member's
+    # tasks, ticks and history in it. A live team with other people in it
+    # needs a new owner first, exactly as leaving does; an archived one is
+    # handed to its earliest other member so their past stays; one nobody
+    # else was ever in goes with the account.
+    owned = s.scalars(select(Team).where(Team.owner_id == telegram_id)).all()
+    for team in owned:
+        if team.archived_at is None and any(
+                m["user_id"] != telegram_id for m in team_members(s, team.id)):
+            raise ValueError("owner_must_transfer")
+    for team in owned:
+        heir = s.scalar(select(TeamMember.user_id).where(
+            TeamMember.team_id == team.id, TeamMember.user_id != telegram_id)
+            .order_by(TeamMember.joined_at).limit(1))
+        if heir is None:
+            s.delete(team)
+        else:
+            team.owner_id = heir
+            team.pending_owner_id = None
+            team.archived_at = team.archived_at or utcnow()
+    s.flush()
+
     ws = s.scalar(select(Workspace.id).where(Workspace.user_id == telegram_id))
     if ws is not None:
         for model in WORKSPACE_TABLES:

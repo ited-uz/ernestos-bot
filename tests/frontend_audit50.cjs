@@ -80,11 +80,34 @@ const posts = url => calls.filter(c => c.method === 'POST' && c.url === url);
   assert.equal(posts('/api/journal')[0].body.day, '2026-10-04');
   assert.ok(storage.size === 0 || [...storage.keys()].every(k => !k.endsWith(run('todayISO()')) || run('todayISO()') === '2026-10-04'));
 
-  // #30 — a draft typed over an older saved version is dropped, not shown.
+  // #30 / K03 — a draft typed over an older saved version is neither put
+  // over the saved text nor thrown away: both are shown and the person picks.
   run(`state.journalDay=todayISO(); state.journal={answers:{win:'from laptop'}, updated_at:'2026-10-05T12:00:00+00:00'}`);
   storage.set(run('draftKey()'), JSON.stringify({win:'stale phone text', _base:'2026-10-05T09:00:00+00:00'}));
-  assert.ok(run('SCREENS.habits()').includes('from laptop'));
-  assert.ok(!run('SCREENS.habits()').includes('stale phone text'));
+  let screen = run('SCREENS.habits()');
+  assert.match(screen, /id="jq-win"[^>]*>from laptop</, 'the field shows the saved text');
+  assert.ok(screen.includes('data-act="jconf"') && screen.includes('stale phone text'), 'the phone text is kept for review');
+  assert.deepEqual(JSON.parse(run('JSON.stringify(journalConflicts().win)')), {mine:'stale phone text', theirs:'from laptop'});
+  // Keeping both sends them with the version they were resolved against.
+  calls.length = 0;
+  reply = (url, m) => url === '/api/journal' && m === 'POST'
+    ? {ok:true, updated_at:'2026-10-05T12:05:00+00:00', answered:1, complete:false} : {};
+  run(`A.jconf({dataset:{key:'win', pick:'both'}})`);
+  await run('journalChain');
+  const jsent = posts("/api/journal")[0].body;
+  assert.equal(jsent.answers.win, 'from laptop\n\nstale phone text');
+  assert.equal(jsent.base, '2026-10-05T12:00:00+00:00');
+  assert.equal(run('JSON.stringify(journalConflicts())'), '{}');
+  // The server refusing (changed again meanwhile) keeps both versions.
+  calls.length = 0;
+  reply = (url, m) => url === '/api/journal' && m === 'POST'
+    ? new Response(JSON.stringify({detail:'journal_conflict', server:{lesson:'bot text'}, updated_at:'2026-10-05T13:00:00+00:00'}), {status:409}) : {};
+  run(`const l=document.getElementById('jq-lesson'); l.dataset.journal='lesson'; l.value='phone lesson'; onJournalInput(l);`);
+  await run('flushJournal()');
+  assert.deepEqual(JSON.parse(run('JSON.stringify(journalConflicts().lesson)')), {mine:'phone lesson', theirs:'bot text'});
+  assert.equal(run('state.journal.updated_at'), '2026-10-05T13:00:00+00:00');
+  storage.delete(run('draftKey()'));
+  run(`state.journal={answers:{win:'from laptop'}, updated_at:'2026-10-05T12:00:00+00:00'}`);
   // ...while one typed over the current version is kept.
   storage.set(run('draftKey()'), JSON.stringify({win:'unsent', _base:'2026-10-05T12:00:00+00:00'}));
   assert.ok(run('SCREENS.habits()').includes('unsent'));
@@ -235,6 +258,34 @@ const posts = url => calls.filter(c => c.method === 'POST' && c.url === url);
   await run('flushQueue()');
   assert.equal(run('loadQueue().length'), 1);
   assert.equal(run('loadQueue()[0].blocked'), undefined);
+  storage.delete(run('queueKey()'));
+
+  // K02 — a wipe the server refuses (or never answers) loses nothing local,
+  // and nothing is sent while it is out.
+  storage.set(run('queueKey()'), JSON.stringify([{key:'k1', url:'/api/habits/5/toggle', method:'POST', body:{done:true}}]));
+  storage.set(run('draftKey()'), JSON.stringify({win:'typed offline'}));
+  let sentDuring = 0;
+  ctx.fetch = async (url) => {
+    if(url.includes('/toggle') || url.includes('/api/journal')) sentDuring++;
+    if(url === '/api/account/wipe') return new Response('{"detail":"server_error"}', {status: 500});
+    return new Response('{}', {status: 200});
+  };
+  await run(`A["wipe-data-confirm"]()`);
+  assert.equal(sentDuring, 0, 'nothing may be sent while a wipe is out');
+  assert.equal(run('loadQueue().length'), 1, 'a refused wipe keeps the queue');
+  assert.ok(storage.get(run('draftKey()')), 'a refused wipe keeps the draft');
+  assert.equal(run('state.erasing'), false);
+  // Accepted: now the local copies go.
+  ctx.fetch = async () => new Response('{"ok":true}', {status: 200});
+  await run(`A["wipe-data-confirm"]()`);
+  assert.equal(run('loadQueue().length'), 0);
+  assert.equal(storage.get(run('draftKey()')), undefined);
+  // Delete refused for a team owner: everything stays, the reason is named.
+  storage.set(run('queueKey()'), JSON.stringify([{key:'k2', url:'/api/habits/5/toggle', method:'POST', body:{done:true}}]));
+  ctx.fetch = async () => new Response('{"detail":"owner_must_transfer"}', {status: 409});
+  document.getElementById('del-confirm').value = 'DELETE';
+  await run(`A["delete-account-go"]()`);
+  assert.equal(run('loadQueue().length'), 1, 'a refused delete keeps the queue');
   storage.delete(run('queueKey()'));
 
   console.log('Audit-50 frontend checks passed');

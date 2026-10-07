@@ -1388,6 +1388,7 @@ const DICT = {
   journal:"Kun xulosasi", journal_progress:"{done} / {total} javob berildi",
   journal_complete:"To'liq yozildi", journal_hint:"Qancha yozsangiz — shuncha saqlanadi",
   journal_history:"Tarix", journal_partial:"To'liq emas",
+  jconf_title:"Kun xulosasi boshqa joyda o'zgargan", jconf_body:"Shu telefonda yozilgan matn saqlangan matndan farq qiladi. Qaysi biri qolsin? Hech biri o'chirilmagan.", jconf_mine:"Shu telefonda", jconf_theirs:"Saqlangan (bot yoki boshqa qurilma)", jconf_keep_mine:"Menikini", jconf_both:"Ikkalasini", jconf_keep_theirs:"Saqlanganini",
   draft_restored:"Saqlanmagan matn tiklandi", autosaved:"Saqlanmoqda…",
   mood_q:"Bugun o'zingizni qanday his qildingiz?",
   mood_awful:"Juda yomon", mood_low:"Yomon", mood_ok:"O'rtacha",
@@ -1607,6 +1608,7 @@ const DICT = {
   owner_offer:"Sizga «{name}» jamoasi egaligi taklif qilindi", accept:"Qabul qilish",
   offer_sent:"Taklif yuborildi — u qabul qilgach egalik o'tadi",
   owner_must_transfer:"Chiqishdan oldin egalikni boshqa a'zoga bering",
+  owner_must_transfer_delete:"Akkauntni o'chirishdan oldin jamoangiz egaligini boshqa a'zoga bering yoki jamoani yoping.",
   notify_title:"Bildirishnomalar", notify_all:"Hammasi", notify_important:"Muhim",
   notify_assigned:"Faqat menga", notify_off:"O'chiq",
   notify_all_hint:"O'zgarishlar, hisobot va eslatmalar", notify_important_hint:"Hisobot va eslatmalar",
@@ -1812,6 +1814,7 @@ const DICT = {
   journal:"Day summary", journal_progress:"{done} of {total} answered",
   journal_complete:"Fully written", journal_hint:"Whatever you write is kept",
   journal_history:"History", journal_partial:"Incomplete",
+  jconf_title:"The journal changed somewhere else", jconf_body:"The text written on this phone differs from the saved one. Which should stay? Nothing has been deleted.", jconf_mine:"On this phone", jconf_theirs:"Saved (bot or another device)", jconf_keep_mine:"Mine", jconf_both:"Both", jconf_keep_theirs:"Saved one",
   draft_restored:"Unsaved text restored", autosaved:"Saving…",
   mood_q:"How did you feel today?",
   mood_awful:"Awful", mood_low:"Low", mood_ok:"Okay",
@@ -2025,6 +2028,7 @@ const DICT = {
   owner_offer:"You have been offered ownership of «{name}»", accept:"Accept",
   offer_sent:"Offer sent — ownership moves once they accept",
   owner_must_transfer:"Hand ownership to another member before leaving",
+  owner_must_transfer_delete:"Before deleting the account, hand your team to another member or close the team.",
   notify_title:"Notifications", notify_all:"Everything", notify_important:"Important",
   notify_assigned:"Only mine", notify_off:"Off",
   notify_all_hint:"Changes, reports and reminders", notify_important_hint:"Reports and reminders",
@@ -2230,6 +2234,7 @@ const DICT = {
   journal:"Итоги дня", journal_progress:"{done} из {total} отвечено",
   journal_complete:"Заполнен полностью", journal_hint:"Сохраняется всё, что вы напишете",
   journal_history:"История", journal_partial:"Не заполнен",
+  jconf_title:"Дневник изменён в другом месте", jconf_body:"Текст на этом телефоне отличается от сохранённого. Какой оставить? Ничего не удалено.", jconf_mine:"На этом телефоне", jconf_theirs:"Сохранённый (бот или другое устройство)", jconf_keep_mine:"Мой", jconf_both:"Оба", jconf_keep_theirs:"Сохранённый",
   draft_restored:"Несохранённый текст восстановлен", autosaved:"Сохраняем…",
   mood_q:"Как вы себя чувствовали сегодня?",
   mood_awful:"Очень плохо", mood_low:"Плохо", mood_ok:"Нормально",
@@ -2443,6 +2448,7 @@ const DICT = {
   owner_offer:"Вам предложили стать владельцем «{name}»", accept:"Принять",
   offer_sent:"Предложение отправлено — владение перейдёт после согласия",
   owner_must_transfer:"Перед выходом передайте владение другому участнику",
+  owner_must_transfer_delete:"Перед удалением аккаунта передайте команду другому участнику или закройте её.",
   notify_title:"Уведомления", notify_all:"Всё", notify_important:"Важное",
   notify_assigned:"Только мне", notify_off:"Выкл",
   notify_all_hint:"Изменения, отчёты и напоминания", notify_important_hint:"Отчёты и напоминания",
@@ -4111,6 +4117,18 @@ function journalTab(){
       <div class="t3 tiny" id="jsave">${journalDay() !== todayISO()
         ? t("journal_for_day", {d: isoToLabel(journalDay())}) : ""}</div>
     </div>`;
+  const clashes = journalConflicts();
+  if(Object.keys(clashes).length) h += `<div class="card" style="border-color:var(--warn);margin-bottom:12px">
+      <b>⚠️ ${t("jconf_title")}</b><div class="t2 small">${t("jconf_body")}</div>
+      ${Object.entries(clashes).map(([k, c]) => `<div style="margin-top:12px">
+        <div class="small"><b>${esc(questions.find(q => q.id === k)?.text || k)}</b></div>
+        <div class="t3 tiny" style="margin-top:4px">${t("jconf_mine")}</div><div class="small">${esc(c.mine)}</div>
+        <div class="t3 tiny" style="margin-top:4px">${t("jconf_theirs")}</div><div class="small">${esc(c.theirs)}</div>
+        <div class="btns" style="margin-top:8px">
+          <button class="btn sm" data-act="jconf" data-key="${esc(k)}" data-pick="mine">${t("jconf_keep_mine")}</button>
+          <button class="btn sm secondary" data-act="jconf" data-key="${esc(k)}" data-pick="both">${t("jconf_both")}</button>
+          <button class="btn sm secondary" data-act="jconf" data-key="${esc(k)}" data-pick="theirs">${t("jconf_keep_theirs")}</button>
+        </div></div>`).join("")}</div>`;
   if(hasJaiPending()) h += `<div class="card jai" id="jai-review">
       <div class="small">✨ ${t("jai_review")}</div>
       <div class="btns" style="margin-top:10px">
@@ -4177,24 +4195,44 @@ const jaiKey = () => `ernestos-jai-${state.me?.telegram_id || "anon"}`;
 /* A draft remembers which saved version it was typed over (`_base`). If the
    entry was saved since — from another phone or the computer — the old draft
    is stale and is dropped rather than painted over the newer text. */
+function readDraftFile(){
+  try{ return JSON.parse(localStorage.getItem(draftKey()) || "{}"); }catch(_){ return null; }
+}
+/* Fields where this phone's unsent text and the saved entry disagree, kept
+   side by side until the person picks (K03). */
+function journalConflicts(){ return readDraftFile()?._conflict || {}; }
+/* The local draft, rebased on the entry the server now holds. It used to be
+   thrown away whenever the entry had changed elsewhere — text typed offline
+   on this phone was lost because the bot or another phone saved first. Now:
+   a field the server already has word for word is done; a field the server
+   has empty stays a draft; a field with different text on both sides becomes
+   a conflict the person resolves (K03). Nothing is discarded silently. */
 function loadDraft(){
-  let draft;
-  try{ draft = JSON.parse(localStorage.getItem(draftKey()) || "{}"); }
-  catch(_){ return {}; }
-  const server = state.journal?.updated_at || null;
-  if("_base" in draft && draft._base !== server && state.journalDay === journalDay()){
-    clearDraft();
-    return {};
-  }
+  const draft = readDraftFile();
+  if(!draft) return {};
   const out = {};
   for(const [k, v] of Object.entries(draft)) if(!k.startsWith("_")) out[k] = v;
+  const server = state.journal?.updated_at || null;
+  if("_base" in draft && draft._base !== server && state.journalDay === journalDay()){
+    const theirs = state.journal?.answers || {};
+    const conflict = {...(draft._conflict || {})};
+    for(const [k, v] of Object.entries(out)){
+      const other = theirs[k];
+      if(other === v) delete out[k];
+      else if(String(other || "").trim()){ conflict[k] = {mine:v, theirs:other}; delete out[k]; }
+    }
+    writeDraft(out, server, conflict);
+  }
   return out;
 }
-function writeDraft(fields, base){
+function writeDraft(fields, base, conflict){
   try{
-    const keys = Object.keys(fields);
-    if(!keys.length) return localStorage.removeItem(draftKey());
-    localStorage.setItem(draftKey(), JSON.stringify({...fields, _base: base}));
+    const plain = {};
+    for(const [k, v] of Object.entries(fields)) if(!k.startsWith("_")) plain[k] = v;
+    const clash = conflict === undefined ? journalConflicts() : conflict;
+    const has = Object.keys(clash).length;
+    if(!Object.keys(plain).length && !has) return localStorage.removeItem(draftKey());
+    localStorage.setItem(draftKey(), JSON.stringify({...plain, _base: base, ...(has ? {_conflict: clash} : {})}));
   }catch(_){}
 }
 function saveDraft(id, value){
@@ -4220,6 +4258,32 @@ async function forgetLocalDrafts(){
       if(k && (k.startsWith(prefix) || k === jai || k === queueKey())) localStorage.removeItem(k);
     }
   }catch(_){}
+}
+/* Before a wipe or a delete is sent (K02): nothing may be sent meanwhile —
+   no autosave, no queued tick that would bring an item back — but nothing
+   is thrown away either until the server has said yes. If it says no, or
+   never answers, `thawLocalDrafts` puts every draft and queued action back. */
+async function freezeLocalDrafts(){
+  state.erasing = true;
+  clearTimeout(journalTimer);
+  try{ await journalChain; }catch(_){}
+  try{ await flushing; }catch(_){}
+  const snap = {stored:{}, journal:{...journalPending}, jai:{...(state.jaiPending || {})}, kept:voice.kept};
+  try{
+    const prefix = draftPrefix(), jai = jaiKey();
+    for(let i = 0; i < localStorage.length; i++){
+      const k = localStorage.key(i);
+      if(k && (k.startsWith(prefix) || k === jai || k === queueKey())) snap.stored[k] = localStorage.getItem(k);
+    }
+  }catch(_){}
+  return snap;
+}
+function thawLocalDrafts(snap){
+  try{ for(const [k, v] of Object.entries(snap.stored)) localStorage.setItem(k, v); }catch(_){}
+  journalPending = {...snap.journal, ...journalPending};
+  state.jaiPending = {...snap.jai, ...(state.jaiPending || {})};
+  if(snap.kept && !voice.kept) voice.kept = snap.kept;
+  state.erasing = false;
 }
 const journalPendingCount = () => Object.keys(journalPending || {}).length;
 const hasJaiPending = () => Object.keys(state.jaiPending || {}).length > 0;
@@ -4290,6 +4354,8 @@ function onJournalInput(el){
 
 function flushJournal(){
   clearTimeout(journalTimer);
+  // A wipe or delete is on its way: hold the answers (K02).
+  if(state.erasing) return journalChain;
   const answers = journalPending;
   journalPending = {};
   if(!Object.keys(answers).length) return journalChain;
@@ -4298,7 +4364,10 @@ function flushJournal(){
   journalChain = journalChain.then(async () => {
     const note = document.getElementById("jsave");
     try{
-      const r = await api("/api/journal", {method:"POST", body:{answers, day}});
+      // The version this text was written on: the server refuses to put it
+      // over different text saved elsewhere since (K03).
+      const base = day === journalDay() ? (state.journal?.updated_at || "") : null;
+      const r = await api("/api/journal", {method:"POST", body:{answers, day, ...(base === null ? {} : {base})}});
       if(day !== journalDay()) return;
       state.journal = {...(state.journal || {}), answered:r.answered,
                        complete:r.complete, updated_at:r.updated_at,
@@ -4309,7 +4378,23 @@ function flushJournal(){
       for(const [k, v] of Object.entries(answers)) if(draft[k] === v) delete draft[k];
       writeDraft(draft, r.updated_at || null);
       if(seq === journalSeq && note) note.textContent = "✓";
-    }catch(_){
+    }catch(e){
+      if(e?.status === 409 && e.detail === "journal_conflict"){
+        // Saved elsewhere with different text: both versions are kept and
+        // shown; the rest of this save goes again on its own.
+        const server = e.body?.server || {};
+        const clash = {...journalConflicts()};
+        const plain = loadDraftRaw();
+        for(const [k, theirs] of Object.entries(server)){ clash[k] = {mine:answers[k], theirs}; delete plain[k]; }
+        state.journal = {...(state.journal || {}), updated_at:e.body?.updated_at || null,
+                         answers:{...(state.journal?.answers || {}), ...server}};
+        writeDraft(plain, state.journal.updated_at, clash);
+        for(const [k, v] of Object.entries(answers)) if(!(k in server)) journalPending[k] = v;
+        if(note) note.textContent = t("jconf_title");
+        if(day === journalDay()) render();
+        if(journalPendingCount()) journalTimer = setTimeout(flushJournal, 900);
+        return;
+      }
       // The draft is on disk; the answers wait for the next pause or Save.
       journalPending = {...answers, ...journalPending};
       if(note) note.textContent = t("journal_local");
@@ -8130,6 +8215,7 @@ const queueReason = e => e.status === 401 ? "auth" : e.status === 402 ? "plan"
   : e.status === 409 ? "conflict" : "invalid";
 let flushing = null;
 function flushQueue(){
+  if(state.erasing) return Promise.resolve();
   if(flushing) return flushing;
   flushing = (async () => {
     let sent = 0, blocked = 0;
@@ -9310,6 +9396,24 @@ const A = {
     }, null, true); },
 
   /* ---- journal ---- */
+  /* One field of a journal conflict: keep this phone's text, the other one,
+     or both one after the other (K03). */
+  jconf: el => {
+    const k = el.dataset.key, pick = el.dataset.pick;
+    const clash = {...journalConflicts()}, c = clash[k];
+    if(!c) return;
+    delete clash[k];
+    const plain = loadDraftRaw();
+    delete plain._conflict;
+    const base = state.journal?.updated_at || null;
+    if(pick === "theirs"){ delete plain[k]; writeDraft(plain, base, clash); render(); return; }
+    const value = pick === "both" ? `${c.theirs}\n\n${c.mine}` : c.mine;
+    plain[k] = value;
+    writeDraft(plain, base, clash);
+    journalPending[k] = value;
+    render();
+    flushJournal();
+  },
   "journal-save": () => {
     const answers = {};
     state.journalQuestions.forEach(q => { answers[q.id] = val("jq-" + q.id); });
@@ -9931,11 +10035,14 @@ const A = {
   "wipe-data-confirm": async () => {
     // Step two of two. The first tap opened a sheet naming what goes; this one
     // sends the word the server insists on, so a stray tap cannot reach here.
+    // Nothing is sent while the wipe is out, and nothing local is lost
+    // unless the server confirms it (K02).
+    const snap = await freezeLocalDrafts();
+    try{ await api("/api/account/wipe", {method:"POST", body:{confirm:"WIPE"}}); }
+    catch(e){ thawLocalDrafts(snap); handleError(e); return; }
     try{
-      // No autosave may land after the wipe and bring an entry back.
       await forgetLocalDrafts();
-      await api("/api/account/wipe", {method:"POST", body:{confirm:"WIPE"}});
-      await forgetLocalDrafts();
+      state.erasing = false;
       state.journal = null;
       closeSheet();
       toast(t("wipe_done"));
@@ -9957,11 +10064,18 @@ const A = {
   "delete-account": () => openSheet(deleteAccountSheet()),
   "delete-account-go": async () => {
     if(trimmed("del-confirm").toUpperCase() !== "DELETE") return;
+    const snap = await freezeLocalDrafts();
+    try{ await api("/api/account/delete", {method:"POST", body:{confirm:"DELETE"}}); }
+    catch(e){
+      thawLocalDrafts(snap);
+      closeSheet();
+      // A team with other people in it needs a new owner first (K02).
+      if(e?.detail === "owner_must_transfer") return toast(t("owner_must_transfer_delete"));
+      return handleError(e);
+    }
     try{
       await forgetLocalDrafts();
-      await api("/api/account/delete", {method:"POST",
-        body:{confirm:"DELETE"}});
-      await forgetLocalDrafts();
+      state.erasing = false;
       closeSheet();
       setState({error:t("account_deleted"), loading:false, me:null, home:null});
       tg?.close?.();
