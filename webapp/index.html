@@ -1196,6 +1196,124 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
 .mrow .iconbtn{margin-right:-8px}
 .mnav{display:flex;align-items:center;gap:var(--s1);margin-top:var(--s1)}
 .mnav b{flex:1;text-align:center;font-size:15px}
+
+/* ==================================================================
+   Depth and motion (v14)
+   One layer on top of everything above: how surfaces sit, and how
+   things answer a finger. Every value comes from the theme tokens, so
+   all five themes keep their identity; Ink (bento) stays flat.
+   ================================================================== */
+:root{
+  --ease-out:cubic-bezier(.22,1,.36,1);
+  --ease-spring:cubic-bezier(.34,1.56,.64,1);
+  --dur-1:90ms; --dur-2:200ms; --dur-3:340ms;
+  --press:.965;
+  --lift:0 10px 24px -12px rgba(var(--shadow-rgb), calc(.28 * var(--shadow-k))),
+         0 2px 6px -2px rgba(var(--shadow-rgb), calc(.10 * var(--shadow-k)));
+  --accent-glow:0 10px 26px -12px color-mix(in srgb, var(--primary) 70%, transparent);
+  --sheen:linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,0) 60%);
+  --edge-light:inset 0 1px 0 rgba(255,255,255,.045);
+}
+[data-theme="bento"]{ --accent-glow:none; --sheen:none; }
+
+/* Surfaces: in dark mode a hairline of light along the top edge is what
+   reads as depth; a shadow alone disappears into the ground. */
+html:where([data-mode="dark"]) .card:not(.plain),
+html:where([data-mode="dark"]) .tinted,
+html:where([data-mode="dark"]) .pcard,
+html:where([data-mode="dark"]) .sheet-inner{box-shadow:var(--edge-light), var(--shadow-1)}
+html:where([data-mode="dark"]) .hero{box-shadow:var(--edge-light), var(--shadow-2)}
+
+/* The Now card carries a soft pool of the accent in its corner. */
+.hero{isolation:isolate}
+.hero::before{content:"";position:absolute;z-index:-1;pointer-events:none;
+  width:260px;height:260px;right:-90px;top:-120px;border-radius:50%;
+  background:radial-gradient(closest-side, color-mix(in srgb, var(--primary) 16%, transparent), transparent)}
+[data-theme="bento"] .hero::before{display:none}
+
+/* Primary buttons: a sheen and a coloured shadow, so the one action on a
+   screen is the one the eye lands on. */
+.btn:not(.secondary):not(.text):not(.danger):not(.quiet){
+  background-image:var(--sheen);box-shadow:var(--accent-glow)}
+#fab .fab-add{box-shadow:var(--accent-glow), 0 4px 12px -4px rgba(var(--shadow-rgb), calc(.3 * var(--shadow-k)))}
+
+/* Glass bar: the screen shows through, softly. */
+nav{background:color-mix(in srgb, var(--surface) 84%, transparent);
+    -webkit-backdrop-filter:saturate(1.5) blur(16px);backdrop-filter:saturate(1.5) blur(16px)}
+
+/* ---------- press: everything that can be tapped gives a little ---------- */
+.btn,.chip,.iconbtn,.seg > *,.st,.tile,.tinted,.pcard,.card,.trow,.item,
+.check,.avatar,.bellbtn,.datebtn,#fab button,nav button .ic,.goal-line,.now-swap{
+  transition:transform var(--dur-2) var(--ease-spring), box-shadow var(--dur-2) var(--ease-out),
+             background-color var(--dur-2) var(--ease-out), border-color var(--dur-2) var(--ease-out),
+             color var(--dur-2) var(--ease-out), filter var(--dur-2) var(--ease-out)}
+.btn:active,.chip:active,.iconbtn:active,.seg > *:active,.st:active,.avatar:active,
+.bellbtn:active,.tile:active,.pcard:active,.tinted[data-act]:active,.card[data-act]:active,
+.goal-line:active{transform:scale(var(--press));transition-duration:var(--dur-1)}
+.trow:active,.item.pressable:active{transform:scale(.99);transition-duration:var(--dur-1)}
+nav button:active .ic{transform:scale(.88);transition-duration:var(--dur-1)}
+#fab button:active{transform:scale(.9);transition-duration:var(--dur-1)}
+
+/* ---------- hover: only where there is a pointer to hover with ---------- */
+@media (hover:hover) and (pointer:fine){
+  .tile:hover,.pcard:hover,.tinted[data-act]:hover,.card[data-act]:hover,.goal-line:hover{
+    transform:translateY(-2px);box-shadow:var(--edge-light), var(--lift)}
+  .btn:not(.text):hover{transform:translateY(-1px)}
+  .btn:not(.secondary):not(.text):not(.danger):not(.quiet):hover{filter:brightness(1.06)}
+  .chip:hover{transform:translateY(-1px)}
+  #fab button:hover{transform:scale(1.06)}
+  .avatar:hover,.bellbtn:hover{transform:scale(1.05)}
+  nav button:hover .ic{background:color-mix(in srgb, var(--primary) 8%, transparent)}
+  .trow:hover,.item.pressable:hover{background:color-mix(in srgb, var(--surface-2) 70%, var(--surface))}
+}
+:where(button,[data-act],a,input,select,textarea):focus-visible{
+  outline:2px solid var(--primary);outline-offset:2px}
+
+/* Progress fills ease in rather than snap. */
+.bar i,.jbar i,.prog i{transition:width 600ms var(--ease-out)}
+nav button .ic{transition:background-color var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-spring)}
+
+@media (prefers-reduced-motion:no-preference){
+  /* A new screen: its blocks rise into place one after another. */
+  .enter > *{animation:rise var(--dur-3) var(--ease-out) backwards}
+  .enter > *:nth-child(2){animation-delay:35ms}
+  .enter > *:nth-child(3){animation-delay:70ms}
+  .enter > *:nth-child(4){animation-delay:105ms}
+  .enter > *:nth-child(5){animation-delay:140ms}
+  .enter > *:nth-child(6){animation-delay:175ms}
+  .enter > *:nth-child(n+7){animation-delay:210ms}
+
+  /* The thing just tapped answers: a small spring, and a tick that pops
+     with a ring around it. Only that one element — never every tick on
+     the screen each time it redraws. */
+  .just{animation:tap-pop var(--dur-3) var(--ease-spring)}
+  .check.on.just,.just .check.on{animation:check-pop 440ms var(--ease-spring), check-ring 620ms var(--ease-out)}
+  nav button.just .ic{animation:nav-pop 420ms var(--ease-spring)}
+  .st.on.just{animation:tap-pop 360ms var(--ease-spring)}
+
+  /* Sheets slide up from the edge and the ground dims behind them; on
+     close they go back down instead of vanishing. */
+  .sheet.show{animation:fade-in var(--dur-2) var(--ease-out)}
+  .sheet-inner{animation:sheet-up var(--dur-3) var(--ease-out)}
+  .sheet.closing{animation:fade-out 180ms var(--ease-out) forwards}
+  .sheet.closing .sheet-inner{animation:sheet-down 180ms var(--ease-out) forwards}
+
+  .toast{transition:opacity var(--dur-2) var(--ease-out), transform var(--dur-3) var(--ease-spring)}
+  .toast:not(.show){transform:translate(-50%, 14px) scale(.97)}
+}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes tap-pop{0%{transform:scale(.96)}55%{transform:scale(1.015)}100%{transform:none}}
+@keyframes check-pop{0%{transform:scale(.55)}55%{transform:scale(1.2)}100%{transform:scale(1)}}
+@keyframes check-ring{from{box-shadow:0 0 0 0 color-mix(in srgb, var(--ok) 55%, transparent)}
+                      to{box-shadow:0 0 0 12px color-mix(in srgb, var(--ok) 0%, transparent)}}
+@keyframes nav-pop{0%{transform:scale(.8)}60%{transform:scale(1.12)}100%{transform:scale(1)}}
+@keyframes sheet-up{from{transform:translateY(40%);opacity:.2}to{transform:none;opacity:1}}
+@keyframes sheet-down{to{transform:translateY(30%);opacity:0}}
+@keyframes fade-out{to{opacity:0}}
+@media (prefers-reduced-motion:reduce){
+  .btn,.chip,.iconbtn,.seg > *,.st,.tile,.tinted,.pcard,.card,.trow,.item,.check,#fab button{transition:none}
+  .btn:active,.chip:active,.tile:active,.pcard:active,.trow:active,.item.pressable:active,#fab button:active{transform:none}
+}
 </style>
 </head>
 <body>
@@ -2794,7 +2912,10 @@ function openSheet(html, view){
     if(sheet) sheet.scrollTop = 0;
   }
   sheetKey = key;
-  document.getElementById("sheet").classList.add("show");
+  // Opening while the last one is still sliding away takes it over.
+  clearTimeout(sheetCloseTimer);
+  sheet.classList.remove("closing");
+  sheet.classList.add("show");
   syncBackButton();
 }
 function closeSheet(){
@@ -2802,10 +2923,19 @@ function closeSheet(){
   // means "never mind": the microphone stops and nothing is sent (K01).
   if(state.sheetView === "voice") voiceAbandon();
   state.sheetView = null;
-  document.getElementById("sheet").classList.remove("show");
+  const sheet = document.getElementById("sheet");
+  clearTimeout(sheetCloseTimer);
+  if(!reduceMotion() && sheet.classList.contains("show") && !sheet.classList.contains("closing")){
+    sheet.classList.add("closing");
+    sheetCloseTimer = setTimeout(() => sheet.classList.remove("show", "closing"), 170);
+  } else {
+    sheet.classList.remove("show", "closing");
+  }
   syncBackButton();
 }
-const sheetOpen = () => document.getElementById("sheet").classList.contains("show");
+let sheetCloseTimer = null;
+const sheetOpen = () => { const el = document.getElementById("sheet");
+  return el.classList.contains("show") && !el.classList.contains("closing"); };
 document.getElementById("sheet").addEventListener("click", e => {
   if(e.target.id === "sheet") closeSheet();
 });
@@ -7918,6 +8048,30 @@ function resolveMode(){
     ? "light" : "dark";
 }
 
+let lastPlace = "";
+const reduceMotion = () => { try{ return matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(_){ return true; } };
+/* The element just tapped, found again after the redraw it caused, gets one
+   short "just" animation (the tick that pops, the tab that springs). */
+let lastTapped = null;
+function markJust(){
+  const tap = lastTapped;
+  if(!tap || Date.now() - tap.at > 1500) return;
+  let sel = `[data-act="${tap.act}"]`;
+  if(tap.id) sel += `[data-id="${tap.id}"]`;
+  if(tap.value) sel += `[data-value="${tap.value}"]`;
+  if(tap.screen) sel += `[data-screen="${tap.screen}"]`;
+  let found = [];
+  try{ found = document.querySelectorAll(sel); }catch(_){}
+  if(!found.length) return;
+  lastTapped = null;
+  found.forEach(el => {
+    el.classList?.remove("just");
+    void el.offsetWidth;
+    el.classList?.add("just");
+    setTimeout(() => el.classList?.remove("just"), 700);
+  });
+}
+
 function render(){
   const root = document.documentElement;
   /* Two attributes drive the entire visual system: which identity, and which
@@ -7936,6 +8090,11 @@ function render(){
     + (state.screenError ? `<div class="empty">${esc(state.screenError)}
       <button class="btn secondary" data-act="retry-screen">${t("retry_screen")}</button></div>`
       : `<div class="${screenClass()}">${(SCREENS[state.screen] || SCREENS.home)()}</div>`);
+  /* A new place animates in; a redraw of the same place (a tick, a save)
+     must not, or every tap would replay the whole screen. */
+  const place = state.loading || state.error ? "" : `${state.screen}|${state.tab}|${state.taskTab}`;
+  if(place && place !== lastPlace && !reduceMotion()) app.lastElementChild?.classList?.add("enter");
+  if(place) lastPlace = place;
 
   const chromeOff = Boolean(state.blocked || state.error || state.loading
                             || state.needsSetup);
@@ -7960,6 +8119,7 @@ function render(){
 
   syncShell();
   syncBackButton();
+  markJust();
 }
 
 /* The navigation is the only fixed thing left at the bottom, and its height
@@ -10659,7 +10819,10 @@ document.addEventListener("click", e => {
   if(el.tagName === "BUTTON" && now - (lastTap.get(el) || 0) < 700) return;
   lastTap.set(el, now);
   pressedBtn = el.tagName === "BUTTON" ? el : null;
+  const d = el.dataset;
+  lastTapped = {act:d.act, id:d.id, value:d.value, screen:d.screen, at:now};
   const out = action(el);
+  markJust();
   // An async action shows its button as busy until it settles.
   if(el.tagName === "BUTTON" && out && typeof out.then === "function"){
     el.classList.add("busy"); el.setAttribute("aria-busy", "true");
