@@ -1314,6 +1314,69 @@ nav button .ic{transition:background-color var(--dur-2) var(--ease-out), transfo
   .btn,.chip,.iconbtn,.seg > *,.st,.tile,.tinted,.pcard,.card,.trow,.item,.check,#fab button{transition:none}
   .btn:active,.chip:active,.tile:active,.pcard:active,.trow:active,.item.pressable:active,#fab button:active{transform:none}
 }
+
+/* ==================================================================
+   Depth and motion, pass two: things you can see on a phone
+   ================================================================== */
+/* A soft wash of the accent behind every screen, fixed while the page
+   scrolls, so the app has an atmosphere instead of a flat ground. */
+#app{position:relative;isolation:isolate}
+#app::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(520px 320px at 105% -8%, color-mix(in srgb, var(--primary) 13%, transparent), transparent 70%),
+    radial-gradient(420px 300px at -12% 42%, color-mix(in srgb, var(--primary) 6%, transparent), transparent 70%)}
+[data-theme="bento"] #app::before{display:none}
+
+/* A greeting that reads as a title. */
+h1.greet{font-size:clamp(22px, 6.6vw, 28px);font-weight:760;letter-spacing:-.6px;line-height:1.12}
+
+/* Grouped rows answer with a ripple, not a shrink: a row scaling inside a
+   joined list pulls away from its neighbours. */
+.trow:active,.item.pressable:active{transform:none}
+
+/* Ripple from the exact point touched. */
+.rpl{position:absolute;inset:0;border-radius:inherit;overflow:hidden;pointer-events:none;z-index:0}
+.rpl i{position:absolute;border-radius:50%;transform:scale(0);opacity:.28;
+  background:currentColor;animation:ripple 560ms var(--ease-out) forwards}
+.btn:not(.secondary):not(.text):not(.danger):not(.quiet) .rpl i{background:var(--on-primary);opacity:.3}
+@keyframes ripple{to{transform:scale(1);opacity:0}}
+
+/* Loading: the shape of the screen, shimmering, instead of a spinner on
+   an empty page. */
+.skel{padding-top:4px}
+.skel b{display:block;border-radius:var(--radius);background:var(--surface-2);position:relative;overflow:hidden}
+.skel b + b{margin-top:12px}
+.skel .s-title{height:30px;width:62%;border-radius:10px}
+.skel .s-sub{height:16px;width:38%;border-radius:8px;margin-top:10px}
+.skel .s-hero{height:178px;border-radius:var(--radius-lg);margin-top:24px}
+.skel .s-row{height:64px}
+.skel b::after{content:"";position:absolute;inset:0;transform:translateX(-100%);
+  background:linear-gradient(90deg, transparent, color-mix(in srgb, var(--surface) 60%, transparent), transparent)}
+
+@media (prefers-reduced-motion:no-preference){
+  .skel b::after{animation:shimmer 1.3s ease-in-out infinite}
+
+  /* Moving between tabs slides toward where the tab sits in the bar. */
+  .enter.from-right > *{animation-name:slide-r}
+  .enter.from-left > *{animation-name:slide-l}
+
+  /* A tick draws itself. */
+  .check.on.just svg *,.just .check.on svg *{stroke-dasharray:28;stroke-dashoffset:28;
+    animation:draw 340ms 70ms var(--ease-out) forwards}
+
+  /* The tab just chosen: its pill grows out from the icon. */
+  nav button.on.just .ic{animation:pill-in 420ms var(--ease-spring)}
+
+  /* The Now card breathes once when Home opens. */
+  .enter > .hero,.enter .hero{animation:rise var(--dur-3) var(--ease-out) backwards, hero-glow 1.6s ease-out 1}
+}
+@keyframes shimmer{to{transform:translateX(100%)}}
+@keyframes slide-r{from{opacity:0;transform:translateX(22px)}to{opacity:1;transform:none}}
+@keyframes slide-l{from{opacity:0;transform:translateX(-22px)}to{opacity:1;transform:none}}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes pill-in{0%{transform:scaleX(.45);opacity:.4}65%{transform:scaleX(1.08)}100%{transform:none;opacity:1}}
+@keyframes hero-glow{0%{box-shadow:0 0 0 0 color-mix(in srgb, var(--primary) 32%, transparent)}
+  100%{box-shadow:0 0 0 14px color-mix(in srgb, var(--primary) 0%, transparent)}}
 </style>
 </head>
 <body>
@@ -8048,7 +8111,25 @@ function resolveMode(){
     ? "light" : "dark";
 }
 
-let lastPlace = "";
+let lastPlace = "", lastNavIdx = -1;
+/* A ripple from the point touched, on anything that is a button or a row.
+   Drawn in its own clipped layer so the host's own clipping is untouched. */
+const RIPPLE = ".btn:not(.text),.chip,.tile,.pcard,.tinted[data-act],.item.pressable,.trow,.seg > *,.st,.goal-line,.card[data-act],nav button .ic,.sheet .item";
+document.addEventListener("pointerdown", e => {
+  if(reduceMotion() || e.button > 0) return;
+  let host = e.target.closest?.(RIPPLE);
+  if(!host) return;
+  if(host.tagName === "BUTTON" && host.closest("nav")) host = host.querySelector(".ic") || host;
+  const box = host.getBoundingClientRect();
+  if(getComputedStyle(host).position === "static") host.style.position = "relative";
+  let layer = host.querySelector(":scope > .rpl");
+  if(!layer){ layer = document.createElement("span"); layer.className = "rpl"; host.appendChild(layer); }
+  const size = Math.max(box.width, box.height) * 2.2;
+  const dot = document.createElement("i");
+  dot.style.cssText = `width:${size}px;height:${size}px;left:${e.clientX - box.left - size / 2}px;top:${e.clientY - box.top - size / 2}px`;
+  layer.appendChild(dot);
+  setTimeout(() => dot.remove(), 620);
+}, {passive:true});
 const reduceMotion = () => { try{ return matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(_){ return true; } };
 /* The element just tapped, found again after the redraw it caused, gets one
    short "just" animation (the tick that pops, the tab that springs). */
@@ -8084,7 +8165,9 @@ function render(){
   if(state.blocked)         app.innerHTML = blockedScreen();
   else if(state.needsSetup) app.innerHTML = setupScreen();
   else if(state.error)      app.innerHTML = errorScreen();
-  else if(state.loading)    app.innerHTML = `<div class="spin"></div>`;
+  else if(state.loading)    app.innerHTML = `<div class="skel" aria-busy="true" aria-label="…">
+      <b class="s-title"></b><b class="s-sub"></b><b class="s-hero"></b>
+      <b class="s-row"></b><b class="s-row"></b><b class="s-row"></b></div>`;
   else app.innerHTML = offlineBanner() + readOnlyBanner() + queueBanner() + (state.screen === "home" ? trialBanner() : "")
     + groupBar(state.screen)
     + (state.screenError ? `<div class="empty">${esc(state.screenError)}
@@ -8093,7 +8176,14 @@ function render(){
   /* A new place animates in; a redraw of the same place (a tick, a save)
      must not, or every tap would replay the whole screen. */
   const place = state.loading || state.error ? "" : `${state.screen}|${state.tab}|${state.taskTab}`;
-  if(place && place !== lastPlace && !reduceMotion()) app.lastElementChild?.classList?.add("enter");
+  if(place && place !== lastPlace && !reduceMotion()){
+    const scr = app.lastElementChild;
+    scr?.classList?.add("enter");
+    // Toward the tab's side of the bar, when the tab changed.
+    const idx = NAV.findIndex(n => n.id === (NAV_OF[state.screen] || state.screen));
+    if(lastNavIdx >= 0 && idx >= 0 && idx !== lastNavIdx) scr?.classList?.add(idx > lastNavIdx ? "from-right" : "from-left");
+    lastNavIdx = idx;
+  }
   if(place) lastPlace = place;
 
   const chromeOff = Boolean(state.blocked || state.error || state.loading
