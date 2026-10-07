@@ -288,5 +288,23 @@ const posts = url => calls.filter(c => c.method === 'POST' && c.url === url);
   assert.equal(run('loadQueue().length'), 1, 'a refused delete keeps the queue');
   storage.delete(run('queueKey()'));
 
+  // K08 — no signal at start: the last Home that loaded, marked, not an error.
+  run(`state.me={telegram_id:7, language:'uz', avatar_token:'secret', prefs:{timezone:'Asia/Tashkent'}};
+       state.home={name:'Ernest', date_label:'x'}; state.offlineSince=null; saveLastGood();`);
+  assert.ok(!storage.get('ernestos-lastgood').includes('secret'), 'no token in the cache');
+  run(`state.me=null; state.home=null;`);
+  ctx.fetch = async () => { throw new TypeError('Failed to fetch'); };
+  await run('boot()');
+  assert.equal(run('state.error'), null);
+  assert.equal(run('state.home.name'), 'Ernest');
+  assert.ok(run('state.offlineSince') > 0);
+  assert.ok(run('offlineBanner()').includes('offline-retry'));
+  // A server error (not offline) is still an error, never stale data.
+  ctx.fetch = async () => new Response('{"detail":"server_error"}', {status: 500});
+  run(`state.offlineSince=null; state.home=null;`);
+  await run('boot()');
+  assert.ok(run('state.error'));
+  run('forgetLastGood()');
+
   console.log('Audit-50 frontend checks passed');
 })().catch(e => { console.error(e); process.exitCode = 1; });

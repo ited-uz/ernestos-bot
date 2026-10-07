@@ -1389,6 +1389,7 @@ const DICT = {
   journal_complete:"To'liq yozildi", journal_hint:"Qancha yozsangiz — shuncha saqlanadi",
   journal_history:"Tarix", journal_partial:"To'liq emas",
   jconf_title:"Kun xulosasi boshqa joyda o'zgargan", jconf_body:"Shu telefonda yozilgan matn saqlangan matndan farq qiladi. Qaysi biri qolsin? Hech biri o'chirilmagan.", jconf_mine:"Shu telefonda", jconf_theirs:"Saqlangan (bot yoki boshqa qurilma)", jconf_keep_mine:"Menikini", jconf_both:"Ikkalasini", jconf_keep_theirs:"Saqlanganini",
+  offline_snapshot:"Internet yo'q — {when} holati ko'rsatilmoqda. Bosib qayta urining.",
   draft_restored:"Saqlanmagan matn tiklandi", autosaved:"Saqlanmoqda…",
   mood_q:"Bugun o'zingizni qanday his qildingiz?",
   mood_awful:"Juda yomon", mood_low:"Yomon", mood_ok:"O'rtacha",
@@ -1815,6 +1816,7 @@ const DICT = {
   journal_complete:"Fully written", journal_hint:"Whatever you write is kept",
   journal_history:"History", journal_partial:"Incomplete",
   jconf_title:"The journal changed somewhere else", jconf_body:"The text written on this phone differs from the saved one. Which should stay? Nothing has been deleted.", jconf_mine:"On this phone", jconf_theirs:"Saved (bot or another device)", jconf_keep_mine:"Mine", jconf_both:"Both", jconf_keep_theirs:"Saved one",
+  offline_snapshot:"No connection — showing what loaded at {when}. Tap to retry.",
   draft_restored:"Unsaved text restored", autosaved:"Saving…",
   mood_q:"How did you feel today?",
   mood_awful:"Awful", mood_low:"Low", mood_ok:"Okay",
@@ -2235,6 +2237,7 @@ const DICT = {
   journal_complete:"Заполнен полностью", journal_hint:"Сохраняется всё, что вы напишете",
   journal_history:"История", journal_partial:"Не заполнен",
   jconf_title:"Дневник изменён в другом месте", jconf_body:"Текст на этом телефоне отличается от сохранённого. Какой оставить? Ничего не удалено.", jconf_mine:"На этом телефоне", jconf_theirs:"Сохранённый (бот или другое устройство)", jconf_keep_mine:"Мой", jconf_both:"Оба", jconf_keep_theirs:"Сохранённый",
+  offline_snapshot:"Нет связи — показано состояние на {when}. Нажмите, чтобы повторить.",
   draft_restored:"Несохранённый текст восстановлен", autosaved:"Сохраняем…",
   mood_q:"Как вы себя чувствовали сегодня?",
   mood_awful:"Очень плохо", mood_low:"Плохо", mood_ok:"Нормально",
@@ -4255,7 +4258,7 @@ async function forgetLocalDrafts(){
     const prefix = draftPrefix(), jai = jaiKey();
     for(let i = localStorage.length - 1; i >= 0; i--){
       const k = localStorage.key(i);
-      if(k && (k.startsWith(prefix) || k === jai || k === queueKey())) localStorage.removeItem(k);
+      if(k && (k.startsWith(prefix) || k === jai || k === queueKey() || k === LAST_GOOD)) localStorage.removeItem(k);
     }
   }catch(_){}
 }
@@ -4273,7 +4276,7 @@ async function freezeLocalDrafts(){
     const prefix = draftPrefix(), jai = jaiKey();
     for(let i = 0; i < localStorage.length; i++){
       const k = localStorage.key(i);
-      if(k && (k.startsWith(prefix) || k === jai || k === queueKey())) snap.stored[k] = localStorage.getItem(k);
+      if(k && (k.startsWith(prefix) || k === jai || k === queueKey() || k === LAST_GOOD)) snap.stored[k] = localStorage.getItem(k);
     }
   }catch(_){}
   return snap;
@@ -7866,7 +7869,7 @@ function render(){
   else if(state.needsSetup) app.innerHTML = setupScreen();
   else if(state.error)      app.innerHTML = errorScreen();
   else if(state.loading)    app.innerHTML = `<div class="spin"></div>`;
-  else app.innerHTML = readOnlyBanner() + queueBanner() + (state.screen === "home" ? trialBanner() : "")
+  else app.innerHTML = offlineBanner() + readOnlyBanner() + queueBanner() + (state.screen === "home" ? trialBanner() : "")
     + groupBar(state.screen)
     + (state.screenError ? `<div class="empty">${esc(state.screenError)}
       <button class="btn secondary" data-act="retry-screen">${t("retry_screen")}</button></div>`
@@ -7919,6 +7922,7 @@ async function loadScreen(screen){
          percentages and a level card that now live on Statistics — the
          slowest part of opening the app was for blocks it no longer shows. */
       setState({home: await api("/api/home")});
+      saveLastGood();
     } else if(screen === "money"){
       await loadMoney(state.moneyMonth);
     } else if(screen === "team"){
@@ -8247,6 +8251,39 @@ function flushQueue(){
   })().finally(() => { flushing = null; render(); });
   return flushing;
 }
+/* ---------- last good state (K08) ----------
+   The last Home that loaded is kept on the phone, so opening the app with no
+   signal shows it — marked with when it is from — instead of an error page.
+   Per account, and only for the same Telegram user that saved it; tokens are
+   left out. Wiping data or deleting the account forgets it. */
+const LAST_GOOD = "ernestos-lastgood";
+function saveLastGood(){
+  try{
+    const me = state.me;
+    if(!me?.telegram_id || !state.home || state.offlineSince) return;
+    const {avatar_token, ...safe} = me;
+    localStorage.setItem(LAST_GOOD, JSON.stringify({at:Date.now(), who:tg?.initDataUnsafe?.user?.id ?? null,
+                                                    me:safe, home:state.home}));
+  }catch(_){}
+}
+function loadLastGood(){
+  try{
+    const c = JSON.parse(localStorage.getItem(LAST_GOOD) || "null");
+    if(!c?.me || !c.home) return null;
+    if(c.who !== (tg?.initDataUnsafe?.user?.id ?? null)) return null;
+    return c;
+  }catch(_){ return null; }
+}
+function forgetLastGood(){ try{ localStorage.removeItem(LAST_GOOD); }catch(_){} }
+function offlineBanner(){
+  if(!state.offlineSince) return "";
+  const d = new Date(state.offlineSince);
+  const hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  const when = d.toDateString() === new Date().toDateString() ? hm
+    : `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")} ${hm}`;
+  return `<div class="banner" data-act="offline-retry" role="button" tabindex="0" style="border-color:var(--warn)">
+      ${icon("info", 16)}<div class="grow">${t("offline_snapshot", {when})}</div>${icon("repeat", 15)}</div>`;
+}
 function queueBanner(){
   const q = loadQueue();
   const stuck = q.filter(x => x.blocked).length, waiting = q.length - stuck;
@@ -8271,7 +8308,7 @@ function queueSheet(){
     ${q.length ? q.map(row).join("") : `<div class="hint">${t("queue_empty")}</div>`}
     <button class="btn secondary" data-act="close" style="margin-top:var(--s3)">${t("close")}</button>`;
 }
-window.addEventListener("online", () => flushQueue());
+window.addEventListener("online", () => { if(state.offlineSince) boot(); else flushQueue(); });
 document.addEventListener("visibilitychange", () => { if(!document.hidden && loadQueue().length) flushQueue(); });
 /* Phone app: a push while open refreshes the bell; a tapped one opens the
    inbox; coming back to the app catches up on what arrived meanwhile. */
@@ -8343,6 +8380,7 @@ const A = {
      sent is sent, and anything left is named before the person leaves — it
      stays on this phone, under this account, for the next sign-in (K07).
      In Telegram there is no session of ours to end; the window closes. */
+  "offline-retry": () => { haptic(); boot(); },
   "sign-out": async () => {
     haptic("medium");
     if(!IS_APP){ tg?.close?.(); return; }
@@ -8352,6 +8390,8 @@ const A = {
     const left = loadQueue().length + journalPendingCount();
     if(!confirm(left ? t("sign_out_pending", {n:left}) : t("app_sign_out_ask"))) return;
     clearTimeout(journalTimer);
+    // The next person to sign in on this phone must not open on this Home.
+    forgetLastGood();
     window.ErnestApp?.signOut();
   },
   "set-look": () => { haptic(); openSettings("look"); },
@@ -10558,7 +10598,8 @@ async function boot(){
       if(home.failed) throw home.failed;
       state.home = home;
     }
-    setState({me, loading:false, blocked:null, error:null, needsSetup:false});
+    setState({me, loading:false, blocked:null, error:null, needsSetup:false, offlineSince:null});
+    saveLastGood();
     // Ticks recorded while offline in an earlier session go out now.
     if(loadQueue().length) flushQueue();
     if(IS_APP){
@@ -10571,6 +10612,15 @@ async function boot(){
   }catch(e){
     console.error("ErnestOS boot failed:", e);
     if(e.status === 403){ setState({loading:false}); await checkSubscription(true); return; }
+    // No signal: the last Home that loaded, marked as such (K08).
+    const snap = isOffline(e) ? loadLastGood() : null;
+    if(snap){
+      state.lang = snap.me.language || "uz";
+      state.teams = snap.me.teams || [];
+      setState({me:snap.me, home:snap.home, screen:"home", loading:false, error:null,
+                offlineSince:snap.at});
+      return;
+    }
     setState({loading:false,
       error: errorMessage(e)});
   }
