@@ -11,6 +11,8 @@ Run with:  uvicorn app:app --host 0.0.0.0 --port $PORT
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import hmac
 import json
 import logging
@@ -7691,18 +7693,25 @@ def api_version():
 def api_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, _ = auth(init, require_onboarded=False)
     trial = deps.trial_state(user)
+    with SessionLocal() as s:
+        custom = s.get(db.UserAvatar, user.telegram_id)
+        avatar_at = custom.updated_at.isoformat() if custom else None
+    has_photo = bool(avatar_at or user.photo_file_id)
     return {"telegram_id": user.telegram_id, "member_no": user.member_no,
             "version": version.VERSION, "build": version.BUILD,
             "first_name": user.first_name, "last_name": user.last_name,
             "username": user.username,
             "language": user.language, "gender": user.gender,
             "theme": theme_of(user.theme), "quote": user.quote,
-            "has_photo": bool(user.photo_file_id),
+            "has_photo": has_photo,
+            #: Set when the person chose their own picture in the app; it
+            #: then wins over the Telegram photo. Also busts the image cache.
+            "avatar_custom": avatar_at,
             # Minted per request: the Mini App puts this in the avatar's
             # `src` instead of its initData, so nothing long-lived reaches a
             # URL. Only useful to the user it names, and only for minutes.
             "avatar_token": (issue_avatar_token(user.telegram_id)
-                             if user.photo_file_id else None),
+                             if has_photo else None),
             "has_phone": bool(user.phone_number),
             "prefs": svc.prefs_for(user),
             "timezones": svc.TIMEZONES,
@@ -9923,6 +9932,13 @@ def api_referrals_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
     with SessionLocal() as s:
         stats = svc.referral_stats(s, user.telegram_id)
         code = svc.get_or_create_referral_code(s, user.telegram_id)
+        # The plan steps (5 / 10 / 20 friends), and any step reached before
+        # this existed is paid now rather than never.
+        if plans.ENABLED:
+            plans.referral_rewards(s, user.telegram_id, stats["counts"]["qualified"])
+            s.commit()
+        steps = plans.referral_steps(s, user.telegram_id, stats["counts"]["qualified"]) \
+            if plans.ENABLED else []
 
     link = referral_link(code)
     if link is None:
@@ -9939,6 +9955,8 @@ def api_referrals_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
                   "minimum": stats["level"]["minimum"]},
         "next_milestone": stats["level"]["next"],
         "qualify_actions": svc.REFERRAL_QUALIFY_ACTIONS,
+        "steps": steps,
+        "friend_days": plans.REFERRAL_BONUS_DAYS if plans.ENABLED else 0,
     }
 
 
@@ -10304,6 +10322,12 @@ async def api_avatar(token: str | None = None, tgdata: str | None = None,
             raise HTTPException(status_code=401, detail="unauthorized")
     else:
         user, _ = auth(init or tgdata)
+    with SessionLocal() as s:
+        custom = s.get(db.UserAvatar, user.telegram_id)
+        if custom is not None:
+            return Response(content=bytes(custom.data), media_type=custom.mime,
+                            headers={"Cache-Control": "private, max-age=300",
+                                     "X-Content-Type-Options": "nosniff"})
     if not user.photo_file_id or telegram_app is None:
         raise HTTPException(status_code=404, detail="no_photo")
     try:
@@ -10313,6 +10337,54 @@ async def api_avatar(token: str | None = None, tgdata: str | None = None,
         raise HTTPException(status_code=404, detail="no_photo")
     return Response(content=bytes(data), media_type="image/jpeg",
                     headers={"Cache-Control": "private, max-age=300"})
+
+
+#: A profile picture, after the phone shrank it. A 256 px JPEG is ~20 KB.
+AVATAR_MAX_BYTES = 96 * 1024
+_AVATAR_MAGIC = ((b"\xff\xd8\xff", "image/jpeg"), (b"\x89PNG\r\n\x1a\n", "image/png"))
+
+
+class AvatarIn(BaseModel):
+    #: base64, with or without a `data:image/...;base64,` prefix.
+    image: str = Field(max_length=AVATAR_MAX_BYTES * 4 // 3 + 64)
+
+
+@app.post("/api/avatar")
+def api_avatar_set(body: AvatarIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Set the person's own picture. Only JPEG and PNG, judged by the bytes,
+    not by what the client claims."""
+    user, _ = auth(init, require_onboarded=False)
+    raw = body.image.split(",", 1)[1] if body.image.startswith("data:") else body.image
+    try:
+        data = base64.b64decode(raw, validate=True)
+    except (ValueError, binascii.Error):
+        raise HTTPException(status_code=422, detail="bad_image")
+    mime = next((m for magic, m in _AVATAR_MAGIC if data.startswith(magic)), None)
+    if mime is None:
+        raise HTTPException(status_code=422, detail="bad_image")
+    if len(data) > AVATAR_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="image_too_big")
+    with SessionLocal() as s:
+        row = s.get(db.UserAvatar, user.telegram_id)
+        if row is None:
+            row = db.UserAvatar(account_id=user.telegram_id)
+            s.add(row)
+        row.mime, row.data, row.updated_at = mime, data, db.utcnow()
+        s.commit()
+        return {"ok": True, "avatar_custom": row.updated_at.isoformat(),
+                "avatar_token": issue_avatar_token(user.telegram_id)}
+
+
+@app.delete("/api/avatar")
+def api_avatar_clear(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Back to the Telegram photo, or to the initial."""
+    user, _ = auth(init, require_onboarded=False)
+    with SessionLocal() as s:
+        row = s.get(db.UserAvatar, user.telegram_id)
+        if row is not None:
+            s.delete(row)
+            s.commit()
+    return {"ok": True}
 
 
 class WakeupIn(BaseModel):

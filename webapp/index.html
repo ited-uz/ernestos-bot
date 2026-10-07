@@ -978,6 +978,44 @@ details[open] > summary .i{transform:rotate(90deg)}
 .plan-buy{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:var(--s2)}
 .plan-buy .btn{min-height:56px;flex-direction:column;gap:0;font-size:14.5px}
 .plan-buy .btn small{font-weight:500;opacity:.85;font-size:12px}
+/* A sheet's own close: a cross in the corner, so the bottom of the sheet is
+   free for what the sheet is for. */
+.sheet-head{display:flex;align-items:center;gap:8px}
+.sheet-head h3{flex:1;margin:0}
+.sheet-head .iconbtn{margin-right:-8px}
+/* Plans: one card per plan, a period switch, two buy buttons. */
+.pcards{display:grid;gap:8px;margin-top:var(--s2)}
+.pcard{border:var(--border-w) solid var(--border);border-radius:var(--radius);padding:12px 14px;
+  background:var(--surface)}
+.pcard.cur{border-color:var(--primary)}
+.pcard.rec{border-color:color-mix(in srgb, var(--warn) 70%, var(--primary));
+  box-shadow:0 0 0 1px color-mix(in srgb, var(--warn) 55%, transparent),
+             0 6px 22px -6px color-mix(in srgb, var(--warn) 55%, transparent)}
+.pcard-h{display:flex;align-items:center;gap:8px;font-size:16px}
+.pcard ul{margin:8px 0 0;padding:0;list-style:none;display:grid;gap:4px;
+  font-size:13.5px;color:var(--text-2)}
+.pbadge{font-size:11.5px;font-weight:650;padding:2px 8px;border-radius:var(--radius-pill)}
+.pbadge.cur{background:color-mix(in srgb, var(--primary) 14%, transparent);color:var(--primary)}
+.pbadge.rec{background:color-mix(in srgb, var(--warn) 18%, transparent);color:var(--warn)}
+.pprice{font-weight:700;font-size:15px}
+.seg .save{font-size:11.5px;font-weight:700;color:var(--ok, var(--primary));margin-left:4px}
+.btn.glow{box-shadow:0 0 0 1px color-mix(in srgb, var(--warn) 60%, transparent),
+  0 8px 24px -8px color-mix(in srgb, var(--warn) 70%, transparent)}
+/* Settings: who you are, your plan, invite, then everything else. */
+.set-profile{display:flex;align-items:center;gap:14px;margin:4px 0 var(--s3)}
+.avatar.xl{width:68px;height:68px;font-size:26px;cursor:pointer}
+.avatar-edit{position:absolute;right:-2px;bottom:-2px;width:24px;height:24px;border-radius:50%;
+  display:grid;place-items:center;font-size:12px;background:var(--surface);
+  box-shadow:0 0 0 1.5px var(--border)}
+.set-profile .pname{font-size:19px;font-weight:700;line-height:1.2}
+.set-card{margin-top:var(--s2)}
+.set-signout{margin-top:var(--s4);background:var(--danger)!important;color:var(--on-primary)!important;
+  border:0!important}
+.set-delete{display:block;margin:10px auto 0;background:none;border:0;padding:8px;
+  color:var(--text-3);font-size:13px;cursor:pointer;min-height:40px}
+.ref-steps{display:grid;gap:10px;margin-top:var(--s2)}
+.ref-step .row{display:flex;justify-content:space-between;gap:8px;font-size:13.5px}
+.ref-step.done .row b{color:var(--primary)}
 @media (max-width:360px){ .plan-cols{grid-template-columns:1fr} }
 /* Phone app only: the inbox bell beside the avatar, with its unread count. */
 .bellbtn{width:44px;height:44px;border-radius:50%;flex:none;border:0;padding:0;
@@ -1407,6 +1445,32 @@ const DICT = {
   plan_pro_lines:"25 odat|Cheksiz vazifa|15 loyiha|2 jamoa, 10 kishi|Ovoz: 30/kun|To'liq statistika|AI kun xulosasi",
   plan_max_lines:"Hammasi cheksiz|10 jamoa, 50 kishi|Ovoz: 100/kun|Statistika faylda",
   plan_channel:"Kanalga qo'shiling — +{n} kun Pro bepul",
+  plan_current:"Joriy tarif",
+  plan_recommended:"Tavsiya etiladi",
+  plan_period_month:"Oylik",
+  plan_period_year:"Yillik",
+  plan_buy:"{plan}'ni sotib olish",
+  plan_upgrade:"Tarifni yaxshilash",
+  plan_change:"Tarifni o'zgartirish",
+  plan_free_price:"Bepul",
+  plan_free_cta:"Ko'proq odat, loyiha va jamoa uchun",
+  plan_pay_how:"Tugmani bossangiz, Telegram'ning ⭐ Stars to'lov oynasi ochiladi. Siz tasdiqlamaguningizcha hech narsa yechilmaydi. Obuna o'zi yangilanmaydi — muddat tugagach Free'ga o'tasiz, ma'lumotlar saqlanadi.",
+  avatar_change:"Rasmni o'zgartirish",
+  avatar_remove:"Rasmni olib tashlash",
+  avatar_saved:"Rasm saqlandi",
+  avatar_bad:"Bu rasmni saqlab bo'lmadi",
+  ref_grow_title:"🎁 ErnestOS'ni ulashing va Max oling",
+  ref_step_n:"{n} do'st",
+  ref_months:"+{n} oy {plan}",
+  ref_got:"Olindi ✓",
+  ref_all_done:"Hamma sovg'alar olindi — rahmat!",
+  ref_friend_gets:"Taklif qilgan do'stingiz ham {n} kun Pro oladi.",
+  ref_copy_big:"🔗 Taklif havolasi (nusxa olish)",
+  set_app:"Ilova",
+  sign_out:"Chiqish",
+  sign_out_tg_hint:"Telegram orqali kirgansiz — Chiqish oynani yopadi.",
+  sign_out_pending:"{n} ta amal hali serverga yetmagan. Ular shu telefonda qoladi va qayta kirganingizda yuboriladi. Chiqasizmi?",
+  delete_account_short:"Akkauntni o'chirish",
   plan_stars_note:"To'lov Telegram Stars orqali. Muddat tugagach Free'ga o'tasiz, ma'lumotlar saqlanadi.",
   queue_store_failed:"Qurilmaga saqlab bo'lmadi — xotira to'lgan bo'lishi mumkin. Internet kelgach qayta bosing.",
   queue_review:"{n} ta amal yuborilmadi — ko'rib chiqing", queue_title:"Yuborilishi kutilayotganlar",
@@ -1802,6 +1866,32 @@ const DICT = {
   plan_pro_lines:"25 habits|Unlimited tasks|15 projects|2 teams, 10 people|Voice: 30/day|Full statistics|AI day summary",
   plan_max_lines:"Everything unlimited|10 teams, 50 people|Voice: 100/day|Statistics as a file",
   plan_channel:"Join the channel — +{n} days of Pro free",
+  plan_current:"Current plan",
+  plan_recommended:"Recommended",
+  plan_period_month:"Monthly",
+  plan_period_year:"Yearly",
+  plan_buy:"Get {plan}",
+  plan_upgrade:"Upgrade plan",
+  plan_change:"Change plan",
+  plan_free_price:"Free",
+  plan_free_cta:"For more habits, projects and teams",
+  plan_pay_how:"Tapping opens Telegram's ⭐ Stars payment window. Nothing is charged until you confirm. It does not renew by itself — when it ends you are back on Free and keep your data.",
+  avatar_change:"Change photo",
+  avatar_remove:"Remove photo",
+  avatar_saved:"Photo saved",
+  avatar_bad:"This picture could not be saved",
+  ref_grow_title:"🎁 Share ErnestOS, get Max",
+  ref_step_n:"{n} friends",
+  ref_months:"+{n} mo {plan}",
+  ref_got:"Received ✓",
+  ref_all_done:"Every reward collected — thank you!",
+  ref_friend_gets:"The friend you invite also gets {n} days of Pro.",
+  ref_copy_big:"🔗 Invite link (copy)",
+  set_app:"App",
+  sign_out:"Sign out",
+  sign_out_tg_hint:"You are in through Telegram — Sign out closes the window.",
+  sign_out_pending:"{n} actions have not reached the server yet. They stay on this phone and go out when you sign back in. Sign out?",
+  delete_account_short:"Delete account",
   plan_stars_note:"Paid with Telegram Stars. When it ends you are on Free and your data stays.",
   queue_store_failed:"Could not save on this device — storage may be full. Tap again when you are online.",
   queue_review:"{n} actions were not sent — review them", queue_title:"Waiting to be sent",
@@ -2194,6 +2284,32 @@ const DICT = {
   plan_pro_lines:"25 привычек|Задачи без лимита|15 проектов|2 команды, 10 чел.|Голос: 30/день|Полная статистика|AI-итоги дня",
   plan_max_lines:"Всё без лимита|10 команд, 50 чел.|Голос: 100/день|Статистика файлом",
   plan_channel:"Подпишитесь на канал — +{n} дн. Pro бесплатно",
+  plan_current:"Текущий тариф",
+  plan_recommended:"Рекомендуем",
+  plan_period_month:"Месяц",
+  plan_period_year:"Год",
+  plan_buy:"Купить {plan}",
+  plan_upgrade:"Улучшить тариф",
+  plan_change:"Сменить тариф",
+  plan_free_price:"Бесплатно",
+  plan_free_cta:"Больше привычек, проектов и команд",
+  plan_pay_how:"Кнопка открывает окно оплаты ⭐ Stars в Telegram. Ничего не списывается, пока вы не подтвердите. Само не продлевается — по окончании вы вернётесь на Free, данные сохранятся.",
+  avatar_change:"Сменить фото",
+  avatar_remove:"Убрать фото",
+  avatar_saved:"Фото сохранено",
+  avatar_bad:"Не удалось сохранить фото",
+  ref_grow_title:"🎁 Поделитесь ErnestOS — получите Max",
+  ref_step_n:"{n} друзей",
+  ref_months:"+{n} мес {plan}",
+  ref_got:"Получено ✓",
+  ref_all_done:"Все награды получены — спасибо!",
+  ref_friend_gets:"Приглашённый друг тоже получит {n} дн. Pro.",
+  ref_copy_big:"🔗 Ссылка-приглашение (копировать)",
+  set_app:"Приложение",
+  sign_out:"Выйти",
+  sign_out_tg_hint:"Вы вошли через Telegram — «Выйти» закроет окно.",
+  sign_out_pending:"{n} действий ещё не дошли до сервера. Они останутся на телефоне и уйдут, когда вы снова войдёте. Выйти?",
+  delete_account_short:"Удалить аккаунт",
   plan_stars_note:"Оплата Telegram Stars. После окончания — тариф Free, данные сохраняются.",
   queue_store_failed:"Не удалось сохранить на устройстве — память может быть заполнена. Нажмите снова, когда появится сеть.",
   queue_review:"{n} действий не отправлено — проверьте", queue_title:"Ожидают отправки",
@@ -2626,11 +2742,21 @@ function toast(msg, undoLabel, undoFn){
 const haptic = s => tg?.HapticFeedback?.impactOccurred?.(s || "light");
 const notify = s => tg?.HapticFeedback?.notificationOccurred?.(s || "success");
 
+let sheetKey = "";
 function openSheet(html, view){
   // Which sheet is showing, so a late answer redraws only its own sheet.
   state.sheetView = view || null;
-  document.getElementById("sheet-body").innerHTML =
-    `<div class="grabber"></div>${html}`;
+  const body = document.getElementById("sheet-body");
+  body.innerHTML = `<div class="grabber"></div>${html}`;
+  /* A different sheet starts at its top; the same one redrawn (a switch
+     flipped, an answer arrived) stays where the person was. */
+  const key = state.sheetView || html.trim().slice(0, 160);
+  const sheet = document.getElementById("sheet");
+  if(key !== sheetKey || !sheet?.classList?.contains?.("show")){
+    body.scrollTop = 0;
+    if(sheet) sheet.scrollTop = 0;
+  }
+  sheetKey = key;
   document.getElementById("sheet").classList.add("show");
   syncBackButton();
 }
@@ -2925,36 +3051,64 @@ function planLine(){
   return p.until ? t("plan_until", {plan:PLAN_NAME[p.tier], n:p.days_left})
                  : t("plan_now", {plan:PLAN_NAME[p.tier]});
 }
+/* A sheet title with its close cross on the right. */
+const sheetHead = (title) => `<div class="sheet-head"><h3>${title}</h3>
+    <button class="iconbtn" data-act="close" aria-label="${t("close")}">${icon("x", 20)}</button></div>`;
+/* One period at a time: a month/year switch and two buy buttons, rather than
+   four buttons to compare at once. The saving shown is computed from the
+   real prices, never a round number the prices do not support. */
 function plansSheet(limit){
+  if(limit !== undefined) state.planLimit = limit;
+  limit = state.planLimit;
   const p = state.me?.plan || {tier:"free", products:[]};
-  const col = (tier, lines) => `<div class="plan-col ${p.tier === tier ? "on" : ""}">
-      <h4>${PLAN_NAME[tier]}</h4><ul>${lines.map(l => `<li>${l}</li>`).join("")}</ul></div>`;
-  const price = key => (p.products || []).find(x => x.key === key) || {};
-  const buy = key => { const x = price(key);
-    return `<button class="btn ${x.tier === "max" ? "" : "secondary"}" data-act="plan-buy" data-key="${key}">
-      ${PLAN_NAME[x.tier] || ""} · ${t(x.days > 100 ? "plan_year" : "plan_month")}
-      <small>⭐ ${x.stars ?? ""} · ≈ ${fmtSom(x.uzs ?? "")} so'm</small></button>`; };
+  const period = state.planPeriod === "year" ? "year" : "month";
+  const price = (tier, per) => (p.products || []).find(x => x.tier === tier
+    && (per === "year" ? x.days > 100 : x.days <= 100)) || null;
+  const saves = ["pro", "max"].map(tier => {
+    const m = price(tier, "month"), y = price(tier, "year");
+    return m && y ? Math.floor((1 - y.stars / (m.stars * 12)) * 100) : 0; }).filter(n => n > 0);
+  const saving = saves.length ? Math.min(...saves) : 0;
+  const card = (tier, lines) => {
+    const cur = p.tier === tier, rec = tier === "max";
+    const x = tier === "free" ? null : price(tier, period);
+    return `<div class="pcard ${cur ? "cur" : ""} ${rec ? "rec" : ""}">
+      <div class="pcard-h"><b>${PLAN_NAME[tier]}</b>
+        ${cur ? `<span class="pbadge cur">${t("plan_current")}</span>`
+              : rec ? `<span class="pbadge rec">${t("plan_recommended")}</span>` : ""}
+        <span class="grow"></span>
+        <span class="pprice">${x ? `⭐ ${x.stars}` : t("plan_free_price")}</span></div>
+      <ul>${lines.map(l => `<li>✅ ${esc(l)}</li>`).join("")}</ul></div>`;
+  };
+  const buy = tier => { const x = price(tier, period);
+    if(!x) return "";
+    return `<button class="btn ${tier === "max" ? "glow" : "secondary"}" data-act="plan-buy" data-key="${x.key}">
+      ⭐ ${t("plan_buy", {plan:PLAN_NAME[tier]})}
+      <small>${x.stars} Stars · ≈ ${fmtSom(x.uzs ?? "")} so'm</small></button>`; };
   const reason = limit ? (DICT[state.lang]?.["plan_limit_" + limit.key] ? t("plan_limit_" + limit.key)
                                                                        : t("plan_limit_generic")) : "";
-  return `<h3>${icon("star", 18)} ${t("plan_title")}</h3>
-    ${limit ? `<div class="card tight" style="border-color:var(--warn)">
+  return `${sheetHead(`${icon("star", 18)} ${t("plan_title")}`)}
+    ${limit ? `<div class="card tight" style="border-color:var(--warn);margin-top:var(--s2)">
         <b>🔒 ${reason}</b>
         <div class="t2 small">${t("plan_needs", {plan:PLAN_NAME[limit.needs] || "Pro"})}</div>
         <div class="t3 tiny" style="margin-top:4px">${t("plan_keep")}</div></div>` : ""}
-    <div class="row" style="margin-top:var(--s2);gap:8px;flex-wrap:wrap">
-      <span class="plan-pill">${icon("star", 13)} ${PLAN_NAME[p.tier]}</span>
-      <span class="t2 small">${esc(planLine())}</span></div>
-    <div class="plan-cols">
-      ${col("free", t("plan_free_lines").split("|"))}
-      ${col("pro", t("plan_pro_lines").split("|"))}
-      ${col("max", t("plan_max_lines").split("|"))}
+    ${p.tier !== "free" && planLine() ? `<div class="t2 small" style="margin-top:6px">${esc(planLine())}</div>` : ""}
+    <div class="seg" style="margin-top:var(--s2)" role="tablist">
+      <div class="${period === "month" ? "on" : ""}" data-act="plan-period" data-p="month"
+           role="tab" aria-selected="${period === "month"}">${t("plan_period_month")}</div>
+      <div class="${period === "year" ? "on" : ""}" data-act="plan-period" data-p="year"
+           role="tab" aria-selected="${period === "year"}">${t("plan_period_year")}${
+        saving ? `<span class="save">−${saving}%</span>` : ""}</div>
     </div>
+    <div class="pcards">
+      ${card("free", t("plan_free_lines").split("|"))}
+      ${card("pro", t("plan_pro_lines").split("|"))}
+      ${card("max", t("plan_max_lines").split("|"))}
+    </div>
+    <div class="plan-buy">${buy("pro")}${buy("max")}</div>
+    <div class="t3 tiny" style="margin-top:8px">${t("plan_pay_how")}</div>
     ${p.channel && !p.channel_bonus_used ? `<button class="btn secondary" data-act="sub-join"
         data-url="${esc(p.channel)}" style="margin-top:var(--s3)">
-        🎁 ${t("plan_channel", {n:p.channel_bonus_days})}</button>` : ""}
-    <div class="plan-buy">${buy("pro_month")}${buy("pro_year")}${buy("max_month")}${buy("max_year")}</div>
-    <div class="t3 tiny" style="margin-top:8px">${t("plan_stars_note")}</div>
-    <button class="btn secondary" data-act="close" style="margin-top:var(--s3)">${t("close")}</button>`;
+        🎁 ${t("plan_channel", {n:p.channel_bonus_days})}</button>` : ""}`;
 }
 async function refreshPlan(){
   try{ const me = await api("/api/me"); state.me.plan = me.plan; }catch(_){}
@@ -3005,18 +3159,39 @@ async function refreshInbox(){
   }catch(_){ /* the badge waits for the next try */ }
 }
 
-function headBlock(d){
-  const initial = (d.name || "E").charAt(0).toUpperCase();
-  /* Telegram already knows the user's photo and hands it to the Mini App in
-     initData, so there is nothing to upload and nothing to ask for. The
-     signed-blob endpoint stays as the fallback for an avatar that was sent
-     to the bot before this existed. */
+/* The picture the person chose in the app wins; then the photo Telegram
+   hands the Mini App in initData; then one sent to the bot long ago; then the
+   initial. One function, so Home, Profile and Settings never disagree. */
+function avatarHtml(name){
+  const me = state.me || {};
+  const token = encodeURIComponent(me.avatar_token || "");
   const tgPhoto = tg?.initDataUnsafe?.user?.photo_url;
-  const avatar = tgPhoto
-    ? `<img src="${esc(tgPhoto)}" alt="" />`
-    : state.me?.has_photo
-      ? `<img src="${API_BASE}/api/avatar?token=${encodeURIComponent(state.me?.avatar_token || "")}" alt="" />`
-      : esc(initial);
+  const src = state.avatarLocal
+    || (me.avatar_custom && me.avatar_token
+        ? `${API_BASE}/api/avatar?token=${token}&v=${encodeURIComponent(me.avatar_custom)}` : "")
+    || tgPhoto
+    || (me.has_photo && me.avatar_token ? `${API_BASE}/api/avatar?token=${token}` : "");
+  return src ? `<img src="${esc(src)}" alt="" />`
+             : esc((name || me.first_name || "E").charAt(0).toUpperCase());
+}
+/* A phone photo is megabytes; the server keeps a 256 px square. */
+async function shrinkImage(file, size = 256){
+  const url = URL.createObjectURL(file);
+  try{
+    const img = await new Promise((ok, bad) => { const i = new Image();
+      i.onload = () => ok(i); i.onerror = bad; i.src = url; });
+    const side = Math.min(img.naturalWidth, img.naturalHeight);
+    if(!side) throw new Error("empty_image");
+    const c = document.createElement("canvas");
+    c.width = c.height = size;
+    c.getContext("2d").drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2,
+                                 side, side, 0, 0, size, size);
+    return c.toDataURL("image/jpeg", 0.85);
+  }finally{ URL.revokeObjectURL(url); }
+}
+
+function headBlock(d){
+  const avatar = avatarHtml(d.name);
 
   let h = `
     <div class="head">
@@ -6759,15 +6934,51 @@ function settingsSheet(){
       <div class="grow"><div style="font-weight:550">${label}</div>
         <div class="t3 tiny">${hint}</div></div>
       ${icon("chevron", 15)}</div>`;
+  const name = [me.first_name, me.last_name].filter(Boolean).join(" ") || "ErnestOS";
+
+  /* Who is signed in, first: the picture (tap to change), the name, and the
+     handle — so nobody has to guess which account this is. */
+  const profile = `<div class="set-profile">
+      <label class="avatar xl" aria-label="${t("avatar_change")}">
+        ${avatarHtml(me.first_name)}<span class="avatar-edit">✏️</span>
+        <input type="file" accept="image/*" data-act="avatar-pick" hidden /></label>
+      <div class="grow" style="min-width:0">
+        <div class="pname">${esc(name)}</div>
+        <div class="t3 small">${me.username ? "@" + esc(me.username)
+                                            : `${t("member")} #${me.member_no ?? "—"}`}</div>
+        ${me.avatar_custom ? `<button class="btn text" data-act="avatar-remove"
+            style="padding-left:0;min-height:32px;font-size:13px">${t("avatar_remove")}</button>` : ""}
+      </div></div>`;
+
+  /* The plan in one card; the plans themselves only behind its button. */
+  const p = me.plan || {};
+  const plan = p.enabled ? `<div class="card tight set-card">
+      <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
+        <span class="plan-pill">${icon("star", 13)} ${PLAN_NAME[p.tier] || "Free"}</span>
+        <span class="t2 small">${p.tier === "free" ? t("plan_current") : esc(planLine())}</span></div>
+      ${p.tier === "free" ? `<div class="t3 tiny" style="margin-top:4px">${t("plan_free_cta")}</div>` : ""}
+      <button class="btn ${p.tier === "max" ? "secondary" : ""}" data-act="set-plan"
+              style="margin-top:10px">${t(p.tier === "max" ? "plan_change" : "plan_upgrade")}</button>
+    </div>` : "";
+
+  /* Invite: the next step's bar right here, the full ladder one tap away. */
+  const r = state.referral, steps = r?.steps || [];
+  const q = r?.counts?.qualified ?? 0;
+  const next = steps.find(x => !x.reached);
+  const invite = steps.length ? `<div class="tinted block tone-2 pressable set-card" data-act="set-referral">
+      <div class="bh"><div class="grow"><div class="bt">${t("ref_grow_title")}</div>
+        <div class="t2 tiny">${next ? `${q} / ${next.target} → ${refReward(next)}` : t("ref_all_done")}</div></div>
+        ${icon("chevron", 15)}</div>
+      <div style="margin-top:8px">${bar(next ? Math.min(100, Math.round(q / next.target * 100)) : 100)}</div>
+    </div>` : row("set-referral", "gift", "tone-2", t("ref_title"), t("ref_hint"));
 
   return `
-    <h3>${icon("settings", 18)} ${t("settings")}</h3>
-    <div class="t2 small" style="margin-bottom:var(--s3)">
-      ${me.version ? `<span class="t3 tiny">ErnestOS v${esc(me.version)} · ${esc(me.build || "")}</span><br>` : ""}
-      ${t("member")} #${me.member_no ?? "—"}
-      ${me.username ? `· @${esc(me.username)}` : ""}</div>
+    ${sheetHead(`${icon("settings", 18)} ${t("settings")}`)}
+    ${profile}
+    ${plan}
+    ${invite}
 
-    ${me.plan?.enabled ? row("set-plan", "star", "tone-2", t("plan_title"), esc(planLine())) : ""}
+    <label>${t("set_app")}</label>
     ${row("set-look", "sun", "tone-4", t("appearance"), t("appearance_hint"))}
     ${row("set-notify", "bell", "tone-1", t("notifications"), t("notify_hint"))}
     ${row("set-modules", "check", "tone-4", t("modules"), t("modules_hint"))}
@@ -6775,11 +6986,14 @@ function settingsSheet(){
     ${row("quote", "edit", "tone-2", t("quote_add"),
           state.home?.quote ? `“${esc(state.home.quote)}”` : t("quote_ph"))}
     ${row("set-privacy", "shield", "tone-5", t("privacy_data"), t("privacy_hint"))}
-    ${row("set-referral", "gift", "tone-2", t("ref_title"), t("ref_hint"))}
 
-    <button class="btn secondary" data-act="close" style="margin-top:14px">
-      ${t("close")}</button>`;
+    <button class="btn set-signout" data-act="sign-out">${t("sign_out")}</button>
+    ${IS_APP ? "" : `<div class="t3 tiny" style="text-align:center;margin-top:6px">${t("sign_out_tg_hint")}</div>`}
+    <button class="set-delete" data-act="delete-account">${t("delete_account_short")}</button>
+    ${me.version ? `<div class="t3 tiny" style="text-align:center;margin-top:4px">
+        ErnestOS v${esc(me.version)} · ${esc(me.build || "")}</div>` : ""}`;
 }
+const refReward = x => t("ref_months", {n:Math.max(1, Math.round(x.days / 30)), plan:PLAN_NAME[x.tier] || "Pro"});
 
 /* Which of the four is on screen, so that a control which saves and
    re-renders lands the user back where they were rather than at the top of
@@ -7242,11 +7456,22 @@ function referralSheet(){
   const levelName = t("ref_lvl_" + (REF_LEVELS.includes(r.level.key)
     ? r.level.key : "new"));
 
-  return `
-    <h3>${icon("gift", 18)} ${t("ref_head")}</h3>
-    <div class="t2 small" style="margin-top:4px">${t("ref_body")}</div>
+  /* The plan ladder: every step with its own bar, filling as friends arrive. */
+  const steps = r.steps || [];
+  const ladder = steps.length ? `<div class="card tight ref-steps">${steps.map(x => `
+      <div class="ref-step ${x.reached ? "done" : ""}">
+        <div class="row"><span>${t("ref_step_n", {n:x.target})} → <b>${refReward(x)}</b></span>
+          <span class="t2">${x.granted ? t("ref_got") : `${x.have} / ${x.target}`}</span></div>
+        ${bar(Math.round(x.have / x.target * 100))}</div>`).join("")}
+      ${r.friend_days ? `<div class="t3 tiny">${t("ref_friend_gets", {n:r.friend_days})}</div>` : ""}
+    </div>` : "";
 
-    <div class="tinted block tone-2" style="margin-top:var(--s3)">
+  return `
+    ${sheetHead(steps.length ? t("ref_grow_title") : t("ref_head"))}
+    <div class="t2 small" style="margin-top:4px">${t("ref_body")}</div>
+    ${ladder}
+
+    ${steps.length ? "" : `<div class="tinted block tone-2" style="margin-top:var(--s3)">
       <div class="bh">
         <span class="itile lg">${icon("gift", 18)}</span>
         <div class="grow">
@@ -7259,16 +7484,14 @@ function referralSheet(){
       <div class="t3 tiny" style="margin-top:6px">${
         next ? `${t("ref_next")}: ${qualified} / ${next.target}`
              : t("ref_max")}</div>
-    </div>
+    </div>`}
 
     <div class="t3 tiny" style="margin-top:var(--s2)">${t("ref_rule")}</div>
 
-    <button class="btn" data-act="ref-share" style="margin-top:var(--s3)">
-      ${t("ref_share")}</button>
-    <button class="btn secondary" data-act="ref-copy" style="margin-top:8px">
-      ${t("ref_copy")}</button>
-    <button class="btn secondary" data-act="settings" style="margin-top:8px">
-      ${t("close")}</button>`;
+    <button class="btn" data-act="ref-copy" style="margin-top:var(--s3)">
+      ${t("ref_copy_big")}</button>
+    <button class="btn secondary" data-act="ref-share" style="margin-top:8px">
+      ${t("ref_share")}</button>`;
 }
 
 function privacyDataSheet(){
@@ -7430,9 +7653,7 @@ function groupBar(screen){
     const name = esc(me.first_name || me.name || "");
     const st = state.progress?.steps;
     return `<div class="profile-head">
-        <div class="avatar">${tg?.initDataUnsafe?.user?.photo_url
-          ? `<img src="${esc(tg.initDataUnsafe.user.photo_url)}" alt="" />`
-          : esc((name || "?").slice(0, 1).toUpperCase())}</div>
+        <div class="avatar" data-act="settings">${avatarHtml(me.first_name || me.name)}</div>
         <div class="grow"><div class="pname">${name}</div>
           <div class="t3 tiny">${st ? `${STEP_ICON[st.level_key] || ""} ${t("step_lvl_" + st.level_key)} · ${
             t("steps_level_n", {n: st.level})}` : t("nav_profile")}</div></div>
@@ -8001,7 +8222,52 @@ const A = {
   "task-tab": el => { haptic(); setState({taskTab:el.dataset.tab});
                       loadScreen("tasks"); },
   close: closeSheet,
-  settings: () => openSettings("root"),
+  settings: () => {
+    openSettings("root");
+    // The invite card's numbers; the sheet does not wait for them.
+    api("/api/referrals/me").then(r => { state.referral = r;
+      if(sheetOpen() && (state.settingsView || "root") === "root" && !state.sheetView) reopenSettings(); })
+      .catch(() => {});
+  },
+  "plan-period": el => { haptic(); state.planPeriod = el.dataset.p;
+    openSheet(plansSheet(), "plans"); },
+  "avatar-pick": async el => {
+    const file = el.files?.[0];
+    el.value = "";
+    if(!file) return;
+    try{
+      const image = await shrinkImage(file);
+      const r = await api("/api/avatar", {method:"POST", body:{image}});
+      state.avatarLocal = image;
+      Object.assign(state.me, {avatar_custom:r.avatar_custom, avatar_token:r.avatar_token, has_photo:true});
+      notify("success"); toast(t("avatar_saved"));
+      reopenSettings(); render();
+    }catch(e){ if(e?.status) handleError(e); else toast(t("avatar_bad")); }
+  },
+  "avatar-remove": async () => {
+    try{
+      await api("/api/avatar", {method:"DELETE"});
+      state.avatarLocal = null;
+      state.me.avatar_custom = null;
+      try{ const me = await api("/api/me"); Object.assign(state.me, me); }catch(_){}
+      reopenSettings(); render();
+    }catch(e){ handleError(e); }
+  },
+  /* Signing out of the phone app: the microphone stops, what can still be
+     sent is sent, and anything left is named before the person leaves — it
+     stays on this phone, under this account, for the next sign-in (K07).
+     In Telegram there is no session of ours to end; the window closes. */
+  "sign-out": async () => {
+    haptic("medium");
+    if(!IS_APP){ tg?.close?.(); return; }
+    voiceAbandon();
+    try{ await flushQueue(); }catch(_){}
+    try{ await journalChain; }catch(_){}
+    const left = loadQueue().length + journalPendingCount();
+    if(!confirm(left ? t("sign_out_pending", {n:left}) : t("app_sign_out_ask"))) return;
+    clearTimeout(journalTimer);
+    window.ErnestApp?.signOut();
+  },
   "set-look": () => { haptic(); openSettings("look"); },
   "set-notify": () => { haptic(); openSettings("notify"); },
   "set-account": () => { haptic(); openSettings("account"); },
@@ -9618,9 +9884,7 @@ const A = {
     }
   },
   /* Phone app only (native.js): end this phone's session. Data stays. */
-  "app-sign-out": () => {
-    if(confirm(t("app_sign_out_ask"))) window.ErnestApp?.signOut();
-  },
+  "app-sign-out": () => A["sign-out"](),
   export: async () => {
     // The phone app keeps the file on the phone; Telegram gets it in the chat.
     if(window.ErnestApp?.saveFile) return A.backup();

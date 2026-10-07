@@ -18,8 +18,10 @@ Every stretch of a paid tier is a `PlanGrant` row with a start and an end:
     `LAUNCH_GIFT_DAYS` of Pro once, so nobody loses features overnight;
   * **channel** — joining the channel adds `CHANNEL_BONUS_DAYS` of Pro,
     once per account;
-  * **referral** — a referral that qualifies adds `REFERRAL_BONUS_DAYS` to
-    both people, at most `REFERRAL_MONTHLY_CAP` days a month each;
+  * **referral** — the friend who arrives gets `REFERRAL_BONUS_DAYS` of Pro
+    (at most `REFERRAL_MONTHLY_CAP` days a month); the inviter is paid in
+    steps, `REFERRAL_REWARDS`: 5 friends a month of Pro, 10 two more months,
+    20 a month of Max — each step once;
   * **stars** — a Telegram Stars payment adds 30 or 365 days.
 
 Grants of one tier queue end to end: paying during the trial adds after it.
@@ -59,6 +61,8 @@ LAUNCH_GIFT_DAYS = _int("PLAN_LAUNCH_GIFT_DAYS", 14)
 CHANNEL_BONUS_DAYS = _int("PLAN_CHANNEL_BONUS_DAYS", 7)
 REFERRAL_BONUS_DAYS = _int("PLAN_REFERRAL_BONUS_DAYS", 3)
 REFERRAL_MONTHLY_CAP = _int("PLAN_REFERRAL_MONTHLY_CAP", 30)
+#: (qualified friends, tier, days) — what the inviter gets at each step.
+REFERRAL_REWARDS: tuple[tuple[int, str, int], ...] = ((5, "pro", 30), (10, "pro", 60), (20, "max", 30))
 
 TIERS = ("free", "pro", "max")
 RANK = {"free": 0, "pro": 1, "max": 2}
@@ -247,6 +251,36 @@ def referral_bonus(s: Session, account_id: int) -> PlanGrant | None:
     if (given + 1) * REFERRAL_BONUS_DAYS > REFERRAL_MONTHLY_CAP:
         return None
     return grant(s, account_id, "pro", REFERRAL_BONUS_DAYS, "referral")
+
+
+def _reward_ref(account_id: int, target: int) -> str:
+    return f"refstep:{int(account_id)}:{target}"
+
+
+def referral_rewards(s: Session, account_id: int, qualified: int) -> list[PlanGrant]:
+    """Every step the inviter has reached and not yet been given. Idempotent:
+    each step carries its own ref, so a recount never pays twice."""
+    if not ENABLED:
+        return []
+    given = []
+    for target, tier, days in REFERRAL_REWARDS:
+        if qualified >= target:
+            row = grant(s, account_id, tier, days, "referral", ref=_reward_ref(account_id, target))
+            if row is not None:
+                given.append(row)
+    return given
+
+
+def referral_steps(s: Session, account_id: int, qualified: int) -> list[dict]:
+    """What the invite screen draws: each step, how far along, and whether it
+    was already paid."""
+    paid = set(s.scalars(select(PlanGrant.ref).where(
+        PlanGrant.account_id == account_id,
+        PlanGrant.ref.like(f"refstep:{int(account_id)}:%"))).all())
+    return [{"target": target, "tier": tier, "days": days,
+             "have": min(qualified, target), "reached": qualified >= target,
+             "granted": _reward_ref(account_id, target) in paid}
+            for target, tier, days in REFERRAL_REWARDS]
 
 
 def apply_payment(s: Session, account_id: int, product_key: str, charge_id: str,

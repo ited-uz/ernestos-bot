@@ -82,7 +82,7 @@
     status:"open", top3:false, overdue:false, ...extra});
 
   const DB = {
-    me:{telegram_id:1, name:"Ernest", language:LANG, onboarded:true, gated:false,
+    me:{telegram_id:1, name:"Ernest", first_name:"Ernest", language:LANG, onboarded:true, gated:false,
         today:TODAY, trial:{required:false, remaining:17, free_actions:20, subscribed:false, channel:""},
         agent:{enabled:false, available:false},
         // ?plan=pro|max|free (default free, so the limits can be tried).
@@ -327,6 +327,14 @@
 
   const ROUTES = [
     [/^\/api\/me$/, () => DB.me],
+    [/^\/api\/referrals\/me$/, () => {
+      const q = 3, steps = [[5, "pro", 30], [10, "pro", 60], [20, "max", 30]];
+      return {configured:true, code:"demo", link:"https://t.me/ernestos_bot?start=ref_demo",
+              counts:{total:4, pending:1, qualified:q}, level:{key:"inviter", minimum:1},
+              next_milestone:{target:5}, qualify_actions:3, friend_days:3,
+              steps:steps.map(([target, tier, days]) => ({target, tier, days, have:Math.min(q, target),
+                                                          reached:q >= target, granted:q >= target}))};
+    }],
     [/^\/api\/home$/, home],
     [/^\/api\/summary$/, summary],
     [/^\/api\/progress\/me$/, () => EMPTY ? {
@@ -417,6 +425,11 @@
       DB.tasks.push(row);
       return {ok:true, ...row};
     }
+    if(path === "/api/avatar" && method === "POST"){
+      DB.me.avatar_custom = new Date().toISOString(); DB.me.has_photo = true;
+      return {ok:true, avatar_custom:DB.me.avatar_custom, avatar_token:"demo"};
+    }
+    if(path === "/api/avatar" && method === "DELETE"){ DB.me.avatar_custom = null; return {ok:true}; }
     if(path === "/api/plans/invoice"){
       // The preview "pays" at once: no Telegram, no Stars.
       const product = DB.me.plan.products.find(x => x.key === body?.product);

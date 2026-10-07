@@ -12018,3 +12018,60 @@ def test_the_prayer_screen_reads_the_day_it_writes(alice, monkeypatch):
         s.commit()
     assert alice.get("/api/prayers").status_code == 200
     assert any(str(z) == "America/New_York" for z in seen)
+
+
+def test_referral_steps_pay_the_inviter_once_each(plans_on):
+    """5 friends a month of Pro, 10 two more, 20 a month of Max — each once,
+    however often the count is looked at."""
+    _fresh_account(7520)
+    with SessionLocal() as s:
+        assert plans.referral_rewards(s, 7520, 4) == []
+        first = plans.referral_rewards(s, 7520, 5)
+        assert [(g.tier, (g.ends_at - g.starts_at).days) for g in first] == [("pro", 30)]
+        assert plans.referral_rewards(s, 7520, 5) == []
+        more = plans.referral_rewards(s, 7520, 21)
+        assert sorted((g.tier, (g.ends_at - g.starts_at).days) for g in more) == \
+            [("max", 30), ("pro", 60)]
+        assert plans.referral_rewards(s, 7520, 40) == []
+        steps = plans.referral_steps(s, 7520, 21)
+        s.commit()
+    assert [x["target"] for x in steps] == [5, 10, 20]
+    assert all(x["granted"] and x["reached"] for x in steps)
+
+
+def test_the_invite_screen_gets_its_steps(client, plans_on):
+    _fresh_account(7521)
+    caller = Caller(client, {"id": 7521, "first_name": "R"})
+    r = caller.get("/api/referrals/me").json()
+    assert [x["target"] for x in r["steps"]] == [5, 10, 20]
+    assert r["steps"][0] == {"target": 5, "tier": "pro", "days": 30, "have": 0,
+                             "reached": False, "granted": False}
+    assert r["friend_days"] == plans.REFERRAL_BONUS_DAYS
+
+
+def test_a_chosen_avatar_is_served_checked_and_forgotten(client):
+    """Bytes are judged by their magic number, the size is capped, and the
+    picture goes with the account."""
+    import base64 as b64
+    caller = Caller(client, {"id": 7522, "first_name": "A"})
+    jpeg = b"\xff\xd8\xff\xe0" + b"0" * 500
+    r = caller.post("/api/avatar", {"image": "data:image/jpeg;base64," + b64.b64encode(jpeg).decode()})
+    assert r.status_code == 200, r.text
+    me = caller.get("/api/me").json()
+    assert me["has_photo"] is True and me["avatar_custom"] and me["avatar_token"]
+    got = client.get(f"/api/avatar?token={me['avatar_token']}")
+    assert got.status_code == 200 and got.content == jpeg
+    assert got.headers["content-type"] == "image/jpeg"
+
+    html = b"<html><script>alert(1)</script>"
+    assert caller.post("/api/avatar", {"image": b64.b64encode(html).decode()}).status_code == 422
+    assert caller.post("/api/avatar", {"image": "not base64!"}).status_code == 422
+    big = b"\xff\xd8\xff" + b"0" * (application.AVATAR_MAX_BYTES + 1)
+    assert caller.post("/api/avatar", {"image": b64.b64encode(big).decode()}).status_code in (413, 422)
+
+    assert caller.delete("/api/avatar").status_code == 200
+    assert caller.get("/api/me").json()["avatar_custom"] is None
+    caller.post("/api/avatar", {"image": b64.b64encode(jpeg).decode()})
+    with SessionLocal() as s:
+        assert svc.delete_account(s, 7522)
+        assert s.get(db.UserAvatar, 7522) is None

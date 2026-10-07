@@ -5210,6 +5210,8 @@ def delete_account(s: Session, telegram_id: int) -> bool:
     s.execute(sql_delete(TeamHabitLog).where(TeamHabitLog.user_id == telegram_id))
     s.execute(sql_delete(TeamDayScore).where(TeamDayScore.user_id == telegram_id))
     s.execute(sql_delete(TeamJoinRequest).where(TeamJoinRequest.user_id == telegram_id))
+    from db import UserAvatar
+    s.execute(sql_delete(UserAvatar).where(UserAvatar.account_id == telegram_id))
     # The login, the password, and every Telegram signed in to the account.
     import accounts
     accounts.forget_account(s, telegram_id)
@@ -5429,8 +5431,11 @@ def maybe_qualify_referral(s: Session, user_id: int) -> int | None:
     if not won:
         return None
     s.expire(referral)
-    for account in (referral.inviter_user_id, user_id):
-        plans.referral_bonus(s, account)
+    # The friend gets a few days of Pro on arrival; the inviter is paid in
+    # steps (5 / 10 / 20 friends), each once.
+    plans.referral_bonus(s, user_id)
+    inviter = referral.inviter_user_id
+    plans.referral_rewards(s, inviter, referral_stats(s, inviter)["counts"]["qualified"])
     s.commit()
     return referral.inviter_user_id
 

@@ -30,7 +30,7 @@ import os
 from datetime import date, datetime, time, timezone
 
 from sqlalchemy import (
-    BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Index, Integer,
+    BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, LargeBinary,
     String, Text, Time, UniqueConstraint, create_engine, event,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
@@ -1190,6 +1190,22 @@ class AppNotification(Base):
     actions: Mapped[str] = mapped_column(Text, default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
     read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class UserAvatar(Base):
+    """A profile picture the person chose in the app.
+
+    The phone shrinks it to a small square JPEG before it is sent, and the
+    server refuses anything over `AVATAR_MAX_BYTES`, so a row is a few dozen
+    kilobytes. Kept here rather than in Telegram because the phone app has no
+    chat to upload it through. Deleted with the account."""
+
+    __tablename__ = "user_avatars"
+
+    account_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    mime: Mapped[str] = mapped_column(String(16), default="image/jpeg")
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class PushDevice(Base):

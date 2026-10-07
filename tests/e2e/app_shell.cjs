@@ -166,6 +166,33 @@ const step = async (name, fn) => {
     assert.ok(await page.evaluate(() => Telegram.WebApp.BackButton.isVisible), 'back shown with a sheet');
   });
 
+  await step('Settings: profile on top, a chosen photo is saved and served', async () => {
+    await page.evaluate(() => A.settings());
+    await page.waitForSelector('#sheet-body .set-profile');
+    // A real 1x1 PNG, so the phone-side shrink has something to decode.
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    await page.setInputFiles('#sheet-body input[data-act="avatar-pick"]', { name: 'me.png', mimeType: 'image/png', buffer: png });
+    await page.waitForFunction(() => !!state.me.avatar_custom, null, { timeout: 8000 });
+    const served = await page.evaluate(async () => {
+      const r = await fetch(`${API_BASE}/api/avatar?token=${encodeURIComponent(state.me.avatar_token)}`);
+      return [r.status, r.headers.get('content-type')];
+    });
+    assert.deepEqual(served, [200, 'image/jpeg']);
+    assert.ok(await page.locator('#sheet-body .set-profile img').count(), 'the new photo is shown');
+    assert.ok(await page.locator('#sheet-body [data-act="sign-out"]').count(), 'sign out is on the settings root');
+  });
+
+  await step('Plans: a month/year switch and two buy buttons, closed by the cross', async () => {
+    await page.click('#sheet-body [data-act="set-plan"]');
+    await page.waitForSelector('#sheet-body .pcards');
+    assert.equal(await page.locator('#sheet-body [data-act="plan-buy"]').count(), 2);
+    await page.click('#sheet-body [data-act="plan-period"][data-p="year"]');
+    const keys = await page.locator('#sheet-body [data-act="plan-buy"]').evaluateAll(b => b.map(x => x.dataset.key));
+    assert.deepEqual(keys, ['pro_year', 'max_year']);
+    await page.click('#sheet-body .sheet-head [data-act="close"]');
+    await page.waitForFunction(() => !document.getElementById('sheet').classList.contains('show'));
+  });
+
   await step('An ended session goes back to sign-in', async () => {
     revokeAll();
     await page.evaluate(() => api('/api/me').catch(() => null));

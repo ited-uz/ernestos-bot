@@ -136,7 +136,9 @@ navbatga tushadi va ulanganda bir marta yuboriladi.
 - Yangi akkaunt **3** kunlik Pro bilan boshlanadi. Tariflar yoqilgunga qadar
   bor bo‘lgan akkauntlarga bir marta **14** kun Pro sovg‘a.
 - Kanalga qo‘shilish: **+7** kun Pro, bir akkauntga bir marta.
-  Taklif qilingan odam faol bo‘lsa: ikkalasiga **+3** kun, oyiga ko‘pi bilan **30** kun.
+- Do‘st taklifi (do‘st faol bo‘lgach hisoblanadi): taklif qilganga bosqichma-bosqich —
+  **5** do‘st = +1 oy Pro, **10** do‘st = yana +2 oy Pro, **20** do‘st = +1 oy Max
+  (har bosqich bir marta). Kelgan do‘stga **+3** kun Pro, oyiga ko‘pi bilan **30** kun.
 - Bir tarifning muddatlari ketma-ket qo‘shiladi: sinov paytida to‘lansa, to‘lov
   sinovdan keyin boshlanadi. Max Pro’dan ustun.
 - To‘lov: Telegram Stars — Pro 125⭐/oy, 1100⭐/yil; Max 350⭐/oy, 3000⭐/yil.
