@@ -7448,6 +7448,28 @@ class BirthdayIn(BaseModel):
     note: str = Field(default="", max_length=300)
 
 
+class TickIn(BaseModel):
+    """The state a tick should end in, and the day it belongs to."""
+    done: bool | None = None
+    day: str | None = Field(default=None, max_length=10)
+
+
+#: How far back a queued tick may still land on its own day.
+TICK_BACKFILL_DAYS = 7
+
+
+def _tick_day(value: str | None, tz) -> date | None:
+    """The day a tick was made for: None means today. Tomorrow and anything
+    older than a week are refused rather than silently moved."""
+    day = _date(value)
+    if day is None:
+        return None
+    today = svc.today_local(tz)
+    if day > today or (today - day).days > TICK_BACKFILL_DAYS:
+        raise HTTPException(status_code=422, detail="day_out_of_range")
+    return None if day == today else day
+
+
 def _date(value: str | None) -> date | None:
     if not value:
         return None
@@ -8571,14 +8593,26 @@ async def api_team_task_edit(task_id: int, body: TeamTaskPatch,
 
 
 @app.post("/api/teams/tasks/{task_id}/toggle")
-def api_team_task_toggle(task_id: int,
+def api_team_task_toggle(task_id: int, body: "TickIn | None" = None,
                          init=Header(default=None, alias="X-Telegram-Init-Data")):
-    """Tick a shared task for whoever is asking, and only them."""
+    """Tick a shared task for whoever is asking, and only them. With
+    `{"done": …}` it sets that state instead of flipping (K05)."""
     user, _ = auth(init)
+    tz = svc.user_tz(user)
     with SessionLocal() as s:
         try:
-            done = svc.toggle_team_task(s, user.telegram_id, task_id,
-                                        tz=svc.user_tz(user))
+            item = s.get(db.TeamTask, task_id)
+            wanted = body is not None and body.done is not None and item is not None \
+                and item.archived_at is None
+            if wanted:
+                # Same answer as a toggle for someone outside the team: no
+                # shortcut may tell them the item exists.
+                svc._require_team(s, user.telegram_id, item.team_id)
+            if wanted and svc.own_tick(s, user.telegram_id, "ttask", item,
+                                       svc.today_local(tz)) == body.done:
+                done = body.done
+            else:
+                done = svc.toggle_team_task(s, user.telegram_id, task_id, tz=tz)
         except PermissionError as e:
             raise _perm(e)
         except ValueError as e:
@@ -8678,13 +8712,24 @@ async def api_team_habit_add(team_id: int, body: TeamHabitIn,
 
 
 @app.post("/api/teams/habits/{habit_id}/toggle")
-def api_team_habit_toggle(habit_id: int,
+def api_team_habit_toggle(habit_id: int, body: "TickIn | None" = None,
                           init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, _ = auth(init)
+    tz = svc.user_tz(user)
     with SessionLocal() as s:
         try:
-            done = svc.toggle_team_habit(s, user.telegram_id, habit_id,
-                                         tz=svc.user_tz(user))
+            item = s.get(db.TeamHabit, habit_id)
+            wanted = body is not None and body.done is not None and item is not None \
+                and item.archived_at is None
+            if wanted:
+                # Same answer as a toggle for someone outside the team: no
+                # shortcut may tell them the item exists.
+                svc._require_team(s, user.telegram_id, item.team_id)
+            if wanted and svc.own_tick(s, user.telegram_id, "thabit", item,
+                                       svc.today_local(tz)) == body.done:
+                done = body.done
+            else:
+                done = svc.toggle_team_habit(s, user.telegram_id, habit_id, tz=tz)
         except PermissionError as e:
             raise _perm(e)
         except ValueError as e:
@@ -8951,11 +8996,27 @@ def api_habit_patch(habit_id: int, body: HabitPatch,
 
 
 @app.post("/api/habits/{habit_id}/toggle")
-def api_habit_toggle(habit_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+def api_habit_toggle(habit_id: int, body: "TickIn | None" = None,
+                     init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Flip today's tick — or, with a body, set it: `done` is the state the
+    person wanted and `day` the day they meant. A tick queued offline at
+    23:59 and sent at 00:01 lands on the day it was made, and a replay never
+    flips it a second time (K05)."""
     user, ws = auth(init)
+    tz = svc.user_tz(user)
+    day = _tick_day(body.day if body else None, tz)
     with SessionLocal() as s:
         try:
-            done = svc.toggle_habit(s, ws, habit_id, tz=svc.user_tz(user))
+            if body is not None and body.done is not None:
+                habit = s.get(db.Habit, habit_id)
+                if habit is None or habit.workspace_id != ws:
+                    raise HTTPException(status_code=404, detail="not_found")
+                if svc.own_tick(s, user.telegram_id, "habit", habit, day or svc.today_local(tz)) == body.done:
+                    done = body.done
+                else:
+                    done = svc.toggle_habit(s, ws, habit_id, day, tz=tz)
+            else:
+                done = svc.toggle_habit(s, ws, habit_id, day, tz=tz)
         except ValueError as e:
             if str(e) == "timer_required":
                 # Not an error on the client's part: the habit is done by its
@@ -9251,7 +9312,9 @@ def api_countdown_delete(countdown_id: int,
 def api_prayers(day: str | None = None, init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, ws = auth(init)
     with SessionLocal() as s:
-        return svc.prayer_state(s, ws, _date(day) or svc.today_local(), user.gender)
+        # The user's own day, as the write uses — not the project clock (K05).
+        return svc.prayer_state(s, ws, _date(day) or svc.today_local(svc.user_tz(user)),
+                                user.gender)
 
 
 @app.post("/api/prayers")

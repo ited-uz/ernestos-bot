@@ -206,14 +206,36 @@ const posts = url => calls.filter(c => c.method === 'POST' && c.url === url);
     return new Response('{"ok":true}', {status: 200});
   };
   assert.equal(run('loadQueue().length'), 0);
-  // A refusal is dropped, not retried forever.
+  // K04: a refusal is never dropped by the app, nor retried forever: it is
+  // kept, marked with why, skipped by later flushes, and gone only when the
+  // person discards it.
   online = false;
   run(`A["habit-toggle"]({dataset:{id:'5'}})`);
   await wait(20);
   online = true;
-  ctx.fetch = async () => new Response('{"detail":"not_found"}', {status: 404});
+  let refusals = 0;
+  ctx.fetch = async url => { if(String(url).includes('/toggle')) refusals++; return new Response('{"detail":"not_found"}', {status: 404}); };
   await run('flushQueue()');
+  assert.equal(run('loadQueue().length'), 1);
+  assert.equal(run('loadQueue()[0].blocked.reason'), 'gone');
+  await run('flushQueue()');
+  assert.equal(refusals, 1, 'a blocked item is not sent again by itself');
+  // K05: the queued tick says which state was wanted and on which day.
+  const queued = run('loadQueue()[0]');
+  assert.equal(typeof queued.body.done, 'boolean');
+  assert.match(queued.body.day, /^\d{4}-\d{2}-\d{2}$/);
+  run(`A["queue-drop"]({dataset:{key: loadQueue()[0].key}})`);
   assert.equal(run('loadQueue().length'), 0);
+  // 401: stop, keep everything, wait for sign-in.
+  ctx.fetch = async () => { throw new TypeError('Failed to fetch'); };
+  run(`A["habit-toggle"]({dataset:{id:'5'}})`);
+  await wait(20);
+  online = true;
+  ctx.fetch = async () => new Response('{"detail":"unauthorized"}', {status: 401});
+  await run('flushQueue()');
+  assert.equal(run('loadQueue().length'), 1);
+  assert.equal(run('loadQueue()[0].blocked'), undefined);
+  storage.delete(run('queueKey()'));
 
   console.log('Audit-50 frontend checks passed');
 })().catch(e => { console.error(e); process.exitCode = 1; });

@@ -1408,6 +1408,13 @@ const DICT = {
   plan_max_lines:"Hammasi cheksiz|10 jamoa, 50 kishi|Ovoz: 100/kun|Statistika faylda",
   plan_channel:"Kanalga qo'shiling — +{n} kun Pro bepul",
   plan_stars_note:"To'lov Telegram Stars orqali. Muddat tugagach Free'ga o'tasiz, ma'lumotlar saqlanadi.",
+  queue_store_failed:"Qurilmaga saqlab bo'lmadi — xotira to'lgan bo'lishi mumkin. Internet kelgach qayta bosing.",
+  queue_review:"{n} ta amal yuborilmadi — ko'rib chiqing", queue_title:"Yuborilishi kutilayotganlar",
+  queue_empty:"Hammasi yuborilgan.", queue_waiting:"Internet kelishini kutmoqda.",
+  queue_retry:"Qayta yuborish", queue_drop:"Bekor qilish", queue_dropped:"Bekor qilindi",
+  queue_why_auth:"Hisobga qayta kiring — keyin o'zi yuboriladi.", queue_why_plan:"Tarif limiti — avval tarifni yangilang.",
+  queue_why_forbidden:"Bu amalga ruxsat yo'q (masalan, jamoadan chiqqansiz).", queue_why_gone:"Bu narsa o'chirilgan.",
+  queue_why_conflict:"Boshqa joyda o'zgargan — tekshirib qayta yuboring.", queue_why_invalid:"Server qabul qilmadi.",
   file_ready:"Fayl tayyor — saqlash joyini tanlang",
   inbox:"Xabarlar", inbox_empty:"Hozircha xabar yo'q. Eslatmalar, hisobotlar va taymerlar shu yerga keladi.",
   inbox_snoozed:"{n} daqiqadan keyin yana eslataman", inbox_done:"Bajarildi ✓",
@@ -1796,6 +1803,13 @@ const DICT = {
   plan_max_lines:"Everything unlimited|10 teams, 50 people|Voice: 100/day|Statistics as a file",
   plan_channel:"Join the channel — +{n} days of Pro free",
   plan_stars_note:"Paid with Telegram Stars. When it ends you are on Free and your data stays.",
+  queue_store_failed:"Could not save on this device — storage may be full. Tap again when you are online.",
+  queue_review:"{n} actions were not sent — review them", queue_title:"Waiting to be sent",
+  queue_empty:"Everything has been sent.", queue_waiting:"Waiting for the connection.",
+  queue_retry:"Send again", queue_drop:"Discard", queue_dropped:"Discarded",
+  queue_why_auth:"Sign in again — it goes out by itself after that.", queue_why_plan:"Plan limit — upgrade first.",
+  queue_why_forbidden:"Not allowed (for example, you left the team).", queue_why_gone:"This was deleted.",
+  queue_why_conflict:"Changed elsewhere — check and send again.", queue_why_invalid:"The server did not accept it.",
   file_ready:"File ready — choose where to save it",
   inbox:"Notifications", inbox_empty:"Nothing yet. Reminders, reports and timers arrive here.",
   inbox_snoozed:"I'll remind you again in {n} min", inbox_done:"Done ✓",
@@ -2181,6 +2195,13 @@ const DICT = {
   plan_max_lines:"Всё без лимита|10 команд, 50 чел.|Голос: 100/день|Статистика файлом",
   plan_channel:"Подпишитесь на канал — +{n} дн. Pro бесплатно",
   plan_stars_note:"Оплата Telegram Stars. После окончания — тариф Free, данные сохраняются.",
+  queue_store_failed:"Не удалось сохранить на устройстве — память может быть заполнена. Нажмите снова, когда появится сеть.",
+  queue_review:"{n} действий не отправлено — проверьте", queue_title:"Ожидают отправки",
+  queue_empty:"Всё отправлено.", queue_waiting:"Ждёт подключения.",
+  queue_retry:"Отправить снова", queue_drop:"Отменить", queue_dropped:"Отменено",
+  queue_why_auth:"Войдите снова — после этого отправится само.", queue_why_plan:"Лимит тарифа — сначала обновите тариф.",
+  queue_why_forbidden:"Нет доступа (например, вы вышли из команды).", queue_why_gone:"Это было удалено.",
+  queue_why_conflict:"Изменено в другом месте — проверьте и отправьте снова.", queue_why_invalid:"Сервер не принял.",
   file_ready:"Файл готов — выберите, куда сохранить",
   inbox:"Уведомления", inbox_empty:"Пока пусто. Сюда приходят напоминания, отчёты и таймеры.",
   inbox_snoozed:"Напомню снова через {n} мин", inbox_done:"Готово ✓",
@@ -2614,6 +2635,9 @@ function openSheet(html, view){
   syncBackButton();
 }
 function closeSheet(){
+  // Leaving the voice sheet by any road (Back, the backdrop, another screen)
+  // means "never mind": the microphone stops and nothing is sent (K01).
+  if(state.sheetView === "voice") voiceAbandon();
   state.sheetView = null;
   document.getElementById("sheet").classList.remove("show");
   syncBackButton();
@@ -5482,6 +5506,18 @@ function voiceStopTracks(){
   try{ voice.stream?.getTracks().forEach(tr => tr.stop()); }catch(_){}
   voice.stream = null; clearInterval(voice.timer); voice.timer = null;
 }
+/* Two different wishes: "stop and analyse" (voice-stop) and "never mind"
+   (this). Abandoning cancels the recorder and the timer, releases the mic,
+   and makes any answer still on its way land nowhere: `voice.session` moves
+   on, and voiceSend only shows a result for the session that asked. */
+function voiceAbandon(){
+  voice.session = (voice.session || 0) + 1;
+  voice.cancelled = true;
+  try{ if(voice.rec && voice.rec.state !== "inactive") voice.rec.stop(); }catch(_){}
+  voice.rec = null;
+  voice.chunks = [];
+  voiceStopTracks();
+}
 function voiceRecordingSheet(){
   return `<div class="voice-box">
       <div class="voice-pulse">${icon("mic", 34)}</div>
@@ -5546,7 +5582,10 @@ async function voiceSend(resend){
                           target: voice.target, key: newKey(), at: Date.now()};
   const {blob, mime, target, key} = voice.kept;
   voice.chunks = [];
+  const session = voice.session;
   openSheet(voiceBusySheet(), "voice");
+  // An answer for a sheet the person has since closed shows nowhere.
+  const stillHere = () => session === voice.session && state.sheetView === "voice";
   const journal = target === "journal";
   try{
     const res = await fetch(journal ? "/api/agent/journal/audio" : "/api/agent/audio", {method:"POST", body:blob,
@@ -5559,11 +5598,14 @@ async function voiceSend(resend){
       throw err;
     }
     voice.kept = null;
-    if(journal) return journalFilled(await res.json());
-    voice.draft = await res.json();
+    const answer = await res.json();
+    if(!stillHere()) return;
+    if(journal) return journalFilled(answer);
+    voice.draft = answer;
     openSheet(voiceCardSheet(voice.draft), "voice");
     notify(voice.draft.status === "ready" ? "success" : "warning");
   }catch(e){
+    if(!stillHere()) return;
     voice.draft = null;
     // A refusal the same audio cannot fix (too long, no consent) drops it.
     if(e.status === 413 || e.detail === "consent_required") voice.kept = null;
@@ -7805,20 +7847,29 @@ async function save(request, reload, quiet, message, draft){
 /* An optimistic tick: the row changes now, the request follows, and a
    failure puts it back. Waiting 300ms for a checkbox is what makes an
    app feel like a web page. */
-function optimistic(mutate, request, reload, queued){
-  const snapshot = JSON.stringify({home:state.home, habits:state.habits,
-                                   tasks:state.tasks, project:state.project});
+/* Per item (K06): `undo` puts back only this item, so a failure never
+   rewinds a whole list over other ticks that succeeded meanwhile. Requests
+   for one item go out one after another (`chain`), so a quick done → undo →
+   done reaches the server in the order it was tapped. */
+const tickChains = {};
+function optimistic(mutate, request, reload, queued, undo, chain){
+  const snapshot = undo ? null : JSON.stringify({home:state.home, habits:state.habits,
+                                                 tasks:state.tasks, project:state.project});
   mutate();
   render();
-  request().then(() => { state.calendarStale = true; if(reload) loadScreen(reload); })
+  const run = () => request().then(() => { state.calendarStale = true; if(reload) loadScreen(reload); })
     .catch(e => {
       // No connection at all: the tick stays on screen and waits in the
       // queue instead of being undone (audit #18).
-      if(queued && isOffline(e)){ enqueue(queued); return; }
-      const back = JSON.parse(snapshot);
-      setState(back);
+      if(queued && isOffline(e)){ if(enqueue(queued)) return; }
+      if(undo) undo(); else setState(JSON.parse(snapshot));
+      render();
       handleError(e);
     });
+  if(!chain) return run();
+  const next = (tickChains[chain] || Promise.resolve()).then(run, run);
+  tickChains[chain] = next.finally(() => { if(tickChains[chain] === next) delete tickChains[chain]; });
+  return next;
 }
 
 /* ---------- offline queue (audit #18) ----------
@@ -7826,56 +7877,92 @@ function optimistic(mutate, request, reload, queued){
    must not need a signal. Such an action that fails for want of a network is
    kept on the phone with its own idempotency key and sent, in order, once
    the connection is back; the server answers a repeat of the same key with
-   the first answer, so nothing is applied twice. A refusal (4xx) is dropped
-   and named, never retried forever. */
+   the first answer, so nothing is applied twice. A refusal (4xx) is never
+   dropped silently: the item stays, marked with the reason, until the user
+   retries or removes it from the queue sheet (K04). */
 const queueKey = () => `ernestos-queue-${state.me?.telegram_id || "anon"}`;
 const isOffline = e => !e?.status && (e?.name === "TypeError" || e?.name === "AbortError"
   || e?.name === "TimeoutError" || /fetch|network|Failed/i.test(String(e?.message || "")));
 function loadQueue(){ try{ return JSON.parse(localStorage.getItem(queueKey()) || "[]"); }catch(_){ return []; } }
+/* True only when the phone actually kept it: "saved on this device" is never
+   said about something that did not reach storage (K08). */
 function storeQueue(q){
-  try{ q.length ? localStorage.setItem(queueKey(), JSON.stringify(q)) : localStorage.removeItem(queueKey()); }
-  catch(_){}
+  try{ q.length ? localStorage.setItem(queueKey(), JSON.stringify(q)) : localStorage.removeItem(queueKey());
+       return true; }
+  catch(_){ return false; }
 }
 function enqueue(item){
   const q = loadQueue();
   // The key the first attempt already carried, if any: a request that timed
   // out may have reached the server, and its replay must not apply twice.
-  q.push({...item, key: item.key || newKey(), at: Date.now()});
-  storeQueue(q);
+  // The body already says the state wanted and the day it was meant for, so
+  // a replay after midnight lands on the right day (K05).
+  q.push({...item, key: item.key || newKey(), at: Date.now(), day: item.day || todayISO()});
+  if(!storeQueue(q)){ toast(t("queue_store_failed")); return false; }
   toast(t("queued_offline"));
   render();
+  return true;
 }
+/* Why an item is waiting for the person rather than the network. */
+const queueReason = e => e.status === 401 ? "auth" : e.status === 402 ? "plan"
+  : e.status === 403 ? "forbidden" : e.status === 404 ? "gone"
+  : e.status === 409 ? "conflict" : "invalid";
 let flushing = null;
 function flushQueue(){
   if(flushing) return flushing;
   flushing = (async () => {
-    let q = loadQueue(), sent = 0;
-    const refused = [];
-    while(q.length){
-      const item = q[0];
+    let sent = 0, blocked = 0;
+    /* In order, one at a time. Nothing is ever dropped here (K04):
+       - no network, 5xx, 429, or the same key still running → stop, retry later;
+       - 401 (signed out) → stop; it goes once the person is back in;
+       - any other refusal → the item waits for the person, marked with why,
+         and the rest of the queue carries on. Only the person discards. */
+    for(;;){
+      const item = loadQueue().find(x => !x.blocked);
+      if(!item) break;
       try{
         await api(item.path, {method: item.method, body: item.body,
                               headers: {"X-Idempotency-Key": item.key}});
         sent++;
+        storeQueue(loadQueue().filter(x => x.key !== item.key));
       }catch(e){
-        // Still being processed (the same key is in flight): try again later.
         if(isOffline(e) || e.status >= 500 || e.status === 429
            || (e.status === 409 && e.detail === "in_progress")) break;
-        refused.push(item.label || item.path);
+        if(e.status === 401){ state.queueNeedsLogin = true; break; }
+        storeQueue(loadQueue().map(x => x.key === item.key
+          ? {...x, blocked:{reason: queueReason(e), status: e.status, detail: e.detail || null}} : x));
+        blocked++;
       }
-      q = loadQueue().filter(x => x.key !== item.key);
-      storeQueue(q);
     }
-    if(refused.length) toast(t("queue_refused", {n: refused.length}));
+    if(blocked) toast(t("queue_refused", {n: blocked}));
     else if(sent) toast(t("queue_synced", {n: sent}));
-    if(sent || refused.length){ state.calendarStale = true; await loadScreen(state.screen); }
+    if(sent || blocked){ state.calendarStale = true; await loadScreen(state.screen); }
   })().finally(() => { flushing = null; render(); });
   return flushing;
 }
 function queueBanner(){
-  const n = loadQueue().length;
-  return n ? `<div class="banner" data-act="queue-flush" role="button" tabindex="0">
-      ${icon("clock", 16)} <div class="grow">${t("queue_pending", {n})}</div>${icon("repeat", 15)}</div>` : "";
+  const q = loadQueue();
+  const stuck = q.filter(x => x.blocked).length, waiting = q.length - stuck;
+  return (waiting ? `<div class="banner" data-act="queue-flush" role="button" tabindex="0">
+      ${icon("clock", 16)} <div class="grow">${t("queue_pending", {n: waiting})}</div>${icon("repeat", 15)}</div>` : "")
+    + (stuck ? `<div class="banner" data-act="queue-review" role="button" tabindex="0"
+        style="border-color:var(--warn)">${icon("info", 16)}
+        <div class="grow">${t("queue_review", {n: stuck})}</div>${icon("chevron", 15)}</div>` : "");
+}
+/* What the phone is still holding, and why: each item can be sent again or
+   dropped by the person — never by the app. */
+function queueSheet(){
+  const q = loadQueue();
+  const row = x => `<div class="card tight" style="margin-top:8px">
+      <div class="row"><b class="grow wrap">${esc(x.label || x.path)}</b>
+        <span class="t3 tiny">${esc(x.day || "")}</span></div>
+      <div class="t2 small">${x.blocked ? t("queue_why_" + x.blocked.reason) : t("queue_waiting")}</div>
+      <div class="chips" style="margin-top:8px">
+        <div class="chip sm" data-act="queue-retry" data-key="${esc(x.key)}">${t("queue_retry")}</div>
+        <div class="chip sm" data-act="queue-drop" data-key="${esc(x.key)}">${t("queue_drop")}</div></div></div>`;
+  return `<h3>${icon("clock", 18)} ${t("queue_title")}</h3>
+    ${q.length ? q.map(row).join("") : `<div class="hint">${t("queue_empty")}</div>`}
+    <button class="btn secondary" data-act="close" style="margin-top:var(--s3)">${t("close")}</button>`;
 }
 window.addEventListener("online", () => flushQueue());
 document.addEventListener("visibilitychange", () => { if(!document.hidden && loadQueue().length) flushQueue(); });
@@ -7887,6 +7974,10 @@ window.addEventListener("ernest:open-inbox", () => {
   if(state.me) A["inbox-open"]();
 });
 document.addEventListener("visibilitychange", () => { if(!document.hidden) refreshInbox(); });
+/* Recording never continues in the background (K01). */
+document.addEventListener("visibilitychange", () => {
+  if(document.hidden && voice.rec && voice.rec.state === "recording"){ voiceAbandon(); closeSheet(); }
+});
 document.addEventListener("visibilitychange", async () => {
   if(document.hidden || !state.planPending) return;
   state.planPending = false;
@@ -7953,12 +8044,19 @@ const A = {
     catch(_){ voiceStopTracks(); return A["agent-open"](); }
     voice.mime = voice.rec.mimeType || mime || "audio/webm";
     voice.chunks = []; voice.cancelled = false;
-    voice.rec.ondataavailable = e => { if(e.data?.size) voice.chunks.push(e.data); };
-    voice.rec.onstop = () => { voiceStopTracks(); if(!voice.cancelled && voice.chunks.length) voiceSend(); };
+    const session = voice.session = (voice.session || 0) + 1;
+    const rec = voice.rec;
+    rec.ondataavailable = e => { if(e.data?.size && session === voice.session) voice.chunks.push(e.data); };
+    rec.onstop = () => {
+      if(session !== voice.session) return;          // abandoned meanwhile
+      voiceStopTracks();
+      if(!voice.cancelled && voice.chunks.length) voiceSend();
+    };
     voice.rec.start(250);
     voice.started = Date.now();
     openSheet(voiceRecordingSheet(), "voice");
     voice.timer = setInterval(() => {
+      if(session !== voice.session || state.sheetView !== "voice") return voiceAbandon();
       const s = Math.floor((Date.now() - voice.started) / 1000);
       const el = document.getElementById("voice-time");
       if(el) el.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -7969,11 +8067,7 @@ const A = {
     haptic();
     if(voice.rec && voice.rec.state !== "inactive") voice.rec.stop();
   },
-  "voice-cancel": () => {
-    voice.cancelled = true;
-    if(voice.rec && voice.rec.state !== "inactive") voice.rec.stop();
-    voiceStopTracks(); closeSheet();
-  },
+  "voice-cancel": () => { voiceAbandon(); closeSheet(); },
   "voice-consent": async () => {
     try{
       await api("/api/agent/consent", {method:"POST"});
@@ -8263,24 +8357,32 @@ const A = {
     haptic();
     const id = Number(el.dataset.id), key = newKey();
     const kind = el.dataset.kind;
-    optimistic(() => {
-      /* The same row can be on screen in several places — the Team tab, the
-         shared rows inside Tasks and Habits, Home — so every copy flips. */
+    let wanted = null;
+    const setAll = v => {
       const lists = [];
       for(const team of (state.team?.teams || []))
         lists.push(kind === "task" ? team.tasks : team.habits);
       lists.push(kind === "task" ? state.tasks?.team_tasks : state.habits?.team_habits);
       if(kind === "task") lists.push(state.home?.team_today);
       for(const cat of Object.values(state.habits?.grouped || {})) lists.push(cat);
-      let flipped = null;
       for(const list of lists)
         for(const row of (list || []))
-          if(row.id === id && (kind === "task" || row.source === "team" || row.team_id)){
-            if(flipped === null) flipped = !row.done;
-            row.done = flipped;
-          }
-    }, () => api(`/api/teams/${kind}s/${id}/toggle`, {method:"POST", headers:{"X-Idempotency-Key": key}}),
-       state.screen, {path:`/api/teams/${kind}s/${id}/toggle`, method:"POST", key});
+          if(row.id === id && (kind === "task" || row.source === "team" || row.team_id)) row.done = v;
+    };
+    const path = `/api/teams/${kind}s/${id}/toggle`;
+    /* The same row can be on screen in several places — the Team tab, the
+       shared rows inside Tasks and Habits, Home — so every copy is set. The
+       request says which state is wanted, so a replay never flips twice. */
+    const lists = [...(state.team?.teams || []).map(tm => kind === "task" ? tm.tasks : tm.habits),
+                   kind === "task" ? state.tasks?.team_tasks : state.habits?.team_habits,
+                   kind === "task" ? state.home?.team_today : null];
+    for(const list of lists) for(const row of (list || [])) if(row.id === id && wanted === null) wanted = !row.done;
+    if(wanted === null) wanted = true;
+    const want = wanted, body = {done: want};
+    optimistic(() => setAll(want),
+      () => api(path, {method:"POST", body, headers:{"X-Idempotency-Key": key}}),
+      state.screen, {path, method:"POST", body, key, label: el.dataset.title || ""},
+      () => setAll(!want), "t" + kind + id);
   },
 
   /* A shared task opens the full task sheet, headed for the team. */
@@ -8702,13 +8804,18 @@ const A = {
   "habit-toggle": el => {
     haptic();
     const id = Number(el.dataset.id), key = newKey();
-    optimistic(() => {
+    const row0 = state.habits?.habits?.find(x => x.id === id);
+    const was = !!row0?.done, want = !was, day = todayISO();
+    const set = v => {
       const row = state.habits?.habits?.find(x => x.id === id);
-      if(row) row.done = !row.done;
+      if(row) row.done = v;
       for(const cat of Object.values(state.habits?.grouped || {}))
-        for(const x of cat) if(x.id === id) x.done = row ? row.done : x.done;
-    }, () => api(`/api/habits/${id}/toggle`, {method:"POST", headers:{"X-Idempotency-Key": key}}), "habits",
-       {path:`/api/habits/${id}/toggle`, method:"POST", key, label: el.dataset.name || ""});
+        for(const x of cat) if(x.id === id && !x.team_id) x.done = v;
+    };
+    const path = `/api/habits/${id}/toggle`, body = {done: want, day};
+    optimistic(() => set(want),
+      () => api(path, {method:"POST", body, headers:{"X-Idempotency-Key": key}}), "habits",
+      {path, method:"POST", body, key, label: el.dataset.name || ""}, () => set(was), "h" + id);
   },
   "habit-toggle-home": el => {
     haptic();
@@ -8780,9 +8887,21 @@ const A = {
     const path = `/api/habits/${el.dataset.id}/qty`;
     closeSheet();
     api(path, {method:"POST", body:{qty}}).then(() => { toast(t("saved")); loadScreen("habits"); })
-      .catch(e => isOffline(e) ? enqueue({path, method:"POST", body:{qty}}) : handleError(e));
+      .catch(e => isOffline(e) ? enqueue({path, method:"POST", body:{qty}, label: el.dataset.name || ""}) : handleError(e));
   },
   "queue-flush": () => { haptic(); flushQueue(); },
+  "queue-review": () => { haptic(); openSheet(queueSheet(), "queue"); },
+  "queue-retry": async el => {
+    storeQueue(loadQueue().map(x => x.key === el.dataset.key ? {...x, blocked:null} : x));
+    await flushQueue();
+    openSheet(queueSheet(), "queue");
+  },
+  "queue-drop": el => {
+    storeQueue(loadQueue().filter(x => x.key !== el.dataset.key));
+    toast(t("queue_dropped"));
+    openSheet(queueSheet(), "queue");
+    render();
+  },
   "habit-remind-enable": async () => {
     haptic();
     await prefSave({habit_reminders: true}, false);
@@ -8899,12 +9018,15 @@ const A = {
   prayer: el => {
     haptic();
     const {prayer, status} = el.dataset;
+    const was = state.prayer?.prayers?.[prayer] ?? null, day = state.prayer?.day || todayISO();
+    const body = {prayer, status, day}, key = newKey();
     optimistic(() => { if(state.prayer) state.prayer.prayers[prayer] = status; },
       async () => {
-        state.prayer = await api("/api/prayers", {method:"POST", body:{prayer, status}});
+        state.prayer = await api("/api/prayers", {method:"POST", body, headers:{"X-Idempotency-Key": key}});
         await refreshHabits();
         render();
-      }, null, {path:"/api/prayers", method:"POST", body:{prayer, status}});
+      }, null, {path:"/api/prayers", method:"POST", body, key, label: prayer},
+      () => { if(state.prayer) state.prayer.prayers[prayer] = was; }, "p" + prayer);
   },
   "prayer-clear": el => {
     haptic();
@@ -9010,7 +9132,8 @@ const A = {
                        {method:"PATCH", body:{status:"waiting"}}), screen, true));
     }catch(e){
       // Done is done, signal or not: it goes out when the connection is back.
-      if(isOffline(e)) return enqueue({path:`/api/tasks/${id}`, method:"PATCH", body:{status:"done"}});
+      if(isOffline(e)) return enqueue({path:`/api/tasks/${id}`, method:"PATCH", body:{status:"done"},
+                                       label: el.dataset.title || ""});
       handleError(e);
     }
   },

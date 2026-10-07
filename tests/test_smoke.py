@@ -4327,8 +4327,10 @@ def test_the_mini_app_never_claims_a_save_it_did_not_make():
     # The one helper that shows the confirmation also performs the request.
     assert "async function save(request, reload, quiet, message, draft){" in html
     assert "await request();" in html
-    # And the optimistic path reverts on failure rather than keeping the lie.
-    assert "setState(back);" in html
+    # And the optimistic path reverts on failure rather than keeping the lie:
+    # only the item that failed when it knows how (K06), the whole snapshot
+    # otherwise.
+    assert "if(undo) undo(); else setState(JSON.parse(snapshot));" in html
 
 
 def test_every_timezone_the_platform_knows_is_offerable():
@@ -11954,3 +11956,65 @@ def test_command_menu_lists_only_commands_the_bot_answers():
     import asyncio
     asyncio.run(application.set_command_menu(Bot()))
     assert {lang for lang, _ in sent} == {"uz", "ru", "en", None}
+
+
+def test_a_queued_tick_sets_the_state_it_meant_on_the_day_it_meant(alice):
+    """K05: a replayed tick must not flip back, and a tick made at 23:59 and
+    sent after midnight belongs to the day it was made."""
+    from datetime import timedelta
+    made = alice.post("/api/habits", json={"name": "Kitob", "category": "target"})
+    assert made.status_code == 200, made.text
+    hid = next(h["id"] for h in alice.get("/api/habits").json()["habits"]
+               if h["name"] == "Kitob")
+    url = f"/api/habits/{hid}/toggle"
+    assert alice.post(url, {"done": True}).json()["done"] is True
+    # The same request again — a retry — leaves it done instead of undoing it.
+    assert alice.post(url, {"done": True}).json()["done"] is True
+    assert alice.post(url, {"done": False}).json()["done"] is False
+    assert alice.post(url, {"done": False}).json()["done"] is False
+
+    with SessionLocal() as s:
+        tz = svc.user_tz(s.get(User, ALICE["id"]))
+    today = svc.today_local(tz)
+    yesterday = (today - timedelta(days=1)).isoformat()
+    r = alice.post(url, {"done": True, "day": yesterday})
+    assert r.status_code == 200, r.text
+    then = next(h for h in alice.get(f"/api/habits?day={yesterday}").json()["habits"]
+                if h["id"] == hid)
+    now = next(h for h in alice.get("/api/habits").json()["habits"] if h["id"] == hid)
+    assert then["done"] is True and now["done"] is False
+
+    # Tomorrow, and anything older than a week, are refused, never moved.
+    tomorrow = (today + timedelta(days=1)).isoformat()
+    assert alice.post(url, {"done": True, "day": tomorrow}).status_code == 422
+    old = (today - timedelta(days=30)).isoformat()
+    assert alice.post(url, {"done": True, "day": old}).status_code == 422
+    # The plain flip the bot and old clients use still works.
+    assert alice.post(url).json()["done"] is True
+
+
+def test_a_team_tick_sets_its_state_and_tells_an_outsider_nothing(client):
+    """K05 for shared items: desired state, and the shortcut that skips the
+    write never answers someone outside the team."""
+    one, two, team_id = _pair(client)
+    a = Caller(client, {"id": one, "first_name": "Ernest"})
+    stranger = Caller(client, {"id": next(_next_id), "first_name": "X"})
+    task_id = a.post(f"/api/teams/{team_id}/tasks", {"title": "Hisobot"}).json()["id"]
+    url = f"/api/teams/tasks/{task_id}/toggle"
+    assert a.post(url, {"done": True}).json()["done"] is True
+    assert a.post(url, {"done": True}).json()["done"] is True
+    assert a.post(url, {"done": False}).json()["done"] is False
+    assert stranger.post(url, {"done": False}).status_code in (403, 404)
+
+
+def test_the_prayer_screen_reads_the_day_it_writes(alice, monkeypatch):
+    """K05: GET used the project's clock and POST the user's, so near
+    midnight the screen showed a different day from the one just saved."""
+    seen = []
+    real = svc.today_local
+    monkeypatch.setattr(svc, "today_local", lambda tz=None: (seen.append(tz), real(tz))[1])
+    with SessionLocal() as s:
+        s.get(User, ALICE["id"]).timezone = "America/New_York"
+        s.commit()
+    assert alice.get("/api/prayers").status_code == 200
+    assert any(str(z) == "America/New_York" for z in seen)
