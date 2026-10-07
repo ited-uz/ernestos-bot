@@ -1,0 +1,24 @@
+{
+  "name": "ernestos-mobile",
+  "private": true,
+  "version": "13.1.0",
+  "description": "ErnestOS for Android and iOS: the Mini App in a Capacitor shell.",
+  "scripts": {
+    "build": "node scripts/build-www.mjs",
+    "sync": "node scripts/build-www.mjs && npx cap sync"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.2",
+    "@capacitor/app": "^8.0.0",
+    "@capacitor/browser": "^8.0.0",
+    "@capacitor/core": "8.5.2",
+    "@capacitor/filesystem": "^8.1.4",
+    "@capacitor/haptics": "^8.0.0",
+    "@capacitor/ios": "8.5.2",
+    "@capacitor/push-notifications": "^8.1.3",
+    "@capacitor/share": "^8.0.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.2"
+  }
+}

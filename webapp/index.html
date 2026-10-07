@@ -966,6 +966,17 @@ details[open] > summary .i{transform:rotate(90deg)}
   padding:8px 10px;border-radius:var(--radius-sm);font-size:13.5px;
   color:var(--danger);background:color-mix(in srgb, var(--danger) 9%, transparent);
   cursor:pointer;min-height:40px}
+/* Phone app only: the inbox bell beside the avatar, with its unread count. */
+.bellbtn{width:44px;height:44px;border-radius:50%;flex:none;border:0;padding:0;
+  display:grid;place-items:center;position:relative;cursor:pointer;
+  background:var(--surface);color:var(--text);box-shadow:0 0 0 1px var(--border)}
+.bellbtn:focus-visible{outline:0;box-shadow:var(--ring)}
+.bell-badge{position:absolute;top:-3px;right:-3px;min-width:19px;height:19px;
+  padding:0 5px;border-radius:10px;background:var(--danger);color:var(--on-primary);
+  font-size:11px;font-weight:700;display:grid;place-items:center;
+  box-shadow:0 0 0 2px var(--bg)}
+.inbox-item{margin-top:var(--s2)}
+.inbox-item.unread{box-shadow:inset 3px 0 0 var(--primary)}
 .avatar-gear{position:absolute;right:-3px;bottom:-3px;width:19px;height:19px;
   border-radius:50%;display:grid;place-items:center;background:var(--surface);
   color:var(--text-2);box-shadow:0 0 0 1.5px var(--border)}
@@ -1144,6 +1155,13 @@ details[open] > summary .i{transform:rotate(90deg)}
    ================================================================== */
 
 const tg = window.Telegram?.WebApp;
+/* Where the API lives. Empty in Telegram (same origin); the phone app's
+   config.js names the server, and native.js sends fetch() there. Only an
+   <img src> has to spell it out, since no fetch() is involved. */
+const API_BASE = (window.ERNEST_CONFIG?.api || "").replace(/\/+$/, "");
+/* The Android/iOS app (native.js), as opposed to Telegram's Mini App. Strict:
+   only native.js sets this flag to the literal `true`. */
+const IS_APP = tg?.isErnestApp === true;
 tg?.ready();
 tg?.expand();
 tg?.disableVerticalSwipes?.();
@@ -1251,7 +1269,7 @@ const DICT = {
   /* quick capture */
   quick_add:"Tez qo'shish", quick_ph:"Nima esingizga tushdi?",
   inbox_saved:"Saqlandi — Vazifalarda",
-  quick_saved:"✓ Vazifa", next_up:"Keyingi", home_more_tasks:"Yana {n} ta ish", voice_title:"Ovoz bilan qo'shish", voice_listening:"Gapiring… To'xtatsangiz, tahlil qilaman.", voice_stop:"To'xtatish", voice_thinking:"Tushunishga harakat qilyapman…", voice_confirm:"Tasdiqlash", voice_retry:"Qayta yozish", voice_edit:"Tahrirlash", voice_answer_ph:"Javobingizni yozing…", voice_send:"Yuborish", ve_title:"Nomi", ve_name:"Nomi", ve_deadline:"Sana", ve_day:"Kun", ve_due_time:"Soat", ve_remind_at:"Eslatma vaqti", ve_priority:"Muhimlik", ve_amount:"Summa", ve_note:"Izoh", ve_person:"Kim", voice_resend:"Shu yozuvni qayta yuborish", voice_done:"✅ Tasdiqlandi", voice_failed:"Ovoz yuborilmadi. Qayta urinib ko'ring.", voice_too_long:"Ovoz 2 daqiqadan oshmasin.", voice_denied:"Mikrofonga ruxsat yo'q — botda ovoz yuboring.", voice_consent:"Ovozingiz matnga aylantirish va tushunish uchun AI xizmatlariga (ElevenLabs, Groq, Google — AQSh) yuboriladi. Audio saqlanmaydi. Hech narsa siz tasdiqlamaguningizcha o'zgarmaydi.", voice_agree:"Roziman, boshlash", voice_consent_needed:"Avval rozilik bering.", tab_list:"Ro'yxat", nav_money:"Moliya", quick_more:"Batafsil (vaqt, eslatma, loyiha)", quick_more_habit:"Batafsil (kunlar, eslatma, muhimlik)", nav_steps:"Qadam", steps_to_next:"«{name}» darajasigacha yana {n} qadam", steps_max:"Eng yuqori daraja — barakalla!", steps_freeze_short:"Muzlatish", steps_rank_in:"{n} kundan keyin", steps_next:"Keyingi qadam", steps_all_done:"Bugungi qadamlar bajarildi 🎉", steps_more:"Yutuqlar va reyting", steps_title:"Qadam", steps_motto:"Har bir yaxshi ish — kelajakdagi yutuqqa qadam.", steps_freeze:"Ketma-ketlikni saqlab qoladigan kunlar", steps_level_n:"{n}-daraja", steps_total:"Jami qadamlar", steps_path:"Sizning yo'lingiz", steps_today:"Bugungi qadamlar", steps_go:"Qadamni davom ettir", step_lvl_starter:"Boshlovchi", step_lvl_builder:"Quruvchi", step_lvl_discipline:"Intizom", step_lvl_steady:"Barqarorlik", step_lvl_master:"O'z ustida ishlash", step_tasks:"Vazifa", step_habits:"Odat", step_prayer:"Namoz", step_journal:"Xulosa", step_goal:"Maqsad", step_started:"boshlandi", step_goal_add:"Maqsad qo'shish", focus_carried_n:"{n} hafta surildi — kichikroq qadamga bo'ling", focus_moved:"Keyingi haftaga ko'chirildi", cnt_finished:"bugun bajarildi", task_word:"Vazifa", habit_word:"Odat", quick_habit_ph:"Masalan: Har kuni kitob o'qish", quick_habit_hint:"Har kuni takrorlanadi — kunlarni yozsangiz («du, chor, juma sport»), faqat o'sha kunlari. Keyin o'zgartirsa bo'ladi.", quick_habit_days_hint:"Matndan shu kunlar topildi. Tekshiring, keyin saqlang.", quick_habit_saved:"✓ Odat", nav_tracker:"Kundalik", nav_profile:"Profil", quick_hint:"Masalan: «Ertaga soat 10 da hisobot» yoki «Tushlik 45 ming»", quick_voice:"Ovoz bilan aytish", jai_title:"AI bilan to'ldirish", jai_hint:"Kuningizni erkin gapirib yoki yozib bering — AI uni 5 savolga ajratib, xatolarini to'g'rilaydi. Siz tekshirib, saqlaysiz.", jai_voice:"Gapirish", jai_text:"Yozish", jai_ph:"Masalan: bugun mijoz bilan shartnoma yopdim, onamga rahmat, vaqtni rejalashtira olmadim, ertaga hisobotni tugataman…", jai_sort:"Savollarga ajratish", jai_done:"✨ {n} ta javob to'ldirildi — tekshirib, Saqlang", jai_review:"AI taklifi hali saqlanmadi. Tekshiring, keyin qabul qiling.", jai_accept:"Qabul qilish", jai_reject:"Bekor qilish", journal_for_day:"{d} kuni uchun yozilmoqda", jai_nothing:"Savollarga mos gap topilmadi. Batafsilroq ayting.",
+  quick_saved:"✓ Vazifa", next_up:"Keyingi", home_more_tasks:"Yana {n} ta ish", voice_title:"Ovoz bilan qo'shish", voice_listening:"Gapiring… To'xtatsangiz, tahlil qilaman.", voice_stop:"To'xtatish", voice_thinking:"Tushunishga harakat qilyapman…", voice_confirm:"Tasdiqlash", voice_retry:"Qayta yozish", voice_edit:"Tahrirlash", voice_answer_ph:"Javobingizni yozing…", voice_send:"Yuborish", ve_title:"Nomi", ve_name:"Nomi", ve_deadline:"Sana", ve_day:"Kun", ve_due_time:"Soat", ve_remind_at:"Eslatma vaqti", ve_priority:"Muhimlik", ve_amount:"Summa", ve_note:"Izoh", ve_person:"Kim", voice_resend:"Shu yozuvni qayta yuborish", voice_done:"✅ Tasdiqlandi", voice_failed:"Ovoz yuborilmadi. Qayta urinib ko'ring.", voice_too_long:"Ovoz 2 daqiqadan oshmasin.", voice_denied:"Mikrofonga ruxsat yo'q — botda ovoz yuboring.", voice_denied_app:"Mikrofonga ruxsat yo'q. Telefon Sozlamalari → Ilovalar → ErnestOS → Ruxsatlar → Mikrofon.", voice_consent:"Ovozingiz matnga aylantirish va tushunish uchun AI xizmatlariga (ElevenLabs, Groq, Google — AQSh) yuboriladi. Audio saqlanmaydi. Hech narsa siz tasdiqlamaguningizcha o'zgarmaydi.", voice_agree:"Roziman, boshlash", voice_consent_needed:"Avval rozilik bering.", tab_list:"Ro'yxat", nav_money:"Moliya", quick_more:"Batafsil (vaqt, eslatma, loyiha)", quick_more_habit:"Batafsil (kunlar, eslatma, muhimlik)", nav_steps:"Qadam", steps_to_next:"«{name}» darajasigacha yana {n} qadam", steps_max:"Eng yuqori daraja — barakalla!", steps_freeze_short:"Muzlatish", steps_rank_in:"{n} kundan keyin", steps_next:"Keyingi qadam", steps_all_done:"Bugungi qadamlar bajarildi 🎉", steps_more:"Yutuqlar va reyting", steps_title:"Qadam", steps_motto:"Har bir yaxshi ish — kelajakdagi yutuqqa qadam.", steps_freeze:"Ketma-ketlikni saqlab qoladigan kunlar", steps_level_n:"{n}-daraja", steps_total:"Jami qadamlar", steps_path:"Sizning yo'lingiz", steps_today:"Bugungi qadamlar", steps_go:"Qadamni davom ettir", step_lvl_starter:"Boshlovchi", step_lvl_builder:"Quruvchi", step_lvl_discipline:"Intizom", step_lvl_steady:"Barqarorlik", step_lvl_master:"O'z ustida ishlash", step_tasks:"Vazifa", step_habits:"Odat", step_prayer:"Namoz", step_journal:"Xulosa", step_goal:"Maqsad", step_started:"boshlandi", step_goal_add:"Maqsad qo'shish", focus_carried_n:"{n} hafta surildi — kichikroq qadamga bo'ling", focus_moved:"Keyingi haftaga ko'chirildi", cnt_finished:"bugun bajarildi", task_word:"Vazifa", habit_word:"Odat", quick_habit_ph:"Masalan: Har kuni kitob o'qish", quick_habit_hint:"Har kuni takrorlanadi — kunlarni yozsangiz («du, chor, juma sport»), faqat o'sha kunlari. Keyin o'zgartirsa bo'ladi.", quick_habit_days_hint:"Matndan shu kunlar topildi. Tekshiring, keyin saqlang.", quick_habit_saved:"✓ Odat", nav_tracker:"Kundalik", nav_profile:"Profil", quick_hint:"Masalan: «Ertaga soat 10 da hisobot» yoki «Tushlik 45 ming»", quick_voice:"Ovoz bilan aytish", jai_title:"AI bilan to'ldirish", jai_hint:"Kuningizni erkin gapirib yoki yozib bering — AI uni 5 savolga ajratib, xatolarini to'g'rilaydi. Siz tekshirib, saqlaysiz.", jai_voice:"Gapirish", jai_text:"Yozish", jai_ph:"Masalan: bugun mijoz bilan shartnoma yopdim, onamga rahmat, vaqtni rejalashtira olmadim, ertaga hisobotni tugataman…", jai_sort:"Savollarga ajratish", jai_done:"✨ {n} ta javob to'ldirildi — tekshirib, Saqlang", jai_review:"AI taklifi hali saqlanmadi. Tekshiring, keyin qabul qiling.", jai_accept:"Qabul qilish", jai_reject:"Bekor qilish", journal_for_day:"{d} kuni uchun yozilmoqda", jai_nothing:"Savollarga mos gap topilmadi. Batafsilroq ayting.",
   /* tasks */
   add_task:"Vazifa", task_name:"Vazifa nomi", task_desc:"Batafsil",
   deadline:"Muddat", due_time:"Vaqt", priority:"Muhimlik", project:"Loyiha",
@@ -1362,6 +1380,10 @@ const DICT = {
   account_hint:"Ma'lumotlar, maxfiylik va export",
   profile:"Profil", member:"Foydalanuvchi", photo_hint:"Telegram rasmi ishlatiladi",
   data_privacy:"Ma'lumotlar va maxfiylik",
+  file_ready:"Fayl tayyor — saqlash joyini tanlang",
+  inbox:"Xabarlar", inbox_empty:"Hozircha xabar yo'q. Eslatmalar, hisobotlar va taymerlar shu yerga keladi.",
+  inbox_snoozed:"{n} daqiqadan keyin yana eslataman", inbox_done:"Bajarildi ✓",
+  app_sign_out:"Ilovadan chiqish", app_sign_out_ask:"Bu telefondan chiqasizmi? Ma'lumotlaringiz saqlanadi.",
   export_data:"Ma'lumotlarimni export qilish", export_sent:"Fayl botga yuborildi",
   privacy_info:"Maxfiylik haqida",
   privacy_data:"Maxfiylik va ma'lumotlar", privacy_hint:"Ma'lumotlaringiz sizniki",
@@ -1411,7 +1433,7 @@ const DICT = {
   your_copy:"Nusxasi", what_we_keep:"Nima saqlanadi", irreversible:"Qaytarib bo'lmaydi",
   download_backup:"Zaxira nusxani yuklab olish",
   backup_hint:"JSON fayl — qurilmangizga", backup_saved:"Zaxira nusxa saqlandi",
-  export_hint:"Botga fayl sifatida yuboriladi",
+  export_hint:"Botga fayl sifatida yuboriladi", export_hint_app:"Telefoningizga fayl bo'lib saqlanadi",
   privacy_policy:"Maxfiylik siyosati", policy_hint:"Nima saqlanadi va qayerda",
   sessions:"Kirishlar", sessions_hint:"Hisob qayerdan ochilgan",
   sessions_body:"ErnestOS Telegram hisobingiz orqali ishlaydi — alohida parol yo'q. Seansni yopish uchun Telegram sozlamalaridagi «Qurilmalar» bo'limidan foydalaning.",
@@ -1628,7 +1650,7 @@ const DICT = {
   wake_late_at:"{time} — later than today's target", wake_target:"Target",
   quick_add:"Quick add", quick_ph:"What came to mind?",
   inbox_saved:"Saved — see Tasks",
-  quick_saved:"✓ Task", next_up:"Up next", home_more_tasks:"{n} more", voice_title:"Add by voice", voice_listening:"Speak… Stop when done and I'll analyse it.", voice_stop:"Stop", voice_thinking:"Understanding…", voice_confirm:"Confirm", voice_retry:"Record again", voice_edit:"Edit", voice_answer_ph:"Type your answer…", voice_send:"Send", ve_title:"Title", ve_name:"Name", ve_deadline:"Date", ve_day:"Day", ve_due_time:"Time", ve_remind_at:"Reminder time", ve_priority:"Priority", ve_amount:"Amount", ve_note:"Note", ve_person:"Who", voice_resend:"Send this recording again", voice_done:"✅ Confirmed", voice_failed:"Voice was not sent. Try again.", voice_too_long:"Keep it under 2 minutes.", voice_denied:"No microphone access — send a voice message in the bot.", voice_consent:"Your voice is sent to AI services (ElevenLabs, Groq, Google — USA) to transcribe and understand it. Audio is not stored. Nothing changes until you confirm.", voice_agree:"I agree, start", voice_consent_needed:"Please give consent first.", tab_list:"List", nav_money:"Money", quick_more:"More options (time, reminder, project)", quick_more_habit:"More options (days, reminder, importance)", nav_steps:"Steps", steps_to_next:"{n} steps to «{name}»", steps_max:"Top level — well done!", steps_freeze_short:"Freezes", steps_rank_in:"in {n} days", steps_next:"Next step", steps_all_done:"All of today's steps are done 🎉", steps_more:"Achievements and rank", steps_title:"Steps", steps_motto:"Every good thing you do is a step forward.", steps_freeze:"Days that keep your streak alive", steps_level_n:"Level {n}", steps_total:"Total steps", steps_path:"Your path", steps_today:"Today's steps", steps_go:"Keep going", step_lvl_starter:"Beginner", step_lvl_builder:"Builder", step_lvl_discipline:"Discipline", step_lvl_steady:"Consistency", step_lvl_master:"Self-mastery", step_tasks:"Task", step_habits:"Habit", step_prayer:"Prayer", step_journal:"Summary", step_goal:"Goal", step_started:"started", step_goal_add:"Add a goal", focus_carried_n:"Moved {n} weeks running — split it smaller", focus_moved:"Moved to next week", cnt_finished:"done today", task_word:"Task", habit_word:"Habit", quick_habit_ph:"E.g. Read a book every day", quick_habit_hint:"Repeats every day — name days («Mon, Wed, Fri run») and it is only those. You can change it later.", quick_habit_days_hint:"These days were read from the text. Check them, then save.", quick_habit_saved:"✓ Habit", nav_tracker:"Tracker", nav_profile:"Profile", quick_hint:"E.g. “Report tomorrow at 10” or “Lunch 45 thousand”", quick_voice:"Say it by voice", jai_title:"Fill with AI", jai_hint:"Talk or write about your day freely — the AI sorts it into the 5 questions and fixes mistakes. You check and save.", jai_voice:"Speak", jai_text:"Write", jai_ph:"E.g. closed a deal with a client today, thankful to my mom, failed to plan my time, tomorrow I finish the report…", jai_sort:"Sort into questions", jai_done:"✨ {n} answers filled — check and Save", jai_review:"The AI suggestion is not saved yet. Check it, then accept.", jai_accept:"Accept", jai_reject:"Discard", journal_for_day:"Writing for {d}", jai_nothing:"Nothing matched the questions. Say a bit more.",
+  quick_saved:"✓ Task", next_up:"Up next", home_more_tasks:"{n} more", voice_title:"Add by voice", voice_listening:"Speak… Stop when done and I'll analyse it.", voice_stop:"Stop", voice_thinking:"Understanding…", voice_confirm:"Confirm", voice_retry:"Record again", voice_edit:"Edit", voice_answer_ph:"Type your answer…", voice_send:"Send", ve_title:"Title", ve_name:"Name", ve_deadline:"Date", ve_day:"Day", ve_due_time:"Time", ve_remind_at:"Reminder time", ve_priority:"Priority", ve_amount:"Amount", ve_note:"Note", ve_person:"Who", voice_resend:"Send this recording again", voice_done:"✅ Confirmed", voice_failed:"Voice was not sent. Try again.", voice_too_long:"Keep it under 2 minutes.", voice_denied:"No microphone access — send a voice message in the bot.", voice_denied_app:"No microphone access. Open phone Settings → Apps → ErnestOS and allow the microphone.", voice_consent:"Your voice is sent to AI services (ElevenLabs, Groq, Google — USA) to transcribe and understand it. Audio is not stored. Nothing changes until you confirm.", voice_agree:"I agree, start", voice_consent_needed:"Please give consent first.", tab_list:"List", nav_money:"Money", quick_more:"More options (time, reminder, project)", quick_more_habit:"More options (days, reminder, importance)", nav_steps:"Steps", steps_to_next:"{n} steps to «{name}»", steps_max:"Top level — well done!", steps_freeze_short:"Freezes", steps_rank_in:"in {n} days", steps_next:"Next step", steps_all_done:"All of today's steps are done 🎉", steps_more:"Achievements and rank", steps_title:"Steps", steps_motto:"Every good thing you do is a step forward.", steps_freeze:"Days that keep your streak alive", steps_level_n:"Level {n}", steps_total:"Total steps", steps_path:"Your path", steps_today:"Today's steps", steps_go:"Keep going", step_lvl_starter:"Beginner", step_lvl_builder:"Builder", step_lvl_discipline:"Discipline", step_lvl_steady:"Consistency", step_lvl_master:"Self-mastery", step_tasks:"Task", step_habits:"Habit", step_prayer:"Prayer", step_journal:"Summary", step_goal:"Goal", step_started:"started", step_goal_add:"Add a goal", focus_carried_n:"Moved {n} weeks running — split it smaller", focus_moved:"Moved to next week", cnt_finished:"done today", task_word:"Task", habit_word:"Habit", quick_habit_ph:"E.g. Read a book every day", quick_habit_hint:"Repeats every day — name days («Mon, Wed, Fri run») and it is only those. You can change it later.", quick_habit_days_hint:"These days were read from the text. Check them, then save.", quick_habit_saved:"✓ Habit", nav_tracker:"Tracker", nav_profile:"Profile", quick_hint:"E.g. “Report tomorrow at 10” or “Lunch 45 thousand”", quick_voice:"Say it by voice", jai_title:"Fill with AI", jai_hint:"Talk or write about your day freely — the AI sorts it into the 5 questions and fixes mistakes. You check and save.", jai_voice:"Speak", jai_text:"Write", jai_ph:"E.g. closed a deal with a client today, thankful to my mom, failed to plan my time, tomorrow I finish the report…", jai_sort:"Sort into questions", jai_done:"✨ {n} answers filled — check and Save", jai_review:"The AI suggestion is not saved yet. Check it, then accept.", jai_accept:"Accept", jai_reject:"Discard", journal_for_day:"Writing for {d}", jai_nothing:"Nothing matched the questions. Say a bit more.",
   add_task:"Task", task_name:"Task name", task_desc:"Details",
   deadline:"Date", due_time:"Time", priority:"Priority", project:"Project",
   standalone:"Standalone", high:"High", medium:"Medium", low:"Low",
@@ -1731,6 +1753,10 @@ const DICT = {
   account_hint:"Data, privacy and export",
   profile:"Profile", member:"Member", photo_hint:"Your Telegram photo is used",
   data_privacy:"Data and privacy",
+  file_ready:"File ready — choose where to save it",
+  inbox:"Notifications", inbox_empty:"Nothing yet. Reminders, reports and timers arrive here.",
+  inbox_snoozed:"I'll remind you again in {n} min", inbox_done:"Done ✓",
+  app_sign_out:"Sign out of the app", app_sign_out_ask:"Sign out on this phone? Your data stays.",
   export_data:"Export my data", export_sent:"File sent to the bot chat",
   privacy_info:"About privacy",
   privacy_data:"Privacy & data", privacy_hint:"Your data belongs to you",
@@ -1778,7 +1804,7 @@ const DICT = {
   your_copy:"Your copy", what_we_keep:"What is kept", irreversible:"Cannot be undone",
   download_backup:"Download backup",
   backup_hint:"A JSON file, on your device", backup_saved:"Backup saved",
-  export_hint:"Sent to the bot as a file",
+  export_hint:"Sent to the bot as a file", export_hint_app:"Saved on your phone as a file",
   privacy_policy:"Privacy policy", policy_hint:"What is stored, and where",
   sessions:"Sessions", sessions_hint:"Where this account is open",
   sessions_body:"ErnestOS signs you in through your Telegram account — there is no separate password. To end a session, use Devices in your Telegram settings.",
@@ -1994,7 +2020,7 @@ const DICT = {
   wake_late_at:"{time} — позже сегодняшней цели", wake_target:"Цель",
   quick_add:"Быстро добавить", quick_ph:"Что пришло в голову?",
   inbox_saved:"Сохранено — в Задачах",
-  quick_saved:"✓ Задача", next_up:"Дальше", home_more_tasks:"Ещё {n}", voice_title:"Добавить голосом", voice_listening:"Говорите… Остановите — и я разберу.", voice_stop:"Стоп", voice_thinking:"Разбираю…", voice_confirm:"Подтвердить", voice_retry:"Записать заново", voice_edit:"Изменить", voice_answer_ph:"Напишите ответ…", voice_send:"Отправить", ve_title:"Название", ve_name:"Название", ve_deadline:"Дата", ve_day:"День", ve_due_time:"Время", ve_remind_at:"Время напоминания", ve_priority:"Важность", ve_amount:"Сумма", ve_note:"Заметка", ve_person:"Кто", voice_resend:"Отправить эту запись ещё раз", voice_done:"✅ Подтверждено", voice_failed:"Голос не отправлен. Попробуйте ещё раз.", voice_too_long:"Не длиннее 2 минут.", voice_denied:"Нет доступа к микрофону — отправьте голосовое в боте.", voice_consent:"Голос отправляется AI-сервисам (ElevenLabs, Groq, Google — США) для распознавания. Аудио не хранится. Ничего не меняется без вашего подтверждения.", voice_agree:"Согласен, начать", voice_consent_needed:"Сначала дайте согласие.", tab_list:"Список", nav_money:"Финансы", quick_more:"Подробнее (время, напоминание, проект)", quick_more_habit:"Подробнее (дни, напоминание, важность)", nav_steps:"Шаги", steps_to_next:"До уровня «{name}» ещё {n} шагов", steps_max:"Высший уровень — отлично!", steps_freeze_short:"Заморозки", steps_rank_in:"через {n} дн.", steps_next:"Следующий шаг", steps_all_done:"Все шаги на сегодня сделаны 🎉", steps_more:"Достижения и рейтинг", steps_title:"Шаги", steps_motto:"Каждое доброе дело — шаг вперёд.", steps_freeze:"Дни, которые сохраняют серию", steps_level_n:"{n}-й уровень", steps_total:"Всего шагов", steps_path:"Ваш путь", steps_today:"Шаги сегодня", steps_go:"Продолжить", step_lvl_starter:"Новичок", step_lvl_builder:"Строитель", step_lvl_discipline:"Дисциплина", step_lvl_steady:"Стабильность", step_lvl_master:"Работа над собой", step_tasks:"Задача", step_habits:"Привычка", step_prayer:"Намаз", step_journal:"Итоги", step_goal:"Цель", step_started:"начато", step_goal_add:"Добавить цель", focus_carried_n:"Переносится {n} нед. подряд — разбейте на шаги", focus_moved:"Перенесено на следующую неделю", cnt_finished:"сделано сегодня", task_word:"Задача", habit_word:"Привычка", quick_habit_ph:"Например: Читать книгу каждый день", quick_habit_hint:"Каждый день — или укажите дни («пн, ср, пт бег»). Можно изменить позже.", quick_habit_days_hint:"Эти дни найдены в тексте. Проверьте и сохраните.", quick_habit_saved:"✓ Привычка", nav_tracker:"Трекер", nav_profile:"Профиль", quick_hint:"Например: «Завтра в 10 отчёт» или «Обед 45 тысяч»", quick_voice:"Сказать голосом", jai_title:"Заполнить с AI", jai_hint:"Расскажите о дне голосом или текстом — AI разложит всё по 5 вопросам и исправит ошибки. Вы проверяете и сохраняете.", jai_voice:"Сказать", jai_text:"Написать", jai_ph:"Например: сегодня закрыл сделку с клиентом, благодарен маме, не успел спланировать время, завтра закончу отчёт…", jai_sort:"Разложить по вопросам", jai_done:"✨ Заполнено ответов: {n} — проверьте и Сохраните", jai_review:"Предложение ИИ ещё не сохранено. Проверьте и примите.", jai_accept:"Принять", jai_reject:"Отменить", journal_for_day:"Запись за {d}", jai_nothing:"Ничего не подошло к вопросам. Расскажите подробнее.",
+  quick_saved:"✓ Задача", next_up:"Дальше", home_more_tasks:"Ещё {n}", voice_title:"Добавить голосом", voice_listening:"Говорите… Остановите — и я разберу.", voice_stop:"Стоп", voice_thinking:"Разбираю…", voice_confirm:"Подтвердить", voice_retry:"Записать заново", voice_edit:"Изменить", voice_answer_ph:"Напишите ответ…", voice_send:"Отправить", ve_title:"Название", ve_name:"Название", ve_deadline:"Дата", ve_day:"День", ve_due_time:"Время", ve_remind_at:"Время напоминания", ve_priority:"Важность", ve_amount:"Сумма", ve_note:"Заметка", ve_person:"Кто", voice_resend:"Отправить эту запись ещё раз", voice_done:"✅ Подтверждено", voice_failed:"Голос не отправлен. Попробуйте ещё раз.", voice_too_long:"Не длиннее 2 минут.", voice_denied:"Нет доступа к микрофону — отправьте голосовое в боте.", voice_denied_app:"Нет доступа к микрофону. Настройки телефона → Приложения → ErnestOS → Разрешения → Микрофон.", voice_consent:"Голос отправляется AI-сервисам (ElevenLabs, Groq, Google — США) для распознавания. Аудио не хранится. Ничего не меняется без вашего подтверждения.", voice_agree:"Согласен, начать", voice_consent_needed:"Сначала дайте согласие.", tab_list:"Список", nav_money:"Финансы", quick_more:"Подробнее (время, напоминание, проект)", quick_more_habit:"Подробнее (дни, напоминание, важность)", nav_steps:"Шаги", steps_to_next:"До уровня «{name}» ещё {n} шагов", steps_max:"Высший уровень — отлично!", steps_freeze_short:"Заморозки", steps_rank_in:"через {n} дн.", steps_next:"Следующий шаг", steps_all_done:"Все шаги на сегодня сделаны 🎉", steps_more:"Достижения и рейтинг", steps_title:"Шаги", steps_motto:"Каждое доброе дело — шаг вперёд.", steps_freeze:"Дни, которые сохраняют серию", steps_level_n:"{n}-й уровень", steps_total:"Всего шагов", steps_path:"Ваш путь", steps_today:"Шаги сегодня", steps_go:"Продолжить", step_lvl_starter:"Новичок", step_lvl_builder:"Строитель", step_lvl_discipline:"Дисциплина", step_lvl_steady:"Стабильность", step_lvl_master:"Работа над собой", step_tasks:"Задача", step_habits:"Привычка", step_prayer:"Намаз", step_journal:"Итоги", step_goal:"Цель", step_started:"начато", step_goal_add:"Добавить цель", focus_carried_n:"Переносится {n} нед. подряд — разбейте на шаги", focus_moved:"Перенесено на следующую неделю", cnt_finished:"сделано сегодня", task_word:"Задача", habit_word:"Привычка", quick_habit_ph:"Например: Читать книгу каждый день", quick_habit_hint:"Каждый день — или укажите дни («пн, ср, пт бег»). Можно изменить позже.", quick_habit_days_hint:"Эти дни найдены в тексте. Проверьте и сохраните.", quick_habit_saved:"✓ Привычка", nav_tracker:"Трекер", nav_profile:"Профиль", quick_hint:"Например: «Завтра в 10 отчёт» или «Обед 45 тысяч»", quick_voice:"Сказать голосом", jai_title:"Заполнить с AI", jai_hint:"Расскажите о дне голосом или текстом — AI разложит всё по 5 вопросам и исправит ошибки. Вы проверяете и сохраняете.", jai_voice:"Сказать", jai_text:"Написать", jai_ph:"Например: сегодня закрыл сделку с клиентом, благодарен маме, не успел спланировать время, завтра закончу отчёт…", jai_sort:"Разложить по вопросам", jai_done:"✨ Заполнено ответов: {n} — проверьте и Сохраните", jai_review:"Предложение ИИ ещё не сохранено. Проверьте и примите.", jai_accept:"Принять", jai_reject:"Отменить", journal_for_day:"Запись за {d}", jai_nothing:"Ничего не подошло к вопросам. Расскажите подробнее.",
   add_task:"Задача", task_name:"Название", task_desc:"Подробнее",
   deadline:"Дата", due_time:"Время", priority:"Приоритет", project:"Проект",
   standalone:"Отдельно", high:"Высокий", medium:"Средний", low:"Низкий",
@@ -2097,6 +2123,10 @@ const DICT = {
   account_hint:"Данные, приватность и экспорт",
   profile:"Профиль", member:"Участник", photo_hint:"Используется фото из Telegram",
   data_privacy:"Данные и приватность",
+  file_ready:"Файл готов — выберите, куда сохранить",
+  inbox:"Уведомления", inbox_empty:"Пока пусто. Сюда приходят напоминания, отчёты и таймеры.",
+  inbox_snoozed:"Напомню снова через {n} мин", inbox_done:"Готово ✓",
+  app_sign_out:"Выйти из приложения", app_sign_out_ask:"Выйти на этом телефоне? Данные сохранятся.",
   export_data:"Экспорт моих данных", export_sent:"Файл отправлен в чат бота",
   privacy_info:"О приватности",
   privacy_data:"Приватность и данные", privacy_hint:"Ваши данные принадлежат вам",
@@ -2144,7 +2174,7 @@ const DICT = {
   your_copy:"Ваша копия", what_we_keep:"Что хранится", irreversible:"Необратимо",
   download_backup:"Скачать резервную копию",
   backup_hint:"Файл JSON на ваше устройство", backup_saved:"Копия сохранена",
-  export_hint:"Придёт в бот файлом",
+  export_hint:"Придёт в бот файлом", export_hint_app:"Сохранится на телефоне файлом",
   privacy_policy:"Политика приватности", policy_hint:"Что хранится и где",
   sessions:"Входы", sessions_hint:"Где открыт этот аккаунт",
   sessions_body:"ErnestOS входит через ваш аккаунт Telegram — отдельного пароля нет. Чтобы завершить сеанс, откройте «Устройства» в настройках Telegram.",
@@ -2800,6 +2830,51 @@ function calendarSheet(){
       ${t("close")}</button>`;
 }
 
+/* ---------- phone app inbox ----------
+   Everything the bot sends on its own (reports, reminders, timers, team
+   news) also lands here when the account has the phone app; push brings the
+   phone's attention to it. Buttons are the message's own: snooze, done. */
+function inboxWhen(iso){
+  const d = new Date(iso);
+  if(isNaN(d)) return "";
+  const hm = `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+  const today = new Date();
+  return d.toDateString() === today.toDateString() ? hm
+    : `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")} ${hm}`;
+}
+function inboxSheet(){
+  const box = state.inbox;
+  const items = box?.items || [];
+  const list = !box ? `<div class="hint">…</div>`
+    : !items.length ? `<div class="hint">${t("inbox_empty")}</div>`
+    : items.map(n => `
+      <div class="card tight inbox-item ${n.read ? "" : "unread"}">
+        <div class="row"><b class="grow wrap">${esc(n.title)}</b>
+          <span class="t3 tiny">${esc(inboxWhen(n.created_at))}</span></div>
+        ${n.body ? `<div class="t2 small wrap" style="white-space:pre-line;margin-top:4px">${esc(n.body)}</div>` : ""}
+        ${n.actions?.length ? `<div class="chips" style="margin-top:8px">${n.actions.map(a =>
+          `<div class="chip sm" data-act="inbox-action" data-id="${n.id}" data-cb="${esc(a.cb)}">${esc(a.label)}</div>`
+        ).join("")}</div>` : ""}
+      </div>`).join("");
+  return `<h3>${icon("bell", 18)} ${t("inbox")}</h3>${list}
+    <button class="btn secondary" data-act="close" style="margin-top:var(--s3)">${t("close")}</button>`;
+}
+async function refreshInbox(){
+  if(!IS_APP || !state.me) return;
+  try{
+    const box = await api("/api/app/notifications");
+    /* Redraw only when something changed. Replacing the open list under a
+       finger turns a tap into a press on one node and a release on another,
+       and the tap is lost. */
+    const same = JSON.stringify(box) === JSON.stringify(state.inbox);
+    state.inbox = box;
+    state.inboxUnread = box.unread;
+    if(same) return;
+    if(state.sheetView === "inbox") openSheet(inboxSheet(), "inbox");
+    else if(state.screen === "home") render();
+  }catch(_){ /* the badge waits for the next try */ }
+}
+
 function headBlock(d){
   const initial = (d.name || "E").charAt(0).toUpperCase();
   /* Telegram already knows the user's photo and hands it to the Mini App in
@@ -2810,7 +2885,7 @@ function headBlock(d){
   const avatar = tgPhoto
     ? `<img src="${esc(tgPhoto)}" alt="" />`
     : state.me?.has_photo
-      ? `<img src="/api/avatar?token=${encodeURIComponent(state.me?.avatar_token || "")}" alt="" />`
+      ? `<img src="${API_BASE}/api/avatar?token=${encodeURIComponent(state.me?.avatar_token || "")}" alt="" />`
       : esc(initial);
 
   let h = `
@@ -2821,6 +2896,10 @@ function headBlock(d){
                 aria-label="${t("calendar")} · ${esc(d.date_label)}">
           ${icon("calendar", 15)}<span>${esc(d.date_label)}</span></button>
       </div>
+      ${IS_APP ? `<button class="bellbtn" data-act="inbox-open"
+              aria-label="${t("inbox")}">${icon("bell", 20)}${state.inboxUnread
+                ? `<span class="bell-badge">${state.inboxUnread > 99 ? "99+" : state.inboxUnread}</span>`
+                : ""}</button>` : ""}
       <button class="avatar" data-act="settings"
               aria-label="${t("settings")}">${avatar}
         <span class="avatar-gear" aria-hidden="true">${icon("settings", 11)}</span></button>
@@ -5087,7 +5166,7 @@ SCREENS.money = () => {
   if(m.is_current) h += `<div class="mquick">
       <input id="money-text" placeholder="${t("money_quick_ph")}" maxlength="300"
              enterkeyhint="done" data-search="money-text-save" />
-      ${SpeechRec ? `<button class="mic ${state.listening ? "on" : ""}" data-act="money-voice"
+      ${SpeechRec || moneyVoiceViaAgent() ? `<button class="mic ${state.listening ? "on" : ""}" data-act="money-voice"
           aria-label="${t("money_voice")}">${icon("mic", 20)}</button>` : ""}
     </div>
     <div class="mkind">
@@ -5249,7 +5328,13 @@ function readMoneyForm(){
 }
 
 let recognition = null;
+/* The phone app's WebView, like Telegram's on Android, has no browser speech
+   recognition. There the mic goes to the voice agent, which hears on the
+   server and understands money too ("Tushlik 45 ming"), always with a card
+   to confirm. */
+const moneyVoiceViaAgent = () => (IS_APP || !SpeechRec) && Boolean(state.me?.agent?.available);
 function moneyVoice(){
+  if(moneyVoiceViaAgent()) return A["voice-start"]();
   if(!SpeechRec) return toast(t("money_voice_none"));
   if(state.listening){ try{ recognition?.stop(); }catch(_){} return; }
   recognition = new SpeechRec();
@@ -6756,6 +6841,7 @@ function accountSheet(){
     ${row("privacy-info", "shield", "tone-5", t("privacy_info"))}
     ${row("fresh-start", "repeat", "tone-4", t("fresh_start"))}
     ${row("feedback", "message", "tone-3", t("feedback"))}
+    ${IS_APP ? row("app-sign-out", "user", "tone-2", t("app_sign_out")) : ""}
     <div class="item pressable" style="min-height:48px;margin-top:var(--s2)"
          data-act="delete-account">
       <span style="color:var(--danger)">${icon("trash", 17)}</span>
@@ -7062,7 +7148,7 @@ function privacyDataSheet(){
     </div>
 
     <label>${t("your_copy")}</label>
-    ${row("export", "download", "tone-1", t("export_data"), t("export_hint"))}
+    ${row("export", "download", "tone-1", t("export_data"), t(IS_APP ? "export_hint_app" : "export_hint"))}
     ${row("backup", "shield", "tone-2", t("download_backup"), t("backup_hint"))}
 
     <label>${t("what_we_keep")}</label>
@@ -7682,6 +7768,14 @@ function queueBanner(){
 }
 window.addEventListener("online", () => flushQueue());
 document.addEventListener("visibilitychange", () => { if(!document.hidden && loadQueue().length) flushQueue(); });
+/* Phone app: a push while open refreshes the bell; a tapped one opens the
+   inbox; coming back to the app catches up on what arrived meanwhile. */
+window.addEventListener("ernest:push", () => refreshInbox());
+window.addEventListener("ernest:open-inbox", () => {
+  window.ErnestApp?.takePendingInbox?.();
+  if(state.me) A["inbox-open"]();
+});
+document.addEventListener("visibilitychange", () => { if(!document.hidden) refreshInbox(); });
 
 const A = {
   "tasks-more": moreTasks,
@@ -7735,7 +7829,7 @@ const A = {
     if(!state.me?.agent?.consent) return openSheet(voiceConsentSheet(), "voice");
     if(!voiceSupported()) return A["agent-open"]();
     try{ voice.stream = await navigator.mediaDevices.getUserMedia({audio:true}); }
-    catch(_){ toast(t("voice_denied")); return A["agent-open"](); }
+    catch(_){ toast(t(IS_APP ? "voice_denied_app" : "voice_denied")); return A["agent-open"](); }
     const mime = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4", "audio/webm"]
       .find(m => MediaRecorder.isTypeSupported?.(m)) || "";
     try{ voice.rec = new MediaRecorder(voice.stream, mime ? {mimeType: mime} : undefined); }
@@ -9234,7 +9328,45 @@ const A = {
   "set-privacy": () => { haptic(); openSettings("privacy"); },
   "privacy-info": () => openSheet(privacySheet()),
   sessions: () => openSheet(sessionsSheet()),
+  "inbox-open": async () => {
+    haptic();
+    openSheet(inboxSheet(), "inbox");
+    await refreshInbox();
+    if(state.inboxUnread){
+      try{
+        await api("/api/app/notifications/read", {method:"POST", body:{}});
+        // Mirror the server so the next refresh finds nothing to redraw.
+        state.inbox = {...state.inbox, unread:0,
+                       items: state.inbox.items.map(n => ({...n, read:true}))};
+        state.inboxUnread = 0;
+        render();
+      }catch(_){}
+    }
+  },
+  "inbox-action": async el => {
+    haptic("medium");
+    const cb = el.dataset.cb, parts = cb.split(":");
+    try{
+      const r = await api(`/api/app/notifications/${el.dataset.id}/action`,
+                          {method:"POST", body:{cb}});
+      toast(r.snoozed ? t("inbox_snoozed", {n:r.snoozed}) : t("inbox_done"));
+      notify();
+      await loadScreen(state.screen);
+    }catch(e){
+      if(e.status === 409 && e.detail === "timer_required"){
+        closeSheet();
+        return openTimer(parts[0], parts[2]);   // task | habit | ttask | thabit
+      }
+      handleError(e);
+    }
+  },
+  /* Phone app only (native.js): end this phone's session. Data stays. */
+  "app-sign-out": () => {
+    if(confirm(t("app_sign_out_ask"))) window.ErnestApp?.signOut();
+  },
   export: async () => {
+    // The phone app keeps the file on the phone; Telegram gets it in the chat.
+    if(window.ErnestApp?.saveFile) return A.backup();
     try{ await api("/api/export/send", {method:"POST"});
          toast(t("export_sent")); }
     catch(e){ handleError(e); }
@@ -9245,6 +9377,15 @@ const A = {
      works rather than failing silently — a backup button that does nothing is
      worse than no backup button. */
   backup: async () => {
+    if(window.ErnestApp?.saveFile){
+      try{
+        const data = await api("/api/export");
+        await window.ErnestApp.saveFile(`ernestos-${todayISO()}.json`,
+          JSON.stringify(data, null, 2), "application/json");
+        toast(t("file_ready"));
+      }catch(e){ handleError(e); }
+      return;
+    }
     try{
       const data = await api("/api/export");
       const blob = new Blob([JSON.stringify(data, null, 2)],
@@ -9318,6 +9459,18 @@ const A = {
     // The bot sends the file into the chat: Telegram's browser blocks
     // plain downloads, and putting the credential in a URL would leak it.
     haptic("medium");
+    if(window.ErnestApp?.saveFile){
+      try{
+        const res = await fetch("/api/stats/csv?period=" + state.statsPeriod,
+                                {headers:{"X-Telegram-Init-Data": tg?.initData || ""}});
+        if(!res.ok){ const err = new Error("http_" + res.status); err.status = res.status; throw err; }
+        const name = (res.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1]
+                     || `ernestos-${state.statsPeriod}-${todayISO()}.csv`;
+        await window.ErnestApp.saveFile(name, await res.text(), "text/csv");
+        toast(t("file_ready"));
+      }catch(e){ handleError(e); }
+      return;
+    }
     try{
       await api("/api/stats/export?period=" + state.statsPeriod, {method:"POST"});
       toast(t("report_sent"));
@@ -9769,6 +9922,11 @@ async function boot(){
     setState({me, loading:false, blocked:null, error:null, needsSetup:false});
     // Ticks recorded while offline in an earlier session go out now.
     if(loadQueue().length) flushQueue();
+    if(IS_APP){
+      refreshInbox();
+      // A tapped push opens the inbox, whether it woke the app or not.
+      if(window.ErnestApp?.takePendingInbox?.()) A["inbox-open"]();
+    }
     if(!first) await loadScreen(state.screen);
     if(Object.keys(loadDraft()).length) toast(t("draft_restored"));
   }catch(e){

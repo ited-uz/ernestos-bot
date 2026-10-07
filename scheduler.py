@@ -74,6 +74,8 @@ def close_days() -> None:
         with SessionLocal() as s:
             closed = svc.close_due_days(s)
             dropped = svc.idempotency_cleanup(s)
+            import app_push
+            dropped += app_push.cleanup(s)
     if closed or dropped:
         log.info("day close: %s days closed, %s idempotency keys dropped",
                  closed, dropped)

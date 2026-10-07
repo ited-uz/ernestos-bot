@@ -1,0 +1,111 @@
+name: tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      # Unused imports and undefined names only. Nothing stylistic, so this
+      # gate fails on real mistakes and never on taste.
+      - name: Lint
+        run: python -m pyflakes app.py services.py db.py migrations.py dependencies.py ratelimit.py agent_actions.py agent_core.py agent_provider.py agent_bot.py agent_text.py agent_api.py task_pages.py config.py security.py version.py
+
+      # The suite runs against SQLite: ENVIRONMENT=test keeps it off Telegram
+      # and out of the rate limiter, and tests/test_smoke.py points
+      # DATABASE_URL at a temporary file of its own.
+      - name: Tests
+        run: python -m pytest -q
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Frontend regression checks
+        run: |
+          TZ=Asia/Tashkent node tests/frontend_release.cjs
+          TZ=America/New_York node tests/frontend_release.cjs
+          TZ=Asia/Tashkent node tests/frontend_audit50.cjs
+          TZ=America/New_York node tests/frontend_audit50.cjs
+          node tests/test_agent_ui.cjs
+
+  # Production runs on PostgreSQL: the same suite against a real server, so a
+  # query that only works on SQLite cannot ship. Eight tests that hand-build
+  # legacy schemas in SQLite syntax skip themselves here.
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ernestos_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+      - name: Tests on PostgreSQL
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/ernestos_test
+        run: python -m pytest -q
+
+  # The real Mini App in headless Chromium against a running server: quick
+  # add, ticks, the offline queue, debts, reset, timer, settings, statistics.
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          npm install -g playwright@1.56.1
+          npx -y playwright@1.56.1 install --with-deps chromium
+      - name: Browser checks
+        env:
+          PYTHON: python
+        run: NODE_PATH="$(npm root -g)" scripts/e2e.sh
+      # The phone app's web layer: sign-in code, the Mini App through
+      # native.js, cross-origin calls, session end.
+      - name: Phone app checks
+        env:
+          PYTHON: python
+        run: NODE_PATH="$(npm root -g)" scripts/e2e_app.sh
+      - name: Screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: tests/e2e/out/*.png

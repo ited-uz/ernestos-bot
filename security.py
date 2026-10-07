@@ -33,6 +33,7 @@ from urllib.parse import parse_qsl
 from fastapi import HTTPException
 
 import accounts
+import app_auth
 import config
 import dependencies as deps
 import services as svc
@@ -71,6 +72,16 @@ def verify_init_payload(init_data: str) -> dict:
     """
     if not init_data:
         raise HTTPException(status_code=401, detail="unauthorized")
+    if app_auth.is_app_token(init_data):
+        # The phone app: a session token in place of Telegram's signature.
+        # It carries no profile and no start_param, so it can neither rename
+        # anybody nor claim a referral.
+        with SessionLocal() as s:
+            telegram_id = app_auth.resolve_token(s, init_data)
+        if telegram_id is None:
+            log.info("initData rejected: app session unknown or expired")
+            raise HTTPException(status_code=401, detail="unauthorized")
+        return {"user": {"id": telegram_id}, "via": "app"}
     try:
         parsed = dict(parse_qsl(init_data, keep_blank_values=True))
         received = parsed.pop("hash", "")

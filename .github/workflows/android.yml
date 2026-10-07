@@ -1,0 +1,84 @@
+name: android
+
+# Builds the Android app (mobile/) on every push that touches it, and on
+# demand from the Actions tab ("Run workflow").
+#
+# The app needs the server's address. Set it once as a repository variable:
+#   Settings → Secrets and variables → Actions → Variables → ERNEST_API_URL
+#   (e.g. https://ernestos.up.railway.app), or type it when running by hand.
+# Without it the build still runs, to prove the project compiles, but no APK
+# is published.
+on:
+  push:
+    paths:
+      - "mobile/**"
+      - "webapp/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: "Server address (https://…). Empty = the ERNEST_API_URL variable."
+        required: false
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    env:
+      API_URL: ${{ github.event.inputs.api_url || vars.ERNEST_API_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install
+        working-directory: mobile
+        run: npm ci
+
+      # Push notifications need Firebase's google-services.json. Store it as
+      # the GOOGLE_SERVICES_JSON secret (the file's text, or base64 of it);
+      # without it the app builds with push off and the inbox still works.
+      - name: Firebase config
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            if echo "$GOOGLE_SERVICES_JSON" | head -c1 | grep -q '{'; then
+              printf '%s' "$GOOGLE_SERVICES_JSON" > mobile/android/app/google-services.json
+            else
+              printf '%s' "$GOOGLE_SERVICES_JSON" | base64 -d > mobile/android/app/google-services.json
+            fi
+            echo "Firebase config written: push on."
+          else
+            echo "::notice::GOOGLE_SERVICES_JSON secret not set — APK built without push notifications."
+          fi
+
+      - name: Build the web layer
+        working-directory: mobile
+        run: |
+          if [ -z "$API_URL" ]; then
+            echo "::warning::ERNEST_API_URL is not set — compiling only, no APK will be published."
+            ERNEST_API_URL=https://server.invalid node scripts/build-www.mjs
+          else
+            ERNEST_API_URL="$API_URL" node scripts/build-www.mjs
+          fi
+          npx cap sync android
+
+      - name: Build the APK
+        working-directory: mobile/android
+        run: ./gradlew --no-daemon assembleDebug -PversionCode=${{ github.run_number }} -PversionName=13.1.${{ github.run_number }}
+
+      - name: Publish the APK
+        if: env.API_URL != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ErnestOS-android-${{ github.run_number }}
+          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30

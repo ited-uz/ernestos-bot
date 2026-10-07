@@ -1106,6 +1106,80 @@ class IdempotencyKey(Base):
 
 
 # ---------------------------------------------------------------------------
+# Phone app sign-in — a one-time code from the bot, then a session token
+# ---------------------------------------------------------------------------
+#
+# The Android/iOS app has no Telegram signature. The person asks the bot for a
+# code, types it into the app, and the app gets a long random token that it
+# sends where the Mini App sends initData. Both rows keep only a SHA-256 of
+# the secret, so a copy of the database cannot be used to sign in.
+
+class AppLoginCode(Base):
+    """A short code the bot gave to one Telegram account. Single use."""
+
+    __tablename__ = "app_login_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    code_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class AppSession(Base):
+    """One signed-in phone. Revoked by signing out or deleting the account."""
+
+    __tablename__ = "app_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    #: The Telegram that asked for the code. Served exactly as that Telegram's
+    #: Mini App is, so a Telegram signed in to another account stays there.
+    telegram_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    device: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    last_used_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class AppNotification(Base):
+    """What the bot told an account, kept for the phone app's inbox.
+
+    Written only for accounts with a phone signed in, so a Telegram-only
+    account costs nothing. `actions` is a JSON list of the message's buttons
+    the app can run (snooze, done); the text is plain, tags stripped."""
+
+    __tablename__ = "app_notifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    kind: Mapped[str] = mapped_column(String(24), default="bot")
+    title: Mapped[str] = mapped_column(String(160), default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    actions: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class PushDevice(Base):
+    """A phone's Firebase Cloud Messaging token, tied to the app session that
+    registered it, so signing out stops that phone's notifications."""
+
+    __tablename__ = "push_devices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    session_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    token: Mapped[str] = mapped_column(String(512), unique=True)
+    platform: Mapped[str] = mapped_column(String(16), default="android")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+# ---------------------------------------------------------------------------
 # ErnestOS accounts — a login and a password on top of the Telegram id
 # ---------------------------------------------------------------------------
 #

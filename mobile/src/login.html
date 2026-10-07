@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="color-scheme" content="light dark" />
+<title>ErnestOS</title>
+<script src="config.js"></script>
+<script src="native.js"></script>
+<style>
+:root{
+  --bg:#F3F4F6; --surface:#FFFFFF; --surface-2:#EEF0F3;
+  --text:#15171C; --text-2:#4F5561; --text-3:#666C78;
+  --border:#E2E5EA; --border-2:#CBD0D8;
+  --primary:#2B66D6; --primary-fill:#2B66D6; --on-primary:#FFFFFF;
+  --danger:#D70015; --ok:#248A3D;
+  --shadow:0 1px 2px rgba(20,28,45,.05),0 8px 24px rgba(20,28,45,.06);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#111215; --surface:#1A1C20; --surface-2:#24272C;
+    --text:#F1F2F4; --text-2:#B3B8C1; --text-3:#8E949E;
+    --border:#2A2D33; --border-2:#3A3E46;
+    --primary:#79A6FF; --primary-fill:#3569D6; --on-primary:#FFFFFF;
+    --danger:#FF453A; --ok:#30D158;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.3);
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text)}
+body{font:16px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Noto Sans",Inter,"Helvetica Neue",Arial,sans-serif;
+     padding:calc(env(safe-area-inset-top,0px) + 48px) 16px calc(env(safe-area-inset-bottom,0px) + 24px);
+     display:flex;flex-direction:column;align-items:center}
+main{width:100%;max-width:420px}
+.logo{width:64px;height:64px;border-radius:18px;background:var(--primary-fill);color:var(--on-primary);
+      display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:700;
+      margin:0 auto 20px;box-shadow:var(--shadow)}
+h1{font-size:26px;line-height:1.2;margin:0 0 8px;text-align:center;font-weight:700}
+.lead{color:var(--text-2);text-align:center;margin:0 0 28px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:20px;box-shadow:var(--shadow)}
+.step{display:flex;gap:12px;align-items:flex-start;margin-bottom:16px}
+.num{flex:0 0 28px;height:28px;border-radius:50%;background:var(--surface-2);color:var(--text-2);
+     display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:650}
+.step p{margin:2px 0 0;color:var(--text-2);font-size:15px}
+.step b{color:var(--text)}
+.btn{width:100%;min-height:48px;border:0;border-radius:12px;font:inherit;font-size:16px;font-weight:620;
+     background:var(--primary-fill);color:var(--on-primary);cursor:pointer}
+.btn.secondary{background:var(--surface);color:var(--text);border:1px solid var(--border-2)}
+.btn[disabled]{opacity:.45}
+.btn:active{filter:brightness(.94)}
+input{width:100%;min-height:56px;border:1px solid var(--border-2);border-radius:12px;background:var(--surface);
+      color:var(--text);font:inherit;font-size:24px;font-weight:650;letter-spacing:.18em;text-align:center;
+      text-transform:uppercase;margin:4px 0 12px;outline:0}
+input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 25%,transparent)}
+.msg{min-height:22px;font-size:14px;text-align:center;margin:0 0 12px;color:var(--danger)}
+.hint{color:var(--text-3);font-size:13px;text-align:center;margin:20px 0 0}
+.gap{height:12px}
+</style>
+</head>
+<body>
+<main>
+  <div class="logo">E</div>
+  <h1 id="t-title">ErnestOS</h1>
+  <p class="lead" id="t-lead"></p>
+  <div class="card">
+    <div class="step"><span class="num">1</span><p id="t-step1"></p></div>
+    <button class="btn secondary" id="get-code" type="button"></button>
+    <div class="gap"></div>
+    <div class="step"><span class="num">2</span><p id="t-step2"></p></div>
+    <form id="form" autocomplete="off">
+      <input id="code" inputmode="text" autocapitalize="characters" spellcheck="false"
+             maxlength="9" placeholder="ABCD-2345" aria-label="code" />
+      <p class="msg" id="msg" role="alert"></p>
+      <button class="btn" id="submit" type="submit"></button>
+    </form>
+  </div>
+  <p class="hint" id="t-hint"></p>
+</main>
+<script>
+(function(){
+  var L = {
+    uz:{lead:"Telegram botdagi kod bilan kiring. Ma'lumotlaringiz bot va ilovada bir xil.",
+        step1:"<b>Botdan kod oling.</b> Bot ochiladi va 8 belgili kod yuboradi.",
+        step2:"<b>Kodni shu yerga yozing.</b>",
+        get:"Telegram'da kod olish", submit:"Kirish", wait:"Tekshirilmoqda…",
+        bad:"Kod noto'g'ri yoki eskirgan. Botdan yangisini oling.",
+        many:"Juda ko'p urinish. Birozdan keyin qayta urinib ko'ring.",
+        offline:"Internet yo'q. Ulanishni tekshiring.",
+        short:"Kod 8 ta belgidan iborat.",
+        hint:"Botni topa olmasangiz, Telegram'da botga /app deb yozing."},
+    ru:{lead:"Войдите с кодом из Telegram-бота. Данные в боте и приложении общие.",
+        step1:"<b>Получите код в боте.</b> Бот откроется и пришлёт код из 8 символов.",
+        step2:"<b>Введите код здесь.</b>",
+        get:"Получить код в Telegram", submit:"Войти", wait:"Проверяем…",
+        bad:"Код неверный или устарел. Получите новый в боте.",
+        many:"Слишком много попыток. Попробуйте чуть позже.",
+        offline:"Нет интернета. Проверьте подключение.",
+        short:"Код состоит из 8 символов.",
+        hint:"Если бот не открылся, напишите ему в Telegram /app."},
+    en:{lead:"Sign in with a code from the Telegram bot. Your data is the same in the bot and the app.",
+        step1:"<b>Get a code from the bot.</b> The bot opens and sends an 8-character code.",
+        step2:"<b>Type the code here.</b>",
+        get:"Get a code in Telegram", submit:"Sign in", wait:"Checking…",
+        bad:"The code is wrong or expired. Get a new one from the bot.",
+        many:"Too many tries. Please try again in a few minutes.",
+        offline:"No internet connection.",
+        short:"The code has 8 characters.",
+        hint:"If the bot did not open, send /app to it in Telegram."}
+  };
+  var lang = (navigator.language || "uz").slice(0,2);
+  var T = L[lang] || L.uz;
+  document.documentElement.lang = L[lang] ? lang : "uz";
+  var $ = function(id){ return document.getElementById(id); };
+  $("t-lead").textContent = T.lead;
+  $("t-step1").innerHTML = T.step1;
+  $("t-step2").innerHTML = T.step2;
+  $("get-code").textContent = T.get;
+  $("submit").textContent = T.submit;
+  $("t-hint").textContent = T.hint;
+
+  var bot = "";
+  fetch("/api/app/config").then(function(r){ return r.json(); })
+    .then(function(c){ bot = c.bot_username || ""; }).catch(function(){});
+
+  $("get-code").onclick = function(){
+    var url = bot ? "https://t.me/" + bot + "?start=app" : "https://t.me/";
+    window.ErnestApp.open(url);
+  };
+
+  var input = $("code");
+  input.addEventListener("input", function(){
+    var raw = input.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+    input.value = raw.length > 4 ? raw.slice(0,4) + "-" + raw.slice(4) : raw;
+    $("msg").textContent = "";
+  });
+
+  $("form").addEventListener("submit", function(e){
+    e.preventDefault();
+    var code = input.value.replace(/[^A-Z0-9]/gi, "");
+    if(code.length !== 8){ $("msg").textContent = T.short; return; }
+    var btn = $("submit");
+    btn.disabled = true; btn.textContent = T.wait;
+    var device = ((window.Telegram && Telegram.WebApp.platform) || "app") + " · " +
+                 (navigator.userAgent.match(/\(([^;)]+;[^;)]+)/) || ["", ""])[1].slice(0, 60);
+    fetch("/api/app/login", {method:"POST", headers:{"Content-Type":"application/json"},
+                             body: JSON.stringify({code: code, device: device})})
+      .then(function(r){
+        if(r.ok) return r.json().then(function(b){ window.ErnestApp.signIn(b.token); });
+        $("msg").textContent = r.status === 429 ? T.many : T.bad;
+      })
+      .catch(function(){ $("msg").textContent = T.offline; })
+      .then(function(){ btn.disabled = false; btn.textContent = T.submit; });
+  });
+})();
+</script>
+</body>
+</html>

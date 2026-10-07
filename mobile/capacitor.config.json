@@ -1,0 +1,17 @@
+{
+  "appId": "uz.ernestos.app",
+  "appName": "ErnestOS",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": [
+        "badge",
+        "sound",
+        "alert"
+      ]
+    }
+  }
+}
