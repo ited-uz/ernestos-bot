@@ -3311,6 +3311,32 @@ def delete_money(s: Session, ws: int, entry_id: int) -> dict:
     return out
 
 
+def update_money(s: Session, ws: int, entry_id: int, *, kind: str | None = None,
+                 amount=None, category: str | None = None, note: str | None = None,
+                 day: date | None = None) -> dict:
+    """Correct an entry in place (K21): amount, direction, category, note or
+    day. Deleting and typing it again lost its place and its history."""
+    row = s.get(MoneyEntry, entry_id)
+    if row is None or row.workspace_id != ws:
+        raise NotFound("money")
+    if kind is not None:
+        if kind not in MONEY_KINDS:
+            raise ValueError("bad_kind")
+        row.kind = kind
+    if amount is not None:
+        row.amount = clean_money_amount(amount)
+    if note is not None:
+        row.note = str(note).strip()[:200]
+    if category is not None or kind is not None:
+        wanted = category if category is not None else row.category
+        row.category = wanted if money_category_kind(wanted) == row.kind \
+            else detect_money_category(row.note, row.kind)
+    if day is not None:
+        row.day = day
+    s.commit()
+    return _money_dict(row)
+
+
 def restore_money(s: Session, ws: int, data: dict) -> dict:
     """Undo a delete: the same entry, back on the day it was."""
     return add_money(s, ws, data["kind"], data["amount"], data["category"],
@@ -5038,20 +5064,32 @@ def _export_debts(s: Session, ws: int) -> list[dict]:
     return [_debt_dict(r, None, pays[r.id]) for r in rows]
 
 
+EXPORT_SCHEMA_VERSION = 2
+
+
 def export_workspace(s: Session, ws: int, user: User) -> dict:
     """Everything this workspace contains, as plain JSON-ready data."""
     def habits():
         for h in s.scalars(select(Habit).where(Habit.workspace_id == ws)).all():
-            yield {"name": h.name, "category": h.category,
+            # `id` is what habit_logs, schedule versions, pauses and timers
+            # point at; without it an export could not be put back together.
+            yield {"id": h.id, "name": h.name, "category": h.category,
+                   "system_key": h.system_key or None, "position": h.position,
                    "schedule": clean_schedule(h.schedule),
                    "target_time": h.target_time.strftime("%H:%M") if h.target_time else None,
+                   "remind_at": h.remind_at.strftime("%H:%M") if h.remind_at else None,
                    "timer_minutes": h.timer_minutes,
+                   "target_qty": h.target_qty, "min_qty": h.min_qty, "unit": h.unit,
                    "active_from": h.active_from.isoformat() if h.active_from else None,
                    "paused": h.paused_at is not None,
                    "archived": h.archived_at is not None,
                    "created": h.created_at.isoformat() if h.created_at else None}
 
     return {
+        #: Bumped whenever a section or a field's meaning changes, so a
+        #: reader can tell which shape it holds (K25). 2: stable ids, habit
+        #: amounts, schedule history, pauses and timer sessions.
+        "schema_version": EXPORT_SCHEMA_VERSION,
         "exported_at": datetime.now(user_tz(user)).isoformat(),
         "profile": {
             "member_no": user.member_no,
@@ -5063,23 +5101,47 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
         },
         "habits": list(habits()),
         "habit_logs": [
-            {"habit_id": r.habit_id, "day": r.day.isoformat(), "done": r.done}
+            {"habit_id": r.habit_id, "day": r.day.isoformat(), "done": r.done, "qty": r.qty}
             for r in s.scalars(select(HabitLog)
                                .where(HabitLog.workspace_id == ws)
                                .order_by(HabitLog.day)).all()],
+        "habit_schedules": [
+            {"habit_id": r.item_id, "valid_from": r.valid_from.isoformat(), "schedule": r.schedule}
+            for r in s.scalars(select(HabitScheduleVersion)
+                               .where(HabitScheduleVersion.workspace_id == ws,
+                                      HabitScheduleVersion.kind == "habit")
+                               .order_by(HabitScheduleVersion.item_id,
+                                         HabitScheduleVersion.valid_from)).all()],
+        "habit_pauses": [
+            {"habit_id": r.item_id, "start_day": r.start_day.isoformat(),
+             "end_day": r.end_day.isoformat() if r.end_day else None}
+            for r in s.scalars(select(HabitPauseInterval)
+                               .where(HabitPauseInterval.workspace_id == ws,
+                                      HabitPauseInterval.kind == "habit")
+                               .order_by(HabitPauseInterval.item_id,
+                                         HabitPauseInterval.start_day)).all()],
+        "timers": [
+            {"kind": r.kind, "item_id": r.item_id, "day": r.day.isoformat(), "title": r.title,
+             "planned_sec": r.duration_sec, "worked_sec": r.elapsed_sec, "status": r.status,
+             "manual": bool(r.manual),
+             "started_at": r.started_at.isoformat() if r.started_at else None,
+             "finished_at": r.finished_at.isoformat() if r.finished_at else None}
+            for r in s.scalars(select(TimerRun)
+                               .where(TimerRun.workspace_id == ws)
+                               .order_by(TimerRun.day, TimerRun.id)).all()],
         "prayers": [
             {"day": r.day.isoformat(), "prayer": r.prayer, "status": r.status}
             for r in s.scalars(select(PrayerLog)
                                .where(PrayerLog.workspace_id == ws)
                                .order_by(PrayerLog.day)).all()],
         "projects": [
-            {"name": p.name, "description": p.description, "status": p.status,
+            {"id": p.id, "name": p.name, "description": p.description, "status": p.status,
              "deadline": p.deadline.isoformat() if p.deadline else None,
              "archived": p.archived_at is not None}
             for p in s.scalars(select(Project).where(
                 Project.workspace_id == ws, Project.team_id.is_(None))).all()],
         "tasks": [
-            {"title": t.title, "description": t.description, "status": t.status,
+            {"id": t.id, "title": t.title, "description": t.description, "status": t.status,
              "priority": t.priority, "project_id": t.project_id,
              "deadline": t.deadline.isoformat() if t.deadline else None,
              "due_time": t.due_time.strftime("%H:%M") if t.due_time else None,
@@ -5117,7 +5179,7 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
             for r in s.scalars(select(Birthday)
                                .where(Birthday.workspace_id == ws)).all()],
         "money": [
-            {"day": r.day.isoformat(), "kind": r.kind, "amount": int(r.amount),
+            {"id": r.id, "day": r.day.isoformat(), "kind": r.kind, "amount": int(r.amount),
              "category": r.category, "note": r.note, "source": r.source}
             for r in s.scalars(select(MoneyEntry)
                                .where(MoneyEntry.workspace_id == ws)

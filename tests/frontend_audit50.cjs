@@ -324,5 +324,19 @@ const posts = url => calls.filter(c => c.method === 'POST' && c.url === url);
   assert.ok(sheetHtml.includes('value="Suv ichish"'));
   run('closeSheet()');
 
+  // K21 — tapping an entry edits that entry (PATCH), it does not add another.
+  calls.length = 0;
+  ctx.fetch = async (url, opts={}) => { calls.push({url, method:(opts.method||'GET').toUpperCase(),
+    body: opts.body ? JSON.parse(opts.body) : null}); return new Response('{}', {status:200}); };
+  run(`state.money={entries:[{id:9, kind:'expense', amount:45000, category:'food', note:'Tushlik', day:todayISO()}],
+       category_ids:['food'], kinds:{food:'expense'}, icons:{}}; A["money-edit"]({dataset:{id:'9'}});
+       document.getElementById('money-amount').value='50000'; A["money-save"]();`);
+  await wait(30);
+  const edit = calls.find(c => c.url === '/api/money/9');
+  assert.ok(edit && edit.method === 'PATCH', 'edit goes to PATCH');
+  assert.equal(edit.body.amount, 50000);
+  assert.ok(!calls.some(c => c.url === '/api/money' && c.method === 'POST'), 'no new entry');
+  run('closeSheet(); state.money=null; state.moneyForm=null;');
+
   console.log('Audit-50 frontend checks passed');
 })().catch(e => { console.error(e); process.exitCode = 1; });

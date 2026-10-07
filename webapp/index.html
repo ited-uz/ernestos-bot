@@ -1391,6 +1391,7 @@ const DICT = {
   jconf_title:"Kun xulosasi boshqa joyda o'zgargan", jconf_body:"Shu telefonda yozilgan matn saqlangan matndan farq qiladi. Qaysi biri qolsin? Hech biri o'chirilmagan.", jconf_mine:"Shu telefonda", jconf_theirs:"Saqlangan (bot yoki boshqa qurilma)", jconf_keep_mine:"Menikini", jconf_both:"Ikkalasini", jconf_keep_theirs:"Saqlanganini",
   offline_snapshot:"Internet yo'q — {when} holati ko'rsatilmoqda. Bosib qayta urining.",
   part_failed:"Ekranning bir qismi yuklanmadi — qolgani ishlaydi. Keyinroq yangilang.",
+  money_edit:"Yozuvni tahrirlash",
   draft_restored:"Saqlanmagan matn tiklandi", autosaved:"Saqlanmoqda…",
   mood_q:"Bugun o'zingizni qanday his qildingiz?",
   mood_awful:"Juda yomon", mood_low:"Yomon", mood_ok:"O'rtacha",
@@ -1819,6 +1820,7 @@ const DICT = {
   jconf_title:"The journal changed somewhere else", jconf_body:"The text written on this phone differs from the saved one. Which should stay? Nothing has been deleted.", jconf_mine:"On this phone", jconf_theirs:"Saved (bot or another device)", jconf_keep_mine:"Mine", jconf_both:"Both", jconf_keep_theirs:"Saved one",
   offline_snapshot:"No connection — showing what loaded at {when}. Tap to retry.",
   part_failed:"Part of this screen did not load — the rest works. Refresh later.",
+  money_edit:"Edit entry",
   draft_restored:"Unsaved text restored", autosaved:"Saving…",
   mood_q:"How did you feel today?",
   mood_awful:"Awful", mood_low:"Low", mood_ok:"Okay",
@@ -2241,6 +2243,7 @@ const DICT = {
   jconf_title:"Дневник изменён в другом месте", jconf_body:"Текст на этом телефоне отличается от сохранённого. Какой оставить? Ничего не удалено.", jconf_mine:"На этом телефоне", jconf_theirs:"Сохранённый (бот или другое устройство)", jconf_keep_mine:"Мой", jconf_both:"Оба", jconf_keep_theirs:"Сохранённый",
   offline_snapshot:"Нет связи — показано состояние на {when}. Нажмите, чтобы повторить.",
   part_failed:"Часть экрана не загрузилась — остальное работает. Обновите позже.",
+  money_edit:"Изменить запись",
   draft_restored:"Несохранённый текст восстановлен", autosaved:"Сохраняем…",
   mood_q:"Как вы себя чувствовали сегодня?",
   mood_awful:"Очень плохо", mood_low:"Плохо", mood_ok:"Нормально",
@@ -5519,7 +5522,8 @@ function moneyRow(e, icons){
   const label = e.note || t("mcat_" + e.category);
   return `<div class="item mrow">
       <span class="itile" style="font-size:17px">${icons[e.category] || "•"}</span>
-      <div class="grow"><div class="ellipsis">${esc(label)}</div>
+      <div class="grow pressable" data-act="money-edit" data-id="${e.id}" role="button" tabindex="0"
+           aria-label="${t("edit")}"><div class="ellipsis">${esc(label)}</div>
         <div class="meta">${t("mcat_" + e.category)} · <span class="num">${isoToLabel(e.day)}</span>
           ${e.source === "voice" ? icon("mic", 12) : ""}</div></div>
       <div class="amount ${income ? "pos" : "neg"}">${income ? "+" : "−"}${moneyNum(e.amount)}</div>
@@ -5693,7 +5697,7 @@ function moneySheet(){
   const f = state.moneyForm || (state.moneyForm = {kind:"expense", category:"food"});
   const m = state.money || {};
   const ids = (m.category_ids || []).filter(id => (m.kinds || {})[id] === f.kind);
-  return `<h3>${icon("wallet", 18)} ${t(f.review ? "money_review" : "money_add")}</h3>
+  return `<h3>${icon("wallet", 18)} ${t(f.id ? "money_edit" : f.review ? "money_review" : "money_add")}</h3>
     ${f.review ? `<div class="hint">${t("money_review_hint")}</div>` : ""}
     <div class="seg" role="tablist" style="margin:var(--s2) 0">
       ${[["expense", t("money_expense")], ["income", t("money_income")]].map(([k, label]) =>
@@ -5711,6 +5715,8 @@ function moneySheet(){
     <label>${t("money_note")} <span class="t3">(${t("optional")})</span></label>
     <input id="money-note" maxlength="200" value="${esc(f.note || "")}"
            placeholder="${t("money_note_ph")}" />
+    ${f.id ? `<label>${t("ve_day")}</label>
+      ${dateField("money-day", f.day || todayISO(), [new Date(todayISO()).getFullYear() - 5, new Date(todayISO()).getFullYear()])}` : ""}
     <button class="btn" data-act="money-save" style="margin-top:16px">${t("save")}</button>
     <button class="btn secondary" data-act="close" style="margin-top:8px">${t("cancel")}</button>`;
 }
@@ -5720,6 +5726,9 @@ function readMoneyForm(){
   const g = id => document.getElementById(id);
   if(g("money-amount")) f.amount = g("money-amount").value;
   if(g("money-note")) f.note = g("money-note").value;
+  if(g("money-day")) f.day = g("money-day").value;
+  // A day after today is refused by the server; it is caught here first.
+  if(f.day && f.day > todayISO()) f.day = todayISO();
   return f;
 }
 
@@ -8850,9 +8859,23 @@ const A = {
     const f = readMoneyForm();
     const amount = Math.round(Number(f.amount));
     if(!amount || amount <= 0) return toast(t("money_no_amount"));
+    if(f.id){
+      const body = {kind: f.kind, amount, category: f.category, note: (f.note || "").trim(),
+                    day: f.day || null};
+      return save(() => api(`/api/money/${f.id}`, {method:"PATCH", body}), "money", false, t("saved"));
+    }
     const body = {kind: f.kind, amount, category: f.category, note: (f.note || "").trim(), source:f.source || "manual"};
     save(() => api("/api/money", {method:"POST", body}), "money", false,
          t("money_saved_toast"), {body});
+  },
+  /* Tap an entry to correct it — amount, direction, category, note, day —
+     instead of deleting and typing it again (K21). */
+  "money-edit": el => {
+    const e = (state.money?.entries || []).find(x => String(x.id) === String(el.dataset.id));
+    if(!e) return;
+    haptic();
+    state.moneyForm = {id:e.id, kind:e.kind, amount:e.amount, category:e.category, note:e.note, day:e.day};
+    openSheet(moneySheet());
   },
   "money-text-save": el => moneyText(trimmed("money-text"), "manual", el?.dataset?.kind),
   "money-voice": () => moneyVoice(),

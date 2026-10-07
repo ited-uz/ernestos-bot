@@ -10232,6 +10232,30 @@ def api_money_text(body: MoneyTextIn,
                              source=body.source, tz=svc.user_tz(user))
 
 
+class MoneyPatchIn(BaseModel):
+    kind: str | None = Field(default=None, pattern="^(expense|income)$")
+    amount: int | None = Field(default=None, gt=0, le=svc.MONEY_MAX_AMOUNT)
+    category: str | None = Field(default=None, max_length=24)
+    note: str | None = Field(default=None, max_length=200)
+    day: str | None = Field(default=None, max_length=10)
+
+
+@app.patch("/api/money/{entry_id}")
+def api_money_edit(entry_id: int, body: MoneyPatchIn,
+                   init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Correct an entry in place (K21). A future day is refused, as on add."""
+    user, ws = auth(init)
+    day = _date(body.day)
+    if day is not None and day > svc.today_local(svc.user_tz(user)):
+        raise HTTPException(status_code=422, detail="future_day")
+    with SessionLocal() as s:
+        try:
+            return svc.update_money(s, ws, entry_id, kind=body.kind, amount=body.amount,
+                                    category=body.category, note=body.note, day=day)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
+
 @app.delete("/api/money/{entry_id}")
 def api_money_delete(entry_id: int,
                      init=Header(default=None, alias="X-Telegram-Init-Data")):

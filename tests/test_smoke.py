@@ -12149,3 +12149,47 @@ def test_a_journal_save_never_overwrites_text_saved_elsewhere(fresh):
     # A field nobody else touched is never a conflict.
     fresh = fresh.post("/api/journal", {"answers": {"lesson": "new"}, "base": seen})
     assert fresh.status_code == 200
+
+
+def test_a_money_entry_is_corrected_in_place(fresh):
+    """K21: amount, direction, category, note and day, on the same entry."""
+    from datetime import timedelta
+    made = fresh.post("/api/money", {"kind": "expense", "amount": 45000,
+                                     "category": "food", "note": "Tushlik"}).json()
+    yesterday = (date.fromisoformat(made["day"]) - timedelta(days=1)).isoformat()
+    r = fresh.patch(f"/api/money/{made['id']}", {"amount": 50000, "note": "Kechki ovqat",
+                                                 "day": yesterday})
+    assert r.status_code == 200, r.text
+    got = r.json()
+    assert (got["id"], got["amount"], got["note"], got["day"], got["category"]) == \
+        (made["id"], 50000, "Kechki ovqat", yesterday, "food")
+    # Turning it into income moves it to an income category.
+    flipped = fresh.patch(f"/api/money/{made['id']}", {"kind": "income"}).json()
+    assert flipped["kind"] == "income" and flipped["category"] != "food"
+    tomorrow = (date.fromisoformat(made["day"]) + timedelta(days=1)).isoformat()
+    assert fresh.patch(f"/api/money/{made['id']}", {"day": tomorrow}).status_code == 422
+    assert fresh.patch("/api/money/999999", {"amount": 1}).status_code == 404
+
+
+def test_the_export_can_be_put_back_together(fresh):
+    """K25: every reference in the export points at something in it, and the
+    parts that were missing — amounts, schedule history, pauses, timers — are
+    there, under a schema version."""
+    made = fresh.post("/api/habits", {"name": "Suv", "category": "target"}).json()
+    hid = made["id"]
+    fresh.patch(f"/api/habits/{hid}", {"target_qty": 8, "unit": "stakan"})
+    fresh.post(f"/api/habits/{hid}/toggle")
+    data = fresh.get("/api/export").json()
+    assert data["schema_version"] == svc.EXPORT_SCHEMA_VERSION >= 2
+    ids = {h["id"] for h in data["habits"]}
+    assert hid in ids
+    assert all(log["habit_id"] in ids for log in data["habit_logs"])
+    assert all("qty" in log for log in data["habit_logs"])
+    for key in ("habit_schedules", "habit_pauses", "timers"):
+        assert isinstance(data[key], list), key
+    habit = next(h for h in data["habits"] if h["id"] == hid)
+    for key in ("target_qty", "min_qty", "unit", "remind_at"):
+        assert key in habit, key
+    task_ids = {t["id"] for t in data["tasks"]}
+    project_ids = {p["id"] for p in data["projects"]}
+    assert all(t["project_id"] in project_ids for t in data["tasks"] if t["project_id"]) or not task_ids
