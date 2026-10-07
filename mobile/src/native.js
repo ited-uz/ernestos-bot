@@ -46,6 +46,8 @@
       location.replace("login.html");
     },
     open: function (url) { openExternal(url); },
+    pushStatus: function () { return pushStatus(); },
+    requestPush: function () { return requestPush(); },
     /* A tapped push asked for the inbox; the Mini App takes the request once. */
     takePendingInbox: function () {
       var wanted = pendingInbox;
@@ -233,12 +235,28 @@
       pendingInbox = true;
       window.dispatchEvent(new Event("ernest:open-inbox"));
     });
+    /* Asked for only when the person turns notifications on in Settings
+       (K10/K11), never on every launch. Already allowed: register quietly. */
     push.checkPermissions().then(function (p) {
-      if (p.receive === "granted") return p;
-      return push.requestPermissions();
-    }).then(function (p) {
       if (p.receive === "granted") return push.register();
     }).catch(noop);
+  }
+  /* What Settings shows: is this build able to push at all, and what has
+     the phone allowed. Nothing here claims a message was delivered. */
+  function pushStatus() {
+    var push = plugin("PushNotifications");
+    if (!push || !CFG.push) return Promise.resolve("no_build");
+    return push.checkPermissions().then(function (p) {
+      return p.receive === "granted" ? "on" : p.receive === "denied" ? "denied" : "ask";
+    }).catch(function () { return "no_build"; });
+  }
+  function requestPush() {
+    var push = plugin("PushNotifications");
+    if (!push || !CFG.push) return Promise.resolve("no_build");
+    return push.requestPermissions().then(function (p) {
+      if (p.receive === "granted") { push.register(); return "on"; }
+      return p.receive === "denied" ? "denied" : "ask";
+    }).catch(function () { return "denied"; });
   }
   if (!onLoginPage) document.addEventListener("DOMContentLoaded", setUpPush);
 
