@@ -4694,7 +4694,10 @@ def test_the_floating_add_never_covers_the_page():
     html = (ROOT / "webapp" / "index.html").read_text()
     assert 'id="fab"' in html and "#fab:empty{display:none}" in html
     render = html[html.index('document.getElementById("fab").innerHTML'):]
-    assert render.split("\n")[0].strip().endswith('chromeOff ? "" : `'), "fab drawn while loading"
+    first = render.split("\n")[0].strip()
+    assert "chromeOff" in first and first.endswith('? "" : `'), "fab drawn while loading"
+    # Not over prayer or the journal, which are filled in place.
+    assert 'state.tab === "prayer" || state.tab === "journal"' in html
     assert '"quick-add"' in render[:700] and 'data-act="voice-start"' in render[:700]
     assert '"money-add"' in render[:700], "on Money the + adds money"
     assert "fab && fab.innerHTML.trim() ? 84 : 0" in html, "page not padded for the fab"
@@ -10086,7 +10089,10 @@ def test_every_action_name_is_defined_once():
     dupes = sorted({k for k in keys if keys.count(k) > 1})
     assert not dupes, f"action names defined twice: {dupes}"
     row = html[html.index("function taskRow("):html.index("function projectsTab(")]
-    assert 'data-act="task-reschedule"' in row and 'data-act="task-move"' not in row
+    # One "Move" chip on a late task opens today / tomorrow / no date.
+    assert 'data-act="task-move-menu"' in row and 'data-act="task-move"' not in row
+    menu = html[html.index('"task-move-menu": el =>'):html.index('"task-reschedule": el =>')]
+    assert 'data-act="task-reschedule"' in menu
 
 
 def test_an_overdue_task_moves_to_today_from_the_chip(fresh):
@@ -10453,7 +10459,9 @@ def test_v10_design_fixes_hold():
     main = html[html.index("function mainTab("):html.index("function searchBox(")]
     assert main.index('t("overdue")') < main.index("return h + taskPageFooter() + weekFocusBlock();")
     head = html[html.index("function headBlock("):html.index("function nowBlock(")]
-    assert "quote_add" not in head and "avatar-gear" in head
+    # The avatar itself is the way into Settings; the gear on it was noise.
+    assert "quote_add" not in head and "avatar-gear" not in head
+    assert '<button class="avatar" data-act="settings"' in head
     assert 't("team_waiting_on")' in html
 
 
