@@ -62,7 +62,7 @@ Serverda `APP_ORIGINS` sozlanmasa, standart qiymat ishlaydi
 
     cd mobile && npm install
     ERNEST_API_URL=https://… npm run sync     # www/ ni yig'ib, android/ ga ko'chiradi
-    python mobile/scripts/make-icons.py        # ikonka va splash (Pillow kerak)
+    bash mobile/scripts/make-brand.sh          # logo: ikonka, splash, kirish sahifasi (ImageMagick kerak)
     scripts/e2e_app.sh                         # brauzerda ilova qatlami sinovi
 
 ## Sinov sahifasi (telefonsiz)

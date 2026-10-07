@@ -32,9 +32,8 @@ body{font:16px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Rob
      padding:calc(env(safe-area-inset-top,0px) + 48px) 16px calc(env(safe-area-inset-bottom,0px) + 24px);
      display:flex;flex-direction:column;align-items:center}
 main{width:100%;max-width:420px}
-.logo{width:64px;height:64px;border-radius:18px;background:var(--primary-fill);color:var(--on-primary);
-      display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:700;
-      margin:0 auto 20px;box-shadow:var(--shadow)}
+.logo{width:72px;height:72px;border-radius:18px;display:block;margin:0 auto 20px;
+      box-shadow:0 10px 30px -10px rgba(1,223,122,.45), var(--shadow)}
 h1{font-size:26px;line-height:1.2;margin:0 0 8px;text-align:center;font-weight:700}
 .lead{color:var(--text-2);text-align:center;margin:0 0 28px}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:20px;box-shadow:var(--shadow)}
@@ -67,7 +66,7 @@ input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,v
 </head>
 <body>
 <main>
-  <div class="logo">E</div>
+  <img class="logo" src="logo.png" alt="ErnestOS" width="72" height="72" />
   <h1 id="t-title">ErnestOS</h1>
   <p class="lead" id="t-lead"></p>
   <div class="langs" role="group" aria-label="Language">
