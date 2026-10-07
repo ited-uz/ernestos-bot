@@ -16,7 +16,9 @@
    ================================================================== */
 (function(){
   "use strict";
-  const Q = new URLSearchParams(location.search);
+  const Q = new URLSearchParams(window.ERNEST_PREVIEW_QS || location.search);
+  /* ?app=1: the phone app (native.js) — bell inbox, sign-out, exports on the phone. */
+  const APP = Q.get("app") === "1";
   const LANG = Q.get("lang") || "en";
   const SCEN = Q.get("scenario") || "normal";
   const EMPTY = SCEN === "empty";
@@ -114,6 +116,33 @@
       {id:7, name:s.h7, cat:"bonus", due:false, schedule:"custom", days:[0,2,4], done:false},
     ],
     prayers:EMPTY ? {} : {bomdod:"jamaat", peshin:"on_time", asr:"qaza", shom:null, xufton:null},
+    money:EMPTY ? [] : [
+      {id:1, kind:"expense", amount:1200000, category:"business", note:"Reklama", source:"manual", day:TODAY},
+      {id:2, kind:"income", amount:5000000, category:"salary", note:"", source:"voice", day:TODAY},
+      {id:3, kind:"expense", amount:120000, category:"health", note:"Dorixona", source:"manual", day:day(-1)},
+      {id:4, kind:"expense", amount:45000, category:"food", note:"Tushlik", source:"manual", day:day(-2)}],
+    inbox:EMPTY || !APP ? [] : [
+      {id:3, kind:"reminder", title:"🔔 Odat vaqti", body:s.h4,
+       actions:[{label:"15 daqiqa", cb:"snz:h:4:15"}, {label:"✅ Bajarildi", cb:"habit:toggle:4"}],
+       read:false, created_at:new Date(Date.now() - 6e5).toISOString()},
+      {id:2, kind:"reminder", title:"⏰ Vazifa vaqti keldi", body:s.t2,
+       actions:[{label:"15 daqiqa", cb:"snz:t:102:15"}, {label:"1 soat", cb:"snz:t:102:60"},
+                {label:"✅ Bajarildi", cb:"task:done:102"}],
+       read:false, created_at:new Date(Date.now() - 36e5).toISOString()},
+      {id:1, kind:"report", title:"☀️ Ertalabki hisobot", body:s.now,
+       actions:[], read:false, created_at:new Date(Date.now() - 108e5).toISOString()}],
+  };
+  let nextId = 1000;
+  /* Quick add's reading of a line, enough for the preview: a day word and a clock time. */
+  const parseLine = text => {
+    let title = String(text || "").trim(), deadline = null, due_time = null;
+    const words = [[/\b(bugun|today|сегодня)\b/i, 0], [/\b(ertaga|tomorrow|завтра)\b/i, 1],
+                   [/\b(indinga|послезавтра)\b/i, 2]];
+    for(const [re, off] of words) if(re.test(title)){ deadline = day(off); title = title.replace(re, ""); }
+    const clock = title.match(/\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/);
+    if(clock){ due_time = `${pad(clock[1])}:${clock[2]}`; title = title.replace(clock[0], "");
+               deadline = deadline || TODAY; }
+    return {title: title.replace(/\s+/g, " ").trim() || String(text).trim(), deadline, due_time};
   };
   DB.habits.forEach(h => Object.assign(h, {due:h.due !== false, source:"personal",
     schedule:h.schedule || "daily", paused:false, protected:!!h.protected, scored:h.system_key !== "prayer"}));
@@ -228,19 +257,16 @@
     ["journal","non_negotiable",s.h6,true], ["plan","target","Plan",false],
     ["deep","target",s.h4,false], ["sport","target",s.h7,false], ["read","target",s.h3,false],
     ["water","bonus","2 L",false], ["language","bonus",s.lang,false], ["sleep","bonus","23:00",false]];
+  const sumKind = k => DB.money.filter(e => e.kind === k).reduce((n, e) => n + e.amount, 0);
   const money = () => ({month:TODAY.slice(0, 7), year:now.getFullYear(), month_no:now.getMonth() + 1,
-    is_current:true, income:EMPTY ? 0 : 5000000, expense:EMPTY ? 0 : 1395000,
-    balance:EMPTY ? 0 : 3605000, count:EMPTY ? 0 : 4,
+    is_current:true, income:sumKind("income"), expense:sumKind("expense"),
+    balance:sumKind("income") - sumKind("expense"), count:DB.money.length,
     categories:[["food","🍔",2000000,45000],["transport","🚕",800000,30000],
       ["home","🏠",1500000,0],["health","💊",500000,120000],["fun","🎮",1000000,0],
       ["business","💼",0,1200000],["other","📦",500000,0]].map(([id, icon, limit, spent]) =>
       ({id, icon, limit, spent:EMPTY ? 0 : spent, percent:limit ? Math.round(spent / limit * 100) : null,
         over:false})),
-    entries:EMPTY ? [] : [
-      {id:1, kind:"expense", amount:1200000, category:"business", note:"Reklama", source:"manual", day:TODAY},
-      {id:2, kind:"income", amount:5000000, category:"salary", note:"", source:"voice", day:TODAY},
-      {id:3, kind:"expense", amount:120000, category:"health", note:"Dorixona", source:"manual", day:day(-1)},
-      {id:4, kind:"expense", amount:45000, category:"food", note:"Tushlik", source:"manual", day:day(-2)}],
+    entries:DB.money.slice().sort((a, b) => b.id - a.id),
     category_ids:["food","transport","home","health","fun","business","other","salary","sales","other_in"],
     kinds:{food:"expense", transport:"expense", home:"expense", health:"expense", fun:"expense",
            business:"expense", other:"expense", salary:"income", sales:"income", other_in:"income"},
@@ -350,11 +376,69 @@
       timer_minutes:120, timer_mode:"set", parsed_minutes:120, presets:[15,25,45,60,90,120],
       run:null, done:false, protected:false})],
     [/^\/api\/subscription$/, () => ({subscribed:true})],
+    [/^\/api\/app\/notifications$/, () => ({items:DB.inbox,
+      unread:DB.inbox.filter(n => !n.read).length})],
+    [/^\/api\/fresh-start$/, () => {
+      const late = DB.tasks.filter(x => x.status !== "done" && x.deadline && x.deadline < TODAY);
+      return {mode:"focus", today:late.slice(0, 3).map(x => ({id:x.id, title:x.title, to:TODAY})),
+              later:late.slice(3).map((x, i) => ({id:x.id, title:x.title, to:day(i + 1)})),
+              dropped:[], total:late.length};
+    }],
+    [/^\/api\/export$/, () => ({version:"13", tasks:DB.tasks, habits:DB.habits, money:DB.money})],
+    [/^\/api\/stats\/csv$/, () => "sana,vazifa,odat\n" + TODAY + ",3/5,4/6\n"],
   ];
 
   function mutate(method, path, body){
     let m;
-    if(path === "/api/money/preview") return {kind:body.kind || "expense", amount:45000, category:"food", note:body.text};
+    if(path === "/api/money/preview"){
+      const amount = Number((String(body?.text || "").match(/\d[\d\s]*/) || ["45000"])[0].replace(/\s/g, "")) || 45000;
+      const big = /ming|тыс|k\b/i.test(body?.text || "") ? 1000 : 1;
+      return {kind:body.kind || "expense", amount:amount < 1000 ? amount * big : amount,
+              category:body.kind === "income" ? "sales" : "food", note:body.text};
+    }
+    if(path === "/api/quick/parse") return {ok:true, ...parseLine(body?.title)};
+    if(path === "/api/habits/parse") return {name:String(body?.text || "").trim(), schedule:"daily", days:[]};
+    if(path === "/api/quick" || (path === "/api/tasks" && method === "POST")){
+      const p = path === "/api/quick" ? parseLine(body?.title) : {title:body?.title, deadline:body?.deadline || null,
+                                                                   due_time:body?.due_time || null};
+      if(body?.deadline) p.deadline = body.deadline;
+      const row = task(++nextId, p.title, {deadline:p.deadline || TODAY, due_time:p.due_time,
+                                           priority:body?.priority || "medium"});
+      DB.tasks.push(row);
+      return {ok:true, ...row};
+    }
+    if(path === "/api/habits" && method === "POST"){
+      const h = {id:++nextId, name:body?.name || "Odat", cat:body?.category || "target", done:false,
+                 due:true, source:"personal", scored:true, schedule:"daily", paused:false, protected:false};
+      DB.habits.push(h);
+      return {ok:true, ...h};
+    }
+    if(path === "/api/money" && method === "POST" && body?.amount){
+      DB.money.push({id:++nextId, kind:body.kind || "expense", amount:Number(body.amount),
+                     category:body.category || "other", note:body.note || "", source:"manual", day:TODAY});
+      return {ok:true};
+    }
+    if((m = path.match(/^\/api\/money\/(\d+)$/)) && method === "DELETE"){
+      DB.money = DB.money.filter(e => e.id !== Number(m[1]));
+      return {ok:true};
+    }
+    if((m = path.match(/^\/api\/tasks\/(\d+)$/)) && method === "DELETE"){
+      DB.tasks = DB.tasks.filter(x => x.id !== Number(m[1]));
+      return {ok:true};
+    }
+    if(path === "/api/app/notifications/read"){
+      DB.inbox.forEach(n => { if(!body?.ids || body.ids.includes(n.id)) n.read = true; });
+      return {ok:true};
+    }
+    if((m = path.match(/^\/api\/app\/notifications\/(\d+)\/action$/))){
+      const n = DB.inbox.find(x => x.id === Number(m[1]));
+      if(n) n.read = true;
+      const [kind, , id, minutes] = String(body?.cb || "").split(":");
+      if(kind === "snz") return {ok:true, snoozed:Number(minutes)};
+      if(kind === "habit"){ const h = DB.habits.find(x => x.id === Number(id)); if(h) h.done = true; }
+      if(kind === "task"){ const t = DB.tasks.find(x => x.id === Number(id)); if(t) t.status = "done"; }
+      return {ok:true, done:true};
+    }
     if((m = path.match(/^\/api\/tasks\/(\d+)$/)) && method === "PATCH"){
       const t = DB.tasks.find(x => x.id === Number(m[1]));
       if(t && body?.status) t.status = body.status === "done" ? "done" : "open";
@@ -392,7 +476,12 @@
     await wait(180);
     for(const [re, fn] of ROUTES){
       const m = url.pathname.match(re);
-      if(m) return reply(fn(url.searchParams, m));
+      if(m){
+        const data = fn(url.searchParams, m);
+        if(typeof data === "string") return new Response(data, {status:200, headers:{"Content-Type":"text/csv",
+          "Content-Disposition":`attachment; filename="ernestos-${url.searchParams.get("period") || "month"}-${TODAY}.csv"`}});
+        return reply(data);
+      }
     }
     return reply({});
   };
@@ -402,7 +491,9 @@
   const mark = () => {
     const el = document.createElement("div");
     el.setAttribute("role", "note");
-    el.textContent = "Preview · sample data · not connected to an account";
+    el.textContent = {uz:"Sinov nusxasi · namuna ma'lumotlar · hech narsa saqlanmaydi",
+                      ru:"Тестовая версия · пример данных · ничего не сохраняется"}[LANG]
+                     || "Preview · sample data · not connected to an account";
     el.style.cssText = "font:600 12px/1.2 -apple-system,system-ui,sans-serif;" +
       "text-align:center;padding:6px 12px;background:var(--surface-2);" +
       "color:var(--text-2);border-bottom:1px solid var(--border);letter-spacing:.2px";

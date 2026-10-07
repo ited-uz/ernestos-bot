@@ -65,6 +65,14 @@ Serverda `APP_ORIGINS` sozlanmasa, standart qiymat ishlaydi
     python mobile/scripts/make-icons.py        # ikonka va splash (Pillow kerak)
     scripts/e2e_app.sh                         # brauzerda ilova qatlami sinovi
 
+## Sinov sahifasi (telefonsiz)
+
+    node mobile/scripts/build-demo.mjs ernestos-ilova.html uz
+
+Bitta HTML fayl: ilovaning o'zi (`webapp/index.html`), ilova rejimida, namuna
+ma'lumotlar bilan (`webapp/preview.js`). Serverga ulanmaydi, hech narsa
+saqlanmaydi — dizayn va oqimni ko'rib chiqish uchun.
+
 ## iOS
 
 Xuddi shu `mobile/` loyihasi: `npx cap add ios` (macOS + Xcode kerak).
