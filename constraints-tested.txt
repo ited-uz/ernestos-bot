@@ -24,7 +24,7 @@ pydantic_core==2.46.5
 python-dotenv==1.2.3
 python-telegram-bot==21.11.1
 PyYAML==6.0.3
-SQLAlchemy==2.0.54
+SQLAlchemy==2.1.3
 starlette==1.7.0
 typing-inspection==0.4.4
 typing_extensions==4.16.0
