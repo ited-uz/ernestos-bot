@@ -325,8 +325,18 @@
     return {year:y, month:m + 1, first_weekday:first, days_in_month:dim, today:TODAY, events:ev};
   };
 
+  /* Coins: a balance that a purchase really lowers, so the shop can be tried. */
+  const COIN_ITEMS = [{key:"pro_3", coins:150, kind:"plan", tier:"pro", days:3},
+                      {key:"pro_7", coins:300, kind:"plan", tier:"pro", days:7},
+                      {key:"max_3", coins:400, kind:"plan", tier:"max", days:3},
+                      {key:"freeze_1", coins:80, kind:"freeze", tier:null, days:0}];
+  const coinBank = {balance:340, spent:0, history:[]};
+  const coinState = () => ({balance:coinBank.balance, earned:coinBank.balance + coinBank.spent, spent:coinBank.spent,
+    today:7, daily_cap:12, xp_per_coin:10, history:coinBank.history.slice(0, 10),
+    items:COIN_ITEMS.map(i => ({...i, blocked:null, short:Math.max(i.coins - coinBank.balance, 0)}))});
   const ROUTES = [
     [/^\/api\/me$/, () => DB.me],
+    [/^\/api\/coins$/, () => coinState()],
     [/^\/api\/referrals\/me$/, () => {
       const q = 3, steps = [[5, "pro", 30], [10, "pro", 60], [20, "max", 30]];
       return {configured:true, code:"demo", link:"https://t.me/ernestos_bot?start=ref_demo",
@@ -438,6 +448,16 @@
                                            priority:body?.priority || "medium"});
       DB.tasks.push(row);
       return {ok:true, ...row};
+    }
+    if(path === "/api/coins/buy"){
+      const item = COIN_ITEMS.find(i => i.key === body?.item);
+      if(!item) return {__status:422, detail:"unknown_item"};
+      if(coinBank.balance < item.coins) return {__status:409, detail:"not_enough_coins", short:item.coins - coinBank.balance};
+      coinBank.balance -= item.coins; coinBank.spent += item.coins;
+      coinBank.history.unshift({item:item.key, coins:item.coins, at:new Date().toISOString()});
+      if(item.kind === "plan") Object.assign(DB.me.plan, {tier:item.tier, days_left:item.days,
+        until:new Date(Date.now() + item.days * 864e5).toISOString()});
+      return {ok:true, item:item.key, repeat:false, coins:coinState(), plan:DB.me.plan};
     }
     if(path === "/api/avatar" && method === "POST"){
       DB.me.avatar_custom = new Date().toISOString(); DB.me.has_photo = true;

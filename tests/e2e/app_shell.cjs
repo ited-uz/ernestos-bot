@@ -205,6 +205,29 @@ const step = async (name, fn) => {
     await page.waitForFunction(() => !document.getElementById('sheet').classList.contains('show'));
   });
 
+  await step('Profile: rating and coins; a streak freeze is bought with two taps', async () => {
+    // 1 000 XP is 100 coins: enough for a freeze (80).
+    py('import db, services as svc\nwith db.SessionLocal() as s:\n'
+       + ' svc.award_xp(s, 777001, "achievement:777001:e2e-coins", "achievement", 1000, svc.today_local()); s.commit()');
+    await page.evaluate(() => closeSheet());
+    await page.evaluate(() => goto('steps'));
+    await page.waitForSelector('.coin-card', { timeout: 8000 });
+    assert.ok(await page.locator('.rank-card').count(), 'the rating block is on Profile');
+    await page.click('.coin-card');
+    await page.waitForSelector('#sheet-body .coin-item');
+    const before = await page.evaluate(() => state.coins.balance);
+    assert.ok(before >= 100, 'coins come from XP');
+    await page.click('#sheet-body [data-act="coins-buy"][data-value="freeze_1"]');
+    await page.waitForSelector('#sheet-body [data-act="coins-buy"][data-value="freeze_1"]:has-text("Tasdiqlash")');
+    await page.click('#sheet-body [data-act="coins-buy"][data-value="freeze_1"]');
+    await page.waitForFunction(b => state.coins.balance === b - 80, before, { timeout: 8000 });
+    const spends = py('import db\nfrom sqlalchemy import select, func\nwith db.SessionLocal() as s:\n'
+       + ' print(s.scalar(select(func.count(db.CoinSpend.id)).where(db.CoinSpend.account_id == 777001)))').trim();
+    assert.equal(spends, '1');
+    await shot('08-coins');
+    await page.evaluate(() => closeSheet());
+  });
+
   await step('An ended session goes back to sign-in', async () => {
     revokeAll();
     await page.evaluate(() => api('/api/me').catch(() => null));

@@ -1000,6 +1000,16 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
 .rank-facts b{display:block;font-size:16px}
 .rank-facts span{font-size:11.5px;color:var(--text-3)}
 .rank-up{color:var(--ok)} .rank-down{color:var(--danger)}
+.coin-card{cursor:pointer}
+.coin-big{display:inline-flex;align-items:center;gap:6px;font-size:26px;font-weight:800;letter-spacing:-.5px}
+.coin-big.lg{font-size:40px}
+.coin-ic{color:var(--warn);display:inline-flex}
+.coin-ic.sm{margin:0 2px 0 4px}
+.coin-hero{text-align:center;padding:6px 0 2px}
+.coin-item{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:var(--border-w) solid var(--border)}
+.coin-item:last-child{border-bottom:0}
+.coin-item.off b{color:var(--text-2)}
+.coin-buy{white-space:nowrap;min-width:84px;font-variant-numeric:tabular-nums}
 .sr-only{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 /* A sheet's own close: a cross in the corner, so the bottom of the sheet is
    free for what the sheet is for. */
@@ -1634,6 +1644,7 @@ const DICT = {
   avatar_heic:"Bu rasm HEIC formatida — telefon uni o'qiy olmadi. Kamerada JPG ni tanlang yoki boshqa rasm yuboring.", avatar_too_big:"Rasm juda katta. Boshqasini tanlang.", avatar_server_old:"Server hali yangilanmagan — rasm yuklash keyinroq ishlaydi.", avatar_offline:"Internet yo'q — rasm saqlanmadi.",
   pt_habits:"Odatlar", pt_active_tasks:"Faol vazifalar", pt_recurring_tasks:"Takrorlanuvchi vazifalar", pt_projects:"Loyihalar", pt_open_debts:"Ochiq qarzlar", pt_teams_owned:"Jamoa yaratish", pt_team_members:"Jamoa a'zolari", pt_voice:"Ovozli buyruq", pt_journal_ai:"AI kun xulosasi", pt_timer_rhythm:"Ish/tanaffus ritmi", pt_stats_history:"Oylik va yillik statistika", pt_stats_csv:"Statistika fayli", pt_week:"hafta", pt_day:"kun", plan_save_year:"Yillik to'lovda tejaysiz — {list}", plan_free_has:"Free'da — {list}",
   rank_title:"Reyting", rank_among:"{n} kishi orasida", rank_top:"Siz eng faol {n}% ichidasiz", rank_top_short:"TOP {n}%", rank_week:"Haftalik", rank_best:"Eng yaxshi", rank_move:"O'zgarish", rank_private:"Faqat o'rningiz ko'rinadi — boshqalarning ismi va natijasi hech kimga ko'rsatilmaydi.", rank_soon:"Reytingga {n} kundan keyin kirasiz", rank_soon_hint:"7 kunlik faollikdan keyin o'rningiz hisoblanadi.", steps_unavailable:"Qadam ma'lumoti hali kelmadi. Server yangilangach ko'rinadi.",
+  coins_title:"Coinlar", coins_shop:"Coin do'koni", coins_today:"Bugun +{n} / {cap} coin", coins_hint:"Vazifa, odat, namoz va xulosa coin beradi", coins_how:"Har {n} ball = 1 coin. Vazifa, odat, namoz, xulosa va hafta maqsadi ball beradi — kuniga {cap} coingacha, yutuqlar alohida. Bir narsa ikki marta hisoblanmaydi.", coins_item_plan:"{plan} — {n} kun", coins_item_freeze:"Seriyani muzlatish +1", coins_plan_hint:"Tarifingizga qo'shiladi, hozirgisidan keyin", coins_freeze_hint:"Shu oy bir zaif kun seriyani uzmaydi", coins_need:"Yana {n} coin kerak", coins_confirm:"Tasdiqlash ", coins_bought:"Sotib olindi ✓", coins_plans_off:"Tariflar hozir o'chiq", coins_freeze_limit:"Bu oy 2 ta muzlatish olingan", coins_history:"Xaridlar", coins_or:"Yoki coin bilan oling",
   draft_restored:"Saqlanmagan matn tiklandi", autosaved:"Saqlanmoqda…",
   mood_q:"Bugun o'zingizni qanday his qildingiz?",
   mood_awful:"Juda yomon", mood_low:"Yomon", mood_ok:"O'rtacha",
@@ -2068,6 +2079,7 @@ const DICT = {
   avatar_heic:"This photo is HEIC and the phone could not read it. Pick a JPG or another photo.", avatar_too_big:"This picture is too large. Pick another.", avatar_server_old:"The server is not updated yet — photo upload will work after it is.", avatar_offline:"No connection — the photo was not saved.",
   pt_habits:"Habits", pt_active_tasks:"Open tasks", pt_recurring_tasks:"Repeating tasks", pt_projects:"Projects", pt_open_debts:"Open debts", pt_teams_owned:"Create teams", pt_team_members:"Team members", pt_voice:"Voice commands", pt_journal_ai:"AI day summary", pt_timer_rhythm:"Work/break rhythm", pt_stats_history:"Month and year statistics", pt_stats_csv:"Statistics file", pt_week:"week", pt_day:"day", plan_save_year:"Paying yearly you save — {list}", plan_free_has:"On Free — {list}",
   rank_title:"Rating", rank_among:"among {n} people", rank_top:"You are in the most active {n}%", rank_top_short:"TOP {n}%", rank_week:"This week", rank_best:"Best", rank_move:"Change", rank_private:"Only your position is shown — nobody else's name or result is shown to anyone.", rank_soon:"You join the rating in {n} days", rank_soon_hint:"Your position is counted after 7 days of activity.", steps_unavailable:"Steps have not arrived yet. They show once the server is updated.",
+  coins_title:"Coins", coins_shop:"Coin shop", coins_today:"Today +{n} / {cap} coins", coins_hint:"Tasks, habits, prayer and the journal earn coins", coins_how:"Every {n} points = 1 coin. Tasks, habits, prayer, the journal and the week goal earn points — up to {cap} coins a day, achievements on top. Nothing counts twice.", coins_item_plan:"{plan} — {n} days", coins_item_freeze:"Streak freeze +1", coins_plan_hint:"Added to your plan, after the current one", coins_freeze_hint:"One weak day this month will not break the streak", coins_need:"{n} more coins needed", coins_confirm:"Confirm ", coins_bought:"Bought ✓", coins_plans_off:"Plans are off right now", coins_freeze_limit:"Two freezes already bought this month", coins_history:"Purchases", coins_or:"Or get it with coins",
   draft_restored:"Unsaved text restored", autosaved:"Saving…",
   mood_q:"How did you feel today?",
   mood_awful:"Awful", mood_low:"Low", mood_ok:"Okay",
@@ -2496,6 +2508,7 @@ const DICT = {
   avatar_heic:"Это фото в HEIC, телефон не смог его прочитать. Выберите JPG или другое фото.", avatar_too_big:"Картинка слишком большая. Выберите другую.", avatar_server_old:"Сервер ещё не обновлён — загрузка фото заработает после обновления.", avatar_offline:"Нет связи — фото не сохранено.",
   pt_habits:"Привычки", pt_active_tasks:"Открытые задачи", pt_recurring_tasks:"Повторяющиеся задачи", pt_projects:"Проекты", pt_open_debts:"Открытые долги", pt_teams_owned:"Создание команд", pt_team_members:"Участники команды", pt_voice:"Голосовые команды", pt_journal_ai:"AI-итоги дня", pt_timer_rhythm:"Ритм работа/перерыв", pt_stats_history:"Статистика за месяц и год", pt_stats_csv:"Файл статистики", pt_week:"нед", pt_day:"день", plan_save_year:"При оплате за год экономия — {list}", plan_free_has:"На Free — {list}",
   rank_title:"Рейтинг", rank_among:"среди {n} человек", rank_top:"Вы в числе {n}% самых активных", rank_top_short:"ТОП {n}%", rank_week:"За неделю", rank_best:"Лучшее", rank_move:"Изменение", rank_private:"Видно только ваше место — имена и результаты других никому не показываются.", rank_soon:"Вы попадёте в рейтинг через {n} дн.", rank_soon_hint:"Место считается после 7 дней активности.", steps_unavailable:"Шаги ещё не пришли. Появятся после обновления сервера.",
+  coins_title:"Монеты", coins_shop:"Магазин монет", coins_today:"Сегодня +{n} / {cap} монет", coins_hint:"Задачи, привычки, намаз и итоги дня дают монеты", coins_how:"Каждые {n} баллов = 1 монета. Задачи, привычки, намаз, итоги дня и цель недели дают баллы — до {cap} монет в день, достижения сверху. Ничего не считается дважды.", coins_item_plan:"{plan} — {n} дн.", coins_item_freeze:"Заморозка серии +1", coins_plan_hint:"Добавится к тарифу, после текущего", coins_freeze_hint:"Один слабый день в этом месяце не прервёт серию", coins_need:"Нужно ещё {n} монет", coins_confirm:"Подтвердить ", coins_bought:"Куплено ✓", coins_plans_off:"Тарифы сейчас выключены", coins_freeze_limit:"В этом месяце уже 2 заморозки", coins_history:"Покупки", coins_or:"Или за монеты",
   draft_restored:"Несохранённый текст восстановлен", autosaved:"Сохраняем…",
   mood_q:"Как вы себя чувствовали сегодня?",
   mood_awful:"Очень плохо", mood_low:"Плохо", mood_ok:"Нормально",
@@ -2833,6 +2846,7 @@ const ICONS = {
   folder:'<path d="M3.5 7.4a2 2 0 0 1 2-2h3.3l2 2.5h7.7a2 2 0 0 1 2 2v8.1a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z"/>',
   inbox:'<path d="M6.3 5.5h11.4l2.8 7.4v3.6a2 2 0 0 1-2 2H5.5a2 2 0 0 1-2-2v-3.6Z"/><path d="M3.5 12.9h4.2l1.4 2.4h5.8l1.4-2.4h4.2"/>',
   plus:'<path d="M12 5v14M5 12h14"/>',
+  coin:'<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="5.2"/><path d="M12 9.6v4.8"/>',
   /* A wrapped box: lid, body, and the ribbon running down the middle. Drawn
      with the same 24-box and stroke weight as its neighbours so it does not
      read as heavier than the icons beside it in the settings list. */
@@ -3424,6 +3438,7 @@ function plansSheet(limit){
     ${planTable(p, period, price)}
     <div class="plan-buy">${buy("pro")}${buy("max")}</div>
     <div class="t3" style="margin-top:10px;font-size:11.5px;line-height:1.4">${t("plan_pay_how")}</div>
+    <button class="btn text" data-act="coins-open" style="margin:8px auto 0;display:flex">${icon("coin", 16)} ${t("coins_or")}</button>
     ${p.channel && !p.channel_bonus_used ? `<button class="btn secondary" data-act="sub-join"
         data-url="${esc(p.channel)}" style="margin-top:var(--s3)">
         🎁 ${t("plan_channel", {n:p.channel_bonus_days})}</button>` : ""}`;
@@ -7781,6 +7796,7 @@ SCREENS.steps = () => {
       : `<div class="hint" style="text-align:center;margin-top:12px">${t("steps_all_done")}</div>`}
 
     ${rankBlock(rank)}
+    ${coinCard()}
 
     <div class="steps-sub">${t("steps_path")}</div>
     <div class="card"><div class="steps-path">${path}</div></div>
@@ -7788,6 +7804,54 @@ SCREENS.steps = () => {
       <span style="font-size:18px">🏅</span><div class="grow">${t("steps_more")}</div>${icon("chevron", 15)}</div>
     <div class="t3 tiny" style="text-align:center;margin-top:12px">${t("steps_motto")}</div>`;
 };
+
+/* Coins: earned by doing (read off the XP the day already pays), spent in a
+   small shop on Pro/Max days or a streak freeze. */
+const COIN_ITEM_ICON = {plan:"star", freeze:"repeat"};
+function coinCard(){
+  const c = state.coins;
+  return `<div class="steps-sub">${icon("coin", 15)} ${t("coins_title")}</div>
+    <div class="card coin-card pressable" data-act="coins-open" role="button" tabindex="0">
+      <div class="row" style="gap:14px;align-items:center">
+        <div class="coin-big"><span class="coin-ic">${icon("coin", 22)}</span>
+          <span class="num">${c ? c.balance : "…"}</span></div>
+        <div class="grow"><b>${t("coins_shop")}</b>
+          <div class="t3 tiny" style="margin-top:2px">${c ? t("coins_today", {n:c.today, cap:c.daily_cap}) : t("coins_hint")}</div></div>
+        ${icon("chevron", 16)}</div>
+    </div>`;
+}
+function coinItemTitle(i){
+  if(i.kind === "freeze") return t("coins_item_freeze");
+  return t("coins_item_plan", {plan:PLAN_NAME[i.tier] || "Pro", n:i.days});
+}
+function coinsSheet(){
+  const c = state.coins;
+  if(!c) return `${sheetHead(`${icon("coin", 18)} ${t("coins_title")}`)}<div class="spin"></div>`;
+  const why = {plans_off:t("coins_plans_off"), freeze_limit:t("coins_freeze_limit")};
+  const item = i => {
+    const can = !i.blocked && !i.short;
+    const confirm = state.coinConfirm === i.key;
+    return `<div class="coin-item ${can ? "" : "off"}">
+      <span class="itile tone-2">${icon(COIN_ITEM_ICON[i.kind] || "star", 17)}</span>
+      <div class="grow"><b>${coinItemTitle(i)}</b>
+        <div class="t3 tiny">${i.blocked ? why[i.blocked] || "" : i.short ? t("coins_need", {n:i.short})
+          : i.kind === "freeze" ? t("coins_freeze_hint") : t("coins_plan_hint")}</div></div>
+      <button class="btn sm ${confirm ? "" : "secondary"} coin-buy" data-act="coins-buy" data-value="${i.key}"
+        ${can ? "" : "disabled"}>${confirm ? t("coins_confirm") : ""}<span class="coin-ic sm">${icon("coin", 14)}</span>${i.coins}</button>
+    </div>`;
+  };
+  return `${sheetHead(`${icon("coin", 18)} ${t("coins_title")}`)}
+    <div class="coin-hero">
+      <div class="coin-big lg"><span class="coin-ic">${icon("coin", 30)}</span><span class="num">${c.balance}</span></div>
+      <div class="t2 small">${t("coins_today", {n:c.today, cap:c.daily_cap})}</div>
+    </div>
+    <div class="t3 tiny" style="margin:10px 0 4px">${t("coins_how", {n:c.xp_per_coin, cap:c.daily_cap})}</div>
+    <div class="card" style="padding:4px 12px">${c.items.map(item).join("")}</div>
+    ${c.history.length ? `<label>${t("coins_history")}</label>
+      <div class="t2 small">${c.history.map(h => `<div class="row" style="padding:4px 0">
+        <span class="grow">${coinItemTitle(c.items.find(i => i.key === h.item) || {kind:"plan", tier:"pro", days:0})}</span>
+        <span class="num">−${h.coins}</span></div>`).join("")}</div>` : ""}`;
+}
 
 /* Rating: where the person stands among everyone with a week of history.
    A position and a share, never anybody else's name or score. */
@@ -8456,7 +8520,9 @@ async function loadScreen(screen){
         try{ state.team = await api("/api/teams"); }catch(_){}
       }
     } else if(screen === "steps"){
-      setState({progress: await api("/api/progress/me")});
+      const [progress, coins] = await Promise.all([api("/api/progress/me"),
+        api("/api/coins").catch(() => null)]);
+      setState({progress, coins: coins || state.coins});
     } else if(screen === "stats"){
       await loadStats(state.statsPeriod);
     } else if(screen === "project"){
@@ -10529,6 +10595,35 @@ const A = {
   "set-privacy": () => { haptic(); openSettings("privacy"); },
   "privacy-info": () => openSheet(privacySheet()),
   sessions: () => openSheet(sessionsSheet()),
+  "coins-open": () => {
+    haptic();
+    state.coinConfirm = null;
+    openSheet(coinsSheet(), "coins");
+    api("/api/coins").then(c => { state.coins = c;
+      if(state.sheetView === "coins") openSheet(coinsSheet(), "coins"); }).catch(handleError);
+  },
+  /* Two taps: the first turns the price into "Confirm", the second buys. */
+  "coins-buy": async el => {
+    const key = el.dataset.value;
+    if(state.coinConfirm !== key){
+      haptic(); state.coinConfirm = key; openSheet(coinsSheet(), "coins"); return;
+    }
+    haptic("medium");
+    state.coinConfirm = null;
+    try{
+      const r = await api("/api/coins/buy", {method:"POST", body:{item:key, key:"c-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)}});
+      state.coins = r.coins;
+      if(r.plan && state.me) state.me.plan = r.plan;
+      notify("success"); toast(t("coins_bought"));
+    }catch(e){
+      if(e?.detail === "not_enough_coins") toast(t("coins_need", {n:e.body?.short ?? ""}));
+      else if(e?.detail === "freeze_limit") toast(t("coins_freeze_limit"));
+      else if(e?.status === 404 || e?.status === 405) toast(t("avatar_server_old"));
+      else handleError(e);
+    }
+    if(state.sheetView === "coins") openSheet(coinsSheet(), "coins");
+    render();
+  },
   "set-plan": () => {
     haptic();
     openSheet(plansSheet(), "plans");

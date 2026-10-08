@@ -12220,3 +12220,84 @@ def test_the_profile_picture_is_not_rate_limited_like_an_export():
     assert "avatarUrlCache" in html and "240000" in html
     # The picker is tapped directly, not reached through a hidden input.
     assert 'data-act="avatar-pick" hidden' not in html
+
+
+# --------------------------------------------------------------------------
+# Coins
+# --------------------------------------------------------------------------
+
+def _give_xp(uid: int, xp: int) -> None:
+    """XP the way milestones pay it (outside the daily cap)."""
+    with SessionLocal() as s:
+        svc.award_xp(s, uid, f"achievement:{uid}:test{xp}:{next(_next_id)}", "achievement",
+                     xp, svc.today_local())
+        s.commit()
+
+
+def test_coins_are_read_off_the_xp_ledger_and_spent_once(client, plans_on):
+    import coins
+    uid = next(_next_id)
+    _fresh_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "C"})
+    assert caller.get("/api/coins").json()["balance"] == 0
+    _give_xp(uid, 3005)                       # 300 coins (10 XP each, rounded down)
+    info = caller.get("/api/coins").json()
+    assert info["balance"] == 300 and info["xp_per_coin"] == coins.XP_PER_COIN
+    # Today's line counts ordinary activity against the cap, not milestones.
+    assert info["today"] == 0 and info["daily_cap"] == 12
+    assert {i["key"] for i in info["items"]} == set(coins.ITEMS)
+
+    r = caller.post("/api/coins/buy", {"item": "pro_7", "key": "k-1"})
+    assert r.status_code == 200, r.text
+    assert r.json()["coins"]["spent"] == 300
+    # The same key again (a retry) buys nothing more. (The balance itself may
+    # move: opening screens can unlock an achievement, which pays XP.)
+    again = caller.post("/api/coins/buy", {"item": "pro_7", "key": "k-1"}).json()
+    assert again["repeat"] is True and again["coins"]["spent"] == 300
+    # Not enough left: refused, with how many are missing.
+    left = again["coins"]["balance"]
+    short = caller.post("/api/coins/buy", {"item": "pro_3", "key": "k-2"})
+    assert short.status_code == 409 and short.json()["detail"] == "not_enough_coins"
+    assert short.json()["short"] == 150 - left
+    assert caller.post("/api/coins/buy", {"item": "gold", "key": "k-3"}).status_code == 422
+    with SessionLocal() as s:
+        grants = s.scalars(select(db.PlanGrant).where(db.PlanGrant.account_id == uid,
+                                                      db.PlanGrant.source == "coins")).all()
+        assert [(g.tier, (g.ends_at - g.starts_at).days) for g in grants] == [("pro", 7)]
+
+
+def test_a_streak_freeze_is_bought_at_most_twice_a_month(client):
+    import coins
+    uid = next(_next_id)
+    _fresh_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "F"})
+    _give_xp(uid, 5000)
+    for i in range(coins.FREEZE_PER_MONTH):
+        assert caller.post("/api/coins/buy", {"item": "freeze_1", "key": f"f{i}"}).status_code == 200
+    third = caller.post("/api/coins/buy", {"item": "freeze_1", "key": "f9"})
+    assert third.status_code == 409 and third.json()["detail"] == "freeze_limit"
+    with SessionLocal() as s:
+        row = svc._progress_row(s, uid)
+        assert svc.RECOVERY_DAYS_PER_MONTH - row.recovery_used == svc.RECOVERY_DAYS_PER_MONTH + 2
+
+
+def test_plan_items_are_not_sold_while_plans_are_off(client):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "O"})
+    _give_xp(uid, 5000)
+    pro = next(i for i in caller.get("/api/coins").json()["items"] if i["key"] == "pro_3")
+    assert pro["blocked"] == "plans_off"
+    assert caller.post("/api/coins/buy", {"item": "pro_3"}).json()["detail"] == "plans_off"
+
+
+def test_coin_purchases_leave_with_the_account_and_are_in_the_export(client):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "E"})
+    _give_xp(uid, 2000)
+    caller.post("/api/coins/buy", {"item": "freeze_1", "key": "e1"})
+    assert caller.get("/api/export").json()["coin_spends"][0]["item"] == "freeze_1"
+    with SessionLocal() as s:
+        svc.delete_account(s, uid)
+        assert not s.scalars(select(db.CoinSpend).where(db.CoinSpend.account_id == uid)).all()

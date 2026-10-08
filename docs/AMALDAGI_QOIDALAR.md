@@ -167,3 +167,17 @@ navbatga tushadi va ulanganda bir marta yuboriladi.
   saqlashdan oldin ko‘rsatiladi.
 - Setup bitta odat bilan boshlanadi, ko‘pi bilan **3** ta tanlanadi; turish
   vaqti so‘raladi va ertalabki hisobot shunga moslanadi.
+
+## Coinlar
+
+- Coin ball (XP) asosida hisoblanadi: har **10** ball = **1** coin.
+- Oddiy faollik kuniga ko'pi bilan **120** ball, ya'ni **12** coin beradi. Yutuq va seriya ballari bu chegaradan tashqari.
+- Har bir harakat bir marta hisoblanadi. Belgini qo'yib-olib coin "ishlab" bo'lmaydi.
+- **Do'kon:**
+  - Pro 3 kun — **150** coin;
+  - Pro 7 kun — **300** coin;
+  - Max 3 kun — **400** coin;
+  - seriyani muzlatish +1 — **80** coin, oyiga ko'pi bilan **2** ta.
+- Sotib olingan kunlar tarifga hozirgisidan keyin qo'shiladi.
+- Tariflar o'chiq bo'lsa (`PLANS_ENABLED=0`), Pro/Max mahsulotlari sotilmaydi.
+- Xarid ikki bosish bilan tasdiqlanadi. Bir so'rov ikki marta kelsa, bir marta sotib olinadi.

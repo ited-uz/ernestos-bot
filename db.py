@@ -1192,6 +1192,24 @@ class AppNotification(Base):
     read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class CoinSpend(Base):
+    """One purchase in the coin shop. Coins themselves are read off the XP
+    ledger (`coins.py`); only spending is stored. `ref` is the client's
+    idempotency key, so a purchase sent twice is bought once."""
+
+    __tablename__ = "coin_spends"
+    __table_args__ = (UniqueConstraint("account_id", "ref", name="uq_coin_spend_ref"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    item: Mapped[str] = mapped_column(String(24))
+    coins: Mapped[int] = mapped_column(Integer)
+    ref: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: "YYYY-MM" of the purchase, for per-month limits.
+    month: Mapped[str] = mapped_column(String(7), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class UserAvatar(Base):
     """A profile picture the person chose in the app.
 

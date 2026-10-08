@@ -44,6 +44,7 @@ from telegram.ext import (
 import accounts
 import app_auth
 import app_push
+import coins
 import plans
 import agent_api
 import agent_core
@@ -10602,6 +10603,38 @@ def api_wake_time(body: WakeTimeIn, init=Header(default=None, alias="X-Telegram-
 
 
 # --- Plans ---
+
+# --- Coins ---
+
+@app.get("/api/coins")
+def api_coins(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """The coin balance (read off the XP ledger), today's coins and the shop."""
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        return coins.summary(s, user.telegram_id, svc.today_local(svc.user_tz(user)))
+
+
+class CoinBuyIn(BaseModel):
+    item: str = Field(max_length=24)
+    #: The client's idempotency key: a purchase sent twice is bought once.
+    key: str | None = Field(default=None, max_length=64)
+
+
+@app.post("/api/coins/buy")
+def api_coins_buy(body: CoinBuyIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Spend coins on Pro/Max days or a streak freeze."""
+    user, _ = auth(init)
+    today = svc.today_local(svc.user_tz(user))
+    with SessionLocal() as s:
+        try:
+            got = coins.buy(s, user.telegram_id, body.item, ref=body.key, today=today)
+        except coins.CoinError as e:
+            s.rollback()
+            return JSONResponse(status_code=e.status, content={"detail": e.code, **e.extra})
+        s.commit()
+        return {"ok": True, **got, "coins": coins.summary(s, user.telegram_id, today),
+                "plan": _plan_of(user.telegram_id)}
+
 
 @app.get("/api/plans")
 def api_plans(init=Header(default=None, alias="X-Telegram-Init-Data")):
