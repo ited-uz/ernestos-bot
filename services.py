@@ -3716,6 +3716,21 @@ def _next_due(day: date, period: str) -> date:
     return date(year, month, min(day.day, last))
 
 
+def _prev_due(day: date, period: str) -> date:
+    """One period before `day` — the start of the period it closes."""
+    if period == "weekly":
+        return day - timedelta(days=7)
+    if period == "yearly":
+        try:
+            return day.replace(year=day.year - 1)
+        except ValueError:                      # 29 February
+            return day.replace(year=day.year - 1, day=28)
+    month = (day.month - 2) % 12 + 1
+    year = day.year - (day.month == 1)
+    last = _month_bounds(date(year, month, 1))[1].day
+    return date(year, month, min(day.day, last))
+
+
 def money_access(s: Session, ws: int) -> dict:
     """What this workspace's plan opens in Money, for the screen to draw
     locks rather than discover them by being refused."""
@@ -3769,14 +3784,40 @@ def wallet_overview(s: Session, ws: int, *, today: date | None = None,
         .order_by(MoneySubscription.next_due, MoneySubscription.id)).all()
     transfers = s.scalars(select(MoneyTransfer).where(MoneyTransfer.workspace_id == ws)
                           .order_by(MoneyTransfer.day.desc(), MoneyTransfer.id.desc()).limit(10)).all()
+    # What each repeating payment last paid, and how much of this month's
+    # plan is already paid (audit F04, F17) — read off the entries it made.
+    last_paid: dict[int, date] = {}
+    paid_month = 0
+    sub_ids = [x.id for x in subs]
+    if sub_ids:
+        first, last = _month_bounds(today)
+        for sid, day, amount in s.execute(select(
+                MoneyEntry.subscription_id, MoneyEntry.day, MoneyEntry.amount).where(
+                MoneyEntry.workspace_id == ws, MoneyEntry.subscription_id.in_(sub_ids))).all():
+            if sid not in last_paid or day > last_paid[sid]:
+                last_paid[sid] = day
+            if first <= day <= last:
+                paid_month += int(amount)
+    plan_month = round(sum(int(x.amount) * _PER_MONTH.get(x.period, 1) for x in subs))
     return {
         "accounts": rows, "total": balance, "unassigned": balance - in_accounts,
         "subscriptions": [{"id": x.id, "name": x.name, "amount": int(x.amount),
                            "category": x.category, "account_id": x.account_id,
+                           "account_name": names.get(x.account_id) if x.account_id else None,
                            "period": x.period, "next_due": x.next_due.isoformat(),
-                           "days_left": (x.next_due - today).days}
+                           "days_left": (x.next_due - today).days,
+                           "last_paid": last_paid[x.id].isoformat() if x.id in last_paid else None,
+                           # Paid for the due date just covered: the next one is
+                           # still ahead, and the last payment falls after the
+                           # due date before the covered one (an early payment
+                           # counts; one from two periods ago does not).
+                           "paid_now": x.id in last_paid and x.next_due > today
+                                       and last_paid[x.id] > _prev_due(
+                                           _prev_due(x.next_due, x.period), x.period)}
                           for x in subs],
-        "subs_monthly": round(sum(int(x.amount) * _PER_MONTH.get(x.period, 1) for x in subs)),
+        "subs_monthly": plan_month,
+        "subs_paid_month": paid_month,
+        "subs_left_month": max(0, plan_month - paid_month),
         "transfers": [{"id": x.id, "from": x.from_account_id, "to": x.to_account_id,
                        "from_name": names.get(x.from_account_id, "?"),
                        "to_name": names.get(x.to_account_id, "?"),
@@ -3918,6 +3959,9 @@ def pay_subscription(s: Session, ws: int, sub_id: int, *, tz: ZoneInfo | None = 
             account_id = None
     entry = add_money(s, ws, "expense", int(row.amount), row.category, note=row.name,
                       tz=tz, account_id=account_id)
+    paid = s.get(MoneyEntry, entry["id"])
+    if paid is not None:
+        paid.subscription_id = row.id
     row.next_due = _next_due(row.next_due, row.period)
     s.commit()
     return {"entry": entry, "next_due": row.next_due.isoformat()}

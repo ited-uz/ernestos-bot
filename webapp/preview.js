@@ -269,6 +269,8 @@
     ["deep","target",s.h4,false], ["sport","target",s.h7,false], ["read","target",s.h3,false],
     ["water","bonus","2 L",false], ["language","bonus",s.lang,false], ["sleep","bonus","23:00",false]];
   const sumKind = k => DB.money.filter(e => e.kind === k).reduce((n, e) => n + e.amount, 0);
+  const monthKind = k => DB.money.filter(e => e.kind === k && String(e.day).slice(0, 7) === TODAY.slice(0, 7))
+    .reduce((n, e) => n + e.amount, 0);
   /* Accounts, transfers and repeating payments: balances computed the way
      the server computes them, locks drawn from the preview's plan. */
   const W = EMPTY ? {accounts:[], subs:[], transfers:[]} : {
@@ -292,8 +294,18 @@
     const name = id => (W.accounts.find(a => a.id === id) || {}).name || "?";
     const subs = W.subs.filter(x => !x.archived).sort((a, b) => a.next_due < b.next_due ? -1 : 1);
     return {accounts, total, unassigned:total - accounts.reduce((n, a) => n + a.balance, 0),
-      subscriptions:subs.map(x => ({...x, days_left:Math.round((new Date(x.next_due) - new Date(TODAY)) / 864e5)})),
+      subscriptions:subs.map(x => {
+        // Paid state read off the entries a payment made, as the server does.
+        const paid = DB.money.filter(e => e.subscription_id === x.id).map(e => e.day).sort().pop() || null;
+        const prev = new Date(x.next_due); prev.setMonth(prev.getMonth() - 2);
+        return {...x, account_name:name(x.account_id), last_paid:paid,
+                paid_now:Boolean(paid) && x.next_due > TODAY && paid > prev.toISOString().slice(0, 10),
+                days_left:Math.round((new Date(x.next_due) - new Date(TODAY)) / 864e5)};
+      }),
       subs_monthly:Math.round(subs.reduce((n, x) => n + x.amount * PER_MONTH[x.period], 0)),
+      subs_paid_month:DB.money.filter(e => e.subscription_id && String(e.day).slice(0, 7) === TODAY.slice(0, 7))
+        .reduce((n, e) => n + e.amount, 0),
+      get subs_left_month(){ return Math.max(0, this.subs_monthly - this.subs_paid_month); },
       transfers:W.transfers.slice().reverse().map(x => ({...x, from_name:name(x.from), to_name:name(x.to)})),
       kinds:["cash", "card", "bank", "crypto", "invest", "business", "other"], periods:["weekly", "monthly", "yearly"],
       access:{tier, accounts:{free:1, pro:3, max:null}[tier], subs:{free:0, pro:3, max:null}[tier],
@@ -312,13 +324,18 @@
       {id:"health", spent:Math.round(expense * .05)}]};
   }
   const money = () => ({month:TODAY.slice(0, 7), year:now.getFullYear(), month_no:now.getMonth() + 1,
-    is_current:true, income:sumKind("income"), expense:sumKind("expense"),
+    is_current:true, income:monthKind("income"), expense:monthKind("expense"),
     balance:walletState().total, count:DB.money.length, wallet:walletState(),
-    categories:[["food","🍔",2000000,45000],["transport","🚕",800000,30000],
-      ["home","🏠",1500000,0],["health","💊",500000,120000],["fun","🎮",1000000,0],
-      ["business","💼",0,1200000],["other","📦",500000,0]].map(([id, icon, limit, spent]) =>
-      ({id, icon, limit, spent:EMPTY ? 0 : spent, percent:limit ? Math.round(spent / limit * 100) : null,
-        over:false})),
+    // Spent per category is summed from the month's entries, exactly as the
+    // server does, so the header and the breakdown cannot disagree (F01).
+    categories:[["food","🍔",2000000],["transport","🚕",800000],
+      ["home","🏠",1500000],["health","💊",500000],["fun","🎮",1000000],
+      ["business","💼",0],["other","📦",500000]].map(([id, icon, limit]) => {
+        const spent = DB.money.filter(e => e.kind === "expense" && e.category === id
+          && String(e.day).slice(0, 7) === TODAY.slice(0, 7)).reduce((n, e) => n + e.amount, 0);
+        return {id, icon, limit, spent, percent:limit ? Math.min(100, Math.round(spent / limit * 100)) : null,
+                over:Boolean(limit) && spent > limit};
+      }),
     entries:DB.money.slice().sort((a, b) => b.id - a.id),
     category_ids:["food","transport","home","health","fun","business","other","salary","sales","other_in"],
     kinds:{food:"expense", transport:"expense", home:"expense", health:"expense", fun:"expense",
@@ -700,7 +717,7 @@
     if((m = path.match(/^\/api\/money\/subscriptions\/(\d+)\/pay$/))){
       const x = W.subs.find(v => v.id === Number(m[1]));
       DB.money.push({id:++nextId, kind:"expense", amount:x.amount, category:x.category, note:x.name,
-                     source:"manual", day:TODAY, account_id:x.account_id});
+                     source:"manual", day:TODAY, account_id:x.account_id, subscription_id:x.id});
       const d = new Date(x.next_due);
       if(x.period === "weekly") d.setDate(d.getDate() + 7);
       else if(x.period === "yearly") d.setFullYear(d.getFullYear() + 1);

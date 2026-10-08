@@ -10475,7 +10475,10 @@ async def test_the_bot_sets_a_money_limit():
 def test_the_mini_app_limit_is_visible_and_takes_words():
     html = (ROOT / "webapp" / "index.html").read_text()
     screen = html[html.index("SCREENS.money = () => {"):html.index("function moneySheet(")]
-    assert 'class="medit"' in screen and 't("money_limit_tap")' in screen
+    # v15 (audit F24/F26): the whole row opens the limit; without one it
+    # says "Limit belgilanmagan · Limit qo'yish" instead of a hint line.
+    assert 'data-act="money-budget"' in screen and 't("money_set_limit")' in screen
+    assert 't("money_limit_tap")' not in screen
     assert "parseMoneyInput(val(\"money-limit\"))" in html
 
 
@@ -12804,3 +12807,49 @@ def test_a_weeks_goal_names_the_milestone_it_moves_forward(client):
     html = (ROOT / "webapp" / "index.html").read_text()
     assert "function focusGoalPill(row)" in html and "${focusGoalPill(primary)}" in html
     assert "...missionGoalBody()" in html
+
+
+def test_a_repeating_payment_says_when_it_was_paid_and_what_is_left(client):
+    """Audit F04/F17: "To'langan · date" comes from the entry the payment
+    made, and the month's plan splits into paid and left."""
+    uid = next(_next_id)
+    _fresh_account(uid)
+    me = Caller(client, {"id": uid, "first_name": "M"})
+    today = svc.today_local()
+    made = me.post("/api/money/subscriptions", {"name": "Internet", "amount": 150000,
+                                                "category": "home", "next_due": today.isoformat()})
+    assert made.status_code == 200, made.text
+    other = me.post("/api/money/subscriptions", {"name": "Ijara", "amount": 3500000, "category": "home",
+                                                 "next_due": (today + timedelta(days=20)).isoformat()})
+    assert other.status_code == 200, other.text
+    w = me.get("/api/money/wallet").json()
+    subs = {x["name"]: x for x in w["subscriptions"]}
+    assert subs["Internet"]["paid_now"] is False and subs["Internet"]["last_paid"] is None
+    assert w["subs_monthly"] == 3650000 and w["subs_paid_month"] == 0 and w["subs_left_month"] == 3650000
+
+    sid = subs["Internet"]["id"]
+    assert me.post(f"/api/money/subscriptions/{sid}/pay", {}).status_code == 200
+    w = me.get("/api/money/wallet").json()
+    subs = {x["name"]: x for x in w["subscriptions"]}
+    assert subs["Internet"]["last_paid"] == today.isoformat()
+    assert subs["Internet"]["paid_now"] is True and subs["Ijara"]["paid_now"] is False
+    assert w["subs_paid_month"] == 150000 and w["subs_left_month"] == 3500000
+
+
+def test_category_shares_always_add_up_to_100():
+    """Audit F02: the ring's shares use the largest remainder method."""
+    import shutil
+    import subprocess
+    if not shutil.which("node"):
+        pytest.skip("node is not installed")
+    html = (ROOT / "webapp" / "index.html").read_text()
+    fn = html[html.index("function sharePercents(values){"):html.index("/* \"1,2 mln\"")]
+    script = fn + """
+const cases = [[45000, 30000, 120000, 1200000], [1, 1, 1], [5, 3, 2], [0, 0], [7]];
+console.log(JSON.stringify(cases.map(sharePercents)));"""
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True).stdout
+    results = json.loads(out)
+    for shares in results[:3] + results[4:]:
+        assert sum(shares) == 100, shares
+    assert results[0] == [3, 2, 9, 86] or sum(results[0]) == 100
+    assert results[3] == [0, 0]

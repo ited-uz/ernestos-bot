@@ -1335,6 +1335,20 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
 .mcat .amt{font-size:13.5px;color:var(--text-2);white-space:nowrap;
            font-variant-numeric:tabular-nums}
 .mcat .amt.over{color:var(--danger);font-weight:640}
+.mcat-head{display:flex;gap:8px;font-size:11.5px;font-weight:650;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em;padding-bottom:4px}
+.mcat-sub{font-size:12px;color:var(--text-2);margin-top:4px}
+.mcat-sub.neg{color:var(--danger)}
+.mlink{color:var(--primary);font-weight:600}
+.mhead{display:flex;flex-direction:column;gap:2px;margin-bottom:10px}
+.mday{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:650;color:var(--text-2);margin:14px 2px 6px}
+.mtiles.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.mtiles.three .v{font-size:15px}
+.ywrap{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px;align-items:stretch}
+.yaxis{display:flex;flex-direction:column;justify-content:space-between;font-size:10px;color:var(--text-3);
+       text-align:right;padding:8px 0 18px;height:120px;margin-top:var(--s2);box-sizing:border-box}
+.ycol{cursor:pointer}
+.ycol.future .ypair{border:1px dashed var(--border-2);border-radius:4px}
+.ycol.future span{font-style:italic}
 .mbar{height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden;
       margin-top:6px}
 .mbar > span{display:block;height:100%;border-radius:3px}
@@ -1970,7 +1984,7 @@ const DICT = {
   w_transfer:"Hisoblar orasida o'tkazma", w_transfer_short:"O'tkazma", w_subs:"Doimiy to'lovlar",
   w_per_month:"oyiga ≈ {n}", w_subs_locked:"Doimiy to'lovlar — Pro'da",
   w_subs_hint:"Ijara, internet, obunalar. Muddati yaqinlashganini ko'rasiz va bir bosishda to'landi deb yozasiz.",
-  w_add_sub:"To'lov qo'shish", w_paid:"To'landi", w_paid_toast:"✓ Xarajat yozildi, keyingi sana surildi",
+  w_add_sub:"Doimiy to'lov qo'shish", w_paid:"To'lovni qayd etish", w_paid_toast:"✓ Xarajat yozildi, keyingi sana surildi",
   w_due_today:"bugun", w_due_late:"{n} kun o'tdi", w_due_in:"{n} kundan keyin",
   w_transfers:"So'nggi o'tkazmalar", w_year:"Yillik ko'rinish",
   w_year_hint:"12 oy bo'yicha kirim va chiqim, eng katta xarajatlar.", w_net:"Sof",
@@ -2022,6 +2036,7 @@ const DICT = {
   journal_partial_hint:"Chala ham saqlanadi. Kun yakuni odati {total} ta savolning hammasi to'ldirilganda belgilanadi.",
   gl_u_done:"bajarildi", gl_u_active:"faol", gl_u_goals:"ta", gl_ms_one:"Bosqich", gl_target:"Maqsad", focus_milestone:"Qaysi bosqichga xizmat qiladi", focus_no_milestone:"Bog'lanmagan",
   cal_items:"{n} ta element", cal_today:"Bugunga",
+  money_rest_cats:"Qolgan kategoriyalar", money_split_head:"Chiqimlar tarkibi", money_total_word:"Jami", money_spent_limit:"Sarflandi / Limit", money_left:"Qoldi {n}", money_set_limit:"Limit qo'yish", money_pending:"Kutilmoqda", amt_k:"ming", amt_m:"mln", amt_b:"mlrd", money_all_accounts:"Barcha hisoblar", debt_all_open:"Barcha ochiq qarzlar", debt_this_month:"Shu oy qaytarilishi kerak", w_plan_month:"Oylik reja", w_paid_month:"To'langan", w_left_month:"Qolgan", w_paid_on:"To'langan · {d}", w_due_word:"Muddat", w_crypto_hint:"summa so'mda yuritiladi",
   draft_restored:"Saqlanmagan matn tiklandi", autosaved:"Saqlanmoqda…",
   mood_q:"Bugun o'zingizni qanday his qildingiz?",
   mood_awful:"Juda yomon", mood_low:"Yomon", mood_ok:"O'rtacha",
@@ -2271,9 +2286,9 @@ const DICT = {
   pause_note:"Bugundan desangiz, bugungi hisobdan ham chiqadi",
   pts:"p.", team_join_hint:"Taklif havolasini bosing — jamoani ko'rib, keyin qo'shilasiz",
   nav_home:"Bugun", nav_stats:"Statistika", money:"Pul", money_add:"Pul yozuvi",
-  money_this_month:"bu oy", money_tab_entries:"Yozuvlar", money_tab_cats:"Tahlil", money_tab_debts:"Qarzlar", debt_overdue_n:"{n} tasi muddati o'tgan", debt_owed_to_me:"Sizga qaytarishadi", debt_i_owe:"Siz qaytarasiz", debt_add:"Qarz yozish", debt_empty:"Hozircha qarz yo'q. Kimgadir pul bersangiz yoki olsangiz — shu yerga yozing, unutilmaydi.", debt_settled:"Yopilganlar", debt_lent_meta:"men berdim", debt_borrowed_meta:"men oldim", debt_overdue:"muddati o'tdi", debt_until:"{d} gacha", debt_returned:"Qaytdi", debt_returned_full:"To'liq qaytdi", debt_lent:"Men berdim", debt_borrowed:"Men oldim", debt_person:"Kim? Ismini yozing", debt_amount:"Summa (200 ming, 1,5 mln…)", debt_due:"Qachongacha qaytariladi", debt_due_week:"1 haftada", debt_due_month:"1 oyda", debt_note:"Izoh (ixtiyoriy)", debt_bad_amount:"Summani yozing — 200 ming yoki 200000", debt_saved:"✓ Qarz yozildi", debt_closed:"✓ Qarz yopildi", debt_partial:"Bir qismi qaytdimi?", debt_partial_ph:"Qancha? Masalan, 50 ming", debt_reopen:"Qayta ochish", debt_paid_more:"Bu summa qolgan qarzdan ko'p. Qolgani: {n}", debt_of:"jami {n}", debt_payments:"To'lovlar", debt_delete_q:"Qarzni o'chirasizmi?", debt_archived:"O'chirilganlar", debt_restore:"Qaytarish", debt_purge:"Butunlay o'chirish", debt_purge_q:"Butunlay o'chirilsinmi? Buni qaytarib bo'lmaydi.",
+  money_this_month:"bu oy", money_tab_entries:"Yozuvlar", money_tab_cats:"Tahlil", money_tab_debts:"Qarzlar", debt_overdue_n:"{n} tasi muddati o'tgan", debt_owed_to_me:"Sizga qaytarishadi", debt_i_owe:"Siz qaytarasiz", debt_add:"Qarz yozish", debt_empty:"Hozircha qarz yo'q. Kimgadir pul bersangiz yoki olsangiz — shu yerga yozing, unutilmaydi.", debt_settled:"Yopilganlar", debt_lent_meta:"men berdim", debt_borrowed_meta:"men oldim", debt_overdue:"muddati o'tdi", debt_until:"{d} gacha", debt_returned:"Qaytdi", debt_returned_full:"To'liq qaytdi", debt_lent:"Men qarz berdim", debt_borrowed:"Men qarz oldim", debt_person:"Kim? Ismini yozing", debt_amount:"Summa (200 ming, 1,5 mln…)", debt_due:"Qachongacha qaytariladi", debt_due_week:"1 haftada", debt_due_month:"1 oyda", debt_note:"Izoh (ixtiyoriy)", debt_bad_amount:"Summani yozing — 200 ming yoki 200000", debt_saved:"✓ Qarz yozildi", debt_closed:"✓ Qarz yopildi", debt_partial:"Bir qismi qaytdimi?", debt_partial_ph:"Qancha? Masalan, 50 ming", debt_reopen:"Qayta ochish", debt_paid_more:"Bu summa qolgan qarzdan ko'p. Qolgani: {n}", debt_of:"jami {n}", debt_payments:"To'lovlar", debt_delete_q:"Qarzni o'chirasizmi?", debt_archived:"O'chirilganlar", debt_restore:"Qaytarish", debt_purge:"Butunlay o'chirish", debt_purge_q:"Butunlay o'chirilsinmi? Buni qaytarib bo'lmaydi.",
   money_apart:"Alohida bo'lim — hech qanday foiz, streak yoki reytingga qo'shilmaydi.",
-  money_balance:"Umumiy balans", money_income:"Kirim", money_expense:"Chiqim",
+  money_balance:"Joriy balans", money_income:"Kirim", money_expense:"Chiqim",
   money_unit:"so'm", date_day:"Kun", date_month:"Oy", date_year:"Yil",
   money_quick_ph:"Tushlik 45 ming · Maosh 5 mln keldi",
   money_quick_hint:"Yozing va Chiqim yoki Kirim'ni bosing. Summa va kategoriya o'zi aniqlanadi.",
@@ -2284,7 +2299,7 @@ const DICT = {
   money_empty:"Bu oy hali yozuv yo'q.", money_over:"Byudjetdan {n} oshdi",
   money_amount:"Summa (so'm)", money_note:"Izoh", money_note_ph:"Tushlik, taksi, reklama...",
   money_saved_toast:"Saqlandi", money_no_amount:"Summani tushunmadim — masalan 45 ming yoki 45000",
-  money_budget_title:"{cat} — oylik limit", money_no_limit:"cheklovsiz", money_limit_tap:"Limit — ✎ bosing",
+  money_budget_title:"{cat} — oylik limit", money_no_limit:"Limit belgilanmagan", money_limit_tap:"Limit — ✎ bosing",
   money_budget_hint:"Oyiga shu kategoriyaga qancha sarflashni rejalashtirasiz. 0 — cheklovsiz.",
   mcat_food:"Ovqat", mcat_transport:"Transport", mcat_home:"Uy", mcat_health:"Sog'liq",
   mcat_fun:"Ko'ngil ochar", mcat_business:"Biznes", mcat_other:"Boshqa",
@@ -2483,7 +2498,7 @@ const DICT = {
   w_transfer:"Transfer between accounts", w_transfer_short:"Transfer", w_subs:"Repeating payments",
   w_per_month:"≈ {n} a month", w_subs_locked:"Repeating payments come with Pro",
   w_subs_hint:"Rent, internet, subscriptions. See what is due soon and mark it paid with one tap.",
-  w_add_sub:"Add a payment", w_paid:"Paid", w_paid_toast:"✓ Expense recorded, next date moved",
+  w_add_sub:"Add a recurring payment", w_paid:"Record payment", w_paid_toast:"✓ Expense recorded, next date moved",
   w_due_today:"today", w_due_late:"{n} days late", w_due_in:"in {n} days",
   w_transfers:"Latest transfers", w_year:"The year",
   w_year_hint:"Income and spending month by month, and where most of it went.", w_net:"Net",
@@ -2535,6 +2550,7 @@ const DICT = {
   journal_partial_hint:"You can save a part. The Day end habit is ticked once all {total} questions are filled.",
   gl_u_done:"done", gl_u_active:"active", gl_u_goals:"goals", gl_ms_one:"Milestone", gl_target:"Target", focus_milestone:"Milestone it moves forward", focus_no_milestone:"Not linked",
   cal_items:"{n} items", cal_today:"Today",
+  money_rest_cats:"Other categories", money_split_head:"Spending breakdown", money_total_word:"Total", money_spent_limit:"Spent / Limit", money_left:"{n} left", money_set_limit:"Set a limit", money_pending:"Upcoming", amt_k:"k", amt_m:"M", amt_b:"B", money_all_accounts:"All accounts", debt_all_open:"All open debts", debt_this_month:"Due this month", w_plan_month:"Monthly plan", w_paid_month:"Paid", w_left_month:"Left", w_paid_on:"Paid · {d}", w_due_word:"Due", w_crypto_hint:"kept in so'm",
   draft_restored:"Unsaved text restored", autosaved:"Saving…",
   mood_q:"How did you feel today?",
   mood_awful:"Awful", mood_low:"Low", mood_ok:"Okay",
@@ -2780,7 +2796,7 @@ const DICT = {
   nav_home:"Today", nav_stats:"Stats", money:"Money", money_add:"Money entry",
   money_this_month:"this month", money_tab_entries:"Entries", money_tab_cats:"Insights", money_tab_debts:"Debts", debt_overdue_n:"{n} overdue", debt_owed_to_me:"Owed to you", debt_i_owe:"You owe", debt_add:"Record a debt", debt_empty:"No debts yet. Lend or borrow money — write it here and it won't be forgotten.", debt_settled:"Closed", debt_lent_meta:"I lent", debt_borrowed_meta:"I borrowed", debt_overdue:"overdue", debt_until:"by {d}", debt_returned:"Returned", debt_returned_full:"Fully returned", debt_lent:"I lent", debt_borrowed:"I borrowed", debt_person:"Who? Type a name", debt_amount:"Amount (200k, 1.5 mln…)", debt_due:"Return by", debt_due_week:"In 1 week", debt_due_month:"In 1 month", debt_note:"Note (optional)", debt_bad_amount:"Type an amount — 200 ming or 200000", debt_saved:"✓ Debt recorded", debt_closed:"✓ Debt closed", debt_partial:"Part of it returned?", debt_partial_ph:"How much? E.g. 50 ming", debt_reopen:"Reopen", debt_paid_more:"That is more than what is left. Remaining: {n}", debt_of:"of {n}", debt_payments:"Payments", debt_delete_q:"Delete this debt?", debt_archived:"Deleted", debt_restore:"Restore", debt_purge:"Delete forever", debt_purge_q:"Delete forever? This cannot be undone.",
   money_apart:"A separate section — never counted in any percentage, streak or rank.",
-  money_balance:"Balance", money_income:"Income", money_expense:"Spent",
+  money_balance:"Current balance", money_income:"Income", money_expense:"Spent",
   money_unit:"UZS", date_day:"Day", date_month:"Month", date_year:"Year",
   money_quick_ph:"Lunch 45k · Salary 5 mln received",
   money_quick_hint:"Type it and tap Spent or Income. The amount and category are read for you.",
@@ -2791,7 +2807,7 @@ const DICT = {
   money_empty:"Nothing recorded this month.", money_over:"Over budget by {n}",
   money_amount:"Amount (UZS)", money_note:"Note", money_note_ph:"Lunch, taxi, ads...",
   money_saved_toast:"Saved", money_no_amount:"I could not read the amount — for example 45k or 45000",
-  money_budget_title:"{cat} — monthly limit", money_no_limit:"no limit", money_limit_tap:"Tap ✎ for the limit",
+  money_budget_title:"{cat} — monthly limit", money_no_limit:"No limit set", money_limit_tap:"Tap ✎ for the limit",
   money_budget_hint:"How much you plan to spend on this each month. 0 means no limit.",
   mcat_food:"Food", mcat_transport:"Transport", mcat_home:"Home", mcat_health:"Health",
   mcat_fun:"Fun", mcat_business:"Business", mcat_other:"Other",
@@ -2990,7 +3006,7 @@ const DICT = {
   w_transfer:"Перевод между счетами", w_transfer_short:"Перевод", w_subs:"Регулярные платежи",
   w_per_month:"≈ {n} в месяц", w_subs_locked:"Регулярные платежи — в Pro",
   w_subs_hint:"Аренда, интернет, подписки. Видно, что скоро платить, и оплата отмечается одним касанием.",
-  w_add_sub:"Добавить платёж", w_paid:"Оплачено", w_paid_toast:"✓ Расход записан, дата перенесена",
+  w_add_sub:"Добавить регулярный платёж", w_paid:"Отметить оплату", w_paid_toast:"✓ Расход записан, дата перенесена",
   w_due_today:"сегодня", w_due_late:"просрочено на {n} дн.", w_due_in:"через {n} дн.",
   w_transfers:"Последние переводы", w_year:"Год целиком",
   w_year_hint:"Доходы и расходы по месяцам и главные траты.", w_net:"Итог",
@@ -3042,6 +3058,7 @@ const DICT = {
   journal_partial_hint:"Можно сохранить частично. Привычка Итог дня отмечается, когда заполнены все {total} вопроса.",
   gl_u_done:"сделано", gl_u_active:"активных", gl_u_goals:"целей", gl_ms_one:"Этап", gl_target:"Цель", focus_milestone:"Какой этап продвигает", focus_no_milestone:"Не связано",
   cal_items:"Элементов · {n}", cal_today:"К сегодня",
+  money_rest_cats:"Остальные категории", money_split_head:"Структура расходов", money_total_word:"Всего", money_spent_limit:"Потрачено / Лимит", money_left:"Осталось {n}", money_set_limit:"Задать лимит", money_pending:"Ожидается", amt_k:"тыс", amt_m:"млн", amt_b:"млрд", money_all_accounts:"Все счета", debt_all_open:"Все открытые долги", debt_this_month:"Вернуть в этом месяце", w_plan_month:"План на месяц", w_paid_month:"Оплачено", w_left_month:"Осталось", w_paid_on:"Оплачено · {d}", w_due_word:"Срок", w_crypto_hint:"учёт в сумах",
   draft_restored:"Несохранённый текст восстановлен", autosaved:"Сохраняем…",
   mood_q:"Как вы себя чувствовали сегодня?",
   mood_awful:"Очень плохо", mood_low:"Плохо", mood_ok:"Нормально",
@@ -3287,7 +3304,7 @@ const DICT = {
   nav_home:"Сегодня", nav_stats:"Итоги", money:"Деньги", money_add:"Запись о деньгах",
   money_this_month:"за месяц", money_tab_entries:"Записи", money_tab_cats:"Анализ", money_tab_debts:"Долги", debt_overdue_n:"просрочено: {n}", debt_owed_to_me:"Вам должны", debt_i_owe:"Вы должны", debt_add:"Записать долг", debt_empty:"Долгов пока нет. Дали или взяли деньги — запишите здесь, и это не забудется.", debt_settled:"Закрытые", debt_lent_meta:"я дал", debt_borrowed_meta:"я взял", debt_overdue:"просрочен", debt_until:"до {d}", debt_returned:"Вернули", debt_returned_full:"Вернули полностью", debt_lent:"Я дал", debt_borrowed:"Я взял", debt_person:"Кто? Введите имя", debt_amount:"Сумма (200 тыс, 1,5 млн…)", debt_due:"Вернуть до", debt_due_week:"Через неделю", debt_due_month:"Через месяц", debt_note:"Заметка (необязательно)", debt_bad_amount:"Введите сумму — 200 тыс или 200000", debt_saved:"✓ Долг записан", debt_closed:"✓ Долг закрыт", debt_partial:"Вернули часть?", debt_partial_ph:"Сколько? Например, 50 тыс", debt_reopen:"Открыть снова", debt_paid_more:"Это больше остатка долга. Осталось: {n}", debt_of:"из {n}", debt_payments:"Платежи", debt_delete_q:"Удалить долг?", debt_archived:"Удалённые", debt_restore:"Вернуть", debt_purge:"Удалить навсегда", debt_purge_q:"Удалить навсегда? Это нельзя отменить.",
   money_apart:"Отдельный раздел — не входит ни в какие проценты, серии и рейтинги.",
-  money_balance:"Баланс", money_income:"Доход", money_expense:"Расход",
+  money_balance:"Текущий баланс", money_income:"Доход", money_expense:"Расход",
   money_unit:"сум", date_day:"День", date_month:"Месяц", date_year:"Год",
   money_quick_ph:"Обед 45 тыс · Зарплата 5 млн пришла",
   money_quick_hint:"Напишите и нажмите Расход или Доход. Сумма и категория определятся сами.",
@@ -3298,7 +3315,7 @@ const DICT = {
   money_empty:"В этом месяце записей нет.", money_over:"Бюджет превышен на {n}",
   money_amount:"Сумма (сум)", money_note:"Заметка", money_note_ph:"Обед, такси, реклама...",
   money_saved_toast:"Сохранено", money_no_amount:"Не понял сумму — например 45 тыс или 45000",
-  money_budget_title:"{cat} — лимит на месяц", money_no_limit:"без лимита", money_limit_tap:"Лимит — нажмите ✎",
+  money_budget_title:"{cat} — лимит на месяц", money_no_limit:"Лимит не задан", money_limit_tap:"Лимит — нажмите ✎",
   money_budget_hint:"Сколько вы планируете тратить на это в месяц. 0 — без ограничения.",
   mcat_food:"Еда", mcat_transport:"Транспорт", mcat_home:"Дом", mcat_health:"Здоровье",
   mcat_fun:"Развлечения", mcat_business:"Бизнес", mcat_other:"Другое",
@@ -6825,8 +6842,9 @@ SCREENS.project = () => {
    reads from here. What came in, what went out, each category against its
    monthly limit, and the entries themselves. Adding is one line of text —
    "Tushlik 45 ming" — typed, or spoken where the phone allows it. */
-const MONEY_TONE = {food:"var(--danger)", transport:"var(--warn)", home:"var(--c1)",
-  health:"var(--ok)", fun:"var(--c3)", business:"var(--c2)", other:"var(--text-3)",
+/* No category is red (audit S07): red on this screen means over a limit. */
+const MONEY_TONE = {food:"var(--c4)", transport:"var(--c5)", home:"var(--c1)",
+  health:"var(--c2)", fun:"var(--c3)", business:"color-mix(in srgb, var(--c3) 45%, var(--c1))", other:"var(--text-3)",
   salary:"var(--ok)", sales:"var(--c2)", other_in:"var(--c5)"};
 /* "2 mln" → 2000000, "500 ming" → 500000, "1 500 000" → 1500000, "" or "0"
    → 0 (no limit); anything unreadable → null. */
@@ -6853,42 +6871,73 @@ async function loadMoney(month){
   }catch(e){ setState({screenError:errorMessage(e)}); handleError(e); }
 }
 
-/* Where each category's money went this month, as one ring. */
-function moneyDonut(cats, total){
+/* Audit F02: shares that add up to exactly 100 — the largest remainder
+   method (Hare–Niemeyer). Rounding each share on its own printed 3 + 2 + 9
+   + 88 = 102. */
+function sharePercents(values){
+  const total = values.reduce((a, b) => a + b, 0);
+  if(!total) return values.map(() => 0);
+  const raw = values.map(v => v / total * 100);
+  const out = raw.map(Math.floor);
+  const left = 100 - out.reduce((a, b) => a + b, 0);
+  raw.map((r, i) => [r - out[i], i]).sort((a, b) => b[0] - a[0])
+    .slice(0, left).forEach(([, i]) => { out[i] += 1; });
+  return out;
+}
+/* "1,2 mln" — the axis and other tight spots. */
+function compactMoney(n){
+  n = Math.abs(Math.round(n || 0));
+  const f = (v, k) => `${String(Math.round(v * 10) / 10).replace(".", ",")} ${t(k)}`;
+  if(n >= 1e9) return f(n / 1e9, "amt_b");
+  if(n >= 1e6) return f(n / 1e6, "amt_m");
+  if(n >= 1e3) return f(n / 1e3, "amt_k");
+  return String(n);
+}
+
+/* Where each category's money went this month, as one ring. Audit F03: the
+   five largest by name, the rest as one slice; F22: each with its amount. */
+function moneyDonut(cats){
   const R = 42, C = 2 * Math.PI * R;
+  const sorted = cats.slice().sort((a, b) => b.spent - a.spent);
+  const parts = sorted.slice(0, 5).map(c => ({label:t("mcat_" + c.id), spent:c.spent, tone:MONEY_TONE[c.id]}));
+  const rest = sorted.slice(5).reduce((n, c) => n + c.spent, 0);
+  if(rest > 0) parts.push({label:t("money_rest_cats"), spent:rest, tone:"var(--text-3)"});
+  const total = parts.reduce((n, p) => n + p.spent, 0) || 1;
+  const pct = sharePercents(parts.map(p => p.spent));
   let offset = 0;
-  const arcs = cats.map(c => {
+  const arcs = parts.map(c => {
     const len = c.spent / total * C;
-    const arc = `<circle cx="60" cy="60" r="${R}" fill="none" stroke="${MONEY_TONE[c.id]}"
+    const arc = `<circle cx="60" cy="60" r="${R}" fill="none" stroke="${c.tone}"
       stroke-width="18" stroke-dasharray="${len} ${C}" stroke-dashoffset="${-offset}"
       transform="rotate(-90 60 60)"/>`;
     offset += len;
     return arc;
   }).join("");
+  cats = parts;
   return `<div class="donut">
       <svg width="120" height="120" viewBox="0 0 120 120" role="img"
            aria-label="${t("money_spend_split")}">
         <circle cx="60" cy="60" r="${R}" fill="none" stroke="var(--surface-2)"
                 stroke-width="18"/>${arcs}</svg>
-      <div class="lg">${cats.map(c => `<div class="ellipsis">
-          <i style="background:${MONEY_TONE[c.id]}"></i>${t("mcat_" + c.id)}
-          <span class="t2 num"> · ${Math.round(c.spent / total * 100)}%</span></div>`).join("")}
+      <div class="lg">${cats.map((c, i) => `<div class="ellipsis">
+          <i style="background:${c.tone}"></i>${esc(c.label)}
+          <span class="t2 num"> · ${moneyNum(c.spent)} (${pct[i]}%)</span></div>`).join("")}
       </div></div>`;
 }
 
-function moneyRow(e, icons){
+function moneyRow(e, icons, underDay){
   const income = e.kind === "income";
   const label = e.note || t("mcat_" + e.category);
   return `<div class="item mrow">
       <span class="itile" style="font-size:17px">${icons[e.category] || "•"}</span>
       <div class="grow pressable" data-act="money-edit" data-id="${e.id}" role="button" tabindex="0"
            aria-label="${t("edit")}"><div class="ellipsis">${esc(label)}</div>
-        <div class="meta">${t("mcat_" + e.category)} · <span class="num">${isoToLabel(e.day)}</span>${
+        <div class="meta">${t("mcat_" + e.category)}${underDay ? "" : ` · <span class="num">${isoToLabel(e.day)}</span>`}${
           e.account_id && accountName(e.account_id) ? ` · ${esc(accountName(e.account_id))}` : ""}
           ${e.source === "voice" ? icon("mic", 12) : ""}</div></div>
       <div class="amount ${income ? "pos" : "neg"}">${income ? "+" : "−"}${moneyNum(e.amount)}</div>
-      <button class="iconbtn sm bare" data-act="money-del" data-id="${e.id}"
-              aria-label="${t("delete")}">${icon("x", 15)}</button>
+      <button class="iconbtn sm bare" data-act="money-more" data-id="${e.id}"
+              aria-label="${t("more")}">${icon("dots", 16)}</button>
     </div>`;
 }
 
@@ -6911,19 +6960,21 @@ SCREENS.money = () => {
               ${m.is_current ? "disabled" : ""}>${icon("chevron", 16)}</button></div>`;
 
   h += `<div class="mhero">
-      <div class="k">${icon("wallet", 15)} ${t("money_balance")}</div>
+      <div class="k">${icon("wallet", 15)} ${t("money_balance")} · ${t("money_all_accounts")}</div>
       <div class="v num ${m.balance < 0 ? "neg" : ""}">${m.balance < 0 ? "−" : ""}${moneyFmt(m.balance)}</div>
       <div class="mflow num">
         <span class="pos">↑ +${moneyNum(m.income)}</span>
         <span class="neg">↓ −${moneyNum(m.expense)}</span>
-        <span class="t3">${t("money_this_month")}</span></div>
+        <span class="t3">${m.is_current ? t("money_this_month") : `${D().months[m.month_no - 1]} ${m.year}`}</span></div>
       ${debts.open.length ? `<div class="mdebt" data-act="money-tab" data-value="debts" role="button" tabindex="0">
-        🤝 ${t("money_tab_debts")}: <span class="pos num">+${moneyNum(debts.owed_to_me)}</span>
+        🤝 ${t("debt_all_open")} · <span class="pos num">+${moneyNum(debts.owed_to_me)}</span>
         · <span class="neg num">−${moneyNum(debts.i_owe)}</span>
         ${debts.overdue ? `<span class="neg"> · ${t("debt_overdue_n", {n: debts.overdue})}</span>` : ""}</div>` : ""}
     </div>`;
 
-  if(m.is_current) h += `<div class="mquick">
+  // Audit F10: adding sits on the list it adds to; the other tabs keep the
+  // space for what they show (the + still adds from anywhere).
+  if(m.is_current && tab === "entries") h += `<div class="mquick">
       <input id="money-text" placeholder="${t("money_quick_ph")}" maxlength="300"
              enterkeyhint="done" data-search="money-text-save" />
       ${SpeechRec || moneyVoiceViaAgent() ? `<button class="mic ${state.listening ? "on" : ""}" data-act="money-voice"
@@ -6948,31 +6999,73 @@ SCREENS.money = () => {
   if(tab === "debts") return h + debtsView(debts);
   if(tab === "accounts") return h + walletView();
 
-  h += m.entries.length ? m.entries.map(e => moneyRow(e, m.icons)).join("")
-    : `<div class="empty">${t("money_empty")}</div>`;
+  h += m.entries.length ? moneyFilters(m) : "";
+  const shown = moneyFiltered(m.entries);
+  h += !m.entries.length ? `<div class="empty">${t("money_empty")}</div>`
+    : shown.length ? moneyDays(shown, m.icons) : `<div class="empty">${t("no_results")}</div>`;
   if(m.count > m.entries.length) h += `<div class="hint">${t("record_limit", {n:m.entries.length})}</div>
     <button class="btn secondary" data-act="set-account">${t("account")}</button>`;
   return h;
 };
 
+/* Audit F14: find an entry by its words or narrow to one category — over the
+   month on screen, which is what the list holds. */
+function moneyFilters(m){
+  const used = [...new Set(m.entries.map(e => e.category))];
+  return searchBox("money-q", state.moneyQuery || "", t("search"), "money-search")
+    + (used.length > 1 ? `<div class="chips scroll" style="margin-bottom:10px">${[["", t("gl_all")], ...used.map(c =>
+        [c, `${(m.icons || {})[c] || ""} ${t("mcat_" + c)}`])].map(([id, label]) =>
+        `<div class="chip sm ${(state.moneyCat || "") === id ? "on" : ""}" role="button" tabindex="0"
+          data-act="money-cat-filter" data-value="${id}">${label}</div>`).join("")}</div>` : "");
+}
+function moneyFiltered(list){
+  const q = (state.moneyQuery || "").trim().toLowerCase(), cat = state.moneyCat || "";
+  return list.filter(e => (!cat || e.category === cat)
+    && (!q || `${e.note || ""} ${t("mcat_" + e.category)}`.toLowerCase().includes(q)));
+}
+/* Audit F15: newest first, under a heading per day — Bugun, Kecha, a date. */
+function moneyDays(list, icons){
+  const today = todayISO(), yday = shiftISO(today, -1);
+  const groups = [];
+  for(const e of list.slice().sort((a, b) => (b.day || "").localeCompare(a.day || "") || b.id - a.id)){
+    const last = groups[groups.length - 1];
+    if(last && last.day === e.day) last.rows.push(e); else groups.push({day:e.day, rows:[e]});
+  }
+  return groups.map(g => {
+    const net = g.rows.reduce((n, e) => n + (e.kind === "income" ? e.amount : -e.amount), 0);
+    return `<div class="mday"><span class="grow">${g.day === today ? t("today") : g.day === yday ? t("yesterday") : isoToLabel(g.day)}</span>
+      <span class="num ${net < 0 ? "neg" : "pos"}">${net < 0 ? "−" : "+"}${moneyNum(net)}</span></div>`
+      + g.rows.map(e => moneyRow(e, icons, true)).join("");
+  }).join("");
+}
+
 /* Where the month's money went, and each category against its limit. */
 function moneyCats(m){
   const spent = m.categories.filter(c => c.spent > 0);
-  let h = spent.length ? `<div class="card">${moneyDonut(spent, m.expense)}</div>` : "";
-  h += `<div class="t3 tiny" style="margin:var(--s2) 0 var(--s1)">${t("money_limit_tap")}</div>`;
-  h += `<div class="card">${m.categories.map(c => {
-      const pct = c.limit ? Math.min(100, c.spent / c.limit * 100) : 0;
+  const sum = spent.reduce((n, c) => n + c.spent, 0);
+  /* F21: what the ring is, for which month, and its total — the same sum
+     as the header's spending (F01: one source, the month's entries). */
+  let h = spent.length ? `<div class="card">
+      <div class="mhead"><b>${t("money_split_head")}</b>
+        <span class="t3 small num">${D().months[m.month_no - 1]} ${m.year} · ${t("money_total_word")} ${moneyFmt(sum)}</span></div>
+      ${moneyDonut(spent)}</div>` : "";
+  h += `<div class="card" style="margin-top:var(--s2)">
+    <div class="mcat-head"><span class="grow">${t("category")}</span><span>${t("money_spent_limit")}</span></div>
+    ${m.categories.map(c => {
+      const used = c.limit ? c.spent / c.limit : 0;
+      /* F25: the bar says how close to the limit, not which category. */
+      const tone = used > .9 ? "var(--danger)" : used >= .75 ? "var(--warn)" : "var(--ok)";
       return `<div class="mcat" data-act="money-budget" data-cat="${c.id}"
           data-limit="${c.limit}" role="button" tabindex="0">
         <div class="row"><span>${c.icon}</span>
           <div class="grow ellipsis">${t("mcat_" + c.id)}</div>
-          <span class="amt ${c.over ? "over" : ""}">${moneyFmt(c.spent)}${
-            c.limit ? ` / ${moneyFmt(c.limit)}` : ` · ${t("money_no_limit")}`}</span>
-          <span class="medit" aria-hidden="true">${icon("edit", 15)}</span></div>
-        ${c.limit ? `<div class="mbar"><span style="width:${pct}%;background:${
-            c.over ? "var(--danger)" : MONEY_TONE[c.id]}"></span></div>` : ""}
-        ${c.over ? `<div class="tiny" style="color:var(--danger);margin-top:4px">
-            ${t("money_over", {n: moneyFmt(c.spent - c.limit)})}</div>` : ""}
+          <span class="amt num ${c.over ? "over" : ""}">${c.limit
+            ? `${moneyNum(c.spent)} / ${moneyFmt(c.limit)}` : moneyFmt(c.spent)}</span></div>
+        ${c.limit ? `<div class="mbar"><span style="width:${Math.min(100, used * 100)}%;background:${tone}"></span></div>
+          <div class="mcat-sub ${c.over ? "neg" : ""}">${c.over
+            ? t("money_over", {n: moneyFmt(c.spent - c.limit)})
+            : t("money_left", {n: moneyFmt(c.limit - c.spent)})}</div>`
+          : `<div class="mcat-sub"><span class="t3">${t("money_no_limit")}</span> · <span class="mlink">${t("money_set_limit")}</span></div>`}
       </div>`;}).join("")}</div>`;
   return h;
 }
@@ -6991,7 +7084,16 @@ function debtsView(d){
   if(!d.open.length) h += `<div class="empty">${t("debt_empty")}
       <button class="btn secondary sm" data-act="debt-add" style="margin:12px auto 0;display:flex">
         ${icon("plus", 16)} ${t("debt_add")}</button></div>`;
-  h += d.open.map(debtRow).join("");
+  /* Audit F07: every open debt, or only what has to come back this month
+     (late ones included — they were due by now). */
+  const month = todayISO().slice(0, 7);
+  const dueNow = d.open.filter(x => x.overdue || (x.due && x.due.slice(0, 7) === month));
+  const only = state.debtFilter === "month";
+  if(d.open.length) h += `<div class="chips" style="margin-bottom:8px">${[["", t("debt_all_open"), d.open.length],
+      ["month", t("debt_this_month"), dueNow.length]].map(([id, label, n]) =>
+      `<div class="chip sm ${(state.debtFilter || "") === id ? "on" : ""}" role="button" tabindex="0"
+        data-act="debt-filter" data-value="${id}">${label} <span class="t3 num">${n}</span></div>`).join("")}</div>`;
+  h += (only ? dueNow : d.open).map(debtRow).join("");
   if(d.settled.length) h += `<details style="margin-top:var(--s2)">
       <summary>${icon("chevron", 15)} ${t("debt_settled")} · ${d.settled.length}</summary>
       ${d.settled.map(debtRow).join("")}</details>`;
@@ -7088,11 +7190,10 @@ function dueLabel(days){
 function walletView(){
   const w = wallet(), acc = w.access || {};
   const atLimit = acc.accounts !== null && acc.accounts !== undefined && w.accounts.length >= acc.accounts;
-  let h = `<div class="wtotal">
-      <div class="k">${t("w_total")}</div>
-      <div class="v num ${w.total < 0 ? "neg" : ""}">${signedMoney(w.total)}</div>
-      <div class="t3 tiny">${t("w_accounts_n", {n: w.accounts.length})}</div>
-    </div>`;
+  /* Audit F09: the total is the card at the top of the screen; here the
+     list only says how many accounts it holds. */
+  let h = `<div class="list-head"><span class="bt grow">${t("money_tab_accounts")}</span>
+      <span class="tag num">${t("w_accounts_n", {n: w.accounts.length})}</span></div>`;
   if(!w.accounts.length){
     h += `<div class="wempty"><div class="t2">${t("w_empty")}</div>
       <div class="chips">${["cash", "card", "bank", "crypto", "invest", "business"].map(k =>
@@ -7102,8 +7203,8 @@ function walletView(){
       <div class="wacct" style="--i:${i}" data-act="acct-open" data-id="${a.id}" role="button" tabindex="0">
         <span class="wtile k-${a.kind}">${ACCOUNT_ICON[a.kind] || "👛"}</span>
         <div class="grow"><div class="ellipsis wname">${esc(a.name)}</div>
-          ${a.name.trim().toLowerCase() !== t("acct_" + a.kind).toLowerCase()
-            ? `<div class="t3 tiny">${t("acct_" + a.kind)}</div>` : ""}</div>
+          ${a.name.trim().toLowerCase() !== t("acct_" + a.kind).toLowerCase() || a.kind === "crypto"
+            ? `<div class="t3 tiny">${t("acct_" + a.kind)}${a.kind === "crypto" ? ` · ${t("w_crypto_hint")}` : ""}</div>` : ""}</div>
         <div class="wbal num ${a.balance < 0 ? "neg" : ""}">${signedMoney(a.balance)}</div>
       </div>`).join("")}
       ${w.unassigned ? `<div class="wacct muted"><span class="wtile">🧾</span>
@@ -7121,19 +7222,28 @@ function walletView(){
   // Repeating payments.
   const subsLocked = acc.subs === 0;
   const subsFull = acc.subs !== null && acc.subs !== undefined && w.subscriptions.length >= acc.subs;
-  h += sectionHead("tone-4", "repeat", t("w_subs"), w.subscriptions.length && !subsLocked
-    ? `<span class="t3 small num">${t("w_per_month", {n: moneyNum(w.subs_monthly)})}</span>` : "");
+  h += sectionHead("tone-4", "repeat", t("w_subs"));
+  if(w.subscriptions.length && !subsLocked) h += `<div class="mtiles three">
+      <div class="mtile"><div class="k">${t("w_plan_month")}</div><div class="v num">${moneyNum(w.subs_monthly)}</div></div>
+      <div class="mtile"><div class="k">${t("w_paid_month")}</div><div class="v num pos">${moneyNum(w.subs_paid_month || 0)}</div></div>
+      <div class="mtile"><div class="k">${t("w_left_month")}</div><div class="v num">${moneyNum(w.subs_left_month ?? w.subs_monthly)}</div></div>
+    </div>`;
   if(subsLocked) h += `<div class="wlocked" data-act="w-locked" data-key="money_subs" data-needs="pro" role="button" tabindex="0">
       <div class="grow"><b>${t("w_subs_locked")}</b><div class="t3 small">${t("w_subs_hint")}</div></div>${lockTag("pro")}</div>`;
   else {
-    h += w.subscriptions.map(x => `<div class="wsub" data-act="msub-open" data-id="${x.id}" role="button" tabindex="0">
+    h += w.subscriptions.map(x => {
+      const acct = x.account_name || accountName(x.account_id);
+      const showPay = !x.paid_now || x.days_left <= 3;
+      return `<div class="wsub" data-act="msub-open" data-id="${x.id}" role="button" tabindex="0">
         <span class="wtile">${(state.money?.icons || {})[x.category] || "🔁"}</span>
         <div class="grow"><div class="ellipsis wname">${esc(x.name)}</div>
-          <div class="t3 tiny"><b class="num">−${moneyNum(x.amount)}</b> · ${t("per_" + x.period)}</div>
-          <div class="tiny">${dueLabel(x.days_left)}</div></div>
-        <button class="btn ${x.days_left <= 0 ? "" : "secondary"} sm wpay" data-act="msub-pay"
-          data-id="${x.id}">${icon("check", 14)} ${t("w_paid")}</button>
-      </div>`).join("");
+          <div class="t3 tiny"><b class="num">−${moneyNum(x.amount)}</b> · ${t("per_" + x.period)}${
+            acct ? ` · <span class="tag">${icon("wallet", 11)} ${esc(acct)}</span>` : ""}</div>
+          <div class="tiny">${t("w_due_word")} · <span class="num">${isoToLabel(x.next_due)}</span> · ${dueLabel(x.days_left)}</div>
+          ${x.paid_now && x.last_paid ? `<div class="tiny"><span class="tag ok">${icon("check", 11)} ${t("w_paid_on", {d: isoToLabel(x.last_paid)})}</span></div>` : ""}</div>
+        ${showPay ? `<button class="btn ${x.days_left <= 0 ? "" : "secondary"} sm wpay" data-act="msub-pay"
+          data-id="${x.id}">${t("w_paid")}</button>` : ""}
+      </div>`;}).join("");
     h += `<button class="btn text sm" data-act="${subsFull ? "w-locked" : "msub-add"}" data-key="money_subs" data-needs="max">
       ${icon("plus", 15)} ${t("w_add_sub")}${subsFull ? lockTag("max") : ""}</button>`;
   }
@@ -7150,6 +7260,12 @@ function walletView(){
   return h;
 }
 
+/* Audit F27: three letters a month — "I" stood for both Iyun and Iyul. */
+const MONTHS_SHORT = {
+  uz:["Yan", "Fev", "Mar", "Apr", "May", "Iyn", "Iyl", "Avg", "Sen", "Okt", "Noy", "Dek"],
+  en:["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+  ru:["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"]};
+
 /* The year, month by month: income and spending side by side. Max only. */
 function yearCard(){
   const acc = wallet().access || {};
@@ -7161,6 +7277,9 @@ function yearCard(){
   if(!y || y.loading) return `<div class="card ycard"><div class="spin"></div></div>`;
   const top = Math.max(1, ...y.months.flatMap(m => [m.income, m.expense]));
   const months = D().months;
+  const short = MONTHS_SHORT[state.lang] || MONTHS_SHORT.uz;
+  const now = new Date(todayISO()), nowY = now.getFullYear(), nowM = now.getMonth() + 1;
+  const ahead = mo => y.year > nowY || (y.year === nowY && mo > nowM);
   return `<div class="card ycard">
     <div class="row"><b class="grow">📊 ${t("w_year")} · ${y.year}</b>
       <button class="iconbtn sm" data-act="year-shift" data-delta="-1" aria-label="‹">${icon("back", 15)}</button>
@@ -7171,11 +7290,17 @@ function yearCard(){
       <div><span class="t3 tiny">${t("money_expense")}</span><b class="neg">−${moneyNum(y.expense)}</b></div>
       <div><span class="t3 tiny">${t("w_net")}</span><b class="${y.net < 0 ? "neg" : ""}">${y.net < 0 ? "−" : ""}${moneyNum(y.net)}</b></div>
     </div>
-    <div class="ybars" role="img" aria-label="${t("w_year")}">${y.months.map((m, i) => `
-      <div class="ycol" title="${months[i]}">
+    <div class="ywrap"><div class="yaxis num" aria-hidden="true"><span>${compactMoney(top)}</span>
+      <span>${compactMoney(top / 2)}</span><span>0</span></div>
+    <div class="ybars" role="img" aria-label="${t("w_year")}">${y.months.map((m, i) => {
+      const tip = ahead(m.month) ? `${months[i]} · ${t("money_pending")}`
+        : `${months[i]} · +${moneyNum(m.income)} · −${moneyNum(m.expense)}`;
+      return `
+      <div class="ycol ${ahead(m.month) ? "future" : ""}" title="${esc(tip)}" data-act="year-tip" data-tip="${esc(tip)}"
+           role="button" tabindex="0" aria-label="${esc(tip)}">
         <div class="ypair"><i class="yin" style="--h:${Math.round(m.income / top * 100)}%;--i:${i}"></i>
           <i class="yout" style="--h:${Math.round(m.expense / top * 100)}%;--i:${i}"></i></div>
-        <span>${months[i].slice(0, 1)}</span></div>`).join("")}</div>
+        <span>${short[i]}</span></div>`;}).join("")}</div></div>
     ${y.categories.length ? `<div class="ycats">${y.categories.slice(0, 5).map(c =>
       `<div class="row small"><span>${(state.money?.icons || {})[c.id] || ""}</span>
         <span class="grow ellipsis">${t("mcat_" + c.id)}</span><span class="num">${moneyNum(c.spent)}</span></div>`).join("")}</div>` : ""}
@@ -7272,7 +7397,8 @@ function moneySheet(){
       ${[["expense", t("money_expense")], ["income", t("money_income")]].map(([k, label]) =>
         `<div class="${f.kind === k ? "on" : ""}" role="tab" tabindex="0"
           aria-selected="${f.kind === k}" data-act="money-kind" data-value="${k}">${label}</div>`)
-        .join("")}</div>
+        .join("")}${!f.id && !f.review && wallet().accounts.length ? `<div role="tab" tabindex="0" aria-selected="false"
+          data-act="transfer-open">${t("w_transfer_short")}</div>` : ""}</div>
     <label>${t("money_amount")}</label>
     <input id="money-amount" type="number" inputmode="numeric" min="1" step="1"
            placeholder="45000" value="${esc(f.amount || "")}" />
@@ -10805,6 +10931,21 @@ const A = {
     openSheet(moneySheet());
   },
   "money-text-save": el => moneyText(trimmed("money-text"), "manual", el?.dataset?.kind),
+  /* Audit F13: one menu per entry — change it or remove it (with Undo). */
+  "money-more": el => {
+    const e = (state.money?.entries || []).find(x => String(x.id) === String(el.dataset.id));
+    if(!e) return;
+    haptic();
+    openSheet(`${sheetHead(esc(e.note || t("mcat_" + e.category)))}
+      <div class="t2 small num" style="margin-bottom:12px">${e.kind === "income" ? "+" : "−"}${moneyFmt(e.amount)} · ${isoToLabel(e.day)}</div>
+      <button class="btn secondary" data-act="money-edit" data-id="${e.id}">${icon("edit", 16)} ${t("edit")}</button>
+      <button class="btn danger" data-act="money-del" data-id="${e.id}" style="margin-top:8px">${icon("trash", 16)} ${t("delete")}</button>`);
+  },
+  "money-search": () => { state.moneyQuery = val("money-q"); render(); },
+  "money-search-clear": () => { state.moneyQuery = ""; render(); },
+  "money-cat-filter": el => { haptic(); state.moneyCat = el.dataset.value; render(); },
+  "debt-filter": el => { haptic(); state.debtFilter = el.dataset.value; render(); },
+  "year-tip": el => toast(el.dataset.tip),
   "money-voice": () => moneyVoice(),
   "money-tab": el => { haptic(); state.moneyTab = el.dataset.value; render();
     if(el.dataset.value === "cats" && wallet().access?.year && !state.moneyYear)
@@ -10993,6 +11134,7 @@ const A = {
   /* Deleting is undoable: the toast puts the same entry back on its day. */
   "money-del": async el => {
     haptic("medium");
+    if(el.closest?.("#sheet-body")) closeSheet();
     try{
       const r = await api(`/api/money/${el.dataset.id}`, {method:"DELETE"});
       await loadMoney(state.moneyMonth);

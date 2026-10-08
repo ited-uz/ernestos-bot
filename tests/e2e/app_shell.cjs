@@ -328,7 +328,7 @@ const step = async (name, fn) => {
     await page.fill('#acct-opening', '500000');
     await page.click('#sheet-body [data-act="acct-save"]');
     await page.waitForSelector('.wacct:has-text("Karta")', { timeout: 8000 });
-    await page.click('.mkind [data-act="transfer-open"]');
+    await page.click('.wactions [data-act="transfer-open"]');
     await page.waitForSelector('#sheet-body #tr-amount');
     await page.fill('#tr-amount', '200 ming');
     await page.click('#sheet-body [data-act="transfer-save"]');

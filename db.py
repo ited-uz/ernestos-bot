@@ -702,6 +702,10 @@ class MoneyEntry(Base):
     #: entry not tied to one. A plain column, not a foreign key: it is added
     #: to live tables by the additive schema pass, which cannot add one.
     account_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: The repeating payment (`MoneySubscription`) this entry paid, when it
+    #: was recorded by "To'lovni qayd etish". Plain and nullable for the same
+    #: reason; it is what "paid this month" and "paid on" are read from.
+    subscription_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class MoneyAccount(Base):
