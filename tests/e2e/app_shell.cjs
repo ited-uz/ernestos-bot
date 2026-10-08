@@ -67,7 +67,7 @@ const step = async (name, fn) => {
   const errors = [];
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
   // 401 (signed out) and 402 (plan limit) are answers the app handles.
-  page.on('console', m => { if (m.type() === 'error' && !/401|402|ErnestOS:/.test(m.text())) errors.push('console: ' + m.text()); });
+  page.on('console', m => { if (m.type() === 'error' && !/401|402|ErnestOS:|ERR_INTERNET_DISCONNECTED/.test(m.text())) errors.push('console: ' + m.text()); });
   const shot = n => page.screenshot({ path: path.join(OUT, 'app-' + n + '.png') });
 
   await step('No session: the app opens on the sign-in screen', async () => {
@@ -367,6 +367,31 @@ const step = async (name, fn) => {
     await page.evaluate(() => closeSheet());
   });
 
+  await step('Offline: a quick task and a money line wait on the phone and reach the server once back online', async () => {
+    await page.evaluate(() => { closeSheet(); goto('home'); });
+    await page.waitForSelector('.fab-add', { timeout: 8000 });
+    await context.setOffline(true);
+    await page.click('.fab-add');
+    await page.waitForSelector('#sheet-body #quick-title');
+    await page.fill('#quick-title', 'Oflayn vazifa');
+    await page.click('#sheet-body [data-act="quick-save"]');
+    await page.waitForFunction(() => loadQueue().length === 1, null, { timeout: 8000 });
+    await page.click('.fab-add');
+    await page.waitForSelector('#sheet-body #quick-title');
+    await page.fill('#quick-title', 'Oflayn tushlik 33 ming');
+    await page.click('#sheet-body [data-act="quick-save"]');
+    await page.waitForFunction(() => loadQueue().length === 2, null, { timeout: 8000 });
+    assert.ok(await page.locator('[data-act="queue-flush"]').count(), 'the waiting count is on screen');
+    await shot('12-offline-queue');
+    await context.setOffline(false);
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await page.waitForFunction(() => loadQueue().length === 0, null, { timeout: 20000 });
+    const rows = py('import db\nfrom sqlalchemy import select, func\nwith db.SessionLocal() as s:\n'
+      + ' print(s.scalar(select(func.count(db.Task.id)).where(db.Task.title == "Oflayn vazifa")),'
+      + ' s.scalar(select(func.count(db.MoneyEntry.id)).where(db.MoneyEntry.amount == 33000)))').trim();
+    assert.equal(rows, '1 1', 'each queued record reached the server once');
+  });
+
   await step('An ended session goes back to sign-in', async () => {
     revokeAll();
     await page.evaluate(() => api('/api/me').catch(() => null));
@@ -387,7 +412,7 @@ const step = async (name, fn) => {
     assert.equal(status, 401);
   });
 
-  await step('No JavaScript errors', async () => { assert.deepEqual(errors, []); });
+  await step('No JavaScript errors', async () => { if(errors.length) console.log(JSON.stringify(errors)); assert.deepEqual(errors, []); });
 
   await browser.close();
   const failed = results.filter(r => r[0] === 'FAIL');

@@ -9906,6 +9906,12 @@ class QuickAddIn(BaseModel):
     #: Read only, write nothing: the shared-task path reuses this parser so
     #: "ertaga 15:00 hisobot" means the same in both places (audit #23).
     preview: bool = False
+    #: v16: sent from the phone's offline queue. Nobody is there to answer a
+    #: question, so the line is saved as it was meant on the day it was typed:
+    #: money becomes the entry, "ertaga" counts from `recorded_day`, and a
+    #: time that had passed stays on that day.
+    offline: bool = False
+    recorded_day: str | None = Field(default=None, max_length=10)
 
 
 class HabitParseIn(BaseModel):
@@ -9955,12 +9961,25 @@ def api_quick_add(body: QuickAddIn,
     text = body.title.strip()
     if not text:
         raise HTTPException(status_code=422, detail="empty_title")
+    tz = svc.user_tz(user)
     # "Tushlik 45 ming" is money, not a task: the app opens the money check.
     if svc.looks_like_money(text) and svc.parse_money_text(text) is not None:
-        return {"ok": True, "money": True}
+        if not body.offline:
+            return {"ok": True, "money": True}
+        money = svc.parse_money_text(text)
+        day = _date(body.recorded_day) if body.recorded_day else None
+        if day and day > svc.today_local(tz):
+            day = None
+        with SessionLocal() as s:
+            entry = svc.add_money(s, ws, money["kind"], money["amount"], money["category"],
+                                  note=money["note"], tz=tz, day=day)
+        return {"ok": True, "money": True, "entry": entry}
     # "Ertaga soat 10 da hisobot" → "hisobot", tomorrow, 10:00 — like the bot.
-    tz = svc.user_tz(user)
-    parsed = svc.parse_quick_capture(text, svc.today_local(tz), svc.now_local(tz).time())
+    if body.offline and body.recorded_day:
+        recorded = _date(body.recorded_day)
+        parsed = svc.parse_quick_capture(text, recorded, dtime(0, 0))
+    else:
+        parsed = svc.parse_quick_capture(text, svc.today_local(tz), svc.now_local(tz).time())
     if body.deadline:
         parsed["deadline"], parsed["past_time"] = _date(body.deadline), False
     out = {"title": parsed["title"],

@@ -12875,3 +12875,44 @@ def test_the_streak_sheet_uses_the_servers_threshold():
     html = (ROOT / "webapp" / "index.html").read_text()
     assert f"const STREAK_MIN = {svc.STREAK_THRESHOLD};" in html
     assert '"streak-why": () =>' in html
+
+
+def test_quick_capture_from_the_offline_queue_saves_as_it_was_meant(client):
+    """v16: a line typed with no signal is replayed later with nobody to
+    answer a question — money becomes the entry, 'ertaga' counts from the day
+    it was typed, and a time that had passed stays on that day."""
+    uid = next(_next_id)
+    _fresh_account(uid)
+    me = Caller(client, {"id": uid, "first_name": "Q"})
+    today = svc.today_local()
+    typed = today - timedelta(days=1)
+
+    r = me.post("/api/quick", {"title": "Tushlik 45 ming", "offline": True,
+                                "recorded_day": typed.isoformat()})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["money"] is True and body["entry"]["amount"] == 45000
+    assert body["entry"]["day"] == typed.isoformat()
+
+    r = me.post("/api/quick", {"title": "Ertaga soat 10 da hisobot", "offline": True,
+                                "recorded_day": typed.isoformat()}).json()
+    assert r["ok"] is True and r["id"] and r["deadline"] == today.isoformat() and r["due_time"] == "10:00"
+
+    # Online, the same money line still only opens the check (nothing saved).
+    before = len(me.get("/api/money").json()["entries"])
+    assert me.post("/api/quick", {"title": "Non 5 ming"}).json() == {"ok": True, "money": True}
+    assert len(me.get("/api/money").json()["entries"]) == before
+
+
+def test_the_offline_queue_takes_every_record_but_not_sign_in_or_payments():
+    html = (ROOT / "webapp" / "index.html").read_text()
+    rx = html[html.index("const QUEUEABLE = /"):]
+    rx = rx[:rx.index(";\n")]
+    for kind in ("quick", "tasks", "habits", "prayers", "money", "journal", "debts", "focus", "goals"):
+        assert kind in rx, kind
+    for never in ("auth", "plans", "pay", "agent", "me", "settings", "promocode"):
+        assert never + "|" not in rx and "|" + never not in rx, never
+    assert "err.queued = {path, method" in html
+    assert "if(queueIfOffline(e)){ lastDraft = null; closeSheet(); render(); }" in html
+    assert 'q.path === "/api/quick"' in html and "offline: true, recorded_day: todayISO()" in html
+    assert "async function flushVoice()" in html and 'indexedDB.open(VOICE_DB, 1)' in html

@@ -2072,6 +2072,7 @@ const DICT = {
   groups_tab:"Guruhlar", team_new_short:"Yangi guruh",
   group_settings:"Guruh sozlamalari va a'zolar",
   now_ai_label:"AI «Hozir» tavsiyasi", now_ai_enable:"AI tavsiyasini yoqish", now_ai_consent:"Hozir nima qilishni AI tanlashi uchun bugungi ochiq vazifalaringiz nomlari AI xizmatiga (Groq yoki Google, AQSh) yuboriladi. Tanlov faqat sizning vazifalaringiz orasidan bo'ladi va hech narsa o'zgartirilmaydi.",
+  voice_queued:"Internet yo'q — ovoz telefonda saqlandi. Internet kelishi bilan yuboriladi va tasdiqlash uchun shu yerda chiqadi.", voice_synced_journal:"Kun xulosasi uchun ovozli yozuv tayyor — tekshirib, saqlang",
   draft_restored:"Saqlanmagan matn tiklandi", autosaved:"Saqlanmoqda…",
   mood_q:"Bugun o'zingizni qanday his qildingiz?",
   mood_awful:"Juda yomon", mood_low:"Yomon", mood_ok:"O'rtacha",
@@ -2594,6 +2595,7 @@ const DICT = {
   groups_tab:"Groups", team_new_short:"New group",
   group_settings:"Group settings and members",
   now_ai_label:"AI «Now» suggestion", now_ai_enable:"Turn on the AI suggestion", now_ai_consent:"To let AI choose what to do now, the names of today's open tasks are sent to an AI service (Groq or Google, USA). It only chooses among your own tasks and changes nothing.",
+  voice_queued:"No connection — the recording is kept on this phone. It is sent as soon as you are back online and shows up here to confirm.", voice_synced_journal:"Your voice note for the day summary is ready — check it and save",
   draft_restored:"Unsaved text restored", autosaved:"Saving…",
   mood_q:"How did you feel today?",
   mood_awful:"Awful", mood_low:"Low", mood_ok:"Okay",
@@ -3110,6 +3112,7 @@ const DICT = {
   groups_tab:"Группы", team_new_short:"Новая группа",
   group_settings:"Настройки и участники группы",
   now_ai_label:"AI-совет «Сейчас»", now_ai_enable:"Включить AI-совет", now_ai_consent:"Чтобы AI выбрал, чем заняться сейчас, названия сегодняшних открытых задач отправляются AI-сервису (Groq или Google, США). Он выбирает только из ваших задач и ничего не меняет.",
+  voice_queued:"Нет сети — запись сохранена на телефоне. Отправим, как только появится интернет, и покажем здесь для подтверждения.", voice_synced_journal:"Голосовая запись для итогов дня готова — проверьте и сохраните",
   draft_restored:"Несохранённый текст восстановлен", autosaved:"Сохраняем…",
   mood_q:"Как вы себя чувствовали сегодня?",
   mood_awful:"Очень плохо", mood_low:"Плохо", mood_ok:"Нормально",
@@ -3581,14 +3584,23 @@ async function api(path, options = {}){
   const method = (options.method || "GET").toUpperCase();
   const extra = {};
   if(method === "POST" && idemKey){ extra["X-Idempotency-Key"] = idemKey; idemKey = null; }
-  const res = await fetch(path, {
-    ...options,
-    signal: options.signal || requestTimeout(options.timeout || API_TIMEOUT_MS),
-    headers:{"Content-Type":"application/json",
-             "X-Telegram-Init-Data": tg?.initData || "", ...extra,
-             ...(options.headers||{})},
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
+  let res;
+  try{
+    res = await fetch(path, {
+      ...options,
+      signal: options.signal || requestTimeout(options.timeout || API_TIMEOUT_MS),
+      headers:{"Content-Type":"application/json",
+               "X-Telegram-Init-Data": tg?.initData || "", ...extra,
+               ...(options.headers||{})},
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+  }catch(err){
+    /* v16: a write that never got an answer carries what it was, so the
+       offline queue can send exactly it again — with the same key. */
+    if(method !== "GET") err.queued = {path, method, body: options.body ?? null,
+      key: extra["X-Idempotency-Key"] || options.headers?.["X-Idempotency-Key"] || newKey()};
+    throw err;
+  }
   if(!res.ok){
     const err = new Error("http_" + res.status);
     err.status = res.status;
@@ -5518,6 +5530,11 @@ async function forgetLocalDrafts(){
       const k = localStorage.key(i);
       if(k && (k.startsWith(prefix) || k === jai || k === queueKey() || k === LAST_GOOD)) localStorage.removeItem(k);
     }
+  }catch(_){}
+  // Recordings kept while offline belong to this account too.
+  try{
+    for(const x of await voiceList()) await voiceStore("delete", x.key);
+    state.voicePending = 0;
   }catch(_){}
 }
 /* Before a wipe or a delete is sent (K02): nothing may be sent meanwhile —
@@ -7690,6 +7707,14 @@ async function voiceSend(resend){
     openSheet(voiceCardSheet(voice.draft), "voice");
     notify(voice.draft.status === "ready" ? "success" : "warning");
   }catch(e){
+    // No signal: the recording waits on the phone and goes when it is back.
+    if((isOffline(e) || !navigator.onLine) && voice.kept && await voiceKeep({...voice.kept})){
+      voice.kept = null;
+      if(!stillHere()) return;
+      voice.draft = null;
+      openSheet(voiceCardSheet({status:"failed", message: t("voice_queued")}), "voice");
+      return;
+    }
     if(!stillHere()) return;
     voice.draft = null;
     // A refusal the same audio cannot fix (too long, no consent) drops it.
@@ -7698,8 +7723,99 @@ async function voiceSend(resend){
       ? t("voice_consent_needed") : e.status === 413 ? t("voice_too_long") : t("voice_failed")}), "voice");
   }
 }
+/* v16: a recording made with no signal is kept on the phone — IndexedDB,
+   because audio does not fit localStorage — and sent once the connection is
+   back, with the key it was recorded under. The answer opens as the usual
+   card to confirm: nothing is created without that tap. Per account; signing
+   out or wiping data forgets it. */
+const VOICE_DB = "ernestos-voice", VOICE_STORE = "pending";
+function voiceDb(){
+  return new Promise((ok, fail) => {
+    if(!window.indexedDB) return fail(new Error("no_idb"));
+    const req = indexedDB.open(VOICE_DB, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(VOICE_STORE, {keyPath:"key"});
+    req.onsuccess = () => ok(req.result);
+    req.onerror = () => fail(req.error);
+  });
+}
+async function voiceStore(op, value){
+  const db = await voiceDb();
+  return new Promise((ok, fail) => {
+    const tx = db.transaction(VOICE_STORE, op === "list" ? "readonly" : "readwrite");
+    const st = tx.objectStore(VOICE_STORE);
+    const req = op === "put" ? st.put(value) : op === "delete" ? st.delete(value)
+      : op === "clear" ? st.clear() : st.getAll();
+    req.onsuccess = () => ok(req.result);
+    req.onerror = () => fail(req.error);
+  });
+}
+async function voiceList(){
+  try{
+    const uid = state.me?.telegram_id || null;
+    return (await voiceStore("list")).filter(x => x.owner === uid).sort((a, b) => a.at - b.at);
+  }catch(_){ return []; }
+}
+async function voiceKeep(item){
+  try{
+    await voiceStore("put", {...item, owner: state.me?.telegram_id || null});
+    state.voicePending = (await voiceList()).length;
+    return true;
+  }catch(_){ return false; }
+}
+let voiceFlushing = false;
+async function flushVoice(){
+  if(voiceFlushing || !navigator.onLine || !state.me?.agent?.available) return;
+  const list = await voiceList();
+  state.voicePending = list.length;
+  // One card at a time: the next waits until this one is answered.
+  if(!list.length || state.sheetView === "voice") return;
+  voiceFlushing = true;
+  const item = list[0];
+  try{
+    const journal = item.target === "journal";
+    const res = await fetch(journal ? "/api/agent/journal/audio" : "/api/agent/audio", {method:"POST",
+      body:item.blob, signal: requestTimeout(150000),
+      headers:{"Content-Type": String(item.mime || "").split(";")[0] || "audio/webm",
+               "X-Telegram-Init-Data": tg?.initData || "", "X-Agent-Request-Key": item.key}});
+    if(!res.ok){
+      const err = new Error("http_" + res.status); err.status = res.status;
+      try{ err.body = await res.json(); err.detail = err.body?.detail; }catch(_){}
+      throw err;
+    }
+    const answer = await res.json();
+    await voiceStore("delete", item.key);
+    state.voicePending = Math.max(0, list.length - 1);
+    if(journal){
+      if(state.screen === "habits" && state.tab === "journal") journalFilled(answer);
+      else{
+        const pending = state.jaiPending || (state.jaiPending = {});
+        for(const [id, text] of Object.entries(answer?.answers || {}))
+          pending[id] = pending[id] ? `${pending[id]} ${text}` : text;
+        toast(t("voice_synced_journal"));
+      }
+    }else{
+      voice.session++;
+      voice.draft = answer;
+      openSheet(voiceCardSheet(answer), "voice");
+      notify(answer.status === "ready" ? "success" : "warning");
+    }
+  }catch(e){
+    // No network or a server hiccup: it stays for the next try. A refusal
+    // the same audio cannot fix is said once and dropped.
+    if(!(isOffline(e) || e.status >= 500 || e.status === 429)){
+      try{ await voiceStore("delete", item.key); }catch(_){}
+      state.voicePending = Math.max(0, list.length - 1);
+      toast(e.detail === "consent_required" ? t("voice_consent_needed")
+        : e.status === 413 ? t("voice_too_long") : t("voice_failed"));
+    }
+  }finally{
+    voiceFlushing = false;
+    render();
+  }
+}
+
 function voiceConsentSheet(){
-  return `<h3>🎙 ${t("voice_title")}</h3>
+  return `<h3>${icon("mic", 18)} ${t("voice_title")}</h3>
     <div class="t2 small wrap" style="margin:8px 0 14px">${t("voice_consent")}</div>
     <button class="btn" data-act="voice-consent">${t("voice_agree")}</button>`;
 }
@@ -10297,7 +10413,8 @@ async function save(request, reload, quiet, message, draft){
     window.dispatchEvent(new Event("ernest:changed"));
   }catch(e){
     idemKey = null;
-    handleError(e, draft && {...draft, request, reload, key});
+    if(queueIfOffline(e)){ lastDraft = null; closeSheet(); render(); }
+    else handleError(e, draft && {...draft, request, reload, key});
   }finally{
     saveInFlight = false;
     busy?.classList.remove("busy"); busy?.removeAttribute("aria-busy");
@@ -10322,6 +10439,7 @@ function optimistic(mutate, request, reload, queued, undo, chain){
       // No connection at all: the tick stays on screen and waits in the
       // queue instead of being undone (audit #18).
       if(queued && isOffline(e)){ if(enqueue(queued)) return; }
+      if(!queued && queueIfOffline(e)) return;
       if(undo) undo(); else setState(JSON.parse(snapshot));
       render();
       handleError(e);
@@ -10341,6 +10459,30 @@ function optimistic(mutate, request, reload, queued, undo, chain){
    dropped silently: the item stays, marked with the reason, until the user
    retries or removes it from the queue sheet (K04). */
 const queueKey = () => `ernestos-queue-${state.me?.telegram_id || "anon"}`;
+/* v16: every record of the day can wait for the network — tasks, habits,
+   prayer, money, the journal, debts, goals and group ticks. Sign-in,
+   payments, plans, AI and settings cannot: they need the server's answer. */
+const QUEUEABLE = /^\/api\/(quick|tasks|habits|prayers|money|journal|debts|focus|goals|countdowns|birthdays|projects|teams\/(tasks|habits|projects))(\/|\?|$)/;
+const QUEUE_LABEL = [[/^\/api\/(quick|tasks|projects)/, "task_word"], [/^\/api\/habits/, "habit_word"],
+  [/^\/api\/prayers/, "prayer"], [/^\/api\/money/, "nav_money"], [/^\/api\/journal/, "journal"],
+  [/^\/api\/debts/, "money_tab_debts"], [/^\/api\/(focus|goals)/, "goals_tab"],
+  [/^\/api\/teams/, "groups_tab"], [/^\/api\/(countdowns|birthdays)/, "calendar"]];
+function queueLabel(q){
+  const kind = (QUEUE_LABEL.find(([re]) => re.test(q.path)) || [null, "saved"])[1];
+  const b = q.body || {};
+  const what = b.title || b.name || b.note || b.person || "";
+  return `${t(kind)}${what ? " · " + String(what).slice(0, 60) : ""}`;
+}
+/* An offline write the caller did not plan for: queued if it is a record,
+   refused (with the usual message) if it is not. True when it was kept. */
+function queueIfOffline(e){
+  if(!isOffline(e) || !e?.queued || !QUEUEABLE.test(e.queued.path)) return false;
+  const q = {...e.queued};
+  // Quick capture is replayed with nobody to answer: the server saves it as
+  // meant on the day it was typed (money as money, "ertaga" from that day).
+  if(q.path === "/api/quick") q.body = {...(q.body || {}), offline: true, recorded_day: todayISO()};
+  return enqueue({...q, label: queueLabel(q)});
+}
 const isOffline = e => !e?.status && (e?.name === "TypeError" || e?.name === "AbortError"
   || e?.name === "TimeoutError" || /fetch|network|Failed/i.test(String(e?.message || "")));
 function loadQueue(){ try{ return JSON.parse(localStorage.getItem(queueKey()) || "[]"); }catch(_){ return []; } }
@@ -10436,7 +10578,7 @@ function offlineBanner(){
 }
 function queueBanner(){
   const q = loadQueue();
-  const stuck = q.filter(x => x.blocked).length, waiting = q.length - stuck;
+  const stuck = q.filter(x => x.blocked).length, waiting = q.length - stuck + (state.voicePending || 0);
   return (waiting ? `<div class="banner" data-act="queue-flush" role="button" tabindex="0">
       ${icon("clock", 16)} <div class="grow">${t("queue_pending", {n: waiting})}</div>${icon("repeat", 15)}</div>` : "")
     + (stuck ? `<div class="banner" data-act="queue-review" role="button" tabindex="0"
@@ -10458,11 +10600,12 @@ function queueSheet(){
     ${q.length ? q.map(row).join("") : `<div class="hint">${t("queue_empty")}</div>`}
     <button class="btn secondary" data-act="close" style="margin-top:var(--s3)">${t("close")}</button>`;
 }
-window.addEventListener("online", () => { if(state.offlineSince) boot(); else flushQueue(); });
+window.addEventListener("online", () => { if(state.offlineSince) boot(); else { flushQueue(); flushVoice(); } });
 document.addEventListener("visibilitychange", () => {
   if(document.hidden) return;
   if(state.needsSetup && state.setupAway){ state.setupAway = false; boot(); return; }
   if(loadQueue().length) flushQueue();
+  flushVoice();
 });
 /* Phone app: a push while open refreshes the bell; a tapped one opens the
    inbox; coming back to the app catches up on what arrived meanwhile. */
@@ -11603,7 +11746,7 @@ const A = {
     api(path, {method:"POST", body:{qty}}).then(() => { toast(t("saved")); loadScreen("habits"); })
       .catch(e => isOffline(e) ? enqueue({path, method:"POST", body:{qty}, label: el.dataset.name || ""}) : handleError(e));
   },
-  "queue-flush": () => { haptic(); flushQueue(); },
+  "queue-flush": () => { haptic(); flushQueue(); flushVoice(); },
   "queue-review": () => { haptic(); openSheet(queueSheet(), "queue"); },
   "queue-retry": async el => {
     storeQueue(loadQueue().map(x => x.key === el.dataset.key ? {...x, blocked:null} : x));
@@ -13145,8 +13288,9 @@ async function boot(){
     state.homeVeil = state.homeVeil ?? true;
     setState({me, loading:false, blocked:null, error:null, needsSetup:false, offlineSince:null});
     saveLastGood();
-    // Ticks recorded while offline in an earlier session go out now.
+    // Ticks and recordings kept while offline in an earlier session go out now.
     if(loadQueue().length) flushQueue();
+    flushVoice();
     if(IS_APP){
       refreshInbox();
       // A tapped push opens the inbox, whether it woke the app or not.
