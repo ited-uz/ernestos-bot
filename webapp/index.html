@@ -748,6 +748,9 @@ nav:empty{display:none}
 .seg.big > *{min-height:48px;font-size:16px;font-weight:650}
 /* Inside a group the switch already names the screen. */
 .grouped > .head > h1, .grouped > .head > .grow > h1{display:none}
+/* A group's own name is the one title kept under the Reja switch (v16). */
+.grouped > .head > .grow > h1.gname{display:block}
+.screen-team.grouped > .head{justify-content:space-between}
 .grouped > .head{min-height:0;justify-content:flex-end}
 .profile-head{display:flex;align-items:center;gap:var(--s2);margin:4px 0 12px}
 .grouped > h1:first-child{display:none}
@@ -1166,6 +1169,7 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
 .ptable .c-max{background:color-mix(in srgb, var(--warn) 6%, transparent)}
 .ptable .c-max.cur{background:color-mix(in srgb, var(--primary) 9%, transparent)}
 .ptable td b{font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
+.ptable td b.pt-low{color:var(--danger)}
 .ptable td small{color:var(--text-3);font-size:11px}
 .pt-yes{color:var(--ok);display:inline-flex}
 .pt-no{color:var(--danger);display:inline-flex;font-weight:800}

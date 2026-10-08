@@ -157,3 +157,80 @@ Skrinshotlar faqat demo (mock) sahifadan olingan.
 - Tashqi hisoblar ulanmadi.
 - Migratsiyalar faqat test bazasida ishga tushirildi.
 - `main` branchga merge sizning tasdig'ingizni kutadi.
+
+---
+
+# v16 — yakuniy tahrir (launch oldidan)
+
+Commitlar: `3e96300` (tariflar), `956eacf` (guruhlar Reja'da), `9274dbf` (AI Hozir),
+`ce5531e` (internetsiz ishlash), `e9f2ce2` (dark rejim), `29c46ce` (guruhlar hisobi).
+
+## Egasining 4 ta talabi
+
+| Talab | Holat | Nima qilindi | Qanday tekshirildi |
+|---|---|---|---|
+| Tarifda yo'q yoki kam funksiya — qizil | ✅ | Tarif jadvalida yo'q funksiya qizil ✕ bilan, Max'dagidan kichik limit qizil raqam bilan ko'rsatiladi. Ilovadagi barcha qulflar ham qizil: mavzular, oy/yil statistikasi, AI Hozir, yangi guruh, moliya. | Skrinshot (mock). Free jadval qiymatini tekshiruvchi frontend testi. |
+| Dark rejim — kuchli, har mavzu o'zicha | ✅ | Clean — OLED qora. Obsidian — neon noir (cyan/violet). Emerald — qora-oltin, oltin shimmer bilan (kamaytirilgan harakat sozlamasida o'chadi). Blossom — tungi atirgul shishasi. Hammasi tokenlar bilan, komponentlarda qattiq kodlangan rang yo'q. | Palitra, kontrast va "rang yozilmagan" testlari (78 ta). 4 ta mavzu dark skrinshoti (mock). |
+| Hozir — AI tavsiyasi asosida | ✅ | Faqat Pro/Max. AI faqat sizning ochiq vazifalaringiz orasidan tanlaydi va bir jumla sabab yozadi. Tanlov 45 daqiqa keshlanadi, kuniga limit bor. Pin qilingan vazifa, uyg'onish va namoz kartasini almashtirmaydi. AI o'chiq bo'lsa, oddiy qoida ishlaydi. Free'da qizil qulf qatori ko'rinadi. | pytest: AI soxta javob bilan. Nomzoddan tashqari tanlov rad etiladi, keshdan javob, tarif/rozilik/limit tekshiriladi. **Haqiqiy AI kaliti bilan sinalmagan** — bu test muhitida kalit yo'q. |
+| Internetsiz hamma narsa qabul qilinadi | ✅ | Barcha yozuvlar telefonda navbatga turadi va internet kelganda o'sha idempotentlik kaliti bilan yuboriladi: tezkor qo'shish, vazifa, odat, namoz, pul, xulosa, qarz, maqsad, guruh. Ovozli yozuv IndexedDB'da saqlanadi va internet kelganda tasdiqlash kartasi chiqadi. Kirish, to'lov, tarif va AI navbatga kirmaydi. | E2E (haqiqiy server, brauzer offline): vazifa va pul yozuvi navbatga tushdi va bazaga **bir martadan** yetdi. Pytest: offline tezkor qo'shish pulni yozadi, "ertaga" yozilgan kundan hisoblanadi. Ovoz navbati brauzerda qo'lda sinalmagan, faqat kod va statik testlar bor. |
+
+## Sizning javoblaringiz bo'yicha
+
+- **Tillar:** uz/ru/en qoldi.
+- **Free'ga dark ochildi.** Rangli mavzular Pro'da.
+- **Free qattiqlashdi:**
+  - faol vazifalar 30 → 20;
+  - maqsadlar 3 → 2;
+  - ovoz/AI haftasiga 5 → 3;
+  - oy/yil statistikasi qizil qulf bilan.
+
+  Limitdan oshgan mavjud yozuvlar o'chmaydi, faqat yangisini qo'shib bo'lmaydi.
+- **Guruhlar Reja'da:** Odatlar · Vazifalar · Maqsadlar · Guruhlar.
+  - Guruh nomi katta sarlavhada.
+  - Har guruh nomi bilan chip, oxirgi chip "Yangi guruh". Free'da u qizil qulf bilan: jamoaga ega bo'lish Pro, qo'shilish bepul.
+
+## 36 ta interfeys bandi — yakuniy holat
+
+1. **01, 18 (suzuvchi tugma):** ✅ `+` pastga aylantirganda yashirinadi, yuqoriga aylantirganda, sahifa boshida va oxirida qaytadi.
+2. **02 (klaviatura):** 🟢 Avvaldan to'g'ri — tekshirildi. Maydon fokusda bo'lsa, pastki menyu va `+` yashiriladi.
+3. **12 (sticky sana):** 🟡 Sana qatori bor, lekin sticky emas.
+4. **25 (joriy summa):** 🟡 Joriy summa maydoni yo'q; foiz bosqichlardan hisoblanadi.
+
+Qolgan bandlar v15 jadvalidagidek.
+
+## 30 ta moliya bandi — yakuniy holat
+
+- **08 (USDT kursi):** ❌ Yo'q (sabab yuqorida). Kripto hisob ostida "summa so'mda yuritiladi" deb yozilgan.
+- Qolgan bandlar v15 jadvalidagidek.
+
+## 80 ta guruh/statistika bandi — v16 o'zgarishlari
+
+| Band | Holat | Izoh |
+|---|---|---|
+| V08 | ✅ | Statistika kartasi nomi: "Guruhdagi ishlarim". |
+| V19, V32 | ✅ | Guruh nomi sarlavhada, guruhlar Reja'da. |
+| V20 | ✅ | `+` jamoaga vazifa qo'shadi va nomi yozilgan. |
+| V25 | ✅ | "Mas'ullar · …", "✓ kim bajardi", "Hali bajarmagan · …". |
+| V26 | ✅ | O'chirish oldin "barcha a'zolar uchun" deb so'raydi. |
+| V27, T53 | ✅ | "Guruh ishlari 1/4 yopildi · Shaxsiy belgilar 5/8". ANY vazifa bitta ish deb sanaladi — test bor. |
+| T46, T51 | 🟢 | Avvaldan to'g'ri — tekshirildi. Taklif havolasini yangilash/bekor qilish va guruh bo'yicha bildirishnoma darajalari mavjud. |
+| T35 | ❌ | Rad etildi (sabab yuqorida). |
+| T41, T42, T44, T48, T49, T52, T56; S63, S65, S70, S75 | ⏳ | Keyingi bosqich. |
+| V06, V31 | ⏳ | Keyingi bosqich. |
+
+## Tekshiruv natijalari (v16)
+
+| Tekshiruv | Natija |
+|---|---|
+| pytest | 1118 passed |
+| `tests/frontend_release.cjs`, `tests/frontend_audit50.cjs`, `tests/test_agent_ui.cjs` | o'tdi |
+| E2E: ilova qobig'i, haqiqiy server, offline qadami bilan | 24/24 |
+| E2E: Mini App | 11/11 |
+| Kengliklar: 360, 390, 768, 1280 px | 11 ta ekranda sahifa gorizontal siljimaydi |
+
+## Mock va haqiqiy
+
+- **Skrinshotlar:** `webapp/preview.js` mock.
+- **AI Hozir sababi:** demoda yozib qo'yilgan matn, modeldan kelmagan.
+- **Haqiqiy server testlari:** pytest va E2E. Ular SQLite test bazasida ishladi. Production'ga deploy qilinmagan.
+- **APK:** CI'da yig'iladi, telefonda qo'lda sinalmagan.

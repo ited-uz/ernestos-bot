@@ -218,3 +218,12 @@ navbatga tushadi va ulanganda bir marta yuboriladi.
 - Tarif jadvalida yo'q funksiya qizil ✕, Max'dan kichik limit qizil raqam bilan ko'rsatiladi;
   ilova ichidagi qulflar ham qizil.
 - Eski mavzu nomlari `python migrations.py 0014` bilan yangilariga o'tkaziladi.
+
+## Internetsiz ishlash va AI Hozir (v16)
+
+- Internet yo'qligida kun yozuvlari telefonda navbatga turadi va ulanganda o'sha kalit bilan
+  bir marta yuboriladi: tezkor qo'shish, vazifa, odat, namoz, pul, xulosa, qarz, maqsad, guruh.
+  Ovozli yozuv telefonda saqlanadi va internet kelganda tasdiqlash kartasi chiqadi.
+- Kirish, to'lov, tarif, sozlamalar va AI so'rovlari navbatga olinmaydi.
+- AI «Hozir» tavsiyasi faqat Pro va Max'da, rozilik bilan: AI faqat ochiq vazifalaringiz orasidan
+  bittasini tanlaydi va bir jumla sabab yozadi. Javob 45 daqiqa keshlanadi, kuniga cheklangan.
