@@ -106,7 +106,7 @@ class User(Base):
 
     language: Mapped[str] = mapped_column(String(2), default="uz")     # uz|en|ru
     gender: Mapped[str | None] = mapped_column(String(6), nullable=True)  # male|female
-    theme: Mapped[str] = mapped_column(String(20), default="ocean")
+    theme: Mapped[str] = mapped_column(String(20), default="clean-white")
     quote: Mapped[str] = mapped_column(Text, default="")
     #: Telegram file_id of the uploaded avatar, or empty for initials.
     photo_file_id: Mapped[str] = mapped_column(String(200), default="")
@@ -1276,6 +1276,41 @@ class PlanGrant(Base):
     ref: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
     amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class PromoCode(Base):
+    """A code that gives days of Pro or Max — for a campaign, a partner or a
+    giveaway. Created by an admin in the bot (/promo_new); `used_count` is
+    raised in the same statement that checks it against `max_uses`, so two
+    people redeeming the last use at once cannot both get it."""
+
+    __tablename__ = "promo_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    #: Stored upper-case; what people type is upper-cased before the lookup.
+    code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    tier: Mapped[str] = mapped_column(String(8))                 # pro | max
+    duration_days: Mapped[int] = mapped_column(Integer)
+    #: None: no limit on how many accounts may use it.
+    max_uses: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    used_count: Mapped[int] = mapped_column(Integer, default=0)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class PromoCodeRedemption(Base):
+    """One account's use of one code — once per account and code."""
+
+    __tablename__ = "promo_code_redemptions"
+    __table_args__ = (UniqueConstraint("promo_id", "user_id", name="uq_promo_redemption"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    promo_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("promo_codes.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    redeemed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class AppNotification(Base):

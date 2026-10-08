@@ -10,7 +10,7 @@
    URL options (all optional):
      ?preview&screen=home|habits|tasks|team|stats|money
             &tab=prayer|journal|open|projects|done|calendar|work|results
-            &mode=light|dark   &lang=uz|en|ru   &theme=ocean|midnight|aurora|bento|spatial
+            &mode=light|dark   &lang=uz|en|ru   &theme=clean-white|blossom|obsidian|emerald
             &sheet=task|habit|settings|look|notify|timer
             &scenario=normal|empty|offline|loading
    ================================================================== */
@@ -88,13 +88,15 @@
         // AI services (see "voice" below) so the whole flow can be tried.
         agent:{enabled:true, available:true, consent:false},
         // ?plan=pro|max|free (default free, so the limits can be tried).
-        plan:{enabled:true, tier:Q.get("plan") || "free", until:null, days_left:null,
+        plan:{enabled:true, tier:Q.get("plan") || "free",
+              until:(Q.get("plan") || "free") !== "free" ? new Date(Date.now() + 23 * 864e5).toISOString() : null,
+              days_left:(Q.get("plan") || "free") !== "free" ? 23 : null,
               channel_bonus_used:false, channel_bonus_days:7, channel:"https://t.me/ernestos_channel",
               products:[{key:"pro_month", tier:"pro", days:30, stars:125, uzs:29000},
                         {key:"pro_year", tier:"pro", days:365, stars:1100, uzs:249000},
                         {key:"max_month", tier:"max", days:30, stars:350, uzs:79000},
                         {key:"max_year", tier:"max", days:365, stars:3000, uzs:690000}]},
-        theme:Q.get("theme") || "ocean", gender:"male",
+        theme:Q.get("theme") || "clean-white", gender:"male",
         modules:{wake:true, prayer:true, journal:true}, member_no:128, username:"ernest",
         has_photo:false, avatar_token:"",
         prefs:{morning_report:true, morning_time:"05:30", evening_report:true,
@@ -516,7 +518,7 @@
                   team_members:{free:8, pro:10, max:50}, voice_day:{free:null, pro:30, max:100},
                   voice_week:{free:5, pro:null, max:null}},
       all_features:{journal_ai:["pro","max"], timer_rhythm:["pro","max"], stats_history:["pro","max"], stats_csv:["max"],
-                    money_transfers:["pro","max"], money_year:["max"]}})],
+                    money_transfers:["pro","max"], money_year:["max"], themes:["pro","max"]}})],
     [/^\/api\/app\/notifications$/, () => ({items:DB.inbox,
       unread:DB.inbox.filter(n => !n.read).length})],
     [/^\/api\/fresh-start$/, () => {
@@ -617,6 +619,15 @@
       Object.assign(row, body || {});
       if(row.level !== "milestone") row.parent_id = null;
       return {ok:true};
+    }
+    if(path === "/api/promocode/redeem"){
+      const code = String(body?.code || "").trim().toUpperCase();
+      if(code !== "DEMO30") return {__status:404, detail:"not_found"};
+      if(DB.promoUsed) return {__status:409, detail:"already_used"};
+      DB.promoUsed = true;
+      const until = new Date(Date.now() + 30 * 864e5).toISOString();
+      Object.assign(DB.me.plan, {tier:"max", until, days_left:30});
+      return {ok:true, code, tier:"max", days:30, until, plan:DB.me.plan};
     }
     if(path === "/api/coins/buy"){
       const item = COIN_ITEMS.find(i => i.key === body?.item);

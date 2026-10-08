@@ -328,8 +328,8 @@ def test_unknown_category_falls_back_to_target(alice):
     assert "Stretching" in [h["name"] for h in grouped["target"]]
 
 
-def test_default_theme_is_ocean(alice):
-    assert alice.get("/api/me").json()["theme"] == "ocean"
+def test_default_theme_is_clean_white(alice):
+    assert alice.get("/api/me").json()["theme"] == "clean-white"
 
 
 def test_protected_habit_cannot_be_toggled(alice):
@@ -1272,8 +1272,7 @@ def _set_theme(telegram_id: int, value: str) -> None:
 def test_every_offered_theme_is_one_the_mini_app_styles():
     """The picker and the stylesheet must not be able to disagree."""
     styled = (ROOT / "webapp" / "index.html").read_text()
-    assert application.THEMES == ["ocean", "midnight", "aurora", "bento",
-                                  "spatial"]
+    assert application.THEMES == ["clean-white", "blossom", "obsidian", "emerald"]
     for name in application.THEMES:
         assert f'[data-theme="{name}"]' in styled, \
             f"{name} is offered but never styled"
@@ -1356,7 +1355,9 @@ def test_the_picker_shows_the_same_palette_the_theme_uses():
 
     styled = (ROOT / "webapp" / "index.html").read_text()
     picker = styled[styled.index("const THEMES = ["):styled.index("const THEME_NAMES")]
-    for entry in re.findall(r'\{id:"(\w+)",\s*c:\[([^\]]*)\]\}', picker):
+    entries = re.findall(r'\{id:"([\w-]+)",\s*c:\[([^\]]*)\]\}', picker)
+    assert [name for name, _ in entries] == application.THEMES
+    for entry in entries:
         name, colours = entry
         shown = [c.strip().strip('"').lower() for c in colours.split(",")]
         block = _theme_block(styled, name)
@@ -1408,7 +1409,7 @@ def test_each_theme_owns_its_ground_in_each_mode(mode):
         block = _theme_block(styled, name, mode)
         grounds[name] = re.search(r"--bg:\s*(#[0-9A-Fa-f]+)",
                                   block).group(1).lower()
-    assert len(set(grounds.values())) == 5, grounds
+    assert len(set(grounds.values())) == len(application.THEMES), grounds
 
 
 def test_light_and_dark_are_genuinely_different():
@@ -1444,9 +1445,15 @@ def test_the_mode_is_resolved_in_one_place():
     assert 'localStorage.setItem("ernestos-appearance"' in html
 
 
-def test_a_retired_theme_reads_as_the_default(alice):
+def test_a_retired_theme_reads_as_its_successor(alice):
+    """An old name shows as the theme migration 0014 will move it to, and a
+    name nobody ever used as the default."""
     _set_theme(ALICE["id"], "pink")
-    assert alice.get("/api/me").json()["theme"] == "ocean"
+    assert alice.get("/api/me").json()["theme"] == "blossom"
+    _set_theme(ALICE["id"], "ocean")
+    assert alice.get("/api/me").json()["theme"] == "clean-white"
+    _set_theme(ALICE["id"], "neon-zebra")
+    assert alice.get("/api/me").json()["theme"] == "clean-white"
 
 
 def test_the_migration_moves_a_retired_theme_to_its_closest_survivor(alice):
@@ -1474,12 +1481,67 @@ def test_the_theme_migration_keeps_a_reused_name(alice):
 
 
 def test_the_theme_migration_is_safe_to_run_twice(alice):
-    _set_theme(ALICE["id"], "obsidian")
+    _set_theme(ALICE["id"], "rose")
     migrations.m0003_retire_themes()
     again = migrations.m0003_retire_themes()
     assert again["total"] == 0
     with SessionLocal() as s:
-        assert s.get(User, ALICE["id"]).theme == "slate"
+        assert s.get(User, ALICE["id"]).theme == "blossom"
+
+
+@pytest.mark.parametrize("live", ["clean-white", "blossom", "obsidian", "emerald"])
+def test_no_older_theme_migration_moves_a_live_name(alice, live):
+    """blossom, obsidian and emerald were names once before; every older step
+    now leaves the live ones alone, so the whole chain can be re-run."""
+    _set_theme(ALICE["id"], live)
+    for step in ("0003", "0005", "0007", "0008", "0014"):
+        migrations.MIGRATIONS[step]()
+    with SessionLocal() as s:
+        assert s.get(User, ALICE["id"]).theme == live
+
+
+@pytest.mark.parametrize("old,new", [
+    ("ocean", "clean-white"), ("midnight", "obsidian"), ("aurora", "blossom"),
+    ("bento", "obsidian"), ("spatial", "emerald"), ("calm", "clean-white"), ("pink", "blossom"),
+])
+def test_the_curated_theme_migration_lands_on_a_live_theme(alice, old, new):
+    _set_theme(ALICE["id"], old)
+    migrations.m0014_curated_themes()
+    with SessionLocal() as s:
+        assert s.get(User, ALICE["id"]).theme == new
+    assert migrations.m0014_curated_themes()["total"] == 0
+
+
+@pytest.mark.parametrize("old", ["ocean", "cobalt", "pure", "titan", "muse", "rage", "sage", "oxford"])
+def test_running_every_theme_migration_in_order_ends_on_a_live_theme(alice, old):
+    _set_theme(ALICE["id"], old)
+    for step in ("0003", "0005", "0007", "0008", "0014"):
+        migrations.MIGRATIONS[step]()
+    with SessionLocal() as s:
+        assert s.get(User, ALICE["id"]).theme in application.THEMES
+
+
+def test_free_keeps_clean_white_and_pro_may_choose(client, plans_on):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    _expire_grants(uid)
+    caller = Caller(client, {"id": uid, "first_name": "T"})
+    refused = caller.post("/api/settings", {"theme": "blossom"})
+    assert refused.status_code == 402 and refused.json()["key"] == "themes"
+    assert caller.post("/api/settings", {"theme": "clean-white"}).status_code == 200
+    with SessionLocal() as s:
+        plans.grant(s, uid, "pro", 30, "test", ref=f"theme-pro-{uid}")
+        s.commit()
+    assert caller.post("/api/settings", {"theme": "emerald"}).status_code == 200
+    assert caller.get("/api/me").json()["theme"] == "emerald"
+
+
+def test_the_mini_app_holds_free_to_clean_white_in_light_mode():
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert 'root.dataset.theme = themeLocked() ? FREE_THEME : themeOf(state.me?.theme);' in html
+    mode = html[html.index("function resolveMode(){"):]
+    assert mode.split("\n")[1].strip() == 'if(themeLocked()) return "light";'
+    assert '"theme-locked"' in html
 
 
 def test_a_retired_theme_cannot_be_set_again(alice):
@@ -4171,7 +4233,7 @@ def test_the_prayer_migration_is_safe_to_run_twice(alice):
 
 @pytest.mark.parametrize("old,new", [
     ("cobalt", "ocean"), ("slate", "midnight"), ("oxford", "pure"),
-    ("blossom", "aurora"), ("obsidian", "midnight"), ("emerald", "sage"),
+    ("rose", "aurora"), ("pink", "aurora"),
 ])
 def test_the_theme_rename_lands_on_the_closest_survivor(alice, old, new):
     _set_theme(ALICE["id"], old)
@@ -4213,33 +4275,28 @@ def test_the_older_theme_migration_cannot_undo_the_newer_one(alice):
 
 
 def test_every_theme_rename_target_is_a_theme_that_exists():
-    """The last mapping in the chain has to land on something real."""
-    for target in migrations.THEME_SYSTEMS.values():
+    """The last mapping in the chain lands on something real, and every name
+    an earlier step can produce is mapped by a later one or is live."""
+    live = migrations.LIVE_THEMES
+    assert live == set(application.THEMES)
+    for target in migrations.THEME_CURATED.values():
         assert target in application.THEMES, target
-    # And every name an earlier migration can produce is handled by the next.
-    # Every name an earlier step can produce is either handled by the next
-    # step or already a live name that needs no move. A rename that rewrites a
-    # live name would make the chain cyclic: running it twice would walk a row
-    # from calm to ocean and back again.
-    def handled(target, mapping, by):
-        assert target in mapping or target in migrations.LIVE_THEMES, \
-            f"{target} is produced but {by} neither maps nor keeps it"
-
-    for target in migrations.THEME_RENAMES.values():
-        handled(target, migrations.THEME_REDESIGN, "0007")
-    for target in migrations.RETIRED_THEMES.values():
-        handled(target, migrations.THEME_REDESIGN, "0007")
-    for target in migrations.THEME_REDESIGN.values():
-        handled(target, migrations.THEME_SYSTEMS, "0008")
-    for name in migrations.LIVE_THEMES:
-        assert name in application.THEMES
-        assert name not in migrations.THEME_SYSTEMS, \
-            f"0008 renames {name}, which is a live theme"
+    later = {"0003": [migrations.THEME_RENAMES, migrations.THEME_REDESIGN,
+                      migrations.THEME_SYSTEMS, migrations.THEME_CURATED],
+             "0005": [migrations.THEME_REDESIGN, migrations.THEME_SYSTEMS, migrations.THEME_CURATED],
+             "0007": [migrations.THEME_SYSTEMS, migrations.THEME_CURATED],
+             "0008": [migrations.THEME_CURATED]}
+    produced = {"0003": migrations.RETIRED_THEMES, "0005": migrations.THEME_RENAMES,
+                "0007": migrations.THEME_REDESIGN, "0008": migrations.THEME_SYSTEMS}
+    for step, mapping in produced.items():
+        for target in mapping.values():
+            assert target in live or any(target in m for m in later[step]), \
+                f"{step} produces {target}, which nothing after it maps"
 
 
 @pytest.mark.parametrize("old,new", [
     ("pure", "calm"), ("sage", "muse"), ("cobalt", "calm"),
-    ("slate", "titan"), ("blossom", "muse"),
+    ("slate", "titan"), ("rose", "muse"),
 ])
 def test_the_redesign_moves_a_theme_to_its_closest_survivor(alice, old, new):
     _set_theme(ALICE["id"], old)
@@ -4248,7 +4305,7 @@ def test_the_redesign_moves_a_theme_to_its_closest_survivor(alice, old, new):
         assert s.get(User, ALICE["id"]).theme == new
 
 
-@pytest.mark.parametrize("name", ["ocean", "midnight", "aurora"])
+@pytest.mark.parametrize("name", ["clean-white", "blossom", "obsidian", "emerald"])
 def test_the_redesign_leaves_a_name_that_is_live_again(alice, name):
     """Three of the names 0007 used to rewrite are live themes now.
 
@@ -4680,7 +4737,7 @@ def test_each_theme_declares_its_own_lead_colour():
         block = _theme_block(styled, name)
         leads[name] = re.search(r"--c1:\s*(#[0-9A-Fa-f]+)",
                                 block).group(1).lower()
-    assert len(set(leads.values())) == 5, leads
+    assert len(set(leads.values())) == len(application.THEMES), leads
 
 
 def test_the_brand_surface_control_is_visible_on_it():
@@ -5231,9 +5288,12 @@ APPLE_SYSTEM_COLOURS = {
 }
 
 
-@pytest.mark.parametrize("name", application.THEMES)
+@pytest.mark.parametrize("name", ["clean-white"])
 @pytest.mark.parametrize("mode", ["light", "dark"])
 def test_every_brand_colour_is_an_apple_system_colour(name, mode):
+    """Clean White is the system-blue theme and keeps Apple's palette. The
+    three curated themes (v15) are their own palettes by design — rose,
+    slate, emerald — and are checked for vividness and contrast instead."""
     import re
 
     styled = (ROOT / "webapp" / "index.html").read_text()
@@ -12614,3 +12674,92 @@ def test_the_reminder_schedule_is_for_the_phone_app_only(client):
     r = client.get("/api/app/schedule", headers=phone)
     assert r.status_code == 200 and isinstance(r.json()["items"], list)
     assert Caller(client, {"id": 7472, "first_name": "M"}).get("/api/app/schedule").status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Promo codes
+# ---------------------------------------------------------------------------
+
+def test_a_promo_code_gives_its_days_once_per_account(client, plans_on):
+    import promo
+    with SessionLocal() as s:
+        promo.create(s, "launch-30", "max", 30, max_uses=2)
+        s.commit()
+    a, b, c = next(_next_id), next(_next_id), next(_next_id)
+    for uid in (a, b, c):
+        _fresh_account(uid)
+        _expire_grants(uid)
+    first = Caller(client, {"id": a, "first_name": "A"})
+    r = first.post("/api/promocode/redeem", {"code": " launch-30 "})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["tier"] == "max" and body["days"] == 30 and body["plan"]["tier"] == "max"
+    assert body["until"] and 29 <= body["plan"]["days_left"] <= 30
+    again = first.post("/api/promocode/redeem", {"code": "LAUNCH-30"})
+    assert again.status_code == 409 and again.json()["detail"] == "already_used"
+    assert Caller(client, {"id": b, "first_name": "B"}).post(
+        "/api/promocode/redeem", {"code": "LAUNCH-30"}).status_code == 200
+    # Two uses: the third account is told it is used up.
+    third = Caller(client, {"id": c, "first_name": "C"}).post("/api/promocode/redeem", {"code": "LAUNCH-30"})
+    assert third.status_code == 409 and third.json()["detail"] == "exhausted"
+    with SessionLocal() as s:
+        assert promo.count_redeemed(s, "launch-30") == 2
+        grants = s.scalars(select(db.PlanGrant).where(db.PlanGrant.account_id == a,
+                                                      db.PlanGrant.source == "promo")).all()
+        assert len(grants) == 1
+
+
+def test_promo_code_refusals_name_the_reason(client, plans_on):
+    import promo
+    from datetime import datetime as _dt
+    with SessionLocal() as s:
+        promo.create(s, "OLD", "pro", 7, expires_at=_dt(2020, 1, 1))
+        promo.create(s, "OFFCODE", "pro", 7)
+        promo.deactivate(s, "offcode")
+        s.commit()
+    uid = next(_next_id)
+    _fresh_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "R"})
+    assert caller.post("/api/promocode/redeem", {"code": "NOPE"}).json()["detail"] == "not_found"
+    assert caller.post("/api/promocode/redeem", {"code": "old"}).json()["detail"] == "expired"
+    assert caller.post("/api/promocode/redeem", {"code": "OFFCODE"}).json()["detail"] == "inactive"
+    with pytest.raises(promo.PromoError):
+        with SessionLocal() as s:
+            promo.create(s, "OLD", "max", 7)
+    with pytest.raises(promo.PromoError):
+        with SessionLocal() as s:
+            promo.create(s, "bad code!", "max", 7)
+
+
+def test_promo_redeeming_is_rate_limited_like_sign_in():
+    from types import SimpleNamespace
+    assert application._rate_class(SimpleNamespace(url=SimpleNamespace(path="/api/promocode/redeem"),
+                                                   method="POST")) == "auth"
+
+
+def test_a_promo_code_queues_after_time_of_the_same_tier(client, plans_on):
+    import promo
+    with SessionLocal() as s:
+        promo.create(s, "MORE7", "pro", 7)
+        s.commit()
+    uid = next(_next_id)
+    _fresh_account(uid)            # 3 days of Pro trial
+    caller = Caller(client, {"id": uid, "first_name": "Q"})
+    days = caller.post("/api/promocode/redeem", {"code": "MORE7"}).json()["plan"]["days_left"]
+    assert days in (9, 10, 11)
+
+
+def test_promo_redemptions_leave_with_the_account_and_are_exported(client, plans_on):
+    import promo
+    with SessionLocal() as s:
+        promo.create(s, "EXPORTME", "pro", 3)
+        s.commit()
+    uid = next(_next_id)
+    _fresh_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "X"})
+    caller.post("/api/promocode/redeem", {"code": "EXPORTME"})
+    assert caller.get("/api/export").json()["promo_codes_used"][0]["code"] == "EXPORTME"
+    with SessionLocal() as s:
+        svc.delete_account(s, uid)
+        assert not s.scalars(select(db.PromoCodeRedemption).where(
+            db.PromoCodeRedemption.user_id == uid)).all()

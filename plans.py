@@ -96,6 +96,7 @@ FEATURES: dict[str, tuple[str, ...]] = {
     "stats_csv":     ("max",),         # statistics as a spreadsheet file
     "money_transfers": ("pro", "max"), # moving money between own accounts
     "money_year":    ("max",),         # the year of money, month by month
+    "themes":        ("pro", "max"),   # Blossom, Obsidian, Emerald and dark mode
 }
 
 

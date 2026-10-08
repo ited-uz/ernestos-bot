@@ -5574,6 +5574,7 @@ EXPORT_SCHEMA_VERSION = 2
 def export_workspace(s: Session, ws: int, user: User) -> dict:
     """Everything this workspace contains, as plain JSON-ready data."""
     from coins import export as coins_export
+    from promo import redeemed_by as promo_export
     def habits():
         for h in s.scalars(select(Habit).where(Habit.workspace_id == ws)).all():
             # `id` is what habit_logs, schedule versions, pauses and timers
@@ -5705,6 +5706,7 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
              "detail": json.loads(r.detail), "created_at": r.created_at.isoformat()}
             for r in s.scalars(select(AgentAudit).where(AgentAudit.workspace_id == ws)).all()],
         "coin_spends": coins_export(s, user.telegram_id),
+        "promo_codes_used": promo_export(s, user.telegram_id),
         "agent_chat": [{"role": r.role, "text": r.text,
                         "at": r.created_at.isoformat() if r.created_at else None}
                        for r in s.scalars(select(AgentChatMessage).where(
@@ -5813,6 +5815,8 @@ def delete_account(s: Session, telegram_id: int) -> bool:
     import coins
     s.execute(sql_delete(UserAvatar).where(UserAvatar.account_id == telegram_id))
     coins.forget(s, [telegram_id])
+    import promo
+    promo.forget(s, [telegram_id])
     # The login, the password, and every Telegram signed in to the account.
     import accounts
     accounts.forget_account(s, telegram_id)

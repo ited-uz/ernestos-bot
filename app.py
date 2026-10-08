@@ -17,6 +17,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -45,6 +46,7 @@ import accounts
 import app_auth
 import app_push
 import coins
+import promo
 import plans
 import agent_api
 import agent_core
@@ -2389,34 +2391,36 @@ async def show_team_tasks(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 # Settings
 # ---------------------------------------------------------------------------
 
-#: Five themes, in the Mini App picker's order. Each is a complete visual
-#: system — its own colour, radius, shadow depth, gradient policy, type weight
-#: and motion timing — not the same screen in a different hue:
+#: Four themes, in the Mini App picker's order (v15):
 #:
-#:   ocean     Ocean Glass. Frosted panels over deep blue. The default.
-#:   midnight  Midnight Minimal. Calm dark, no gradient, low stimulus.
-#:   aurora    Aurora Glass. Glass over indigo/violet/cyan light.
-#:   bento     Pure Bento. Light, bordered blocks; fastest to read.
-#:   spatial   Spatial Layered. Floating planes and long soft shadows.
+#:   clean-white  Clean White. Blue on white; the default and the only theme
+#:                on Free, which also stays in light mode.
+#:   blossom      Soft rose, blush and wine.
+#:   obsidian     Monochrome slate with an ice-blue accent.
+#:   emerald      Racing green, emerald and bronze.
 #:
-#: Every earlier name is mapped forward by migrations 0007 and 0008; an
-#: unknown value reads as the default rather than being rejected, so no
-#: account can end up with no theme at all.
-THEMES = ["ocean", "midnight", "aurora", "bento", "spatial"]
-DEFAULT_THEME = "ocean"
+#: Every earlier name is mapped forward by migration 0014; an unknown value
+#: reads as its successor or the default, so no account is left without one.
+THEMES = ["clean-white", "blossom", "obsidian", "emerald"]
+DEFAULT_THEME = "clean-white"
+#: The one theme Free has; the other three need Pro or Max (plans "themes").
+FREE_THEME = "clean-white"
 
 #: Product names, so the chat picker and the Mini App picker say the same
 #: thing. The id is what is stored; this is only ever displayed.
 THEME_NAMES = {
-    "ocean": "Ocean Glass", "midnight": "Midnight Minimal",
-    "aurora": "Aurora Glass", "bento": "Pure Bento",
-    "spatial": "Spatial Layered",
+    "clean-white": "Clean White", "blossom": "Blossom",
+    "obsidian": "Obsidian Slate", "emerald": "Emerald Royal",
 }
 
 
 def theme_of(name: str | None) -> str:
-    """Read a stored theme, falling back for names that no longer exist."""
-    return name if name in THEMES else DEFAULT_THEME
+    """Read a stored theme. An older name reads as its successor (migration
+    0014's map) until the migration has rewritten it."""
+    from migrations import THEME_CURATED
+    if name in THEMES:
+        return name
+    return THEME_CURATED.get(name or "", DEFAULT_THEME)
 
 
 async def show_invite(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -5001,7 +5005,12 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     elif action == "theme":
         with SessionLocal() as s:
             row = s.get(User, user.telegram_id)
-            row.theme = parts[1] if parts[1] in THEMES else DEFAULT_THEME
+            wanted = parts[1] if parts[1] in THEMES else DEFAULT_THEME
+            if wanted != FREE_THEME and plans.tier_of(s, user.telegram_id) not in plans.FEATURES["themes"]:
+                await query.answer(re.sub(r"<[^>]+>", "", plan_limit_text(lang, plans.PlanLimit(
+                    "themes", None, "free", "pro")))[:190], show_alert=True)
+                return
+            row.theme = wanted
             s.commit()
             snapshot = row
         # A confirmation that does not name the change is a confirmation the
@@ -5102,7 +5111,8 @@ PLAN_TEXT = {
                  "team_members": "Jamoada ko'proq a'zo", "voice_week": "Ko'proq ovozli buyruq",
                  "voice_day": "Ko'proq ovozli buyruq", "journal_ai": "AI bilan kundalik",
                  "timer_rhythm": "Ish va tanaffus ritmi", "stats_history": "Oylik va yillik statistika",
-                 "stats_csv": "Statistikani faylga yuklash"},
+                 "stats_csv": "Statistikani faylga yuklash",
+                 "themes": "Rangli mavzular va tungi rejim"},
     },
     "ru": {
         "title": "💎 <b>Ваш тариф: {tier}</b>",
@@ -5131,7 +5141,8 @@ PLAN_TEXT = {
                  "team_members": "Больше участников в команде", "voice_week": "Больше голосовых команд",
                  "voice_day": "Больше голосовых команд", "journal_ai": "AI-итоги дня",
                  "timer_rhythm": "Ритм работы и отдыха", "stats_history": "Статистика за месяц и год",
-                 "stats_csv": "Выгрузка статистики в файл"},
+                 "stats_csv": "Выгрузка статистики в файл",
+                 "themes": "Цветные темы и тёмный режим"},
     },
     "en": {
         "title": "💎 <b>Your plan: {tier}</b>",
@@ -5160,7 +5171,8 @@ PLAN_TEXT = {
                  "team_members": "More team members", "voice_week": "More voice commands",
                  "voice_day": "More voice commands", "journal_ai": "AI day summary",
                  "timer_rhythm": "Work and break rhythm", "stats_history": "Month and year statistics",
-                 "stats_csv": "Statistics as a file"},
+                 "stats_csv": "Statistics as a file",
+                 "themes": "Colour themes and dark mode"},
     },
 }
 
@@ -5227,6 +5239,94 @@ async def cmd_plan(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     info = _plan_of(uid)
     await message.reply_text(plan_text(lang, info), parse_mode=ParseMode.HTML,
                              reply_markup=plan_keyboard(lang, info))
+
+
+#: What the bot answers about a promo code, by the reason in promo.PromoError.
+PROMO_TEXT = {
+    "uz": {"ok": "🎁 Promokod qabul qilindi: {plan} — {days} kun. Amal qilish muddati: {until} gacha.",
+           "usage": "Promokodni shunday yuboring: /promo KOD",
+           "not_found": "Bunday promokod yo'q. Harflarini tekshiring.",
+           "inactive": "Bu promokod o'chirilgan.", "expired": "Bu promokodning muddati tugagan.",
+           "exhausted": "Bu promokod tugab bo'lgan.", "already_used": "Siz bu promokoddan foydalangansiz.",
+           "plans_off": "Hozircha tariflar o'chiq."},
+    "en": {"ok": "🎁 Promo code accepted: {plan} — {days} days. Active until {until}.",
+           "usage": "Send it like this: /promo CODE",
+           "not_found": "No such promo code. Check the letters.",
+           "inactive": "This promo code is switched off.", "expired": "This promo code has expired.",
+           "exhausted": "This promo code has been used up.", "already_used": "You have already used this code.",
+           "plans_off": "Plans are off for now."},
+    "ru": {"ok": "🎁 Промокод принят: {plan} — {days} дн. Действует до {until}.",
+           "usage": "Отправьте так: /promo КОД",
+           "not_found": "Такого промокода нет. Проверьте буквы.",
+           "inactive": "Этот промокод отключён.", "expired": "Срок этого промокода истёк.",
+           "exhausted": "Этот промокод закончился.", "already_used": "Вы уже использовали этот промокод.",
+           "plans_off": "Тарифы пока выключены."},
+}
+
+
+async def cmd_promo(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """/promo KOD — redeem a promo code from the chat."""
+    message = update.effective_message
+    uid = account_of(update)
+    if message is None or uid is None:
+        return
+    with SessionLocal() as s:
+        user = s.get(User, uid)
+        lang = (user.language if user else None) or "uz"
+    words = PROMO_TEXT.get(lang, PROMO_TEXT["uz"])
+    if not ctx.args:
+        await message.reply_text(words["usage"])
+        return
+    with SessionLocal() as s:
+        try:
+            got = promo.redeem(s, uid, ctx.args[0])
+        except promo.PromoError as e:
+            s.rollback()
+            await message.reply_text(words.get(e.code, words["not_found"]))
+            return
+        s.commit()
+    until = (_plan_of(uid).get("until") or "")[:10]
+    await message.reply_text(words["ok"].format(plan=PLAN_NAMES.get(got["tier"], "Pro"),
+                                                days=got["days"], until=until or "—"))
+
+
+async def cmd_promo_admin(update: Update, ctx: ContextTypes.DEFAULT_TYPE, action: str) -> None:
+    """Admins only (config.ADMIN_IDS):
+    /promo_new KOD pro|max KUN [ISHLATISH] [YYYY-MM-DD] · /promo_list · /promo_off KOD"""
+    message = update.effective_message
+    uid = account_of(update)
+    if message is None or uid is None or uid not in config.ADMIN_IDS:
+        return
+    args = list(ctx.args or [])
+    with SessionLocal() as s:
+        if action == "list":
+            rows = promo.listing(s)
+            text = "\n".join(f"{r['code']} · {r['tier']} {r['days']}d · {r['used']}/{r['max_uses'] or '∞'}"
+                             f"{' · ' + r['expires_at'] if r['expires_at'] else ''}{'' if r['active'] else ' · OFF'}"
+                             for r in rows) or "—"
+            await message.reply_text(text)
+            return
+        if action == "off":
+            ok = bool(args) and promo.deactivate(s, args[0])
+            s.commit()
+            await message.reply_text("OK" if ok else "Topilmadi")
+            return
+        try:
+            if len(args) < 3:
+                raise promo.PromoError("usage", 422)
+            uses = int(args[3]) if len(args) > 3 and args[3] not in ("-", "0") else None
+            ends = datetime.fromisoformat(args[4]) if len(args) > 4 else None
+            row = promo.create(s, args[0], args[1].lower(), int(args[2]), max_uses=uses,
+                               expires_at=ends, created_by=uid)
+            s.commit()
+        except (promo.PromoError, ValueError) as e:
+            s.rollback()
+            await message.reply_text(f"Xato: {getattr(e, 'code', 'bad_value')}\n"
+                                     "/promo_new KOD pro|max KUN [ISHLATISH] [YYYY-MM-DD]")
+            return
+        await message.reply_text(f"✅ {row.code} · {row.tier} · {row.duration_days} kun · "
+                                 f"{row.max_uses or '∞'} marta"
+                                 f"{' · ' + row.expires_at.date().isoformat() if row.expires_at else ''}")
 
 
 async def send_plan_invoice(update: Update, ctx: ContextTypes.DEFAULT_TYPE, product_key: str) -> None:
@@ -7010,6 +7110,10 @@ BOT_COMMANDS = [
     # countdowns live in the Mini App.
     ("timer", lambda u, c: show_active_timer(u, c)),
     ("countdown", lambda u, c: show_countdowns(u, c)),
+    ("promo", lambda u, c: cmd_promo(u, c)),
+    ("promo_new", lambda u, c: cmd_promo_admin(u, c, "new")),
+    ("promo_list", lambda u, c: cmd_promo_admin(u, c, "list")),
+    ("promo_off", lambda u, c: cmd_promo_admin(u, c, "off")),
 ]
 
 
@@ -7175,7 +7279,7 @@ def _rate_class(request: Request) -> str:
     # "heavy" class) the second screen already got a 429 and an empty circle,
     # and the upload after it failed the same way. It is an ordinary read, and
     # setting or removing it an ordinary write.
-    if path == "/api/app/login":
+    if path in ("/api/app/login", "/api/promocode/redeem"):
         return "auth"
     return "read" if request.method == "GET" else "write"
 
@@ -7847,6 +7951,8 @@ def api_settings(body: SettingsIn, init=Header(default=None, alias="X-Telegram-I
         if body.gender in ("male", "female"):
             row.gender = body.gender
         if body.theme in THEMES:
+            if body.theme != FREE_THEME:
+                plans.require_feature(s, user.telegram_id, "themes")
             row.theme = body.theme
         if body.quote is not None:
             row.quote = body.quote.strip()[:300]
@@ -10872,6 +10978,26 @@ def api_coins_buy(body: CoinBuyIn, init=Header(default=None, alias="X-Telegram-I
         s.commit()
         return {"ok": True, **got, "coins": coins.summary(s, user.telegram_id, today),
                 "plan": _plan_of(user.telegram_id)}
+
+
+class PromoIn(BaseModel):
+    code: str = Field(min_length=1, max_length=40)
+
+
+@app.post("/api/promocode/redeem")
+def api_promo_redeem(body: PromoIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Redeem a promo code for days of Pro or Max. Rate-limited like sign-in,
+    so codes cannot be guessed by trying many."""
+    user, _ = auth(init, require_onboarded=False)
+    with SessionLocal() as s:
+        try:
+            got = promo.redeem(s, user.telegram_id, body.code)
+        except promo.PromoError as e:
+            s.rollback()
+            return JSONResponse(status_code=e.status, content={"detail": e.code})
+        s.commit()
+    plan = _plan_of(user.telegram_id)
+    return {"ok": True, **got, "until": plan.get("until"), "plan": plan}
 
 
 @app.get("/api/plans")

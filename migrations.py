@@ -141,6 +141,8 @@ def m0003_retire_themes() -> dict:
     moved: dict[str, int] = {}
     with SessionLocal() as s:
         for old, new in RETIRED_THEMES.items():
+            if old in LIVE_THEMES:
+                continue
             count = s.execute(
                 update(User).where(User.theme == old).values(theme=new)).rowcount
             if count:
@@ -273,6 +275,8 @@ def m0005_rename_themes() -> dict:
     moved: dict[str, int] = {}
     with SessionLocal() as s:
         for old, new in THEME_RENAMES.items():
+            if old in LIVE_THEMES:
+                continue
             count = s.execute(
                 update(User).where(User.theme == old).values(theme=new)).rowcount
             if count:
@@ -372,7 +376,7 @@ THEME_REDESIGN = {
 #: bolted on. `ocean` meant "the default blue" in the 0005 set and means the
 #: same thing in this one; `aurora` meant "the gradient one" then and means it
 #: now. A row holding either is already where the chain was taking it.
-LIVE_THEMES = {"ocean", "midnight", "aurora", "bento", "spatial"}
+LIVE_THEMES = {"clean-white", "blossom", "obsidian", "emerald"}
 
 
 def m0007_redesign_themes() -> dict:
@@ -442,6 +446,8 @@ def m0008_named_theme_systems() -> dict:
     moved: dict[str, int] = {}
     with SessionLocal() as s:
         for old, new in THEME_SYSTEMS.items():
+            if old in LIVE_THEMES:
+                continue
             count = s.execute(
                 update(User).where(User.theme == old).values(theme=new)).rowcount
             if count:
@@ -683,6 +689,46 @@ def m0013_localize_rituals() -> dict:
     return {"migration": "0013_localize_rituals", "users": users}
 
 
+#: v15: five themes became three curated ones for Pro and Max, plus Clean
+#: White, the one theme Free has. Mapped by intent: the default blue becomes
+#: Clean White (still blue on white), the restrained dark ones Obsidian, the
+#: violet/pink ones Blossom, the teal and green ones Emerald.
+#:
+#: `blossom`, `obsidian` and `emerald` were theme names once before (0003–0008
+#: moved them away). They are live again and mean what they meant then — pink,
+#: restrained dark, green — so every step above now leaves them alone.
+THEME_CURATED = {
+    "ocean": "clean-white", "midnight": "obsidian", "aurora": "blossom",
+    "bento": "obsidian", "spatial": "emerald",
+    # Every older name, for a database that never ran the steps above.
+    "calm": "clean-white", "titan": "obsidian", "nexus": "blossom",
+    "muse": "blossom", "rage": "emerald", "pure": "clean-white",
+    "sage": "emerald", "cobalt": "clean-white", "slate": "obsidian",
+    "oxford": "clean-white", "rose": "blossom", "pink": "blossom",
+}
+
+
+def m0014_curated_themes() -> dict:
+    """Move every account onto the curated set. Rows already on a live name
+    are untouched, so a second run changes nothing."""
+    from sqlalchemy import update
+
+    from db import User
+
+    moved: dict[str, int] = {}
+    with SessionLocal() as s:
+        for old, new in THEME_CURATED.items():
+            if old in LIVE_THEMES:
+                continue
+            count = s.execute(
+                update(User).where(User.theme == old).values(theme=new)).rowcount
+            if count:
+                moved[f"{old}→{new}"] = count
+        s.commit()
+    return {"migration": "0014_curated_themes", "moved": moved,
+            "total": sum(moved.values())}
+
+
 MIGRATIONS = {
     "0001": m0001_retire_summary_habit,
     "0002": m0002_retire_goals,
@@ -697,6 +743,7 @@ MIGRATIONS = {
     "0011": m0011_seed_team_rituals,
     "0012": m0012_close_past_days,
     "0013": m0013_localize_rituals,
+    "0014": m0014_curated_themes,
 }
 
 

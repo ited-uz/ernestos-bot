@@ -85,169 +85,139 @@ if(/[?&]preview(=|&|$)/.test(location.search))
    unreadable body text.
    ------------------------------------------------------------------ */
 
-/* ---- CALM BLUE — the default. ---- */
+/* ---- CLEAN WHITE — the default, and the only theme on Free. Blue on
+   white; text blue is a shade darker than the button blue so small text
+   keeps 4.5:1. ---- */
 
-:root[data-theme="ocean"][data-mode="light"]{
-  --bg:#F3F4F6; --surface:#FFFFFF; --surface-2:#EEF0F3;
-  --text:#15171C; --text-2:#4F5561; --text-3:#666C78;
-  --border:#E2E5EA; --border-2:#CBD0D8;
+:root[data-theme="clean-white"][data-mode="light"]{
+  --bg:#FFFFFF; --surface:#F8F9FA; --surface-2:#F1F3F5;
+  --text:#111827; --text-2:#4B5563; --text-3:#6B7280;
+  --border:#E5E7EB; --border-2:#D1D5DB;
   --c1:#007AFF; --c2:#30B0C7; --c3:#5856D6; --c4:#FF9500; --c5:#34C759;
-  --primary:#2B66D6; --primary-2:#1F52B5; --primary-fill:#2B66D6;
+  --primary:#0062CC; --primary-2:#004FA3; --primary-fill:#007AFF;
   --on-primary:#FFFFFF;
   --accent:var(--c2); --accent-2:var(--c3);
   --ok:#248A3D; --warn:#B25000; --danger:#D70015;
-  --shadow-rgb:20,28,45; --shadow-k:1;
+  --shadow-rgb:17,24,39; --shadow-k:.8;
 }
 
-:root[data-theme="ocean"][data-mode="dark"]{
-  --bg:#111215; --surface:#1A1C20; --surface-2:#24272C;
-  --text:#F1F2F4; --text-2:#B3B8C1; --text-3:#8E949E;
-  --border:#2A2D33; --border-2:#3A3E46;
+:root[data-theme="clean-white"][data-mode="dark"]{
+  --bg:#0B0B0C; --surface:#161618; --surface-2:#1F1F22;
+  --text:#F4F4F5; --text-2:#B4B4BB; --text-3:#8E8E96;
+  --border:#27272A; --border-2:#3A3A3F;
   --c1:#0A84FF; --c2:#40C8E0; --c3:#5E5CE6; --c4:#FF9F0A; --c5:#30D158;
-  --primary:#79A6FF; --primary-2:#9BBDFF; --primary-fill:#3569D6;
+  --primary:#4DA3FF; --primary-2:#7BBBFF; --primary-fill:#0A6CDB;
   --on-primary:#FFFFFF;
   --accent:var(--c2); --accent-2:var(--c3);
   --ok:#30D158; --warn:#FF9F0A; --danger:#FF453A;
   --shadow-rgb:0,0,0; --shadow-k:3;
 }
 
-/* ---- INDIGO ---- */
+/* ---- BLOSSOM — soft rose, warm blush, muted wine, champagne cream. ---- */
 
-:root[data-theme="midnight"][data-mode="light"]{
-  --bg:#F3F3F7; --surface:#FFFFFF; --surface-2:#EEEEF4;
-  --text:#16161D; --text-2:#52525F; --text-3:#686876;
-  --border:#E3E3EB; --border-2:#CCCCD8;
-  --c1:#5856D6; --c2:#32ADE6; --c3:#AF52DE; --c4:#FF9500; --c5:#34C759;
-  --primary:#5250C8; --primary-2:#413FB0; --primary-fill:#5250C8;
+:root[data-theme="blossom"][data-mode="light"]{
+  --bg:#FFF8F9; --surface:#FFFFFF; --surface-2:#FCEFF2;
+  --text:#2A1219; --text-2:#6B4A53; --text-3:#85656D;
+  --border:#F3DDE3; --border-2:#E8C6CF;
+  --c1:#E05A7B; --c2:#B07A8C; --c3:#8E3B5B; --c4:#D9A04E; --c5:#4F9C7E;
+  --primary:#B23A5E; --primary-2:#922E4C; --primary-fill:#C7476A;
   --on-primary:#FFFFFF;
   --accent:var(--c2); --accent-2:var(--c3);
-  --ok:#248A3D; --warn:#B25000; --danger:#D70015;
-  --shadow-rgb:24,22,60; --shadow-k:1;
+  --ok:#2E7D5B; --warn:#A8620F; --danger:#C62828;
+  --shadow-rgb:90,30,50; --shadow-k:.9;
 }
 
-:root[data-theme="midnight"][data-mode="dark"]{
-  --bg:#121218; --surface:#1B1B23; --surface-2:#25252F;
-  --text:#F1F1F5; --text-2:#B5B5C3; --text-3:#9090A0;
-  --border:#2C2C38; --border-2:#3C3C4A;
-  --c1:#5E5CE6; --c2:#64D2FF; --c3:#BF5AF2; --c4:#FF9F0A; --c5:#30D158;
-  --primary:#A4A3FF; --primary-2:#BDBCFF; --primary-fill:#5552D0;
+:root[data-theme="blossom"][data-mode="dark"]{
+  --bg:#1A0E12; --surface:#261419; --surface-2:#311B22;
+  --text:#FBEFF2; --text-2:#D9B8C1; --text-3:#B08F99;
+  --border:#3A2229; --border-2:#4D2E37;
+  --c1:#F07895; --c2:#D79AAE; --c3:#C4708F; --c4:#F0C27B; --c5:#7CC4A6;
+  --primary:#F49AB0; --primary-2:#F8B9C8; --primary-fill:#D2557A;
   --on-primary:#FFFFFF;
   --accent:var(--c2); --accent-2:var(--c3);
-  --ok:#30D158; --warn:#FF9F0A; --danger:#FF453A;
+  --ok:#5FD39A; --warn:#F0B35A; --danger:#FF6B7A;
   --shadow-rgb:0,0,0; --shadow-k:3;
 }
 
-/* ---- LILAC ---- */
+/* ---- OBSIDIAN SLATE — monochrome slate, graphite, an ice-blue accent. ---- */
 
-:root[data-theme="aurora"][data-mode="light"]{
-  --bg:#F5F3F7; --surface:#FFFFFF; --surface-2:#F0EDF3;
-  --text:#18151C; --text-2:#554F5D; --text-3:#6B6474;
-  --border:#E6E1EB; --border-2:#D0C9D8;
-  --c1:#AF52DE; --c2:#5856D6; --c3:#32ADE6; --c4:#FF2D55; --c5:#00C7BE;
-  --primary:#8A3FBF; --primary-2:#7432A3; --primary-fill:#8A3FBF;
-  --on-primary:#FFFFFF;
+:root[data-theme="obsidian"][data-mode="light"]{
+  --bg:#F8FAFC; --surface:#FFFFFF; --surface-2:#F1F5F9;
+  --text:#0F172A; --text-2:#475569; --text-3:#64748B;
+  --border:#E2E8F0; --border-2:#CBD5E1;
+  --c1:#0EA5E9; --c2:#6366F1; --c3:#64748B; --c4:#F59E0B; --c5:#10B981;
+  --primary:#0369A1; --primary-2:#075985; --primary-fill:#0F172A;
+  --on-primary:#F8FAFC;
   --accent:var(--c2); --accent-2:var(--c3);
-  --ok:#248A3D; --warn:#B25000; --danger:#D70015;
-  --shadow-rgb:40,20,60; --shadow-k:1;
+  --ok:#047857; --warn:#B45309; --danger:#DC2626;
+  --shadow-rgb:15,23,42; --shadow-k:.9;
 }
 
-:root[data-theme="aurora"][data-mode="dark"]{
-  --bg:#151218; --surface:#1E1A22; --surface-2:#28232D;
-  --text:#F3F1F5; --text-2:#BBB3C3; --text-3:#968D9F;
-  --border:#302A36; --border-2:#413946;
-  --c1:#BF5AF2; --c2:#5E5CE6; --c3:#64D2FF; --c4:#FF375F; --c5:#66D4CF;
-  --primary:#D2A3F5; --primary-2:#E0BDF8; --primary-fill:#8A3FBF;
-  --on-primary:#FFFFFF;
+:root[data-theme="obsidian"][data-mode="dark"]{
+  --bg:#05080F; --surface:#090D16; --surface-2:#121A29;
+  --text:#E2E8F0; --text-2:#94A3B8; --text-3:#7C8BA1;
+  --border:#1E293B; --border-2:#334155;
+  --c1:#38BDF8; --c2:#818CF8; --c3:#94A3B8; --c4:#FBBF24; --c5:#34D399;
+  --primary:#38BDF8; --primary-2:#7DD3FC; --primary-fill:#38BDF8;
+  --on-primary:#04121F;
   --accent:var(--c2); --accent-2:var(--c3);
-  --ok:#30D158; --warn:#FF9F0A; --danger:#FF453A;
+  --ok:#34D399; --warn:#FBBF24; --danger:#F87171;
   --shadow-rgb:0,0,0; --shadow-k:3;
 }
 
-/* ---- INK — monochrome; the accent is the ink itself. ---- */
+/* ---- EMERALD ROYAL — racing green, emerald, warm bronze, platinum ivory. ---- */
 
-:root[data-theme="bento"][data-mode="light"]{
-  --bg:#F4F4F2; --surface:#FFFFFF; --surface-2:#EFEFEC;
-  --text:#141413; --text-2:#52524D; --text-3:#696963;
-  --border:#E3E3DF; --border-2:#CDCDC7;
-  --c1:#1C1C1A; --c2:#007AFF; --c3:#00C7BE; --c4:#FF9500; --c5:#AF52DE;
-  --primary:#2A2A27; --primary-2:#111110; --primary-fill:#2A2A27;
+:root[data-theme="emerald"][data-mode="light"]{
+  --bg:#F7F7F2; --surface:#FFFFFF; --surface-2:#EEF3EE;
+  --text:#0B1F17; --text-2:#3F5A4E; --text-3:#5B7568;
+  --border:#DCE6DF; --border-2:#C3D3C8;
+  --c1:#059669; --c2:#064E3B; --c3:#B08D57; --c4:#D97706; --c5:#0EA5E9;
+  --primary:#047857; --primary-2:#065F46; --primary-fill:#064E3B;
   --on-primary:#FFFFFF;
   --accent:var(--c2); --accent-2:var(--c3);
-  --ok:#248A3D; --warn:#B25000; --danger:#D70015;
-  --shadow-rgb:20,20,18; --shadow-k:1;
+  --ok:#047857; --warn:#B45309; --danger:#C2410C;
+  --shadow-rgb:6,40,30; --shadow-k:.9;
 }
 
-:root[data-theme="bento"][data-mode="dark"]{
-  --bg:#121211; --surface:#1B1B19; --surface-2:#252522;
-  --text:#F2F2ED; --text-2:#B6B6AE; --text-3:#909088;
-  --border:#2D2D2A; --border-2:#3D3D39;
-  --c1:#F2F2ED; --c2:#0A84FF; --c3:#66D4CF; --c4:#FF9F0A; --c5:#BF5AF2;
-  --primary:#ECECE6; --primary-2:#FFFFFF; --primary-fill:#ECECE6;
-  --on-primary:#141413;
+:root[data-theme="emerald"][data-mode="dark"]{
+  --bg:#011A14; --surface:#022C22; --surface-2:#053A2D;
+  --text:#ECFDF5; --text-2:#A7C9B9; --text-3:#84A898;
+  --border:#0B3D30; --border-2:#145240;
+  --c1:#34D399; --c2:#10B981; --c3:#D4A373; --c4:#FBBF24; --c5:#38BDF8;
+  --primary:#34D399; --primary-2:#6EE7B7; --primary-fill:#10B981;
+  --on-primary:#022C22;
   --accent:var(--c2); --accent-2:var(--c3);
-  --ok:#30D158; --warn:#FF9F0A; --danger:#FF453A;
-  --shadow-rgb:0,0,0; --shadow-k:3;
-}
-
-/* ---- TEAL ---- */
-
-:root[data-theme="spatial"][data-mode="light"]{
-  --bg:#F1F5F5; --surface:#FFFFFF; --surface-2:#EBF0F1;
-  --text:#121819; --text-2:#4B5759; --text-3:#616E70;
-  --border:#DEE5E6; --border-2:#C6D0D2;
-  --c1:#30B0C7; --c2:#007AFF; --c3:#5856D6; --c4:#FF9500; --c5:#34C759;
-  --primary:#0E7385; --primary-2:#0A5E6D; --primary-fill:#0E7385;
-  --on-primary:#FFFFFF;
-  --accent:var(--c2); --accent-2:var(--c3);
-  --ok:#248A3D; --warn:#B25000; --danger:#D70015;
-  --shadow-rgb:14,36,40; --shadow-k:1;
-}
-
-:root[data-theme="spatial"][data-mode="dark"]{
-  --bg:#101516; --surface:#182021; --surface-2:#212A2C;
-  --text:#EEF3F3; --text-2:#AFBDBF; --text-3:#8A9A9C;
-  --border:#283234; --border-2:#384447;
-  --c1:#32ADE6; --c2:#0A84FF; --c3:#5E5CE6; --c4:#FF9F0A; --c5:#30D158;
-  --primary:#6FD0DE; --primary-2:#95DDE7; --primary-fill:#117A8C;
-  --on-primary:#FFFFFF;
-  --accent:var(--c2); --accent-2:var(--c3);
-  --ok:#30D158; --warn:#FF9F0A; --danger:#FF453A;
+  --ok:#34D399; --warn:#FBBF24; --danger:#FB7185;
   --shadow-rgb:0,0,0; --shadow-k:3;
 }
 
 /* ------------------------------------------------------------------
-   Per-theme structure. Deliberately close to one another: the accent
-   carries the identity, the geometry stays familiar.
+   Per-theme structure. Close to one another: the colour carries the
+   identity, the geometry stays familiar.
    ------------------------------------------------------------------ */
-[data-theme="ocean"]{
+[data-theme="clean-white"]{
   --radius-sm:12px; --radius:16px; --radius-lg:20px;
   --title-w:650; --display-w:680; --motion:180ms;
-  --hero-fill:color-mix(in srgb, var(--primary) 7%, var(--surface));
-  --hero-border:color-mix(in srgb, var(--primary) 22%, var(--border));
+  --hero-fill:color-mix(in srgb, var(--primary) 6%, var(--surface));
+  --hero-border:color-mix(in srgb, var(--primary) 20%, var(--border));
 }
-[data-theme="midnight"]{
-  --radius-sm:12px; --radius:16px; --radius-lg:20px;
-  --title-w:650; --display-w:680; --motion:180ms;
-  --hero-fill:color-mix(in srgb, var(--primary) 7%, var(--surface));
-  --hero-border:color-mix(in srgb, var(--primary) 22%, var(--border));
-}
-[data-theme="aurora"]{
+[data-theme="blossom"]{
   --radius-sm:14px; --radius:18px; --radius-lg:22px;
   --title-w:640; --display-w:670; --motion:200ms;
-  --hero-fill:color-mix(in srgb, var(--primary) 7%, var(--surface));
-  --hero-border:color-mix(in srgb, var(--primary) 22%, var(--border));
+  --hero-fill:color-mix(in srgb, var(--c1) 9%, var(--surface));
+  --hero-border:color-mix(in srgb, var(--c1) 24%, var(--border));
 }
-[data-theme="bento"]{
+[data-theme="obsidian"]{
   --radius-sm:10px; --radius:14px; --radius-lg:18px;
   --title-w:680; --display-w:720; --motion:160ms;
   --hero-fill:var(--surface);
   --hero-border:var(--border-2);
 }
-[data-theme="spatial"]{
+[data-theme="emerald"]{
   --radius-sm:12px; --radius:16px; --radius-lg:20px;
-  --title-w:650; --display-w:680; --motion:180ms;
-  --hero-fill:color-mix(in srgb, var(--primary) 7%, var(--surface));
-  --hero-border:color-mix(in srgb, var(--primary) 22%, var(--border));
+  --title-w:660; --display-w:700; --motion:180ms;
+  --hero-fill:color-mix(in srgb, var(--c1) 7%, var(--surface));
+  --hero-border:color-mix(in srgb, var(--c1) 22%, var(--border));
 }
 
 /* ==================================================================
@@ -1046,6 +1016,10 @@ details[open] > summary .i{transform:rotate(90deg)}
 .plan-col ul{margin:0;padding:0;list-style:none;font-size:12.5px;color:var(--text-2);display:grid;gap:4px}
 .plan-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:var(--radius-pill);
   font-size:12.5px;font-weight:650;background:color-mix(in srgb, var(--primary) 14%, transparent);color:var(--primary)}
+.plan-pill.on{color:var(--on-primary);background:var(--primary-fill)}
+.promo-err{margin-top:8px;font-size:13px;font-weight:600;color:var(--danger)}
+.tcard.locked{opacity:.72}
+.tcard.locked .swatches{filter:saturate(.6)}
 .plan-buy{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:var(--s2)}
 .plan-buy .btn{min-height:56px;flex-direction:column;gap:0;font-size:14.5px}
 .plan-buy .btn small{font-weight:500;opacity:.85;font-size:12px}
@@ -1533,7 +1507,7 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
    Depth and motion (v14)
    One layer on top of everything above: how surfaces sit, and how
    things answer a finger. Every value comes from the theme tokens, so
-   all five themes keep their identity; Ink (bento) stays flat.
+   all four themes keep their identity; Obsidian stays flat.
    ================================================================== */
 :root{
   --ease-out:cubic-bezier(.22,1,.36,1);
@@ -1546,7 +1520,7 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
   --sheen:linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,0) 60%);
   --edge-light:inset 0 1px 0 rgba(255,255,255,.045);
 }
-[data-theme="bento"]{ --accent-glow:none; --sheen:none; }
+[data-theme="obsidian"]{ --accent-glow:none; --sheen:none; }
 
 /* Surfaces: in dark mode a hairline of light along the top edge is what
    reads as depth; a shadow alone disappears into the ground. */
@@ -1561,7 +1535,7 @@ html:where([data-mode="dark"]) .hero{box-shadow:var(--edge-light), var(--shadow-
 .hero::before{content:"";position:absolute;z-index:-1;pointer-events:none;
   width:260px;height:260px;right:-90px;top:-120px;border-radius:50%;
   background:radial-gradient(closest-side, color-mix(in srgb, var(--primary) 16%, transparent), transparent)}
-[data-theme="bento"] .hero::before{display:none}
+[data-theme="obsidian"] .hero::before{display:none}
 
 /* Primary buttons: a sheen and a coloured shadow, so the one action on a
    screen is the one the eye lands on. */
@@ -1657,7 +1631,7 @@ nav button .ic{transition:background-color var(--dur-2) var(--ease-out), transfo
   background:
     radial-gradient(520px 320px at 105% -8%, color-mix(in srgb, var(--primary) 13%, transparent), transparent 70%),
     radial-gradient(420px 300px at -12% 42%, color-mix(in srgb, var(--primary) 6%, transparent), transparent 70%)}
-[data-theme="bento"] #app::before{display:none}
+[data-theme="obsidian"] #app::before{display:none}
 
 /* A greeting that reads as a title. */
 h1.greet{font-size:17px;font-weight:650;letter-spacing:-.2px;line-height:1.25}
@@ -1984,6 +1958,15 @@ const DICT = {
   chat_err_provider_not_configured:"AI kaliti ulanmagan.", chat_err_agent_disabled:"AI yordamchi o'chirilgan.",
   chat_err_offline:"Internet yo'q. Ulanganda qayta yuboring.", chat_err:"Xatolik. Qayta yuboring.",
   steps_here:"Siz shu yerdasiz", steps_unit:"qadam",
+  pt_themes:"Rangli mavzular va tungi rejim", plan_limit_themes:"Rangli mavzular va tungi rejim",
+  theme_free_note:"Free tarifda — Clean White, yorug' rejimda. Boshqa mavzular va tungi rejim Pro'da.",
+  plan_badge_active:"{plan} · Faol", plan_until_line:"Amal qilish muddati — {d} gacha",
+  plan_lifetime:"Faol · Doimiy kirish", plan_free_line:"Bepul tarif · Cheklangan funksiyalar",
+  promo_title:"Promokod kiritish", promo_ph:"Masalan, ERNEST30", promo_apply:"Faollashtirish",
+  promo_hint:"Katta-kichik harf farqi yo'q.", promo_ok:"🎁 {plan} faollashtirildi — {d} gacha",
+  promo_err_not_found:"Bunday promokod yo'q. Harflarini tekshiring.", promo_err_inactive:"Bu promokod o'chirilgan.",
+  promo_err_expired:"Bu promokodning muddati tugagan.", promo_err_exhausted:"Bu promokod tugab bo'lgan.",
+  promo_err_already_used:"Siz bu promokoddan foydalangansiz.", promo_err_plans_off:"Tariflar hozircha o'chiq.",
   draft_restored:"Saqlanmagan matn tiklandi", autosaved:"Saqlanmoqda…",
   mood_q:"Bugun o'zingizni qanday his qildingiz?",
   mood_awful:"Juda yomon", mood_low:"Yomon", mood_ok:"O'rtacha",
@@ -2009,11 +1992,10 @@ const DICT = {
   settings:"Sozlamalar", language:"Til", gender:"Jins", theme:"Tema",
   appearance:"Ko'rinish", auto:"Avto", light:"Yorug'", dark:"Qorong'i",
   mode:"Rejim", account:"Hisob", back:"Orqaga",
-  theme_ocean:"Tinch ko'k — standart, hamma uchun qulay",
-  theme_midnight:"Chuqur indigo — sokin va diqqatli",
-  theme_aurora:"Yumshoq binafsha — iliq va nafis",
-  theme_bento:"Siyoh — faqat qora va oq, eng kam rang",
-  theme_spatial:"Moviy-yashil — tiniq va yangi",
+  theme_clean_white:"Oq va ko'k — standart, hamma uchun",
+  theme_blossom:"Atirgul, iliq pushti va vino rangi",
+  theme_obsidian:"Kulrang-qora va muzday ko'k — minimal",
+  theme_emerald:"Zumrad yashil va bronza — jiddiy va nafis",
   theme_fixed:"Bu tema o'z ko'rinishida ishlaydi",
   timezone:"Vaqt mintaqasi", tz_common:"Tez-tez ishlatiladigan", notifications:"Eslatmalar va hisobotlar",
   morning_report:"Ertalabki hisobot", evening_report:"Kechqurungi hisobot",
@@ -2476,6 +2458,15 @@ const DICT = {
   chat_err_provider_not_configured:"The AI key is not connected.", chat_err_agent_disabled:"The AI assistant is switched off.",
   chat_err_offline:"No internet. Send again when connected.", chat_err:"Something went wrong. Send again.",
   steps_here:"You are here", steps_unit:"steps",
+  pt_themes:"Colour themes and dark mode", plan_limit_themes:"Colour themes and dark mode",
+  theme_free_note:"Free has Clean White in light mode. Other themes and dark mode come with Pro.",
+  plan_badge_active:"{plan} · Active", plan_until_line:"Active until {d}",
+  plan_lifetime:"Active · Permanent access", plan_free_line:"Free plan · Limited features",
+  promo_title:"Enter a promo code", promo_ph:"For example ERNEST30", promo_apply:"Activate",
+  promo_hint:"Upper or lower case does not matter.", promo_ok:"🎁 {plan} activated — until {d}",
+  promo_err_not_found:"No such promo code. Check the letters.", promo_err_inactive:"This promo code is switched off.",
+  promo_err_expired:"This promo code has expired.", promo_err_exhausted:"This promo code has been used up.",
+  promo_err_already_used:"You have already used this code.", promo_err_plans_off:"Plans are off for now.",
   draft_restored:"Unsaved text restored", autosaved:"Saving…",
   mood_q:"How did you feel today?",
   mood_awful:"Awful", mood_low:"Low", mood_ok:"Okay",
@@ -2498,11 +2489,10 @@ const DICT = {
   settings:"Settings", language:"Language", gender:"Gender", theme:"Theme",
   appearance:"Appearance", auto:"Auto", light:"Light", dark:"Dark",
   mode:"Mode", account:"Account", back:"Back",
-  theme_ocean:"Calm blue — the default, easy for everyone",
-  theme_midnight:"Deep indigo — quiet and focused",
-  theme_aurora:"Soft lilac — warm and gentle",
-  theme_bento:"Ink — black and white, the least colour",
-  theme_spatial:"Teal — clear and fresh",
+  theme_clean_white:"White and blue — the default, for everyone",
+  theme_blossom:"Soft rose, warm blush and wine",
+  theme_obsidian:"Slate and graphite with an ice-blue accent",
+  theme_emerald:"Racing green, emerald and bronze",
   theme_fixed:"This theme keeps its own appearance",
   timezone:"Time zone", tz_common:"Common", notifications:"Reminders and reports",
   morning_report:"Morning report", evening_report:"Evening report",
@@ -2962,6 +2952,15 @@ const DICT = {
   chat_err_provider_not_configured:"Ключ AI не подключён.", chat_err_agent_disabled:"AI-помощник выключен.",
   chat_err_offline:"Нет интернета. Отправьте снова, когда появится связь.", chat_err:"Ошибка. Отправьте снова.",
   steps_here:"Вы здесь", steps_unit:"шагов",
+  pt_themes:"Цветные темы и тёмный режим", plan_limit_themes:"Цветные темы и тёмный режим",
+  theme_free_note:"На Free — Clean White в светлом режиме. Другие темы и тёмный режим — в Pro.",
+  plan_badge_active:"{plan} · Активен", plan_until_line:"Действует до {d}",
+  plan_lifetime:"Активен · Бессрочный доступ", plan_free_line:"Бесплатный тариф · Ограниченные функции",
+  promo_title:"Ввести промокод", promo_ph:"Например, ERNEST30", promo_apply:"Активировать",
+  promo_hint:"Регистр букв не важен.", promo_ok:"🎁 {plan} активирован — до {d}",
+  promo_err_not_found:"Такого промокода нет. Проверьте буквы.", promo_err_inactive:"Этот промокод отключён.",
+  promo_err_expired:"Срок этого промокода истёк.", promo_err_exhausted:"Этот промокод закончился.",
+  promo_err_already_used:"Вы уже использовали этот промокод.", promo_err_plans_off:"Тарифы пока выключены.",
   draft_restored:"Несохранённый текст восстановлен", autosaved:"Сохраняем…",
   mood_q:"Как вы себя чувствовали сегодня?",
   mood_awful:"Очень плохо", mood_low:"Плохо", mood_ok:"Нормально",
@@ -2984,11 +2983,10 @@ const DICT = {
   settings:"Настройки", language:"Язык", gender:"Пол", theme:"Тема",
   appearance:"Оформление", auto:"Авто", light:"Светлое", dark:"Тёмное",
   mode:"Режим", account:"Аккаунт", back:"Назад",
-  theme_ocean:"Спокойный синий — по умолчанию, удобно всем",
-  theme_midnight:"Глубокий индиго — тихо и сосредоточенно",
-  theme_aurora:"Мягкая сирень — тепло и деликатно",
-  theme_bento:"Чернила — только чёрное и белое",
-  theme_spatial:"Бирюза — чисто и свежо",
+  theme_clean_white:"Белый и синий — по умолчанию, для всех",
+  theme_blossom:"Нежная роза, тёплый румянец и вино",
+  theme_obsidian:"Сланец и графит с ледяным голубым",
+  theme_emerald:"Британский зелёный, изумруд и бронза",
   theme_fixed:"Эта тема сохраняет своё оформление",
   timezone:"Часовой пояс", tz_common:"Частые", notifications:"Напоминания и отчёты",
   morning_report:"Утренний отчёт", evening_report:"Вечерний отчёт",
@@ -3250,17 +3248,22 @@ const DICT = {
    theme is a complete visual system; the tokens live in the stylesheet and
    nothing here needs to know what they are. */
 const THEMES = [
-  {id:"ocean",    c:["#007AFF","#30B0C7","#5856D6","#FF9500","#34C759"]},
-  {id:"midnight", c:["#5856D6","#32ADE6","#AF52DE","#FF9500","#34C759"]},
-  {id:"aurora",   c:["#AF52DE","#5856D6","#32ADE6","#FF2D55","#00C7BE"]},
-  {id:"bento",    c:["#1C1C1A","#007AFF","#00C7BE","#FF9500","#AF52DE"]},
-  {id:"spatial",  c:["#30B0C7","#007AFF","#5856D6","#FF9500","#34C759"]},
+  {id:"clean-white", c:["#007AFF","#30B0C7","#5856D6","#FF9500","#34C759"]},
+  {id:"blossom",   c:["#E05A7B","#B07A8C","#8E3B5B","#D9A04E","#4F9C7E"]},
+  {id:"obsidian",  c:["#0EA5E9","#6366F1","#64748B","#F59E0B","#10B981"]},
+  {id:"emerald",   c:["#059669","#064E3B","#B08D57","#D97706","#0EA5E9"]},
 ];
-const THEME_NAMES = {ocean:"Calm Blue", midnight:"Indigo", aurora:"Lilac",
-                     bento:"Ink", spatial:"Teal"};
+const THEME_NAMES = {"clean-white":"Clean White", blossom:"Blossom",
+                     obsidian:"Obsidian Slate", emerald:"Emerald Royal"};
+//: Free has Clean White in light mode only; the rest needs Pro or Max.
+const FREE_THEME = "clean-white";
+//: Names from before v15, read as their successor until the server's
+//: migration has rewritten them.
+const OLD_THEME = {ocean:"clean-white", midnight:"obsidian", aurora:"blossom",
+                   bento:"obsidian", spatial:"emerald"};
 //: An account holding an unknown theme renders as the default and shows the
 //: default ticked, rather than a picker with nothing selected.
-const DEFAULT_THEME = "ocean";
+const DEFAULT_THEME = "clean-white";
 
 /* ---------- reminders ----------
    The offsets the picker offers, and the one a task is born with. Half an
@@ -3269,7 +3272,10 @@ const DEFAULT_THEME = "ocean";
    Kept in step with services.REMINDER_OFFSETS. */
 const REMINDER_OFFSETS = [0, 10, 30, 60, 1440];
 const DEFAULT_REMIND_BEFORE = 30;
-const themeOf = name => THEMES.some(x => x.id === name) ? name : DEFAULT_THEME;
+const themeOf = name => THEMES.some(x => x.id === name) ? name : OLD_THEME[name] || DEFAULT_THEME;
+/* Free sees Clean White in light mode whatever is stored; the stored choice
+   comes back as soon as the plan does. */
+const themeLocked = () => Boolean(state.me?.plan?.enabled && state.me.plan.tier === "free");
 const themeMeta = name => THEMES.find(x => x.id === themeOf(name));
 
 /* ---------- icons ----------
@@ -3804,6 +3810,14 @@ function calendarSheet(){
    opens the same sheet with the reason on top. */
 const PLAN_NAME = {free:"Free", pro:"Pro", max:"Max"};
 const fmtSom = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+/* The plan as the card says it: the badge, and the line under it with the
+   end date — "Max · Faol", "Amal qilish muddati — 2026-11-07 gacha". */
+function planBadge(p){
+  p = p || state.me?.plan || {};
+  if(!p.enabled || p.tier === "free") return {badge:"Free", line:t("plan_free_line"), active:false};
+  return {badge:t("plan_badge_active", {plan:PLAN_NAME[p.tier] || "Pro"}),
+          line: p.until ? t("plan_until_line", {d:p.until.slice(0, 10)}) : t("plan_lifetime"), active:true};
+}
 function planLine(){
   const p = state.me?.plan;
   if(!p?.enabled) return "";
@@ -3822,7 +3836,7 @@ const PLAN_MATRIX_FALLBACK = {
           team_members:{free:8, pro:10, max:50}, voice_day:{free:null, pro:30, max:100},
           voice_week:{free:5, pro:null, max:null}},
   features:{journal_ai:["pro","max"], timer_rhythm:["pro","max"], stats_history:["pro","max"], stats_csv:["max"],
-            money_transfers:["pro","max"], money_year:["max"]},
+            money_transfers:["pro","max"], money_year:["max"], themes:["pro","max"]},
 };
 function planTable(p, period, price){
   // A partial answer never blanks the table: each half falls back on its own.
@@ -3856,6 +3870,7 @@ function planTable(p, period, price){
     ["timer_rhythm", tier => (F.timer_rhythm || []).includes(tier) ? yes : no],
     ["stats_history", tier => (F.stats_history || []).includes(tier) ? yes : no],
     ["stats_csv", tier => (F.stats_csv || []).includes(tier) ? yes : no],
+    ["themes", tier => (F.themes || []).includes(tier) ? yes : no],
   ];
   const tiers = ["free", "pro", "max"];
   const head = tier => { const x = tier === "free" ? null : price(tier, period);
@@ -3873,6 +3888,16 @@ function planTable(p, period, price){
         const mo = price(tier, "month"), yr = price(tier, "year");
         return mo && yr && mo.stars * 12 > yr.stars ? `${PLAN_NAME[tier]} ${mo.stars * 12 - yr.stars} ★` : ""; }).filter(Boolean);
       return bits.length ? `<div class="psave">${t("plan_save_year", {list: bits.join(" · ")})}</div>` : ""; })() : ""}`;
+}
+/* Promo code: one field, a clear answer, the new end date on success. */
+function promoSheet(){
+  const f = state.promo || {};
+  return `${sheetHead(`${icon("gift", 18)} ${t("promo_title")}`)}
+    <input id="promo-code" maxlength="40" autocomplete="off" autocapitalize="characters" spellcheck="false"
+      placeholder="${t("promo_ph")}" value="${esc(f.code || "")}" data-search="promo-redeem"
+      style="text-transform:uppercase;letter-spacing:.06em;font-weight:650" />
+    ${f.error ? `<div class="promo-err">${esc(f.error)}</div>` : `<div class="hint">${t("promo_hint")}</div>`}
+    <button class="btn" data-act="promo-redeem" style="margin-top:14px">${t("promo_apply")}</button>`;
 }
 /* A sheet title with its close cross on the right. */
 const sheetHead = (title) => `<div class="sheet-head"><h3>${title}</h3>
@@ -3915,6 +3940,7 @@ function plansSheet(limit){
     <div class="plan-buy">${buy("pro")}${buy("max")}</div>
     <div class="t3" style="margin-top:10px;font-size:11.5px;line-height:1.4">${t("plan_pay_how")}</div>
     <button class="btn text" data-act="coins-open" style="margin:8px auto 0;display:flex">${icon("coin", 16)} ${t("coins_or")}</button>
+    <button class="btn text" data-act="promo-open" style="margin:0 auto;display:flex">${icon("gift", 16)} ${t("promo_title")}</button>
     ${p.channel && !p.channel_bonus_used ? `<button class="btn secondary" data-act="sub-join"
         data-url="${esc(p.channel)}" style="margin-top:var(--s3)">
         🎁 ${t("plan_channel", {n:p.channel_bonus_days})}</button>` : ""}`;
@@ -8408,16 +8434,18 @@ function settingsSheet(){
 
   /* The plan in one card; the plans themselves only behind its button. */
   const p = me.plan || {};
+  const pb = planBadge(p);
   const plan = p.enabled ? `<div class="card tight set-card">
       <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
-        <span class="plan-pill">${icon("star", 13)} ${PLAN_NAME[p.tier] || "Free"}</span>
-        <span class="t2 small">${p.tier === "free" ? t("plan_current") : esc(planLine())}</span></div>
+        <span class="plan-pill ${pb.active ? "on" : ""}">${icon("star", 13)} ${esc(pb.badge)}</span>
+        <span class="t2 small">${esc(pb.line)}</span></div>
       ${p.tier === "free" ? `<div class="t3 tiny" style="margin-top:4px">${t("plan_free_has", {list:
           [`${p.limits?.habits ?? 3} ${t("pt_habits").toLowerCase()}`,
            `${p.limits?.projects ?? 1} ${t("pt_projects").toLowerCase()}`,
            `${t("pt_voice").toLowerCase()} ${p.limits?.voice_week ?? 5}/${t("pt_week")}`].join(" · ")})}</div>` : ""}
       <button class="btn ${p.tier === "max" ? "secondary" : ""}" data-act="set-plan"
               style="margin-top:10px">${t(p.tier === "max" ? "plan_change" : "plan_upgrade")}</button>
+      <button class="btn text sm" data-act="promo-open" style="margin-top:4px">${icon("gift", 15)} ${t("promo_title")}</button>
     </div>` : "";
 
   const invite = settingsInvite(row);
@@ -8500,6 +8528,7 @@ function reopenSettings(){
 /* Language, light or dark, and the theme — everything about how it looks. */
 function appearanceSheet(){
   const me = state.me || {};
+  const locked = themeLocked();
   const langs = [["uz","🇺🇿 O'zbek"],["en","🇬🇧 English"],["ru","🇷🇺 Русский"]];
 
   return `
@@ -8510,23 +8539,26 @@ function appearanceSheet(){
       `<div class="chip sm ${me.language === c ? "on" : ""}" data-act="set-lang"
         data-value="${c}">${l}</div>`).join("")}</div>
 
-    <label>${t("mode")}</label>
+    <label>${t("mode")}${locked ? ` <span class="wlock">${icon("shield", 11)} Pro</span>` : ""}</label>
     <div class="seg" style="margin-bottom:var(--s2)">
       ${[["auto", t("auto")], ["light", t("light")], ["dark", t("dark")]]
-        .map(([v, l]) => `<div class="${state.appearance === v ? "on" : ""}"
-          data-act="set-appearance" data-value="${v}">${l}</div>`).join("")}</div>
+        .map(([v, l]) => `<div class="${(locked ? v === "light" : state.appearance === v) ? "on" : ""}"
+          data-act="${locked && v !== "light" ? "theme-locked" : "set-appearance"}" data-value="${v}">${l}</div>`).join("")}</div>
+    ${locked ? `<div class="t3 tiny" style="margin:-4px 0 8px">${t("theme_free_note")}</div>` : ""}
 
     <label>${t("theme")}</label>
     <div class="stack">
-    ${THEMES.map(th => `
-      <div class="tcard ${themeOf(me.theme) === th.id ? "on" : ""}"
-           data-act="set-theme" data-value="${th.id}">
+    ${THEMES.map(th => {
+      const lock = locked && th.id !== FREE_THEME;
+      const on = (locked ? FREE_THEME : themeOf(me.theme)) === th.id;
+      return `<div class="tcard ${on ? "on" : ""} ${lock ? "locked" : ""}"
+           data-act="${lock ? "theme-locked" : "set-theme"}" data-value="${th.id}">
         <span class="swatches">${th.c.map(colour =>
           `<i style="background:${colour}"></i>`).join("")}</span>
         <div class="grow">
           <div style="font-weight:600">${THEME_NAMES[th.id]}</div>
-          <div class="t2 tiny">${t("theme_" + th.id)}</div></div>
-        ${themeOf(me.theme) === th.id ? icon("check", 17) : ""}</div>`).join("")}
+          <div class="t2 tiny">${t("theme_" + th.id.replace("-", "_"))}</div></div>
+        ${on ? icon("check", 17) : lock ? `<span class="wlock">🔒 Pro</span>` : ""}</div>`; }).join("")}
     </div>
 
     <button class="btn secondary" data-act="settings" style="margin-top:14px">
@@ -9389,6 +9421,7 @@ function errorScreen(){
    when it reports one and the operating system otherwise, so the app matches
    the chat it opened from. */
 function resolveMode(){
+  if(themeLocked()) return "light";
   if(state.appearance === "light" || state.appearance === "dark")
     return state.appearance;
   if(tg?.colorScheme === "light" || tg?.colorScheme === "dark")
@@ -9444,7 +9477,7 @@ function render(){
   /* Two attributes drive the entire visual system: which identity, and which
      mode. Every theme defines both, so no combination inherits another's
      surfaces. */
-  root.dataset.theme = themeOf(state.me?.theme);
+  root.dataset.theme = themeLocked() ? FREE_THEME : themeOf(state.me?.theme);
   root.dataset.mode = resolveMode();
 
   const app = document.getElementById("app");
@@ -11688,6 +11721,29 @@ const A = {
                       settingSave({language: el.dataset.value}); },
   "set-gender": el => settingSave({gender: el.dataset.value}),
   "set-theme": el => { haptic(); settingSave({theme: el.dataset.value}); },
+  "promo-open": () => { haptic(); state.promo = {}; openSheet(promoSheet(), "promo");
+    setTimeout(() => document.getElementById("promo-code")?.focus(), 80); },
+  "promo-redeem": async () => {
+    const code = trimmed("promo-code");
+    if(!code) return document.getElementById("promo-code")?.focus();
+    state.promo = {code};
+    try{
+      const r = await api("/api/promocode/redeem", {method:"POST", body:{code}});
+      if(state.me) state.me.plan = r.plan;
+      notify("success");
+      closeSheet();
+      toast(t("promo_ok", {plan: PLAN_NAME[r.tier] || "Pro", d: (r.until || "").slice(0, 10)}));
+      render();
+    }catch(e){
+      const known = ["not_found", "inactive", "expired", "exhausted", "already_used", "plans_off"];
+      state.promo = {code, error: known.includes(e.detail) ? t("promo_err_" + e.detail)
+        : e.status === 429 ? t("rate_wait", {n: e.retryAfter || 60}) : t("error")};
+      haptic("heavy");
+      openSheet(promoSheet(), "promo");
+    }
+  },
+  "theme-locked": () => { haptic("medium");
+    openSheet(plansSheet({detail:"plan_limit", key:"themes", limit:null, tier:"free", needs:"pro"}), "plans"); },
   "set-appearance": el => {
     haptic();
     state.appearance = el.dataset.value;

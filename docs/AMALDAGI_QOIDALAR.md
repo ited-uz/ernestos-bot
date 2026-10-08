@@ -203,3 +203,16 @@ navbatga tushadi va ulanganda bir marta yuboriladi.
 - Har savol AI limitidan bitta oladi; o'zgartirish kartasi yana bitta.
   Free — haftasiga **5** ta, Pro — kuniga **30** ta, Max — kuniga **100** ta.
 - Oxirgi **40** ta xabar saqlanadi; «Suhbatni tozalash» hammasini o'chiradi.
+
+## Promokodlar va mavzular (v15)
+
+- Promokod Pro yoki Max kunlarini beradi. Har bir akkaunt bitta kodni **bir marta** ishlatadi.
+  Kod kiritish: ilovada **Sozlamalar → Promokod kiritish** yoki botda `/promo KOD`.
+- Kod yaratish faqat adminlarga (Railway'da `ADMIN_IDS` = Telegram ID'lar, vergul bilan):
+  `/promo_new KOD pro|max KUN [NECHA_MARTA] [YYYY-MM-DD]`, `/promo_list`, `/promo_off KOD`.
+- Kod kunlari shu tarifdagi mavjud muddatdan keyin qo'shiladi.
+- Ko'p urinish bilan kod topishning oldi olingan: 10 daqiqada ko'pi bilan **10** urinish.
+- Mavzular: **Clean White** (hamma uchun), **Blossom**, **Obsidian Slate**, **Emerald Royal** (Pro va Max).
+- Free tarifda ilova doim Clean White va yorug' rejimda ko'rinadi; tanlangan mavzu saqlanib qoladi
+  va tarif qaytsa, o'zi tiklanadi.
+- Eski mavzu nomlari `python migrations.py 0014` bilan yangilariga o'tkaziladi.
