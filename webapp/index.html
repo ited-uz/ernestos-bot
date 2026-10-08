@@ -990,6 +990,16 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
 .brandline{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;
   font-size:12px;color:var(--text-3)}
 .brandline img{border-radius:6px}
+.rank-card{cursor:pointer}
+.rank-big{font-size:32px;font-weight:800;letter-spacing:-1px;line-height:1;color:var(--primary);
+  font-variant-numeric:tabular-nums}
+.rank-big.muted{color:var(--text-3)}
+.rank-pill{font-size:12px;font-weight:750;padding:4px 10px;border-radius:9999px;
+  background:color-mix(in srgb, var(--ok) 16%, transparent);color:var(--ok);white-space:nowrap}
+.rank-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px;text-align:center}
+.rank-facts b{display:block;font-size:16px}
+.rank-facts span{font-size:11.5px;color:var(--text-3)}
+.rank-up{color:var(--ok)} .rank-down{color:var(--danger)}
 .sr-only{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 /* A sheet's own close: a cross in the corner, so the bottom of the sheet is
    free for what the sheet is for. */
@@ -1017,7 +1027,8 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
 .ptable th,.ptable td{padding:9px 6px;text-align:center;border-bottom:var(--border-w) solid var(--border);
   vertical-align:middle}
 .ptable tbody tr:last-child th,.ptable tbody tr:last-child td{border-bottom:0}
-.ptable tbody th{text-align:left;font-weight:500;color:var(--text-2);padding-left:12px;width:38%}
+.ptable tbody th{text-align:left;font-weight:500;color:var(--text-2);padding-left:12px;width:40%;
+  font-size:12.5px;line-height:1.3}
 .ptable thead th{padding-top:12px;padding-bottom:10px;vertical-align:top}
 .ptable .pt-name{font-weight:700;font-size:14px;color:var(--text)}
 .ptable .pt-price{font-weight:800;font-size:15px;margin-top:2px;font-variant-numeric:tabular-nums}
@@ -1622,6 +1633,7 @@ const DICT = {
   plan_save_stars:"Yiliga {n} ⭐ tejaysiz",
   avatar_heic:"Bu rasm HEIC formatida — telefon uni o'qiy olmadi. Kamerada JPG ni tanlang yoki boshqa rasm yuboring.", avatar_too_big:"Rasm juda katta. Boshqasini tanlang.", avatar_server_old:"Server hali yangilanmagan — rasm yuklash keyinroq ishlaydi.", avatar_offline:"Internet yo'q — rasm saqlanmadi.",
   pt_habits:"Odatlar", pt_active_tasks:"Faol vazifalar", pt_recurring_tasks:"Takrorlanuvchi vazifalar", pt_projects:"Loyihalar", pt_open_debts:"Ochiq qarzlar", pt_teams_owned:"Jamoa yaratish", pt_team_members:"Jamoa a'zolari", pt_voice:"Ovozli buyruq", pt_journal_ai:"AI kun xulosasi", pt_timer_rhythm:"Ish/tanaffus ritmi", pt_stats_history:"Oylik va yillik statistika", pt_stats_csv:"Statistika fayli", pt_week:"hafta", pt_day:"kun", plan_save_year:"Yillik to'lovda tejaysiz — {list}", plan_free_has:"Free'da — {list}",
+  rank_title:"Reyting", rank_among:"{n} kishi orasida", rank_top:"Siz eng faol {n}% ichidasiz", rank_top_short:"TOP {n}%", rank_week:"Haftalik", rank_best:"Eng yaxshi", rank_move:"O'zgarish", rank_private:"Faqat o'rningiz ko'rinadi — boshqalarning ismi va natijasi hech kimga ko'rsatilmaydi.", rank_soon:"Reytingga {n} kundan keyin kirasiz", rank_soon_hint:"7 kunlik faollikdan keyin o'rningiz hisoblanadi.", steps_unavailable:"Qadam ma'lumoti hali kelmadi. Server yangilangach ko'rinadi.",
   draft_restored:"Saqlanmagan matn tiklandi", autosaved:"Saqlanmoqda…",
   mood_q:"Bugun o'zingizni qanday his qildingiz?",
   mood_awful:"Juda yomon", mood_low:"Yomon", mood_ok:"O'rtacha",
@@ -2055,6 +2067,7 @@ const DICT = {
   plan_save_stars:"You save {n} ⭐ a year",
   avatar_heic:"This photo is HEIC and the phone could not read it. Pick a JPG or another photo.", avatar_too_big:"This picture is too large. Pick another.", avatar_server_old:"The server is not updated yet — photo upload will work after it is.", avatar_offline:"No connection — the photo was not saved.",
   pt_habits:"Habits", pt_active_tasks:"Open tasks", pt_recurring_tasks:"Repeating tasks", pt_projects:"Projects", pt_open_debts:"Open debts", pt_teams_owned:"Create teams", pt_team_members:"Team members", pt_voice:"Voice commands", pt_journal_ai:"AI day summary", pt_timer_rhythm:"Work/break rhythm", pt_stats_history:"Month and year statistics", pt_stats_csv:"Statistics file", pt_week:"week", pt_day:"day", plan_save_year:"Paying yearly you save — {list}", plan_free_has:"On Free — {list}",
+  rank_title:"Rating", rank_among:"among {n} people", rank_top:"You are in the most active {n}%", rank_top_short:"TOP {n}%", rank_week:"This week", rank_best:"Best", rank_move:"Change", rank_private:"Only your position is shown — nobody else's name or result is shown to anyone.", rank_soon:"You join the rating in {n} days", rank_soon_hint:"Your position is counted after 7 days of activity.", steps_unavailable:"Steps have not arrived yet. They show once the server is updated.",
   draft_restored:"Unsaved text restored", autosaved:"Saving…",
   mood_q:"How did you feel today?",
   mood_awful:"Awful", mood_low:"Low", mood_ok:"Okay",
@@ -2482,6 +2495,7 @@ const DICT = {
   plan_save_stars:"Экономия {n} ⭐ в год",
   avatar_heic:"Это фото в HEIC, телефон не смог его прочитать. Выберите JPG или другое фото.", avatar_too_big:"Картинка слишком большая. Выберите другую.", avatar_server_old:"Сервер ещё не обновлён — загрузка фото заработает после обновления.", avatar_offline:"Нет связи — фото не сохранено.",
   pt_habits:"Привычки", pt_active_tasks:"Открытые задачи", pt_recurring_tasks:"Повторяющиеся задачи", pt_projects:"Проекты", pt_open_debts:"Открытые долги", pt_teams_owned:"Создание команд", pt_team_members:"Участники команды", pt_voice:"Голосовые команды", pt_journal_ai:"AI-итоги дня", pt_timer_rhythm:"Ритм работа/перерыв", pt_stats_history:"Статистика за месяц и год", pt_stats_csv:"Файл статистики", pt_week:"нед", pt_day:"день", plan_save_year:"При оплате за год экономия — {list}", plan_free_has:"На Free — {list}",
+  rank_title:"Рейтинг", rank_among:"среди {n} человек", rank_top:"Вы в числе {n}% самых активных", rank_top_short:"ТОП {n}%", rank_week:"За неделю", rank_best:"Лучшее", rank_move:"Изменение", rank_private:"Видно только ваше место — имена и результаты других никому не показываются.", rank_soon:"Вы попадёте в рейтинг через {n} дн.", rank_soon_hint:"Место считается после 7 дней активности.", steps_unavailable:"Шаги ещё не пришли. Появятся после обновления сервера.",
   draft_restored:"Несохранённый текст восстановлен", autosaved:"Сохраняем…",
   mood_q:"Как вы себя чувствовали сегодня?",
   mood_awful:"Очень плохо", mood_low:"Плохо", mood_ok:"Нормально",
@@ -3326,8 +3340,10 @@ const PLAN_MATRIX_FALLBACK = {
   features:{journal_ai:["pro","max"], timer_rhythm:["pro","max"], stats_history:["pro","max"], stats_csv:["max"]},
 };
 function planTable(p, period, price){
-  const m = state.planMatrix || PLAN_MATRIX_FALLBACK;
-  const L = m.limits || {}, F = m.features || {};
+  // A partial answer never blanks the table: each half falls back on its own.
+  const m = state.planMatrix || {};
+  const L = m.limits && Object.keys(m.limits).length ? m.limits : PLAN_MATRIX_FALLBACK.limits;
+  const F = m.features && Object.keys(m.features).length ? m.features : PLAN_MATRIX_FALLBACK.features;
   const yes = `<span class="pt-yes" aria-label="✓">${icon("check", 15)}</span>`;
   const no = `<span class="pt-no" aria-label="—">${icon("x", 13)}</span>`;
   const num = v => v === null || v === undefined ? `<span class="pt-inf">∞</span>` : v === 0 ? no : `<b>${v}</b>`;
@@ -7703,7 +7719,10 @@ const STEP_GO = {tasks:["tasks"], habits:["habits", "habits"], prayer:["habits",
                  journal:["habits", "journal"], goal:["home"]};
 SCREENS.steps = () => {
   const p = state.progress, st = p?.steps;
-  if(!st) return `<div class="spin"></div>`;
+  if(!p) return `<div class="spin"></div>`;
+  // An answer without steps (an older server) is said, not spun on forever.
+  if(!st) return `<div class="empty">${t("steps_unavailable")}
+      <button class="btn secondary" data-act="retry-screen" style="margin-top:12px">${t("retry_screen")}</button></div>`;
   const lvl = st.levels[st.level - 1];
   const nextLvl = st.levels[st.level];
   const span = st.next ? st.next - lvl.min : 1;
@@ -7761,12 +7780,49 @@ SCREENS.steps = () => {
         ${t("steps_next")}: ${t("step_" + next.key)} →</button>`
       : `<div class="hint" style="text-align:center;margin-top:12px">${t("steps_all_done")}</div>`}
 
+    ${rankBlock(rank)}
+
     <div class="steps-sub">${t("steps_path")}</div>
     <div class="card"><div class="steps-path">${path}</div></div>
     <div class="item pressable" style="margin-top:var(--s2)" data-act="progress-open">
       <span style="font-size:18px">🏅</span><div class="grow">${t("steps_more")}</div>${icon("chevron", 15)}</div>
     <div class="t3 tiny" style="text-align:center;margin-top:12px">${t("steps_motto")}</div>`;
 };
+
+/* Rating: where the person stands among everyone with a week of history.
+   A position and a share, never anybody else's name or score. */
+function rankBlock(rank){
+  rank = rank || {};
+  if(!rank.eligible){
+    const left = rank.days_remaining ?? 7;
+    return `<div class="steps-sub">${icon("chart", 15)} ${t("rank_title")}</div>
+      <div class="card rank-card">
+        <div class="row" style="gap:12px;align-items:center">
+          <div class="rank-big muted">—</div>
+          <div class="grow"><b>${t("rank_soon", {n:left})}</b>
+            <div class="t3 tiny" style="margin-top:2px">${t("rank_soon_hint")}</div></div></div>
+        <div class="sbar" style="margin-top:12px"><i style="width:${Math.round((7 - Math.min(7, left)) / 7 * 100)}%"></i></div>
+      </div>`;
+  }
+  const top = rank.top_percent ?? 100;
+  const move = rank.movement;
+  const moveTxt = move > 0 ? `<span class="rank-up">↑ ${move}</span>` : move < 0 ? `<span class="rank-down">↓ ${-move}</span>` : `<span class="t3">—</span>`;
+  return `<div class="steps-sub">${icon("chart", 15)} ${t("rank_title")}</div>
+    <div class="card rank-card" data-act="progress-open" role="button" tabindex="0">
+      <div class="row" style="gap:14px;align-items:center">
+        <div class="rank-big num">#${rank.global}</div>
+        <div class="grow"><b>${t("rank_among", {n: fmtSom(rank.users || 0)})}</b>
+          <div class="t3 tiny" style="margin-top:2px">${t("rank_top", {n: top})}</div></div>
+        <span class="rank-pill">${t("rank_top_short", {n: top})}</span></div>
+      <div class="sbar" style="margin-top:12px"><i style="width:${Math.max(4, 100 - top)}%"></i></div>
+      <div class="rank-facts">
+        <div><b class="num">${rank.weekly ? "#" + rank.weekly : "—"}</b><span>${t("rank_week")}</span></div>
+        <div><b class="num">${rank.best ? "#" + rank.best : "—"}</b><span>${t("rank_best")}</span></div>
+        <div><b class="num">${moveTxt}</b><span>${t("rank_move")}</span></div>
+      </div>
+      <div class="t3 tiny" style="margin-top:8px">${t("rank_private")}</div>
+    </div>`;
+}
 
 /* The detail, in a sheet rather than a fifth tab. The bottom navigation is
    four items and has been since the app was designed around them; a
@@ -10477,7 +10533,7 @@ const A = {
     haptic();
     openSheet(plansSheet(), "plans");
     if(!state.planMatrix) api("/api/plans").then(r => {
-      state.planMatrix = {limits:r.all_limits, features:r.all_features};
+      if(r?.all_limits) state.planMatrix = {limits:r.all_limits, features:r.all_features};
       if(state.sheetView === "plans") openSheet(plansSheet(), "plans");
     }).catch(() => {});
   },

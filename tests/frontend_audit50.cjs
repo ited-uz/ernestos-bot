@@ -348,5 +348,13 @@ const posts = url => calls.filter(c => c.method === 'POST' && c.url === url);
   assert.equal(run('voice.session'), 4, 'a late answer lands nowhere');
   assert.equal(run('voice.cancelled'), true);
 
+  // The plan table never goes blank: a reply without the limits uses the
+  // table built into the app, so Free still reads 3 habits, not unlimited.
+  run(`state.planMatrix = {limits: undefined, features: undefined}`);
+  const table = run(`planTable({tier:'free', products:[]}, 'month', () => null)`);
+  assert.ok(table.includes('<b>3</b>'), 'Free habits limit shown');
+  assert.ok(table.includes('pt-yes') && table.includes('pt-no'), 'features shown as yes/no');
+  run(`state.planMatrix = null`);
+
   console.log('Audit-50 frontend checks passed');
 })().catch(e => { console.error(e); process.exitCode = 1; });
