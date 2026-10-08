@@ -325,7 +325,7 @@
   }
   const money = () => ({month:TODAY.slice(0, 7), year:now.getFullYear(), month_no:now.getMonth() + 1,
     is_current:true, income:monthKind("income"), expense:monthKind("expense"),
-    balance:walletState().total, count:DB.money.length, wallet:walletState(),
+    balance:walletState().total, count:DB.money.length, wallet:walletState(), debts:debtsPayload(),
     // Spent per category is summed from the month's entries, exactly as the
     // server does, so the header and the breakdown cannot disagree (F01).
     categories:[["food","🍔",2000000],["transport","🚕",800000],
@@ -457,8 +457,65 @@
     if(/qo'sh|qo‘sh|eslat|add|добав/.test(t)) return {text:"Tayyorladim — pastda tasdiqlang. Tasdiqlamaguningizcha hech narsa o'zgarmaydi.", draft:CHAT_DRAFT()};
     return {text:"Bugungi xulosa:\n• 5 ta vazifadan 1 tasi bajarildi, 1 tasi muddati o'tgan («Hisobni to'lash»).\n• Odatlar 4/5, namoz 3/5.\n• Keyingi qadam: hozir «Hisobni to'lash»ni yoping (5 daqiqa), keyin 90 daqiqa chuqur ish."};
   }
+  /* Demo debts, shaped like /api/debts on the server. */
+  const DEBTS = EMPTY ? [] : [
+    {id:1, person:"Aziz", amount:500000, original:500000, paid:0, payments:[], direction:"lent", note:"",
+     due:day(5), overdue:false, settled:false, archived:false},
+    {id:2, person:"Bobur", amount:150000, original:200000, paid:50000,
+     payments:[{id:1, amount:50000, day:day(-6)}], direction:"borrowed", note:"",
+     due:day(-2), overdue:true, settled:false, archived:false},
+    {id:3, person:"Sardor", amount:0, original:300000, paid:300000, payments:[], direction:"lent", note:"",
+     due:null, overdue:false, settled:true, archived:false}];
+  let debtSeq = 10;
+  const debtsPayload = () => {
+    const open = DEBTS.filter(d => !d.settled && !d.archived);
+    return {open, settled:DEBTS.filter(d => d.settled && !d.archived), archived:DEBTS.filter(d => d.archived),
+      owed_to_me:open.filter(d => d.direction === "lent").reduce((n, d) => n + d.amount, 0),
+      i_owe:open.filter(d => d.direction === "borrowed").reduce((n, d) => n + d.amount, 0),
+      overdue:open.filter(d => d.overdue).length};
+  };
+  /* One habit's record, as /api/habits/{id}/history returns it: a 30-day
+     grid read from a fixed pattern, and the numbers counted off that grid. */
+  const habitHistory = id => {
+    const h = DB.habits.find(x => x.id === id) || {};
+    const grid = Array.from({length:30}, (_, i) => {
+      const d = new Date(now); d.setDate(d.getDate() - (29 - i));
+      const due = h.schedule === "days" ? (h.days || []).includes((d.getDay() + 6) % 7) : true;
+      const done = i === 29 ? Boolean(h.done) : due && ((i * 7 + id) % 10) < 8;
+      return {day:d.toISOString().slice(0, 10), due, done};
+    });
+    const count = list => [list.filter(g => g.done).length, list.filter(g => g.due).length];
+    const [d30, u30] = count(grid), [d7, u7] = count(grid.slice(-7));
+    let streak = 0;
+    for(let i = grid.length - 1; i >= 0; i--){ if(!grid[i].due) continue; if(grid[i].done) streak++; else if(i < 29) break; }
+    return {...h, grid, streak, percent:u30 ? Math.round(d30 / u30 * 100) : 0,
+            last7_done:d7, last7_due:u7, last30_done:d30, last30_due:u30};
+  };
   const ROUTES = [
     [/^\/api\/me$/, () => DB.me],
+    [/^\/api\/habits\/(\d+)\/history$/, (q, m) => habitHistory(Number(m[1]))],
+    [/^\/api\/teams\/habits\/(\d+)\/history$/, (q, m) => habitHistory(Number(m[1]))],
+    [/^\/api\/debts$/, debtsPayload],
+    [/^\/api\/birthdays$/, () => ({birthdays:EMPTY ? [] : [
+      {id:1, person_name:"Gulyora", birth_date:"1998-" + day(3).slice(5), next:day(3), days_left:3, turning:28, note:""}]})],
+    [/^\/api\/review$/, () => ({week_start:day(-((now.getDay() + 6) % 7)), tasks_done:EMPTY ? 0 : 7, tasks_overdue:EMPTY ? 0 : 1,
+      habit_pct:EMPTY ? 0 : 78, prayer_pct:EMPTY ? 0 : 72, task_pct:EMPTY ? 0 : 61, overall_pct:EMPTY ? 0 : 68,
+      focus:[], focus_done:0, is_week_end:now.getDay() >= 5 || now.getDay() === 0,
+      answers:{went_well:"", blocked:"", next_focus:""}, saved:false,
+      suggestions:EMPTY ? [] : [{key:"blocked", n:1}]})],
+    [/^\/api\/progress\/achievements$/, () => ({achievements:[
+      ["first_step", 1, 1], ["perfect_day", 1, 1], ["consistent", 6, 7], ["disciplined", 6, 30],
+      ["century", 38, 100], ["early_riser", 12, 30], ["focused", 4, 10], ["never_miss_twice", 1, 1],
+      ["comeback", 0, 1], ["architect", 2, 4], ["commander", 1, 5], ["elite", 0, 6], ["master", 0, 7]]
+      .map(([key, progress, target]) => ({key, progress:EMPTY ? 0 : progress, target,
+        unlocked:!EMPTY && progress >= target, unlocked_at:!EMPTY && progress >= target ? day(-4) : null}))})],
+    [/^\/api\/overall$/, () => ({day:TODAY, value:EMPTY ? 0 : 50, measured:!EMPTY,
+      counted:["tasks", "habits", "team", "prayer"],
+      parts:[{key:"tasks", percent:20, done:1, total:5}, {key:"habits", percent:80, done:4, total:5},
+             {key:"team", percent:50, done:1, total:2}, {key:"prayer", percent:60, done:3, total:5}],
+      weights:{tasks:40, habits:25, team:20, prayer:15}, nominal_weights:{tasks:40, habits:25, team:20, prayer:15},
+      task_priority_weights:{high:3, medium:2, low:1}, rule:"weighted_mean_of_available", formula:3})],
+    [/^\/api\/teams\/\d+\/requests$/, () => ({requests:[]})],
     [/^\/api\/agent\/chat$/, () => ({messages:CHAT, agent:{consent:DB.me.agent.consent}})],
     [/^\/api\/goals$/, goalsPayload],
     [/^\/api\/coins$/, () => coinState()],
@@ -487,11 +544,16 @@
       level:{key:"starter", numeral:"I", xp:0, next_threshold:100, remaining:100,
              next_key:"builder", progress:0},
       rank:{eligible:false, days_remaining:7, global:null, top_percent:null, users:0},
-      daily:{grade:"—", score:0}, streak:{current:0}} : {
+      daily:{grade:null, score:null, measured:false, perfect_day:false, to_perfect:90, breakdown:{}, weights:{}},
+      xp:{total:0, today:0, cap:120},
+      streak:{current:0, best:0, recovery_remaining:2, threshold:60}, perfect_days:0, scored_days:0} : {
       level:{key:"builder", numeral:"II", xp:1240, next_threshold:2000, remaining:760,
              next_key:"operator", progress:0.62},
       rank:{eligible:true, global:214, weekly:96, best:180, movement:7, top_percent:18, users:1180, days_remaining:0},
-      daily:{grade:"B", score:74}, streak:{current:6},
+      daily:{grade:"B", score:74, measured:true, perfect_day:false, to_perfect:16,
+             breakdown:{tasks:20, habits:80, team:50, prayer:60}, weights:{tasks:0.4, habits:0.25, team:0.2, prayer:0.15}},
+      xp:{total:1240, today:70, cap:120},
+      streak:{current:6, best:11, recovery_remaining:2, threshold:60}, perfect_days:4, scored_days:23,
       steps:{total:38, level:2, level_key:"builder", next:51, freeze:2, today_done:3, today_counted:5,
              levels:[{key:"starter", min:0, max:25}, {key:"builder", min:26, max:50}, {key:"discipline", min:51, max:100},
                      {key:"steady", min:101, max:200}, {key:"master", min:201, max:null}],
@@ -551,12 +613,12 @@
       run:null, done:false, protected:false})],
     [/^\/api\/subscription$/, () => ({subscribed:true})],
     [/^\/api\/plans$/, () => ({...DB.me.plan,
-      all_limits:{habits:{free:3, pro:25, max:null}, active_tasks:{free:30, pro:null, max:null},
+      all_limits:{habits:{free:3, pro:25, max:null}, active_tasks:{free:20, pro:null, max:null},
                   recurring_tasks:{free:3, pro:25, max:null}, projects:{free:1, pro:15, max:null},
-                  life_goals:{free:3, pro:25, max:null}, open_debts:{free:3, pro:null, max:null},
+                  life_goals:{free:2, pro:25, max:null}, open_debts:{free:3, pro:null, max:null},
                   money_accounts:{free:1, pro:3, max:null}, money_subs:{free:0, pro:3, max:null}, teams_owned:{free:0, pro:2, max:10},
                   team_members:{free:8, pro:10, max:50}, voice_day:{free:null, pro:30, max:100},
-                  voice_week:{free:5, pro:null, max:null}},
+                  voice_week:{free:3, pro:null, max:null}},
       all_features:{journal_ai:["pro","max"], timer_rhythm:["pro","max"], stats_history:["pro","max"], stats_csv:["max"],
                     money_transfers:["pro","max"], money_year:["max"], themes:["pro","max"]}})],
     [/^\/api\/app\/notifications$/, () => ({items:DB.inbox,
@@ -595,6 +657,29 @@
     editable:[{index:0, fields:{title:"Mijozga qo'ng'iroq qilish", deadline:tomorrow(), due_time:"10:00", priority:"medium"}}]});
 
   function mutate(method, path, body){
+    if(path === "/api/debts" && method === "POST"){
+      const amount = Math.round(Number(String(body.amount || "").replace(/[^0-9]/g, "")) * (/mln/i.test(body.amount) ? 1e6 : /ming|k/i.test(body.amount) ? 1e3 : 1)) || 0;
+      DEBTS.unshift({id:++debtSeq, person:body.person || "?", amount, original:amount, paid:0, payments:[],
+                     direction:body.direction || "lent", note:body.note || "", due:body.due || null,
+                     overdue:false, settled:false, archived:false});
+      return {ok:true, id:debtSeq};
+    }
+    let dm;
+    if((dm = path.match(/^\/api\/debts\/(\d+)(\/(settle|purge|restore))?$/))){
+      const d = DEBTS.find(x => x.id === Number(dm[1]));
+      if(!d) return {__status:404, detail:"not_found"};
+      const what = dm[3];
+      if(what === "settle"){
+        const part = Number(body?.amount) || d.amount;
+        d.paid += Math.min(part, d.amount); d.amount = Math.max(0, d.amount - part);
+        d.payments.push({id:Date.now(), amount:part, day:TODAY});
+        if(!d.amount) d.settled = true;
+      }else if(what === "purge") DEBTS.splice(DEBTS.indexOf(d), 1);
+      else if(what === "restore"){ d.archived = false; }
+      else if(method === "DELETE") d.archived = true;
+      else Object.assign(d, body || {});
+      return {ok:true};
+    }
     if(path === "/api/agent/consent"){ DB.me.agent.consent = true; return {ok:true}; }
     if(path === "/api/agent/chat" && method === "DELETE"){ CHAT.length = 0; return {ok:true}; }
     if(path === "/api/agent/chat"){

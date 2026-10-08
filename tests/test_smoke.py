@@ -5006,6 +5006,31 @@ def test_the_statistics_screen_reads_the_trend_arrows():
     assert "TREND_ICON" in html[html.index("SCREENS.stats = () => {"):]
 
 
+def test_the_overall_trend_is_signed_once():
+    """"↓-5" read as a double negative; the arrow is the sign."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    stats = html[html.index("SCREENS.stats = () => {"):]
+    assert '${change > 0 ? "+" : ""}${change}' not in stats
+    assert "Math.abs(change)" in stats
+
+
+def test_phone_notifications_never_stay_on_the_ellipsis():
+    """A bridge without `pushStatus`, or one that fails, still gets a sentence."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    notify = html[html.index('"set-notify": () => {'):html.index('"push-allow":')]
+    assert 'Promise.resolve("no_build")' in notify
+    assert '.catch(() => "no_build")' in notify
+
+
+def test_profile_numbers_never_print_undefined():
+    """Habit history, Qadam and the review read missing numbers as "—"."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert "const n0 = (v, suffix" in html
+    for raw in ("${h.streak}</b>", "${h.percent}%", "${p.streak?.current}</div>",
+                "${p.perfect_days}</div>", "${r.tasks_done}</div>"):
+        assert raw not in html, raw
+
+
 def test_the_report_tick_is_short_enough_to_be_punctual():
     """The tick interval *is* the worst-case lateness: a report set for 21:30
     on a ten-minute tick could arrive at 21:40, which reads as a slow bot."""
@@ -10518,6 +10543,9 @@ def test_a_pinned_task_never_hides_a_late_one(client):
     with SessionLocal() as s:
         ws = svc.workspace_id_for(s, uid)
         user = s.get(User, uid)
+        # Without the wake-up ritual: before the wake deadline it rightly
+        # comes first, and this test must not depend on the hour it runs at.
+        svc.set_modules(s, ws, {"prayer", "journal"})
         late = svc.add_task(s, ws, "Pasport", deadline=svc.today_local() - timedelta(days=2))
         pinned = svc.add_task(s, ws, "Q4 reja", deadline=svc.today_local())
         svc.set_top3(s, ws, pinned.id, True)

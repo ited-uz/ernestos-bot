@@ -13,6 +13,9 @@ with db.SessionLocal() as s:
     svc.get_or_create_user(s, UID, first_name="Ernest")
     u = s.get(db.User, UID); u.onboarded = True; u.language = "uz"; s.commit()
     ws = svc.workspace_id_for(s, UID)
+    # No wake-up ritual: before its deadline it is rightly "Now", and the
+    # checks below must read the same at any hour they run.
+    svc.set_modules(s, ws, {"prayer", "journal"})
     today = svc.today_local()
     svc.add_habit(s, ws, "Kitob o'qish")
     svc.add_habit(s, ws, "Sport")

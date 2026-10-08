@@ -234,3 +234,30 @@ Qolgan bandlar v15 jadvalidagidek.
 - **AI Hozir sababi:** demoda yozib qo'yilgan matn, modeldan kelmagan.
 - **Haqiqiy server testlari:** pytest va E2E. Ular SQLite test bazasida ishladi. Production'ga deploy qilinmagan.
 - **APK:** CI'da yig'iladi, telefonda qo'lda sinalmagan.
+
+## v17 — xatolar ovi va sokin dizayn
+
+**Usul.** Brauzer har bir ekranni ochadi va undagi har bir tugmani bosadi: 22 ta ekran, Free va Max, yorug' va tungi rejimda. Har bir bosishdan keyin quyidagilar qidiriladi:
+- JS xatosi;
+- matnda `undefined`, `NaN` yoki `[object Object]`;
+- tarjima qilinmagan kalit;
+- gorizontal siljish.
+
+Ikki xil muhitda ishga tushirildi:
+- demoda (mock);
+- haqiqiy serverda (SQLite test bazasi). Har bir serverga ~2 000 so'rov ketdi, 35 ta yozuv amali bajarildi.
+
+| Topildi | Tuzatildi |
+|---|---|
+| Odat tarixi, Qadam va Haftalik xulosada sonlar o'rniga `undefined`. Faqat demoda, chunki mock'da yo'llar yo'q edi. | Mock'ga yo'llar qo'shildi. Ekranda yetishmagan son endi "—" bo'lib chiqadi (`n0`). |
+| Sozlamalar → Eslatmalar: "Telefon bildirishnomalari" ostida "…" qotib qolardi (ko'prik javob bermasa). | Javob bo'lmasa yoki xato bo'lsa — "Bu versiyada telefon bildirishnomasi yo'q" deb yoziladi. |
+| Statistika: "↓-5 foiz punkt" — ikki marta manfiy. | Strelka belgining o'zi: "↓ 5 foiz punkt". |
+| Tungi rejim ko'zni charchatardi: yaltiroq nur, oltin jilo, neon. | Har mavzuda sokin to'q kulrang fon, yumshoq aksent rangi. Nur va jilo o'chirildi. Clean — iOS tungi kulrang. |
+| Test yarim tundan uyg'onish vaqtigacha yiqilardi: "Hozir" kartasida avval "Turdim" chiqadi. | Testlar va E2E seed soatga bog'liq emas. |
+
+| Tekshiruv | Natija |
+|---|---|
+| Crawler, demo: Free (yorug') va Max (yorug') | topilma yo'q |
+| Crawler, haqiqiy server: Max (yorug') va Free (tungi) | topilma yo'q. Barcha javoblar 200, faqat Stars to'lovi 503 qaytardi — lokal testda bot yo'q, bu kutilgan |
+| pytest | 1121 passed |
+| E2E: ilova qobig'i va Mini App | 24/24 va 11/11 |
