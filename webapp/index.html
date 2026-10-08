@@ -1349,6 +1349,8 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
 .mcat .amt.over{color:var(--danger);font-weight:640}
 .mcat-head{display:flex;gap:8px;font-size:11.5px;font-weight:650;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em;padding-bottom:4px}
 .mcat-sub{font-size:12px;color:var(--text-2);margin-top:4px}
+.donut .lg-row{min-width:0}
+.donut .lg-amt{padding-left:16px}
 .mcat-sub.neg{color:var(--danger)}
 .mlink{color:var(--primary);font-weight:600}
 .mhead{display:flex;flex-direction:column;gap:2px;margin-bottom:10px}
@@ -6948,9 +6950,9 @@ function moneyDonut(cats){
            aria-label="${t("money_spend_split")}">
         <circle cx="60" cy="60" r="${R}" fill="none" stroke="var(--surface-2)"
                 stroke-width="18"/>${arcs}</svg>
-      <div class="lg">${cats.map((c, i) => `<div class="ellipsis">
-          <i style="background:${c.tone}"></i>${esc(c.label)}
-          <span class="t2 num"> · ${moneyNum(c.spent)} (${pct[i]}%)</span></div>`).join("")}
+      <div class="lg">${cats.map((c, i) => `<div class="lg-row">
+          <div class="ellipsis"><i style="background:${c.tone}"></i>${esc(c.label)}</div>
+          <div class="t2 num tiny lg-amt">${moneyNum(c.spent)} · ${pct[i]}%</div></div>`).join("")}
       </div></div>`;
 }
 
