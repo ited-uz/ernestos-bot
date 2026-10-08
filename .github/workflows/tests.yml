@@ -25,7 +25,7 @@ jobs:
       # Unused imports and undefined names only. Nothing stylistic, so this
       # gate fails on real mistakes and never on taste.
       - name: Lint
-        run: python -m pyflakes app.py services.py db.py migrations.py dependencies.py ratelimit.py agent_actions.py agent_core.py agent_provider.py agent_bot.py agent_text.py agent_api.py task_pages.py config.py security.py version.py plans.py coins.py
+        run: python -m pyflakes app.py services.py db.py migrations.py dependencies.py ratelimit.py agent_actions.py agent_core.py agent_provider.py agent_bot.py agent_text.py agent_api.py task_pages.py config.py security.py version.py plans.py coins.py agent_chat.py
 
       # The suite runs against SQLite: ENVIRONMENT=test keeps it off Telegram
       # and out of the rate limiter, and tests/test_smoke.py points

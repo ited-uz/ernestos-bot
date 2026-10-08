@@ -7539,7 +7539,7 @@ def health_live():
 
 
 @app.get("/health/reports")
-def health_reports(key: str = "", limit: int = 20):
+def health_reports(key: str = "", limit: int = 20, user: int | None = None):
     """Why a given user did or did not get their report, in one request.
 
     Every previous answer to "the reports are not arriving" needed the
@@ -7580,8 +7580,12 @@ def health_reports(key: str = "", limit: int = 20):
 
     with SessionLocal() as s:
         recipients = {r[0] for r in svc.active_recipients(s)}
-        users = s.scalars(select(User).where(User.onboarded.is_(True))
-                          .order_by(User.telegram_id).limit(limit)).all()
+        # `user` narrows it to the one account asked about; without it the
+        # first `limit` accounts are listed.
+        query = select(User).where(User.onboarded.is_(True))
+        if user is not None:
+            query = query.where(User.telegram_id == user)
+        users = s.scalars(query.order_by(User.telegram_id).limit(limit)).all()
         out["onboarded"] = s.scalar(select(func.count()).select_from(User)
                                     .where(User.onboarded.is_(True))) or 0
         out["recipients"] = len(recipients)
@@ -10950,6 +10954,16 @@ def api_app_push_token(body: PushTokenIn,
     with SessionLocal() as s:
         app_push.register_device(s, user.telegram_id, session_id, body.token, body.platform)
     return {"ok": True, "push": app_push.fcm.configured}
+
+
+@app.get("/api/app/schedule")
+def api_app_schedule(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Reminders for the next two days, for a phone build without Firebase
+    to schedule on the device itself. The app replaces them on every open."""
+    _app_session(init)
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        return {"items": svc.upcoming_notifications(s, ws, s.get(User, user.telegram_id))}
 
 
 @app.get("/api/app/notifications")

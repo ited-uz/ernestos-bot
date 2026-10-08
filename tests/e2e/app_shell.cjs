@@ -48,6 +48,18 @@ const step = async (name, fn) => {
       Filesystem: { writeFile: async o => { (window.__saved = window.__saved || []).push(o);
                                             return { uri: 'file:///cache/' + o.path }; } },
       Share: { share: async o => { window.__shared = o; } },
+      // Reminders shown by the phone: record the permission asked and what
+      // was scheduled, as Android's alarm manager would receive it.
+      LocalNotifications: {
+        _granted: false, scheduled: [], asked: 0,
+        checkPermissions: async function () { return { display: this._granted ? 'granted' : 'prompt' }; },
+        requestPermissions: async function () { this.asked++; this._granted = true; return { display: 'granted' }; },
+        getPending: async function () { return { notifications: this.scheduled }; },
+        cancel: async function (o) { const ids = o.notifications.map(n => n.id);
+                                     this.scheduled = this.scheduled.filter(n => !ids.includes(n.id)); },
+        schedule: async function (o) { this.scheduled = this.scheduled.concat(o.notifications); },
+        createChannel: async () => {}, addListener: () => {},
+      },
     } };
   });
   const page = await context.newPage();
@@ -91,6 +103,24 @@ const step = async (name, fn) => {
     assert.ok((await page.content()).includes('Eski hisobot'), 'home shows the seeded late task');
     assert.ok(await page.evaluate(() => Telegram.WebApp.isErnestApp), 'native.js is the WebApp');
     await shot('03-home');
+  });
+
+  await step('Opening the app asks to notify, and the next reminders are set on the phone', async () => {
+    const local = () => page.evaluate(() => {
+      const n = window.Capacitor.Plugins.LocalNotifications;
+      return { asked: n.asked, items: n.scheduled.map(x => ({ id: x.id, title: x.title, at: String(x.schedule.at),
+                                                               channel: x.channelId, open: x.extra.open })) };
+    });
+    await page.waitForFunction(() => window.Capacitor.Plugins.LocalNotifications.scheduled.length > 0, null, { timeout: 8000 });
+    const first = await local();
+    assert.equal(first.asked, 1, 'permission asked once on open');
+    assert.ok(first.items.some(x => /Kun|hisobot|reja/i.test(x.title)), 'a report reminder is scheduled');
+    // Coming back to the app reschedules: the same reminders, not twice as many.
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await page.waitForTimeout(800);
+    const again = await local();
+    assert.equal(again.items.length, first.items.length, 'rescheduling replaces');
+    assert.deepEqual(again.items.map(x => x.id).sort(), first.items.map(x => x.id).sort());
   });
 
   await step('Opening the app shows Now in focus; the rest waits until a tap', async () => {
@@ -323,6 +353,18 @@ const step = async (name, fn) => {
     await page.click('[data-act="money-tab"][data-value="cats"]');
     await page.waitForSelector('.ycard .ybars', { timeout: 8000 });
     assert.ok(await page.locator('.ycard .ytotals .neg:has-text("150 000")').count(), 'year counts the payment');
+  });
+
+  await step('Xabarlar has an AI assistant tab; without an AI key it says so plainly', async () => {
+    await page.evaluate(() => closeSheet());
+    await page.evaluate(() => goto('home'));
+    await page.click('.bellbtn[data-act="inbox-open"]');
+    await page.waitForSelector('#sheet-body [data-act="inbox-tab"][data-tab="chat"]');
+    await page.click('#sheet-body [data-act="inbox-tab"][data-tab="chat"]');
+    const available = await page.evaluate(() => Boolean(state.me?.agent?.available));
+    if (available) await page.waitForSelector('#sheet-body .chat-intro, #sheet-body #chat-text');
+    else await page.waitForSelector('#sheet-body .hint:has-text("ulanmagan")');
+    await page.evaluate(() => closeSheet());
   });
 
   await step('An ended session goes back to sign-in', async () => {

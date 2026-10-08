@@ -107,6 +107,12 @@ tekshirish sanasigacha «Hozir» va resetdan chiqadi, sana kelganda
 - Job kechiksa ham eslatma **30** daqiqa ichida bir marta yetkaziladi.
 - Har eslatmani **15 / 60 / 180** daqiqaga surish mumkin; muddat o‘zgarmaydi.
 - Sokin soatlarda eslatmalar ovozsiz keladi.
+- Telefon ilovasi ochilganda bildirishnoma ruxsatini so'raydi. Rad etilsa,
+  **3** kundan keyin yana bir marta so'raydi; telefonda o'chirilgan bo'lsa so'ramaydi.
+- Firebase'siz versiyada eslatmalarni telefonning o'zi ko'rsatadi: ilova har
+  ochilganda keyingi **48** soatdagi eslatmalarni (vazifa, odat, ertalabki va
+  kechki hisobot, doimiy to'lov kuni) qayta rejalaydi. Ilova yopiq paytdagi
+  o'zgarish keyingi ochilishda tuzatiladi.
 
 ## Kun sig‘imi
 
@@ -186,3 +192,14 @@ navbatga tushadi va ulanganda bir marta yuboriladi.
 - Sotib olingan kunlar tarifga hozirgisidan keyin qo'shiladi.
 - Tariflar o'chiq bo'lsa (`PLANS_ENABLED=0`), Pro/Max mahsulotlari sotilmaydi.
 - Xarid ikki bosish bilan tasdiqlanadi. Bir so'rov ikki marta kelsa, bir marta sotib olinadi.
+
+## AI yordamchi (chat)
+
+- Telefon ilovasida **Xabarlar → AI yordamchi**, Telegram'da avatar yonidagi tugma.
+- Javob sizning vazifa, odat, hafta maqsadi, maqsadlar va shu oy moliyangizdan
+  tuziladi. Ma'lumotda yo'q raqamni o'ylab topmaydi.
+- O'zgartirish so'ralsa (vazifa, odat, pul yozuvi, qarz), ovozli buyruqdagi
+  karta chiqadi; **Tasdiqlash** bosilmaguncha hech narsa o'zgarmaydi.
+- Har savol AI limitidan bitta oladi; o'zgartirish kartasi yana bitta.
+  Free — haftasiga **5** ta, Pro — kuniga **30** ta, Max — kuniga **100** ta.
+- Oxirgi **40** ta xabar saqlanadi; «Suhbatni tozalash» hammasini o'chiradi.

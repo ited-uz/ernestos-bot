@@ -37,7 +37,7 @@ from sqlalchemy.orm import Session
 import plans
 
 from db import (
-    AgentAudit, AgentDraft, AgentPreference,
+    AgentAudit, AgentChatMessage, AgentDraft, AgentPreference,
     Birthday, Countdown, DailyReportLog, DailyScore, Feedback, Habit, HabitLog,
     HabitPauseInterval, HabitScheduleVersion, IdempotencyKey, JobRun,
     Debt, DebtPayment, JournalEntry, LifeGoal, MoneyAccount, MoneyBudget, MoneySubscription, MoneyTransfer, ResetLog, Snooze, MoneyEntry, PrayerDay, PrayerLog, Project,
@@ -5705,6 +5705,10 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
              "detail": json.loads(r.detail), "created_at": r.created_at.isoformat()}
             for r in s.scalars(select(AgentAudit).where(AgentAudit.workspace_id == ws)).all()],
         "coin_spends": coins_export(s, user.telegram_id),
+        "agent_chat": [{"role": r.role, "text": r.text,
+                        "at": r.created_at.isoformat() if r.created_at else None}
+                       for r in s.scalars(select(AgentChatMessage).where(
+                           AgentChatMessage.workspace_id == ws).order_by(AgentChatMessage.id)).all()],
         "daily_scores": [
             {"day": r.day.isoformat(), "score": r.total_score, "grade": r.grade,
              "closed": bool(r.closed)}
@@ -5723,7 +5727,7 @@ WORKSPACE_TABLES = [AgentAudit, AgentDraft, AgentPreference,
                     Project, WeeklyFocus, WeeklyReview, JournalEntry, Birthday,
                     Countdown, Feedback, DailyReportLog, MoneyEntry, MoneyBudget,
                     DebtPayment, Debt, Snooze, LifeGoal,
-                    MoneyTransfer, MoneySubscription, MoneyAccount]
+                    MoneyTransfer, MoneySubscription, MoneyAccount, AgentChatMessage]
 
 
 def wipe_workspace(s: Session, telegram_id: int) -> bool:
@@ -7251,6 +7255,87 @@ def in_quiet_hours(user: User, now: datetime | None = None) -> bool:
     if start < end:
         return start <= moment < end
     return moment >= start or moment < end
+
+
+#: The words of a reminder the phone shows by itself (see
+#: `upcoming_notifications`). Kept short: a lock screen shows one line.
+_LOCAL_TEXT = {
+    "uz": {"task": "⏰ Vazifa vaqti", "habit": "🔁 Odat vaqti", "morning": "☀️ Kun rejasi",
+           "morning_body": "Bugun nima muhim? Rejani oching.", "evening": "🌙 Kun yakuni",
+           "evening_body": "Kunni yoping: kundalik va ertangi reja.", "bill": "💳 To'lov kuni"},
+    "en": {"task": "⏰ Task time", "habit": "🔁 Habit time", "morning": "☀️ Today's plan",
+           "morning_body": "What matters today? Open the plan.", "evening": "🌙 Day's end",
+           "evening_body": "Close the day: journal and tomorrow's plan.", "bill": "💳 Payment due"},
+    "ru": {"task": "⏰ Время задачи", "habit": "🔁 Время привычки", "morning": "☀️ План дня",
+           "morning_body": "Что важно сегодня? Откройте план.", "evening": "🌙 Итог дня",
+           "evening_body": "Закройте день: дневник и план на завтра.", "bill": "💳 День платежа"},
+}
+
+
+def upcoming_notifications(s: Session, ws: int, user: User, *, now: datetime | None = None,
+                           hours: int = 48) -> list[dict]:
+    """What the phone should remind about in the next `hours`, for a build
+    that shows reminders by itself (no Firebase): task and habit reminders,
+    the morning and evening reports, and repeating payments due.
+
+    The same settings as the bot's own reminders apply. Each item has a
+    stable `key`, so scheduling them again replaces rather than duplicates.
+    Done tasks and habits already ticked today are left out; what changes
+    later is corrected the next time the app opens.
+    """
+    tz = user_tz(user)
+    now = now or now_local(tz)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=tz)
+    horizon = now + timedelta(hours=hours)
+    today = now.date()
+    days = [today + timedelta(days=i) for i in range(hours // 24 + 1)]
+    prefs = prefs_for(user)
+    words = _LOCAL_TEXT.get(user.language or "uz", _LOCAL_TEXT["uz"])
+    out: list[dict] = []
+
+    def add(key: str, moment: datetime, title: str, body: str, opens: str) -> None:
+        moment = moment.replace(tzinfo=tz) if moment.tzinfo is None else moment
+        if now < moment <= horizon:
+            out.append({"key": key, "at": moment.isoformat(), "title": title, "body": body[:180],
+                        "silent": in_quiet_hours(user, moment.astimezone(tz).replace(tzinfo=None)),
+                        "open": opens})
+
+    if prefs["task_reminders"]:
+        for task in s.scalars(select(Task).where(
+                Task.workspace_id == ws, Task.archived_at.is_(None), Task.status == "waiting",
+                Task.remind_before.isnot(None), Task.deadline.isnot(None),
+                Task.deadline >= today, Task.deadline <= days[-1])).all():
+            moment = datetime.combine(task.deadline, task.due_time or dtime(9, 0))
+            add(f"task:{task.id}:{task.deadline.isoformat()}",
+                moment - timedelta(minutes=task.remind_before or 0), words["task"], task.title, "tasks")
+
+    if prefs["habit_reminders"]:
+        for day in days:
+            for habit in list_habits(s, ws, day, tz=tz):
+                if not habit["due"] or not habit["remind_at"] or (day == today and habit["done"]):
+                    continue
+                hour, minute = (int(x) for x in habit["remind_at"].split(":"))
+                add(f"habit:{habit['id']}:{day.isoformat()}", datetime.combine(day, dtime(hour, minute)),
+                    words["habit"], habit["name"], "habits")
+
+    for day in days:
+        if prefs["morning_report"]:
+            add(f"morning:{day.isoformat()}", datetime.combine(day, user.morning_time or DEFAULT_MORNING_TIME),
+                words["morning"], words["morning_body"], "home")
+        if prefs["evening_report"]:
+            add(f"evening:{day.isoformat()}", datetime.combine(day, user.evening_time or DEFAULT_EVENING_TIME),
+                words["evening"], words["evening_body"], "home")
+
+    for sub in s.scalars(select(MoneySubscription).where(
+            MoneySubscription.workspace_id == ws, MoneySubscription.archived_at.is_(None),
+            MoneySubscription.next_due >= today, MoneySubscription.next_due <= days[-1])).all():
+        amount = f"{int(sub.amount):,}".replace(",", " ")
+        add(f"bill:{sub.id}:{sub.next_due.isoformat()}", datetime.combine(sub.next_due, dtime(10, 0)),
+            words["bill"], f"{sub.name} — {amount}", "money")
+
+    out.sort(key=lambda x: x["at"])
+    return out[:60]
 
 
 def save_prefs(s: Session, user: User, **fields) -> dict:

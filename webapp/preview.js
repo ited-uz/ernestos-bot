@@ -412,8 +412,23 @@
             categories:["capital", "health", "islam", "family", "career", "learning", "charity", "other"],
             units:["USD", "UZS", "EUR", "RUB"]};
   }
+  /* The assistant chat, for the preview: fixed sample answers picked by the
+     question's words. Nothing here is a model; the real one runs on the server. */
+  const CHAT = [];
+  let chatSeq = 0;
+  const CHAT_DRAFT = () => ({id:"demo-chat", revision:1, status:"ready",
+    preview:"📝 Vazifa: <b>Mijozga qo'ng'iroq qilish</b><br>📅 Ertaga · 10:00", error:null});
+  function chatAnswer(q){
+    const t = q.toLowerCase();
+    if(/moliya|pul|money|финанс/.test(t)) return {text:"Bu oy: kirim 5 000 000, chiqim 1 365 000 so'm.\n• Eng ko'p — Biznes (reklama) 1 200 000.\n• Ijara 3 kundan keyin — 3 500 000, Humo kartada yetarli.\n• Taklif: reklamaga oylik limit qo'ying (masalan, 1,5 mln) va natijasini haftada bir tekshiring."};
+    if(/maqsad|goal|цел/.test(t)) return {text:"Asosiy maqsadlaringizdan EGH: Capital Venture 24% da.\n• Bu hafta Kapital — «Birinchi $100 000» bosqichi uchun 3 ta yangi mijozga taklif yuboring.\n• Salomatlik — Ironman bosqichi 70%: haftada 3 marta suzish.\n• Islom — har kuni 1 bet yodlash, bomdoddan keyin."};
+    if(/hafta|week|недел/.test(t)) return {text:"Hafta xulosasi:\n• Bajarildi: 7 ta vazifa, odatlar 78%.\n• Orqada: «Onboarding dizaynini ishga tushirish» (hafta maqsadi).\n• Keyingi qadam: juma kunigacha dizaynni yakunlab, shanba haftani yoping."};
+    if(/qo'sh|qo‘sh|eslat|add|добав/.test(t)) return {text:"Tayyorladim — pastda tasdiqlang. Tasdiqlamaguningizcha hech narsa o'zgarmaydi.", draft:CHAT_DRAFT()};
+    return {text:"Bugungi xulosa:\n• 5 ta vazifadan 1 tasi bajarildi, 1 tasi muddati o'tgan («Hisobni to'lash»).\n• Odatlar 4/5, namoz 3/5.\n• Keyingi qadam: hozir «Hisobni to'lash»ni yoping (5 daqiqa), keyin 90 daqiqa chuqur ish."};
+  }
   const ROUTES = [
     [/^\/api\/me$/, () => DB.me],
+    [/^\/api\/agent\/chat$/, () => ({messages:CHAT, agent:{consent:DB.me.agent.consent}})],
     [/^\/api\/goals$/, goalsPayload],
     [/^\/api\/coins$/, () => coinState()],
     [/^\/api\/referrals\/me$/, () => {
@@ -539,6 +554,22 @@
 
   function mutate(method, path, body){
     if(path === "/api/agent/consent"){ DB.me.agent.consent = true; return {ok:true}; }
+    if(path === "/api/agent/chat" && method === "DELETE"){ CHAT.length = 0; return {ok:true}; }
+    if(path === "/api/agent/chat"){
+      const a = chatAnswer(body?.text || "");
+      CHAT.push({id:++chatSeq, role:"user", text:body.text, draft:null});
+      CHAT.push({id:++chatSeq, role:"assistant", text:a.text, draft:a.draft || null});
+      return {messages:CHAT, draft:a.draft || null};
+    }
+    if(path === "/api/agent/drafts/demo-chat/confirm"){
+      CHAT.forEach(m => { if(m.draft?.id === "demo-chat") m.draft = {...m.draft, status:"executed"}; });
+      DB.tasks.push(task(++nextId, "Mijozga qo'ng'iroq qilish", {deadline:tomorrow(), due_time:"10:00"}));
+      return {...CHAT_DRAFT(), status:"executed"};
+    }
+    if(path === "/api/agent/drafts/demo-chat/cancel"){
+      CHAT.forEach(m => { if(m.draft?.id === "demo-chat") m.draft = {...m.draft, status:"cancelled"}; });
+      return {...CHAT_DRAFT(), status:"cancelled"};
+    }
     if(path === "/api/agent/audio") return VOICE_DRAFT();
     if(path === "/api/agent/journal/audio") return {answers:{wins:"Onboarding dizaynini tugatdim.",
       gratitude:"Jamoamga yordami uchun rahmat.", tomorrow:"Mijozga taklifni yuboraman."}};

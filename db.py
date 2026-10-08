@@ -1951,6 +1951,26 @@ class AgentAudit(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class AgentChatMessage(Base):
+    """One line of the conversation with the assistant in the app.
+
+    A reply that proposes a change points at the draft holding it, so the
+    chat shows the same confirm card the voice agent does and nothing is
+    done without the person's tap. Only the latest messages are kept.
+    """
+
+    __tablename__ = "agent_chat_messages"
+    __table_args__ = (UniqueConstraint("workspace_id", "request_key", name="uq_agent_chat_request"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(10))            # user | assistant
+    text: Mapped[str] = mapped_column(Text, default="")
+    #: The client's key for the question; a retry gets the stored answer.
+    request_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    draft_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 def init_db() -> None:
     """Create missing tables, then add any missing columns to existing ones.
 

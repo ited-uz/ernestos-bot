@@ -6895,8 +6895,9 @@ def test_the_report_diagnostic_explains_one_user(client, monkeypatch):
         user.morning_time, user.evening_time = dtime(5, 0), dtime(19, 25)
         s.commit()
 
-    body = client.get(f"/health/reports?key={TOKEN}&limit=200").json()
+    body = client.get(f"/health/reports?key={TOKEN}&user={telegram_id}").json()
     assert "scheduler_running" in body and "lock_refusals" in body
+    assert [r["telegram_id"] for r in body["reports"]] == [telegram_id]
     mine = [r for r in body["reports"] if r["telegram_id"] == telegram_id]
     assert mine, "an onboarded account must appear in the diagnostic"
     row = mine[0]
@@ -12560,3 +12561,56 @@ def test_the_mini_app_declares_each_function_and_action_once():
     actions = script[start:script.index("\n};", start)]
     keys = Counter(re.findall(r'^  "([\w-]+)":', actions, re.M))
     assert not [k for k, c in keys.items() if c > 1], [k for k, c in keys.items() if c > 1]
+
+
+def test_the_phone_gets_two_days_of_reminders_to_show_by_itself(client):
+    """A build without Firebase schedules reminders on the phone: tasks with
+    a reminder, habits with a time, both reports and payments due — with the
+    same settings the bot uses, and stable keys so a reschedule replaces."""
+    from zoneinfo import ZoneInfo
+    uid = 7471
+    _onboard(uid)
+    tz = ZoneInfo("Asia/Tashkent")
+    with SessionLocal() as s:
+        user = s.get(User, uid)
+        user.timezone, user.habit_reminders, user.language = "Asia/Tashkent", True, "uz"
+        user.quiet_from, user.quiet_to = dtime(22, 0), dtime(7, 0)
+        ws = s.scalar(select(db.Workspace.id).where(db.Workspace.user_id == uid))
+        s.commit()
+    # Tomorrow, so the habit added today is already active on both days.
+    d0 = svc.today_local(tz) + timedelta(days=1)
+    d1 = d0 + timedelta(days=1)
+    now = datetime.combine(d0, dtime(8, 0), tzinfo=tz)
+    with SessionLocal() as s:
+        task = svc.add_task(s, ws, "Mijozga qo'ng'iroq", deadline=d0)
+        task.due_time, task.remind_before = dtime(10, 0), 15
+        done = svc.add_task(s, ws, "Tugagan", deadline=d0)
+        done.due_time, done.remind_before, done.status = dtime(11, 0), 0, "done"
+        habit = svc.add_habit(s, ws, "Kitob")
+        habit.remind_at = dtime(21, 30)
+        s.add(db.MoneySubscription(workspace_id=ws, name="Internet", amount=150_000,
+                                   period="monthly", next_due=d1))
+        s.commit()
+        items = svc.upcoming_notifications(s, ws, s.get(User, uid), now=now)
+    keys = [x["key"] for x in items]
+    assert f"task:{task.id}:{d0}" in keys and f"task:{done.id}:{d0}" not in keys
+    first = next(x for x in items if x["key"].startswith("task:"))
+    assert first["at"].startswith(f"{d0}T09:45") and first["at"].endswith("+05:00")
+    assert first["title"] == "⏰ Vazifa vaqti" and first["open"] == "tasks"
+    assert f"habit:{habit.id}:{d0}" in keys and f"habit:{habit.id}:{d1}" in keys
+    assert f"evening:{d0}" in keys and f"morning:{d1}" in keys
+    # This morning's report (05:00) is already past; 05:00 tomorrow falls in quiet hours.
+    assert f"morning:{d0}" not in keys
+    assert next(x for x in items if x["key"] == f"morning:{d1}")["silent"] is True
+    bill = next(x for x in items if x["key"].startswith("bill:"))
+    assert bill["body"] == "Internet — 150 000" and bill["at"].startswith(f"{d1}T10:00")
+    assert all(now.isoformat() < x["at"] for x in items)
+    assert keys == [x["key"] for x in sorted(items, key=lambda x: x["at"])]
+
+
+def test_the_reminder_schedule_is_for_the_phone_app_only(client):
+    _onboard(7472)
+    phone = {"X-Telegram-Init-Data": _app_login(client, 7472)}
+    r = client.get("/api/app/schedule", headers=phone)
+    assert r.status_code == 200 and isinstance(r.json()["items"], list)
+    assert Caller(client, {"id": 7472, "first_name": "M"}).get("/api/app/schedule").status_code == 403

@@ -235,16 +235,109 @@
       pendingInbox = true;
       window.dispatchEvent(new Event("ernest:open-inbox"));
     });
-    /* Asked for only when the person turns notifications on in Settings
-       (K10/K11), never on every launch. Already allowed: register quietly. */
+    /* Allowed already: register quietly. Not asked yet: ask once when the
+       app opens (the owner's request), then not again for a few days —
+       Android stops showing the dialog after two refusals anyway. */
     push.checkPermissions().then(function (p) {
       if (p.receive === "granted") return push.register();
+      if (p.receive !== "denied" && mayAskNow()) {
+        return push.requestPermissions().then(function (r) {
+          if (r.receive === "granted") push.register();
+        });
+      }
     }).catch(noop);
+  }
+
+  /* ---- reminders shown by the phone itself ----
+     A build without Firebase cannot receive pushes, so the reminders of the
+     next two days (/api/app/schedule) are scheduled on the device and
+     replaced on every open and every return to the app. What changes while
+     the app stays closed is corrected the next time it opens. */
+  var ASKED_KEY = "ernest.notify.asked";
+  var LOCAL_BASE = 700000;
+  function mayAskNow() {
+    try {
+      var last = Number(localStorage.getItem(ASKED_KEY) || 0);
+      if (Date.now() - last < 3 * 864e5) return false;
+      localStorage.setItem(ASKED_KEY, String(Date.now()));
+      return true;
+    } catch (e) { return true; }
+  }
+  /* A whole number per reminder key, so the same reminder keeps its id. */
+  function localId(key) {
+    var h = 0;
+    for (var i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0;
+    return LOCAL_BASE + (Math.abs(h) % 1000000000);
+  }
+  var syncing = null;
+  function syncLocal() {
+    var local = plugin("LocalNotifications");
+    if (!local || CFG.push || !token) return Promise.resolve("off");
+    if (syncing) return syncing;
+    syncing = local.checkPermissions().then(function (p) {
+      if (p.display === "granted") return p.display;
+      if (p.display === "denied" || !mayAskNow()) return p.display;
+      return local.requestPermissions().then(function (r) { return r.display; });
+    }).then(function (state) {
+      if (state !== "granted") return state;
+      return nativeFetch(API + "/api/app/schedule", { headers: { "X-Telegram-Init-Data": token } })
+        .then(function (r) { return r.ok ? r.json() : { items: null }; })
+        .then(function (data) {
+          if (!data || !data.items) return "on";
+          return local.getPending().then(function (pending) {
+            var ours = (pending.notifications || []).filter(function (n) {
+              return n.extra && n.extra.ernest; });
+            return ours.length ? local.cancel({ notifications: ours.map(function (n) {
+              return { id: n.id }; }) }) : null;
+          }).then(function () {
+            var list = data.items.map(function (x) {
+              return { id: localId(x.key), title: x.title, body: x.body,
+                       schedule: { at: new Date(x.at), allowWhileIdle: true },
+                       channelId: x.silent ? "quiet" : "reminders",
+                       extra: { ernest: 1, open: x.open || "inbox" } };
+            });
+            return list.length ? local.schedule({ notifications: list }) : null;
+          }).then(function () { return "on"; });
+        });
+    }).catch(function () { return "off"; }).then(function (v) { syncing = null; return v; });
+    return syncing;
+  }
+  function setUpLocal() {
+    var local = plugin("LocalNotifications");
+    if (!local || CFG.push || !token) return;
+    [{ id: "reminders", name: "Eslatmalar", description: "Eslatmalar, hisobotlar, to'lovlar",
+       importance: 4, visibility: 1, vibration: true },
+     { id: "quiet", name: "Sokin soatlar", description: "Sokin soatlarda ovozsiz",
+       importance: 2, visibility: 1, vibration: false }].forEach(function (c) {
+      if (local.createChannel) local.createChannel(c).catch(noop);
+    });
+    local.addListener("localNotificationActionPerformed", function (ev) {
+      var open = ev && ev.notification && ev.notification.extra && ev.notification.extra.open;
+      pendingInbox = true;
+      window.dispatchEvent(new CustomEvent("ernest:open-inbox", { detail: { open: open } }));
+    });
+    syncLocal();
+    // Back in the app: what was done meanwhile drops out of the schedule.
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) syncLocal();
+    });
+    // A change in the Mini App (a tick, a new task) reschedules shortly after.
+    var later = null;
+    window.addEventListener("ernest:changed", function () {
+      clearTimeout(later);
+      later = setTimeout(syncLocal, 4000);
+    });
   }
   /* What Settings shows: is this build able to push at all, and what has
      the phone allowed. Nothing here claims a message was delivered. */
   function pushStatus() {
     var push = plugin("PushNotifications");
+    var local = plugin("LocalNotifications");
+    if ((!push || !CFG.push) && local) {
+      return local.checkPermissions().then(function (p) {
+        return p.display === "granted" ? "on" : p.display === "denied" ? "denied" : "ask";
+      }).catch(function () { return "no_build"; });
+    }
     if (!push || !CFG.push) return Promise.resolve("no_build");
     return push.checkPermissions().then(function (p) {
       return p.receive === "granted" ? "on" : p.receive === "denied" ? "denied" : "ask";
@@ -252,13 +345,23 @@
   }
   function requestPush() {
     var push = plugin("PushNotifications");
+    var local = plugin("LocalNotifications");
+    if ((!push || !CFG.push) && local) {
+      return local.requestPermissions().then(function (p) {
+        if (p.display === "granted") { syncLocal(); return "on"; }
+        return p.display === "denied" ? "denied" : "ask";
+      }).catch(function () { return "denied"; });
+    }
     if (!push || !CFG.push) return Promise.resolve("no_build");
     return push.requestPermissions().then(function (p) {
       if (p.receive === "granted") { push.register(); return "on"; }
       return p.receive === "denied" ? "denied" : "ask";
     }).catch(function () { return "denied"; });
   }
-  if (!onLoginPage) document.addEventListener("DOMContentLoaded", setUpPush);
+  if (!onLoginPage) {
+    document.addEventListener("DOMContentLoaded", setUpPush);
+    document.addEventListener("DOMContentLoaded", setUpLocal);
+  }
 
   function refreshViewport() {
     WebApp.viewportHeight = WebApp.viewportStableHeight = window.innerHeight;

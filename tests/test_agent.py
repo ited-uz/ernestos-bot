@@ -995,3 +995,99 @@ def test_a_manual_edit_keeps_the_proposal_stale_check(person, monkeypatch):
     with pytest.raises(actions.AgentError) as stale:
         core.confirm(uid, ws, draft["id"], edited["revision"])
     assert stale.value.code == "stale_target"
+
+
+# ---------------------------------------------------------------------------
+# The assistant chat
+# ---------------------------------------------------------------------------
+
+def test_chat_answers_from_the_persons_own_data(person, monkeypatch):
+    fresh, uid, ws = person
+    import agent_chat
+    with db.SessionLocal() as s:
+        svc.add_task(s, ws, "Hisobotni yuborish", deadline=svc.today_local(svc.user_tz(s.get(db.User, uid))))
+        svc.add_goal(s, ws, level="ultimate", title="EGH: Capital Venture", category="capital")
+    seen = {}
+
+    async def fake_chat(context, history, text):
+        seen.update(context=context, history=history, text=text)
+        return provider.ChatReply(reply="• Bugun: Hisobotni yuborish.\n• Keyin: maqsad.", command=None)
+    monkeypatch.setattr(provider, "chat", fake_chat)
+    out = asyncio.run(agent_chat.ask(uid, ws, "chat-key-0001", "Bugungi xulosa"))
+    assert out["draft"] is None and [m["role"] for m in out["messages"]] == ["user", "assistant"]
+    assert out["messages"][1]["text"].startswith("• Bugun")
+    ctx = seen["context"]
+    assert "Hisobotni yuborish" in ctx["tasks"]["today"][0]
+    assert ctx["goals"][0]["title"] == "EGH: Capital Venture"
+    assert ctx["money_this_month"]["unit"] == "UZS"
+    # A retry with the same key does not ask the model again.
+    monkeypatch.setattr(provider, "chat", AsyncMock(side_effect=AssertionError("asked twice")))
+    again = asyncio.run(agent_chat.ask(uid, ws, "chat-key-0001", "Bugungi xulosa"))
+    assert again["repeat"] is True and len(again["messages"]) == 2
+    # The next turn sees the conversation so far.
+    monkeypatch.setattr(provider, "chat", fake_chat)
+    asyncio.run(agent_chat.ask(uid, ws, "chat-key-0002", "Va ertaga?"))
+    assert [h["role"] for h in seen["history"]] == ["user", "assistant"]
+
+
+def test_a_requested_change_comes_back_as_a_card_and_waits_for_confirm(person, monkeypatch):
+    _, uid, ws = person
+    import agent_chat
+    monkeypatch.setattr(provider, "chat", AsyncMock(return_value=provider.ChatReply(
+        reply="Vazifani qo'shishga tayyorladim — pastda tasdiqlang.",
+        command="Ertaga mijozga qo'ng'iroq qilish vazifasini qo'sh")))
+    monkeypatch.setattr(provider, "plan", AsyncMock(return_value=plan(action(title="Mijozga qo'ng'iroq"))))
+    n = count(db.Task, ws)
+    out = asyncio.run(agent_chat.ask(uid, ws, "chat-key-1001", "Ertaga mijozga qo'ng'iroq qilishni eslat"))
+    draft = out["draft"]
+    assert draft["status"] == "ready" and count(db.Task, ws) == n
+    assert out["messages"][-1]["draft"]["id"] == draft["id"]
+    core.confirm(uid, ws, draft["id"], draft["revision"])
+    assert count(db.Task, ws) == n + 1
+    assert agent_chat.history(ws)[-1]["draft"]["status"] == "executed"
+
+
+def test_chat_needs_consent_counts_against_the_budget_and_keeps_failures_retryable(person, monkeypatch):
+    _, uid, ws = person
+    import agent_chat
+    core.consent(ws, False)
+    with pytest.raises(actions.AgentError) as e:
+        asyncio.run(agent_chat.ask(uid, ws, "chat-key-2001", "salom"))
+    assert e.value.code == "consent_required"
+    core.consent(ws, True)
+
+    async def down(*args):
+        raise actions.AgentError("provider_unavailable", 503)
+    monkeypatch.setattr(provider, "chat", down)
+    with pytest.raises(actions.AgentError):
+        asyncio.run(agent_chat.ask(uid, ws, "chat-key-2002", "salom"))
+    # The failed question is not left behind, so the same key can ask again.
+    assert agent_chat.history(ws) == []
+    monkeypatch.setattr(provider, "chat", AsyncMock(return_value=provider.ChatReply(reply="Salom!", command=None)))
+    asyncio.run(agent_chat.ask(uid, ws, "chat-key-2002", "salom"))
+    with db.SessionLocal() as s:
+        assert s.get(db.AgentPreference, ws).usage_count == 2
+
+
+def test_chat_keeps_only_the_latest_messages_and_can_be_cleared(person, monkeypatch):
+    _, uid, ws = person
+    import agent_chat
+    monkeypatch.setattr(agent_chat, "KEEP", 6)
+    monkeypatch.setattr(provider, "chat", AsyncMock(return_value=provider.ChatReply(reply="ok", command=None)))
+    for i in range(5):
+        asyncio.run(agent_chat.ask(uid, ws, f"chat-key-30{i:02d}", f"savol {i}"))
+    texts = [m["text"] for m in agent_chat.history(ws)]
+    assert len(texts) == 6 and texts[0] == "savol 2"
+    agent_chat.clear(ws)
+    assert agent_chat.history(ws) == []
+
+
+def test_chat_over_http(client, person, monkeypatch):
+    fresh, uid, ws = person
+    monkeypatch.setattr(provider, "chat", AsyncMock(return_value=provider.ChatReply(reply="Salom!", command=None)))
+    r = fresh.post("/api/agent/chat", json={"text": "salom", "request_key": "http-chat-0001"})
+    assert r.status_code == 200, r.text
+    assert fresh.get("/api/agent/chat").json()["messages"][-1]["text"] == "Salom!"
+    assert fresh.get("/api/export").json()["agent_chat"][0]["text"] == "salom"
+    assert fresh.delete("/api/agent/chat").status_code == 200
+    assert fresh.get("/api/agent/chat").json()["messages"] == []

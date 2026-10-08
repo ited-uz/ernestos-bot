@@ -1267,6 +1267,43 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
 .mnav{display:flex;align-items:center;gap:var(--s1);margin-top:var(--s1)}
 .mnav b{flex:1;text-align:center;font-size:15px}
 
+/* ---- The assistant chat ---- */
+.chat-list{display:flex;flex-direction:column;gap:10px;padding:4px 0 var(--s2)}
+.chat-msg{display:flex;flex-direction:column;max-width:88%}
+.chat-msg.me{align-self:flex-end;align-items:flex-end}
+.chat-msg.ai{align-self:flex-start}
+.chat-bubble{padding:10px 13px;border-radius:18px;font-size:15px;line-height:1.45;white-space:pre-line;
+  word-break:break-word}
+.chat-msg.me .chat-bubble{background:var(--primary-fill);color:var(--on-primary);border-bottom-right-radius:6px}
+.chat-msg.ai .chat-bubble{background:var(--surface-2);color:var(--text);border-bottom-left-radius:6px}
+.chat-bubble.typing{display:flex;gap:4px;align-items:center;min-height:40px}
+.chat-bubble.typing i{width:7px;height:7px;border-radius:50%;background:var(--text-3);
+  animation:typing 1.1s infinite ease-in-out}
+.chat-bubble.typing i:nth-child(2){animation-delay:.15s} .chat-bubble.typing i:nth-child(3){animation-delay:.3s}
+@keyframes typing{0%,80%,100%{opacity:.3;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
+.chat-card{margin-top:6px;padding:10px 12px;border-radius:14px;border:var(--border-w) solid var(--border);
+  background:var(--surface);box-shadow:var(--shadow-1);width:100%}
+.chat-card.executed{border-color:color-mix(in srgb, var(--ok) 45%, var(--border))}
+.chat-card-btns{display:flex;gap:8px;margin-top:10px} .chat-card-btns .btn{width:auto;flex:1}
+.chat-card-state{margin-top:8px;font-size:13px;font-weight:650;color:var(--text-3)}
+.chat-card-state.ok{color:var(--ok)}
+.chat-intro{display:flex;flex-direction:column;align-items:center;gap:var(--s1);text-align:center;
+  padding:var(--s3) var(--s2)}
+.chat-ava{width:56px;height:56px;border-radius:18px;display:grid;place-items:center;font-size:28px;
+  background:linear-gradient(140deg, color-mix(in srgb, var(--c3) 35%, var(--surface)), color-mix(in srgb, var(--c1) 25%, var(--surface)))}
+.chat-error{color:var(--danger);text-align:center}
+.chat-suggest{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 calc(-1 * var(--pad)) var(--s1);
+  padding:2px var(--pad)}
+.chat-suggest::-webkit-scrollbar{display:none} .chat-suggest .chip{flex:none}
+.chat-input{display:flex;gap:8px;align-items:flex-end;position:sticky;bottom:0;background:var(--surface);
+  padding-top:6px}
+.chat-input textarea{flex:1;min-height:44px;max-height:120px;resize:none;border-radius:22px;padding:11px 16px;
+  line-height:1.35}
+.chat-send{flex:none;width:44px;height:44px;border-radius:50%;background:var(--primary-fill);color:var(--on-primary)}
+.chat-send[disabled]{opacity:.5}
+@media (prefers-reduced-motion:no-preference){
+  .chat-list > .chat-msg:last-child{animation:rise 260ms var(--ease-out) backwards}
+}
 /* ---- Money: accounts, repeating payments, the year ---- */
 .wtotal{margin:var(--s2) 0;padding:var(--s3);border-radius:var(--radius);background:var(--surface);
   border:var(--border-w) solid var(--border);box-shadow:var(--shadow-1)}
@@ -1866,6 +1903,21 @@ const DICT = {
   plan_limit_money_transfers:"Hisoblar orasida o'tkazma", plan_limit_money_year:"Yillik moliya",
   pt_money_accounts:"Moliya hisoblari", pt_money_subs:"Doimiy to'lovlar",
   pt_money_transfers:"Hisoblar orasida o'tkazma", pt_money_year:"Yillik moliya",
+  chat_title:"AI yordamchi", chat_off:"AI yordamchi hali ulanmagan.",
+  chat_hello:"Assalomu alaykum, {name}!",
+  chat_intro:"Vazifa, odat, maqsad va moliyangizni ko'rib turaman. Xulosa so'rang, maslahat oling yoki «ertaga 10 da uchrashuv qo'sh» deb yozing — tasdiqlaganingizdan keyin bajaraman.",
+  chat_ph:"Savol yoki topshiriq yozing…", chat_clear:"Suhbatni tozalash", chat_done:"Bajarildi", chat_cancelled:"Bekor qilindi",
+  chat_s_day:"📋 Bugungi xulosa", chat_s_day_q:"Bugungi kunim bo'yicha qisqa xulosa ber va keyingi qadamni ayt.",
+  chat_s_week:"📅 Hafta xulosasi", chat_s_week_q:"Shu hafta bo'yicha xulosa ber. Nima yaxshi bo'ldi, nima orqada qoldi?",
+  chat_s_money:"💰 Moliyam", chat_s_money_q:"Shu oy moliyam qanday? Qayerga ko'p ketyapti va nimani o'zgartirishim kerak?",
+  chat_s_goals:"🎯 Maqsadlarim", chat_s_goals_q:"Maqsadlarimga qarab, bu hafta qaysi sohada nima qilishim kerakligini aniq ayt.",
+  chat_s_start:"⚡ Nimadan boshlay?", chat_s_start_q:"Hozir nimadan boshlashim kerak? Eng muhim 3 ta ishni tartib bilan ayt.",
+  chat_err_plan_limit:"Bepul tarifda AI so'rovlari haftasiga 5 ta. Pro'da kuniga 30 ta.",
+  chat_err_daily_limit:"Bugungi AI limiti tugadi. Ertaga davom etamiz.",
+  chat_err_provider_limit:"AI xizmati hozir band. Bir daqiqadan keyin qayta yuboring.",
+  chat_err_provider_unavailable:"AI javob bermadi. Qayta yuboring.",
+  chat_err_provider_not_configured:"AI kaliti ulanmagan.", chat_err_agent_disabled:"AI yordamchi o'chirilgan.",
+  chat_err_offline:"Internet yo'q. Ulanganda qayta yuboring.", chat_err:"Xatolik. Qayta yuboring.",
   draft_restored:"Saqlanmagan matn tiklandi", autosaved:"Saqlanmoqda…",
   mood_q:"Bugun o'zingizni qanday his qildingiz?",
   mood_awful:"Juda yomon", mood_low:"Yomon", mood_ok:"O'rtacha",
@@ -2342,6 +2394,21 @@ const DICT = {
   plan_limit_money_transfers:"Transfers between accounts", plan_limit_money_year:"The year of money",
   pt_money_accounts:"Money accounts", pt_money_subs:"Repeating payments",
   pt_money_transfers:"Transfers between accounts", pt_money_year:"The year of money",
+  chat_title:"AI assistant", chat_off:"The AI assistant is not connected yet.",
+  chat_hello:"Hello, {name}!",
+  chat_intro:"I see your tasks, habits, goals and money. Ask for a summary, get advice, or write «add a meeting tomorrow at 10» — I do it after you confirm.",
+  chat_ph:"Ask or tell me what to do…", chat_clear:"Clear the chat", chat_done:"Done", chat_cancelled:"Cancelled",
+  chat_s_day:"📋 Today's summary", chat_s_day_q:"Give me a short summary of my day and the next step.",
+  chat_s_week:"📅 Week summary", chat_s_week_q:"Summarise this week. What went well, what fell behind?",
+  chat_s_money:"💰 My money", chat_s_money_q:"How is my money this month? Where does most of it go and what should I change?",
+  chat_s_goals:"🎯 My goals", chat_s_goals_q:"Looking at my goals, tell me exactly what to do this week and in which area.",
+  chat_s_start:"⚡ Where to start?", chat_s_start_q:"What should I start with now? Give me the three most important things in order.",
+  chat_err_plan_limit:"On Free, AI requests are 5 a week. Pro has 30 a day.",
+  chat_err_daily_limit:"Today's AI limit is used up. Back tomorrow.",
+  chat_err_provider_limit:"The AI service is busy. Send again in a minute.",
+  chat_err_provider_unavailable:"The AI did not answer. Send again.",
+  chat_err_provider_not_configured:"The AI key is not connected.", chat_err_agent_disabled:"The AI assistant is switched off.",
+  chat_err_offline:"No internet. Send again when connected.", chat_err:"Something went wrong. Send again.",
   draft_restored:"Unsaved text restored", autosaved:"Saving…",
   mood_q:"How did you feel today?",
   mood_awful:"Awful", mood_low:"Low", mood_ok:"Okay",
@@ -2812,6 +2879,21 @@ const DICT = {
   plan_limit_money_transfers:"Переводы между счетами", plan_limit_money_year:"Финансы за год",
   pt_money_accounts:"Счета", pt_money_subs:"Регулярные платежи",
   pt_money_transfers:"Переводы между счетами", pt_money_year:"Финансы за год",
+  chat_title:"AI-помощник", chat_off:"AI-помощник ещё не подключён.",
+  chat_hello:"Здравствуйте, {name}!",
+  chat_intro:"Я вижу ваши задачи, привычки, цели и финансы. Попросите итог, совет или напишите «добавь встречу завтра в 10» — выполню после вашего подтверждения.",
+  chat_ph:"Вопрос или поручение…", chat_clear:"Очистить чат", chat_done:"Готово", chat_cancelled:"Отменено",
+  chat_s_day:"📋 Итог дня", chat_s_day_q:"Дай короткий итог моего дня и следующий шаг.",
+  chat_s_week:"📅 Итог недели", chat_s_week_q:"Подведи итог недели. Что получилось, что отстаёт?",
+  chat_s_money:"💰 Мои финансы", chat_s_money_q:"Как мои финансы в этом месяце? Куда уходит больше всего и что изменить?",
+  chat_s_goals:"🎯 Мои цели", chat_s_goals_q:"Исходя из моих целей, скажи точно, что делать на этой неделе и в какой сфере.",
+  chat_s_start:"⚡ С чего начать?", chat_s_start_q:"С чего мне начать сейчас? Три самых важных дела по порядку.",
+  chat_err_plan_limit:"На Free — 5 AI-запросов в неделю. В Pro — 30 в день.",
+  chat_err_daily_limit:"Дневной лимит AI исчерпан. Продолжим завтра.",
+  chat_err_provider_limit:"AI-сервис занят. Отправьте снова через минуту.",
+  chat_err_provider_unavailable:"AI не ответил. Отправьте снова.",
+  chat_err_provider_not_configured:"Ключ AI не подключён.", chat_err_agent_disabled:"AI-помощник выключен.",
+  chat_err_offline:"Нет интернета. Отправьте снова, когда появится связь.", chat_err:"Ошибка. Отправьте снова.",
   draft_restored:"Несохранённый текст восстановлен", autosaved:"Сохраняем…",
   mood_q:"Как вы себя чувствовали сегодня?",
   mood_awful:"Очень плохо", mood_low:"Плохо", mood_ok:"Нормально",
@@ -3785,7 +3867,7 @@ function inboxWhen(iso){
   return d.toDateString() === today.toDateString() ? hm
     : `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")} ${hm}`;
 }
-function inboxSheet(){
+function inboxSheet(titled = true){
   const box = state.inbox;
   const items = box?.items || [];
   const list = !box ? `<div class="hint">…</div>`
@@ -3799,9 +3881,120 @@ function inboxSheet(){
           `<div class="chip sm" data-act="inbox-action" data-id="${n.id}" data-cb="${esc(a.cb)}">${esc(a.label)}</div>`
         ).join("")}</div>` : ""}
       </div>`).join("");
-  return `<h3>${icon("bell", 18)} ${t("inbox")}</h3>${list}
+  return `${titled ? `<h3>${icon("bell", 18)} ${t("inbox")}</h3>` : ""}${list}
     <button class="btn secondary" data-act="close" style="margin-top:var(--s3)">${t("close")}</button>`;
 }
+/* ---------- The assistant chat ----------
+   In the phone app it is the second tab of Xabarlar; in Telegram it opens
+   from the button beside the avatar. Answers come from the person's own
+   data; a requested change comes back as the same card the voice agent
+   shows, and only its Confirm button does anything. */
+const CHAT_SUGGEST = ["chat_s_day", "chat_s_week", "chat_s_money", "chat_s_goals", "chat_s_start"];
+function chatBubble(m){
+  const d = m.draft;
+  const card = d ? `<div class="chat-card ${d.status}">
+      <div class="small">${(d.preview || "").replace(/\n/g, "<br>")}</div>
+      ${d.status === "ready" ? `<div class="chat-card-btns">
+          <button class="btn sm" data-act="chat-confirm" data-id="${d.id}" data-rev="${d.revision}">✅ ${t("voice_confirm")}</button>
+          <button class="btn secondary sm" data-act="chat-cancel" data-id="${d.id}" data-rev="${d.revision}">${t("cancel")}</button></div>`
+        : d.status === "executed" ? `<div class="chat-card-state ok">✅ ${t("chat_done")}</div>`
+        : d.status === "cancelled" ? `<div class="chat-card-state">${t("chat_cancelled")}</div>` : ""}
+    </div>` : "";
+  return `<div class="chat-msg ${m.role === "user" ? "me" : "ai"}">
+      <div class="chat-bubble">${esc(m.text)}</div>${card}</div>`;
+}
+function chatView(){
+  const agent = state.me?.agent || {};
+  if(!agent.available) return `<div class="hint" style="margin:var(--s3) 0">${t("chat_off")}</div>`;
+  if(!agent.consent) return `<div class="chat-intro"><div class="chat-ava">✨</div>
+      <div class="t2 small wrap">${t("voice_consent")}</div>
+      <button class="btn" data-act="chat-consent">${t("voice_agree")}</button></div>`;
+  const c = state.chat || {};
+  const msgs = c.messages || [];
+  let h = `<div class="chat-list" id="chat-list">`;
+  if(!c.loaded) h += `<div class="spin"></div>`;
+  else if(!msgs.length) h += `<div class="chat-intro"><div class="chat-ava">✨</div>
+      <b>${t("chat_hello", {name: esc(state.me?.first_name || "")})}</b>
+      <div class="t2 small wrap">${t("chat_intro")}</div></div>`;
+  h += msgs.map(chatBubble).join("");
+  if(c.busy) h += `<div class="chat-msg ai"><div class="chat-bubble typing"><i></i><i></i><i></i></div></div>`;
+  if(c.error) h += `<div class="chat-error small">${esc(c.error)}</div>`;
+  h += `</div>`;
+  if(!c.busy) h += `<div class="chips chat-suggest">${CHAT_SUGGEST.map(k =>
+    `<div class="chip sm" role="button" tabindex="0" data-act="chat-suggest" data-key="${k}">${t(k)}</div>`).join("")}</div>`;
+  h += `<div class="chat-input">
+      <textarea id="chat-text" rows="1" maxlength="2000" placeholder="${t("chat_ph")}"
+        ${c.busy ? "disabled" : ""}>${esc(state.chatDraft || "")}</textarea>
+      <button class="iconbtn chat-send" data-act="chat-send" aria-label="${t("voice_send")}"
+        ${c.busy ? "disabled" : ""}>${icon("up", 20)}</button></div>
+    ${msgs.length ? `<button class="btn text sm" data-act="chat-clear" style="margin-top:6px">${t("chat_clear")}</button>` : ""}`;
+  return h;
+}
+/* The sheet that holds the inbox and the chat; a second view name keeps a
+   refreshing inbox from redrawing a chat while someone types in it. */
+function messagesSheet(){
+  const tab = IS_APP ? (state.inboxTab || "inbox") : "chat";
+  const seg = IS_APP ? `<div class="seg" style="margin-bottom:var(--s2)">
+      <div class="${tab === "inbox" ? "on" : ""}" data-act="inbox-tab" data-tab="inbox">${icon("bell", 15)} ${t("inbox")}${
+        state.inboxUnread ? ` · ${state.inboxUnread}` : ""}</div>
+      <div class="${tab === "chat" ? "on" : ""}" data-act="inbox-tab" data-tab="chat">✨ ${t("chat_title")}</div></div>` : "";
+  if(tab === "inbox") return seg + inboxSheet(false);
+  return `${IS_APP ? seg : sheetHead("✨ " + t("chat_title"))}${chatView()}`;
+}
+function openMessages(){
+  const tab = IS_APP ? (state.inboxTab || "inbox") : "chat";
+  openSheet(messagesSheet(), tab === "chat" ? "chat" : "inbox");
+  if(tab === "chat") chatScroll();
+}
+function chatScroll(){
+  requestAnimationFrame(() => {
+    const box = document.getElementById("sheet-body");
+    const inner = box?.closest(".sheet-inner");
+    if(inner) inner.scrollTop = inner.scrollHeight;
+  });
+}
+async function loadChat(){
+  try{
+    const r = await api("/api/agent/chat");
+    state.chat = {...(state.chat || {}), messages: r.messages, loaded: true};
+    if(state.me && r.agent) state.me.agent = {...(state.me.agent || {}), consent: r.agent.consent};
+  }catch(e){ state.chat = {...(state.chat || {}), loaded: true, error: chatError(e)}; }
+  if(state.sheetView === "chat") openMessages();
+}
+function chatError(e){
+  const code = e?.detail || "";
+  if(["plan_limit", "daily_limit", "provider_limit", "provider_unavailable",
+      "provider_not_configured", "agent_disabled"].includes(code)) return t("chat_err_" + code);
+  return e?.status === 0 || !navigator.onLine ? t("chat_err_offline") : t("chat_err");
+}
+async function chatSend(text){
+  text = (text || "").trim();
+  const c = state.chat || (state.chat = {});
+  if(!text || c.busy) return;
+  haptic();
+  const key = newKey();
+  c.messages = [...(c.messages || []), {role:"user", text, id:"local"}];
+  c.busy = true; c.error = null; state.chatDraft = "";
+  openMessages();
+  try{
+    const r = await api("/api/agent/chat", {method:"POST", body:{text, request_key:key}, timeout: AGENT_TIMEOUT_MS});
+    c.messages = r.messages;
+    if(r.draft?.status === "ready") notify("success");
+  }catch(e){
+    c.messages = c.messages.filter(m => m.id !== "local");
+    state.chatDraft = text;
+    c.error = chatError(e);
+    if(e?.detail === "plan_limit") lockedChat();
+  }finally{
+    c.busy = false;
+    if(state.sheetView === "chat") openMessages();
+  }
+}
+function lockedChat(){
+  setTimeout(() => openSheet(plansSheet({detail:"plan_limit", key:"voice_week", limit:null,
+    tier: state.me?.plan?.tier || "free", needs:"pro"}), "plans"), 900);
+}
+
 async function refreshInbox(){
   if(!IS_APP || !state.me) return;
   try{
@@ -3813,7 +4006,7 @@ async function refreshInbox(){
     state.inbox = box;
     state.inboxUnread = box.unread;
     if(same) return;
-    if(state.sheetView === "inbox") openSheet(inboxSheet(), "inbox");
+    if(state.sheetView === "inbox") openSheet(messagesSheet(), "inbox");
     else if(state.screen === "home") render();
   }catch(_){ /* the badge waits for the next try */ }
 }
@@ -3896,7 +4089,8 @@ function headBlock(d){
       ${IS_APP ? `<button class="bellbtn" data-act="inbox-open"
               aria-label="${t("inbox")}">${icon("bell", 20)}${state.inboxUnread
                 ? `<span class="bell-badge">${state.inboxUnread > 99 ? "99+" : state.inboxUnread}</span>`
-                : ""}</button>` : ""}
+                : ""}</button>` : state.me?.agent?.available ? `<button class="bellbtn" data-act="chat-open"
+              aria-label="${t("chat_title")}">${icon("message", 20)}</button>` : ""}
       <button class="avatar" data-act="settings"
               aria-label="${t("settings")}">${avatar}</button>
     </div>`;
@@ -5108,6 +5302,12 @@ function loadDraftRaw(){
 document.addEventListener("visibilitychange", () => { if(document.hidden) flushJournal(); });
 document.addEventListener("input", e => {
   if(e.target.id === "jai-text") return storeJaiText(e.target.value);
+  if(e.target.id === "chat-text"){
+    state.chatDraft = e.target.value;
+    e.target.style.height = "auto";
+    e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+    return;
+  }
   if(e.target.id === "gl-progress"){
     const out = document.getElementById("gl-progress-v");
     if(out) out.textContent = e.target.value + "%";
@@ -9447,6 +9647,8 @@ async function save(request, reload, quiet, message, draft){
     // screen.
     if(reload) await loadScreen(reload);
     else render();
+    // The phone app reschedules its own reminders after a change.
+    window.dispatchEvent(new Event("ernest:changed"));
   }catch(e){
     idemKey = null;
     handleError(e, draft && {...draft, request, reload, key});
@@ -9619,9 +9821,13 @@ document.addEventListener("visibilitychange", () => {
 /* Phone app: a push while open refreshes the bell; a tapped one opens the
    inbox; coming back to the app catches up on what arrived meanwhile. */
 window.addEventListener("ernest:push", () => refreshInbox());
-window.addEventListener("ernest:open-inbox", () => {
+window.addEventListener("ernest:open-inbox", e => {
   window.ErnestApp?.takePendingInbox?.();
-  if(state.me) A["inbox-open"]();
+  if(!state.me) return;
+  // A reminder the phone showed by itself opens the screen it is about.
+  const open = e?.detail?.open;
+  if(open && open !== "inbox" && SCREENS[open]) return goto(open);
+  A["inbox-open"]();
 });
 document.addEventListener("visibilitychange", () => { if(!document.hidden) refreshInbox(); });
 /* Recording never continues in the background (K01). */
@@ -11523,7 +11729,8 @@ const A = {
   },
   "inbox-open": async () => {
     haptic();
-    openSheet(inboxSheet(), "inbox");
+    state.inboxTab = "inbox";
+    openMessages();
     await refreshInbox();
     if(state.inboxUnread){
       try{
@@ -11535,6 +11742,53 @@ const A = {
         render();
       }catch(_){}
     }
+  },
+  "inbox-tab": el => {
+    haptic();
+    state.inboxTab = el.dataset.tab;
+    openMessages();
+    if(state.inboxTab === "chat" && !state.chat?.loaded) loadChat();
+  },
+  "chat-open": () => {
+    haptic();
+    state.inboxTab = "chat";
+    openMessages();
+    if(!state.chat?.loaded) loadChat();
+  },
+  "chat-consent": async () => {
+    try{
+      await api("/api/agent/consent", {method:"POST"});
+      if(state.me?.agent) state.me.agent.consent = true;
+      openMessages();
+      if(!state.chat?.loaded) loadChat();
+    }catch(e){ handleError(e); }
+  },
+  "chat-send": () => chatSend(val("chat-text")),
+  "chat-suggest": el => chatSend(t(el.dataset.key + "_q")),
+  "chat-confirm": async el => {
+    haptic("medium");
+    try{
+      await api(`/api/agent/drafts/${el.dataset.id}/confirm`, {method:"POST", body:{revision:Number(el.dataset.rev)}});
+      notify("success");
+      toast(t("voice_done"));
+      state.calendarStale = true;
+      await loadChat();
+      loadScreen(state.screen);
+      window.dispatchEvent(new Event("ernest:changed"));
+    }catch(e){ handleError(e); }
+  },
+  "chat-cancel": async el => {
+    try{
+      await api(`/api/agent/drafts/${el.dataset.id}/cancel`, {method:"POST", body:{revision:Number(el.dataset.rev)}});
+      await loadChat();
+    }catch(e){ handleError(e); }
+  },
+  "chat-clear": async () => {
+    try{
+      await api("/api/agent/chat", {method:"DELETE"});
+      state.chat = {messages:[], loaded:true};
+      openMessages();
+    }catch(e){ handleError(e); }
   },
   "inbox-action": async el => {
     haptic("medium");
@@ -12083,6 +12337,13 @@ document.addEventListener("keydown", e => {
   if(!el || CHANGE_TAGS.has(el.tagName) || el.tagName === "BUTTON") return;
   e.preventDefault();
   A[el.dataset.act]?.(el);
+});
+// In the chat, Enter sends on a keyboard; on a phone it is a new line.
+document.addEventListener("keydown", e => {
+  if(e.target.id !== "chat-text" || e.key !== "Enter" || e.shiftKey) return;
+  if(!window.matchMedia?.("(pointer: fine)").matches) return;
+  e.preventDefault();
+  chatSend(e.target.value);
 });
 // Search runs on Enter rather than per keystroke: one request per intent.
 document.addEventListener("keydown", e => {
