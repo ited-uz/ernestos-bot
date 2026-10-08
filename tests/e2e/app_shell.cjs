@@ -206,7 +206,7 @@ const step = async (name, fn) => {
   await step('Plans: a month/year switch and two buy buttons, closed by the cross', async () => {
     await page.click('#sheet-body [data-act="set-plan"]');
     await page.waitForSelector('#sheet-body .ptable');
-    assert.equal(await page.locator('#sheet-body .ptable tbody tr').count(), 12, 'every limit has a row');
+    assert.equal(await page.locator('#sheet-body .ptable tbody tr').count(), 13, 'every limit has a row');
     assert.equal(await page.locator('#sheet-body [data-act="plan-buy"]').count(), 2);
     await page.click('#sheet-body [data-act="plan-period"][data-p="year"]');
     const keys = await page.locator('#sheet-body [data-act="plan-buy"]').evaluateAll(b => b.map(x => x.dataset.key));
@@ -236,6 +236,43 @@ const step = async (name, fn) => {
     assert.equal(spends, '1');
     await shot('08-coins');
     await page.evaluate(() => closeSheet());
+  });
+
+  await step('Reja → Maqsadlar: an ultimate goal and a milestone under it, saved on the server', async () => {
+    await page.evaluate(() => closeSheet());
+    await page.evaluate(() => goto('goals'));
+    await page.waitForSelector('.glevels .glevel.on.lv-ultimate', { timeout: 8000 });
+    await page.waitForSelector('.gempty [data-act="goal-add"]');
+    await page.click('#fab .fab-add');
+    await page.waitForSelector('#sheet-body #gl-title');
+    await page.fill('#gl-title', 'EGH: Capital Venture');
+    await page.click('#sheet-body [data-act="gl-pick"][data-field="gl-cat"][data-value="capital"]');
+    await page.click('#sheet-body [data-act="gl-pick"][data-field="gl-horizon"][data-value="2040"]');
+    await page.click('#sheet-body .gmore summary');
+    await page.fill('#gl-amount', '10 000 000');
+    await page.click('#sheet-body [data-act="goal-save"]');
+    await page.waitForSelector('.gcard .gamount:has-text("$10M")', { timeout: 8000 });
+    // A milestone under it, from the milestone tab's +.
+    await page.click('[data-act="goal-tab"][data-tab="milestone"]');
+    await page.click('#fab .fab-add');
+    await page.waitForSelector('#sheet-body #gl-parent');
+    await page.fill('#gl-title', 'Birinchi $100 000');
+    await page.selectOption('#gl-parent', { label: 'EGH: Capital Venture' });
+    await page.locator('#gl-progress').fill('40');
+    await page.click('#sheet-body [data-act="goal-save"]');
+    await page.waitForSelector('.gitem:has-text("Birinchi $100 000") .gpct:has-text("40%")', { timeout: 8000 });
+    assert.ok(await page.locator('.gitem .gparent:has-text("EGH: Capital Venture")').count(), 'parent shown');
+    // The ultimate goal now reads its progress off the milestone.
+    await page.click('[data-act="goal-tab"][data-tab="ultimate"]');
+    await page.waitForSelector('.gcard .gprog:has-text("40%")');
+    const rows = py('import db\nfrom sqlalchemy import select\nwith db.SessionLocal() as s:\n'
+       + ' for g in s.scalars(select(db.LifeGoal).order_by(db.LifeGoal.id)): print(g.level, g.amount, g.parent_id is not None, g.progress)').trim();
+    assert.deepEqual(rows.split('\n'), ['ultimate 10000000 False 0', 'milestone None True 40']);
+    await shot('09-goals');
+    // The tactical tab is the week's focus.
+    await page.click('[data-act="goal-tab"][data-tab="tactical"]');
+    await page.waitForSelector('.ghint');
+    assert.ok(await page.locator('[data-act="focus-add"]').count(), 'week focus reachable from Goals');
   });
 
   await step('An ended session goes back to sign-in', async () => {

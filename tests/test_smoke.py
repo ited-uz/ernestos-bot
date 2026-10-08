@@ -1070,13 +1070,19 @@ def test_a_late_wake_up_is_answered_with_a_joke_not_a_verdict():
     assert "04:53" in on_time
 
 
-def test_goals_are_unreachable_from_either_surface():
+def test_the_old_goals_stay_retired_and_new_goals_have_their_own_table():
+    """Migration 0002 parked the first Goals table as `goals_archived_v1`.
+    Goals came back as milestone/ultimate goals in Reja; they live in
+    `life_goals`, so `create_all` never recreates a `goals` table that a
+    rollback of 0002 would then collide with, and the old bot menu and
+    vision screen stay gone."""
     app_source = (ROOT / "app.py").read_text()
     html = (ROOT / "webapp" / "index.html").read_text()
-    for term in ('"/api/goals', "show_goals", "menu_goals", "list_goals"):
+    for term in ("show_goals", "menu_goals"):
         assert term not in app_source, f"app.py still exposes {term!r}"
-    for term in ("/api/goals", "SCREENS.vision", "goal-add", "Maqsadlar", "Цели"):
-        assert term not in html, f"index.html still exposes {term!r}"
+    assert "SCREENS.vision" not in html
+    assert db.LifeGoal.__tablename__ == "life_goals"
+    assert "goals" not in db.Base.metadata.tables
 
 
 def test_the_mini_app_navigation_is_four_places():
@@ -1093,11 +1099,11 @@ def test_the_mini_app_navigation_is_four_places():
     for word in ('nav_home:"Bugun"', 'nav_tracker:"Reja"', 'nav_money:"Moliya"', 'nav_profile:"Profil"'):
         assert word in html, word
     group = html[html.index("function groupBar(screen){"):html.index("const offerKey")]
-    assert '[["habits", "habits"], ["tasks", "tasks"]]' in group
+    assert '[["habits", "habits"], ["tasks", "tasks"], ["goals", "goals_tab"]]' in group
     assert '[["steps", "nav_steps"], ["stats", "nav_stats"], ["team", "team"]]' in group
     assert 'data-act="settings"' in group, "settings one tap from Profil"
     nav_of = html[html.index("const NAV_OF"):html.index("function navTarget(")]
-    for screen in ("habits", "tasks", "project", "steps", "stats", "team"):
+    for screen in ("habits", "tasks", "goals", "project", "steps", "stats", "team"):
         assert screen + ":" in nav_of
 
 
@@ -4700,8 +4706,11 @@ def test_the_floating_add_never_covers_the_page():
     assert "chromeOff" in first and first.endswith('? "" : `'), "fab drawn while loading"
     # Not over prayer or the journal, which are filled in place.
     assert 'state.tab === "prayer" || state.tab === "journal"' in html
-    assert '"quick-add"' in render[:700] and 'data-act="voice-start"' in render[:700]
-    assert '"money-add"' in render[:700], "on Money the + adds money"
+    assert "fabAdd()" in render[:700] and 'data-act="voice-start"' in render[:700]
+    fab = html[html.index("function fabAdd(){"):]
+    fab = fab[:fab.index("\n}\n")]
+    assert '"quick-add"' in fab and '"money-add"' in fab, "on Money the + adds money"
+    assert 'data-act="goal-add"' in fab, "on Goals the + adds a goal at the level shown"
     assert "fab && fab.innerHTML.trim() ? 84 : 0" in html, "page not padded for the fab"
     assert "body:has(#sheet.show) #fab" in html
     for screen in ("SCREENS.habits", "SCREENS.tasks",
@@ -11077,6 +11086,8 @@ def test_the_rules_document_matches_the_code():
     assert f"| Odatlar (marosimlardan tashqari) | **{L['habits']['free']}** | **{L['habits']['pro']}** |" in doc
     assert f"| Faol vazifalar | **{L['active_tasks']['free']}** |" in doc
     assert f"| Loyihalar | **{L['projects']['free']}** | **{L['projects']['pro']}** |" in doc
+    assert (f"| Maqsadlar (bosqich va asosiy, ochiqlari) | **{L['life_goals']['free']}** |"
+            f" **{L['life_goals']['pro']}** |") in doc
     assert (f"| Ovozli buyruq | **{L['voice_week']['free']}** / hafta | **{L['voice_day']['pro']}** / kun"
             f" | **{L['voice_day']['max']}** / kun |") in doc
     assert f"**{_plans.TRIAL_DAYS}** kunlik Pro" in doc
@@ -12303,3 +12314,101 @@ def test_coin_purchases_leave_with_the_account_and_are_in_the_export(client):
     with SessionLocal() as s:
         svc.delete_account(s, uid)
         assert not s.scalars(select(db.CoinSpend).where(db.CoinSpend.account_id == uid)).all()
+
+
+# ---------------------------------------------------------------------------
+# Goals: milestone and ultimate (tactical = the week's focus)
+# ---------------------------------------------------------------------------
+
+def test_goals_hold_milestones_under_an_ultimate_goal(client):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "G"})
+    big = caller.post("/api/goals", {"level": "ultimate", "title": "EGH: Capital Venture",
+                                     "category": "capital", "horizon": "2040",
+                                     "status": "dream", "amount": 10_000_000, "cover": "🚀"})
+    assert big.status_code == 200, big.text
+    big_id = big.json()["id"]
+    a = caller.post("/api/goals", {"level": "milestone", "title": "Birinchi $100k",
+                                   "category": "capital", "horizon": "2027",
+                                   "parent_id": big_id, "progress": 40}).json()["id"]
+    b = caller.post("/api/goals", {"level": "milestone", "title": "Jamoa 5 kishi",
+                                   "parent_id": big_id}).json()["id"]
+    goals = {g["id"]: g for g in caller.get("/api/goals").json()["goals"]}
+    assert goals[big_id]["milestones"] == 2 and goals[big_id]["auto_progress"] is True
+    assert goals[big_id]["progress"] == 20          # (40 + 0) / 2
+    assert goals[big_id]["amount"] == 10_000_000 and goals[big_id]["horizon"] == "2040"
+    assert goals[a]["parent_id"] == big_id
+
+    assert caller.patch(f"/api/goals/{b}", {"status": "done"}).status_code == 200
+    goals = {g["id"]: g for g in caller.get("/api/goals").json()["goals"]}
+    assert goals[b]["progress"] == 100 and goals[b]["done_at"]
+    assert goals[big_id]["progress"] == 70 and goals[big_id]["milestones_done"] == 1
+    # Finished goals sort last.
+    assert [g["id"] for g in caller.get("/api/goals").json()["goals"]][-1] == b
+
+    # Removing the ultimate goal keeps its milestones, no longer under it.
+    assert caller.delete(f"/api/goals/{big_id}").status_code == 200
+    goals = {g["id"]: g for g in caller.get("/api/goals").json()["goals"]}
+    assert big_id not in goals and goals[a]["parent_id"] is None
+    # ...and it can be brought back.
+    assert caller.patch(f"/api/goals/{big_id}", {"archived": False}).status_code == 200
+    assert big_id in {g["id"] for g in caller.get("/api/goals").json()["goals"]}
+
+
+def test_goal_input_is_checked(client):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "V"})
+    m = caller.post("/api/goals", {"level": "milestone", "title": "M"}).json()["id"]
+    # A milestone cannot sit under another milestone, nor under somebody else's goal.
+    assert caller.post("/api/goals", {"title": "x", "parent_id": m}).status_code == 422
+    other = next(_next_id)
+    _fresh_account(other)
+    theirs = Caller(client, {"id": other, "first_name": "O"}).post(
+        "/api/goals", {"level": "ultimate", "title": "Theirs"}).json()["id"]
+    assert caller.post("/api/goals", {"title": "x", "parent_id": theirs}).status_code == 422
+    assert caller.patch(f"/api/goals/{theirs}", {"title": "mine"}).status_code == 404
+    assert caller.delete(f"/api/goals/{theirs}").status_code == 404
+    assert caller.post("/api/goals", {"title": "x", "horizon": "soon"}).status_code == 422
+    assert caller.post("/api/goals", {"title": "x", "level": "tactical"}).status_code == 422
+    assert caller.post("/api/goals", {"title": "x", "status": "maybe"}).status_code == 422
+    assert caller.post("/api/goals", {"title": "x", "amount": -5}).status_code == 422
+    # An unknown category is kept as "other" rather than refused.
+    odd = caller.post("/api/goals", {"title": "y", "category": "space"}).json()["id"]
+    assert next(g for g in caller.get("/api/goals").json()["goals"]
+                if g["id"] == odd)["category"] == "other"
+    # Only a milestone has a parent: an ultimate goal drops it.
+    up = caller.post("/api/goals", {"level": "ultimate", "title": "U"}).json()["id"]
+    caller.patch(f"/api/goals/{m}", {"parent_id": up})
+    caller.patch(f"/api/goals/{m}", {"level": "ultimate"})
+    assert next(g for g in caller.get("/api/goals").json()["goals"]
+                if g["id"] == m)["parent_id"] is None
+
+
+def test_free_plan_keeps_three_open_goals_and_finished_ones_do_not_count(client, plans_on):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    _expire_grants(uid)
+    caller = Caller(client, {"id": uid, "first_name": "L"})
+    limit = plans.LIMITS["life_goals"]["free"]
+    ids = [caller.post("/api/goals", {"title": f"g{i}"}).json()["id"] for i in range(limit)]
+    refused = caller.post("/api/goals", {"title": "one more"})
+    assert refused.status_code == 402 and refused.json()["key"] == "life_goals"
+    # Finishing one frees its place; reopening it would need one again.
+    caller.patch(f"/api/goals/{ids[0]}", {"status": "done"})
+    assert caller.post("/api/goals", {"title": "now fits"}).status_code == 200
+    assert caller.patch(f"/api/goals/{ids[0]}", {"status": "active"}).status_code == 402
+
+
+def test_goals_are_exported_and_leave_with_the_account(client):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "X"})
+    caller.post("/api/goals", {"level": "ultimate", "title": "Ironman", "category": "health",
+                               "horizon": "lifetime"})
+    exported = caller.get("/api/export").json()["goals"]
+    assert exported[0]["title"] == "Ironman" and exported[0]["horizon"] == "lifetime"
+    with SessionLocal() as s:
+        svc.delete_account(s, uid)
+        assert not s.scalars(select(db.LifeGoal).where(db.LifeGoal.title == "Ironman")).all()

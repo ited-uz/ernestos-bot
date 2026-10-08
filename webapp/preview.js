@@ -336,8 +336,43 @@
   const coinState = () => ({balance:coinBank.balance, earned:coinBank.balance + coinBank.spent, spent:coinBank.spent,
     today:7, daily_cap:12, xp_per_coin:10, history:coinBank.history.slice(0, 10),
     items:COIN_ITEMS.map(i => ({...i, blocked:null, short:Math.max(i.coins - coinBank.balance, 0)}))});
+  /* Goals: the owner's own vision board, as he keeps it in Notion, with a
+     few milestones under it. Progress of an ultimate goal is read off its
+     milestones exactly as the server does. */
+  const G = (id, level, title, category, horizon, status, extra) => ({id, level, title, category, horizon,
+    status, amount:null, unit:"USD", progress:0, parent_id:null, cover:"", note:"", position:id, ...(extra || {})});
+  const goalRows = EMPTY ? [] : [
+    G(1, "ultimate", "EGH: Capital Venture", "capital", "2040", "active", {amount:10000000, cover:"🚀"}),
+    G(2, "ultimate", "Ironman triathlon | champion", "health", "2030", "active", {cover:"🏊"}),
+    G(3, "ultimate", "Belovedim bilan Qur'onni to'liq yod olish", "islam", "lifetime", "active", {cover:"🕌"}),
+    G(4, "ultimate", "Get married | إن شاء الله", "family", "2030", "dream", {cover:"💍"}),
+    G(5, "ultimate", "Beloved bilan xayriya jamg'armasini tashkil etish", "charity", "2040", "dream", {amount:1000000, cover:"🤲"}),
+    G(6, "ultimate", "Ernest Academy: ilm-fan va Islom uchun o'quv markaz", "learning", "2040", "dream", {amount:1000000, cover:"📚"}),
+    G(11, "milestone", "Birinchi $100 000 kapital", "capital", "2027", "active", {parent_id:1, progress:35, amount:100000}),
+    G(12, "milestone", "ErnestOS: 1 000 pullik mijoz", "career", "2027", "active", {parent_id:1, progress:12}),
+    G(13, "milestone", "Olimpiya masofasida triatlon", "health", "2027", "active", {parent_id:2, progress:40}),
+    G(14, "milestone", "Yarim marafon 2 soatdan tez", "health", "2026", "done", {parent_id:2, progress:100}),
+    G(15, "milestone", "Qur'ondan 10 pora yod", "islam", "2027", "active", {parent_id:3, progress:30}),
+  ];
+  let goalSeq = 100;
+  function goalsPayload(){
+    const live = goalRows.filter(g => !g.archived);
+    const out = live.map(g => {
+      const kids = g.level === "ultimate" ? live.filter(k => k.level === "milestone" && k.parent_id === g.id) : [];
+      const progress = g.status === "done" ? 100 : kids.length
+        ? Math.round(kids.reduce((a, k) => a + (k.status === "done" ? 100 : k.progress), 0) / kids.length) : g.progress;
+      return {...g, progress, own_progress:g.progress, auto_progress:g.level === "ultimate" && kids.length > 0 && g.status !== "done",
+              milestones:kids.length, milestones_done:kids.filter(k => k.status === "done").length};
+    });
+    const rank = {active:0, dream:1, done:2};
+    out.sort((a, b) => rank[a.status] - rank[b.status] || a.position - b.position);
+    return {goals:out, levels:["milestone", "ultimate"], statuses:["dream", "active", "done"],
+            categories:["capital", "health", "islam", "family", "career", "learning", "charity", "other"],
+            units:["USD", "UZS", "EUR", "RUB"]};
+  }
   const ROUTES = [
     [/^\/api\/me$/, () => DB.me],
+    [/^\/api\/goals$/, goalsPayload],
     [/^\/api\/coins$/, () => coinState()],
     [/^\/api\/referrals\/me$/, () => {
       const q = 3, steps = [[5, "pro", 30], [10, "pro", 60], [20, "max", 30]];
@@ -416,7 +451,7 @@
     [/^\/api\/plans$/, () => ({...DB.me.plan,
       all_limits:{habits:{free:3, pro:25, max:null}, active_tasks:{free:30, pro:null, max:null},
                   recurring_tasks:{free:3, pro:25, max:null}, projects:{free:1, pro:15, max:null},
-                  open_debts:{free:3, pro:null, max:null}, teams_owned:{free:0, pro:2, max:10},
+                  life_goals:{free:3, pro:25, max:null}, open_debts:{free:3, pro:null, max:null}, teams_owned:{free:0, pro:2, max:10},
                   team_members:{free:8, pro:10, max:50}, voice_day:{free:null, pro:30, max:100},
                   voice_week:{free:5, pro:null, max:null}},
       all_features:{journal_ai:["pro","max"], timer_rhythm:["pro","max"], stats_history:["pro","max"], stats_csv:["max"]}})],
@@ -483,6 +518,27 @@
                                            priority:body?.priority || "medium"});
       DB.tasks.push(row);
       return {ok:true, ...row};
+    }
+    if(path === "/api/goals" && method === "POST"){
+      const row = G(++goalSeq, body.level || "milestone", body.title, body.category || "other", body.horizon || "",
+                    body.status || "active", {amount:body.amount ?? null, unit:body.unit || "USD",
+                    progress:body.progress || 0, parent_id:body.level === "milestone" ? body.parent_id ?? null : null,
+                    cover:body.cover || "", note:body.note || ""});
+      goalRows.push(row);
+      return {ok:true, id:row.id};
+    }
+    let gm;
+    if((gm = path.match(/^\/api\/goals\/(\d+)$/))){
+      const row = goalRows.find(g => g.id === Number(gm[1]));
+      if(!row) return {__status:404, detail:"not_found"};
+      if(method === "DELETE"){
+        row.archived = true;
+        goalRows.forEach(g => { if(g.parent_id === row.id) g.parent_id = null; });
+        return {ok:true};
+      }
+      Object.assign(row, body || {});
+      if(row.level !== "milestone") row.parent_id = null;
+      return {ok:true};
     }
     if(path === "/api/coins/buy"){
       const item = COIN_ITEMS.find(i => i.key === body?.item);

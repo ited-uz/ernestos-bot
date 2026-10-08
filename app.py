@@ -5095,6 +5095,7 @@ PLAN_TEXT = {
         "join": "📢 Kanalga qo'shilish",
         "what": {"habits": "Ko'proq odat", "active_tasks": "Ko'proq faol vazifa",
                  "recurring_tasks": "Ko'proq takrorlanuvchi vazifa", "projects": "Ko'proq loyiha",
+                 "life_goals": "Ko'proq maqsad",
                  "open_debts": "Ko'proq ochiq qarz", "teams_owned": "Jamoa yaratish",
                  "team_members": "Jamoada ko'proq a'zo", "voice_week": "Ko'proq ovozli buyruq",
                  "voice_day": "Ko'proq ovozli buyruq", "journal_ai": "AI bilan kundalik",
@@ -5121,6 +5122,7 @@ PLAN_TEXT = {
         "join": "📢 Подписаться на канал",
         "what": {"habits": "Больше привычек", "active_tasks": "Больше активных задач",
                  "recurring_tasks": "Больше повторяющихся задач", "projects": "Больше проектов",
+                 "life_goals": "Больше целей",
                  "open_debts": "Больше открытых долгов", "teams_owned": "Создание команд",
                  "team_members": "Больше участников в команде", "voice_week": "Больше голосовых команд",
                  "voice_day": "Больше голосовых команд", "journal_ai": "AI-итоги дня",
@@ -5147,6 +5149,7 @@ PLAN_TEXT = {
         "join": "📢 Join the channel",
         "what": {"habits": "More habits", "active_tasks": "More open tasks",
                  "recurring_tasks": "More repeating tasks", "projects": "More projects",
+                 "life_goals": "More goals",
                  "open_debts": "More open debts", "teams_owned": "Creating teams",
                  "team_members": "More team members", "voice_week": "More voice commands",
                  "voice_day": "More voice commands", "journal_ai": "AI day summary",
@@ -7404,6 +7407,35 @@ class ProjectIn(BaseModel):
     deadline: str | None = Field(default=None, max_length=10)
 
 
+class GoalIn(BaseModel):
+    level: str = Field(default="milestone", max_length=10)
+    title: str = Field(min_length=1, max_length=200)
+    category: str = Field(default="other", max_length=12)
+    horizon: str = Field(default="", max_length=10)
+    status: str = Field(default="active", max_length=10)
+    amount: int | None = Field(default=None, ge=0, le=10 ** 13)
+    unit: str = Field(default="USD", max_length=3)
+    progress: int = Field(default=0, ge=0, le=100)
+    parent_id: int | None = None
+    cover: str = Field(default="", max_length=16)
+    note: str = Field(default="", max_length=2000)
+
+
+class GoalPatch(BaseModel):
+    level: str | None = Field(default=None, max_length=10)
+    title: str | None = Field(default=None, max_length=200)
+    category: str | None = Field(default=None, max_length=12)
+    horizon: str | None = Field(default=None, max_length=10)
+    status: str | None = Field(default=None, max_length=10)
+    amount: int | None = Field(default=None, ge=0, le=10 ** 13)
+    unit: str | None = Field(default=None, max_length=3)
+    progress: int | None = Field(default=None, ge=0, le=100)
+    parent_id: int | None = None
+    cover: str | None = Field(default=None, max_length=16)
+    note: str | None = Field(default=None, max_length=2000)
+    archived: bool | None = None
+
+
 class FocusIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     priority: str | None = Field(default=None, max_length=6)
@@ -9595,6 +9627,51 @@ def api_project_delete(project_id: int, init=Header(default=None, alias="X-Teleg
     _, ws = auth(init)
     with SessionLocal() as s:
         svc.delete_project(s, ws, project_id)
+    return {"ok": True}
+
+
+@app.get("/api/goals")
+def api_goals(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Milestone and ultimate goals. The tactical level is /api/focus."""
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        return {"goals": svc.list_goals(s, ws), "levels": svc.GOAL_LEVELS,
+                "statuses": svc.GOAL_STATUSES, "categories": svc.GOAL_CATEGORIES,
+                "units": svc.GOAL_UNITS}
+
+
+@app.post("/api/goals")
+def api_goal_add(body: GoalIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        try:
+            goal = svc.add_goal(s, ws, **body.model_dump())
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        return {"ok": True, "id": goal.id}
+
+
+@app.patch("/api/goals/{goal_id}")
+def api_goal_patch(goal_id: int, body: GoalPatch,
+                   init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    fields = body.model_dump(exclude_unset=True)
+    for key in ("level", "title", "category", "status", "unit"):
+        if key in fields and fields[key] is None:
+            del fields[key]
+    with SessionLocal() as s:
+        try:
+            svc.update_goal(s, ws, goal_id, **fields)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    return {"ok": True}
+
+
+@app.delete("/api/goals/{goal_id}")
+def api_goal_delete(goal_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        svc.delete_goal(s, ws, goal_id)
     return {"ok": True}
 
 

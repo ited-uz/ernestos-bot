@@ -634,6 +634,45 @@ class Birthday(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class LifeGoal(Base):
+    """A goal above the week: a milestone, or the ultimate goal it serves.
+
+    The week's own goals (the tactical level) already live in `WeeklyFocus`;
+    this table holds the two levels above it. A milestone may name the
+    ultimate goal it moves forward (`parent_id`), and an ultimate goal with
+    milestones reads its progress off them.
+
+    Named `life_goals` because migration 0002 moves any old `goals` table
+    aside, and a new table under that name would be moved with it.
+    """
+
+    __tablename__ = "life_goals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    level: Mapped[str] = mapped_column(String(10))               # milestone | ultimate
+    title: Mapped[str] = mapped_column(String(200))
+    category: Mapped[str] = mapped_column(String(12), default="other")
+    #: "2030", "lifetime" or "" — when it is meant to be reached.
+    horizon: Mapped[str] = mapped_column(String(10), default="")
+    status: Mapped[str] = mapped_column(String(10), default="active")  # dream | active | done
+    #: What reaching it is worth, when it is about money. Whole units.
+    amount: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    #: USD | UZS | EUR | RUB — a label for the amount; nothing converts.
+    unit: Mapped[str] = mapped_column(String(3), default="USD")
+    #: 0–100, set by hand. An ultimate goal with milestones ignores it.
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    parent_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("life_goals.id", ondelete="SET NULL"), nullable=True)
+    cover: Mapped[str] = mapped_column(String(16), default="")
+    note: Mapped[str] = mapped_column(Text, default="")
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    done_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class MoneyEntry(Base):
     """One movement of money: spent (`expense`) or received (`income`).
 

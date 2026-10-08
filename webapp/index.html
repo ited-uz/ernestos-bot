@@ -1266,6 +1266,116 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
 .mnav{display:flex;align-items:center;gap:var(--s1);margin-top:var(--s1)}
 .mnav b{flex:1;text-align:center;font-size:15px}
 
+/* ---- Goals: three levels ----
+   Each area has a hue taken from the theme's own palette, so a goal reads
+   the same in every theme and nothing here is a fixed colour. */
+.cat-capital{--gc:var(--c4)} .cat-health{--gc:var(--c5)} .cat-islam{--gc:var(--c2)}
+.cat-family{--gc:color-mix(in srgb, var(--danger) 70%, var(--c4))} .cat-career{--gc:var(--c1)}
+.cat-learning{--gc:var(--c3)} .cat-charity{--gc:color-mix(in srgb, var(--c5) 55%, var(--c2))}
+.cat-other{--gc:var(--text-3)}
+.glevels{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s1);margin:var(--s2) 0 var(--s1)}
+.glevel{display:flex;flex-direction:column;align-items:flex-start;gap:1px;position:relative;
+  padding:12px 12px 11px;min-height:86px;border-radius:var(--radius);text-align:left;
+  background:var(--surface);border:var(--border-w) solid var(--border);color:var(--text);
+  box-shadow:var(--shadow-1);transition:transform var(--dur-2) var(--ease-out),
+  border-color var(--dur-2) var(--ease-out), background-color var(--dur-2) var(--ease-out)}
+.glevel:active{transform:scale(var(--press))}
+.glevel.on{border-color:var(--primary);background:color-mix(in srgb, var(--primary) 8%, var(--surface))}
+.glevel-n{font-size:22px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}
+.glevel-name{font-size:13.5px;font-weight:700}
+.glevel-sub{font-size:11.5px;color:var(--text-3)}
+.glevel.on .glevel-name{color:var(--primary)}
+.galt{position:absolute;top:12px;right:12px;display:flex;align-items:flex-end;gap:2px}
+.galt i{display:block;width:4px;border-radius:2px;background:var(--border-2)}
+.galt i:nth-child(1){height:6px} .galt i:nth-child(2){height:10px} .galt i:nth-child(3){height:14px}
+.galt i.on{background:var(--text-3)} .glevel.on .galt i.on{background:var(--primary)}
+.ghint{margin:var(--s1) 2px var(--s2);font-size:13px;line-height:1.45;color:var(--text-2)}
+.gcats{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 calc(-1 * var(--pad)) var(--s2);
+  padding:0 var(--pad) 2px}
+.gcats::-webkit-scrollbar{display:none}
+.gcats .chip{flex:none}
+.gchip-n{margin-left:6px;font-size:11.5px;font-weight:700;color:var(--text-3);font-variant-numeric:tabular-nums}
+.chip.on .gchip-n{color:inherit;opacity:.8}
+
+.ggrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s2)}
+@media (max-width:340px){ .ggrid{grid-template-columns:1fr} }
+.gcard{display:flex;flex-direction:column;border-radius:var(--radius);overflow:hidden;cursor:pointer;
+  background:var(--surface);border:var(--border-w) solid var(--border);box-shadow:var(--shadow-1);
+  transition:transform var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out)}
+.gcard:active{transform:scale(.975)}
+.gcover{position:relative;height:78px;display:flex;align-items:flex-end;padding:10px 12px;
+  background:radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--gc) 55%, transparent), transparent 60%),
+             linear-gradient(140deg, color-mix(in srgb, var(--gc) 32%, var(--surface)),
+                                     color-mix(in srgb, var(--gc) 12%, var(--surface)))}
+.gemoji{font-size:30px;line-height:1;filter:drop-shadow(0 2px 4px rgba(var(--shadow-rgb), .18))}
+.gcover .gstatus{position:absolute;top:9px;right:9px}
+.gbody{display:flex;flex-direction:column;gap:6px;padding:10px 12px 12px;flex:1}
+.gtitle{font-size:14.5px;font-weight:700;line-height:1.3;color:var(--text);
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;text-wrap:pretty}
+.gtitle.sm{font-size:15px;font-weight:650;-webkit-line-clamp:2}
+.gmeta{display:flex;flex-wrap:wrap;gap:4px}
+.gtag{font-size:10.5px;font-weight:750;letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;
+  border-radius:var(--radius-pill);color:color-mix(in srgb, var(--gc) 80%, var(--text));
+  background:color-mix(in srgb, var(--gc) 14%, transparent)}
+.gtag.soft{color:var(--text-2);background:var(--surface-2)}
+.gamount{font-size:16px;font-weight:800;letter-spacing:-.01em;font-variant-numeric:tabular-nums;color:var(--text)}
+.gprog{display:flex;align-items:center;gap:8px;margin-top:auto;font-size:12px;font-weight:700;
+  color:var(--text-2);font-variant-numeric:tabular-nums}
+.gprog .gbar{flex:1}
+.gms{font-size:11.5px;color:var(--text-3)}
+.gbar{height:6px;border-radius:var(--radius-pill);background:var(--surface-2);overflow:hidden}
+.gbar.thin{height:4px;margin-top:8px}
+.gbar i{display:block;height:100%;width:var(--p);border-radius:inherit;
+  background:linear-gradient(90deg, color-mix(in srgb, var(--gc, var(--primary)) 75%, var(--surface)), var(--gc, var(--primary)))}
+.gstatus{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:3px 8px;
+  border-radius:var(--radius-pill);background:color-mix(in srgb, var(--surface) 88%, transparent);color:var(--text-2);
+  box-shadow:var(--shadow-1)}
+.gstatus i{width:6px;height:6px;border-radius:50%;background:var(--text-3)}
+.gstatus.st-active i{background:var(--primary)}
+.gstatus.st-dream i{background:var(--warn)}
+.gstatus.st-done{color:var(--ok)} .gstatus.st-done i{background:var(--ok)}
+.gcard.is-done .gtitle,.gitem.is-done .gtitle{color:var(--text-2)}
+.gitem.is-done .gtile{filter:grayscale(.4);opacity:.75}
+
+.glist{display:flex;flex-direction:column;gap:var(--s1)}
+.gitem{display:flex;align-items:center;gap:12px;padding:12px;border-radius:var(--radius);cursor:pointer;
+  background:var(--surface);border:var(--border-w) solid var(--border);box-shadow:var(--shadow-1);
+  transition:transform var(--dur-2) var(--ease-out)}
+.gitem:active{transform:scale(var(--press))}
+.gtile{flex:none;width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-size:21px;
+  background:color-mix(in srgb, var(--gc) 16%, var(--surface))}
+.gsub{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:3px;font-size:12px;color:var(--text-3)}
+.gparent{display:inline-flex;align-items:center;gap:3px;color:var(--text-2);font-weight:600;max-width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gpct{flex:none;min-width:40px;text-align:right;font-size:14px;font-weight:800;color:var(--text);
+  font-variant-numeric:tabular-nums}
+.gitem.is-done .gpct{color:var(--ok)}
+.gpct .gstatus{box-shadow:none;background:var(--surface-2)}
+.gempty{display:flex;flex-direction:column;align-items:center;gap:var(--s2);text-align:center;
+  padding:var(--s5) var(--s3);border:var(--border-w) dashed var(--border-2);border-radius:var(--radius-lg)}
+.gempty-ic{font-size:40px;line-height:1}
+.gempty .btn{width:auto;padding-inline:var(--s4)}
+.gmore{margin-top:var(--s3);border-top:var(--border-w) solid var(--border);padding-top:var(--s1)}
+.gmore summary{cursor:pointer;font-weight:650;color:var(--primary);min-height:40px;display:flex;align-items:center}
+.gamount-row{display:flex;gap:var(--s1)} .gamount-row select{width:96px;flex:none}
+.gcovers .chip{font-size:18px;min-width:44px;justify-content:center}
+.grange{width:100%;height:36px;padding:0;border:0;background:none;box-shadow:none;cursor:pointer}
+.grange::-webkit-slider-runnable-track{height:6px;border-radius:var(--radius-pill);
+  background:linear-gradient(90deg, var(--primary) var(--v, 0%), var(--surface-2) var(--v, 0%))}
+.grange::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:24px;height:24px;margin-top:-9px;
+  border-radius:50%;background:var(--surface);border:2px solid var(--primary);box-shadow:var(--shadow-1)}
+.grange::-moz-range-track{height:6px;border-radius:var(--radius-pill);background:var(--surface-2)}
+.grange::-moz-range-progress{height:6px;border-radius:var(--radius-pill);background:var(--primary)}
+.grange::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--surface);
+  border:2px solid var(--primary)}
+@media (prefers-reduced-motion:no-preference){
+  .ganim > *{animation:rise 420ms var(--ease-out) backwards;animation-delay:calc(var(--i, 0) * 55ms)}
+  .ganim .gbar i{animation:gfill 900ms var(--ease-out) backwards;animation-delay:calc(var(--i, 0) * 55ms + 180ms)}
+  .ganim .gemoji{animation:gpop 520ms var(--ease-spring) backwards;animation-delay:calc(var(--i, 0) * 55ms + 120ms)}
+}
+@keyframes gfill{from{width:0}}
+@keyframes gpop{from{transform:scale(.4) rotate(-12deg);opacity:0}}
+
 /* ==================================================================
    Depth and motion (v14)
    One layer on top of everything above: how surfaces sit, and how
@@ -1665,6 +1775,24 @@ const DICT = {
   rank_title:"Reyting", rank_among:"{n} kishi orasida", rank_top:"Siz eng faol {n}% ichidasiz", rank_top_short:"TOP {n}%", rank_week:"Haftalik", rank_best:"Eng yaxshi", rank_move:"O'zgarish", rank_private:"Faqat o'rningiz ko'rinadi — boshqalarning ismi va natijasi hech kimga ko'rsatilmaydi.", rank_soon:"Reytingga {n} kundan keyin kirasiz", rank_soon_hint:"7 kunlik faollikdan keyin o'rningiz hisoblanadi.", steps_unavailable:"Qadam ma'lumoti hali kelmadi. Server yangilangach ko'rinadi.",
   coins_title:"Coinlar", coins_shop:"Coin do'koni", coins_today:"Bugun +{n} / {cap} coin", coins_hint:"Vazifa, odat, namoz va xulosa coin beradi", coins_how:"Har {n} ball = 1 coin. Vazifa, odat, namoz, xulosa va hafta maqsadi ball beradi — kuniga {cap} coingacha, yutuqlar alohida. Bir narsa ikki marta hisoblanmaydi.", coins_item_plan:"{plan} — {n} kun", coins_item_freeze:"Seriyani muzlatish +1", coins_plan_hint:"Tarifingizga qo'shiladi, hozirgisidan keyin", coins_freeze_hint:"Shu oy bir zaif kun seriyani uzmaydi", coins_need:"Yana {n} coin kerak", coins_confirm:"Tasdiqlash ", coins_bought:"Sotib olindi ✓", coins_plans_off:"Tariflar hozir o'chiq", coins_freeze_limit:"Bu oy 2 ta muzlatish olingan", coins_history:"Xaridlar", coins_or:"Yoki coin bilan oling",
   home_unveil:"Kunning qolgan qismini ko'rish",
+  goals_tab:"Maqsadlar", gl_tactical:"Taktik", gl_milestone:"Bosqich", gl_ultimate:"Asosiy",
+  gl_tactical_sub:"bu hafta", gl_milestone_sub:"1–3 yil", gl_ultimate_sub:"umr bo'yi",
+  gl_tactical_hint:"Shu haftaning 1–3 ta maqsadi. Har biri bitta bosqichni oldinga siljitsin.",
+  gl_milestone_hint:"Asosiy maqsad sari aniq, o'lchanadigan va muddatli qadamlar.",
+  gl_ultimate_hint:"Hayotingizdagi eng katta maqsadlar. Bosqichlar ularni yaqinlashtiradi.",
+  gl_all:"Hammasi", gl_add_milestone:"Bosqich qo'shish", gl_add_ultimate:"Asosiy maqsad qo'shish",
+  gl_edit:"Maqsad", gl_name:"Nimaga erishmoqchisiz?", gl_level:"Daraja", gl_category:"Yo'nalish",
+  gl_status:"Holat", gl_horizon:"Muddat", gl_parent:"Qaysi asosiy maqsadga xizmat qiladi",
+  gl_parent_none:"Alohida bosqich", gl_progress:"Bajarilishi", gl_auto:"Bosqichlardan hisoblanadi",
+  gl_amount:"Qiymati (ixtiyoriy)", gl_cover:"Belgi", gl_note:"Nega bu muhim?", gl_more:"Batafsil",
+  gl_st_dream:"Inshalloh", gl_st_active:"Jarayonda", gl_st_done:"Erishildi",
+  gl_lifetime:"Umrbod", gl_no_date:"Muddatsiz", gl_ms_n:"{done}/{n} bosqich",
+  gl_empty_milestone:"Hali bosqich yo'q. Asosiy maqsadga olib boradigan 1–3 yillik qadamni yozing.",
+  gl_empty_ultimate:"Hali asosiy maqsad yo'q. Umringiz davomida erishmoqchi bo'lgan eng katta narsani yozing.",
+  gl_active_ms:"Faol bosqichlar", gl_reached:"Tabriklaymiz, maqsadga erishildi! 🎉",
+  gc_capital:"Kapital", gc_health:"Salomatlik", gc_islam:"Islom", gc_family:"Oila",
+  gc_career:"Biznes", gc_learning:"Ilm", gc_charity:"Xayriya", gc_other:"Boshqa",
+  plan_limit_life_goals:"Ko'proq maqsad", pt_life_goals:"Maqsadlar (bosqich va asosiy)",
   draft_restored:"Saqlanmagan matn tiklandi", autosaved:"Saqlanmoqda…",
   mood_q:"Bugun o'zingizni qanday his qildingiz?",
   mood_awful:"Juda yomon", mood_low:"Yomon", mood_ok:"O'rtacha",
@@ -2101,6 +2229,24 @@ const DICT = {
   rank_title:"Rating", rank_among:"among {n} people", rank_top:"You are in the most active {n}%", rank_top_short:"TOP {n}%", rank_week:"This week", rank_best:"Best", rank_move:"Change", rank_private:"Only your position is shown — nobody else's name or result is shown to anyone.", rank_soon:"You join the rating in {n} days", rank_soon_hint:"Your position is counted after 7 days of activity.", steps_unavailable:"Steps have not arrived yet. They show once the server is updated.",
   coins_title:"Coins", coins_shop:"Coin shop", coins_today:"Today +{n} / {cap} coins", coins_hint:"Tasks, habits, prayer and the journal earn coins", coins_how:"Every {n} points = 1 coin. Tasks, habits, prayer, the journal and the week goal earn points — up to {cap} coins a day, achievements on top. Nothing counts twice.", coins_item_plan:"{plan} — {n} days", coins_item_freeze:"Streak freeze +1", coins_plan_hint:"Added to your plan, after the current one", coins_freeze_hint:"One weak day this month will not break the streak", coins_need:"{n} more coins needed", coins_confirm:"Confirm ", coins_bought:"Bought ✓", coins_plans_off:"Plans are off right now", coins_freeze_limit:"Two freezes already bought this month", coins_history:"Purchases", coins_or:"Or get it with coins",
   home_unveil:"See the rest of the day",
+  goals_tab:"Goals", gl_tactical:"Tactical", gl_milestone:"Milestone", gl_ultimate:"Ultimate",
+  gl_tactical_sub:"this week", gl_milestone_sub:"1–3 years", gl_ultimate_sub:"lifelong",
+  gl_tactical_hint:"One to three goals for this week. Each should move one milestone forward.",
+  gl_milestone_hint:"Concrete, measurable steps with a date, on the way to an ultimate goal.",
+  gl_ultimate_hint:"The biggest goals of your life. Milestones bring them closer.",
+  gl_all:"All", gl_add_milestone:"Add a milestone", gl_add_ultimate:"Add an ultimate goal",
+  gl_edit:"Goal", gl_name:"What do you want to reach?", gl_level:"Level", gl_category:"Area",
+  gl_status:"Status", gl_horizon:"By when", gl_parent:"Which ultimate goal it serves",
+  gl_parent_none:"A milestone on its own", gl_progress:"Progress", gl_auto:"Counted from its milestones",
+  gl_amount:"Value (optional)", gl_cover:"Icon", gl_note:"Why it matters", gl_more:"More",
+  gl_st_dream:"Someday", gl_st_active:"In progress", gl_st_done:"Achieved",
+  gl_lifetime:"Lifetime", gl_no_date:"No date", gl_ms_n:"{done}/{n} milestones",
+  gl_empty_milestone:"No milestones yet. Write down a one-to-three-year step toward an ultimate goal.",
+  gl_empty_ultimate:"No ultimate goals yet. Write down the biggest thing you want to reach in your life.",
+  gl_active_ms:"Active milestones", gl_reached:"Goal achieved — congratulations! 🎉",
+  gc_capital:"Capital", gc_health:"Health", gc_islam:"Faith", gc_family:"Family",
+  gc_career:"Business", gc_learning:"Learning", gc_charity:"Charity", gc_other:"Other",
+  plan_limit_life_goals:"More goals", pt_life_goals:"Goals (milestone and ultimate)",
   draft_restored:"Unsaved text restored", autosaved:"Saving…",
   mood_q:"How did you feel today?",
   mood_awful:"Awful", mood_low:"Low", mood_ok:"Okay",
@@ -2531,6 +2677,24 @@ const DICT = {
   rank_title:"Рейтинг", rank_among:"среди {n} человек", rank_top:"Вы в числе {n}% самых активных", rank_top_short:"ТОП {n}%", rank_week:"За неделю", rank_best:"Лучшее", rank_move:"Изменение", rank_private:"Видно только ваше место — имена и результаты других никому не показываются.", rank_soon:"Вы попадёте в рейтинг через {n} дн.", rank_soon_hint:"Место считается после 7 дней активности.", steps_unavailable:"Шаги ещё не пришли. Появятся после обновления сервера.",
   coins_title:"Монеты", coins_shop:"Магазин монет", coins_today:"Сегодня +{n} / {cap} монет", coins_hint:"Задачи, привычки, намаз и итоги дня дают монеты", coins_how:"Каждые {n} баллов = 1 монета. Задачи, привычки, намаз, итоги дня и цель недели дают баллы — до {cap} монет в день, достижения сверху. Ничего не считается дважды.", coins_item_plan:"{plan} — {n} дн.", coins_item_freeze:"Заморозка серии +1", coins_plan_hint:"Добавится к тарифу, после текущего", coins_freeze_hint:"Один слабый день в этом месяце не прервёт серию", coins_need:"Нужно ещё {n} монет", coins_confirm:"Подтвердить ", coins_bought:"Куплено ✓", coins_plans_off:"Тарифы сейчас выключены", coins_freeze_limit:"В этом месяце уже 2 заморозки", coins_history:"Покупки", coins_or:"Или за монеты",
   home_unveil:"Показать остальной день",
+  goals_tab:"Цели", gl_tactical:"Тактические", gl_milestone:"Этапы", gl_ultimate:"Главные",
+  gl_tactical_sub:"эта неделя", gl_milestone_sub:"1–3 года", gl_ultimate_sub:"на всю жизнь",
+  gl_tactical_hint:"Одна–три цели на эту неделю. Каждая двигает вперёд один этап.",
+  gl_milestone_hint:"Конкретные, измеримые шаги со сроком на пути к главной цели.",
+  gl_ultimate_hint:"Самые большие цели вашей жизни. Этапы приближают их.",
+  gl_all:"Все", gl_add_milestone:"Добавить этап", gl_add_ultimate:"Добавить главную цель",
+  gl_edit:"Цель", gl_name:"Чего вы хотите достичь?", gl_level:"Уровень", gl_category:"Сфера",
+  gl_status:"Статус", gl_horizon:"Срок", gl_parent:"Какой главной цели служит",
+  gl_parent_none:"Отдельный этап", gl_progress:"Прогресс", gl_auto:"Считается по этапам",
+  gl_amount:"Сумма (необязательно)", gl_cover:"Значок", gl_note:"Почему это важно", gl_more:"Подробнее",
+  gl_st_dream:"Когда-нибудь", gl_st_active:"В процессе", gl_st_done:"Достигнута",
+  gl_lifetime:"На всю жизнь", gl_no_date:"Без срока", gl_ms_n:"Этапов {done}/{n}",
+  gl_empty_milestone:"Этапов пока нет. Запишите шаг на один–три года к главной цели.",
+  gl_empty_ultimate:"Главных целей пока нет. Запишите самое большое, чего хотите достичь в жизни.",
+  gl_active_ms:"Активные этапы", gl_reached:"Цель достигнута — поздравляем! 🎉",
+  gc_capital:"Капитал", gc_health:"Здоровье", gc_islam:"Вера", gc_family:"Семья",
+  gc_career:"Бизнес", gc_learning:"Знания", gc_charity:"Благотворительность", gc_other:"Другое",
+  plan_limit_life_goals:"Больше целей", pt_life_goals:"Цели (этапы и главные)",
   draft_restored:"Несохранённый текст восстановлен", autosaved:"Сохраняем…",
   mood_q:"Как вы себя чувствовали сегодня?",
   mood_awful:"Очень плохо", mood_low:"Плохо", mood_ok:"Нормально",
@@ -3385,6 +3549,7 @@ function planLine(){
 const PLAN_MATRIX_FALLBACK = {
   limits:{habits:{free:3, pro:25, max:null}, active_tasks:{free:30, pro:null, max:null},
           recurring_tasks:{free:3, pro:25, max:null}, projects:{free:1, pro:15, max:null},
+          life_goals:{free:3, pro:25, max:null},
           open_debts:{free:3, pro:null, max:null}, teams_owned:{free:0, pro:2, max:10},
           team_members:{free:8, pro:10, max:50}, voice_day:{free:null, pro:30, max:100},
           voice_week:{free:5, pro:null, max:null}},
@@ -3409,6 +3574,7 @@ function planTable(p, period, price){
     ["active_tasks", tier => num(L.active_tasks?.[tier])],
     ["recurring_tasks", tier => num(L.recurring_tasks?.[tier])],
     ["projects", tier => num(L.projects?.[tier])],
+    ["life_goals", tier => num(L.life_goals?.[tier])],
     ["open_debts", tier => num(L.open_debts?.[tier])],
     ["teams_owned", tier => num(L.teams_owned?.[tier])],
     ["team_members", tier => num(L.team_members?.[tier])],
@@ -3733,7 +3899,7 @@ function nowBlock(d){
 
 /* Today's work, grouped by the project it belongs to. */
 /* The week goal, the size of one line, right under the day. */
-const focusScreen = () => state.screen === "home" ? "home" : "tasks";
+const focusScreen = () => ["home", "goals"].includes(state.screen) ? state.screen : "tasks";
 function homeGoal(d){
   const g = d.focus;
   if(!g) return "";
@@ -4819,6 +4985,12 @@ function loadDraftRaw(){
 document.addEventListener("visibilitychange", () => { if(document.hidden) flushJournal(); });
 document.addEventListener("input", e => {
   if(e.target.id === "jai-text") return storeJaiText(e.target.value);
+  if(e.target.id === "gl-progress"){
+    const out = document.getElementById("gl-progress-v");
+    if(out) out.textContent = e.target.value + "%";
+    e.target.style.setProperty("--v", e.target.value + "%");
+    return;
+  }
   const el = e.target.closest("[data-journal]");
   if(el) onJournalInput(el);
 });
@@ -5464,6 +5636,193 @@ function weekFocusBlock(){
         ${icon("chevron", 14)}<div class="grow small wrap">${esc(row.title)}
           <div class="t3 tiny">${t("focus_moved")}</div></div></div>`;
   return h + reviewRow;
+}
+
+/* ==================================================================
+   Goals — three levels under Reja.
+   Tactical goals are the week's focus (/api/focus); milestones and the
+   ultimate goals they serve come from /api/goals. The level tiles switch
+   between them and the area chips filter the two upper levels.
+   ================================================================== */
+const GOAL_LEVELS = ["tactical", "milestone", "ultimate"];
+const GOAL_CATS = {capital:"💰", health:"💪", islam:"🕌", family:"💍", career:"💼",
+                   learning:"📚", charity:"🤲", other:"🎯"};
+const GOAL_COVERS = ["🎯", "🚀", "💰", "🏆", "🕌", "💍", "🏊", "📚", "🤲", "🌍", "❤️", "⭐"];
+//: The tab and filter last drawn: cards animate in when this changes, not
+//: on every redraw of the same view.
+let lastGoalView = "";
+
+function goalMoney(amount, unit){
+  if(amount === null || amount === undefined) return "";
+  let n;
+  try{ n = new Intl.NumberFormat("en-US", {notation:"compact", maximumFractionDigits:1}).format(amount); }
+  catch(_){ n = Number(amount).toLocaleString(); }
+  return {USD:"$" + n, EUR:"€" + n, RUB:n + " ₽", UZS:n + " so'm"}[unit] || `${n} ${unit || ""}`.trim();
+}
+const goalHorizon = h => h === "lifetime" ? t("gl_lifetime") : (h || "");
+const goalCover = g => esc(g.cover || GOAL_CATS[g.category] || "🎯");
+const goalStatus = st => `<span class="gstatus st-${st}"><i></i>${t("gl_st_" + st)}</span>`;
+const goalBar = (p, thin) => `<div class="gbar ${thin ? "thin" : ""}" role="progressbar"
+    aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p}"><i style="--p:${p}%"></i></div>`;
+
+function goalLevelTabs(goals, cur){
+  const focus = state.focus || {};
+  const week = [focus.primary, ...(focus.supporting || [])].filter(Boolean);
+  const count = {
+    tactical: week.length ? `${week.filter(x => x.done).length}/${week.length}` : "0",
+    milestone: goals.filter(g => g.level === "milestone" && g.status !== "done").length,
+    ultimate: goals.filter(g => g.level === "ultimate").length,
+  };
+  return `<div class="glevels" role="tablist">${GOAL_LEVELS.map((lv, i) => `
+    <button class="glevel lv-${lv} ${cur === lv ? "on" : ""}" role="tab"
+        aria-selected="${cur === lv}" data-act="goal-tab" data-tab="${lv}">
+      <span class="galt" aria-hidden="true">${[0, 1, 2].map(k =>
+        `<i class="${k <= i ? "on" : ""}"></i>`).join("")}</span>
+      <span class="glevel-n">${count[lv]}</span>
+      <span class="glevel-name">${t("gl_" + lv)}</span>
+      <span class="glevel-sub">${t("gl_" + lv + "_sub")}</span>
+    </button>`).join("")}</div>`;
+}
+
+function goalCatChips(level, cur){
+  const used = Object.keys(GOAL_CATS).filter(c => level.some(g => g.category === c));
+  if(used.length < 2) return "";
+  return `<div class="chips gcats">${[["", t("gl_all"), level.length],
+      ...used.map(c => [c, `${GOAL_CATS[c]} ${t("gc_" + c)}`,
+                        level.filter(g => g.category === c).length])]
+    .map(([id, label, n]) => `<div class="chip sm ${cur === id ? "on" : ""}" role="button"
+        tabindex="0" data-act="goal-cat" data-cat="${id}">${label}<span class="gchip-n">${n}</span></div>`)
+    .join("")}</div>`;
+}
+
+/* An ultimate goal: a card with a cover, the way the vision board in Notion
+   draws it — status, area, horizon, value and how far along it is. */
+function goalCard(g, i){
+  const money = goalMoney(g.amount, g.unit);
+  return `<article class="gcard cat-${g.category} ${g.status === "done" ? "is-done" : ""}"
+      style="--i:${i}" data-act="goal-open" data-id="${g.id}" role="button" tabindex="0">
+    <div class="gcover"><span class="gemoji">${goalCover(g)}</span>${goalStatus(g.status)}</div>
+    <div class="gbody">
+      <div class="gtitle">${esc(g.title)}</div>
+      <div class="gmeta"><span class="gtag">${t("gc_" + g.category)}</span>${g.horizon
+        ? `<span class="gtag soft">${esc(goalHorizon(g.horizon))}</span>` : ""}</div>
+      ${money ? `<div class="gamount">${esc(money)}</div>` : ""}
+      <div class="gprog">${goalBar(g.progress)}<span>${g.progress}%</span></div>
+      ${g.milestones ? `<div class="gms">${t("gl_ms_n", {done: g.milestones_done, n: g.milestones})}</div>` : ""}
+    </div></article>`;
+}
+
+/* A milestone: one row, with the ultimate goal it serves under its name. */
+function goalRow(g, i, byId){
+  const parent = g.parent_id ? byId[g.parent_id] : null;
+  const bits = [parent ? `<span class="gparent">${icon("up", 12)}${esc(parent.title)}</span>` : "",
+    g.horizon ? `<span>${esc(goalHorizon(g.horizon))}</span>` : "",
+    g.amount !== null && g.amount !== undefined ? `<span>${esc(goalMoney(g.amount, g.unit))}</span>` : ""]
+    .filter(Boolean);
+  return `<div class="gitem cat-${g.category} ${g.status === "done" ? "is-done" : ""}" style="--i:${i}"
+      data-act="goal-open" data-id="${g.id}" role="button" tabindex="0">
+    <div class="gtile">${goalCover(g)}</div>
+    <div class="grow">
+      <div class="gtitle sm">${esc(g.title)}</div>
+      ${bits.length ? `<div class="gsub">${bits.join("")}</div>` : ""}
+      ${goalBar(g.progress, true)}
+    </div>
+    <div class="gpct">${g.status === "done" ? icon("check", 16)
+      : g.status === "dream" ? goalStatus("dream") : g.progress + "%"}</div>
+  </div>`;
+}
+
+SCREENS.goals = () => {
+  const d = state.goals;
+  const tab = GOAL_LEVELS.includes(state.goalTab) ? state.goalTab : "ultimate";
+  const all = d?.goals || [];
+  const byId = Object.fromEntries(all.map(g => [g.id, g]));
+  let h = `<div class="head"><h1 class="grow">${t("goals_tab")}</h1></div>` + goalLevelTabs(all, tab);
+  if(!d) return h + `<div class="spin"></div>`;
+  const view = `${tab}|${state.goalCat || ""}`;
+  const anim = view !== lastGoalView ? "ganim" : "";
+  lastGoalView = view;
+
+  if(tab === "tactical"){
+    h += `<p class="ghint">${t("gl_tactical_hint")}</p>` + weekFocusBlock();
+    const open = all.filter(g => g.level === "milestone" && g.status !== "done").slice(0, 5);
+    if(open.length)
+      h += sectionHead("tone-2", "target", t("gl_active_ms"))
+        + `<div class="glist ${anim}">${open.map((g, i) => goalRow(g, i, byId)).join("")}</div>`;
+    return h;
+  }
+
+  const level = all.filter(g => g.level === tab);
+  const cat = level.some(g => g.category === state.goalCat) ? state.goalCat : "";
+  const list = cat ? level.filter(g => g.category === cat) : level;
+  h += `<p class="ghint">${t("gl_" + tab + "_hint")}</p>` + goalCatChips(level, cat);
+  if(!level.length)
+    return h + `<div class="gempty"><div class="gempty-ic">${tab === "ultimate" ? "🏔️" : "🧭"}</div>
+        <div class="t2">${t("gl_empty_" + tab)}</div>
+        <button class="btn" data-act="goal-add" data-level="${tab}">${icon("plus", 16)} ${t("gl_add_" + tab)}</button></div>`;
+  return h + (tab === "ultimate"
+    ? `<div class="ggrid ${anim}">${list.map(goalCard).join("")}</div>`
+    : `<div class="glist ${anim}">${list.map((g, i) => goalRow(g, i, byId)).join("")}</div>`);
+};
+
+/* Add or change a milestone or an ultimate goal. The five things that
+   matter are on top; value, icon and note fold under "More". */
+function goalSheet(g, level){
+  const lv = g?.level || (level === "ultimate" ? "ultimate" : "milestone");
+  const cat = g?.category || state.goalCat || "other";
+  const status = g?.status || (lv === "ultimate" ? "dream" : "active");
+  const year = new Date().getFullYear();
+  const horizons = ["", String(year), String(year + 1), "2030", "2035", "2040", "lifetime"];
+  if(g?.horizon && !horizons.includes(g.horizon)) horizons.splice(horizons.length - 1, 0, g.horizon);
+  const horizon = g ? g.horizon : (lv === "ultimate" ? "2030" : String(year + 1));
+  const ultimates = (state.goals?.goals || []).filter(x => x.level === "ultimate" && x.id !== g?.id);
+  const parent = g?.parent_id ?? null;
+  const pick = (field, value, label, on) => `<div class="chip sm ${on ? "on" : ""}" role="button"
+      tabindex="0" data-act="gl-pick" data-field="${field}" data-value="${esc(value)}">${label}</div>`;
+  return `${sheetHead(g ? t("gl_edit") : t("gl_add_" + lv))}
+    <input id="gl-title" placeholder="${t("gl_name")}" value="${esc(g?.title || "")}" maxlength="200" />
+    <label>${t("gl_level")}</label>
+    <div class="seg">${["milestone", "ultimate"].map(x => `<div class="${lv === x ? "on" : ""}"
+      data-act="gl-pick" data-field="gl-level" data-value="${x}">${t("gl_" + x)}</div>`).join("")}</div>
+    <input type="hidden" id="gl-level" value="${lv}" />
+    <label>${t("gl_category")}</label>
+    <div class="chips">${Object.keys(GOAL_CATS).map(c =>
+      pick("gl-cat", c, `${GOAL_CATS[c]} ${t("gc_" + c)}`, cat === c)).join("")}</div>
+    <input type="hidden" id="gl-cat" value="${cat}" />
+    <label>${t("gl_status")}</label>
+    <div class="chips">${["dream", "active", "done"].map(st =>
+      pick("gl-status", st, t("gl_st_" + st), status === st)).join("")}</div>
+    <input type="hidden" id="gl-status" value="${status}" />
+    <label>${t("gl_horizon")}</label>
+    <div class="chips">${horizons.map(x =>
+      pick("gl-horizon", x, x ? esc(goalHorizon(x)) : t("gl_no_date"), (horizon || "") === x)).join("")}</div>
+    <input type="hidden" id="gl-horizon" value="${esc(horizon || "")}" />
+    <div id="gl-parent-wrap" ${lv === "milestone" ? "" : "hidden"}>
+      <label for="gl-parent">${t("gl_parent")}</label>
+      <select id="gl-parent"><option value="">${t("gl_parent_none")}</option>${ultimates.map(u =>
+        `<option value="${u.id}" ${parent === u.id ? "selected" : ""}>${esc(u.title)}</option>`).join("")}</select>
+    </div>
+    ${g?.auto_progress
+      ? `<div class="hint" style="margin-top:12px">${t("gl_auto")} · <b>${g.progress}%</b></div>`
+      : `<label for="gl-progress">${t("gl_progress")} · <b id="gl-progress-v">${g?.own_progress ?? 0}%</b></label>
+         <input type="range" class="grange" id="gl-progress" min="0" max="100" step="5"
+                value="${g?.own_progress ?? 0}" style="--v:${g?.own_progress ?? 0}%" />`}
+    <details class="gmore" ${g && (g.amount !== null || g.note || g.cover) ? "open" : ""}>
+      <summary>${t("gl_more")}</summary>
+      <label for="gl-amount">${t("gl_amount")}</label>
+      <div class="gamount-row"><input id="gl-amount" inputmode="numeric" placeholder="1 000 000"
+          value="${g?.amount ?? ""}" />
+        <select id="gl-cur" aria-label="${t("gl_amount")}">${["USD", "UZS", "EUR", "RUB"].map(c =>
+          `<option ${(g?.unit || "USD") === c ? "selected" : ""}>${c}</option>`).join("")}</select></div>
+      <label>${t("gl_cover")}</label>
+      <div class="chips gcovers">${GOAL_COVERS.map(e => pick("gl-cover", e, e, (g?.cover || "") === e)).join("")}</div>
+      <input type="hidden" id="gl-cover" value="${esc(g?.cover || "")}" />
+      <label for="gl-note">${t("gl_note")}</label>
+      <textarea id="gl-note" rows="3" maxlength="2000">${esc(g?.note || "")}</textarea>
+    </details>
+    <button class="btn" style="margin-top:16px" data-act="goal-save" ${g ? `data-id="${g.id}"` : ""}>${t("save")}</button>
+    ${g ? `<button class="btn danger" data-act="goal-delete" data-id="${g.id}" style="margin-top:8px">
+      ${icon("trash", 15)} ${t("delete")}</button>` : ""}`;
 }
 
 /* The inbox: every open task there is, in one place.
@@ -8232,7 +8591,7 @@ const NAV = [
   {id:"profile", icon:"user",   key:"nav_profile"},
 ];
 //: Which tab stays lit for each screen. A project opens from Tasks.
-const NAV_OF = {habits:"tracker", tasks:"tracker", project:"tracker",
+const NAV_OF = {habits:"tracker", tasks:"tracker", goals:"tracker", project:"tracker",
                 steps:"profile", stats:"profile", team:"profile", more:"profile"};
 //: A tab opens where the person last was inside it.
 function navTarget(id){
@@ -8245,7 +8604,7 @@ function navTarget(id){
    there is one + on the screen, never two. */
 function screenClass(){
   const sc = state.screen;
-  const grouped = ["habits", "tasks", "steps", "stats", "team"].includes(sc);
+  const grouped = ["habits", "tasks", "goals", "steps", "stats", "team"].includes(sc);
   const nohead = (sc === "habits" && state.tab === "habits") || (sc === "tasks" && state.taskTab !== "projects");
   return [grouped ? "grouped" : "", nohead ? "nohead" : "", "screen-" + sc].join(" ");
 }
@@ -8253,8 +8612,8 @@ function screenClass(){
 function groupBar(screen){
   const seg = (items, cur) => `<div class="seg big groupseg">${items.map(([id, key]) =>
     `<div class="${cur === id ? "on" : ""}" data-act="nav" data-screen="${id}">${t(key)}</div>`).join("")}</div>`;
-  if(screen === "habits" || screen === "tasks")
-    return seg([["habits", "habits"], ["tasks", "tasks"]], screen);
+  if(screen === "habits" || screen === "tasks" || screen === "goals")
+    return seg([["habits", "habits"], ["tasks", "tasks"], ["goals", "goals_tab"]], screen);
   if(screen === "steps" || screen === "stats" || screen === "team"){
     const me = state.me || {};
     const name = esc(me.first_name || me.name || "");
@@ -8296,6 +8655,22 @@ SCREENS.more = () => `<h1>${t("more")}</h1>` + [
     <h2>${t("agent_title")}</h2><div class="hint">${t(state.me?.agent?.available ? "agent_ready" : "agent_off")}</div>
     ${state.me?.agent?.available ? `<button class="btn secondary" data-act="agent-open">${t("agent_open")}</button>` : ""}`;
 
+/* The floating +: what it adds depends on where it is. On Goals it adds at
+   the level being looked at — the week's focus on the tactical tab. */
+function fabAdd(){
+  const sc = state.screen;
+  if(sc === "goals"){
+    const tab = GOAL_LEVELS.includes(state.goalTab) ? state.goalTab : "ultimate";
+    const attrs = tab === "tactical"
+      ? `data-act="focus-add" data-slot="${state.focus?.primary ? "supporting" : "primary"}"`
+      : `data-act="goal-add" data-level="${tab}"`;
+    return `<button class="fab-add" ${attrs} aria-label="${t(tab === "tactical" ? "add_mission"
+      : "gl_add_" + tab)}">${icon("plus", 30)}</button>`;
+  }
+  return `<button class="fab-add" data-act="${sc !== "money" ? "quick-add"
+      : state.moneyTab === "debts" ? "debt-add" : "money-add"}"
+        aria-label="${t(sc === "money" ? "money_add" : "quick_add")}">${icon("plus", 30)}</button>`;
+}
 /* The blocked screen. A full screen with a way out, not a 403 string:
    join, check, and the session continues from where it was. */
 function blockedScreen(){
@@ -8467,9 +8842,7 @@ function render(){
   document.getElementById("fab").innerHTML = chromeOff || noFab ? "" : `
     ${state.me?.agent?.available && state.screen !== "money" ? `<button class="fab-mic" data-act="voice-start"
         aria-label="${t("quick_voice")}">${icon("mic", 22)}</button>` : ""}
-    <button class="fab-add" data-act="${state.screen !== "money" ? "quick-add"
-      : state.moneyTab === "debts" ? "debt-add" : "money-add"}"
-        aria-label="${t(state.screen === "money" ? "money_add" : "quick_add")}">${icon("plus", 30)}</button>`;
+    ${fabAdd()}`;
 
   syncShell();
   syncBackButton();
@@ -8554,6 +8927,12 @@ async function loadScreen(screen){
       if((tasks.teams || []).length && !state.team){
         try{ state.team = await api("/api/teams"); }catch(_){}
       }
+    } else if(screen === "goals"){
+      // Milestones and ultimate goals, and the week's focus for the
+      // tactical level — a failure of the second costs that tab only.
+      const [goals, focus] = await Promise.all([api("/api/goals"),
+        api("/api/focus").catch(() => null)]);
+      setState({goals, focus: focus ? focus.week : state.focus});
     } else if(screen === "steps"){
       const [progress, coins] = await Promise.all([api("/api/progress/me"),
         api("/api/coins").catch(() => null)]);
@@ -8625,7 +9004,8 @@ async function loadStats(period){
 function goto(screen, patch){
   haptic();
   if(screen !== "home") state.homeVeil = false;
-  if(screen === "habits" || screen === "tasks") state.trackerLast = screen;
+  if(screen === "habits" || screen === "tasks" || screen === "goals") state.trackerLast = screen;
+  if(screen === "goals") lastGoalView = "";
   if(["steps", "stats", "team"].includes(screen)) state.profileLast = screen;
   setState({screen, error:null, screenError:null, reorderMode:false, ...(patch || {})});
   loadScreen(screen);
@@ -10137,6 +10517,50 @@ const A = {
 
   /* ---- the week's focus ---- */
   "focus-add": el => { state.form = {}; openSheet(missionSheet(null, el.dataset.slot)); },
+
+  /* ---- goals ---- */
+  "goal-tab": el => { haptic(); state.goalTab = el.dataset.tab; render(); },
+  "goal-cat": el => { haptic(); state.goalCat = el.dataset.cat || ""; render(); },
+  "goal-add": el => openSheet(goalSheet(null, el.dataset.level || state.goalTab)),
+  "goal-open": el => {
+    const g = (state.goals?.goals || []).find(x => String(x.id) === el.dataset.id);
+    if(g) openSheet(goalSheet(g));
+  },
+  "gl-pick": el => {
+    const input = document.getElementById(el.dataset.field);
+    if(!input) return;
+    // The icon can be unpicked; every other choice always has one value.
+    const off = el.dataset.field === "gl-cover" && el.classList.contains("on");
+    input.value = off ? "" : el.dataset.value;
+    el.parentElement.querySelectorAll(":scope > *")
+      .forEach(x => x.classList.toggle("on", !off && x === el));
+    if(el.dataset.field === "gl-level")
+      document.getElementById("gl-parent-wrap").hidden = el.dataset.value !== "milestone";
+  },
+  "goal-save": el => {
+    const title = trimmed("gl-title");
+    if(!title){ document.getElementById("gl-title")?.focus(); return; }
+    const level = val("gl-level") || "milestone";
+    const digits = val("gl-amount").replace(/[^0-9]/g, "");
+    const body = {title, level, category: val("gl-cat") || "other",
+      status: val("gl-status") || "active", horizon: val("gl-horizon"),
+      amount: digits ? Number(digits) : null, unit: val("gl-cur") || "USD",
+      cover: val("gl-cover"), note: val("gl-note").trim(),
+      parent_id: level === "milestone" && val("gl-parent") ? Number(val("gl-parent")) : null};
+    const range = document.getElementById("gl-progress");
+    if(range) body.progress = Number(range.value);
+    const id = el.dataset.id;
+    const before = id && (state.goals?.goals || []).find(x => String(x.id) === id);
+    const reached = body.status === "done" && before?.status !== "done";
+    if(reached) notify("success");
+    if(!id) state.goalTab = level;
+    return save(() => api(id ? `/api/goals/${id}` : "/api/goals",
+                          {method: id ? "PATCH" : "POST", body}),
+                "goals", false, reached ? t("gl_reached") : undefined);
+  },
+  "goal-delete": el => confirmSheet("goal-delete-go", el.dataset.id),
+  "goal-delete-go": el => save(() => api(`/api/goals/${el.dataset.id}`, {method:"DELETE"}),
+                               "goals", false, t("deleted")),
   "focus-open": el => openSheet(missionSheet(el.dataset)),
   "focus-pri": el => {
     document.getElementById("focus-priority").value = el.dataset.value;
@@ -10157,7 +10581,7 @@ const A = {
   },
   "focus-update": el => save(() => api(`/api/focus/${el.dataset.id}`,
     {method:"PATCH", body:{title: trimmed("focus-title"),
-                           priority: val("focus-priority")}}), "tasks"),
+                           priority: val("focus-priority")}}), focusScreen()),
   "focus-toggle": el => { haptic();
     save(() => api(`/api/focus/${el.dataset.id}/toggle`, {method:"POST"}),
          focusScreen(), true); },

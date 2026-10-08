@@ -73,6 +73,8 @@ LIMITS: dict[str, dict[str, int | None]] = {
     "active_tasks":    {"free": 30, "pro": None, "max": None},
     "recurring_tasks": {"free": 3,  "pro": 25,   "max": None},
     "projects":        {"free": 1,  "pro": 15,   "max": None},
+    #: Milestone and ultimate goals still being worked on.
+    "life_goals":      {"free": 3,  "pro": 25,   "max": None},
     "open_debts":      {"free": 3,  "pro": None, "max": None},
     #: Teams an account owns. Joining somebody else's team is always free.
     "teams_owned":     {"free": 0,  "pro": 2,    "max": 10},

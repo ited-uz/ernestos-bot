@@ -40,7 +40,7 @@ from db import (
     AgentAudit, AgentDraft, AgentPreference,
     Birthday, Countdown, DailyReportLog, DailyScore, Feedback, Habit, HabitLog,
     HabitPauseInterval, HabitScheduleVersion, IdempotencyKey, JobRun,
-    Debt, DebtPayment, JournalEntry, MoneyBudget, ResetLog, Snooze, MoneyEntry, PrayerDay, PrayerLog, Project,
+    Debt, DebtPayment, JournalEntry, LifeGoal, MoneyBudget, ResetLog, Snooze, MoneyEntry, PrayerDay, PrayerLog, Project,
     Referral, ReferralCode, Task,
     Team, TeamActivity, TeamDayScore, TeamHabit, TeamHabitLog, TeamJoinRequest,
     TeamMember, TeamTask, TeamTaskDone, TimerRun, User, UserAchievement,
@@ -1967,6 +1967,200 @@ def delete_project(s: Session, ws: int, project_id: int) -> str:
     project.archived_at = utcnow()
     s.commit()
     return project.name
+
+
+# ---------------------------------------------------------------------------
+# Goals above the week
+# ---------------------------------------------------------------------------
+
+#: Tactical goals are the week's focus; these are the two levels above it.
+GOAL_LEVELS = ["milestone", "ultimate"]
+GOAL_STATUSES = ["dream", "active", "done"]
+GOAL_CATEGORIES = ["capital", "health", "islam", "family", "career",
+                   "learning", "charity", "other"]
+GOAL_UNITS = ["USD", "UZS", "EUR", "RUB"]
+_GOAL_AMOUNT_MAX = 10 ** 13
+
+
+def _goal_horizon(value) -> str:
+    """"2030", "lifetime" or "". Anything else is a mistake, not a horizon."""
+    value = str(value or "").strip().lower()
+    if value in ("", "lifetime"):
+        return value
+    if value.isdigit() and 2000 <= int(value) <= 2200:
+        return value
+    raise ValueError("bad_horizon")
+
+
+def _goal_fields(s: Session, ws: int, fields: dict, goal: LifeGoal | None) -> dict:
+    """Validated column values for a new goal or a change to one."""
+    out: dict = {}
+    if "title" in fields:
+        title = str(fields["title"] or "").strip()[:200]
+        if not title:
+            raise ValueError("empty_goal_title")
+        out["title"] = title
+    if "level" in fields:
+        if fields["level"] not in GOAL_LEVELS:
+            raise ValueError("bad_goal_level")
+        out["level"] = fields["level"]
+    if "category" in fields:
+        out["category"] = fields["category"] if fields["category"] in GOAL_CATEGORIES else "other"
+    if "status" in fields:
+        if fields["status"] not in GOAL_STATUSES:
+            raise ValueError("bad_goal_status")
+        out["status"] = fields["status"]
+    if "horizon" in fields:
+        out["horizon"] = _goal_horizon(fields["horizon"])
+    if "amount" in fields:
+        amount = fields["amount"]
+        if amount in (None, ""):
+            out["amount"] = None
+        else:
+            amount = int(amount)
+            if not 0 <= amount <= _GOAL_AMOUNT_MAX:
+                raise ValueError("bad_goal_amount")
+            out["amount"] = amount or None
+    if "unit" in fields:
+        unit = str(fields["unit"] or "USD").upper()
+        out["unit"] = unit if unit in GOAL_UNITS else "USD"
+    if "progress" in fields:
+        out["progress"] = max(0, min(100, int(fields["progress"] or 0)))
+    if "cover" in fields:
+        out["cover"] = str(fields["cover"] or "").strip()[:16]
+    if "note" in fields:
+        out["note"] = str(fields["note"] or "").strip()[:2000]
+    level = out.get("level") or (goal.level if goal else "milestone")
+    if "parent_id" in fields or "level" in fields:
+        parent_id = fields.get("parent_id", goal.parent_id if goal else None)
+        if level != "milestone" or not parent_id:
+            out["parent_id"] = None
+        else:
+            parent = s.get(LifeGoal, int(parent_id))
+            if (parent is None or parent.workspace_id != ws or parent.archived_at
+                    or parent.level != "ultimate"
+                    or (goal is not None and parent.id == goal.id)):
+                raise ValueError("bad_goal_parent")
+            out["parent_id"] = parent.id
+    return out
+
+
+def _goal_dict(g: LifeGoal, children: list[LifeGoal]) -> dict:
+    """One goal as the app draws it. An ultimate goal with milestones shows
+    how many of them are done instead of a number typed by hand."""
+    done_children = sum(1 for c in children if c.status == "done")
+    if g.status == "done":
+        progress = 100
+    elif g.level == "ultimate" and children:
+        progress = round(sum(100 if c.status == "done" else (c.progress or 0)
+                             for c in children) / len(children))
+    else:
+        progress = g.progress or 0
+    return {
+        "id": g.id, "level": g.level, "title": g.title, "category": g.category,
+        "horizon": g.horizon or "", "status": g.status,
+        "amount": int(g.amount) if g.amount is not None else None,
+        "unit": g.unit or "USD",
+        "progress": progress, "own_progress": g.progress or 0,
+        "auto_progress": g.level == "ultimate" and bool(children) and g.status != "done",
+        "parent_id": g.parent_id, "cover": g.cover or "", "note": g.note or "",
+        "position": g.position or 0,
+        "milestones": len(children), "milestones_done": done_children,
+        "created_at": g.created_at.isoformat() if g.created_at else None,
+        "done_at": g.done_at.isoformat() if g.done_at else None,
+    }
+
+
+def list_goals(s: Session, ws: int) -> list[dict]:
+    """Every goal that is not archived: in progress, then someday, then
+    achieved — each by position."""
+    rows = s.scalars(select(LifeGoal).where(LifeGoal.workspace_id == ws,
+                                            LifeGoal.archived_at.is_(None))).all()
+    kids: dict[int, list[LifeGoal]] = {}
+    for g in rows:
+        if g.level == "milestone" and g.parent_id:
+            kids.setdefault(g.parent_id, []).append(g)
+    order = {"active": 0, "dream": 1, "done": 2}
+    rows = sorted(rows, key=lambda g: (order.get(g.status, 1), g.position or 0, g.id))
+    return [_goal_dict(g, kids.get(g.id, []) if g.level == "ultimate" else []) for g in rows]
+
+
+def _open_goal_count(s: Session, ws: int) -> int:
+    """What the plan limit counts: goals still being worked on. A finished
+    goal stays on the board and does not take a place."""
+    return int(s.scalar(select(func.count(LifeGoal.id)).where(
+        LifeGoal.workspace_id == ws, LifeGoal.archived_at.is_(None),
+        LifeGoal.status != "done")) or 0)
+
+
+def add_goal(s: Session, ws: int, **fields) -> LifeGoal:
+    fields.setdefault("level", "milestone")
+    values = _goal_fields(s, ws, fields, None)
+    if "title" not in values:
+        raise ValueError("empty_goal_title")
+    if values.get("status", "active") != "done":
+        plans.require_in_workspace(s, ws, "life_goals", _open_goal_count(s, ws))
+    last = s.scalar(select(func.max(LifeGoal.position)).where(
+        LifeGoal.workspace_id == ws, LifeGoal.level == values["level"])) or 0
+    goal = LifeGoal(workspace_id=ws, position=last + 1, **values)
+    if goal.status == "done":
+        goal.done_at = utcnow()
+    s.add(goal)
+    s.commit()
+    return goal
+
+
+def _owned_goal(s: Session, ws: int, goal_id: int, *, allow_archived: bool = False) -> LifeGoal:
+    goal = s.get(LifeGoal, goal_id)
+    if goal is None or goal.workspace_id != ws or (goal.archived_at and not allow_archived):
+        raise NotFound("goal")
+    return goal
+
+
+def update_goal(s: Session, ws: int, goal_id: int, **fields) -> LifeGoal:
+    goal = _owned_goal(s, ws, goal_id, allow_archived=True)
+    archived = fields.pop("archived", None)
+    if archived is False and goal.archived_at and goal.status != "done":
+        # Bringing a goal back takes a place again, like adding it.
+        plans.require_in_workspace(s, ws, "life_goals", _open_goal_count(s, ws))
+    values = _goal_fields(s, ws, fields, goal)
+    if (values.get("status") in ("dream", "active") and goal.status == "done"
+            and not goal.archived_at):
+        plans.require_in_workspace(s, ws, "life_goals", _open_goal_count(s, ws))
+    if values.get("level") == "milestone" and goal.level == "ultimate":
+        # An ultimate goal turned into a milestone lets its milestones go.
+        for child in s.scalars(select(LifeGoal).where(LifeGoal.parent_id == goal.id)).all():
+            child.parent_id = None
+    for key, value in values.items():
+        setattr(goal, key, value)
+    if "status" in values:
+        goal.done_at = (goal.done_at or utcnow()) if goal.status == "done" else None
+    if archived is not None:
+        goal.archived_at = utcnow() if archived else None
+    s.commit()
+    return goal
+
+
+def delete_goal(s: Session, ws: int, goal_id: int) -> str:
+    """Archive a goal. Its milestones stay, no longer under it."""
+    goal = _owned_goal(s, ws, goal_id)
+    for child in s.scalars(select(LifeGoal).where(LifeGoal.parent_id == goal.id)).all():
+        child.parent_id = None
+    goal.archived_at = utcnow()
+    s.commit()
+    return goal.title
+
+
+def _export_goals(s: Session, ws: int) -> list[dict]:
+    return [{"id": g.id, "level": g.level, "title": g.title, "category": g.category,
+             "horizon": g.horizon, "status": g.status,
+             "amount": int(g.amount) if g.amount is not None else None,
+             "unit": g.unit, "progress": g.progress, "parent_id": g.parent_id,
+             "cover": g.cover, "note": g.note,
+             "done_at": g.done_at.isoformat() if g.done_at else None,
+             "archived": g.archived_at is not None}
+            for g in s.scalars(select(LifeGoal).where(LifeGoal.workspace_id == ws)
+                               .order_by(LifeGoal.id)).all()]
 
 
 # ---------------------------------------------------------------------------
@@ -5165,6 +5359,7 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
             for f in s.scalars(select(WeeklyFocus)
                                .where(WeeklyFocus.workspace_id == ws)
                                .order_by(WeeklyFocus.week_start)).all()],
+        "goals": _export_goals(s, ws),
         "weekly_reviews": [
             {"week_start": r.week_start.isoformat(), "went_well": r.went_well,
              "blocked": r.blocked, "next_focus": r.next_focus}
@@ -5215,7 +5410,7 @@ WORKSPACE_TABLES = [AgentAudit, AgentDraft, AgentPreference,
                     Habit, PrayerLog, PrayerDay, ResetLog, Task,
                     Project, WeeklyFocus, WeeklyReview, JournalEntry, Birthday,
                     Countdown, Feedback, DailyReportLog, MoneyEntry, MoneyBudget,
-                    DebtPayment, Debt, Snooze]
+                    DebtPayment, Debt, Snooze, LifeGoal]
 
 
 def wipe_workspace(s: Session, telegram_id: int) -> bool:

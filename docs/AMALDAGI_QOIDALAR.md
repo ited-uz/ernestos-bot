@@ -126,6 +126,7 @@ navbatga tushadi va ulanganda bir marta yuboriladi.
 | Faol vazifalar | **30** | cheksiz | cheksiz |
 | Takrorlanuvchi vazifalar | **3** | **25** | cheksiz |
 | Loyihalar | **1** | **15** | cheksiz |
+| Maqsadlar (bosqich va asosiy, ochiqlari) | **3** | **25** | cheksiz |
 | Ochiq qarzlar | **3** | cheksiz | cheksiz |
 | O‘zi yaratgan jamoalar | **0** | **2** | **10** |
 | Jamoa a’zolari (egasining tarifi) | **8** | **10** | **50** |
