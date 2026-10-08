@@ -34,6 +34,8 @@ from sqlalchemy import case, event, func, or_, select, text as sql_text, update 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+import plans
+
 from db import (
     AgentAudit, AgentDraft, AgentPreference,
     Birthday, Countdown, DailyReportLog, DailyScore, Feedback, Habit, HabitLog,
@@ -293,6 +295,8 @@ def get_or_create_user(s: Session, telegram_id: int, *, first_name: str = "",
     """Return (user, created). Creating a user also builds their workspace."""
     user = s.get(User, telegram_id)
     if user is not None:
+        if user.plan_started_at is None and plans.ENABLED:
+            plans.ensure_started(s, user, created=False)   # launch gift, once
         # Keep Telegram profile fields fresh, but never overwrite with blanks.
         if first_name and not user.onboarded:
             user.first_name = first_name
@@ -329,6 +333,7 @@ def get_or_create_user(s: Session, telegram_id: int, *, first_name: str = "",
     s.flush()
 
     seed_default_habits(s, workspace.id)
+    plans.ensure_started(s, user, created=True)   # the Pro trial
     s.commit()
     return user, True
 
@@ -972,6 +977,11 @@ def add_habit(s: Session, ws: int, name: str, category: str = "target", *,
         category = "target"
     tz = tz or _habit_tz(s, ws)
     today = today_local(tz)
+    # The three rituals do not count against the plan; everything else does.
+    plans.require_in_workspace(s, ws, "habits", s.scalar(
+        select(func.count(Habit.id)).where(Habit.workspace_id == ws,
+                                           Habit.archived_at.is_(None),
+                                           Habit.system_key == "")) or 0)
     top = s.scalar(select(func.max(Habit.position)).where(Habit.workspace_id == ws)) or 0
     target_qty, min_qty, unit = clean_quantity(target_qty, min_qty, unit)
     habit = Habit(workspace_id=ws, name=name, category=category, position=top + 1,
@@ -1885,6 +1895,10 @@ def add_project(s: Session, ws: int, name: str, *, description: str = "",
     name = name.strip()[:200]
     if not name:
         raise ValueError("empty project name")
+    plans.require_in_workspace(s, ws, "projects", s.scalar(
+        select(func.count(Project.id)).where(Project.workspace_id == ws,
+                                             Project.team_id.is_(None),
+                                             Project.archived_at.is_(None))) or 0)
     project = Project(workspace_id=ws, name=name,
                       description=description.strip()[:2000], deadline=deadline,
                       created_by=workspace_owner(s, ws))
@@ -2063,6 +2077,13 @@ def add_task(s: Session, ws: int, title: str, *, deadline: date | None = None,
         if project is None or project.workspace_id != ws or project.team_id is not None:
             raise NotFound("project")
 
+    if plans.ENABLED:
+        open_tasks = select(func.count(Task.id)).where(
+            Task.workspace_id == ws, Task.status != "done", Task.archived_at.is_(None))
+        plans.require_in_workspace(s, ws, "active_tasks", s.scalar(open_tasks) or 0)
+        if clean_recurrence(recurrence):
+            plans.require_in_workspace(s, ws, "recurring_tasks", s.scalar(
+                open_tasks.where(Task.recurrence.is_not(None), Task.recurrence != "")) or 0)
     task = Task(workspace_id=ws, title=title, deadline=deadline,
                 project_id=project_id, priority=priority,
                 description=description.strip()[:4000],
@@ -3290,6 +3311,32 @@ def delete_money(s: Session, ws: int, entry_id: int) -> dict:
     return out
 
 
+def update_money(s: Session, ws: int, entry_id: int, *, kind: str | None = None,
+                 amount=None, category: str | None = None, note: str | None = None,
+                 day: date | None = None) -> dict:
+    """Correct an entry in place (K21): amount, direction, category, note or
+    day. Deleting and typing it again lost its place and its history."""
+    row = s.get(MoneyEntry, entry_id)
+    if row is None or row.workspace_id != ws:
+        raise NotFound("money")
+    if kind is not None:
+        if kind not in MONEY_KINDS:
+            raise ValueError("bad_kind")
+        row.kind = kind
+    if amount is not None:
+        row.amount = clean_money_amount(amount)
+    if note is not None:
+        row.note = str(note).strip()[:200]
+    if category is not None or kind is not None:
+        wanted = category if category is not None else row.category
+        row.category = wanted if money_category_kind(wanted) == row.kind \
+            else detect_money_category(row.note, row.kind)
+    if day is not None:
+        row.day = day
+    s.commit()
+    return _money_dict(row)
+
+
 def restore_money(s: Session, ws: int, data: dict) -> dict:
     """Undo a delete: the same entry, back on the day it was."""
     return add_money(s, ws, data["kind"], data["amount"], data["category"],
@@ -3435,6 +3482,9 @@ def add_debt(s: Session, ws: int, person: str, amount, direction: str, *,
         raise ValueError("bad_person")
     if direction not in DEBT_DIRECTIONS:
         raise ValueError("bad_direction")
+    plans.require_in_workspace(s, ws, "open_debts", s.scalar(
+        select(func.count(Debt.id)).where(Debt.workspace_id == ws, Debt.settled_at.is_(None),
+                                          Debt.archived_at.is_(None))) or 0)
     row = Debt(workspace_id=ws, person=person, amount=clean_money_amount(amount),
                direction=direction, note=str(note or "").strip()[:200], due=due)
     s.add(row)
@@ -5014,20 +5064,32 @@ def _export_debts(s: Session, ws: int) -> list[dict]:
     return [_debt_dict(r, None, pays[r.id]) for r in rows]
 
 
+EXPORT_SCHEMA_VERSION = 2
+
+
 def export_workspace(s: Session, ws: int, user: User) -> dict:
     """Everything this workspace contains, as plain JSON-ready data."""
     def habits():
         for h in s.scalars(select(Habit).where(Habit.workspace_id == ws)).all():
-            yield {"name": h.name, "category": h.category,
+            # `id` is what habit_logs, schedule versions, pauses and timers
+            # point at; without it an export could not be put back together.
+            yield {"id": h.id, "name": h.name, "category": h.category,
+                   "system_key": h.system_key or None, "position": h.position,
                    "schedule": clean_schedule(h.schedule),
                    "target_time": h.target_time.strftime("%H:%M") if h.target_time else None,
+                   "remind_at": h.remind_at.strftime("%H:%M") if h.remind_at else None,
                    "timer_minutes": h.timer_minutes,
+                   "target_qty": h.target_qty, "min_qty": h.min_qty, "unit": h.unit,
                    "active_from": h.active_from.isoformat() if h.active_from else None,
                    "paused": h.paused_at is not None,
                    "archived": h.archived_at is not None,
                    "created": h.created_at.isoformat() if h.created_at else None}
 
     return {
+        #: Bumped whenever a section or a field's meaning changes, so a
+        #: reader can tell which shape it holds (K25). 2: stable ids, habit
+        #: amounts, schedule history, pauses and timer sessions.
+        "schema_version": EXPORT_SCHEMA_VERSION,
         "exported_at": datetime.now(user_tz(user)).isoformat(),
         "profile": {
             "member_no": user.member_no,
@@ -5039,23 +5101,47 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
         },
         "habits": list(habits()),
         "habit_logs": [
-            {"habit_id": r.habit_id, "day": r.day.isoformat(), "done": r.done}
+            {"habit_id": r.habit_id, "day": r.day.isoformat(), "done": r.done, "qty": r.qty}
             for r in s.scalars(select(HabitLog)
                                .where(HabitLog.workspace_id == ws)
                                .order_by(HabitLog.day)).all()],
+        "habit_schedules": [
+            {"habit_id": r.item_id, "valid_from": r.valid_from.isoformat(), "schedule": r.schedule}
+            for r in s.scalars(select(HabitScheduleVersion)
+                               .where(HabitScheduleVersion.workspace_id == ws,
+                                      HabitScheduleVersion.kind == "habit")
+                               .order_by(HabitScheduleVersion.item_id,
+                                         HabitScheduleVersion.valid_from)).all()],
+        "habit_pauses": [
+            {"habit_id": r.item_id, "start_day": r.start_day.isoformat(),
+             "end_day": r.end_day.isoformat() if r.end_day else None}
+            for r in s.scalars(select(HabitPauseInterval)
+                               .where(HabitPauseInterval.workspace_id == ws,
+                                      HabitPauseInterval.kind == "habit")
+                               .order_by(HabitPauseInterval.item_id,
+                                         HabitPauseInterval.start_day)).all()],
+        "timers": [
+            {"kind": r.kind, "item_id": r.item_id, "day": r.day.isoformat(), "title": r.title,
+             "planned_sec": r.duration_sec, "worked_sec": r.elapsed_sec, "status": r.status,
+             "manual": bool(r.manual),
+             "started_at": r.started_at.isoformat() if r.started_at else None,
+             "finished_at": r.finished_at.isoformat() if r.finished_at else None}
+            for r in s.scalars(select(TimerRun)
+                               .where(TimerRun.workspace_id == ws)
+                               .order_by(TimerRun.day, TimerRun.id)).all()],
         "prayers": [
             {"day": r.day.isoformat(), "prayer": r.prayer, "status": r.status}
             for r in s.scalars(select(PrayerLog)
                                .where(PrayerLog.workspace_id == ws)
                                .order_by(PrayerLog.day)).all()],
         "projects": [
-            {"name": p.name, "description": p.description, "status": p.status,
+            {"id": p.id, "name": p.name, "description": p.description, "status": p.status,
              "deadline": p.deadline.isoformat() if p.deadline else None,
              "archived": p.archived_at is not None}
             for p in s.scalars(select(Project).where(
                 Project.workspace_id == ws, Project.team_id.is_(None))).all()],
         "tasks": [
-            {"title": t.title, "description": t.description, "status": t.status,
+            {"id": t.id, "title": t.title, "description": t.description, "status": t.status,
              "priority": t.priority, "project_id": t.project_id,
              "deadline": t.deadline.isoformat() if t.deadline else None,
              "due_time": t.due_time.strftime("%H:%M") if t.due_time else None,
@@ -5093,7 +5179,7 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
             for r in s.scalars(select(Birthday)
                                .where(Birthday.workspace_id == ws)).all()],
         "money": [
-            {"day": r.day.isoformat(), "kind": r.kind, "amount": int(r.amount),
+            {"id": r.id, "day": r.day.isoformat(), "kind": r.kind, "amount": int(r.amount),
              "category": r.category, "note": r.note, "source": r.source}
             for r in s.scalars(select(MoneyEntry)
                                .where(MoneyEntry.workspace_id == ws)
@@ -5164,6 +5250,29 @@ def delete_account(s: Session, telegram_id: int) -> bool:
     if user is None:
         return False
 
+    # Teams this account owns (K02). `teams.owner_id` cascades on delete, so
+    # erasing the owner would erase the team — and every other member's
+    # tasks, ticks and history in it. A live team with other people in it
+    # needs a new owner first, exactly as leaving does; an archived one is
+    # handed to its earliest other member so their past stays; one nobody
+    # else was ever in goes with the account.
+    owned = s.scalars(select(Team).where(Team.owner_id == telegram_id)).all()
+    for team in owned:
+        if team.archived_at is None and any(
+                m["user_id"] != telegram_id for m in team_members(s, team.id)):
+            raise ValueError("owner_must_transfer")
+    for team in owned:
+        heir = s.scalar(select(TeamMember.user_id).where(
+            TeamMember.team_id == team.id, TeamMember.user_id != telegram_id)
+            .order_by(TeamMember.joined_at).limit(1))
+        if heir is None:
+            s.delete(team)
+        else:
+            team.owner_id = heir
+            team.pending_owner_id = None
+            team.archived_at = team.archived_at or utcnow()
+    s.flush()
+
     ws = s.scalar(select(Workspace.id).where(Workspace.user_id == telegram_id))
     if ws is not None:
         for model in WORKSPACE_TABLES:
@@ -5186,6 +5295,8 @@ def delete_account(s: Session, telegram_id: int) -> bool:
     s.execute(sql_delete(TeamHabitLog).where(TeamHabitLog.user_id == telegram_id))
     s.execute(sql_delete(TeamDayScore).where(TeamDayScore.user_id == telegram_id))
     s.execute(sql_delete(TeamJoinRequest).where(TeamJoinRequest.user_id == telegram_id))
+    from db import UserAvatar
+    s.execute(sql_delete(UserAvatar).where(UserAvatar.account_id == telegram_id))
     # The login, the password, and every Telegram signed in to the account.
     import accounts
     accounts.forget_account(s, telegram_id)
@@ -5276,6 +5387,21 @@ def idempotency_cleanup(s: Session) -> int:
     from sqlalchemy import delete as sql_delete
     result = s.execute(sql_delete(IdempotencyKey).where(
         IdempotencyKey.created_at < utcnow() - IDEMPOTENCY_TTL))
+    s.commit()
+    return result.rowcount or 0
+
+
+#: How long the voice agent's audit trail is kept. Long enough to answer
+#: "what did it do last month?", short enough that a busy account does not
+#: grow the table without end.
+AGENT_AUDIT_KEEP = timedelta(days=180)
+
+
+def agent_audit_cleanup(s: Session) -> int:
+    from sqlalchemy import delete as sql_delete
+    from db import AgentAudit
+    result = s.execute(sql_delete(AgentAudit).where(
+        AgentAudit.created_at < utcnow() - AGENT_AUDIT_KEEP))
     s.commit()
     return result.rowcount or 0
 
@@ -5390,6 +5516,12 @@ def maybe_qualify_referral(s: Session, user_id: int) -> int | None:
     if not won:
         return None
     s.expire(referral)
+    # The friend gets a few days of Pro on arrival; the inviter is paid in
+    # steps (5 / 10 / 20 friends), each once.
+    plans.referral_bonus(s, user_id)
+    inviter = referral.inviter_user_id
+    plans.referral_rewards(s, inviter, referral_stats(s, inviter)["counts"]["qualified"])
+    s.commit()
     return referral.inviter_user_id
 
 
@@ -6934,6 +7066,15 @@ class JobLock:
 
 #: A shared space is for people working together, not an audience.
 MAX_TEAM_MEMBERS = 8
+
+
+def team_member_cap(s: Session, team) -> int:
+    """How many people this team may hold: set by its owner's plan. With
+    plans off it is the old fixed size."""
+    if not plans.ENABLED:
+        return MAX_TEAM_MEMBERS
+    tier = plans.tier_of(s, team.owner_id)
+    return plans.LIMITS["team_members"][tier] or MAX_TEAM_MEMBERS
 #: How many teams one account may belong to.
 MAX_TEAMS_PER_USER = 5
 #: Bytes of randomness in an invite code.
@@ -6986,6 +7127,9 @@ def create_team(s: Session, user_id: int, name: str) -> Team:
         raise ValueError("empty_name")
     if len(teams_for(s, user_id)) >= MAX_TEAMS_PER_USER:
         raise ValueError("too_many_teams")
+    plans.require(s, user_id, "teams_owned", s.scalar(
+        select(func.count(Team.id)).where(Team.owner_id == user_id,
+                                          Team.archived_at.is_(None))) or 0)
 
     for _ in range(5):
         team = Team(name=name, owner_id=user_id,
@@ -7198,7 +7342,7 @@ def preview_invite(s: Session, code: str) -> dict | None:
     members = team_members(s, team.id)
     return {"team_id": team.id, "name": team.name, "code": team.code,
             "owner": _display_name(owner), "members": len(members),
-            "max_members": MAX_TEAM_MEMBERS, **invite_info(team)}
+            "max_members": team_member_cap(s, team), **invite_info(team)}
 
 
 def join_team(s: Session, user_id: int, code: str) -> tuple[Team | None, str]:
@@ -7229,7 +7373,7 @@ def join_team(s: Session, user_id: int, code: str) -> tuple[Team | None, str]:
     count = s.scalar(select(func.count()).select_from(TeamMember)
                      .where(TeamMember.team_id == team.id,
                             TeamMember.left_at.is_(None))) or 0
-    if count >= MAX_TEAM_MEMBERS:
+    if count >= team_member_cap(s, team):
         return team, "full"
     if len(teams_for(s, user_id)) >= MAX_TEAMS_PER_USER:
         return team, "full"
@@ -7293,7 +7437,7 @@ def decide_join_request(s: Session, user_id: int, request_id: int,
     count = s.scalar(select(func.count()).select_from(TeamMember)
                      .where(TeamMember.team_id == team.id,
                             TeamMember.left_at.is_(None))) or 0
-    if count >= MAX_TEAM_MEMBERS:
+    if count >= team_member_cap(s, team):
         request.status = "declined"
         s.commit()
         return request, team, "full"

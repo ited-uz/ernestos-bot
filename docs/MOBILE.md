@@ -62,8 +62,16 @@ Serverda `APP_ORIGINS` sozlanmasa, standart qiymat ishlaydi
 
     cd mobile && npm install
     ERNEST_API_URL=https://… npm run sync     # www/ ni yig'ib, android/ ga ko'chiradi
-    python mobile/scripts/make-icons.py        # ikonka va splash (Pillow kerak)
+    bash mobile/scripts/make-brand.sh          # logo: ikonka, splash, kirish sahifasi (ImageMagick kerak)
     scripts/e2e_app.sh                         # brauzerda ilova qatlami sinovi
+
+## Sinov sahifasi (telefonsiz)
+
+    node mobile/scripts/build-demo.mjs ernestos-ilova.html uz
+
+Bitta HTML fayl: ilovaning o'zi (`webapp/index.html`), ilova rejimida, namuna
+ma'lumotlar bilan (`webapp/preview.js`). Serverga ulanmaydi, hech narsa
+saqlanmaydi — dizayn va oqimni ko'rib chiqish uchun.
 
 ## iOS
 

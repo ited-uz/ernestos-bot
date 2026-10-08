@@ -11,6 +11,8 @@ Run with:  uvicorn app:app --host 0.0.0.0 --port $PORT
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import hmac
 import json
 import logging
@@ -23,24 +25,26 @@ from urllib.parse import quote
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select, text as sql_text
 from sqlalchemy.exc import DBAPIError, OperationalError
 from telegram import (
-    InlineKeyboardButton, InlineKeyboardMarkup, InputFile, MenuButtonWebApp,
+    InlineKeyboardButton, InlineKeyboardMarkup, InputFile, LabeledPrice, MenuButtonWebApp,
     ReplyKeyboardMarkup, Update, WebAppInfo,
 )
 from telegram.constants import ParseMode
 from telegram.error import BadRequest, Forbidden, TelegramError
 from telegram.ext import (
     Application, CallbackQueryHandler, ChatMemberHandler, CommandHandler,
-    ContextTypes, MessageHandler, filters,
+    ContextTypes, MessageHandler, PreCheckoutQueryHandler, filters,
 )
 
 import accounts
 import app_auth
 import app_push
+import plans
 import agent_api
 import agent_core
 import agent_provider
@@ -4729,6 +4733,9 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     elif action == "tmr":
         await route_timer(update, ctx, parts, user, ws, lang)
 
+    elif action == "plan" and len(parts) == 3 and parts[1] == "buy":
+        await send_plan_invoice(update, ctx, parts[2])
+
     elif action == "snz" and len(parts) == 4:
         kind = KIND_OF_CODE.get(parts[1])
         try:
@@ -5043,8 +5050,250 @@ async def on_chat_member(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None
 
 
 async def on_error(update: object, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    """Technical failures go to the log, never to the user or admin channel."""
+    """Technical failures go to the log, never to the user or admin channel.
+
+    A plan limit is not a failure: the person is told what the plan allows
+    and offered the one that allows it."""
+    if isinstance(ctx.error, plans.PlanLimit) and isinstance(update, Update):
+        uid = account_of(update)
+        with SessionLocal() as s:
+            user = s.get(User, uid) if uid else None
+            lang = (user.language if user else None) or "uz"
+        message = update.effective_message
+        if message is not None:
+            await message.reply_text(plan_limit_text(lang, ctx.error), parse_mode=ParseMode.HTML,
+                                     reply_markup=plan_keyboard(lang))
+        return
     log.exception("handler error", exc_info=ctx.error)
+
+
+# ---------------------------------------------------------------------------
+# Plans: Free / Pro / Max, paid with Telegram Stars
+# ---------------------------------------------------------------------------
+
+PLAN_NAMES = {"free": "Free", "pro": "Pro", "max": "Max"}
+
+PLAN_TEXT = {
+    "uz": {
+        "title": "💎 <b>Tarifingiz: {tier}</b>",
+        "until": "Amal qiladi: {date} gacha ({days} kun).",
+        "free_body": ("Free: 3 ta odat, 30 ta faol vazifa, 1 ta loyiha, haftasiga 5 ta ovozli buyruq.\n"
+                      "<b>Pro</b> — 25 odat, cheksiz vazifa, 15 loyiha, 2 ta jamoa, kuniga 30 ovozli buyruq, "
+                      "to'liq statistika, AI kundalik.\n"
+                      "<b>Max</b> — hammasi cheksiz, 10 jamoa (50 kishigacha), kuniga 100 ovozli buyruq, "
+                      "statistikani faylga yuklash."),
+        "channel": "🎁 Kanalga qo'shiling — <b>+{days} kun Pro</b> bepul.",
+        "limit": "🔒 <b>Tarif limiti.</b> {what} {plan} tarifda ochiladi.",
+        "keep": "Ma'lumotlaringiz o'chmaydi — faqat yangisini qo'shib bo'lmaydi.",
+        "paid": "✅ To'lov qabul qilindi. <b>{tier}</b> {date} gacha faol. Rahmat!",
+        "ending": ("⏳ <b>{tier}</b> tarifingiz ertaga tugaydi ({date}).\n"
+                   "Keyin Free tarifga o'tasiz — ma'lumotlaringiz saqlanadi."),
+        "invoice_title": "ErnestOS {tier} — {days} kun",
+        "invoice_desc": "ErnestOS {tier} tarifi {days} kunga. To'lov Telegram Stars orqali.",
+        "month": "oy", "year": "yil",
+        "join": "📢 Kanalga qo'shilish",
+        "what": {"habits": "Ko'proq odat", "active_tasks": "Ko'proq faol vazifa",
+                 "recurring_tasks": "Ko'proq takrorlanuvchi vazifa", "projects": "Ko'proq loyiha",
+                 "open_debts": "Ko'proq ochiq qarz", "teams_owned": "Jamoa yaratish",
+                 "team_members": "Jamoada ko'proq a'zo", "voice_week": "Ko'proq ovozli buyruq",
+                 "voice_day": "Ko'proq ovozli buyruq", "journal_ai": "AI bilan kundalik",
+                 "timer_rhythm": "Ish va tanaffus ritmi", "stats_history": "Oylik va yillik statistika",
+                 "stats_csv": "Statistikani faylga yuklash"},
+    },
+    "ru": {
+        "title": "💎 <b>Ваш тариф: {tier}</b>",
+        "until": "Действует до {date} ({days} дн.).",
+        "free_body": ("Free: 3 привычки, 30 активных задач, 1 проект, 5 голосовых команд в неделю.\n"
+                      "<b>Pro</b> — 25 привычек, задачи без лимита, 15 проектов, 2 команды, 30 голосовых "
+                      "команд в день, полная статистика, AI-итоги дня.\n"
+                      "<b>Max</b> — всё без лимита, 10 команд (до 50 человек), 100 голосовых команд в день, "
+                      "выгрузка статистики в файл."),
+        "channel": "🎁 Подпишитесь на канал — <b>+{days} дн. Pro</b> бесплатно.",
+        "limit": "🔒 <b>Лимит тарифа.</b> {what} — на тарифе {plan}.",
+        "keep": "Ваши данные не удаляются — нельзя только добавлять новое.",
+        "paid": "✅ Оплата получена. <b>{tier}</b> активен до {date}. Спасибо!",
+        "ending": ("⏳ Ваш тариф <b>{tier}</b> заканчивается завтра ({date}).\n"
+                   "Потом — тариф Free, данные сохранятся."),
+        "invoice_title": "ErnestOS {tier} — {days} дн.",
+        "invoice_desc": "Тариф ErnestOS {tier} на {days} дней. Оплата Telegram Stars.",
+        "month": "мес", "year": "год",
+        "join": "📢 Подписаться на канал",
+        "what": {"habits": "Больше привычек", "active_tasks": "Больше активных задач",
+                 "recurring_tasks": "Больше повторяющихся задач", "projects": "Больше проектов",
+                 "open_debts": "Больше открытых долгов", "teams_owned": "Создание команд",
+                 "team_members": "Больше участников в команде", "voice_week": "Больше голосовых команд",
+                 "voice_day": "Больше голосовых команд", "journal_ai": "AI-итоги дня",
+                 "timer_rhythm": "Ритм работы и отдыха", "stats_history": "Статистика за месяц и год",
+                 "stats_csv": "Выгрузка статистики в файл"},
+    },
+    "en": {
+        "title": "💎 <b>Your plan: {tier}</b>",
+        "until": "Active until {date} ({days} days).",
+        "free_body": ("Free: 3 habits, 30 open tasks, 1 project, 5 voice commands a week.\n"
+                      "<b>Pro</b> — 25 habits, unlimited tasks, 15 projects, 2 teams, 30 voice commands "
+                      "a day, full statistics, AI day summary.\n"
+                      "<b>Max</b> — everything unlimited, 10 teams (up to 50 people), 100 voice commands "
+                      "a day, statistics as a file."),
+        "channel": "🎁 Join the channel — <b>+{days} days of Pro</b> free.",
+        "limit": "🔒 <b>Plan limit.</b> {what} comes with {plan}.",
+        "keep": "Nothing is deleted — you just can't add more.",
+        "paid": "✅ Payment received. <b>{tier}</b> is active until {date}. Thank you!",
+        "ending": ("⏳ Your <b>{tier}</b> plan ends tomorrow ({date}).\n"
+                   "Then you are on Free — your data stays."),
+        "invoice_title": "ErnestOS {tier} — {days} days",
+        "invoice_desc": "ErnestOS {tier} for {days} days. Paid with Telegram Stars.",
+        "month": "month", "year": "year",
+        "join": "📢 Join the channel",
+        "what": {"habits": "More habits", "active_tasks": "More open tasks",
+                 "recurring_tasks": "More repeating tasks", "projects": "More projects",
+                 "open_debts": "More open debts", "teams_owned": "Creating teams",
+                 "team_members": "More team members", "voice_week": "More voice commands",
+                 "voice_day": "More voice commands", "journal_ai": "AI day summary",
+                 "timer_rhythm": "Work and break rhythm", "stats_history": "Month and year statistics",
+                 "stats_csv": "Statistics as a file"},
+    },
+}
+
+
+def _pt(lang: str) -> dict:
+    return PLAN_TEXT.get(lang) or PLAN_TEXT["uz"]
+
+
+def _plan_date(iso: str | None) -> str:
+    """"2026-10-10T…" → "10.10.2026"."""
+    return ".".join(reversed(iso[:10].split("-"))) if iso else ""
+
+
+def plan_text(lang: str, info: dict) -> str:
+    p = _pt(lang)
+    lines = [p["title"].format(tier=PLAN_NAMES[info["tier"]])]
+    if info.get("until"):
+        lines.append(p["until"].format(date=_plan_date(info["until"]), days=info["days_left"]))
+    lines += ["", p["free_body"]]
+    if info.get("channel") and not info.get("channel_bonus_used"):
+        lines += ["", p["channel"].format(days=info["channel_bonus_days"])]
+    return "\n".join(lines)
+
+
+def plan_limit_text(lang: str, err: plans.PlanLimit) -> str:
+    p = _pt(lang)
+    what = p["what"].get(err.key, err.key)
+    return p["limit"].format(what=what, plan=PLAN_NAMES.get(err.needs, "Pro")) + "\n" + p["keep"]
+
+
+def plan_keyboard(lang: str, info: dict | None = None) -> InlineKeyboardMarkup:
+    p = _pt(lang)
+    rows = []
+    for key in ("pro_month", "pro_year", "max_month", "max_year"):
+        product = plans.PRODUCTS[key]
+        period = p["month"] if product.days < 100 else p["year"]
+        rows.append([InlineKeyboardButton(
+            f"{PLAN_NAMES[product.tier]} · 1 {period} · ⭐ {product.stars}",
+            callback_data=f"plan:buy:{key}")])
+    if info and info.get("channel") and not info.get("channel_bonus_used"):
+        rows.append([InlineKeyboardButton(p["join"], url=info["channel"])])
+    return InlineKeyboardMarkup(rows)
+
+
+def _invoice_args(lang: str, account_id: int, product_key: str) -> dict:
+    p, product = _pt(lang), plans.PRODUCTS[product_key]
+    name = PLAN_NAMES[product.tier]
+    return {"title": p["invoice_title"].format(tier=name, days=product.days),
+            "description": p["invoice_desc"].format(tier=name, days=product.days),
+            "payload": plans.invoice_payload(account_id, product_key),
+            **plans.STARS_INVOICE,
+            "prices": [LabeledPrice(f"{name} {product.days}", product.stars)]}
+
+
+async def cmd_plan(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """/tarif — the account's plan, what each plan gives, and Stars buttons."""
+    message = update.effective_message
+    uid = account_of(update)
+    if message is None or uid is None:
+        return
+    with SessionLocal() as s:
+        user = s.get(User, uid)
+        lang = (user.language if user else None) or "uz"
+    info = _plan_of(uid)
+    await message.reply_text(plan_text(lang, info), parse_mode=ParseMode.HTML,
+                             reply_markup=plan_keyboard(lang, info))
+
+
+async def send_plan_invoice(update: Update, ctx: ContextTypes.DEFAULT_TYPE, product_key: str) -> None:
+    uid = account_of(update)
+    chat = update.effective_chat
+    if uid is None or chat is None or product_key not in plans.PRODUCTS:
+        return
+    with SessionLocal() as s:
+        user = s.get(User, uid)
+        lang = (user.language if user else None) or "uz"
+    await ctx.bot.send_invoice(chat_id=chat.id, **_invoice_args(lang, uid, product_key))
+
+
+async def on_pre_checkout(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Telegram asks before charging: only our own, well-formed plan invoices."""
+    query = update.pre_checkout_query
+    if query is None:
+        return
+    parsed = plans.checkout_matches(query)
+    ok = parsed is not None
+    if ok:
+        with SessionLocal() as s:
+            ok = s.get(User, parsed[1]) is not None
+    await query.answer(ok=ok, error_message=None if ok else "ErnestOS: invoice is no longer valid")
+
+
+async def on_successful_payment(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """The money arrived: add the plan days. Applied once per charge id."""
+    message = update.effective_message
+    payment = message.successful_payment if message else None
+    if payment is None:
+        return
+    parsed = plans.parse_payload(payment.invoice_payload)
+    if parsed is None:
+        log.error("payment with an unknown payload: %s", payment.invoice_payload)
+        return
+    product_key, account_id = parsed
+    with SessionLocal() as s:
+        row = plans.apply_payment(s, account_id, product_key,
+                                  payment.telegram_payment_charge_id, payment.total_amount)
+        s.commit()
+        user = s.get(User, account_id)
+        lang = (user.language if user else None) or "uz"
+        snapshot = user
+    info = _plan_of(account_id)
+    if row is not None:
+        await log_event(ctx.bot, snapshot, "💎 PLAN PAID",
+                        f"{product_key} · ⭐ {payment.total_amount}")
+    await message.reply_text(_pt(lang)["paid"].format(
+        tier=PLAN_NAMES[info["tier"]], date=_plan_date(info.get("until"))), parse_mode=ParseMode.HTML)
+
+
+async def send_plan_notices(bot) -> None:
+    """Tell each account the day before its Pro or Max ends. Once per end."""
+    try:
+        with svc.JobLock(SessionLocal, "plan_notices") as lock:
+            if not lock.acquired:
+                return
+            with SessionLocal() as s:
+                due = plans.ending_soon(s)
+            fan = AccountFanOut(bot, "plan")
+            for account, end, tier in due:
+                with SessionLocal() as s:
+                    user = s.get(User, account)
+                    lang = (user.language if user else None) or "uz"
+                info = _plan_of(account)
+                try:
+                    await fan.send_message(
+                        account, _pt(lang)["ending"].format(tier=PLAN_NAMES[tier],
+                                                            date=_plan_date(end.isoformat())),
+                        parse_mode=ParseMode.HTML, reply_markup=plan_keyboard(lang, info))
+                except TelegramError as e:
+                    log.info("plan notice to %s failed: %s", account, e)
+                with SessionLocal() as s:
+                    plans.mark_notified(s, account, end)
+    except Exception:
+        log.exception("plan notice job failed")
 
 
 # ---------------------------------------------------------------------------
@@ -6691,10 +6940,43 @@ async def cmd_app_code(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         parse_mode=ParseMode.HTML)
 
 
+#: What "/" shows in the chat, per language. Short on purpose: the commands
+#: people actually reach for; the rest still work when typed.
+BOT_MENU = {
+    "uz": [("start", "Bosh menyu"), ("tasks", "Vazifalar"), ("habits", "Odatlar"),
+           ("stats", "Statistika"), ("pul", "Moliya"), ("jamoa", "Jamoa"),
+           ("tarif", "Tarif: Free, Pro, Max"), ("app", "Telefon ilovasiga kirish kodi"),
+           ("settings", "Sozlamalar"), ("guide", "Qo'llanma")],
+    "ru": [("start", "Главное меню"), ("tasks", "Задачи"), ("habits", "Привычки"),
+           ("stats", "Статистика"), ("money", "Финансы"), ("jamoa", "Команда"),
+           ("tarif", "Тариф: Free, Pro, Max"), ("app", "Код для входа в приложение"),
+           ("settings", "Настройки"), ("guide", "Инструкция")],
+    "en": [("start", "Main menu"), ("tasks", "Tasks"), ("habits", "Habits"),
+           ("stats", "Statistics"), ("money", "Money"), ("jamoa", "Team"),
+           ("tarif", "Plan: Free, Pro, Max"), ("app", "Phone app sign-in code"),
+           ("settings", "Settings"), ("guide", "Guide")],
+}
+
+
+async def set_command_menu(bot) -> None:
+    """Publish the "/" menu in each language; Uzbek is also the default."""
+    from telegram import BotCommand
+    for lang, rows in BOT_MENU.items():
+        commands = [BotCommand(name, text) for name, text in rows]
+        try:
+            await bot.set_my_commands(commands, language_code=lang)
+            if lang == "uz":
+                await bot.set_my_commands(commands)
+        except TelegramError as e:
+            log.warning("could not set the %s command menu: %s", lang, e)
+
+
 BOT_COMMANDS = [
     # Signing in with a login from another Telegram, signing out of it, and
     # the account screen itself.
     ("app", lambda u, c: cmd_app_code(u, c)),
+    ("tarif", lambda u, c: cmd_plan(u, c)),
+    ("plan", lambda u, c: cmd_plan(u, c)),
     ("login", lambda u, c: cmd_login(u, c)),
     ("logout", lambda u, c: cmd_logout(u, c)),
     ("account", lambda u, c: show_account(u, c)),
@@ -6773,6 +7055,8 @@ async def lifespan(_: FastAPI):
         # was previously stuck with three commands and no way to reach the rest.
         for command, handler in BOT_COMMANDS:
             telegram_app.add_handler(CommandHandler(command, handler))
+        telegram_app.add_handler(PreCheckoutQueryHandler(on_pre_checkout))
+        telegram_app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, on_successful_payment))
         telegram_app.add_handler(MessageHandler(filters.CONTACT, on_contact))
         telegram_app.add_handler(MessageHandler(filters.PHOTO, on_photo))
         telegram_app.add_handler(CallbackQueryHandler(on_callback))
@@ -6792,6 +7076,7 @@ async def lifespan(_: FastAPI):
                     menu_button=MenuButtonWebApp("ErnestOS", WebAppInfo(url=WEBAPP_URL)))
             except TelegramError:
                 log.warning("could not set the Mini App menu button")
+        await set_command_menu(telegram_app.bot)
         if WEBHOOK_URL:
             # One HTTP call per update instead of a permanent long-poll. Worth
             # it once there are enough users that polling is the process's main
@@ -6829,7 +7114,8 @@ async def lifespan(_: FastAPI):
             send_reports=send_reports,
             send_reminders=send_reminders,
             send_platform_stats=send_platform_stats_tick,
-            tick_timers=tick_timers)
+            tick_timers=tick_timers,
+            plan_notices=send_plan_notices)
     else:
         log.warning("BOT_TOKEN missing — API only, no bot and no scheduler")
 
@@ -6844,7 +7130,14 @@ async def lifespan(_: FastAPI):
         await telegram_app.shutdown()
 
 
-app = FastAPI(title="ErnestOS", lifespan=lifespan)
+# The interactive API map (/docs, /redoc, /openapi.json) lists every route
+# and its fields: useful while building, a free reconnaissance map in
+# production. Off there; on everywhere else.
+_API_MAP = not config.IS_PRODUCTION
+app = FastAPI(title="ErnestOS", lifespan=lifespan,
+              docs_url="/docs" if _API_MAP else None,
+              redoc_url="/redoc" if _API_MAP else None,
+              openapi_url="/openapi.json" if _API_MAP else None)
 
 #: Per-user token buckets. Reads are cheap, writes cost more, and exports hit
 #: Telegram, so each class gets its own budget (audit 012).
@@ -6995,6 +7288,7 @@ UNCOUNTED_PATHS = {
     "/api/subscription", "/api/settings", "/api/prefs", "/api/feedback",
     "/api/export/send", "/api/account/delete", "/api/stats/export",
     "/api/money/preview", "/api/habits/parse", "/api/quick/parse",
+    "/api/plans/invoice",
 }
 
 
@@ -7003,6 +7297,13 @@ async def unhandled(request: Request, exc: Exception):
     """Never leak an exception type or traceback to a client."""
     log.exception("api error: %s %s", request.method, request.url.path)
     return JSONResponse(status_code=500, content={"detail": "server_error"})
+
+
+@app.exception_handler(plans.PlanLimit)
+async def plan_limit(request: Request, exc: plans.PlanLimit):
+    """Past the plan's limit: 402, with what was hit and which plan allows it,
+    so the app can offer exactly that plan."""
+    return JSONResponse(status_code=402, content=exc.as_dict())
 
 
 @app.exception_handler(svc.NotFound)
@@ -7128,6 +7429,11 @@ class JournalIn(BaseModel):
     day: str | None = Field(default=None, max_length=10)
     #: One of services.MOODS, or empty. Optional by design.
     mood: str = Field(default="", max_length=20)
+    #: The entry's `updated_at` the writer last saw ("" — there was none).
+    #: When the entry has changed since (another phone, the bot) and a field
+    #: sent here would overwrite different text, the save is refused with
+    #: both versions instead of silently picking one (K03). None: no check.
+    base: str | None = Field(default=None, max_length=40)
 
     @field_validator("answers")
     @classmethod
@@ -7147,6 +7453,28 @@ class BirthdayIn(BaseModel):
     person_name: str = Field(min_length=1, max_length=200)
     birth_date: str = Field(max_length=10)
     note: str = Field(default="", max_length=300)
+
+
+class TickIn(BaseModel):
+    """The state a tick should end in, and the day it belongs to."""
+    done: bool | None = None
+    day: str | None = Field(default=None, max_length=10)
+
+
+#: How far back a queued tick may still land on its own day.
+TICK_BACKFILL_DAYS = 7
+
+
+def _tick_day(value: str | None, tz) -> date | None:
+    """The day a tick was made for: None means today. Tomorrow and anything
+    older than a week are refused rather than silently moved."""
+    day = _date(value)
+    if day is None:
+        return None
+    today = svc.today_local(tz)
+    if day > today or (today - day).days > TICK_BACKFILL_DAYS:
+        raise HTTPException(status_code=422, detail="day_out_of_range")
+    return None if day == today else day
 
 
 def _date(value: str | None) -> date | None:
@@ -7370,18 +7698,25 @@ def api_version():
 def api_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, _ = auth(init, require_onboarded=False)
     trial = deps.trial_state(user)
+    with SessionLocal() as s:
+        custom = s.get(db.UserAvatar, user.telegram_id)
+        avatar_at = custom.updated_at.isoformat() if custom else None
+    has_photo = bool(avatar_at or user.photo_file_id)
     return {"telegram_id": user.telegram_id, "member_no": user.member_no,
             "version": version.VERSION, "build": version.BUILD,
             "first_name": user.first_name, "last_name": user.last_name,
             "username": user.username,
             "language": user.language, "gender": user.gender,
             "theme": theme_of(user.theme), "quote": user.quote,
-            "has_photo": bool(user.photo_file_id),
+            "has_photo": has_photo,
+            #: Set when the person chose their own picture in the app; it
+            #: then wins over the Telegram photo. Also busts the image cache.
+            "avatar_custom": avatar_at,
             # Minted per request: the Mini App puts this in the avatar's
             # `src` instead of its initData, so nothing long-lived reaches a
             # URL. Only useful to the user it names, and only for minutes.
             "avatar_token": (issue_avatar_token(user.telegram_id)
-                             if user.photo_file_id else None),
+                             if has_photo else None),
             "has_phone": bool(user.phone_number),
             "prefs": svc.prefs_for(user),
             "timezones": svc.TIMEZONES,
@@ -7389,7 +7724,8 @@ def api_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
             # Read-only mode: the channel gate stops writes, never reading.
             "gated": deps.trial_state(user).gated,
             "today": str(svc.today_local(svc.user_tz(user))),
-            "trial": {"required": bool(deps.REQUIRED_CHANNEL_ID),
+            "plan": _plan_of(user.telegram_id),
+            "trial": {"required": bool(deps.REQUIRED_CHANNEL_ID) and not plans.ENABLED,
                       "free_actions": deps.FREE_ACTIONS,
                       "remaining": trial.remaining, "free": trial.free,
                       "subscribed": user.is_subscribed,
@@ -7406,6 +7742,13 @@ def api_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
             # add sheet. The full team payload is fetched by the Team screen;
             # asking for it at start-up made the first screen wait on it.
             "teams": _team_names_of(user.telegram_id)}
+
+
+def _plan_of(uid: int) -> dict:
+    with SessionLocal() as s:
+        info = plans.summary(s, uid)
+    info["channel"] = deps.REQUIRED_CHANNEL_URL if deps.REQUIRED_CHANNEL_ID else ""
+    return info
 
 
 def _team_names_of(uid: int) -> list[dict]:
@@ -8264,14 +8607,26 @@ async def api_team_task_edit(task_id: int, body: TeamTaskPatch,
 
 
 @app.post("/api/teams/tasks/{task_id}/toggle")
-def api_team_task_toggle(task_id: int,
+def api_team_task_toggle(task_id: int, body: "TickIn | None" = None,
                          init=Header(default=None, alias="X-Telegram-Init-Data")):
-    """Tick a shared task for whoever is asking, and only them."""
+    """Tick a shared task for whoever is asking, and only them. With
+    `{"done": …}` it sets that state instead of flipping (K05)."""
     user, _ = auth(init)
+    tz = svc.user_tz(user)
     with SessionLocal() as s:
         try:
-            done = svc.toggle_team_task(s, user.telegram_id, task_id,
-                                        tz=svc.user_tz(user))
+            item = s.get(db.TeamTask, task_id)
+            wanted = body is not None and body.done is not None and item is not None \
+                and item.archived_at is None
+            if wanted:
+                # Same answer as a toggle for someone outside the team: no
+                # shortcut may tell them the item exists.
+                svc._require_team(s, user.telegram_id, item.team_id)
+            if wanted and svc.own_tick(s, user.telegram_id, "ttask", item,
+                                       svc.today_local(tz)) == body.done:
+                done = body.done
+            else:
+                done = svc.toggle_team_task(s, user.telegram_id, task_id, tz=tz)
         except PermissionError as e:
             raise _perm(e)
         except ValueError as e:
@@ -8371,13 +8726,24 @@ async def api_team_habit_add(team_id: int, body: TeamHabitIn,
 
 
 @app.post("/api/teams/habits/{habit_id}/toggle")
-def api_team_habit_toggle(habit_id: int,
+def api_team_habit_toggle(habit_id: int, body: "TickIn | None" = None,
                           init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, _ = auth(init)
+    tz = svc.user_tz(user)
     with SessionLocal() as s:
         try:
-            done = svc.toggle_team_habit(s, user.telegram_id, habit_id,
-                                         tz=svc.user_tz(user))
+            item = s.get(db.TeamHabit, habit_id)
+            wanted = body is not None and body.done is not None and item is not None \
+                and item.archived_at is None
+            if wanted:
+                # Same answer as a toggle for someone outside the team: no
+                # shortcut may tell them the item exists.
+                svc._require_team(s, user.telegram_id, item.team_id)
+            if wanted and svc.own_tick(s, user.telegram_id, "thabit", item,
+                                       svc.today_local(tz)) == body.done:
+                done = body.done
+            else:
+                done = svc.toggle_team_habit(s, user.telegram_id, habit_id, tz=tz)
         except PermissionError as e:
             raise _perm(e)
         except ValueError as e:
@@ -8644,11 +9010,27 @@ def api_habit_patch(habit_id: int, body: HabitPatch,
 
 
 @app.post("/api/habits/{habit_id}/toggle")
-def api_habit_toggle(habit_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+def api_habit_toggle(habit_id: int, body: "TickIn | None" = None,
+                     init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Flip today's tick — or, with a body, set it: `done` is the state the
+    person wanted and `day` the day they meant. A tick queued offline at
+    23:59 and sent at 00:01 lands on the day it was made, and a replay never
+    flips it a second time (K05)."""
     user, ws = auth(init)
+    tz = svc.user_tz(user)
+    day = _tick_day(body.day if body else None, tz)
     with SessionLocal() as s:
         try:
-            done = svc.toggle_habit(s, ws, habit_id, tz=svc.user_tz(user))
+            if body is not None and body.done is not None:
+                habit = s.get(db.Habit, habit_id)
+                if habit is None or habit.workspace_id != ws:
+                    raise HTTPException(status_code=404, detail="not_found")
+                if svc.own_tick(s, user.telegram_id, "habit", habit, day or svc.today_local(tz)) == body.done:
+                    done = body.done
+                else:
+                    done = svc.toggle_habit(s, ws, habit_id, day, tz=tz)
+            else:
+                done = svc.toggle_habit(s, ws, habit_id, day, tz=tz)
         except ValueError as e:
             if str(e) == "timer_required":
                 # Not an error on the client's part: the habit is done by its
@@ -8834,6 +9216,8 @@ def api_timer_start(kind: str, item_id: int, body: TimerStartIn | None = None,
     user, ws = auth(init)
     tz = svc.user_tz(user)
     with SessionLocal() as s:
+        if body and body.cycle:
+            plans.require_feature(s, user.telegram_id, "timer_rhythm")
         try:
             svc.start_timer(s, ws, _timer_kind(kind), item_id, tz=tz,
                             cycle=(body.cycle if body else None) or None)
@@ -8942,7 +9326,9 @@ def api_countdown_delete(countdown_id: int,
 def api_prayers(day: str | None = None, init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, ws = auth(init)
     with SessionLocal() as s:
-        return svc.prayer_state(s, ws, _date(day) or svc.today_local(), user.gender)
+        # The user's own day, as the write uses — not the project clock (K05).
+        return svc.prayer_state(s, ws, _date(day) or svc.today_local(svc.user_tz(user)),
+                                user.gender)
 
 
 @app.post("/api/prayers")
@@ -9283,6 +9669,16 @@ def api_journal_save(body: JournalIn, init=Header(default=None, alias="X-Telegra
     user, ws = auth(init)
     tz = svc.user_tz(user)
     with SessionLocal() as s:
+        if body.base is not None and body.answers:
+            current = svc.get_journal(s, ws, _date(body.day), tz=tz) or {}
+            if (current.get("updated_at") or "") != body.base:
+                theirs = current.get("answers") or {}
+                clash = {k: theirs[k] for k, v in body.answers.items()
+                         if str(theirs.get(k) or "").strip() and theirs.get(k) != v}
+                if clash:
+                    return JSONResponse(status_code=409, content={
+                        "detail": "journal_conflict", "server": clash,
+                        "updated_at": current.get("updated_at")})
         row = svc.save_journal(s, ws, answers=body.answers, text=body.text,
                                day=_date(body.day), mood=body.mood, tz=tz)
         entry = svc.get_journal(s, ws, row.day, tz=tz)
@@ -9482,6 +9878,8 @@ def api_stats(period: str = "week", init=Header(default=None, alias="X-Telegram-
     if period not in ("week", "month", "year"):
         period = "week"
     with SessionLocal() as s:
+        if period != "week":
+            plans.require_feature(s, user.telegram_id, "stats_history")
         return svc.stats(s, ws, period, gender=user.gender,
                          tz=svc.user_tz(user))
 
@@ -9549,6 +9947,13 @@ def api_referrals_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
     with SessionLocal() as s:
         stats = svc.referral_stats(s, user.telegram_id)
         code = svc.get_or_create_referral_code(s, user.telegram_id)
+        # The plan steps (5 / 10 / 20 friends), and any step reached before
+        # this existed is paid now rather than never.
+        if plans.ENABLED:
+            plans.referral_rewards(s, user.telegram_id, stats["counts"]["qualified"])
+            s.commit()
+        steps = plans.referral_steps(s, user.telegram_id, stats["counts"]["qualified"]) \
+            if plans.ENABLED else []
 
     link = referral_link(code)
     if link is None:
@@ -9565,6 +9970,8 @@ def api_referrals_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
                   "minimum": stats["level"]["minimum"]},
         "next_milestone": stats["level"]["next"],
         "qualify_actions": svc.REFERRAL_QUALIFY_ACTIONS,
+        "steps": steps,
+        "friend_days": plans.REFERRAL_BONUS_DAYS if plans.ENABLED else 0,
     }
 
 
@@ -9607,6 +10014,8 @@ async def api_stats_export(period: str = "month",
     user, ws = auth(init)
     if period not in ("week", "month", "year"):
         period = "month"
+    with SessionLocal() as s:
+        plans.require_feature(s, user.telegram_id, "stats_csv")
     if telegram_app is None:
         raise HTTPException(status_code=503, detail="bot_unavailable")
 
@@ -9637,6 +10046,7 @@ def api_stats_csv(period: str = "month",
     if period not in ("week", "month", "year"):
         period = "month"
     with SessionLocal() as s:
+        plans.require_feature(s, user.telegram_id, "stats_csv")
         body = svc.stats_csv(s, ws, period, gender=user.gender,
                              tz=svc.user_tz(user))
     stamp = datetime.now(svc.user_tz(user)).strftime("%Y-%m-%d")
@@ -9822,6 +10232,30 @@ def api_money_text(body: MoneyTextIn,
                              source=body.source, tz=svc.user_tz(user))
 
 
+class MoneyPatchIn(BaseModel):
+    kind: str | None = Field(default=None, pattern="^(expense|income)$")
+    amount: int | None = Field(default=None, gt=0, le=svc.MONEY_MAX_AMOUNT)
+    category: str | None = Field(default=None, max_length=24)
+    note: str | None = Field(default=None, max_length=200)
+    day: str | None = Field(default=None, max_length=10)
+
+
+@app.patch("/api/money/{entry_id}")
+def api_money_edit(entry_id: int, body: MoneyPatchIn,
+                   init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Correct an entry in place (K21). A future day is refused, as on add."""
+    user, ws = auth(init)
+    day = _date(body.day)
+    if day is not None and day > svc.today_local(svc.user_tz(user)):
+        raise HTTPException(status_code=422, detail="future_day")
+    with SessionLocal() as s:
+        try:
+            return svc.update_money(s, ws, entry_id, kind=body.kind, amount=body.amount,
+                                    category=body.category, note=body.note, day=day)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
+
 @app.delete("/api/money/{entry_id}")
 def api_money_delete(entry_id: int,
                      init=Header(default=None, alias="X-Telegram-Init-Data")):
@@ -9927,6 +10361,12 @@ async def api_avatar(token: str | None = None, tgdata: str | None = None,
             raise HTTPException(status_code=401, detail="unauthorized")
     else:
         user, _ = auth(init or tgdata)
+    with SessionLocal() as s:
+        custom = s.get(db.UserAvatar, user.telegram_id)
+        if custom is not None:
+            return Response(content=bytes(custom.data), media_type=custom.mime,
+                            headers={"Cache-Control": "private, max-age=300",
+                                     "X-Content-Type-Options": "nosniff"})
     if not user.photo_file_id or telegram_app is None:
         raise HTTPException(status_code=404, detail="no_photo")
     try:
@@ -9936,6 +10376,54 @@ async def api_avatar(token: str | None = None, tgdata: str | None = None,
         raise HTTPException(status_code=404, detail="no_photo")
     return Response(content=bytes(data), media_type="image/jpeg",
                     headers={"Cache-Control": "private, max-age=300"})
+
+
+#: A profile picture, after the phone shrank it. A 256 px JPEG is ~20 KB.
+AVATAR_MAX_BYTES = 96 * 1024
+_AVATAR_MAGIC = ((b"\xff\xd8\xff", "image/jpeg"), (b"\x89PNG\r\n\x1a\n", "image/png"))
+
+
+class AvatarIn(BaseModel):
+    #: base64, with or without a `data:image/...;base64,` prefix.
+    image: str = Field(max_length=AVATAR_MAX_BYTES * 4 // 3 + 64)
+
+
+@app.post("/api/avatar")
+def api_avatar_set(body: AvatarIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Set the person's own picture. Only JPEG and PNG, judged by the bytes,
+    not by what the client claims."""
+    user, _ = auth(init, require_onboarded=False)
+    raw = body.image.split(",", 1)[1] if body.image.startswith("data:") else body.image
+    try:
+        data = base64.b64decode(raw, validate=True)
+    except (ValueError, binascii.Error):
+        raise HTTPException(status_code=422, detail="bad_image")
+    mime = next((m for magic, m in _AVATAR_MAGIC if data.startswith(magic)), None)
+    if mime is None:
+        raise HTTPException(status_code=422, detail="bad_image")
+    if len(data) > AVATAR_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="image_too_big")
+    with SessionLocal() as s:
+        row = s.get(db.UserAvatar, user.telegram_id)
+        if row is None:
+            row = db.UserAvatar(account_id=user.telegram_id)
+            s.add(row)
+        row.mime, row.data, row.updated_at = mime, data, db.utcnow()
+        s.commit()
+        return {"ok": True, "avatar_custom": row.updated_at.isoformat(),
+                "avatar_token": issue_avatar_token(user.telegram_id)}
+
+
+@app.delete("/api/avatar")
+def api_avatar_clear(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Back to the Telegram photo, or to the initial."""
+    user, _ = auth(init, require_onboarded=False)
+    with SessionLocal() as s:
+        row = s.get(db.UserAvatar, user.telegram_id)
+        if row is not None:
+            s.delete(row)
+            s.commit()
+    return {"ok": True}
 
 
 class WakeupIn(BaseModel):
@@ -10081,7 +10569,13 @@ def api_account_delete(body: DeleteAccountIn,
     if body.confirm.strip().upper() != "DELETE":
         raise HTTPException(status_code=422, detail="confirmation_required")
     with SessionLocal() as s:
-        svc.delete_account(s, user.telegram_id)
+        try:
+            svc.delete_account(s, user.telegram_id)
+        except ValueError as e:
+            # A team with other people in it needs a new owner first (K02).
+            # Nothing was deleted.
+            s.rollback()
+            raise HTTPException(status_code=409, detail=str(e))
     log.info("account deleted on request: %s", user.telegram_id)
     return {"ok": True, "deleted": True}
 
@@ -10101,6 +10595,39 @@ def api_wake_time(body: WakeTimeIn, init=Header(default=None, alias="X-Telegram-
     with SessionLocal() as s:
         svc.set_wake_time(s, ws, value)
     return {"ok": True, "time": value.strftime("%H:%M")}
+
+
+# --- Plans ---
+
+@app.get("/api/plans")
+def api_plans(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """The caller's plan, what each plan allows, and the prices."""
+    user, _ = auth(init, require_onboarded=False)
+    return {**_plan_of(user.telegram_id), "all_limits": plans.LIMITS,
+            "all_features": {k: list(v) for k, v in plans.FEATURES.items()}}
+
+
+class InvoiceIn(BaseModel):
+    product: str = Field(max_length=16)
+
+
+@app.post("/api/plans/invoice")
+async def api_plans_invoice(body: InvoiceIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """A Telegram Stars invoice link for one plan product. The Mini App opens
+    it with `openInvoice`; the phone app opens it in Telegram. The plan days
+    are added when Telegram reports the payment (`on_successful_payment`)."""
+    user, _ = auth(init, require_onboarded=False)
+    if body.product not in plans.PRODUCTS:
+        raise HTTPException(status_code=422, detail="unknown_product")
+    if telegram_app is None:
+        raise HTTPException(status_code=503, detail="bot_unavailable")
+    try:
+        url = await telegram_app.bot.create_invoice_link(
+            **_invoice_args(user.language or "uz", user.telegram_id, body.product))
+    except TelegramError as e:
+        log.warning("invoice link for %s failed: %s", user.telegram_id, e)
+        raise HTTPException(status_code=502, detail="invoice_failed")
+    return {"url": url}
 
 
 # --- Phone app sign-in (Android / iOS) ---
@@ -10254,6 +10781,11 @@ agent_api.install(app, auth)
 # calls here are cross-origin. Added last, so it wraps every other
 # middleware and answers the browser's preflight itself. No cookies are
 # involved: credentials travel in a header, so `allow_credentials` stays off.
+# The Mini App is one ~550 KB HTML file, fetched on every open over mobile
+# data. Compressed it is about a fifth of that. Small answers are left as
+# they are: compressing them costs more than it saves.
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.APP_ORIGINS,

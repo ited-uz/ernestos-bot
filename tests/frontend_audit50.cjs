@@ -80,11 +80,34 @@ const posts = url => calls.filter(c => c.method === 'POST' && c.url === url);
   assert.equal(posts('/api/journal')[0].body.day, '2026-10-04');
   assert.ok(storage.size === 0 || [...storage.keys()].every(k => !k.endsWith(run('todayISO()')) || run('todayISO()') === '2026-10-04'));
 
-  // #30 — a draft typed over an older saved version is dropped, not shown.
+  // #30 / K03 — a draft typed over an older saved version is neither put
+  // over the saved text nor thrown away: both are shown and the person picks.
   run(`state.journalDay=todayISO(); state.journal={answers:{win:'from laptop'}, updated_at:'2026-10-05T12:00:00+00:00'}`);
   storage.set(run('draftKey()'), JSON.stringify({win:'stale phone text', _base:'2026-10-05T09:00:00+00:00'}));
-  assert.ok(run('SCREENS.habits()').includes('from laptop'));
-  assert.ok(!run('SCREENS.habits()').includes('stale phone text'));
+  let screen = run('SCREENS.habits()');
+  assert.match(screen, /id="jq-win"[^>]*>from laptop</, 'the field shows the saved text');
+  assert.ok(screen.includes('data-act="jconf"') && screen.includes('stale phone text'), 'the phone text is kept for review');
+  assert.deepEqual(JSON.parse(run('JSON.stringify(journalConflicts().win)')), {mine:'stale phone text', theirs:'from laptop'});
+  // Keeping both sends them with the version they were resolved against.
+  calls.length = 0;
+  reply = (url, m) => url === '/api/journal' && m === 'POST'
+    ? {ok:true, updated_at:'2026-10-05T12:05:00+00:00', answered:1, complete:false} : {};
+  run(`A.jconf({dataset:{key:'win', pick:'both'}})`);
+  await run('journalChain');
+  const jsent = posts("/api/journal")[0].body;
+  assert.equal(jsent.answers.win, 'from laptop\n\nstale phone text');
+  assert.equal(jsent.base, '2026-10-05T12:00:00+00:00');
+  assert.equal(run('JSON.stringify(journalConflicts())'), '{}');
+  // The server refusing (changed again meanwhile) keeps both versions.
+  calls.length = 0;
+  reply = (url, m) => url === '/api/journal' && m === 'POST'
+    ? new Response(JSON.stringify({detail:'journal_conflict', server:{lesson:'bot text'}, updated_at:'2026-10-05T13:00:00+00:00'}), {status:409}) : {};
+  run(`const l=document.getElementById('jq-lesson'); l.dataset.journal='lesson'; l.value='phone lesson'; onJournalInput(l);`);
+  await run('flushJournal()');
+  assert.deepEqual(JSON.parse(run('JSON.stringify(journalConflicts().lesson)')), {mine:'phone lesson', theirs:'bot text'});
+  assert.equal(run('state.journal.updated_at'), '2026-10-05T13:00:00+00:00');
+  storage.delete(run('draftKey()'));
+  run(`state.journal={answers:{win:'from laptop'}, updated_at:'2026-10-05T12:00:00+00:00'}`);
   // ...while one typed over the current version is kept.
   storage.set(run('draftKey()'), JSON.stringify({win:'unsent', _base:'2026-10-05T12:00:00+00:00'}));
   assert.ok(run('SCREENS.habits()').includes('unsent'));
@@ -206,14 +229,124 @@ const posts = url => calls.filter(c => c.method === 'POST' && c.url === url);
     return new Response('{"ok":true}', {status: 200});
   };
   assert.equal(run('loadQueue().length'), 0);
-  // A refusal is dropped, not retried forever.
+  // K04: a refusal is never dropped by the app, nor retried forever: it is
+  // kept, marked with why, skipped by later flushes, and gone only when the
+  // person discards it.
   online = false;
   run(`A["habit-toggle"]({dataset:{id:'5'}})`);
   await wait(20);
   online = true;
-  ctx.fetch = async () => new Response('{"detail":"not_found"}', {status: 404});
+  let refusals = 0;
+  ctx.fetch = async url => { if(String(url).includes('/toggle')) refusals++; return new Response('{"detail":"not_found"}', {status: 404}); };
   await run('flushQueue()');
+  assert.equal(run('loadQueue().length'), 1);
+  assert.equal(run('loadQueue()[0].blocked.reason'), 'gone');
+  await run('flushQueue()');
+  assert.equal(refusals, 1, 'a blocked item is not sent again by itself');
+  // K05: the queued tick says which state was wanted and on which day.
+  const queued = run('loadQueue()[0]');
+  assert.equal(typeof queued.body.done, 'boolean');
+  assert.match(queued.body.day, /^\d{4}-\d{2}-\d{2}$/);
+  run(`A["queue-drop"]({dataset:{key: loadQueue()[0].key}})`);
   assert.equal(run('loadQueue().length'), 0);
+  // 401: stop, keep everything, wait for sign-in.
+  ctx.fetch = async () => { throw new TypeError('Failed to fetch'); };
+  run(`A["habit-toggle"]({dataset:{id:'5'}})`);
+  await wait(20);
+  online = true;
+  ctx.fetch = async () => new Response('{"detail":"unauthorized"}', {status: 401});
+  await run('flushQueue()');
+  assert.equal(run('loadQueue().length'), 1);
+  assert.equal(run('loadQueue()[0].blocked'), undefined);
+  storage.delete(run('queueKey()'));
+
+  // K02 — a wipe the server refuses (or never answers) loses nothing local,
+  // and nothing is sent while it is out.
+  storage.set(run('queueKey()'), JSON.stringify([{key:'k1', url:'/api/habits/5/toggle', method:'POST', body:{done:true}}]));
+  storage.set(run('draftKey()'), JSON.stringify({win:'typed offline'}));
+  let sentDuring = 0;
+  ctx.fetch = async (url) => {
+    if(url.includes('/toggle') || url.includes('/api/journal')) sentDuring++;
+    if(url === '/api/account/wipe') return new Response('{"detail":"server_error"}', {status: 500});
+    return new Response('{}', {status: 200});
+  };
+  await run(`A["wipe-data-confirm"]()`);
+  assert.equal(sentDuring, 0, 'nothing may be sent while a wipe is out');
+  assert.equal(run('loadQueue().length'), 1, 'a refused wipe keeps the queue');
+  assert.ok(storage.get(run('draftKey()')), 'a refused wipe keeps the draft');
+  assert.equal(run('state.erasing'), false);
+  // Accepted: now the local copies go.
+  ctx.fetch = async () => new Response('{"ok":true}', {status: 200});
+  await run(`A["wipe-data-confirm"]()`);
+  assert.equal(run('loadQueue().length'), 0);
+  assert.equal(storage.get(run('draftKey()')), undefined);
+  // Delete refused for a team owner: everything stays, the reason is named.
+  storage.set(run('queueKey()'), JSON.stringify([{key:'k2', url:'/api/habits/5/toggle', method:'POST', body:{done:true}}]));
+  ctx.fetch = async () => new Response('{"detail":"owner_must_transfer"}', {status: 409});
+  document.getElementById('del-confirm').value = 'DELETE';
+  await run(`A["delete-account-go"]()`);
+  assert.equal(run('loadQueue().length'), 1, 'a refused delete keeps the queue');
+  storage.delete(run('queueKey()'));
+
+  // K08 — no signal at start: the last Home that loaded, marked, not an error.
+  run(`state.me={telegram_id:7, language:'uz', avatar_token:'secret', prefs:{timezone:'Asia/Tashkent'}};
+       state.home={name:'Ernest', date_label:'x'}; state.offlineSince=null; saveLastGood();`);
+  assert.ok(!storage.get('ernestos-lastgood').includes('secret'), 'no token in the cache');
+  run(`state.me=null; state.home=null;`);
+  ctx.fetch = async () => { throw new TypeError('Failed to fetch'); };
+  await run('boot()');
+  assert.equal(run('state.error'), null);
+  assert.equal(run('state.home.name'), 'Ernest');
+  assert.ok(run('state.offlineSince') > 0);
+  assert.ok(run('offlineBanner()').includes('offline-retry'));
+  // A server error (not offline) is still an error, never stale data.
+  ctx.fetch = async () => new Response('{"detail":"server_error"}', {status: 500});
+  run(`state.offlineSince=null; state.home=null;`);
+  await run('boot()');
+  assert.ok(run('state.error'));
+  run('forgetLastGood()');
+
+  // K16 — the last project visited does not follow the person to other screens.
+  run(`state.project={project:{id:42, name:'P'}, tasks:[]}; state.screen='tasks'; A["task-add"]({dataset:{}})`);
+  assert.equal(run('state.form.project_id'), null);
+  run(`state.screen='project'; A["task-add"]({dataset:{}})`);
+  assert.equal(run('state.form.project_id'), 42);
+  run(`closeSheet(); state.screen='home'; state.project=null;`);
+
+  // K17 — a chip on the habit sheet keeps every field typed so far.
+  run(`A["habit-add"]({dataset:{name:'Suv'}});
+       document.getElementById('habit-name').value='Suv ichish';
+       document.getElementById('hq-target').value='8';
+       document.getElementById('hq-unit').value='stakan';
+       A["habit-form"]({dataset:{field:'category', value:'bonus'}});`);
+  const sheetHtml = run(`document.getElementById('sheet-body').innerHTML`);
+  assert.ok(sheetHtml.includes('value="8"') && sheetHtml.includes('value="stakan"'), 'amount survives a chip tap');
+  assert.ok(sheetHtml.includes('value="Suv ichish"'));
+  run('closeSheet()');
+
+  // K21 — tapping an entry edits that entry (PATCH), it does not add another.
+  calls.length = 0;
+  ctx.fetch = async (url, opts={}) => { calls.push({url, method:(opts.method||'GET').toUpperCase(),
+    body: opts.body ? JSON.parse(opts.body) : null}); return new Response('{}', {status:200}); };
+  run(`state.money={entries:[{id:9, kind:'expense', amount:45000, category:'food', note:'Tushlik', day:todayISO()}],
+       category_ids:['food'], kinds:{food:'expense'}, icons:{}}; A["money-edit"]({dataset:{id:'9'}});
+       document.getElementById('money-amount').value='50000'; A["money-save"]();`);
+  await wait(30);
+  const edit = calls.find(c => c.url === '/api/money/9');
+  assert.ok(edit && edit.method === 'PATCH', 'edit goes to PATCH');
+  assert.equal(edit.body.amount, 50000);
+  assert.ok(!calls.some(c => c.url === '/api/money' && c.method === 'POST'), 'no new entry');
+  run('closeSheet(); state.money=null; state.moneyForm=null;');
+
+  // K01 — leaving the voice sheet by any road stops the recorder and the mic.
+  run(`globalThis.__rec = {state:'recording', stopped:0, stop(){ this.stopped++; this.state='inactive'; }};
+       globalThis.__track = {stopped:0, stop(){ this.stopped++; }};
+       voice.rec = __rec; voice.stream = {getTracks:() => [__track]}; voice.session = 3;
+       openSheet('<div></div>', 'voice'); closeSheet();`);
+  assert.equal(run('__rec.stopped'), 1, 'closing the sheet stops the recorder');
+  assert.equal(run('__track.stopped'), 1, 'and releases the microphone');
+  assert.equal(run('voice.session'), 4, 'a late answer lands nowhere');
+  assert.equal(run('voice.cancelled'), true);
 
   console.log('Audit-50 frontend checks passed');
 })().catch(e => { console.error(e); process.exitCode = 1; });

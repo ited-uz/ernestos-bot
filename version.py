@@ -7,7 +7,7 @@ tested" and "the build that is deployed" can be compared.
 """
 import os
 
-VERSION = "13.0"
+VERSION = "13.1"
 RELEASE_NAME = f"ErnestOS-v{VERSION}"
 BUILD = (os.environ.get("BUILD_ID") or os.environ.get("RAILWAY_GIT_COMMIT_SHA")
          or os.environ.get("SOURCE_COMMIT") or "dev")[:12]

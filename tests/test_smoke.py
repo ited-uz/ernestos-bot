@@ -36,6 +36,9 @@ os.environ.update({
                     or f"sqlite:///{tempfile.mkdtemp()}/test.db",
     "ENVIRONMENT": "test",
     "REQUIRED_CHANNEL_ID": "",       # subscription gate off unless a test sets it
+    # Plans off for the suite as a whole: the older tests describe the app
+    # without limits. The plan tests switch them on themselves (`plans_on`).
+    "PLANS_ENABLED": "0",
     "ADMIN_LOG_CHANNEL_ID": "",
 })
 
@@ -1077,14 +1080,18 @@ def test_goals_are_unreachable_from_either_surface():
 
 
 def test_the_mini_app_navigation_is_four_places():
-    """v12.2: Asosiy · Kundalik · Moliya · Profil. Kundalik switches Habits ↔
-    Tasks and Profil switches Statistics ↔ Team at the top, while the bar stays,
+    """Bugun · Reja · Moliya · Profil (K13). Reja switches Habits ↔ Tasks and
+    Profil switches Steps ↔ Statistics ↔ Team at the top, while the bar stays,
     so leaving is always one tap."""
     html = (ROOT / "webapp" / "index.html").read_text()
     nav = html[html.index("const NAV = ["):html.index("const NAV_OF")]
     assert [line.split('id:"')[1].split('"')[0]
             for line in nav.splitlines() if 'id:"' in line] == \
         ["home", "tracker", "money", "profile"]
+    labels = [line.split('key:"')[1].split('"')[0] for line in nav.splitlines() if 'key:"' in line]
+    assert labels == ["nav_home", "nav_tracker", "nav_money", "nav_profile"]
+    for word in ('nav_home:"Bugun"', 'nav_tracker:"Reja"', 'nav_money:"Moliya"', 'nav_profile:"Profil"'):
+        assert word in html, word
     group = html[html.index("function groupBar(screen){"):html.index("const offerKey")]
     assert '[["habits", "habits"], ["tasks", "tasks"]]' in group
     assert '[["steps", "nav_steps"], ["stats", "nav_stats"], ["team", "team"]]' in group
@@ -4324,8 +4331,10 @@ def test_the_mini_app_never_claims_a_save_it_did_not_make():
     # The one helper that shows the confirmation also performs the request.
     assert "async function save(request, reload, quiet, message, draft){" in html
     assert "await request();" in html
-    # And the optimistic path reverts on failure rather than keeping the lie.
-    assert "setState(back);" in html
+    # And the optimistic path reverts on failure rather than keeping the lie:
+    # only the item that failed when it knows how (K06), the whole snapshot
+    # otherwise.
+    assert "if(undo) undo(); else setState(JSON.parse(snapshot));" in html
 
 
 def test_every_timezone_the_platform_knows_is_offerable():
@@ -4685,7 +4694,10 @@ def test_the_floating_add_never_covers_the_page():
     html = (ROOT / "webapp" / "index.html").read_text()
     assert 'id="fab"' in html and "#fab:empty{display:none}" in html
     render = html[html.index('document.getElementById("fab").innerHTML'):]
-    assert render.split("\n")[0].strip().endswith('chromeOff ? "" : `'), "fab drawn while loading"
+    first = render.split("\n")[0].strip()
+    assert "chromeOff" in first and first.endswith('? "" : `'), "fab drawn while loading"
+    # Not over prayer or the journal, which are filled in place.
+    assert 'state.tab === "prayer" || state.tab === "journal"' in html
     assert '"quick-add"' in render[:700] and 'data-act="voice-start"' in render[:700]
     assert '"money-add"' in render[:700], "on Money the + adds money"
     assert "fab && fab.innerHTML.trim() ? 84 : 0" in html, "page not padded for the fab"
@@ -10077,7 +10089,10 @@ def test_every_action_name_is_defined_once():
     dupes = sorted({k for k in keys if keys.count(k) > 1})
     assert not dupes, f"action names defined twice: {dupes}"
     row = html[html.index("function taskRow("):html.index("function projectsTab(")]
-    assert 'data-act="task-reschedule"' in row and 'data-act="task-move"' not in row
+    # One "Move" chip on a late task opens today / tomorrow / no date.
+    assert 'data-act="task-move-menu"' in row and 'data-act="task-move"' not in row
+    menu = html[html.index('"task-move-menu": el =>'):html.index('"task-reschedule": el =>')]
+    assert 'data-act="task-reschedule"' in menu
 
 
 def test_an_overdue_task_moves_to_today_from_the_chip(fresh):
@@ -10444,7 +10459,9 @@ def test_v10_design_fixes_hold():
     main = html[html.index("function mainTab("):html.index("function searchBox(")]
     assert main.index('t("overdue")') < main.index("return h + taskPageFooter() + weekFocusBlock();")
     head = html[html.index("function headBlock("):html.index("function nowBlock(")]
-    assert "quote_add" not in head and "avatar-gear" in head
+    # The avatar itself is the way into Settings; the gear on it was noise.
+    assert "quote_add" not in head and "avatar-gear" not in head
+    assert '<button class="avatar" data-act="settings"' in head
     assert 't("team_waiting_on")' in html
 
 
@@ -11051,6 +11068,19 @@ def test_the_rules_document_matches_the_code():
     assert f"**{svc.RESET_UNDO_WINDOW.days}** kun ichida" in doc
     assert f"**{int(svc.HABIT_REMINDER_WINDOW.total_seconds() // 60)}** daqiqa ichida bir marta" in doc
     assert f"Dastlabki **{deps.FREE_ACTIONS}** amal" in doc
+    import plans as _plans
+    L = _plans.LIMITS
+    assert f"| Odatlar (marosimlardan tashqari) | **{L['habits']['free']}** | **{L['habits']['pro']}** |" in doc
+    assert f"| Faol vazifalar | **{L['active_tasks']['free']}** |" in doc
+    assert f"| Loyihalar | **{L['projects']['free']}** | **{L['projects']['pro']}** |" in doc
+    assert (f"| Ovozli buyruq | **{L['voice_week']['free']}** / hafta | **{L['voice_day']['pro']}** / kun"
+            f" | **{L['voice_day']['max']}** / kun |") in doc
+    assert f"**{_plans.TRIAL_DAYS}** kunlik Pro" in doc
+    assert f"bir marta **{_plans.LAUNCH_GIFT_DAYS}** kun Pro" in doc
+    assert f"**+{_plans.CHANNEL_BONUS_DAYS}** kun Pro" in doc
+    P = _plans.PRODUCTS
+    assert (f"Pro {P['pro_month'].stars}⭐/oy, {P['pro_year'].stars}⭐/yil; "
+            f"Max {P['max_month'].stars}⭐/oy, {P['max_year'].stars}⭐/yil") in doc
     assert f"ko‘pi bilan **{application.SETUP_PRESET_LIMIT}** ta" in doc
     assert "**" + " / ".join(str(m) for m in svc.SNOOZE_MINUTES) + "** daqiqaga" in doc
     for cycle in svc.TIMER_CYCLES:
@@ -11727,3 +11757,447 @@ def test_stats_csv_comes_back_as_a_file(alice):
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/csv")
     assert 'filename="ernestos-week-' in r.headers["content-disposition"]
+
+
+# ---------------------------------------------------------------------------
+# Plans: Free / Pro / Max
+# ---------------------------------------------------------------------------
+
+import plans  # noqa: E402
+
+
+@pytest.fixture()
+def plans_on(monkeypatch):
+    monkeypatch.setattr(plans, "ENABLED", True)
+    yield
+
+
+def _fresh_account(uid: int) -> None:
+    """A brand-new account as /start makes it, under plans."""
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, uid, first_name="P")
+        user = s.get(User, uid)
+        user.onboarded = True
+        s.commit()
+
+
+def _expire_grants(uid: int) -> None:
+    with SessionLocal() as s:
+        for row in s.scalars(select(db.PlanGrant).where(db.PlanGrant.account_id == uid)):
+            row.starts_at = db.utcnow() - timedelta(days=40)
+            row.ends_at = db.utcnow() - timedelta(seconds=1)
+        s.commit()
+
+
+def test_new_account_starts_with_three_days_of_pro(plans_on):
+    _fresh_account(7501)
+    with SessionLocal() as s:
+        info = plans.summary(s, 7501)
+        grants = s.scalars(select(db.PlanGrant).where(db.PlanGrant.account_id == 7501)).all()
+    assert info["tier"] == "pro" and info["days_left"] == plans.TRIAL_DAYS
+    assert [g.source for g in grants] == ["trial"]
+    # A second visit does not grant again.
+    _fresh_account(7501)
+    with SessionLocal() as s:
+        assert s.scalar(select(func.count(db.PlanGrant.id))
+                        .where(db.PlanGrant.account_id == 7501)) == 1
+
+
+def test_existing_account_gets_the_launch_gift_once(plans_on, monkeypatch):
+    monkeypatch.setattr(plans, "ENABLED", False)
+    _fresh_account(7502)                    # an account from before plans
+    monkeypatch.setattr(plans, "ENABLED", True)
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, 7502)     # its first request under plans
+        s.commit()
+        svc.get_or_create_user(s, 7502)
+        s.commit()
+        rows = s.scalars(select(db.PlanGrant).where(db.PlanGrant.account_id == 7502)).all()
+    assert [(g.source, (g.ends_at - g.starts_at).days) for g in rows] == [("gift", plans.LAUNCH_GIFT_DAYS)]
+
+
+def test_free_limits_refuse_new_items_and_keep_old_ones(client, plans_on):
+    _fresh_account(7503)
+    _expire_grants(7503)
+    caller = Caller(client, {"id": 7503, "first_name": "P"})
+    with SessionLocal() as s:
+        assert plans.tier_of(s, 7503) == "free"
+    made = [caller.post("/api/habits", json={"name": f"Odat {i}"}).status_code for i in range(4)]
+    assert made == [200, 200, 200, 402]
+    refused = caller.post("/api/habits", json={"name": "Yana"}).json()
+    assert refused == {"detail": "plan_limit", "key": "habits", "limit": 3, "tier": "free", "needs": "pro"}
+    habits = caller.get("/api/habits").json()["habits"]
+    target = next(h for h in habits if h["name"] == "Odat 0")
+    assert caller.post(f"/api/habits/{target['id']}/toggle").status_code == 200, "ticking stays open"
+    assert caller.post("/api/projects", json={"name": "A"}).status_code == 200
+    assert caller.post("/api/projects", json={"name": "B"}).status_code == 402
+    assert caller.get("/api/stats?period=month").status_code == 402
+    assert caller.get("/api/stats?period=week").status_code == 200
+    assert caller.get("/api/stats/csv?period=week").status_code == 402
+    assert caller.post("/api/teams", json={"name": "Jamoa"}).status_code == 402
+
+
+def test_pro_raises_the_limits_and_max_lifts_them(client, plans_on):
+    _fresh_account(7504)                    # on the Pro trial
+    caller = Caller(client, {"id": 7504, "first_name": "P"})
+    for i in range(5):
+        assert caller.post("/api/habits", json={"name": f"H{i}"}).status_code == 200
+    assert caller.get("/api/stats?period=year").status_code == 200
+    assert caller.get("/api/stats/csv?period=week").status_code == 402, "files are Max"
+    with SessionLocal() as s:
+        plans.grant(s, 7504, "max", 30, "admin")
+        s.commit()
+        assert plans.tier_of(s, 7504) == "max"
+    assert caller.get("/api/stats/csv?period=week").status_code == 200
+
+
+def test_channel_bonus_is_a_week_once_and_queues_after_the_trial(plans_on):
+    _fresh_account(7505)
+    with SessionLocal() as s:
+        deps.record_membership(s, 7505, True, "event")
+        deps.record_membership(s, 7505, True, "event")
+        s.commit()
+        rows = s.scalars(select(db.PlanGrant).where(db.PlanGrant.account_id == 7505)
+                         .order_by(db.PlanGrant.starts_at)).all()
+        info = plans.summary(s, 7505)
+    assert [r.source for r in rows] == ["trial", "channel"]
+    assert rows[1].starts_at == rows[0].ends_at, "the bonus waits for the trial to end"
+    assert info["days_left"] == plans.TRIAL_DAYS + plans.CHANNEL_BONUS_DAYS
+    assert info["channel_bonus_used"] is True
+
+
+def test_stars_payment_is_applied_once_per_charge(plans_on):
+    _fresh_account(7506)
+    _expire_grants(7506)
+    with SessionLocal() as s:
+        first = plans.apply_payment(s, 7506, "max_month", "charge-1", 350)
+        again = plans.apply_payment(s, 7506, "max_month", "charge-1", 350)
+        s.commit()
+        assert first is not None and again is None
+        assert plans.tier_of(s, 7506) == "max"
+        assert plans.summary(s, 7506)["days_left"] == 30
+
+
+def test_checkout_accepts_only_our_invoice_at_its_price():
+    from types import SimpleNamespace as NS
+    payload = plans.invoice_payload(42, "pro_month")
+    good = NS(invoice_payload=payload, currency="XTR", total_amount=plans.PRODUCTS["pro_month"].stars)
+    assert plans.checkout_matches(good) == ("pro_month", 42)
+    assert plans.checkout_matches(NS(**{**good.__dict__, "total_amount": 1})) is None
+    assert plans.checkout_matches(NS(**{**good.__dict__, "currency": "USD"})) is None
+    assert plans.checkout_matches(NS(**{**good.__dict__, "invoice_payload": "plan:gold:42"})) is None
+
+
+def test_referral_bonus_is_capped_per_month(plans_on):
+    _fresh_account(7507)
+    with SessionLocal() as s:
+        given = [plans.referral_bonus(s, 7507) is not None for _ in range(15)]
+        s.commit()
+    assert sum(given) == plans.REFERRAL_MONTHLY_CAP // plans.REFERRAL_BONUS_DAYS
+
+
+def test_plan_reaches_me_and_plans_api(client, plans_on):
+    _fresh_account(7508)
+    caller = Caller(client, {"id": 7508, "first_name": "P"})
+    me = caller.get("/api/me").json()
+    assert me["plan"]["tier"] == "pro" and me["trial"]["required"] is False
+    info = caller.get("/api/plans").json()
+    assert {p["key"] for p in info["products"]} == set(plans.PRODUCTS)
+    assert info["all_limits"]["habits"] == {"free": 3, "pro": 25, "max": None}
+    assert caller.post("/api/plans/invoice", json={"product": "gold"}).status_code == 422
+
+
+def test_free_voice_budget_is_weekly(plans_on, monkeypatch):
+    import agent_core
+    monkeypatch.setattr(config, "AGENT_ENABLED", True)
+    _fresh_account(7509)
+    _expire_grants(7509)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, 7509)
+        s.add(db.AgentPreference(workspace_id=ws, consent_at=db.utcnow()))
+        s.commit()
+        for _ in range(plans.LIMITS["voice_week"]["free"]):
+            agent_core._budget(s, 7509, ws)
+            s.commit()
+        with pytest.raises(agent_core.AgentError) as err:
+            agent_core._budget(s, 7509, ws)
+    assert err.value.code == "plan_limit"
+
+
+def test_ending_notice_is_sent_once_per_end(plans_on):
+    _fresh_account(7510)
+    with SessionLocal() as s:
+        row = s.scalar(select(db.PlanGrant).where(db.PlanGrant.account_id == 7510))
+        row.ends_at = db.utcnow() + timedelta(hours=5)
+        s.commit()
+        due = [d for d in plans.ending_soon(s) if d[0] == 7510]
+        assert len(due) == 1
+        plans.mark_notified(s, 7510, due[0][1])
+        assert not [d for d in plans.ending_soon(s) if d[0] == 7510]
+
+
+def test_plans_off_means_no_limits(client):
+    caller = Caller(client, {"id": 7511, "first_name": "P"})
+    for i in range(6):
+        assert caller.post("/api/habits", json={"name": f"H{i}"}).status_code == 200
+
+
+def test_api_map_is_hidden_in_production_and_pages_are_compressed(client):
+    import importlib
+    assert application._API_MAP is True            # the suite is not production
+    page = client.get("/", headers={"Accept-Encoding": "gzip"})
+    assert page.headers.get("content-encoding") == "gzip"
+    source = (ROOT / "app.py").read_text()
+    assert "openapi_url=\"/openapi.json\" if _API_MAP else None" in source
+    assert importlib.util.find_spec("cryptography") is not None
+
+
+def test_command_menu_lists_only_commands_the_bot_answers():
+    answered = {name for name, _ in application.BOT_COMMANDS} | {"start", "home", "guide", "agent"}
+    for lang, rows in application.BOT_MENU.items():
+        assert rows, lang
+        for name, text in rows:
+            assert name in answered, (lang, name)
+            assert 3 <= len(text) <= 256
+    sent = []
+
+    class Bot:
+        async def set_my_commands(self, commands, language_code=None):
+            sent.append((language_code, [c.command for c in commands]))
+
+    import asyncio
+    asyncio.run(application.set_command_menu(Bot()))
+    assert {lang for lang, _ in sent} == {"uz", "ru", "en", None}
+
+
+def test_a_queued_tick_sets_the_state_it_meant_on_the_day_it_meant(alice):
+    """K05: a replayed tick must not flip back, and a tick made at 23:59 and
+    sent after midnight belongs to the day it was made."""
+    from datetime import timedelta
+    made = alice.post("/api/habits", json={"name": "Kitob", "category": "target"})
+    assert made.status_code == 200, made.text
+    hid = next(h["id"] for h in alice.get("/api/habits").json()["habits"]
+               if h["name"] == "Kitob")
+    url = f"/api/habits/{hid}/toggle"
+    assert alice.post(url, {"done": True}).json()["done"] is True
+    # The same request again — a retry — leaves it done instead of undoing it.
+    assert alice.post(url, {"done": True}).json()["done"] is True
+    assert alice.post(url, {"done": False}).json()["done"] is False
+    assert alice.post(url, {"done": False}).json()["done"] is False
+
+    with SessionLocal() as s:
+        tz = svc.user_tz(s.get(User, ALICE["id"]))
+    today = svc.today_local(tz)
+    yesterday = (today - timedelta(days=1)).isoformat()
+    r = alice.post(url, {"done": True, "day": yesterday})
+    assert r.status_code == 200, r.text
+    then = next(h for h in alice.get(f"/api/habits?day={yesterday}").json()["habits"]
+                if h["id"] == hid)
+    now = next(h for h in alice.get("/api/habits").json()["habits"] if h["id"] == hid)
+    assert then["done"] is True and now["done"] is False
+
+    # Tomorrow, and anything older than a week, are refused, never moved.
+    tomorrow = (today + timedelta(days=1)).isoformat()
+    assert alice.post(url, {"done": True, "day": tomorrow}).status_code == 422
+    old = (today - timedelta(days=30)).isoformat()
+    assert alice.post(url, {"done": True, "day": old}).status_code == 422
+    # The plain flip the bot and old clients use still works.
+    assert alice.post(url).json()["done"] is True
+
+
+def test_a_team_tick_sets_its_state_and_tells_an_outsider_nothing(client):
+    """K05 for shared items: desired state, and the shortcut that skips the
+    write never answers someone outside the team."""
+    one, two, team_id = _pair(client)
+    a = Caller(client, {"id": one, "first_name": "Ernest"})
+    stranger = Caller(client, {"id": next(_next_id), "first_name": "X"})
+    task_id = a.post(f"/api/teams/{team_id}/tasks", {"title": "Hisobot"}).json()["id"]
+    url = f"/api/teams/tasks/{task_id}/toggle"
+    assert a.post(url, {"done": True}).json()["done"] is True
+    assert a.post(url, {"done": True}).json()["done"] is True
+    assert a.post(url, {"done": False}).json()["done"] is False
+    assert stranger.post(url, {"done": False}).status_code in (403, 404)
+
+
+def test_the_prayer_screen_reads_the_day_it_writes(alice, monkeypatch):
+    """K05: GET used the project's clock and POST the user's, so near
+    midnight the screen showed a different day from the one just saved."""
+    seen = []
+    real = svc.today_local
+    monkeypatch.setattr(svc, "today_local", lambda tz=None: (seen.append(tz), real(tz))[1])
+    with SessionLocal() as s:
+        s.get(User, ALICE["id"]).timezone = "America/New_York"
+        s.commit()
+    assert alice.get("/api/prayers").status_code == 200
+    assert any(str(z) == "America/New_York" for z in seen)
+
+
+def test_referral_steps_pay_the_inviter_once_each(plans_on):
+    """5 friends a month of Pro, 10 two more, 20 a month of Max — each once,
+    however often the count is looked at."""
+    _fresh_account(7520)
+    with SessionLocal() as s:
+        assert plans.referral_rewards(s, 7520, 4) == []
+        first = plans.referral_rewards(s, 7520, 5)
+        assert [(g.tier, (g.ends_at - g.starts_at).days) for g in first] == [("pro", 30)]
+        assert plans.referral_rewards(s, 7520, 5) == []
+        more = plans.referral_rewards(s, 7520, 21)
+        assert sorted((g.tier, (g.ends_at - g.starts_at).days) for g in more) == \
+            [("max", 30), ("pro", 60)]
+        assert plans.referral_rewards(s, 7520, 40) == []
+        steps = plans.referral_steps(s, 7520, 21)
+        s.commit()
+    assert [x["target"] for x in steps] == [5, 10, 20]
+    assert all(x["granted"] and x["reached"] for x in steps)
+
+
+def test_the_invite_screen_gets_its_steps(client, plans_on):
+    _fresh_account(7521)
+    caller = Caller(client, {"id": 7521, "first_name": "R"})
+    r = caller.get("/api/referrals/me").json()
+    assert [x["target"] for x in r["steps"]] == [5, 10, 20]
+    assert r["steps"][0] == {"target": 5, "tier": "pro", "days": 30, "have": 0,
+                             "reached": False, "granted": False}
+    assert r["friend_days"] == plans.REFERRAL_BONUS_DAYS
+
+
+def test_a_chosen_avatar_is_served_checked_and_forgotten(client):
+    """Bytes are judged by their magic number, the size is capped, and the
+    picture goes with the account."""
+    import base64 as b64
+    caller = Caller(client, {"id": 7522, "first_name": "A"})
+    jpeg = b"\xff\xd8\xff\xe0" + b"0" * 500
+    r = caller.post("/api/avatar", {"image": "data:image/jpeg;base64," + b64.b64encode(jpeg).decode()})
+    assert r.status_code == 200, r.text
+    me = caller.get("/api/me").json()
+    assert me["has_photo"] is True and me["avatar_custom"] and me["avatar_token"]
+    got = client.get(f"/api/avatar?token={me['avatar_token']}")
+    assert got.status_code == 200 and got.content == jpeg
+    assert got.headers["content-type"] == "image/jpeg"
+
+    html = b"<html><script>alert(1)</script>"
+    assert caller.post("/api/avatar", {"image": b64.b64encode(html).decode()}).status_code == 422
+    assert caller.post("/api/avatar", {"image": "not base64!"}).status_code == 422
+    big = b"\xff\xd8\xff" + b"0" * (application.AVATAR_MAX_BYTES + 1)
+    assert caller.post("/api/avatar", {"image": b64.b64encode(big).decode()}).status_code in (413, 422)
+
+    assert caller.delete("/api/avatar").status_code == 200
+    assert caller.get("/api/me").json()["avatar_custom"] is None
+    caller.post("/api/avatar", {"image": b64.b64encode(jpeg).decode()})
+    with SessionLocal() as s:
+        assert svc.delete_account(s, 7522)
+        assert s.get(db.UserAvatar, 7522) is None
+
+
+def test_deleting_an_owner_never_takes_the_team_with_it(tmp_path):
+    """K02, on a database that enforces foreign keys as Postgres does:
+    `teams.owner_id` cascades, so deleting the owner used to delete the team
+    and every other member's work in it."""
+    from sqlalchemy import create_engine, event
+    from sqlalchemy.orm import sessionmaker
+
+    eng = create_engine(f"sqlite:///{tmp_path / 'fk.db'}")
+
+    @event.listens_for(eng, "connect")
+    def _fk(conn, _record):
+        conn.execute("PRAGMA foreign_keys=ON")
+
+    db.Base.metadata.create_all(eng)
+    Session_ = sessionmaker(bind=eng, expire_on_commit=False)
+    one, two = 9100001, 9100002
+    with Session_() as s:
+        for uid in (one, two):
+            svc.get_or_create_user(s, uid, first_name=str(uid))
+        team = svc.create_team(s, one, "Do'kon")
+        svc.join_team(s, two, team.code)
+        task = svc.add_team_task(s, two, team.id, "Yetkazib berish")
+        task_id = task["id"] if isinstance(task, dict) else task.id
+
+        # A live team with someone else in it: refused, nothing deleted.
+        with pytest.raises(ValueError, match="owner_must_transfer"):
+            svc.delete_account(s, one)
+        s.rollback()
+        assert s.get(User, one) is not None
+        assert s.get(db.Team, team.id) is not None
+
+        # Closed (archived) team: the account goes, the team and the other
+        # member's work stay, owned by that member now.
+        svc.delete_team(s, one, team.id)
+        assert svc.delete_account(s, one)
+        kept = s.get(db.Team, team.id)
+        assert kept is not None and kept.owner_id == two
+        assert s.get(db.TeamTask, task_id) is not None
+
+        # A team nobody else was ever in goes with its owner.
+        three = 9100003
+        svc.get_or_create_user(s, three, first_name="3")
+        solo_id = svc.create_team(s, three, "Yolg'iz").id
+        assert svc.delete_account(s, three)
+        assert s.get(db.Team, solo_id) is None
+
+
+def test_a_journal_save_never_overwrites_text_saved_elsewhere(fresh):
+    """K03: with `base`, a field that changed elsewhere since is refused with
+    both versions; without `base` (old clients, the bot) nothing changes."""
+    first = fresh.post("/api/journal", {"answers": {"wins": "laptop"}, "base": ""})
+    assert first.status_code == 200, first.text
+    seen = first.json()["updated_at"]
+    # Another device saves on top.
+    fresh.post("/api/journal", {"answers": {"wins": "bot"}})
+    stale = fresh.post("/api/journal", {"answers": {"wins": "phone", "lesson": "x"}, "base": seen})
+    assert stale.status_code == 409
+    body = stale.json()
+    assert body["detail"] == "journal_conflict" and body["server"] == {"wins": "bot"}
+    today = first.json()["day"]
+    assert fresh.get(f"/api/journal?day={today}").json()["entry"]["answers"]["wins"] == "bot", \
+        "nothing was overwritten"
+    # Resolved against the current version: accepted.
+    ok = fresh.post("/api/journal", {"answers": {"wins": "bot\n\nphone"}, "base": body["updated_at"]})
+    assert ok.status_code == 200
+    # A field nobody else touched is never a conflict.
+    fresh = fresh.post("/api/journal", {"answers": {"lesson": "new"}, "base": seen})
+    assert fresh.status_code == 200
+
+
+def test_a_money_entry_is_corrected_in_place(fresh):
+    """K21: amount, direction, category, note and day, on the same entry."""
+    from datetime import timedelta
+    made = fresh.post("/api/money", {"kind": "expense", "amount": 45000,
+                                     "category": "food", "note": "Tushlik"}).json()
+    yesterday = (date.fromisoformat(made["day"]) - timedelta(days=1)).isoformat()
+    r = fresh.patch(f"/api/money/{made['id']}", {"amount": 50000, "note": "Kechki ovqat",
+                                                 "day": yesterday})
+    assert r.status_code == 200, r.text
+    got = r.json()
+    assert (got["id"], got["amount"], got["note"], got["day"], got["category"]) == \
+        (made["id"], 50000, "Kechki ovqat", yesterday, "food")
+    # Turning it into income moves it to an income category.
+    flipped = fresh.patch(f"/api/money/{made['id']}", {"kind": "income"}).json()
+    assert flipped["kind"] == "income" and flipped["category"] != "food"
+    tomorrow = (date.fromisoformat(made["day"]) + timedelta(days=1)).isoformat()
+    assert fresh.patch(f"/api/money/{made['id']}", {"day": tomorrow}).status_code == 422
+    assert fresh.patch("/api/money/999999", {"amount": 1}).status_code == 404
+
+
+def test_the_export_can_be_put_back_together(fresh):
+    """K25: every reference in the export points at something in it, and the
+    parts that were missing — amounts, schedule history, pauses, timers — are
+    there, under a schema version."""
+    made = fresh.post("/api/habits", {"name": "Suv", "category": "target"}).json()
+    hid = made["id"]
+    fresh.patch(f"/api/habits/{hid}", {"target_qty": 8, "unit": "stakan"})
+    fresh.post(f"/api/habits/{hid}/toggle")
+    data = fresh.get("/api/export").json()
+    assert data["schema_version"] == svc.EXPORT_SCHEMA_VERSION >= 2
+    ids = {h["id"] for h in data["habits"]}
+    assert hid in ids
+    assert all(log["habit_id"] in ids for log in data["habit_logs"])
+    assert all("qty" in log for log in data["habit_logs"])
+    for key in ("habit_schedules", "habit_pauses", "timers"):
+        assert isinstance(data[key], list), key
+    habit = next(h for h in data["habits"] if h["id"] == hid)
+    for key in ("target_qty", "min_qty", "unit", "remind_at"):
+        assert key in habit, key
+    task_ids = {t["id"] for t in data["tasks"]}
+    project_ids = {p["id"] for p in data["projects"]}
+    assert all(t["project_id"] in project_ids for t in data["tasks"] if t["project_id"]) or not task_ids

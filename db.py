@@ -30,7 +30,7 @@ import os
 from datetime import date, datetime, time, timezone
 
 from sqlalchemy import (
-    BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Index, Integer,
+    BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, LargeBinary,
     String, Text, Time, UniqueConstraint, create_engine, event,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
@@ -127,6 +127,11 @@ class User(Base):
     habit_reminders: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     #: Quiet hours: ordinary reminders in this window arrive without sound
     #: (audit #37). Both NULL — off. The window may cross midnight.
+    #: When this account entered the plans system (trial or launch gift
+    #: granted). None: not yet — the next request does it.
+    plan_started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    #: The end of the plan period the "ends tomorrow" message was sent for.
+    plan_notice_for: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     quiet_from: Mapped[time | None] = mapped_column(Time, nullable=True)
     quiet_to: Mapped[time | None] = mapped_column(Time, nullable=True)
     #: Minutes of focused time the person has on an ordinary day; NULL — not
@@ -1144,6 +1149,30 @@ class AppSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class PlanGrant(Base):
+    """A stretch of Pro or Max on an account: the sign-up trial, the channel
+    bonus, a referral, a launch gift or a payment.
+
+    An account's plan is the best tier with a grant covering this moment;
+    with none it is Free. Grants of one tier queue end to end, so a payment
+    made during the trial adds to it instead of overlapping it."""
+
+    __tablename__ = "plan_grants"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    tier: Mapped[str] = mapped_column(String(8))          # pro | max
+    #: trial | channel | referral | gift | stars | admin
+    source: Mapped[str] = mapped_column(String(12))
+    starts_at: Mapped[datetime] = mapped_column(DateTime)
+    ends_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    #: The Telegram Stars charge id for a payment; unique, so a payment
+    #: Telegram reports twice is applied once.
+    ref: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
+    amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class AppNotification(Base):
     """What the bot told an account, kept for the phone app's inbox.
 
@@ -1161,6 +1190,22 @@ class AppNotification(Base):
     actions: Mapped[str] = mapped_column(Text, default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
     read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class UserAvatar(Base):
+    """A profile picture the person chose in the app.
+
+    The phone shrinks it to a small square JPEG before it is sent, and the
+    server refuses anything over `AVATAR_MAX_BYTES`, so a row is a few dozen
+    kilobytes. Kept here rather than in Telegram because the phone app has no
+    chat to upload it through. Deleted with the account."""
+
+    __tablename__ = "user_avatars"
+
+    account_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    mime: Mapped[str] = mapped_column(String(16), default="image/jpeg")
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class PushDevice(Base):
@@ -1744,6 +1789,9 @@ class AgentPreference(Base):
     edit_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     usage_day: Mapped[date | None] = mapped_column(Date, nullable=True)
     usage_count: Mapped[int] = mapped_column(Integer, default=0)
+    #: The Monday of the week `week_count` belongs to: Free counts per week.
+    usage_week: Mapped[date | None] = mapped_column(Date, nullable=True)
+    week_count: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
 
 
 class AgentDraft(Base):

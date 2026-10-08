@@ -76,13 +76,14 @@ def close_days() -> None:
             dropped = svc.idempotency_cleanup(s)
             import app_push
             dropped += app_push.cleanup(s)
+            dropped += svc.agent_audit_cleanup(s)
     if closed or dropped:
         log.info("day close: %s days closed, %s idempotency keys dropped",
                  closed, dropped)
 
 
 def build(bot, *, send_reports, send_reminders, send_platform_stats,
-          tick_timers=None, close_days_job=None) -> AsyncIOScheduler:
+          tick_timers=None, close_days_job=None, plan_notices=None) -> AsyncIOScheduler:
     """Wire the jobs onto a scheduler and return it, **not** started.
 
     Wiring and starting are separate because starting needs a running event
@@ -115,6 +116,12 @@ def build(bot, *, send_reports, send_reminders, send_platform_stats,
                       minute=f"*/{svc.REMINDER_JOB_MINUTES}",
                       args=[bot], id="reminders",
                       max_instances=1, misfire_grace_time=REMINDER_GRACE)
+
+    # "Your Pro ends tomorrow": once per plan end, so a half-hour tick is
+    # plenty and a missed one costs nothing.
+    if plan_notices is not None:
+        scheduler.add_job(plan_notices, "cron", minute="*/30", args=[bot],
+                          id="plan_notices", max_instances=1, misfire_grace_time=STATS_GRACE)
 
     # The statistics post ticks like the reports do, and decides for itself
     # whether today's is owed. It used to be `cron(hour=STATS_POST_HOUR)`,

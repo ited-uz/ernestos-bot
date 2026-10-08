@@ -38,4 +38,5 @@ writeFileSync(join(www, "config.js"),
   `window.ERNEST_CONFIG = ${JSON.stringify({ api, push, built: new Date().toISOString() })};\n`);
 copyFileSync(join(mobile, "src", "native.js"), join(www, "native.js"));
 copyFileSync(join(mobile, "src", "login.html"), join(www, "login.html"));
+copyFileSync(join(mobile, "src", "logo.png"), join(www, "logo.png"));
 console.log(`www built for ${api} (push ${push ? "on" : "off: no google-services.json"})`);

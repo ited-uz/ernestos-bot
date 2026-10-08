@@ -32,9 +32,8 @@ body{font:16px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Rob
      padding:calc(env(safe-area-inset-top,0px) + 48px) 16px calc(env(safe-area-inset-bottom,0px) + 24px);
      display:flex;flex-direction:column;align-items:center}
 main{width:100%;max-width:420px}
-.logo{width:64px;height:64px;border-radius:18px;background:var(--primary-fill);color:var(--on-primary);
-      display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:700;
-      margin:0 auto 20px;box-shadow:var(--shadow)}
+.logo{width:72px;height:72px;border-radius:18px;display:block;margin:0 auto 20px;
+      box-shadow:0 10px 30px -10px rgba(1,223,122,.45), var(--shadow)}
 h1{font-size:26px;line-height:1.2;margin:0 0 8px;text-align:center;font-weight:700}
 .lead{color:var(--text-2);text-align:center;margin:0 0 28px}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:20px;box-shadow:var(--shadow)}
@@ -55,21 +54,37 @@ input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,v
 .msg{min-height:22px;font-size:14px;text-align:center;margin:0 0 12px;color:var(--danger)}
 .hint{color:var(--text-3);font-size:13px;text-align:center;margin:20px 0 0}
 .gap{height:12px}
+.langs{display:flex;justify-content:center;gap:6px;margin:0 0 18px}
+.langs button{min-height:36px;padding:0 12px;border-radius:18px;border:1px solid var(--border-2);
+      background:var(--surface);color:var(--text-2);font:inherit;font-size:14px;cursor:pointer}
+.langs button[aria-pressed="true"]{background:var(--primary-fill);color:var(--on-primary);border-color:transparent}
+.row{display:flex;gap:8px}
+.row input{flex:1}
+.paste{flex:0 0 auto;min-height:56px;margin:4px 0 12px;padding:0 14px;border-radius:12px;font:inherit;
+      font-size:14px;border:1px solid var(--border-2);background:var(--surface);color:var(--text);cursor:pointer}
 </style>
 </head>
 <body>
 <main>
-  <div class="logo">E</div>
+  <img class="logo" src="logo.png" alt="ErnestOS" width="72" height="72" />
   <h1 id="t-title">ErnestOS</h1>
   <p class="lead" id="t-lead"></p>
+  <div class="langs" role="group" aria-label="Language">
+    <button type="button" data-lang="uz">O'zbek</button>
+    <button type="button" data-lang="ru">Русский</button>
+    <button type="button" data-lang="en">English</button>
+  </div>
   <div class="card">
     <div class="step"><span class="num">1</span><p id="t-step1"></p></div>
     <button class="btn secondary" id="get-code" type="button"></button>
     <div class="gap"></div>
     <div class="step"><span class="num">2</span><p id="t-step2"></p></div>
     <form id="form" autocomplete="off">
-      <input id="code" inputmode="text" autocapitalize="characters" spellcheck="false"
-             maxlength="9" placeholder="ABCD-2345" aria-label="code" />
+      <div class="row">
+        <input id="code" inputmode="text" autocapitalize="characters" spellcheck="false"
+               autocomplete="one-time-code" maxlength="9" placeholder="ABCD-2345" aria-label="code" />
+        <button class="paste" id="paste" type="button"></button>
+      </div>
       <p class="msg" id="msg" role="alert"></p>
       <button class="btn" id="submit" type="submit"></button>
     </form>
@@ -78,79 +93,142 @@ input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,v
 </main>
 <script>
 (function(){
+  /* K09: the language can be picked here and is remembered; the bot's name is
+     remembered too, so "Get a code" works on a second launch with no signal;
+     each failure says what actually happened; a copied code can be pasted
+     with one tap and is sent as soon as it is complete. */
   var L = {
     uz:{lead:"Telegram botdagi kod bilan kiring. Ma'lumotlaringiz bot va ilovada bir xil.",
         step1:"<b>Botdan kod oling.</b> Bot ochiladi va 8 belgili kod yuboradi.",
-        step2:"<b>Kodni shu yerga yozing.</b>",
-        get:"Telegram'da kod olish", submit:"Kirish", wait:"Tekshirilmoqda…",
-        bad:"Kod noto'g'ri yoki eskirgan. Botdan yangisini oling.",
-        many:"Juda ko'p urinish. Birozdan keyin qayta urinib ko'ring.",
+        step2:"<b>Kodni shu yerga yozing yoki joylang.</b>",
+        get:"Telegram'da kod olish", submit:"Kirish", wait:"Tekshirilmoqda…", paste:"Joylash",
+        bad:"Kod noto'g'ri, ishlatilgan yoki eskirgan (10 daqiqa). Botdan yangisini oling.",
+        many:"Juda ko'p urinish. {n} soniyadan keyin qayta urinib ko'ring.",
+        server:"Serverda vaqtinchalik nosozlik. Birozdan keyin qayta urining.",
         offline:"Internet yo'q. Ulanishni tekshiring.",
+        slow:"Server javob bermadi. Internetni tekshirib, qayta urining.",
+        nobot:"Telegram'ni oching va botga /app deb yozing.",
+        noclip:"Nusxa topilmadi. Kodni qo'lda yozing.",
         short:"Kod 8 ta belgidan iborat.",
         hint:"Botni topa olmasangiz, Telegram'da botga /app deb yozing."},
     ru:{lead:"Войдите с кодом из Telegram-бота. Данные в боте и приложении общие.",
         step1:"<b>Получите код в боте.</b> Бот откроется и пришлёт код из 8 символов.",
-        step2:"<b>Введите код здесь.</b>",
-        get:"Получить код в Telegram", submit:"Войти", wait:"Проверяем…",
-        bad:"Код неверный или устарел. Получите новый в боте.",
-        many:"Слишком много попыток. Попробуйте чуть позже.",
+        step2:"<b>Введите или вставьте код здесь.</b>",
+        get:"Получить код в Telegram", submit:"Войти", wait:"Проверяем…", paste:"Вставить",
+        bad:"Код неверный, уже использован или устарел (10 минут). Получите новый в боте.",
+        many:"Слишком много попыток. Повторите через {n} сек.",
+        server:"Временная ошибка сервера. Попробуйте чуть позже.",
         offline:"Нет интернета. Проверьте подключение.",
+        slow:"Сервер не ответил. Проверьте интернет и повторите.",
+        nobot:"Откройте Telegram и напишите боту /app.",
+        noclip:"В буфере ничего нет. Введите код вручную.",
         short:"Код состоит из 8 символов.",
         hint:"Если бот не открылся, напишите ему в Telegram /app."},
     en:{lead:"Sign in with a code from the Telegram bot. Your data is the same in the bot and the app.",
         step1:"<b>Get a code from the bot.</b> The bot opens and sends an 8-character code.",
-        step2:"<b>Type the code here.</b>",
-        get:"Get a code in Telegram", submit:"Sign in", wait:"Checking…",
-        bad:"The code is wrong or expired. Get a new one from the bot.",
-        many:"Too many tries. Please try again in a few minutes.",
+        step2:"<b>Type or paste the code here.</b>",
+        get:"Get a code in Telegram", submit:"Sign in", wait:"Checking…", paste:"Paste",
+        bad:"The code is wrong, already used or expired (10 minutes). Get a new one from the bot.",
+        many:"Too many tries. Try again in {n} seconds.",
+        server:"The server has a temporary problem. Try again shortly.",
         offline:"No internet connection.",
+        slow:"The server did not answer. Check the connection and try again.",
+        nobot:"Open Telegram and send /app to the bot.",
+        noclip:"Nothing to paste. Type the code instead.",
         short:"The code has 8 characters.",
         hint:"If the bot did not open, send /app to it in Telegram."}
   };
-  var lang = (navigator.language || "uz").slice(0,2);
-  var T = L[lang] || L.uz;
-  document.documentElement.lang = L[lang] ? lang : "uz";
   var $ = function(id){ return document.getElementById(id); };
-  $("t-lead").textContent = T.lead;
-  $("t-step1").innerHTML = T.step1;
-  $("t-step2").innerHTML = T.step2;
-  $("get-code").textContent = T.get;
-  $("submit").textContent = T.submit;
-  $("t-hint").textContent = T.hint;
+  var keep = {
+    get: function(k){ try{ return localStorage.getItem(k); }catch(_){ return null; } },
+    set: function(k, v){ try{ localStorage.setItem(k, v); }catch(_){} }
+  };
+  var lang = keep.get("ernest.app.lang") || (navigator.language || "uz").slice(0,2);
+  if(!L[lang]) lang = "uz";
+  var T = L[lang];
 
-  var bot = "";
+  function paint(){
+    T = L[lang];
+    document.documentElement.lang = lang;
+    $("t-lead").textContent = T.lead;
+    $("t-step1").innerHTML = T.step1;
+    $("t-step2").innerHTML = T.step2;
+    $("get-code").textContent = T.get;
+    $("submit").textContent = T.submit;
+    $("paste").textContent = T.paste;
+    $("t-hint").textContent = T.hint;
+    $("msg").textContent = "";
+    Array.prototype.forEach.call(document.querySelectorAll("[data-lang]"), function(b){
+      b.setAttribute("aria-pressed", b.getAttribute("data-lang") === lang ? "true" : "false");
+    });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll("[data-lang]"), function(b){
+    b.onclick = function(){ lang = b.getAttribute("data-lang"); keep.set("ernest.app.lang", lang); paint(); };
+  });
+  paint();
+
+  var bot = keep.get("ernest.app.bot") || "";
   fetch("/api/app/config").then(function(r){ return r.json(); })
-    .then(function(c){ bot = c.bot_username || ""; }).catch(function(){});
+    .then(function(c){ if(c.bot_username){ bot = c.bot_username; keep.set("ernest.app.bot", bot); } })
+    .catch(function(){});
 
   $("get-code").onclick = function(){
-    var url = bot ? "https://t.me/" + bot + "?start=app" : "https://t.me/";
-    window.ErnestApp.open(url);
+    if(!bot){ $("msg").textContent = T.nobot; window.ErnestApp.open("https://t.me/"); return; }
+    window.ErnestApp.open("https://t.me/" + bot + "?start=app");
   };
 
   var input = $("code");
-  input.addEventListener("input", function(){
+  function tidy(){
     var raw = input.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
     input.value = raw.length > 4 ? raw.slice(0,4) + "-" + raw.slice(4) : raw;
+    return raw;
+  }
+  input.addEventListener("input", function(){
     $("msg").textContent = "";
+    // A pasted or autofilled whole code goes at once.
+    if(tidy().length === 8 && !busy) submit();
   });
+  $("paste").onclick = function(){
+    var clip = navigator.clipboard && navigator.clipboard.readText;
+    if(!clip){ $("msg").textContent = T.noclip; input.focus(); return; }
+    navigator.clipboard.readText().then(function(text){
+      var raw = String(text || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+      if(raw.length < 8){ $("msg").textContent = T.noclip; input.focus(); return; }
+      input.value = raw.slice(-8);
+      if(tidy().length === 8) submit();
+    }).catch(function(){ $("msg").textContent = T.noclip; input.focus(); });
+  };
 
-  $("form").addEventListener("submit", function(e){
-    e.preventDefault();
+  var busy = false;
+  function submit(){
     var code = input.value.replace(/[^A-Z0-9]/gi, "");
     if(code.length !== 8){ $("msg").textContent = T.short; return; }
     var btn = $("submit");
-    btn.disabled = true; btn.textContent = T.wait;
+    busy = true; btn.disabled = true; btn.textContent = T.wait;
     var device = ((window.Telegram && Telegram.WebApp.platform) || "app") + " · " +
                  (navigator.userAgent.match(/\(([^;)]+;[^;)]+)/) || ["", ""])[1].slice(0, 60);
+    var ctl = window.AbortController ? new AbortController() : null;
+    var timer = setTimeout(function(){ if(ctl) ctl.abort(); }, 15000);
     fetch("/api/app/login", {method:"POST", headers:{"Content-Type":"application/json"},
-                             body: JSON.stringify({code: code, device: device})})
+                             body: JSON.stringify({code: code, device: device}),
+                             signal: ctl ? ctl.signal : undefined})
       .then(function(r){
         if(r.ok) return r.json().then(function(b){ window.ErnestApp.signIn(b.token); });
-        $("msg").textContent = r.status === 429 ? T.many : T.bad;
+        if(r.status === 429){
+          var n = parseInt(r.headers.get("Retry-After") || "60", 10) || 60;
+          $("msg").textContent = T.many.replace("{n}", n);
+        } else if(r.status >= 500){
+          $("msg").textContent = T.server;
+        } else {
+          $("msg").textContent = T.bad;
+        }
       })
-      .catch(function(){ $("msg").textContent = T.offline; })
-      .then(function(){ btn.disabled = false; btn.textContent = T.submit; });
-  });
+      .catch(function(e){
+        $("msg").textContent = e && e.name === "AbortError" ? T.slow : T.offline;
+      })
+      .then(function(){ clearTimeout(timer); busy = false; btn.disabled = false; btn.textContent = T.submit; });
+  }
+  $("form").addEventListener("submit", function(e){ e.preventDefault(); if(!busy) submit(); });
 })();
 </script>
 </body>

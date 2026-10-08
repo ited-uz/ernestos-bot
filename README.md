@@ -1,4 +1,12 @@
-# ErnestOS v13.0
+# ErnestOS v13.1
+
+
+## v13.1 da yangi
+
+- **Tariflar: Free / Pro / Max** — `plans.py`, qoidalar `docs/AMALDAGI_QOIDALAR.md`da.
+  Yangi akkaunt 3 kun Pro, kanal +7 kun, to‘lov Telegram Stars. Botda `/tarif`.
+- **Telefon ilovasi** (Android, Capacitor) — `docs/MOBILE.md`.
+- **100 bandlik tahlil** — nima qilindi, nima rad etildi: `docs/AUDIT_100_TRIAGE.md`.
 
 ## Avval shu bo‘limni o‘qing
 

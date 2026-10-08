@@ -374,7 +374,7 @@ h3{font-size:18px;font-weight:640;letter-spacing:-.3px;line-height:1.3;
 .btn:hover{filter:brightness(1.04)}
 .btn:active{filter:brightness(.94);transform:scale(.99)}
 .btn:focus-visible{outline:0;box-shadow:var(--ring)}
-.btn[disabled]{opacity:.45;pointer-events:none}
+.btn[disabled]{opacity:.45;pointer-events:none;cursor:not-allowed}
 .btn.secondary{background:var(--surface);color:var(--text);
                border:var(--border-w) solid var(--border-2);box-shadow:none}
 .btn.secondary:hover{background:var(--surface-2);filter:none}
@@ -438,7 +438,7 @@ label{display:block;font-size:14px;color:var(--text-2);margin:var(--s3) 0 6px;
 .seg{display:flex;background:var(--surface-2);
      border-radius:var(--radius-sm);padding:3px;gap:2px}
 .seg > *{flex:1;text-align:center;padding:var(--s1) 6px;min-height:44px;
-         display:flex;align-items:center;justify-content:center;
+         display:flex;align-items:center;justify-content:center;gap:6px;
          border-radius:calc(var(--radius-sm) - 3px);font-size:14.5px;font-weight:580;
          cursor:pointer;color:var(--text-2);white-space:nowrap;overflow:hidden;
          text-overflow:ellipsis;min-width:0;transition:background var(--motion),
@@ -674,6 +674,10 @@ label{display:block;font-size:14px;color:var(--text-2);margin:var(--s3) 0 6px;
 .cal-dots i{width:4px;height:4px;border-radius:50%}
 .k-task{background:var(--c1)} .k-project{background:var(--c2)}
 .k-birthday{background:var(--c4)}
+/* What the dots mean, once, under the month. */
+.cal-legend{display:flex;justify-content:center;gap:14px;margin-top:10px;font-size:12px;color:var(--text-3)}
+.cal-legend span{display:inline-flex;align-items:center;gap:5px}
+.cal-legend i{width:6px;height:6px;border-radius:50%}
 
 /* Habit history grid */
 .hgrid{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:4px}
@@ -682,31 +686,32 @@ label{display:block;font-size:14px;color:var(--text-2);margin:var(--s3) 0 6px;
 .hgrid i.done{background:var(--ok)}
 
 /* Prayer: the name, then its states in one strip. */
-.prow{padding:var(--s2) 0;border-bottom:var(--border-w) solid var(--border)}
+.prow{padding:10px 0;border-bottom:var(--border-w) solid var(--border)}
 .prow:last-of-type{border-bottom:0}
-.prow .pn{font-size:15.5px;font-weight:600;display:flex;align-items:center;
-          gap:6px;margin-bottom:var(--s1)}
-/* The statuses are one segmented row of equal cells that always fits the
-   width — no sideways scrolling, no clipped last button. Tapping the chosen
-   one again clears it, so there is no separate ✕. */
-.prow .ps{display:grid;grid-template-columns:repeat(var(--n, 4), minmax(0, 1fr));gap:4px}
+.prow .pn{font-size:14.5px;font-weight:620;display:flex;align-items:center;
+          gap:6px;margin-bottom:6px}
+/* One segmented strip per prayer: a quiet track with four cells, not twenty
+   outlined buttons. Still one tap to record; tapping the chosen one again
+   clears it. */
+.prow .ps{display:grid;grid-template-columns:repeat(var(--n, 4), minmax(0, 1fr));gap:2px;
+          background:var(--surface-2);border-radius:var(--radius-sm);padding:3px}
 @media (min-width:520px){
   .prow{display:flex;align-items:center;gap:var(--s2)}
   .prow .pn{width:96px;flex:none;margin-bottom:0}
   .prow .ps{flex:1}
 }
-.st{border-radius:var(--radius-sm);
-    border:var(--border-w) solid var(--border-2);background:var(--surface);
-    padding:4px 2px;font-size:13px;font-weight:560;cursor:pointer;min-height:44px;
+.st{border-radius:calc(var(--radius-sm) - 3px);border:0;background:transparent;
+    padding:4px 2px;font-size:13px;font-weight:560;cursor:pointer;min-height:40px;
     display:flex;align-items:center;justify-content:center;text-align:center;
     min-width:0;overflow:hidden;text-overflow:ellipsis;
     white-space:nowrap;color:var(--text-2);transition:background var(--motion),
     color var(--motion)}
-.st.on{color:var(--bg);border-color:transparent;font-weight:640}
-.st.jamaat.on{background:var(--ok)}
-.st.on_time.on{background:color-mix(in srgb, var(--ok) 80%, var(--text))}
-.st.qaza.on{background:var(--warn)}
-.st.missed.on{background:var(--danger)}
+.st.on{font-weight:660}
+.st.jamaat.on{background:var(--ok);color:var(--bg)}
+.st.on_time.on{background:color-mix(in srgb, var(--ok) 80%, var(--text));color:var(--bg)}
+.st.qaza.on{background:color-mix(in srgb, var(--warn) 22%, transparent);color:var(--warn)}
+/* Missed is recorded, not punished: a soft tint, never a solid red block. */
+.st.missed.on{background:color-mix(in srgb, var(--danger) 18%, transparent);color:var(--danger)}
 
 /* ==================================================================
    Chrome
@@ -867,7 +872,8 @@ body:has(#app input:focus, #app textarea:focus) nav{visibility:hidden}
 .privacy-strip{margin:var(--s5) auto var(--s1);text-align:center;max-width:420px;
   font-size:12.5px;line-height:1.45;color:var(--text-3);text-wrap:pretty}
 
-.sheet{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;
+       -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
        align-items:flex-end;z-index:50}
 .sheet.show{display:flex}
 .sheet-inner{background:var(--surface);width:100%;max-width:640px;margin:0 auto;
@@ -966,6 +972,70 @@ details[open] > summary .i{transform:rotate(90deg)}
   padding:8px 10px;border-radius:var(--radius-sm);font-size:13.5px;
   color:var(--danger);background:color-mix(in srgb, var(--danger) 9%, transparent);
   cursor:pointer;min-height:40px}
+/* Plans: three columns of what each plan gives, the current one marked. */
+.plan-cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:var(--s2)}
+.plan-col{border:var(--border-w) solid var(--border);border-radius:var(--radius-sm);padding:10px;
+  background:var(--surface);min-width:0}
+.plan-col.on{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary) inset}
+.plan-col h4{margin:0 0 6px;font-size:15px}
+.plan-col ul{margin:0;padding:0;list-style:none;font-size:12.5px;color:var(--text-2);display:grid;gap:4px}
+.plan-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:var(--radius-pill);
+  font-size:12.5px;font-weight:650;background:color-mix(in srgb, var(--primary) 14%, transparent);color:var(--primary)}
+.plan-buy{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:var(--s2)}
+.plan-buy .btn{min-height:56px;flex-direction:column;gap:0;font-size:14.5px}
+.plan-buy .btn small{font-weight:500;opacity:.85;font-size:12px}
+.jbar{height:4px;border-radius:2px;background:var(--surface-2);overflow:hidden;margin:2px 0 14px}
+.jbar i{display:block;height:100%;background:var(--primary);border-radius:2px;transition:width var(--motion)}
+textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resize:none}
+.brandline{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;
+  font-size:12px;color:var(--text-3)}
+.brandline img{border-radius:6px}
+.sr-only{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+/* A sheet's own close: a cross in the corner, so the bottom of the sheet is
+   free for what the sheet is for. */
+.sheet-head{display:flex;align-items:center;gap:8px}
+.sheet-head h3{flex:1;margin:0}
+.sheet-head .iconbtn{margin-right:-8px}
+/* Plans: one card per plan, a period switch, two buy buttons. */
+.pcards{display:grid;gap:8px;margin-top:var(--s2)}
+.pcard{border:var(--border-w) solid var(--border);border-radius:var(--radius);padding:12px 14px;
+  background:var(--surface)}
+.pcard.cur{border-color:var(--primary)}
+.pcard.rec{border-color:color-mix(in srgb, var(--warn) 70%, var(--primary));
+  box-shadow:0 0 0 1px color-mix(in srgb, var(--warn) 55%, transparent),
+             0 6px 22px -6px color-mix(in srgb, var(--warn) 55%, transparent)}
+.pcard-h{display:flex;align-items:center;gap:8px;font-size:16px}
+.pcard ul{margin:8px 0 0;padding:0;list-style:none;display:grid;gap:5px;
+  font-size:13.5px;color:var(--text-2)}
+.pcard li{display:flex;align-items:center;gap:8px}
+.pchk{color:var(--ok);display:inline-flex;flex:none}
+.pstar{color:var(--warn);font-size:.8em}
+.psave{margin-top:8px;font-size:12.5px;font-weight:650;color:var(--ok)}
+.pbadge{font-size:10.5px;font-weight:750;padding:3px 8px;border-radius:9999px;
+  text-transform:uppercase;letter-spacing:.04em}
+.pbadge.cur{background:color-mix(in srgb, var(--primary) 14%, transparent);color:var(--primary)}
+.pbadge.rec{background:color-mix(in srgb, var(--warn) 18%, transparent);color:var(--warn)}
+.pprice{font-weight:800;font-size:clamp(18px, 5vw, 22px);font-variant-numeric:tabular-nums;
+  display:inline-flex;align-items:center;gap:4px}
+.seg .save{font-size:11.5px;font-weight:700;color:var(--ok, var(--primary));margin-left:4px}
+.btn.glow{box-shadow:0 0 0 1px color-mix(in srgb, var(--warn) 60%, transparent),
+  0 8px 24px -8px color-mix(in srgb, var(--warn) 70%, transparent)}
+/* Settings: who you are, your plan, invite, then everything else. */
+.set-profile{display:flex;align-items:center;gap:14px;margin:4px 0 var(--s3)}
+.avatar.xl{width:68px;height:68px;font-size:26px;cursor:pointer}
+.avatar-edit{position:absolute;right:-2px;bottom:-2px;width:24px;height:24px;border-radius:50%;
+  display:grid;place-items:center;font-size:12px;background:var(--surface);
+  box-shadow:0 0 0 1.5px var(--border)}
+.set-profile .pname{font-size:19px;font-weight:700;line-height:1.2}
+.set-card{margin-top:var(--s2)}
+.set-signout{margin-top:var(--s4);background:var(--danger)!important;color:var(--on-primary)!important;
+  border:0!important}
+.set-delete{display:block;margin:10px auto 0;background:none;border:0;padding:8px;
+  color:var(--text-3);font-size:13px;cursor:pointer;min-height:40px}
+.ref-steps{display:grid;gap:10px;margin-top:var(--s2)}
+.ref-step .row{display:flex;justify-content:space-between;gap:8px;font-size:13.5px}
+.ref-step.done .row b{color:var(--primary)}
+@media (max-width:360px){ .plan-cols{grid-template-columns:1fr} }
 /* Phone app only: the inbox bell beside the avatar, with its unread count. */
 .bellbtn{width:44px;height:44px;border-radius:50%;flex:none;border:0;padding:0;
   display:grid;place-items:center;position:relative;cursor:pointer;
@@ -1129,6 +1199,187 @@ details[open] > summary .i{transform:rotate(90deg)}
 .mrow .iconbtn{margin-right:-8px}
 .mnav{display:flex;align-items:center;gap:var(--s1);margin-top:var(--s1)}
 .mnav b{flex:1;text-align:center;font-size:15px}
+
+/* ==================================================================
+   Depth and motion (v14)
+   One layer on top of everything above: how surfaces sit, and how
+   things answer a finger. Every value comes from the theme tokens, so
+   all five themes keep their identity; Ink (bento) stays flat.
+   ================================================================== */
+:root{
+  --ease-out:cubic-bezier(.22,1,.36,1);
+  --ease-spring:cubic-bezier(.34,1.56,.64,1);
+  --dur-1:90ms; --dur-2:200ms; --dur-3:340ms;
+  --press:.965;
+  --lift:0 10px 24px -12px rgba(var(--shadow-rgb), calc(.28 * var(--shadow-k))),
+         0 2px 6px -2px rgba(var(--shadow-rgb), calc(.10 * var(--shadow-k)));
+  --accent-glow:0 10px 26px -12px color-mix(in srgb, var(--primary) 70%, transparent);
+  --sheen:linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,0) 60%);
+  --edge-light:inset 0 1px 0 rgba(255,255,255,.045);
+}
+[data-theme="bento"]{ --accent-glow:none; --sheen:none; }
+
+/* Surfaces: in dark mode a hairline of light along the top edge is what
+   reads as depth; a shadow alone disappears into the ground. */
+html:where([data-mode="dark"]) .card:not(.plain),
+html:where([data-mode="dark"]) .tinted,
+html:where([data-mode="dark"]) .pcard,
+html:where([data-mode="dark"]) .sheet-inner{box-shadow:var(--edge-light), var(--shadow-1)}
+html:where([data-mode="dark"]) .hero{box-shadow:var(--edge-light), var(--shadow-2)}
+
+/* The Now card carries a soft pool of the accent in its corner. */
+.hero{isolation:isolate}
+.hero::before{content:"";position:absolute;z-index:-1;pointer-events:none;
+  width:260px;height:260px;right:-90px;top:-120px;border-radius:50%;
+  background:radial-gradient(closest-side, color-mix(in srgb, var(--primary) 16%, transparent), transparent)}
+[data-theme="bento"] .hero::before{display:none}
+
+/* Primary buttons: a sheen and a coloured shadow, so the one action on a
+   screen is the one the eye lands on. */
+.btn:not(.secondary):not(.text):not(.danger):not(.quiet){
+  background-image:var(--sheen);box-shadow:var(--accent-glow)}
+#fab .fab-add{box-shadow:var(--accent-glow), 0 4px 12px -4px rgba(var(--shadow-rgb), calc(.3 * var(--shadow-k)))}
+
+/* Glass bar: the screen shows through, softly. */
+nav{background:color-mix(in srgb, var(--surface) 84%, transparent);
+    -webkit-backdrop-filter:saturate(1.5) blur(16px);backdrop-filter:saturate(1.5) blur(16px)}
+
+/* ---------- press: everything that can be tapped gives a little ---------- */
+.btn,.chip,.iconbtn,.seg > *,.st,.tile,.tinted,.pcard,.card,.trow,.item,
+.check,.avatar,.bellbtn,.datebtn,#fab button,nav button .ic,.goal-line,.now-swap{
+  transition:transform var(--dur-2) var(--ease-spring), box-shadow var(--dur-2) var(--ease-out),
+             background-color var(--dur-2) var(--ease-out), border-color var(--dur-2) var(--ease-out),
+             color var(--dur-2) var(--ease-out), filter var(--dur-2) var(--ease-out)}
+.btn:active,.chip:active,.iconbtn:active,.seg > *:active,.st:active,.avatar:active,
+.bellbtn:active,.tile:active,.pcard:active,.tinted[data-act]:active,.card[data-act]:active,
+.goal-line:active{transform:scale(var(--press));transition-duration:var(--dur-1)}
+.trow:active,.item.pressable:active{transform:scale(.99);transition-duration:var(--dur-1)}
+nav button:active .ic{transform:scale(.88);transition-duration:var(--dur-1)}
+#fab button:active{transform:scale(.9);transition-duration:var(--dur-1)}
+
+/* ---------- hover: only where there is a pointer to hover with ---------- */
+@media (hover:hover) and (pointer:fine){
+  .tile:hover,.pcard:hover,.tinted[data-act]:hover,.card[data-act]:hover,.goal-line:hover{
+    transform:translateY(-2px);box-shadow:var(--edge-light), var(--lift)}
+  .btn:not(.text):hover{transform:translateY(-1px)}
+  .btn:not(.secondary):not(.text):not(.danger):not(.quiet):hover{filter:brightness(1.06)}
+  .chip:hover{transform:translateY(-1px)}
+  #fab button:hover{transform:scale(1.06)}
+  .avatar:hover,.bellbtn:hover{transform:scale(1.05)}
+  nav button:hover .ic{background:color-mix(in srgb, var(--primary) 8%, transparent)}
+  .trow:hover,.item.pressable:hover{background:color-mix(in srgb, var(--surface-2) 70%, var(--surface))}
+}
+:where(button,[data-act],a,input,select,textarea):focus-visible{
+  outline:2px solid var(--primary);outline-offset:2px}
+
+/* Progress fills ease in rather than snap. */
+.bar i,.jbar i,.prog i{transition:width 600ms var(--ease-out)}
+nav button .ic{transition:background-color var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-spring)}
+
+@media (prefers-reduced-motion:no-preference){
+  /* A new screen: its blocks rise into place one after another. */
+  .enter > *{animation:rise var(--dur-3) var(--ease-out) backwards}
+  .enter > *:nth-child(2){animation-delay:35ms}
+  .enter > *:nth-child(3){animation-delay:70ms}
+  .enter > *:nth-child(4){animation-delay:105ms}
+  .enter > *:nth-child(5){animation-delay:140ms}
+  .enter > *:nth-child(6){animation-delay:175ms}
+  .enter > *:nth-child(n+7){animation-delay:210ms}
+
+  /* The thing just tapped answers: a small spring, and a tick that pops
+     with a ring around it. Only that one element — never every tick on
+     the screen each time it redraws. */
+  .just{animation:tap-pop var(--dur-3) var(--ease-spring)}
+  .check.on.just,.just .check.on{animation:check-pop 440ms var(--ease-spring), check-ring 620ms var(--ease-out)}
+  nav button.just .ic{animation:nav-pop 420ms var(--ease-spring)}
+  .st.on.just{animation:tap-pop 360ms var(--ease-spring)}
+
+  /* Sheets slide up from the edge and the ground dims behind them; on
+     close they go back down instead of vanishing. */
+  .sheet.show{animation:fade-in var(--dur-2) var(--ease-out)}
+  .sheet-inner{animation:sheet-up var(--dur-3) var(--ease-out)}
+  .sheet.closing{animation:fade-out 180ms var(--ease-out) forwards}
+  .sheet.closing .sheet-inner{animation:sheet-down 180ms var(--ease-out) forwards}
+
+  .toast{transition:opacity var(--dur-2) var(--ease-out), transform var(--dur-3) var(--ease-spring)}
+  .toast:not(.show){transform:translate(-50%, 14px) scale(.97)}
+}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes tap-pop{0%{transform:scale(.96)}55%{transform:scale(1.015)}100%{transform:none}}
+@keyframes check-pop{0%{transform:scale(.55)}55%{transform:scale(1.2)}100%{transform:scale(1)}}
+@keyframes check-ring{from{box-shadow:0 0 0 0 color-mix(in srgb, var(--ok) 55%, transparent)}
+                      to{box-shadow:0 0 0 12px color-mix(in srgb, var(--ok) 0%, transparent)}}
+@keyframes nav-pop{0%{transform:scale(.8)}60%{transform:scale(1.12)}100%{transform:scale(1)}}
+@keyframes sheet-up{from{transform:translateY(40%);opacity:.2}to{transform:none;opacity:1}}
+@keyframes sheet-down{to{transform:translateY(30%);opacity:0}}
+@keyframes fade-out{to{opacity:0}}
+@media (prefers-reduced-motion:reduce){
+  .btn,.chip,.iconbtn,.seg > *,.st,.tile,.tinted,.pcard,.card,.trow,.item,.check,#fab button{transition:none}
+  .btn:active,.chip:active,.tile:active,.pcard:active,.trow:active,.item.pressable:active,#fab button:active{transform:none}
+}
+
+/* ==================================================================
+   Depth and motion, pass two: things you can see on a phone
+   ================================================================== */
+/* A soft wash of the accent behind every screen, fixed while the page
+   scrolls, so the app has an atmosphere instead of a flat ground. */
+#app{position:relative;isolation:isolate}
+#app::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(520px 320px at 105% -8%, color-mix(in srgb, var(--primary) 13%, transparent), transparent 70%),
+    radial-gradient(420px 300px at -12% 42%, color-mix(in srgb, var(--primary) 6%, transparent), transparent 70%)}
+[data-theme="bento"] #app::before{display:none}
+
+/* A greeting that reads as a title. */
+h1.greet{font-size:clamp(22px, 6.6vw, 28px);font-weight:760;letter-spacing:-.6px;line-height:1.12}
+
+/* Grouped rows answer with a ripple, not a shrink: a row scaling inside a
+   joined list pulls away from its neighbours. */
+.trow:active,.item.pressable:active{transform:none}
+
+/* Ripple from the exact point touched. */
+.rpl{position:absolute;inset:0;border-radius:inherit;overflow:hidden;pointer-events:none;z-index:0}
+.rpl i{position:absolute;border-radius:50%;transform:scale(0);opacity:.28;
+  background:currentColor;animation:ripple 560ms var(--ease-out) forwards}
+.btn:not(.secondary):not(.text):not(.danger):not(.quiet) .rpl i{background:var(--on-primary);opacity:.3}
+@keyframes ripple{to{transform:scale(1);opacity:0}}
+
+/* Loading: the shape of the screen, shimmering, instead of a spinner on
+   an empty page. */
+.skel{padding-top:4px}
+.skel b{display:block;border-radius:var(--radius);background:var(--surface-2);position:relative;overflow:hidden}
+.skel b + b{margin-top:12px}
+.skel .s-title{height:30px;width:62%;border-radius:10px}
+.skel .s-sub{height:16px;width:38%;border-radius:8px;margin-top:10px}
+.skel .s-hero{height:178px;border-radius:var(--radius-lg);margin-top:24px}
+.skel .s-row{height:64px}
+.skel b::after{content:"";position:absolute;inset:0;transform:translateX(-100%);
+  background:linear-gradient(90deg, transparent, color-mix(in srgb, var(--surface) 60%, transparent), transparent)}
+
+@media (prefers-reduced-motion:no-preference){
+  .skel b::after{animation:shimmer 1.3s ease-in-out infinite}
+
+  /* Moving between tabs slides toward where the tab sits in the bar. */
+  .enter.from-right > *{animation-name:slide-r}
+  .enter.from-left > *{animation-name:slide-l}
+
+  /* A tick draws itself. */
+  .check.on.just svg *,.just .check.on svg *{stroke-dasharray:28;stroke-dashoffset:28;
+    animation:draw 340ms 70ms var(--ease-out) forwards}
+
+  /* The tab just chosen: its pill grows out from the icon. */
+  nav button.on.just .ic{animation:pill-in 420ms var(--ease-spring)}
+
+  /* The Now card breathes once when Home opens. */
+  .enter > .hero,.enter .hero{animation:rise var(--dur-3) var(--ease-out) backwards, hero-glow 1.6s ease-out 1}
+}
+@keyframes shimmer{to{transform:translateX(100%)}}
+@keyframes slide-r{from{opacity:0;transform:translateX(22px)}to{opacity:1;transform:none}}
+@keyframes slide-l{from{opacity:0;transform:translateX(-22px)}to{opacity:1;transform:none}}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes pill-in{0%{transform:scaleX(.45);opacity:.4}65%{transform:scaleX(1.08)}100%{transform:none;opacity:1}}
+@keyframes hero-glow{0%{box-shadow:0 0 0 0 color-mix(in srgb, var(--primary) 32%, transparent)}
+  100%{box-shadow:0 0 0 14px color-mix(in srgb, var(--primary) 0%, transparent)}}
 </style>
 </head>
 <body>
@@ -1236,7 +1487,7 @@ const DICT = {
   vs_yesterday:"kechagiga nisbatan", vs_yesterday_none:"Kecha o'lchanmagan",
   today_mission:"Bugun uchun tanlangan",
   mission_add:"Vazifa tanlang",
-  mission_change:"Bugun uchun tanlash",
+  mission_change:"Bugun uchun tanlash", now_swap:"Boshqasi",
   why_pinned:"Siz o'zingiz tanlagansiz",
   why_overdue:"Muddati o'tgan — eng oldin shu",
   why_due_today:"Bugun muddati tugaydi", why_recheck:"Kutayotgan javobingizni tekshiring", block_label:"Boshqaga bog'liqmi?", block_reply:"Javob kutilyapti", block_depends:"Boshqa ishga bog'liq", block_in:"{n} kundan keyin tekshirish", block_until:"{d} da tekshiriladi", block_clear:"Kutish tugadi", block_saved:"⏳ Kutishga olindi — «Hozir»da ko'rinmaydi", block_recheck:"tekshirish vaqti",
@@ -1269,7 +1520,7 @@ const DICT = {
   /* quick capture */
   quick_add:"Tez qo'shish", quick_ph:"Nima esingizga tushdi?",
   inbox_saved:"Saqlandi — Vazifalarda",
-  quick_saved:"✓ Vazifa", next_up:"Keyingi", home_more_tasks:"Yana {n} ta ish", voice_title:"Ovoz bilan qo'shish", voice_listening:"Gapiring… To'xtatsangiz, tahlil qilaman.", voice_stop:"To'xtatish", voice_thinking:"Tushunishga harakat qilyapman…", voice_confirm:"Tasdiqlash", voice_retry:"Qayta yozish", voice_edit:"Tahrirlash", voice_answer_ph:"Javobingizni yozing…", voice_send:"Yuborish", ve_title:"Nomi", ve_name:"Nomi", ve_deadline:"Sana", ve_day:"Kun", ve_due_time:"Soat", ve_remind_at:"Eslatma vaqti", ve_priority:"Muhimlik", ve_amount:"Summa", ve_note:"Izoh", ve_person:"Kim", voice_resend:"Shu yozuvni qayta yuborish", voice_done:"✅ Tasdiqlandi", voice_failed:"Ovoz yuborilmadi. Qayta urinib ko'ring.", voice_too_long:"Ovoz 2 daqiqadan oshmasin.", voice_denied:"Mikrofonga ruxsat yo'q — botda ovoz yuboring.", voice_denied_app:"Mikrofonga ruxsat yo'q. Telefon Sozlamalari → Ilovalar → ErnestOS → Ruxsatlar → Mikrofon.", voice_consent:"Ovozingiz matnga aylantirish va tushunish uchun AI xizmatlariga (ElevenLabs, Groq, Google — AQSh) yuboriladi. Audio saqlanmaydi. Hech narsa siz tasdiqlamaguningizcha o'zgarmaydi.", voice_agree:"Roziman, boshlash", voice_consent_needed:"Avval rozilik bering.", tab_list:"Ro'yxat", nav_money:"Moliya", quick_more:"Batafsil (vaqt, eslatma, loyiha)", quick_more_habit:"Batafsil (kunlar, eslatma, muhimlik)", nav_steps:"Qadam", steps_to_next:"«{name}» darajasigacha yana {n} qadam", steps_max:"Eng yuqori daraja — barakalla!", steps_freeze_short:"Muzlatish", steps_rank_in:"{n} kundan keyin", steps_next:"Keyingi qadam", steps_all_done:"Bugungi qadamlar bajarildi 🎉", steps_more:"Yutuqlar va reyting", steps_title:"Qadam", steps_motto:"Har bir yaxshi ish — kelajakdagi yutuqqa qadam.", steps_freeze:"Ketma-ketlikni saqlab qoladigan kunlar", steps_level_n:"{n}-daraja", steps_total:"Jami qadamlar", steps_path:"Sizning yo'lingiz", steps_today:"Bugungi qadamlar", steps_go:"Qadamni davom ettir", step_lvl_starter:"Boshlovchi", step_lvl_builder:"Quruvchi", step_lvl_discipline:"Intizom", step_lvl_steady:"Barqarorlik", step_lvl_master:"O'z ustida ishlash", step_tasks:"Vazifa", step_habits:"Odat", step_prayer:"Namoz", step_journal:"Xulosa", step_goal:"Maqsad", step_started:"boshlandi", step_goal_add:"Maqsad qo'shish", focus_carried_n:"{n} hafta surildi — kichikroq qadamga bo'ling", focus_moved:"Keyingi haftaga ko'chirildi", cnt_finished:"bugun bajarildi", task_word:"Vazifa", habit_word:"Odat", quick_habit_ph:"Masalan: Har kuni kitob o'qish", quick_habit_hint:"Har kuni takrorlanadi — kunlarni yozsangiz («du, chor, juma sport»), faqat o'sha kunlari. Keyin o'zgartirsa bo'ladi.", quick_habit_days_hint:"Matndan shu kunlar topildi. Tekshiring, keyin saqlang.", quick_habit_saved:"✓ Odat", nav_tracker:"Kundalik", nav_profile:"Profil", quick_hint:"Masalan: «Ertaga soat 10 da hisobot» yoki «Tushlik 45 ming»", quick_voice:"Ovoz bilan aytish", jai_title:"AI bilan to'ldirish", jai_hint:"Kuningizni erkin gapirib yoki yozib bering — AI uni 5 savolga ajratib, xatolarini to'g'rilaydi. Siz tekshirib, saqlaysiz.", jai_voice:"Gapirish", jai_text:"Yozish", jai_ph:"Masalan: bugun mijoz bilan shartnoma yopdim, onamga rahmat, vaqtni rejalashtira olmadim, ertaga hisobotni tugataman…", jai_sort:"Savollarga ajratish", jai_done:"✨ {n} ta javob to'ldirildi — tekshirib, Saqlang", jai_review:"AI taklifi hali saqlanmadi. Tekshiring, keyin qabul qiling.", jai_accept:"Qabul qilish", jai_reject:"Bekor qilish", journal_for_day:"{d} kuni uchun yozilmoqda", jai_nothing:"Savollarga mos gap topilmadi. Batafsilroq ayting.",
+  quick_saved:"✓ Vazifa", next_up:"Keyingi", home_more_tasks:"Yana {n} ta ish", voice_title:"Ovoz bilan qo'shish", voice_listening:"Gapiring… To'xtatsangiz, tahlil qilaman.", voice_stop:"To'xtatish", voice_thinking:"Tushunishga harakat qilyapman…", voice_confirm:"Tasdiqlash", voice_retry:"Qayta yozish", voice_edit:"Tahrirlash", voice_answer_ph:"Javobingizni yozing…", voice_send:"Yuborish", ve_title:"Nomi", ve_name:"Nomi", ve_deadline:"Sana", ve_day:"Kun", ve_due_time:"Soat", ve_remind_at:"Eslatma vaqti", ve_priority:"Muhimlik", ve_amount:"Summa", ve_note:"Izoh", ve_person:"Kim", voice_resend:"Shu yozuvni qayta yuborish", voice_done:"✅ Tasdiqlandi", voice_failed:"Ovoz yuborilmadi. Qayta urinib ko'ring.", voice_too_long:"Ovoz 2 daqiqadan oshmasin.", voice_denied:"Mikrofonga ruxsat yo'q — botda ovoz yuboring.", voice_denied_app:"Mikrofonga ruxsat yo'q. Telefon Sozlamalari → Ilovalar → ErnestOS → Ruxsatlar → Mikrofon.", voice_consent:"Ovozingiz matnga aylantirish va tushunish uchun AI xizmatlariga (ElevenLabs, Groq, Google — AQSh) yuboriladi. Audio saqlanmaydi. Hech narsa siz tasdiqlamaguningizcha o'zgarmaydi.", voice_agree:"Roziman, boshlash", voice_consent_needed:"Avval rozilik bering.", tab_list:"Ro'yxat", nav_money:"Moliya", quick_more:"Batafsil (vaqt, eslatma, loyiha)", quick_more_habit:"Batafsil (kunlar, eslatma, muhimlik)", nav_steps:"Qadam", steps_to_next:"«{name}» darajasigacha yana {n} qadam", steps_max:"Eng yuqori daraja — barakalla!", steps_freeze_short:"Muzlatish", steps_rank_in:"{n} kundan keyin", steps_next:"Keyingi qadam", steps_all_done:"Bugungi qadamlar bajarildi 🎉", steps_more:"Yutuqlar va reyting", steps_title:"Qadam", steps_motto:"Har bir yaxshi ish — kelajakdagi yutuqqa qadam.", steps_freeze:"Ketma-ketlikni saqlab qoladigan kunlar", steps_level_n:"{n}-daraja", steps_total:"Jami qadamlar", steps_path:"Sizning yo'lingiz", steps_today:"Bugungi qadamlar", steps_go:"Qadamni davom ettir", step_lvl_starter:"Boshlovchi", step_lvl_builder:"Quruvchi", step_lvl_discipline:"Intizom", step_lvl_steady:"Barqarorlik", step_lvl_master:"O'z ustida ishlash", step_tasks:"Vazifa", step_habits:"Odat", step_prayer:"Namoz", step_journal:"Xulosa", step_goal:"Maqsad", step_started:"boshlandi", step_goal_add:"Maqsad qo'shish", focus_carried_n:"{n} hafta surildi — kichikroq qadamga bo'ling", focus_moved:"Keyingi haftaga ko'chirildi", cnt_finished:"bugun bajarildi", task_word:"Vazifa", habit_word:"Odat", quick_habit_ph:"Masalan: Har kuni kitob o'qish", quick_habit_hint:"Har kuni takrorlanadi — kunlarni yozsangiz («du, chor, juma sport»), faqat o'sha kunlari. Keyin o'zgartirsa bo'ladi.", quick_habit_days_hint:"Matndan shu kunlar topildi. Tekshiring, keyin saqlang.", quick_habit_saved:"✓ Odat", nav_tracker:"Reja", nav_profile:"Profil", quick_hint:"Masalan: «Ertaga soat 10 da hisobot» yoki «Tushlik 45 ming»", quick_voice:"Ovoz bilan aytish", jai_title:"AI bilan to'ldirish", jai_hint:"Kuningizni erkin gapirib yoki yozib bering — AI uni {n} ta savolga ajratib, xatolarini to'g'rilaydi. Siz tekshirib, saqlaysiz.", jai_voice:"Gapirish", jai_text:"Yozish", jai_ph:"Masalan: bugun mijoz bilan shartnoma yopdim, onamga rahmat, vaqtni rejalashtira olmadim, ertaga hisobotni tugataman…", jai_sort:"Savollarga ajratish", jai_done:"✨ {n} ta javob to'ldirildi — tekshirib, Saqlang", jai_review:"AI taklifi hali saqlanmadi. Tekshiring, keyin qabul qiling.", jai_accept:"Qabul qilish", jai_reject:"Bekor qilish", journal_for_day:"{d} kuni uchun yozilmoqda", jai_nothing:"Savollarga mos gap topilmadi. Batafsilroq ayting.",
   /* tasks */
   add_task:"Vazifa", task_name:"Vazifa nomi", task_desc:"Batafsil",
   deadline:"Muddat", due_time:"Vaqt", priority:"Muhimlik", project:"Loyiha",
@@ -1337,6 +1588,12 @@ const DICT = {
   journal:"Kun xulosasi", journal_progress:"{done} / {total} javob berildi",
   journal_complete:"To'liq yozildi", journal_hint:"Qancha yozsangiz — shuncha saqlanadi",
   journal_history:"Tarix", journal_partial:"To'liq emas",
+  jconf_title:"Kun xulosasi boshqa joyda o'zgargan", jconf_body:"Shu telefonda yozilgan matn saqlangan matndan farq qiladi. Qaysi biri qolsin? Hech biri o'chirilmagan.", jconf_mine:"Shu telefonda", jconf_theirs:"Saqlangan (bot yoki boshqa qurilma)", jconf_keep_mine:"Menikini", jconf_both:"Ikkalasini", jconf_keep_theirs:"Saqlanganini",
+  offline_snapshot:"Internet yo'q — {when} holati ko'rsatilmoqda. Bosib qayta urining.",
+  part_failed:"Ekranning bir qismi yuklanmadi — qolgani ishlaydi. Keyinroq yangilang.",
+  money_edit:"Yozuvni tahrirlash",
+  push_title:"Telefon bildirishnomalari", push_on:"Yoqilgan — eslatmalar telefonga ham keladi.", push_ask:"Hali ruxsat berilmagan. Eslatmalar faqat ilova ichidagi Xabarlarda.", push_denied:"Telefonda o'chirilgan. Yoqish uchun telefon Sozlamalari → Ilovalar → ErnestOS → Bildirishnomalar.", push_no_build:"Bu versiyada telefon bildirishnomasi yo'q. Eslatmalar ilova ichidagi Xabarlarda va Telegram botda.", push_allow:"Ruxsat berish",
+  plan_save_stars:"Yiliga {n} ⭐ tejaysiz",
   draft_restored:"Saqlanmagan matn tiklandi", autosaved:"Saqlanmoqda…",
   mood_q:"Bugun o'zingizni qanday his qildingiz?",
   mood_awful:"Juda yomon", mood_low:"Yomon", mood_ok:"O'rtacha",
@@ -1380,6 +1637,54 @@ const DICT = {
   account_hint:"Ma'lumotlar, maxfiylik va export",
   profile:"Profil", member:"Foydalanuvchi", photo_hint:"Telegram rasmi ishlatiladi",
   data_privacy:"Ma'lumotlar va maxfiylik",
+  plan_title:"Tarif", plan_now:"{plan} tarifi", plan_until:"{plan} · yana {n} kun",
+  plan_month:"1 oy", plan_year:"1 yil", plan_paid:"To'lov qabul qilindi — rahmat!",
+  plan_keep:"Ma'lumotlaringiz o'chmaydi — faqat yangisini qo'shib bo'lmaydi.",
+  plan_needs:"Bu {plan} tarifda ochiladi.", plan_limit_generic:"Tarif limiti",
+  plan_limit_habits:"3 tadan ko'p odat", plan_limit_active_tasks:"30 tadan ko'p faol vazifa",
+  plan_limit_recurring_tasks:"Ko'proq takrorlanuvchi vazifa", plan_limit_projects:"Ko'proq loyiha",
+  plan_limit_open_debts:"Ko'proq ochiq qarz", plan_limit_teams_owned:"Jamoa yaratish",
+  plan_limit_team_members:"Jamoada ko'proq a'zo", plan_limit_timer_rhythm:"Ish va tanaffus ritmi",
+  plan_limit_stats_history:"Oylik va yillik statistika", plan_limit_stats_csv:"Statistikani faylga yuklash",
+  plan_limit_journal_ai:"AI bilan kun xulosasi", plan_limit_voice_week:"Ko'proq ovozli buyruq",
+  plan_free_lines:"3 odat|30 faol vazifa|1 loyiha|Ovoz: 5/hafta|7 kunlik statistika",
+  plan_pro_lines:"25 odat|Cheksiz vazifa|15 loyiha|2 jamoa, 10 kishi|Ovoz: 30/kun|To'liq statistika|AI kun xulosasi",
+  plan_max_lines:"Hammasi cheksiz|10 jamoa, 50 kishi|Ovoz: 100/kun|Statistika faylda",
+  plan_channel:"Kanalga qo'shiling — +{n} kun Pro bepul",
+  plan_current:"Joriy tarif",
+  plan_recommended:"Tavsiya etiladi",
+  plan_period_month:"Oylik",
+  plan_period_year:"Yillik",
+  plan_buy:"{plan}'ni sotib olish",
+  plan_upgrade:"Tarifni yaxshilash",
+  plan_change:"Tarifni o'zgartirish",
+  plan_free_price:"Bepul",
+  plan_free_cta:"Ko'proq odat, loyiha va jamoa uchun",
+  plan_pay_how:"Tugmani bossangiz, Telegram'ning ⭐ Stars to'lov oynasi ochiladi. Siz tasdiqlamaguningizcha hech narsa yechilmaydi. Obuna o'zi yangilanmaydi — muddat tugagach Free'ga o'tasiz, ma'lumotlar saqlanadi.",
+  avatar_change:"Rasmni o'zgartirish",
+  avatar_remove:"Rasmni olib tashlash",
+  avatar_saved:"Rasm saqlandi",
+  avatar_bad:"Bu rasmni saqlab bo'lmadi",
+  ref_grow_title:"ErnestOS'ni ulashing va Max oling",
+  ref_step_n:"{n} do'st",
+  ref_months:"+{n} oy {plan}",
+  ref_got:"Olindi ✓",
+  ref_all_done:"Hamma sovg'alar olindi — rahmat!",
+  ref_friend_gets:"Taklif qilgan do'stingiz ham {n} kun Pro oladi.",
+  ref_copy_big:"🔗 Taklif havolasi (nusxa olish)",
+  set_app:"Ilova",
+  sign_out:"Chiqish",
+  sign_out_tg_hint:"Telegram orqali kirgansiz — Chiqish oynani yopadi.",
+  sign_out_pending:"{n} ta amal hali serverga yetmagan. Ular shu telefonda qoladi va qayta kirganingizda yuboriladi. Chiqasizmi?",
+  delete_account_short:"Akkauntni o'chirish",
+  plan_stars_note:"To'lov Telegram Stars orqali. Muddat tugagach Free'ga o'tasiz, ma'lumotlar saqlanadi.",
+  queue_store_failed:"Qurilmaga saqlab bo'lmadi — xotira to'lgan bo'lishi mumkin. Internet kelgach qayta bosing.",
+  queue_review:"{n} ta amal yuborilmadi — ko'rib chiqing", queue_title:"Yuborilishi kutilayotganlar",
+  queue_empty:"Hammasi yuborilgan.", queue_waiting:"Internet kelishini kutmoqda.",
+  queue_retry:"Qayta yuborish", queue_drop:"Bekor qilish", queue_dropped:"Bekor qilindi",
+  queue_why_auth:"Hisobga qayta kiring — keyin o'zi yuboriladi.", queue_why_plan:"Tarif limiti — avval tarifni yangilang.",
+  queue_why_forbidden:"Bu amalga ruxsat yo'q (masalan, jamoadan chiqqansiz).", queue_why_gone:"Bu narsa o'chirilgan.",
+  queue_why_conflict:"Boshqa joyda o'zgargan — tekshirib qayta yuboring.", queue_why_invalid:"Server qabul qilmadi.",
   file_ready:"Fayl tayyor — saqlash joyini tanlang",
   inbox:"Xabarlar", inbox_empty:"Hozircha xabar yo'q. Eslatmalar, hisobotlar va taymerlar shu yerga keladi.",
   inbox_snoozed:"{n} daqiqadan keyin yana eslataman", inbox_done:"Bajarildi ✓",
@@ -1431,8 +1736,8 @@ const DICT = {
   data_yours:"Ma'lumotlaringiz — sizniki",
   data_yours_body:"Siz yozgan hamma narsa sizga tegishli. Istagan vaqtda nusxasini oling yoki butunlay o'chiring — hech kim so'ramaydi.",
   your_copy:"Nusxasi", what_we_keep:"Nima saqlanadi", irreversible:"Qaytarib bo'lmaydi",
-  download_backup:"Zaxira nusxani yuklab olish",
-  backup_hint:"JSON fayl — qurilmangizga", backup_saved:"Zaxira nusxa saqlandi",
+  download_backup:"JSON faylni yuklab olish",
+  backup_hint:"Hamma ma'lumot bitta faylda — qurilmangizga. Ilovaga qaytarib yuklash hozircha yo'q.", backup_saved:"Fayl saqlandi",
   export_hint:"Botga fayl sifatida yuboriladi", export_hint_app:"Telefoningizga fayl bo'lib saqlanadi",
   privacy_policy:"Maxfiylik siyosati", policy_hint:"Nima saqlanadi va qayerda",
   sessions:"Kirishlar", sessions_hint:"Hisob qayerdan ochilgan",
@@ -1471,7 +1776,7 @@ const DICT = {
   timer_off:"O'chiq", timer_auto:"nomidan", timer_from_name:"Nomidan (masalan: 5h)",
   timer_custom_ph:"Daqiqa, masalan 50",
   timer_rule_habit:"Odat taymer tugagach o'zi belgilanadi.",
-  timer_rule_task:"Taymer ishlagan vaqtni yozadi. Vazifa tugaganini o'zingiz belgilaysiz.", timer_worked:"{dur} ishlandi", timer_rhythm:"Ish va tanaffus", timer_one_go:"Bir martada", timer_rhythm_hint:"Masalan 50/10 — 50 daqiqa ish, 10 daqiqa tanaffus. Tanaffus ish vaqtiga kirmaydi.", timer_on_break:"Tanaffus {time} gacha", timer_finish:"Sessiyani yakunlash", timer_finish_hint:"Yakunlash — ishlangan vaqt saqlanadi. To'xtatish — sessiya bekor qilinadi.", timer_manual:"qo'lda {dur}", timer_ask_done:"Vazifa tugadimi?", timer_yes_done:"Ha, tugadi", timer_more:"Yana bir sessiya", timer_log_lbl:"Taymersiz bajardim", timer_log_ph:"Necha daqiqa?", timer_log_btn:"Qayd qilish", timer_running:"Taymer ishlayapti — avval uni to'xtating.",
+  timer_rule_task:"Taymer ishlagan vaqtni yozadi. Vazifa tugaganini o'zingiz belgilaysiz.", timer_worked:"{dur} ishlandi", timer_rhythm:"Ish va tanaffus", timer_one_go:"Bir martada", timer_rhythm_hint:"Masalan 25/5 — 25 daqiqa ish, 5 daqiqa tanaffus. Tanaffus ish vaqtiga kirmaydi.", timer_on_break:"Tanaffus {time} gacha", timer_finish:"Sessiyani yakunlash", timer_finish_hint:"Yakunlash — ishlangan vaqt saqlanadi. To'xtatish — sessiya bekor qilinadi.", timer_manual:"qo'lda {dur}", timer_ask_done:"Vazifa tugadimi?", timer_yes_done:"Ha, tugadi", timer_more:"Yana bir sessiya", timer_log_lbl:"Taymersiz bajardim", timer_log_ph:"Necha daqiqa?", timer_log_btn:"Qayd qilish", timer_running:"Taymer ishlayapti — avval uni to'xtating.",
   timer_off_hint:"Taymer o'chiq — oddiy belgilanadi. Vaqt kerak bo'lsa, pastdan tanlang.",
   timer_done_today:"Bugun bajarildi", timer_done:"Bajarildi",
   timer_finished:"Vaqt tugadi — belgilandi ✓",
@@ -1508,6 +1813,7 @@ const DICT = {
   owner_offer:"Sizga «{name}» jamoasi egaligi taklif qilindi", accept:"Qabul qilish",
   offer_sent:"Taklif yuborildi — u qabul qilgach egalik o'tadi",
   owner_must_transfer:"Chiqishdan oldin egalikni boshqa a'zoga bering",
+  owner_must_transfer_delete:"Akkauntni o'chirishdan oldin jamoangiz egaligini boshqa a'zoga bering yoki jamoani yoping.",
   notify_title:"Bildirishnomalar", notify_all:"Hammasi", notify_important:"Muhim",
   notify_assigned:"Faqat menga", notify_off:"O'chiq",
   notify_all_hint:"O'zgarishlar, hisobot va eslatmalar", notify_important_hint:"Hisobot va eslatmalar",
@@ -1537,7 +1843,7 @@ const DICT = {
   pause_today:"Bugundan", pause_tomorrow:"Ertadan", pause_when:"Qachondan to'xtatamiz?",
   pause_note:"Bugundan desangiz, bugungi hisobdan ham chiqadi",
   pts:"p.", team_join_hint:"Taklif havolasini bosing — jamoani ko'rib, keyin qo'shilasiz",
-  nav_home:"Asosiy", nav_stats:"Statistika", money:"Pul", money_add:"Pul yozuvi",
+  nav_home:"Bugun", nav_stats:"Statistika", money:"Pul", money_add:"Pul yozuvi",
   money_this_month:"bu oy", money_tab_entries:"Yozuvlar", money_tab_cats:"Kategoriyalar", money_tab_debts:"Qarzlar", debt_overdue_n:"{n} tasi muddati o'tgan", debt_owed_to_me:"Sizga qaytarishadi", debt_i_owe:"Siz qaytarasiz", debt_add:"Qarz yozish", debt_empty:"Hozircha qarz yo'q. Kimgadir pul bersangiz yoki olsangiz — shu yerga yozing, unutilmaydi.", debt_settled:"Yopilganlar", debt_lent_meta:"men berdim", debt_borrowed_meta:"men oldim", debt_overdue:"muddati o'tdi", debt_until:"{d} gacha", debt_returned:"Qaytdi", debt_returned_full:"To'liq qaytdi", debt_lent:"Men berdim", debt_borrowed:"Men oldim", debt_person:"Kim? Ismini yozing", debt_amount:"Summa (200 ming, 1,5 mln…)", debt_due:"Qachongacha qaytariladi", debt_due_week:"1 haftada", debt_due_month:"1 oyda", debt_note:"Izoh (ixtiyoriy)", debt_bad_amount:"Summani yozing — 200 ming yoki 200000", debt_saved:"✓ Qarz yozildi", debt_closed:"✓ Qarz yopildi", debt_partial:"Bir qismi qaytdimi?", debt_partial_ph:"Qancha? Masalan, 50 ming", debt_reopen:"Qayta ochish", debt_paid_more:"Bu summa qolgan qarzdan ko'p. Qolgani: {n}", debt_of:"jami {n}", debt_payments:"To'lovlar", debt_delete_q:"Qarzni o'chirasizmi?", debt_archived:"O'chirilganlar", debt_restore:"Qaytarish", debt_purge:"Butunlay o'chirish", debt_purge_q:"Butunlay o'chirilsinmi? Buni qaytarib bo'lmaydi.",
   money_apart:"Alohida bo'lim — hech qanday foiz, streak yoki reytingga qo'shilmaydi.",
   money_balance:"Umumiy balans", money_income:"Kirim", money_expense:"Chiqim",
@@ -1618,7 +1924,7 @@ const DICT = {
   vs_yesterday:"vs yesterday", vs_yesterday_none:"Nothing measured yesterday",
   today_mission:"Chosen for today",
   mission_add:"Choose a task",
-  mission_change:"Choose for today",
+  mission_change:"Choose for today", now_swap:"Another",
   why_pinned:"You pinned this one",
   why_overdue:"Late — this comes first",
   why_due_today:"Due today", why_recheck:"Check on the reply you were waiting for", block_label:"Waiting on someone?", block_reply:"Waiting for a reply", block_depends:"Depends on other work", block_in:"check in {n} days", block_until:"check on {d}", block_clear:"No longer waiting", block_saved:"⏳ Parked — out of «Now» until then", block_recheck:"time to check",
@@ -1650,7 +1956,7 @@ const DICT = {
   wake_late_at:"{time} — later than today's target", wake_target:"Target",
   quick_add:"Quick add", quick_ph:"What came to mind?",
   inbox_saved:"Saved — see Tasks",
-  quick_saved:"✓ Task", next_up:"Up next", home_more_tasks:"{n} more", voice_title:"Add by voice", voice_listening:"Speak… Stop when done and I'll analyse it.", voice_stop:"Stop", voice_thinking:"Understanding…", voice_confirm:"Confirm", voice_retry:"Record again", voice_edit:"Edit", voice_answer_ph:"Type your answer…", voice_send:"Send", ve_title:"Title", ve_name:"Name", ve_deadline:"Date", ve_day:"Day", ve_due_time:"Time", ve_remind_at:"Reminder time", ve_priority:"Priority", ve_amount:"Amount", ve_note:"Note", ve_person:"Who", voice_resend:"Send this recording again", voice_done:"✅ Confirmed", voice_failed:"Voice was not sent. Try again.", voice_too_long:"Keep it under 2 minutes.", voice_denied:"No microphone access — send a voice message in the bot.", voice_denied_app:"No microphone access. Open phone Settings → Apps → ErnestOS and allow the microphone.", voice_consent:"Your voice is sent to AI services (ElevenLabs, Groq, Google — USA) to transcribe and understand it. Audio is not stored. Nothing changes until you confirm.", voice_agree:"I agree, start", voice_consent_needed:"Please give consent first.", tab_list:"List", nav_money:"Money", quick_more:"More options (time, reminder, project)", quick_more_habit:"More options (days, reminder, importance)", nav_steps:"Steps", steps_to_next:"{n} steps to «{name}»", steps_max:"Top level — well done!", steps_freeze_short:"Freezes", steps_rank_in:"in {n} days", steps_next:"Next step", steps_all_done:"All of today's steps are done 🎉", steps_more:"Achievements and rank", steps_title:"Steps", steps_motto:"Every good thing you do is a step forward.", steps_freeze:"Days that keep your streak alive", steps_level_n:"Level {n}", steps_total:"Total steps", steps_path:"Your path", steps_today:"Today's steps", steps_go:"Keep going", step_lvl_starter:"Beginner", step_lvl_builder:"Builder", step_lvl_discipline:"Discipline", step_lvl_steady:"Consistency", step_lvl_master:"Self-mastery", step_tasks:"Task", step_habits:"Habit", step_prayer:"Prayer", step_journal:"Summary", step_goal:"Goal", step_started:"started", step_goal_add:"Add a goal", focus_carried_n:"Moved {n} weeks running — split it smaller", focus_moved:"Moved to next week", cnt_finished:"done today", task_word:"Task", habit_word:"Habit", quick_habit_ph:"E.g. Read a book every day", quick_habit_hint:"Repeats every day — name days («Mon, Wed, Fri run») and it is only those. You can change it later.", quick_habit_days_hint:"These days were read from the text. Check them, then save.", quick_habit_saved:"✓ Habit", nav_tracker:"Tracker", nav_profile:"Profile", quick_hint:"E.g. “Report tomorrow at 10” or “Lunch 45 thousand”", quick_voice:"Say it by voice", jai_title:"Fill with AI", jai_hint:"Talk or write about your day freely — the AI sorts it into the 5 questions and fixes mistakes. You check and save.", jai_voice:"Speak", jai_text:"Write", jai_ph:"E.g. closed a deal with a client today, thankful to my mom, failed to plan my time, tomorrow I finish the report…", jai_sort:"Sort into questions", jai_done:"✨ {n} answers filled — check and Save", jai_review:"The AI suggestion is not saved yet. Check it, then accept.", jai_accept:"Accept", jai_reject:"Discard", journal_for_day:"Writing for {d}", jai_nothing:"Nothing matched the questions. Say a bit more.",
+  quick_saved:"✓ Task", next_up:"Up next", home_more_tasks:"{n} more", voice_title:"Add by voice", voice_listening:"Speak… Stop when done and I'll analyse it.", voice_stop:"Stop", voice_thinking:"Understanding…", voice_confirm:"Confirm", voice_retry:"Record again", voice_edit:"Edit", voice_answer_ph:"Type your answer…", voice_send:"Send", ve_title:"Title", ve_name:"Name", ve_deadline:"Date", ve_day:"Day", ve_due_time:"Time", ve_remind_at:"Reminder time", ve_priority:"Priority", ve_amount:"Amount", ve_note:"Note", ve_person:"Who", voice_resend:"Send this recording again", voice_done:"✅ Confirmed", voice_failed:"Voice was not sent. Try again.", voice_too_long:"Keep it under 2 minutes.", voice_denied:"No microphone access — send a voice message in the bot.", voice_denied_app:"No microphone access. Open phone Settings → Apps → ErnestOS and allow the microphone.", voice_consent:"Your voice is sent to AI services (ElevenLabs, Groq, Google — USA) to transcribe and understand it. Audio is not stored. Nothing changes until you confirm.", voice_agree:"I agree, start", voice_consent_needed:"Please give consent first.", tab_list:"List", nav_money:"Money", quick_more:"More options (time, reminder, project)", quick_more_habit:"More options (days, reminder, importance)", nav_steps:"Steps", steps_to_next:"{n} steps to «{name}»", steps_max:"Top level — well done!", steps_freeze_short:"Freezes", steps_rank_in:"in {n} days", steps_next:"Next step", steps_all_done:"All of today's steps are done 🎉", steps_more:"Achievements and rank", steps_title:"Steps", steps_motto:"Every good thing you do is a step forward.", steps_freeze:"Days that keep your streak alive", steps_level_n:"Level {n}", steps_total:"Total steps", steps_path:"Your path", steps_today:"Today's steps", steps_go:"Keep going", step_lvl_starter:"Beginner", step_lvl_builder:"Builder", step_lvl_discipline:"Discipline", step_lvl_steady:"Consistency", step_lvl_master:"Self-mastery", step_tasks:"Task", step_habits:"Habit", step_prayer:"Prayer", step_journal:"Summary", step_goal:"Goal", step_started:"started", step_goal_add:"Add a goal", focus_carried_n:"Moved {n} weeks running — split it smaller", focus_moved:"Moved to next week", cnt_finished:"done today", task_word:"Task", habit_word:"Habit", quick_habit_ph:"E.g. Read a book every day", quick_habit_hint:"Repeats every day — name days («Mon, Wed, Fri run») and it is only those. You can change it later.", quick_habit_days_hint:"These days were read from the text. Check them, then save.", quick_habit_saved:"✓ Habit", nav_tracker:"Plan", nav_profile:"Profile", quick_hint:"E.g. “Report tomorrow at 10” or “Lunch 45 thousand”", quick_voice:"Say it by voice", jai_title:"Fill with AI", jai_hint:"Talk or write about your day freely — the AI sorts it into the {n} questions and fixes mistakes. You check and save.", jai_voice:"Speak", jai_text:"Write", jai_ph:"E.g. closed a deal with a client today, thankful to my mom, failed to plan my time, tomorrow I finish the report…", jai_sort:"Sort into questions", jai_done:"✨ {n} answers filled — check and Save", jai_review:"The AI suggestion is not saved yet. Check it, then accept.", jai_accept:"Accept", jai_reject:"Discard", journal_for_day:"Writing for {d}", jai_nothing:"Nothing matched the questions. Say a bit more.",
   add_task:"Task", task_name:"Task name", task_desc:"Details",
   deadline:"Date", due_time:"Time", priority:"Priority", project:"Project",
   standalone:"Standalone", high:"High", medium:"Medium", low:"Low",
@@ -1713,6 +2019,12 @@ const DICT = {
   journal:"Day summary", journal_progress:"{done} of {total} answered",
   journal_complete:"Fully written", journal_hint:"Whatever you write is kept",
   journal_history:"History", journal_partial:"Incomplete",
+  jconf_title:"The journal changed somewhere else", jconf_body:"The text written on this phone differs from the saved one. Which should stay? Nothing has been deleted.", jconf_mine:"On this phone", jconf_theirs:"Saved (bot or another device)", jconf_keep_mine:"Mine", jconf_both:"Both", jconf_keep_theirs:"Saved one",
+  offline_snapshot:"No connection — showing what loaded at {when}. Tap to retry.",
+  part_failed:"Part of this screen did not load — the rest works. Refresh later.",
+  money_edit:"Edit entry",
+  push_title:"Phone notifications", push_on:"On — reminders also reach the phone.", push_ask:"Not allowed yet. Reminders are only in the in-app Inbox.", push_denied:"Turned off on the phone. To turn on, open phone Settings → Apps → ErnestOS → Notifications.", push_no_build:"This version has no phone notifications. Reminders are in the in-app Inbox and the Telegram bot.", push_allow:"Allow",
+  plan_save_stars:"You save {n} ⭐ a year",
   draft_restored:"Unsaved text restored", autosaved:"Saving…",
   mood_q:"How did you feel today?",
   mood_awful:"Awful", mood_low:"Low", mood_ok:"Okay",
@@ -1753,6 +2065,54 @@ const DICT = {
   account_hint:"Data, privacy and export",
   profile:"Profile", member:"Member", photo_hint:"Your Telegram photo is used",
   data_privacy:"Data and privacy",
+  plan_title:"Plan", plan_now:"{plan} plan", plan_until:"{plan} · {n} days left",
+  plan_month:"1 month", plan_year:"1 year", plan_paid:"Payment received — thank you!",
+  plan_keep:"Nothing is deleted — you just can't add more.",
+  plan_needs:"This comes with {plan}.", plan_limit_generic:"Plan limit",
+  plan_limit_habits:"More than 3 habits", plan_limit_active_tasks:"More than 30 open tasks",
+  plan_limit_recurring_tasks:"More repeating tasks", plan_limit_projects:"More projects",
+  plan_limit_open_debts:"More open debts", plan_limit_teams_owned:"Creating teams",
+  plan_limit_team_members:"More team members", plan_limit_timer_rhythm:"Work and break rhythm",
+  plan_limit_stats_history:"Month and year statistics", plan_limit_stats_csv:"Statistics as a file",
+  plan_limit_journal_ai:"AI day summary", plan_limit_voice_week:"More voice commands",
+  plan_free_lines:"3 habits|30 open tasks|1 project|Voice: 5/week|7 days of statistics",
+  plan_pro_lines:"25 habits|Unlimited tasks|15 projects|2 teams, 10 people|Voice: 30/day|Full statistics|AI day summary",
+  plan_max_lines:"Everything unlimited|10 teams, 50 people|Voice: 100/day|Statistics as a file",
+  plan_channel:"Join the channel — +{n} days of Pro free",
+  plan_current:"Current plan",
+  plan_recommended:"Recommended",
+  plan_period_month:"Monthly",
+  plan_period_year:"Yearly",
+  plan_buy:"Get {plan}",
+  plan_upgrade:"Upgrade plan",
+  plan_change:"Change plan",
+  plan_free_price:"Free",
+  plan_free_cta:"For more habits, projects and teams",
+  plan_pay_how:"Tapping opens Telegram's ⭐ Stars payment window. Nothing is charged until you confirm. It does not renew by itself — when it ends you are back on Free and keep your data.",
+  avatar_change:"Change photo",
+  avatar_remove:"Remove photo",
+  avatar_saved:"Photo saved",
+  avatar_bad:"This picture could not be saved",
+  ref_grow_title:"Share ErnestOS, get Max",
+  ref_step_n:"{n} friends",
+  ref_months:"+{n} mo {plan}",
+  ref_got:"Received ✓",
+  ref_all_done:"Every reward collected — thank you!",
+  ref_friend_gets:"The friend you invite also gets {n} days of Pro.",
+  ref_copy_big:"🔗 Invite link (copy)",
+  set_app:"App",
+  sign_out:"Sign out",
+  sign_out_tg_hint:"You are in through Telegram — Sign out closes the window.",
+  sign_out_pending:"{n} actions have not reached the server yet. They stay on this phone and go out when you sign back in. Sign out?",
+  delete_account_short:"Delete account",
+  plan_stars_note:"Paid with Telegram Stars. When it ends you are on Free and your data stays.",
+  queue_store_failed:"Could not save on this device — storage may be full. Tap again when you are online.",
+  queue_review:"{n} actions were not sent — review them", queue_title:"Waiting to be sent",
+  queue_empty:"Everything has been sent.", queue_waiting:"Waiting for the connection.",
+  queue_retry:"Send again", queue_drop:"Discard", queue_dropped:"Discarded",
+  queue_why_auth:"Sign in again — it goes out by itself after that.", queue_why_plan:"Plan limit — upgrade first.",
+  queue_why_forbidden:"Not allowed (for example, you left the team).", queue_why_gone:"This was deleted.",
+  queue_why_conflict:"Changed elsewhere — check and send again.", queue_why_invalid:"The server did not accept it.",
   file_ready:"File ready — choose where to save it",
   inbox:"Notifications", inbox_empty:"Nothing yet. Reminders, reports and timers arrive here.",
   inbox_snoozed:"I'll remind you again in {n} min", inbox_done:"Done ✓",
@@ -1802,8 +2162,8 @@ const DICT = {
   data_yours:"Your data belongs to you",
   data_yours_body:"Everything you write here is yours. Take a copy whenever you like, or delete all of it — nobody will ask why.",
   your_copy:"Your copy", what_we_keep:"What is kept", irreversible:"Cannot be undone",
-  download_backup:"Download backup",
-  backup_hint:"A JSON file, on your device", backup_saved:"Backup saved",
+  download_backup:"Download as a JSON file",
+  backup_hint:"All your data in one file, on your device. Loading it back is not available yet.", backup_saved:"File saved",
   export_hint:"Sent to the bot as a file", export_hint_app:"Saved on your phone as a file",
   privacy_policy:"Privacy policy", policy_hint:"What is stored, and where",
   sessions:"Sessions", sessions_hint:"Where this account is open",
@@ -1841,7 +2201,7 @@ const DICT = {
   timer_off:"Off", timer_auto:"from name", timer_from_name:"From the name (e.g. 5h)",
   timer_custom_ph:"Minutes, e.g. 50",
   timer_rule_habit:"The habit ticks itself when the timer ends.",
-  timer_rule_task:"The timer records the time worked. You mark the task finished.", timer_worked:"{dur} worked", timer_rhythm:"Work and breaks", timer_one_go:"In one go", timer_rhythm_hint:"E.g. 50/10 — 50 min of work, 10 min break. Breaks are not counted as work.", timer_on_break:"Break until {time}", timer_finish:"Finish session", timer_finish_hint:"Finish keeps the time worked. Stop cancels the session.", timer_manual:"{dur} logged by hand", timer_ask_done:"Is the task finished?", timer_yes_done:"Yes, finished", timer_more:"Another session", timer_log_lbl:"Did it without the timer", timer_log_ph:"How many minutes?", timer_log_btn:"Log it", timer_running:"A timer is running — stop it first.",
+  timer_rule_task:"The timer records the time worked. You mark the task finished.", timer_worked:"{dur} worked", timer_rhythm:"Work and breaks", timer_one_go:"In one go", timer_rhythm_hint:"E.g. 25/5 — 25 min of work, 5 min break. Breaks are not counted as work.", timer_on_break:"Break until {time}", timer_finish:"Finish session", timer_finish_hint:"Finish keeps the time worked. Stop cancels the session.", timer_manual:"{dur} logged by hand", timer_ask_done:"Is the task finished?", timer_yes_done:"Yes, finished", timer_more:"Another session", timer_log_lbl:"Did it without the timer", timer_log_ph:"How many minutes?", timer_log_btn:"Log it", timer_running:"A timer is running — stop it first.",
   timer_off_hint:"Timer is off — tick it as usual. Pick a length below if it needs one.",
   timer_done_today:"Done for today", timer_done:"Done",
   timer_finished:"Time's up — ticked ✓",
@@ -1878,6 +2238,7 @@ const DICT = {
   owner_offer:"You have been offered ownership of «{name}»", accept:"Accept",
   offer_sent:"Offer sent — ownership moves once they accept",
   owner_must_transfer:"Hand ownership to another member before leaving",
+  owner_must_transfer_delete:"Before deleting the account, hand your team to another member or close the team.",
   notify_title:"Notifications", notify_all:"Everything", notify_important:"Important",
   notify_assigned:"Only mine", notify_off:"Off",
   notify_all_hint:"Changes, reports and reminders", notify_important_hint:"Reports and reminders",
@@ -1907,7 +2268,7 @@ const DICT = {
   pause_today:"From today", pause_tomorrow:"From tomorrow", pause_when:"Pause from when?",
   pause_note:"From today takes today out of the count as well",
   pts:"pts", team_join_hint:"Open an invite link — you see the team first, then join",
-  nav_home:"Home", nav_stats:"Stats", money:"Money", money_add:"Money entry",
+  nav_home:"Today", nav_stats:"Stats", money:"Money", money_add:"Money entry",
   money_this_month:"this month", money_tab_entries:"Entries", money_tab_cats:"Categories", money_tab_debts:"Debts", debt_overdue_n:"{n} overdue", debt_owed_to_me:"Owed to you", debt_i_owe:"You owe", debt_add:"Record a debt", debt_empty:"No debts yet. Lend or borrow money — write it here and it won't be forgotten.", debt_settled:"Closed", debt_lent_meta:"I lent", debt_borrowed_meta:"I borrowed", debt_overdue:"overdue", debt_until:"by {d}", debt_returned:"Returned", debt_returned_full:"Fully returned", debt_lent:"I lent", debt_borrowed:"I borrowed", debt_person:"Who? Type a name", debt_amount:"Amount (200k, 1.5 mln…)", debt_due:"Return by", debt_due_week:"In 1 week", debt_due_month:"In 1 month", debt_note:"Note (optional)", debt_bad_amount:"Type an amount — 200 ming or 200000", debt_saved:"✓ Debt recorded", debt_closed:"✓ Debt closed", debt_partial:"Part of it returned?", debt_partial_ph:"How much? E.g. 50 ming", debt_reopen:"Reopen", debt_paid_more:"That is more than what is left. Remaining: {n}", debt_of:"of {n}", debt_payments:"Payments", debt_delete_q:"Delete this debt?", debt_archived:"Deleted", debt_restore:"Restore", debt_purge:"Delete forever", debt_purge_q:"Delete forever? This cannot be undone.",
   money_apart:"A separate section — never counted in any percentage, streak or rank.",
   money_balance:"Balance", money_income:"Income", money_expense:"Spent",
@@ -1988,7 +2349,7 @@ const DICT = {
   vs_yesterday:"по сравнению со вчера", vs_yesterday_none:"Вчера ничего не измерено",
   today_mission:"Выбрано на сегодня",
   mission_add:"Выберите задачу",
-  mission_change:"Выбрать на сегодня",
+  mission_change:"Выбрать на сегодня", now_swap:"Другое",
   why_pinned:"Вы выбрали это сами",
   why_overdue:"Просрочено — сначала это",
   why_due_today:"Срок сегодня", why_recheck:"Проверьте ответ, которого ждали", block_label:"Зависит от других?", block_reply:"Жду ответа", block_depends:"Зависит от другой задачи", block_in:"проверить через {n} дн.", block_until:"проверить {d}", block_clear:"Больше не жду", block_saved:"⏳ Отложено — не в «Сейчас» до проверки", block_recheck:"пора проверить",
@@ -2020,7 +2381,7 @@ const DICT = {
   wake_late_at:"{time} — позже сегодняшней цели", wake_target:"Цель",
   quick_add:"Быстро добавить", quick_ph:"Что пришло в голову?",
   inbox_saved:"Сохранено — в Задачах",
-  quick_saved:"✓ Задача", next_up:"Дальше", home_more_tasks:"Ещё {n}", voice_title:"Добавить голосом", voice_listening:"Говорите… Остановите — и я разберу.", voice_stop:"Стоп", voice_thinking:"Разбираю…", voice_confirm:"Подтвердить", voice_retry:"Записать заново", voice_edit:"Изменить", voice_answer_ph:"Напишите ответ…", voice_send:"Отправить", ve_title:"Название", ve_name:"Название", ve_deadline:"Дата", ve_day:"День", ve_due_time:"Время", ve_remind_at:"Время напоминания", ve_priority:"Важность", ve_amount:"Сумма", ve_note:"Заметка", ve_person:"Кто", voice_resend:"Отправить эту запись ещё раз", voice_done:"✅ Подтверждено", voice_failed:"Голос не отправлен. Попробуйте ещё раз.", voice_too_long:"Не длиннее 2 минут.", voice_denied:"Нет доступа к микрофону — отправьте голосовое в боте.", voice_denied_app:"Нет доступа к микрофону. Настройки телефона → Приложения → ErnestOS → Разрешения → Микрофон.", voice_consent:"Голос отправляется AI-сервисам (ElevenLabs, Groq, Google — США) для распознавания. Аудио не хранится. Ничего не меняется без вашего подтверждения.", voice_agree:"Согласен, начать", voice_consent_needed:"Сначала дайте согласие.", tab_list:"Список", nav_money:"Финансы", quick_more:"Подробнее (время, напоминание, проект)", quick_more_habit:"Подробнее (дни, напоминание, важность)", nav_steps:"Шаги", steps_to_next:"До уровня «{name}» ещё {n} шагов", steps_max:"Высший уровень — отлично!", steps_freeze_short:"Заморозки", steps_rank_in:"через {n} дн.", steps_next:"Следующий шаг", steps_all_done:"Все шаги на сегодня сделаны 🎉", steps_more:"Достижения и рейтинг", steps_title:"Шаги", steps_motto:"Каждое доброе дело — шаг вперёд.", steps_freeze:"Дни, которые сохраняют серию", steps_level_n:"{n}-й уровень", steps_total:"Всего шагов", steps_path:"Ваш путь", steps_today:"Шаги сегодня", steps_go:"Продолжить", step_lvl_starter:"Новичок", step_lvl_builder:"Строитель", step_lvl_discipline:"Дисциплина", step_lvl_steady:"Стабильность", step_lvl_master:"Работа над собой", step_tasks:"Задача", step_habits:"Привычка", step_prayer:"Намаз", step_journal:"Итоги", step_goal:"Цель", step_started:"начато", step_goal_add:"Добавить цель", focus_carried_n:"Переносится {n} нед. подряд — разбейте на шаги", focus_moved:"Перенесено на следующую неделю", cnt_finished:"сделано сегодня", task_word:"Задача", habit_word:"Привычка", quick_habit_ph:"Например: Читать книгу каждый день", quick_habit_hint:"Каждый день — или укажите дни («пн, ср, пт бег»). Можно изменить позже.", quick_habit_days_hint:"Эти дни найдены в тексте. Проверьте и сохраните.", quick_habit_saved:"✓ Привычка", nav_tracker:"Трекер", nav_profile:"Профиль", quick_hint:"Например: «Завтра в 10 отчёт» или «Обед 45 тысяч»", quick_voice:"Сказать голосом", jai_title:"Заполнить с AI", jai_hint:"Расскажите о дне голосом или текстом — AI разложит всё по 5 вопросам и исправит ошибки. Вы проверяете и сохраняете.", jai_voice:"Сказать", jai_text:"Написать", jai_ph:"Например: сегодня закрыл сделку с клиентом, благодарен маме, не успел спланировать время, завтра закончу отчёт…", jai_sort:"Разложить по вопросам", jai_done:"✨ Заполнено ответов: {n} — проверьте и Сохраните", jai_review:"Предложение ИИ ещё не сохранено. Проверьте и примите.", jai_accept:"Принять", jai_reject:"Отменить", journal_for_day:"Запись за {d}", jai_nothing:"Ничего не подошло к вопросам. Расскажите подробнее.",
+  quick_saved:"✓ Задача", next_up:"Дальше", home_more_tasks:"Ещё {n}", voice_title:"Добавить голосом", voice_listening:"Говорите… Остановите — и я разберу.", voice_stop:"Стоп", voice_thinking:"Разбираю…", voice_confirm:"Подтвердить", voice_retry:"Записать заново", voice_edit:"Изменить", voice_answer_ph:"Напишите ответ…", voice_send:"Отправить", ve_title:"Название", ve_name:"Название", ve_deadline:"Дата", ve_day:"День", ve_due_time:"Время", ve_remind_at:"Время напоминания", ve_priority:"Важность", ve_amount:"Сумма", ve_note:"Заметка", ve_person:"Кто", voice_resend:"Отправить эту запись ещё раз", voice_done:"✅ Подтверждено", voice_failed:"Голос не отправлен. Попробуйте ещё раз.", voice_too_long:"Не длиннее 2 минут.", voice_denied:"Нет доступа к микрофону — отправьте голосовое в боте.", voice_denied_app:"Нет доступа к микрофону. Настройки телефона → Приложения → ErnestOS → Разрешения → Микрофон.", voice_consent:"Голос отправляется AI-сервисам (ElevenLabs, Groq, Google — США) для распознавания. Аудио не хранится. Ничего не меняется без вашего подтверждения.", voice_agree:"Согласен, начать", voice_consent_needed:"Сначала дайте согласие.", tab_list:"Список", nav_money:"Финансы", quick_more:"Подробнее (время, напоминание, проект)", quick_more_habit:"Подробнее (дни, напоминание, важность)", nav_steps:"Шаги", steps_to_next:"До уровня «{name}» ещё {n} шагов", steps_max:"Высший уровень — отлично!", steps_freeze_short:"Заморозки", steps_rank_in:"через {n} дн.", steps_next:"Следующий шаг", steps_all_done:"Все шаги на сегодня сделаны 🎉", steps_more:"Достижения и рейтинг", steps_title:"Шаги", steps_motto:"Каждое доброе дело — шаг вперёд.", steps_freeze:"Дни, которые сохраняют серию", steps_level_n:"{n}-й уровень", steps_total:"Всего шагов", steps_path:"Ваш путь", steps_today:"Шаги сегодня", steps_go:"Продолжить", step_lvl_starter:"Новичок", step_lvl_builder:"Строитель", step_lvl_discipline:"Дисциплина", step_lvl_steady:"Стабильность", step_lvl_master:"Работа над собой", step_tasks:"Задача", step_habits:"Привычка", step_prayer:"Намаз", step_journal:"Итоги", step_goal:"Цель", step_started:"начато", step_goal_add:"Добавить цель", focus_carried_n:"Переносится {n} нед. подряд — разбейте на шаги", focus_moved:"Перенесено на следующую неделю", cnt_finished:"сделано сегодня", task_word:"Задача", habit_word:"Привычка", quick_habit_ph:"Например: Читать книгу каждый день", quick_habit_hint:"Каждый день — или укажите дни («пн, ср, пт бег»). Можно изменить позже.", quick_habit_days_hint:"Эти дни найдены в тексте. Проверьте и сохраните.", quick_habit_saved:"✓ Привычка", nav_tracker:"План", nav_profile:"Профиль", quick_hint:"Например: «Завтра в 10 отчёт» или «Обед 45 тысяч»", quick_voice:"Сказать голосом", jai_title:"Заполнить с AI", jai_hint:"Расскажите о дне голосом или текстом — AI разложит всё по {n} вопросам и исправит ошибки. Вы проверяете и сохраняете.", jai_voice:"Сказать", jai_text:"Написать", jai_ph:"Например: сегодня закрыл сделку с клиентом, благодарен маме, не успел спланировать время, завтра закончу отчёт…", jai_sort:"Разложить по вопросам", jai_done:"✨ Заполнено ответов: {n} — проверьте и Сохраните", jai_review:"Предложение ИИ ещё не сохранено. Проверьте и примите.", jai_accept:"Принять", jai_reject:"Отменить", journal_for_day:"Запись за {d}", jai_nothing:"Ничего не подошло к вопросам. Расскажите подробнее.",
   add_task:"Задача", task_name:"Название", task_desc:"Подробнее",
   deadline:"Дата", due_time:"Время", priority:"Приоритет", project:"Проект",
   standalone:"Отдельно", high:"Высокий", medium:"Средний", low:"Низкий",
@@ -2083,6 +2444,12 @@ const DICT = {
   journal:"Итоги дня", journal_progress:"{done} из {total} отвечено",
   journal_complete:"Заполнен полностью", journal_hint:"Сохраняется всё, что вы напишете",
   journal_history:"История", journal_partial:"Не заполнен",
+  jconf_title:"Дневник изменён в другом месте", jconf_body:"Текст на этом телефоне отличается от сохранённого. Какой оставить? Ничего не удалено.", jconf_mine:"На этом телефоне", jconf_theirs:"Сохранённый (бот или другое устройство)", jconf_keep_mine:"Мой", jconf_both:"Оба", jconf_keep_theirs:"Сохранённый",
+  offline_snapshot:"Нет связи — показано состояние на {when}. Нажмите, чтобы повторить.",
+  part_failed:"Часть экрана не загрузилась — остальное работает. Обновите позже.",
+  money_edit:"Изменить запись",
+  push_title:"Уведомления на телефоне", push_on:"Включены — напоминания приходят и на телефон.", push_ask:"Ещё не разрешены. Напоминания только во Входящих в приложении.", push_denied:"Выключены на телефоне. Включить можно в Настройках телефона → Приложения → ErnestOS → Уведомления.", push_no_build:"В этой версии нет уведомлений на телефон. Напоминания — во Входящих и в Telegram-боте.", push_allow:"Разрешить",
+  plan_save_stars:"Экономия {n} ⭐ в год",
   draft_restored:"Несохранённый текст восстановлен", autosaved:"Сохраняем…",
   mood_q:"Как вы себя чувствовали сегодня?",
   mood_awful:"Очень плохо", mood_low:"Плохо", mood_ok:"Нормально",
@@ -2123,6 +2490,54 @@ const DICT = {
   account_hint:"Данные, приватность и экспорт",
   profile:"Профиль", member:"Участник", photo_hint:"Используется фото из Telegram",
   data_privacy:"Данные и приватность",
+  plan_title:"Тариф", plan_now:"Тариф {plan}", plan_until:"{plan} · ещё {n} дн.",
+  plan_month:"1 месяц", plan_year:"1 год", plan_paid:"Оплата получена — спасибо!",
+  plan_keep:"Данные не удаляются — нельзя только добавлять новое.",
+  plan_needs:"Доступно на тарифе {plan}.", plan_limit_generic:"Лимит тарифа",
+  plan_limit_habits:"Больше 3 привычек", plan_limit_active_tasks:"Больше 30 активных задач",
+  plan_limit_recurring_tasks:"Больше повторяющихся задач", plan_limit_projects:"Больше проектов",
+  plan_limit_open_debts:"Больше открытых долгов", plan_limit_teams_owned:"Создание команд",
+  plan_limit_team_members:"Больше участников", plan_limit_timer_rhythm:"Ритм работы и отдыха",
+  plan_limit_stats_history:"Статистика за месяц и год", plan_limit_stats_csv:"Выгрузка статистики",
+  plan_limit_journal_ai:"AI-итоги дня", plan_limit_voice_week:"Больше голосовых команд",
+  plan_free_lines:"3 привычки|30 активных задач|1 проект|Голос: 5/нед.|Статистика за 7 дней",
+  plan_pro_lines:"25 привычек|Задачи без лимита|15 проектов|2 команды, 10 чел.|Голос: 30/день|Полная статистика|AI-итоги дня",
+  plan_max_lines:"Всё без лимита|10 команд, 50 чел.|Голос: 100/день|Статистика файлом",
+  plan_channel:"Подпишитесь на канал — +{n} дн. Pro бесплатно",
+  plan_current:"Текущий тариф",
+  plan_recommended:"Рекомендуем",
+  plan_period_month:"Месяц",
+  plan_period_year:"Год",
+  plan_buy:"Купить {plan}",
+  plan_upgrade:"Улучшить тариф",
+  plan_change:"Сменить тариф",
+  plan_free_price:"Бесплатно",
+  plan_free_cta:"Больше привычек, проектов и команд",
+  plan_pay_how:"Кнопка открывает окно оплаты ⭐ Stars в Telegram. Ничего не списывается, пока вы не подтвердите. Само не продлевается — по окончании вы вернётесь на Free, данные сохранятся.",
+  avatar_change:"Сменить фото",
+  avatar_remove:"Убрать фото",
+  avatar_saved:"Фото сохранено",
+  avatar_bad:"Не удалось сохранить фото",
+  ref_grow_title:"Поделитесь ErnestOS — получите Max",
+  ref_step_n:"{n} друзей",
+  ref_months:"+{n} мес {plan}",
+  ref_got:"Получено ✓",
+  ref_all_done:"Все награды получены — спасибо!",
+  ref_friend_gets:"Приглашённый друг тоже получит {n} дн. Pro.",
+  ref_copy_big:"🔗 Ссылка-приглашение (копировать)",
+  set_app:"Приложение",
+  sign_out:"Выйти",
+  sign_out_tg_hint:"Вы вошли через Telegram — «Выйти» закроет окно.",
+  sign_out_pending:"{n} действий ещё не дошли до сервера. Они останутся на телефоне и уйдут, когда вы снова войдёте. Выйти?",
+  delete_account_short:"Удалить аккаунт",
+  plan_stars_note:"Оплата Telegram Stars. После окончания — тариф Free, данные сохраняются.",
+  queue_store_failed:"Не удалось сохранить на устройстве — память может быть заполнена. Нажмите снова, когда появится сеть.",
+  queue_review:"{n} действий не отправлено — проверьте", queue_title:"Ожидают отправки",
+  queue_empty:"Всё отправлено.", queue_waiting:"Ждёт подключения.",
+  queue_retry:"Отправить снова", queue_drop:"Отменить", queue_dropped:"Отменено",
+  queue_why_auth:"Войдите снова — после этого отправится само.", queue_why_plan:"Лимит тарифа — сначала обновите тариф.",
+  queue_why_forbidden:"Нет доступа (например, вы вышли из команды).", queue_why_gone:"Это было удалено.",
+  queue_why_conflict:"Изменено в другом месте — проверьте и отправьте снова.", queue_why_invalid:"Сервер не принял.",
   file_ready:"Файл готов — выберите, куда сохранить",
   inbox:"Уведомления", inbox_empty:"Пока пусто. Сюда приходят напоминания, отчёты и таймеры.",
   inbox_snoozed:"Напомню снова через {n} мин", inbox_done:"Готово ✓",
@@ -2172,8 +2587,8 @@ const DICT = {
   data_yours:"Ваши данные принадлежат вам",
   data_yours_body:"Всё, что вы здесь пишете, — ваше. Заберите копию когда угодно или удалите всё целиком — никто не спросит зачем.",
   your_copy:"Ваша копия", what_we_keep:"Что хранится", irreversible:"Необратимо",
-  download_backup:"Скачать резервную копию",
-  backup_hint:"Файл JSON на ваше устройство", backup_saved:"Копия сохранена",
+  download_backup:"Скачать файл JSON",
+  backup_hint:"Все данные в одном файле на вашем устройстве. Загрузить обратно пока нельзя.", backup_saved:"Файл сохранён",
   export_hint:"Придёт в бот файлом", export_hint_app:"Сохранится на телефоне файлом",
   privacy_policy:"Политика приватности", policy_hint:"Что хранится и где",
   sessions:"Входы", sessions_hint:"Где открыт этот аккаунт",
@@ -2211,7 +2626,7 @@ const DICT = {
   timer_off:"Выкл", timer_auto:"из названия", timer_from_name:"Из названия (напр. 5h)",
   timer_custom_ph:"Минуты, напр. 50",
   timer_rule_habit:"Привычка отметится сама, когда таймер закончится.",
-  timer_rule_task:"Таймер записывает время работы. Готовность задачи отмечаете вы.", timer_worked:"отработано {dur}", timer_rhythm:"Работа и перерывы", timer_one_go:"Без перерывов", timer_rhythm_hint:"Например 50/10 — 50 мин работы, 10 мин перерыв. Перерыв не считается работой.", timer_on_break:"Перерыв до {time}", timer_finish:"Завершить сессию", timer_finish_hint:"Завершить — время сохранится. Стоп — сессия отменяется.", timer_manual:"вручную {dur}", timer_ask_done:"Задача готова?", timer_yes_done:"Да, готово", timer_more:"Ещё одна сессия", timer_log_lbl:"Сделал без таймера", timer_log_ph:"Сколько минут?", timer_log_btn:"Записать", timer_running:"Таймер идёт — сначала остановите его.",
+  timer_rule_task:"Таймер записывает время работы. Готовность задачи отмечаете вы.", timer_worked:"отработано {dur}", timer_rhythm:"Работа и перерывы", timer_one_go:"Без перерывов", timer_rhythm_hint:"Например 25/5 — 25 мин работы, 5 мин перерыв. Перерыв не считается работой.", timer_on_break:"Перерыв до {time}", timer_finish:"Завершить сессию", timer_finish_hint:"Завершить — время сохранится. Стоп — сессия отменяется.", timer_manual:"вручную {dur}", timer_ask_done:"Задача готова?", timer_yes_done:"Да, готово", timer_more:"Ещё одна сессия", timer_log_lbl:"Сделал без таймера", timer_log_ph:"Сколько минут?", timer_log_btn:"Записать", timer_running:"Таймер идёт — сначала остановите его.",
   timer_off_hint:"Таймер выключен — отмечается как обычно. Если нужно время, выберите ниже.",
   timer_done_today:"Сегодня выполнено", timer_done:"Выполнено",
   timer_finished:"Время вышло — отмечено ✓",
@@ -2248,6 +2663,7 @@ const DICT = {
   owner_offer:"Вам предложили стать владельцем «{name}»", accept:"Принять",
   offer_sent:"Предложение отправлено — владение перейдёт после согласия",
   owner_must_transfer:"Перед выходом передайте владение другому участнику",
+  owner_must_transfer_delete:"Перед удалением аккаунта передайте команду другому участнику или закройте её.",
   notify_title:"Уведомления", notify_all:"Всё", notify_important:"Важное",
   notify_assigned:"Только мне", notify_off:"Выкл",
   notify_all_hint:"Изменения, отчёты и напоминания", notify_important_hint:"Отчёты и напоминания",
@@ -2277,7 +2693,7 @@ const DICT = {
   pause_today:"С сегодня", pause_tomorrow:"С завтра", pause_when:"С какого дня пауза?",
   pause_note:"С сегодня — сегодняшний день тоже не считается",
   pts:"п.", team_join_hint:"Откройте ссылку-приглашение — сначала увидите команду, потом вступите",
-  nav_home:"Главная", nav_stats:"Итоги", money:"Деньги", money_add:"Запись о деньгах",
+  nav_home:"Сегодня", nav_stats:"Итоги", money:"Деньги", money_add:"Запись о деньгах",
   money_this_month:"за месяц", money_tab_entries:"Записи", money_tab_cats:"Категории", money_tab_debts:"Долги", debt_overdue_n:"просрочено: {n}", debt_owed_to_me:"Вам должны", debt_i_owe:"Вы должны", debt_add:"Записать долг", debt_empty:"Долгов пока нет. Дали или взяли деньги — запишите здесь, и это не забудется.", debt_settled:"Закрытые", debt_lent_meta:"я дал", debt_borrowed_meta:"я взял", debt_overdue:"просрочен", debt_until:"до {d}", debt_returned:"Вернули", debt_returned_full:"Вернули полностью", debt_lent:"Я дал", debt_borrowed:"Я взял", debt_person:"Кто? Введите имя", debt_amount:"Сумма (200 тыс, 1,5 млн…)", debt_due:"Вернуть до", debt_due_week:"Через неделю", debt_due_month:"Через месяц", debt_note:"Заметка (необязательно)", debt_bad_amount:"Введите сумму — 200 тыс или 200000", debt_saved:"✓ Долг записан", debt_closed:"✓ Долг закрыт", debt_partial:"Вернули часть?", debt_partial_ph:"Сколько? Например, 50 тыс", debt_reopen:"Открыть снова", debt_paid_more:"Это больше остатка долга. Осталось: {n}", debt_of:"из {n}", debt_payments:"Платежи", debt_delete_q:"Удалить долг?", debt_archived:"Удалённые", debt_restore:"Вернуть", debt_purge:"Удалить навсегда", debt_purge_q:"Удалить навсегда? Это нельзя отменить.",
   money_apart:"Отдельный раздел — не входит ни в какие проценты, серии и рейтинги.",
   money_balance:"Баланс", money_income:"Доход", money_expense:"Расход",
@@ -2508,7 +2924,7 @@ async function api(path, options = {}){
     const err = new Error("http_" + res.status);
     err.status = res.status;
     err.retryAfter = Number(res.headers.get("Retry-After")) || 30;
-    try{ err.detail = (await res.json())?.detail; }catch(_){}
+    try{ err.body = await res.json(); err.detail = err.body?.detail; }catch(_){}
     throw err;
   }
   const remaining = res.headers.get("X-Trial-Remaining");
@@ -2547,20 +2963,45 @@ function toast(msg, undoLabel, undoFn){
 const haptic = s => tg?.HapticFeedback?.impactOccurred?.(s || "light");
 const notify = s => tg?.HapticFeedback?.notificationOccurred?.(s || "success");
 
+let sheetKey = "";
 function openSheet(html, view){
   // Which sheet is showing, so a late answer redraws only its own sheet.
   state.sheetView = view || null;
-  document.getElementById("sheet-body").innerHTML =
-    `<div class="grabber"></div>${html}`;
-  document.getElementById("sheet").classList.add("show");
+  const body = document.getElementById("sheet-body");
+  body.innerHTML = `<div class="grabber"></div>${html}`;
+  /* A different sheet starts at its top; the same one redrawn (a switch
+     flipped, an answer arrived) stays where the person was. */
+  const key = state.sheetView || html.trim().slice(0, 160);
+  const sheet = document.getElementById("sheet");
+  if(key !== sheetKey || !sheet?.classList?.contains?.("show")){
+    body.scrollTop = 0;
+    if(sheet) sheet.scrollTop = 0;
+  }
+  sheetKey = key;
+  // Opening while the last one is still sliding away takes it over.
+  clearTimeout(sheetCloseTimer);
+  sheet.classList.remove("closing");
+  sheet.classList.add("show");
   syncBackButton();
 }
 function closeSheet(){
+  // Leaving the voice sheet by any road (Back, the backdrop, another screen)
+  // means "never mind": the microphone stops and nothing is sent (K01).
+  if(state.sheetView === "voice") voiceAbandon();
   state.sheetView = null;
-  document.getElementById("sheet").classList.remove("show");
+  const sheet = document.getElementById("sheet");
+  clearTimeout(sheetCloseTimer);
+  if(!reduceMotion() && sheet.classList.contains("show") && !sheet.classList.contains("closing")){
+    sheet.classList.add("closing");
+    sheetCloseTimer = setTimeout(() => sheet.classList.remove("show", "closing"), 170);
+  } else {
+    sheet.classList.remove("show", "closing");
+  }
   syncBackButton();
 }
-const sheetOpen = () => document.getElementById("sheet").classList.contains("show");
+let sheetCloseTimer = null;
+const sheetOpen = () => { const el = document.getElementById("sheet");
+  return el.classList.contains("show") && !el.classList.contains("closing"); };
 document.getElementById("sheet").addEventListener("click", e => {
   if(e.target.id === "sheet") closeSheet();
 });
@@ -2824,10 +3265,87 @@ function privacyNote(){
 
 /* The month, in a sheet, opened from the date in the header. */
 function calendarSheet(){
-  return `<h3>${icon("calendar", 18)} ${t("calendar")}</h3>
-    <div style="margin-top:var(--s2)">${calendarBlock()}</div>
-    <button class="btn secondary" data-act="close" style="margin-top:var(--s2)">
-      ${t("close")}</button>`;
+  return `${sheetHead(`${icon("calendar", 18)} ${t("calendar")}`)}
+    <div style="margin-top:var(--s2)">${calendarBlock()}</div>`;
+}
+
+/* ---------- plans: Free / Pro / Max ----------
+   The plan sheet says where the account stands and what each plan gives;
+   buying opens a Telegram Stars invoice (in Telegram) or the same invoice
+   link in Telegram (in the phone app). A limit the server refuses (402)
+   opens the same sheet with the reason on top. */
+const PLAN_NAME = {free:"Free", pro:"Pro", max:"Max"};
+const fmtSom = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+function planLine(){
+  const p = state.me?.plan;
+  if(!p?.enabled) return "";
+  return p.until ? t("plan_until", {plan:PLAN_NAME[p.tier], n:p.days_left})
+                 : t("plan_now", {plan:PLAN_NAME[p.tier]});
+}
+/* A sheet title with its close cross on the right. */
+const sheetHead = (title) => `<div class="sheet-head"><h3>${title}</h3>
+    <button class="iconbtn" data-act="close" aria-label="${t("close")}">${icon("x", 20)}</button></div>`;
+/* One period at a time: a month/year switch and two buy buttons, rather than
+   four buttons to compare at once. The saving shown is computed from the
+   real prices, never a round number the prices do not support. */
+function plansSheet(limit){
+  if(limit !== undefined) state.planLimit = limit;
+  limit = state.planLimit;
+  const p = state.me?.plan || {tier:"free", products:[]};
+  const period = state.planPeriod === "year" ? "year" : "month";
+  const price = (tier, per) => (p.products || []).find(x => x.tier === tier
+    && (per === "year" ? x.days > 100 : x.days <= 100)) || null;
+  const saves = ["pro", "max"].map(tier => {
+    const m = price(tier, "month"), y = price(tier, "year");
+    return m && y ? Math.floor((1 - y.stars / (m.stars * 12)) * 100) : 0; }).filter(n => n > 0);
+  const saving = saves.length ? Math.min(...saves) : 0;
+  const card = (tier, lines) => {
+    const cur = p.tier === tier, rec = tier === "max";
+    const x = tier === "free" ? null : price(tier, period);
+    return `<div class="pcard ${cur ? "cur" : ""} ${rec ? "rec" : ""}">
+      <div class="pcard-h"><b>${PLAN_NAME[tier]}</b>
+        ${cur ? `<span class="pbadge cur">${t("plan_current")}</span>`
+              : rec ? `<span class="pbadge rec">${t("plan_recommended")}</span>` : ""}
+        <span class="grow"></span>
+        <span class="pprice">${x ? `<span class="pstar">★</span>${x.stars}` : t("plan_free_price")}</span></div>
+      <ul>${lines.map(l => `<li><span class="pchk">${icon("check", 14)}</span>${esc(l)}</li>`).join("")}</ul>
+      ${x && period === "year" ? (() => { const m = price(tier, "month");
+        const saved = m ? m.stars * 12 - x.stars : 0;
+        return saved > 0 ? `<div class="psave">${t("plan_save_stars", {n:saved})}</div>` : ""; })() : ""}</div>`;
+  };
+  const buy = tier => { const x = price(tier, period);
+    if(!x) return "";
+    return `<button class="btn ${tier === "max" ? "glow" : "secondary"}" data-act="plan-buy" data-key="${x.key}">
+      ⭐ ${t("plan_buy", {plan:PLAN_NAME[tier]})}
+      <small>${x.stars} Stars · ≈ ${fmtSom(x.uzs ?? "")} so'm</small></button>`; };
+  const reason = limit ? (DICT[state.lang]?.["plan_limit_" + limit.key] ? t("plan_limit_" + limit.key)
+                                                                       : t("plan_limit_generic")) : "";
+  return `${sheetHead(`${icon("star", 18)} ${t("plan_title")}`)}
+    ${limit ? `<div class="card tight" style="border-color:var(--warn);margin-top:var(--s2)">
+        <b>🔒 ${reason}</b>
+        <div class="t2 small">${t("plan_needs", {plan:PLAN_NAME[limit.needs] || "Pro"})}</div>
+        <div class="t3 tiny" style="margin-top:4px">${t("plan_keep")}</div></div>` : ""}
+    ${p.tier !== "free" && planLine() ? `<div class="t2 small" style="margin-top:6px">${esc(planLine())}</div>` : ""}
+    <div class="seg" style="margin-top:var(--s2)" role="tablist">
+      <div class="${period === "month" ? "on" : ""}" data-act="plan-period" data-p="month"
+           role="tab" aria-selected="${period === "month"}">${t("plan_period_month")}</div>
+      <div class="${period === "year" ? "on" : ""}" data-act="plan-period" data-p="year"
+           role="tab" aria-selected="${period === "year"}">${t("plan_period_year")}${
+        saving ? `<span class="save">−${saving}%</span>` : ""}</div>
+    </div>
+    <div class="pcards">
+      ${card("free", t("plan_free_lines").split("|"))}
+      ${card("pro", t("plan_pro_lines").split("|"))}
+      ${card("max", t("plan_max_lines").split("|"))}
+    </div>
+    <div class="plan-buy">${buy("pro")}${buy("max")}</div>
+    <div class="t3" style="margin-top:10px;font-size:11.5px;line-height:1.4">${t("plan_pay_how")}</div>
+    ${p.channel && !p.channel_bonus_used ? `<button class="btn secondary" data-act="sub-join"
+        data-url="${esc(p.channel)}" style="margin-top:var(--s3)">
+        🎁 ${t("plan_channel", {n:p.channel_bonus_days})}</button>` : ""}`;
+}
+async function refreshPlan(){
+  try{ const me = await api("/api/me"); state.me.plan = me.plan; }catch(_){}
 }
 
 /* ---------- phone app inbox ----------
@@ -2875,18 +3393,39 @@ async function refreshInbox(){
   }catch(_){ /* the badge waits for the next try */ }
 }
 
-function headBlock(d){
-  const initial = (d.name || "E").charAt(0).toUpperCase();
-  /* Telegram already knows the user's photo and hands it to the Mini App in
-     initData, so there is nothing to upload and nothing to ask for. The
-     signed-blob endpoint stays as the fallback for an avatar that was sent
-     to the bot before this existed. */
+/* The picture the person chose in the app wins; then the photo Telegram
+   hands the Mini App in initData; then one sent to the bot long ago; then the
+   initial. One function, so Home, Profile and Settings never disagree. */
+function avatarHtml(name){
+  const me = state.me || {};
+  const token = encodeURIComponent(me.avatar_token || "");
   const tgPhoto = tg?.initDataUnsafe?.user?.photo_url;
-  const avatar = tgPhoto
-    ? `<img src="${esc(tgPhoto)}" alt="" />`
-    : state.me?.has_photo
-      ? `<img src="${API_BASE}/api/avatar?token=${encodeURIComponent(state.me?.avatar_token || "")}" alt="" />`
-      : esc(initial);
+  const src = state.avatarLocal
+    || (me.avatar_custom && me.avatar_token
+        ? `${API_BASE}/api/avatar?token=${token}&v=${encodeURIComponent(me.avatar_custom)}` : "")
+    || tgPhoto
+    || (me.has_photo && me.avatar_token ? `${API_BASE}/api/avatar?token=${token}` : "");
+  return src ? `<img src="${esc(src)}" alt="" />`
+             : esc((name || me.first_name || "E").charAt(0).toUpperCase());
+}
+/* A phone photo is megabytes; the server keeps a 256 px square. */
+async function shrinkImage(file, size = 256){
+  const url = URL.createObjectURL(file);
+  try{
+    const img = await new Promise((ok, bad) => { const i = new Image();
+      i.onload = () => ok(i); i.onerror = bad; i.src = url; });
+    const side = Math.min(img.naturalWidth, img.naturalHeight);
+    if(!side) throw new Error("empty_image");
+    const c = document.createElement("canvas");
+    c.width = c.height = size;
+    c.getContext("2d").drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2,
+                                 side, side, 0, 0, size, size);
+    return c.toDataURL("image/jpeg", 0.85);
+  }finally{ URL.revokeObjectURL(url); }
+}
+
+function headBlock(d){
+  const avatar = avatarHtml(d.name);
 
   let h = `
     <div class="head">
@@ -2901,13 +3440,14 @@ function headBlock(d){
                 ? `<span class="bell-badge">${state.inboxUnread > 99 ? "99+" : state.inboxUnread}</span>`
                 : ""}</button>` : ""}
       <button class="avatar" data-act="settings"
-              aria-label="${t("settings")}">${avatar}
-        <span class="avatar-gear" aria-hidden="true">${icon("settings", 11)}</span></button>
+              aria-label="${t("settings")}">${avatar}</button>
     </div>`;
 
   // The quote is one quiet line when there is one. An empty one is not an
   // underlined grey link on the first screen — it is set in Settings.
-  if(d.quote) h += `<div class="t2 small wrap" data-act="quote"
+  // Shown only on an empty day, where it encourages; on a busy one it was a
+  // line between the person and their first task.
+  if(d.quote && (!d.now || d.now.kind === "clear")) h += `<div class="t2 small wrap" data-act="quote"
             style="margin-top:var(--s2)">“${esc(d.quote)}”</div>`;
 
   // Returning after a break gets one offer, not a wall of red.
@@ -2967,8 +3507,7 @@ function nowBlock(d){
      for the rest of the day (at most one — a second asks to replace it). */
   const head = `<div class="row" style="gap:var(--s1)">
       <div class="grow eyebrow">${t("now")}</div>
-      <button class="iconbtn sm bare" data-act="mission-pick"
-              aria-label="${t("mission_change")}">${icon("edit", 17)}</button>
+      <button class="btn text now-swap" data-act="mission-pick">${t("now_swap")}</button>
     </div>`;
 
   // Nothing left. Not an empty state — a finished one, with the one useful
@@ -3008,9 +3547,10 @@ function nowBlock(d){
 
   return `<div class="hero" style="margin-top:var(--s3)">
       ${head}
-      <div class="now-title">${esc(kind.title)}</div>
+      <div class="now-title ${n.kind === "task" && n.source !== "team" && n.id ? "pressable" : ""}"
+           ${n.kind === "task" && n.source !== "team" && n.id ? `data-act="task-open" data-id="${n.id}" role="button" tabindex="0"` : ""}>${esc(kind.title)}</div>
       ${meta.length ? `<div class="now-meta">${meta.join("")}</div>` : ""}
-      ${why ? `<div class="now-why">${t(why)}</div>` : ""}
+      ${why && n.reason !== "pinned" ? `<div class="now-why">${t(why)}</div>` : ""}
       ${n.overdue ? `<div class="now-late" data-act="nav" data-screen="tasks"
           role="button" tabindex="0">${icon("clock", 14)}
           <span class="grow ellipsis">${t("now_also_late")}: ${esc(n.overdue.title)}</span>
@@ -3030,13 +3570,12 @@ function nowBlock(d){
 const focusScreen = () => state.screen === "home" ? "home" : "tasks";
 function homeGoal(d){
   const g = d.focus;
-  if(!g) return `<div class="goal-line pressable" data-act="focus-add" data-slot="primary">
-      <span class="gi">🎯</span><div class="grow t2">${t("add_mission")}</div>${icon("plus", 16)}</div>`;
+  if(!g) return "";
   return `<div class="goal-line ${g.done ? "done" : ""}">
       <div class="check ${g.done ? "on" : ""}" data-act="focus-toggle" data-id="${g.id}">${icon("check", 14)}</div>
       <div class="grow" data-act="focus-open" data-id="${g.id}" data-title="${esc(g.title)}"
            data-priority="${g.priority || "medium"}" data-done="${g.done ? 1 : 0}">
-        <div class="eyebrow">🎯 ${t("week_focus")}</div>
+        <div class="eyebrow">${icon("target", 13)} ${t("week_focus")}</div>
         <div class="gt ${g.done ? "strike" : ""}">${esc(g.title)}</div></div>
       ${icon("chevron", 16)}</div>`;
 }
@@ -3113,7 +3652,11 @@ function calendarBlock(){
       <button class="iconbtn sm" data-act="cal-next"
               aria-label="›">${icon("chevron", 16)}</button>
     </div>
-    <div class="cal-grid">${dows}${cells}</div></div>`;
+    <div class="cal-grid">${dows}${cells}</div>
+    <div class="cal-legend" aria-hidden="true">
+      <span><i class="k-task"></i>${t("tasks")}</span>
+      <span><i class="k-project"></i>${t("projects")}</span>
+      <span><i class="k-birthday"></i>${t("birthdays")}</span></div></div>`;
 }
 
 /* Direction as a glyph as well as a colour, so it survives a monochrome
@@ -3617,8 +4160,10 @@ function habitRow(x, cat, wake){
      Labelling just one kind makes the other look like the default and the
      shared one like an exception, which is the opposite of the point: they
      are the same kind of commitment and they score the same. */
-  meta.push(x.source === "team" ? `${icon("users", 14)} ${esc(x.team_name || "")}`
-                                : t("src_personal"));
+  // Someone with no team has nothing to tell apart: "Personal" on every row
+  // was noise. With a team, both kinds stay labelled.
+  if(x.source === "team") meta.push(`${icon("users", 14)} ${esc(x.team_name || "")}`);
+  else if((state.teams || []).length) meta.push(t("src_personal"));
   if(wakeMeta) meta.push(wakeMeta);
   else if(!x.due) meta.push(t("not_today"));
   // Each derived habit names the module it actually mirrors. Every one of
@@ -3798,14 +4343,29 @@ function journalTab(){
   const valueOf = q => ai[q.id] ?? draft[q.id] ?? answers[q.id] ?? "";
   const answered = questions.filter(q => String(valueOf(q)).trim()).length;
 
-  let h = `<div class="row" style="margin-bottom:12px">
-      <div class="grow small ${answered === questions.length ? "" : "t2"}" id="jcount"
-           aria-live="polite">
+  // A thin bar says how far along; the count is still read out to a screen
+  // reader, but no longer printed as a line of text.
+  let h = `<div class="jbar" aria-hidden="true"><i id="jbar-fill"
+        style="width:${questions.length ? Math.round(answered / questions.length * 100) : 0}%"></i></div>
+    <div class="row" style="margin-bottom:12px">
+      <div class="grow sr-only" id="jcount" aria-live="polite">
         ${answered === questions.length ? `✓ ${t("journal_complete")}`
           : t("journal_progress", {done:answered, total:questions.length})}</div>
       <div class="t3 tiny" id="jsave">${journalDay() !== todayISO()
         ? t("journal_for_day", {d: isoToLabel(journalDay())}) : ""}</div>
     </div>`;
+  const clashes = journalConflicts();
+  if(Object.keys(clashes).length) h += `<div class="card" style="border-color:var(--warn);margin-bottom:12px">
+      <b>⚠️ ${t("jconf_title")}</b><div class="t2 small">${t("jconf_body")}</div>
+      ${Object.entries(clashes).map(([k, c]) => `<div style="margin-top:12px">
+        <div class="small"><b>${esc(questions.find(q => q.id === k)?.text || k)}</b></div>
+        <div class="t3 tiny" style="margin-top:4px">${t("jconf_mine")}</div><div class="small">${esc(c.mine)}</div>
+        <div class="t3 tiny" style="margin-top:4px">${t("jconf_theirs")}</div><div class="small">${esc(c.theirs)}</div>
+        <div class="btns" style="margin-top:8px">
+          <button class="btn sm" data-act="jconf" data-key="${esc(k)}" data-pick="mine">${t("jconf_keep_mine")}</button>
+          <button class="btn sm secondary" data-act="jconf" data-key="${esc(k)}" data-pick="both">${t("jconf_both")}</button>
+          <button class="btn sm secondary" data-act="jconf" data-key="${esc(k)}" data-pick="theirs">${t("jconf_keep_theirs")}</button>
+        </div></div>`).join("")}</div>`;
   if(hasJaiPending()) h += `<div class="card jai" id="jai-review">
       <div class="small">✨ ${t("jai_review")}</div>
       <div class="btns" style="margin-top:10px">
@@ -3815,12 +4375,12 @@ function journalTab(){
   // Speak or write freely; the AI sorts it into the five answers for review.
   if(state.me?.agent?.available) h += `<div class="card jai">
       <div class="small"><b>✨ ${t("jai_title")}</b></div>
-      <div class="t3 tiny" style="margin:4px 0 10px">${t("jai_hint")}</div>
+      <div class="t3 tiny" style="margin:4px 0 10px">${t("jai_hint", {n:(state.journalQuestions || []).length || 5})}</div>
       <div class="voice-row" style="margin-top:0">
         <button class="btn" data-act="voice-start" data-target="journal">🎙 ${t("jai_voice")}</button>
         <button class="btn secondary" data-act="jai-text">✍️ ${t("jai_text")}</button>
       </div></div>`;
-  else h += `<div class="t3 tiny" style="margin-bottom:10px">${t("journal_hint")}</div>`;
+
 
   questions.forEach((q, i) => {
     const value = valueOf(q);
@@ -3872,24 +4432,44 @@ const jaiKey = () => `ernestos-jai-${state.me?.telegram_id || "anon"}`;
 /* A draft remembers which saved version it was typed over (`_base`). If the
    entry was saved since — from another phone or the computer — the old draft
    is stale and is dropped rather than painted over the newer text. */
+function readDraftFile(){
+  try{ return JSON.parse(localStorage.getItem(draftKey()) || "{}"); }catch(_){ return null; }
+}
+/* Fields where this phone's unsent text and the saved entry disagree, kept
+   side by side until the person picks (K03). */
+function journalConflicts(){ return readDraftFile()?._conflict || {}; }
+/* The local draft, rebased on the entry the server now holds. It used to be
+   thrown away whenever the entry had changed elsewhere — text typed offline
+   on this phone was lost because the bot or another phone saved first. Now:
+   a field the server already has word for word is done; a field the server
+   has empty stays a draft; a field with different text on both sides becomes
+   a conflict the person resolves (K03). Nothing is discarded silently. */
 function loadDraft(){
-  let draft;
-  try{ draft = JSON.parse(localStorage.getItem(draftKey()) || "{}"); }
-  catch(_){ return {}; }
-  const server = state.journal?.updated_at || null;
-  if("_base" in draft && draft._base !== server && state.journalDay === journalDay()){
-    clearDraft();
-    return {};
-  }
+  const draft = readDraftFile();
+  if(!draft) return {};
   const out = {};
   for(const [k, v] of Object.entries(draft)) if(!k.startsWith("_")) out[k] = v;
+  const server = state.journal?.updated_at || null;
+  if("_base" in draft && draft._base !== server && state.journalDay === journalDay()){
+    const theirs = state.journal?.answers || {};
+    const conflict = {...(draft._conflict || {})};
+    for(const [k, v] of Object.entries(out)){
+      const other = theirs[k];
+      if(other === v) delete out[k];
+      else if(String(other || "").trim()){ conflict[k] = {mine:v, theirs:other}; delete out[k]; }
+    }
+    writeDraft(out, server, conflict);
+  }
   return out;
 }
-function writeDraft(fields, base){
+function writeDraft(fields, base, conflict){
   try{
-    const keys = Object.keys(fields);
-    if(!keys.length) return localStorage.removeItem(draftKey());
-    localStorage.setItem(draftKey(), JSON.stringify({...fields, _base: base}));
+    const plain = {};
+    for(const [k, v] of Object.entries(fields)) if(!k.startsWith("_")) plain[k] = v;
+    const clash = conflict === undefined ? journalConflicts() : conflict;
+    const has = Object.keys(clash).length;
+    if(!Object.keys(plain).length && !has) return localStorage.removeItem(draftKey());
+    localStorage.setItem(draftKey(), JSON.stringify({...plain, _base: base, ...(has ? {_conflict: clash} : {})}));
   }catch(_){}
 }
 function saveDraft(id, value){
@@ -3912,9 +4492,35 @@ async function forgetLocalDrafts(){
     const prefix = draftPrefix(), jai = jaiKey();
     for(let i = localStorage.length - 1; i >= 0; i--){
       const k = localStorage.key(i);
-      if(k && (k.startsWith(prefix) || k === jai || k === queueKey())) localStorage.removeItem(k);
+      if(k && (k.startsWith(prefix) || k === jai || k === queueKey() || k === LAST_GOOD)) localStorage.removeItem(k);
     }
   }catch(_){}
+}
+/* Before a wipe or a delete is sent (K02): nothing may be sent meanwhile —
+   no autosave, no queued tick that would bring an item back — but nothing
+   is thrown away either until the server has said yes. If it says no, or
+   never answers, `thawLocalDrafts` puts every draft and queued action back. */
+async function freezeLocalDrafts(){
+  state.erasing = true;
+  clearTimeout(journalTimer);
+  try{ await journalChain; }catch(_){}
+  try{ await flushing; }catch(_){}
+  const snap = {stored:{}, journal:{...journalPending}, jai:{...(state.jaiPending || {})}, kept:voice.kept};
+  try{
+    const prefix = draftPrefix(), jai = jaiKey();
+    for(let i = 0; i < localStorage.length; i++){
+      const k = localStorage.key(i);
+      if(k && (k.startsWith(prefix) || k === jai || k === queueKey() || k === LAST_GOOD)) snap.stored[k] = localStorage.getItem(k);
+    }
+  }catch(_){}
+  return snap;
+}
+function thawLocalDrafts(snap){
+  try{ for(const [k, v] of Object.entries(snap.stored)) localStorage.setItem(k, v); }catch(_){}
+  journalPending = {...snap.journal, ...journalPending};
+  state.jaiPending = {...snap.jai, ...(state.jaiPending || {})};
+  if(snap.kept && !voice.kept) voice.kept = snap.kept;
+  state.erasing = false;
 }
 const journalPendingCount = () => Object.keys(journalPending || {}).length;
 const hasJaiPending = () => Object.keys(state.jaiPending || {}).length > 0;
@@ -3948,7 +4554,7 @@ function storeJaiText(v){
 }
 function jaiTextSheet(){
   return `<h3>✍️ ${t("jai_title")}</h3>
-    <div class="t3 tiny" style="margin:4px 0 10px">${t("jai_hint")}</div>
+    <div class="t3 tiny" style="margin:4px 0 10px">${t("jai_hint", {n:(state.journalQuestions || []).length || 5})}</div>
     <textarea id="jai-text" style="min-height:160px" placeholder="${t("jai_ph")}">${esc(loadJaiText())}</textarea>
     <button class="btn" data-act="jai-send" style="margin-top:12px">✨ ${t("jai_sort")}</button>`;
 }
@@ -3967,9 +4573,13 @@ function updateJournalCounter(){
   const el = document.getElementById("jcount");
   if(el) el.textContent = done === qs.length && qs.length
     ? `✓ ${t("journal_complete")}` : t("journal_progress", {done, total: qs.length});
+  const fill = document.getElementById("jbar-fill");
+  if(fill) fill.style.width = (qs.length ? Math.round(done / qs.length * 100) : 0) + "%";
 }
 
 function onJournalInput(el){
+  // Grows with the text (where CSS field-sizing is not there to do it).
+  if(el.style){ el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; }
   // Editing a field the AI filled is accepting that field.
   if(state.jaiPending) delete state.jaiPending[el.dataset.journal];
   el.classList.remove("jai-new");
@@ -3985,6 +4595,8 @@ function onJournalInput(el){
 
 function flushJournal(){
   clearTimeout(journalTimer);
+  // A wipe or delete is on its way: hold the answers (K02).
+  if(state.erasing) return journalChain;
   const answers = journalPending;
   journalPending = {};
   if(!Object.keys(answers).length) return journalChain;
@@ -3993,7 +4605,10 @@ function flushJournal(){
   journalChain = journalChain.then(async () => {
     const note = document.getElementById("jsave");
     try{
-      const r = await api("/api/journal", {method:"POST", body:{answers, day}});
+      // The version this text was written on: the server refuses to put it
+      // over different text saved elsewhere since (K03).
+      const base = day === journalDay() ? (state.journal?.updated_at || "") : null;
+      const r = await api("/api/journal", {method:"POST", body:{answers, day, ...(base === null ? {} : {base})}});
       if(day !== journalDay()) return;
       state.journal = {...(state.journal || {}), answered:r.answered,
                        complete:r.complete, updated_at:r.updated_at,
@@ -4004,7 +4619,23 @@ function flushJournal(){
       for(const [k, v] of Object.entries(answers)) if(draft[k] === v) delete draft[k];
       writeDraft(draft, r.updated_at || null);
       if(seq === journalSeq && note) note.textContent = "✓";
-    }catch(_){
+    }catch(e){
+      if(e?.status === 409 && e.detail === "journal_conflict"){
+        // Saved elsewhere with different text: both versions are kept and
+        // shown; the rest of this save goes again on its own.
+        const server = e.body?.server || {};
+        const clash = {...journalConflicts()};
+        const plain = loadDraftRaw();
+        for(const [k, theirs] of Object.entries(server)){ clash[k] = {mine:answers[k], theirs}; delete plain[k]; }
+        state.journal = {...(state.journal || {}), updated_at:e.body?.updated_at || null,
+                         answers:{...(state.journal?.answers || {}), ...server}};
+        writeDraft(plain, state.journal.updated_at, clash);
+        for(const [k, v] of Object.entries(answers)) if(!(k in server)) journalPending[k] = v;
+        if(note) note.textContent = t("jconf_title");
+        if(day === journalDay()) render();
+        if(journalPendingCount()) journalTimer = setTimeout(flushJournal, 900);
+        return;
+      }
       // The draft is on disk; the answers wait for the next pause or Save.
       journalPending = {...answers, ...journalPending};
       if(note) note.textContent = t("journal_local");
@@ -4199,7 +4830,7 @@ function timerSheet(info){
       <div class="hint" style="text-align:center">${t(kind === "habit" || kind === "thabit"
         ? "timer_rule_habit" : "timer_rule_task")}</div>
       ${worked}
-      ${minutes >= 50 ? `<label>${t("timer_rhythm")}</label>
+      ${minutes > 25 ? `<label>${t("timer_rhythm")}</label>
         <div class="chips">${["", "25/5", "50/10", "90/15"].filter(c => !c || Number(c.split("/")[0]) < minutes)
           .map(c => `<div class="chip sm ${(state.timerCycle || "") === c ? "on" : ""}" data-act="timer-cycle"
             data-value="${c}">${c || t("timer_one_go")}</div>`).join("")}</div>
@@ -4811,7 +5442,8 @@ function taskRow(task, opts){
   const meta = [];
   // Where it lives, on every row. See `habitRow` for why both kinds are
   // labelled rather than only the shared one.
-  meta.push(shared ? `${icon("users", 14)} ${esc(task.team_name || "")}` : t("src_personal"));
+  if(shared) meta.push(`${icon("users", 14)} ${esc(task.team_name || "")}`);
+  else if((state.teams || []).length) meta.push(t("src_personal"));
   // Under a project heading the name is already on screen; repeating it in
   // every row is noise that pushes the useful details off the line.
   // Urgency is written, not only painted: the edge colour repeats the word.
@@ -4836,21 +5468,14 @@ function taskRow(task, opts){
     meta.push(t("completion_" + task.completion));
   if(shared && task.owed === false) meta.push(t("not_assigned"));
 
-  /* Three, so they sit on one line. Four wrapped onto a second row and made
-     every late task a 300px block; "this week" is the one a person reaches
-     for least and it is still in the task's own sheet. */
+  /* One small "Move" chip on a late task; the three choices open on tap. Three
+     buttons under every late task made each one a 300px block. */
   const quick = task.overdue ? `
       <div class="quick">
-        <span class="qlbl">${t("reschedule")}:</span>
-        <div class="chip sm" data-act="task-reschedule" data-id="${task.id}"
-             data-source="${shared ? "team" : "personal"}"
-             data-when="today" role="button" tabindex="0">${t("when_today")}</div>
-        <div class="chip sm" data-act="task-reschedule" data-id="${task.id}"
-             data-source="${shared ? "team" : "personal"}"
-             data-when="tomorrow" role="button" tabindex="0">${t("when_tomorrow")}</div>
-        <div class="chip sm" data-act="task-reschedule" data-id="${task.id}"
-             data-source="${shared ? "team" : "personal"}"
-             data-when="none" role="button" tabindex="0">${t("when_none")}</div>
+        <div class="chip sm" data-act="task-move-menu" data-id="${task.id}"
+             data-source="${shared ? "team" : "personal"}" role="button" tabindex="0"
+             style="display:inline-flex;align-items:center;gap:6px">
+          ${icon("calendar", 13)} ${t("reschedule")}</div>
       </div>` : "";
 
   return `<div class="trow pri-${task.priority}">
@@ -5123,7 +5748,8 @@ function moneyRow(e, icons){
   const label = e.note || t("mcat_" + e.category);
   return `<div class="item mrow">
       <span class="itile" style="font-size:17px">${icons[e.category] || "•"}</span>
-      <div class="grow"><div class="ellipsis">${esc(label)}</div>
+      <div class="grow pressable" data-act="money-edit" data-id="${e.id}" role="button" tabindex="0"
+           aria-label="${t("edit")}"><div class="ellipsis">${esc(label)}</div>
         <div class="meta">${t("mcat_" + e.category)} · <span class="num">${isoToLabel(e.day)}</span>
           ${e.source === "voice" ? icon("mic", 12) : ""}</div></div>
       <div class="amount ${income ? "pos" : "neg"}">${income ? "+" : "−"}${moneyNum(e.amount)}</div>
@@ -5297,7 +5923,7 @@ function moneySheet(){
   const f = state.moneyForm || (state.moneyForm = {kind:"expense", category:"food"});
   const m = state.money || {};
   const ids = (m.category_ids || []).filter(id => (m.kinds || {})[id] === f.kind);
-  return `<h3>${icon("wallet", 18)} ${t(f.review ? "money_review" : "money_add")}</h3>
+  return `<h3>${icon("wallet", 18)} ${t(f.id ? "money_edit" : f.review ? "money_review" : "money_add")}</h3>
     ${f.review ? `<div class="hint">${t("money_review_hint")}</div>` : ""}
     <div class="seg" role="tablist" style="margin:var(--s2) 0">
       ${[["expense", t("money_expense")], ["income", t("money_income")]].map(([k, label]) =>
@@ -5315,6 +5941,8 @@ function moneySheet(){
     <label>${t("money_note")} <span class="t3">(${t("optional")})</span></label>
     <input id="money-note" maxlength="200" value="${esc(f.note || "")}"
            placeholder="${t("money_note_ph")}" />
+    ${f.id ? `<label>${t("ve_day")}</label>
+      ${dateField("money-day", f.day || todayISO(), [new Date(todayISO()).getFullYear() - 5, new Date(todayISO()).getFullYear()])}` : ""}
     <button class="btn" data-act="money-save" style="margin-top:16px">${t("save")}</button>
     <button class="btn secondary" data-act="close" style="margin-top:8px">${t("cancel")}</button>`;
 }
@@ -5324,6 +5952,9 @@ function readMoneyForm(){
   const g = id => document.getElementById(id);
   if(g("money-amount")) f.amount = g("money-amount").value;
   if(g("money-note")) f.note = g("money-note").value;
+  if(g("money-day")) f.day = g("money-day").value;
+  // A day after today is refused by the server; it is caught here first.
+  if(f.day && f.day > todayISO()) f.day = todayISO();
   return f;
 }
 
@@ -5375,6 +6006,18 @@ function voiceSupported(){
 function voiceStopTracks(){
   try{ voice.stream?.getTracks().forEach(tr => tr.stop()); }catch(_){}
   voice.stream = null; clearInterval(voice.timer); voice.timer = null;
+}
+/* Two different wishes: "stop and analyse" (voice-stop) and "never mind"
+   (this). Abandoning cancels the recorder and the timer, releases the mic,
+   and makes any answer still on its way land nowhere: `voice.session` moves
+   on, and voiceSend only shows a result for the session that asked. */
+function voiceAbandon(){
+  voice.session = (voice.session || 0) + 1;
+  voice.cancelled = true;
+  try{ if(voice.rec && voice.rec.state !== "inactive") voice.rec.stop(); }catch(_){}
+  voice.rec = null;
+  voice.chunks = [];
+  voiceStopTracks();
 }
 function voiceRecordingSheet(){
   return `<div class="voice-box">
@@ -5440,7 +6083,10 @@ async function voiceSend(resend){
                           target: voice.target, key: newKey(), at: Date.now()};
   const {blob, mime, target, key} = voice.kept;
   voice.chunks = [];
+  const session = voice.session;
   openSheet(voiceBusySheet(), "voice");
+  // An answer for a sheet the person has since closed shows nowhere.
+  const stillHere = () => session === voice.session && state.sheetView === "voice";
   const journal = target === "journal";
   try{
     const res = await fetch(journal ? "/api/agent/journal/audio" : "/api/agent/audio", {method:"POST", body:blob,
@@ -5449,15 +6095,18 @@ async function voiceSend(resend){
                "X-Telegram-Init-Data": tg?.initData || "", "X-Agent-Request-Key": key}});
     if(!res.ok){
       const err = new Error("http_" + res.status); err.status = res.status;
-      try{ err.detail = (await res.json())?.detail; }catch(_){}
+      try{ err.body = await res.json(); err.detail = err.body?.detail; }catch(_){}
       throw err;
     }
     voice.kept = null;
-    if(journal) return journalFilled(await res.json());
-    voice.draft = await res.json();
+    const answer = await res.json();
+    if(!stillHere()) return;
+    if(journal) return journalFilled(answer);
+    voice.draft = answer;
     openSheet(voiceCardSheet(voice.draft), "voice");
     notify(voice.draft.status === "ready" ? "success" : "warning");
   }catch(e){
+    if(!stillHere()) return;
     voice.draft = null;
     // A refusal the same audio cannot fix (too long, no consent) drops it.
     if(e.status === 413 || e.detail === "consent_required") voice.kept = null;
@@ -5474,15 +6123,17 @@ function voiceConsentSheet(){
 function quickSheet(){
   const habit = state.quickType === "habit";
   return `<div class="seg big" style="margin-bottom:12px">
-      <div class="${habit ? "" : "on"}" data-act="quick-type" data-value="task">📝 ${t("task_word")}</div>
-      <div class="${habit ? "on" : ""}" data-act="quick-type" data-value="habit">🔁 ${t("habit_word")}</div>
+      <div class="${habit ? "" : "on"}" data-act="quick-type" data-value="task">${icon("check", 16)} ${t("task_word")}</div>
+      <div class="${habit ? "on" : ""}" data-act="quick-type" data-value="habit">${icon("repeat", 16)} ${t("habit_word")}</div>
     </div>
     <input id="quick-title" placeholder="${t(habit ? "quick_habit_ph" : "quick_ph")}" enterkeyhint="done"
            data-search="quick-save" />
     <div class="hint" style="margin-top:6px">${t(habit ? "quick_habit_hint" : "quick_hint")}</div>
     ${habit ? "" : destPicker()}
     <button class="btn" data-act="quick-save" style="margin-top:12px">${t("save")}</button>
-    <button class="btn secondary" data-act="${habit ? "habit-add" : "task-add"}" style="margin-top:8px">${t(habit ? "quick_more_habit" : "quick_more")}</button>`;
+    <button class="btn secondary" data-act="${habit ? "habit-add" : "task-add"}" style="margin-top:8px">${t(habit ? "quick_more_habit" : "quick_more")}</button>
+    ${habit || state.home?.focus ? "" : `<button class="btn text" data-act="focus-add" data-slot="primary"
+        style="margin:6px auto 0;display:flex">${icon("target", 16)} ${t("add_mission")}</button>`}`;
 }
 
 /* One parser for both places: the server reads date and time out of the
@@ -6611,14 +7262,42 @@ function settingsSheet(){
       <div class="grow"><div style="font-weight:550">${label}</div>
         <div class="t3 tiny">${hint}</div></div>
       ${icon("chevron", 15)}</div>`;
+  const name = [me.first_name, me.last_name].filter(Boolean).join(" ") || "ErnestOS";
+
+  /* Who is signed in, first: the picture (tap to change), the name, and the
+     handle — so nobody has to guess which account this is. */
+  const profile = `<div class="set-profile">
+      <label class="avatar xl" aria-label="${t("avatar_change")}">
+        ${avatarHtml(me.first_name)}<span class="avatar-edit">✏️</span>
+        <input type="file" accept="image/*" data-act="avatar-pick" hidden /></label>
+      <div class="grow" style="min-width:0">
+        <div class="pname">${esc(name)}</div>
+        <div class="t3 small">${me.username ? "@" + esc(me.username)
+                                            : `${t("member")} #${me.member_no ?? "—"}`}</div>
+        ${me.avatar_custom ? `<button class="btn text" data-act="avatar-remove"
+            style="padding-left:0;min-height:32px;font-size:13px">${t("avatar_remove")}</button>` : ""}
+      </div></div>`;
+
+  /* The plan in one card; the plans themselves only behind its button. */
+  const p = me.plan || {};
+  const plan = p.enabled ? `<div class="card tight set-card">
+      <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
+        <span class="plan-pill">${icon("star", 13)} ${PLAN_NAME[p.tier] || "Free"}</span>
+        <span class="t2 small">${p.tier === "free" ? t("plan_current") : esc(planLine())}</span></div>
+      ${p.tier === "free" ? `<div class="t3 tiny" style="margin-top:4px">${t("plan_free_cta")}</div>` : ""}
+      <button class="btn ${p.tier === "max" ? "secondary" : ""}" data-act="set-plan"
+              style="margin-top:10px">${t(p.tier === "max" ? "plan_change" : "plan_upgrade")}</button>
+    </div>` : "";
+
+  const invite = settingsInvite(row);
 
   return `
-    <h3>${icon("settings", 18)} ${t("settings")}</h3>
-    <div class="t2 small" style="margin-bottom:var(--s3)">
-      ${me.version ? `<span class="t3 tiny">ErnestOS v${esc(me.version)} · ${esc(me.build || "")}</span><br>` : ""}
-      ${t("member")} #${me.member_no ?? "—"}
-      ${me.username ? `· @${esc(me.username)}` : ""}</div>
+    ${sheetHead(`${icon("settings", 18)} ${t("settings")}`)}
+    ${profile}
+    ${plan}
+    ${invite}
 
+    <label>${t("set_app")}</label>
     ${row("set-look", "sun", "tone-4", t("appearance"), t("appearance_hint"))}
     ${row("set-notify", "bell", "tone-1", t("notifications"), t("notify_hint"))}
     ${row("set-modules", "check", "tone-4", t("modules"), t("modules_hint"))}
@@ -6626,11 +7305,32 @@ function settingsSheet(){
     ${row("quote", "edit", "tone-2", t("quote_add"),
           state.home?.quote ? `“${esc(state.home.quote)}”` : t("quote_ph"))}
     ${row("set-privacy", "shield", "tone-5", t("privacy_data"), t("privacy_hint"))}
-    ${row("set-referral", "gift", "tone-2", t("ref_title"), t("ref_hint"))}
 
-    <button class="btn secondary" data-act="close" style="margin-top:14px">
-      ${t("close")}</button>`;
+    <button class="btn set-signout" data-act="sign-out">${t("sign_out")}</button>
+    ${IS_APP ? "" : `<div class="t3 tiny" style="text-align:center;margin-top:6px">${t("sign_out_tg_hint")}</div>`}
+    <button class="set-delete" data-act="delete-account">${t("delete_account_short")}</button>
+    <div class="brandline"><img src="${BRAND_MARK}" alt="" width="22" height="22" />
+      <span>ErnestOS${me.version ? ` v${esc(me.version)} · ${esc(me.build || "")}` : ""}</span></div>`;
 }
+/* Invite: the next step's bar right here, the full ladder one tap away.
+   Its own function so the numbers arriving late redraw only this card —
+   redrawing the whole sheet replaced the photo picker under the person's
+   finger and lost the picture they had just chosen. */
+function settingsInvite(row){
+  const r = state.referral, steps = r?.steps || [];
+  const q = r?.counts?.qualified ?? 0;
+  const next = steps.find(x => !x.reached);
+  return steps.length ? `<div class="tinted block tone-2 pressable set-card" id="set-invite" data-act="set-referral">
+      <div class="bh"><span class="itile">${icon("gift", 17)}</span><div class="grow"><div class="bt">${t("ref_grow_title")}</div>
+        <div class="t2 tiny">${next ? `${q} / ${next.target} → ${refReward(next)}` : t("ref_all_done")}</div></div>
+        ${icon("chevron", 15)}</div>
+      <div style="margin-top:8px">${bar(next ? Math.min(100, Math.round(q / next.target * 100)) : 100)}</div>
+    </div>` : `<div id="set-invite">${row("set-referral", "gift", "tone-2", t("ref_title"), t("ref_hint"))}</div>`;
+
+}
+/* The ErnestOS mark, small enough to carry inline (no extra request). */
+const BRAND_MARK = "data:image/png;base64,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";
+const refReward = x => t("ref_months", {n:Math.max(1, Math.round(x.days / 30)), plan:PLAN_NAME[x.tier] || "Pro"});
 
 /* Which of the four is on screen, so that a control which saves and
    re-renders lands the user back where they were rather than at the top of
@@ -6740,8 +7440,19 @@ function notifySheet(){
       </div>
     </div>`;
 
+  /* The phone app: what the phone itself allows, said plainly (K11). The
+     inbox inside the app works either way and is not called "push". */
+  const ps = state.pushStatus;
+  const pushRow = !IS_APP ? "" : `<div class="card tight" style="margin:var(--s2) 0">
+      <div class="row" style="gap:8px;align-items:center">
+        <div class="grow"><b>${t("push_title")}</b>
+          <div class="t2 small">${ps ? t("push_" + ps) : "…"}</div></div>
+        ${ps === "ask" ? `<button class="btn sm" data-act="push-allow">${t("push_allow")}</button>` : ""}
+      </div></div>`;
+
   return `
     <h3>${icon("bell", 18)} ${t("notifications")}</h3>
+    ${pushRow}
 
     ${report("tone-4", "sun", "morning_report", "morning_time",
              t("morning_report"), t("morning_report_hint"),
@@ -7093,11 +7804,22 @@ function referralSheet(){
   const levelName = t("ref_lvl_" + (REF_LEVELS.includes(r.level.key)
     ? r.level.key : "new"));
 
-  return `
-    <h3>${icon("gift", 18)} ${t("ref_head")}</h3>
-    <div class="t2 small" style="margin-top:4px">${t("ref_body")}</div>
+  /* The plan ladder: every step with its own bar, filling as friends arrive. */
+  const steps = r.steps || [];
+  const ladder = steps.length ? `<div class="card tight ref-steps">${steps.map(x => `
+      <div class="ref-step ${x.reached ? "done" : ""}">
+        <div class="row"><span>${t("ref_step_n", {n:x.target})} → <b>${refReward(x)}</b></span>
+          <span class="t2">${x.granted ? t("ref_got") : `${x.have} / ${x.target}`}</span></div>
+        ${bar(Math.round(x.have / x.target * 100))}</div>`).join("")}
+      ${r.friend_days ? `<div class="t3 tiny">${t("ref_friend_gets", {n:r.friend_days})}</div>` : ""}
+    </div>` : "";
 
-    <div class="tinted block tone-2" style="margin-top:var(--s3)">
+  return `
+    ${sheetHead(`${icon("gift", 18)} ${steps.length ? t("ref_grow_title") : t("ref_head")}`)}
+    <div class="t2 small" style="margin-top:4px">${t("ref_body")}</div>
+    ${ladder}
+
+    ${steps.length ? "" : `<div class="tinted block tone-2" style="margin-top:var(--s3)">
       <div class="bh">
         <span class="itile lg">${icon("gift", 18)}</span>
         <div class="grow">
@@ -7110,16 +7832,14 @@ function referralSheet(){
       <div class="t3 tiny" style="margin-top:6px">${
         next ? `${t("ref_next")}: ${qualified} / ${next.target}`
              : t("ref_max")}</div>
-    </div>
+    </div>`}
 
     <div class="t3 tiny" style="margin-top:var(--s2)">${t("ref_rule")}</div>
 
-    <button class="btn" data-act="ref-share" style="margin-top:var(--s3)">
-      ${t("ref_share")}</button>
-    <button class="btn secondary" data-act="ref-copy" style="margin-top:8px">
-      ${t("ref_copy")}</button>
-    <button class="btn secondary" data-act="settings" style="margin-top:8px">
-      ${t("close")}</button>`;
+    <button class="btn" data-act="ref-copy" style="margin-top:var(--s3)">
+      ${t("ref_copy_big")}</button>
+    <button class="btn secondary" data-act="ref-share" style="margin-top:8px">
+      ${t("ref_share")}</button>`;
 }
 
 function privacyDataSheet(){
@@ -7149,7 +7869,7 @@ function privacyDataSheet(){
 
     <label>${t("your_copy")}</label>
     ${row("export", "download", "tone-1", t("export_data"), t(IS_APP ? "export_hint_app" : "export_hint"))}
-    ${row("backup", "shield", "tone-2", t("download_backup"), t("backup_hint"))}
+    ${IS_APP ? "" : row("backup", "shield", "tone-2", t("download_backup"), t("backup_hint"))}
 
     <label>${t("what_we_keep")}</label>
     ${row("privacy-info", "book", "tone-3", t("privacy_policy"), t("policy_hint"))}
@@ -7250,7 +7970,7 @@ const NAV = [
   {id:"home",    icon:"home",   key:"nav_home"},
   {id:"tracker", icon:"check",  key:"nav_tracker"},
   {id:"money",   icon:"wallet", key:"nav_money"},
-  {id:"profile", icon:"steps",  key:"nav_steps"},
+  {id:"profile", icon:"user",   key:"nav_profile"},
 ];
 //: Which tab stays lit for each screen. A project opens from Tasks.
 const NAV_OF = {habits:"tracker", tasks:"tracker", project:"tracker",
@@ -7281,9 +8001,7 @@ function groupBar(screen){
     const name = esc(me.first_name || me.name || "");
     const st = state.progress?.steps;
     return `<div class="profile-head">
-        <div class="avatar">${tg?.initDataUnsafe?.user?.photo_url
-          ? `<img src="${esc(tg.initDataUnsafe.user.photo_url)}" alt="" />`
-          : esc((name || "?").slice(0, 1).toUpperCase())}</div>
+        <div class="avatar" data-act="settings">${avatarHtml(me.first_name || me.name)}</div>
         <div class="grow"><div class="pname">${name}</div>
           <div class="t3 tiny">${st ? `${STEP_ICON[st.level_key] || ""} ${t("step_lvl_" + st.level_key)} · ${
             t("steps_level_n", {n: st.level})}` : t("nav_profile")}</div></div>
@@ -7398,6 +8116,48 @@ function resolveMode(){
     ? "light" : "dark";
 }
 
+let lastPlace = "", lastNavIdx = -1;
+/* A ripple from the point touched, on anything that is a button or a row.
+   Drawn in its own clipped layer so the host's own clipping is untouched. */
+const RIPPLE = ".btn:not(.text),.chip,.tile,.pcard,.tinted[data-act],.item.pressable,.trow,.seg > *,.st,.goal-line,.card[data-act],nav button .ic,.sheet .item";
+document.addEventListener("pointerdown", e => {
+  if(reduceMotion() || e.button > 0) return;
+  let host = e.target.closest?.(RIPPLE);
+  if(!host) return;
+  if(host.tagName === "BUTTON" && host.closest("nav")) host = host.querySelector(".ic") || host;
+  const box = host.getBoundingClientRect();
+  if(getComputedStyle(host).position === "static") host.style.position = "relative";
+  let layer = host.querySelector(":scope > .rpl");
+  if(!layer){ layer = document.createElement("span"); layer.className = "rpl"; host.appendChild(layer); }
+  const size = Math.max(box.width, box.height) * 2.2;
+  const dot = document.createElement("i");
+  dot.style.cssText = `width:${size}px;height:${size}px;left:${e.clientX - box.left - size / 2}px;top:${e.clientY - box.top - size / 2}px`;
+  layer.appendChild(dot);
+  setTimeout(() => dot.remove(), 620);
+}, {passive:true});
+const reduceMotion = () => { try{ return matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(_){ return true; } };
+/* The element just tapped, found again after the redraw it caused, gets one
+   short "just" animation (the tick that pops, the tab that springs). */
+let lastTapped = null;
+function markJust(){
+  const tap = lastTapped;
+  if(!tap || Date.now() - tap.at > 1500) return;
+  let sel = `[data-act="${tap.act}"]`;
+  if(tap.id) sel += `[data-id="${tap.id}"]`;
+  if(tap.value) sel += `[data-value="${tap.value}"]`;
+  if(tap.screen) sel += `[data-screen="${tap.screen}"]`;
+  let found = [];
+  try{ found = document.querySelectorAll(sel); }catch(_){}
+  if(!found.length) return;
+  lastTapped = null;
+  found.forEach(el => {
+    el.classList?.remove("just");
+    void el.offsetWidth;
+    el.classList?.add("just");
+    setTimeout(() => el.classList?.remove("just"), 700);
+  });
+}
+
 function render(){
   const root = document.documentElement;
   /* Two attributes drive the entire visual system: which identity, and which
@@ -7410,12 +8170,26 @@ function render(){
   if(state.blocked)         app.innerHTML = blockedScreen();
   else if(state.needsSetup) app.innerHTML = setupScreen();
   else if(state.error)      app.innerHTML = errorScreen();
-  else if(state.loading)    app.innerHTML = `<div class="spin"></div>`;
-  else app.innerHTML = readOnlyBanner() + queueBanner() + (state.screen === "home" ? trialBanner() : "")
+  else if(state.loading)    app.innerHTML = `<div class="skel" aria-busy="true" aria-label="…">
+      <b class="s-title"></b><b class="s-sub"></b><b class="s-hero"></b>
+      <b class="s-row"></b><b class="s-row"></b><b class="s-row"></b></div>`;
+  else app.innerHTML = offlineBanner() + readOnlyBanner() + queueBanner() + (state.screen === "home" ? trialBanner() : "")
     + groupBar(state.screen)
     + (state.screenError ? `<div class="empty">${esc(state.screenError)}
       <button class="btn secondary" data-act="retry-screen">${t("retry_screen")}</button></div>`
       : `<div class="${screenClass()}">${(SCREENS[state.screen] || SCREENS.home)()}</div>`);
+  /* A new place animates in; a redraw of the same place (a tick, a save)
+     must not, or every tap would replay the whole screen. */
+  const place = state.loading || state.error ? "" : `${state.screen}|${state.tab}|${state.taskTab}`;
+  if(place && place !== lastPlace && !reduceMotion()){
+    const scr = app.lastElementChild;
+    scr?.classList?.add("enter");
+    // Toward the tab's side of the bar, when the tab changed.
+    const idx = NAV.findIndex(n => n.id === (NAV_OF[state.screen] || state.screen));
+    if(lastNavIdx >= 0 && idx >= 0 && idx !== lastNavIdx) scr?.classList?.add(idx > lastNavIdx ? "from-right" : "from-left");
+    lastNavIdx = idx;
+  }
+  if(place) lastPlace = place;
 
   const chromeOff = Boolean(state.blocked || state.error || state.loading
                             || state.needsSetup);
@@ -7428,7 +8202,10 @@ function render(){
             aria-current="${active === n.id ? "page" : "false"}">
       <span class="ic">${icon(n.icon, 21)}</span><span>${t(n.key)}</span></button>`).join("");
   /* + types it, the microphone says it. Both one tap, on every main screen. */
-  document.getElementById("fab").innerHTML = chromeOff ? "" : `
+  /* Prayer and the journal are filled in place; a + over them only covered
+     their last row and the Save/History buttons. */
+  const noFab = state.screen === "habits" && (state.tab === "prayer" || state.tab === "journal");
+  document.getElementById("fab").innerHTML = chromeOff || noFab ? "" : `
     ${state.me?.agent?.available && state.screen !== "money" ? `<button class="fab-mic" data-act="voice-start"
         aria-label="${t("quick_voice")}">${icon("mic", 22)}</button>` : ""}
     <button class="fab-add" data-act="${state.screen !== "money" ? "quick-add"
@@ -7437,6 +8214,7 @@ function render(){
 
   syncShell();
   syncBackButton();
+  markJust();
 }
 
 /* The navigation is the only fixed thing left at the bottom, and its height
@@ -7464,6 +8242,7 @@ async function loadScreen(screen){
          percentages and a level card that now live on Statistics — the
          slowest part of opening the app was for blocks it no longer shows. */
       setState({home: await api("/api/home")});
+      saveLastGood();
     } else if(screen === "money"){
       await loadMoney(state.moneyMonth);
     } else if(screen === "team"){
@@ -7476,13 +8255,19 @@ async function loadScreen(screen){
       // and saved after midnight still belongs to that day.
       const day = (state.journalDay && (journalPendingCount() || hasJaiPending()))
         ? state.journalDay : todayISO();
+      /* Habits are the screen; prayer and the journal are parts of it. One
+         of them failing used to fail the whole screen (K18): now it keeps
+         what it last showed and says that part did not load. */
+      let partFailed = false;
+      const part = req => req.catch(e => { if(e?.status === 401) throw e; partFailed = true; return null; });
       const [habits, prayer, journal] = await Promise.all([
-        api("/api/habits"), api("/api/prayers"),
-        api("/api/journal?day=" + day),
+        api("/api/habits"), part(api("/api/prayers")),
+        part(api("/api/journal?day=" + day)),
       ]);
-      setState({habits, prayer, journal: journal.entry, journalDay: day,
-                journalQuestions: journal.questions,
+      setState({habits, prayer: prayer || state.prayer,
+                ...(journal ? {journal: journal.entry, journalDay: day, journalQuestions: journal.questions} : {}),
                 teams: habits.teams || state.teams});
+      if(partFailed) toast(t("part_failed"));
     } else if(screen === "tasks"){
       const seq = ++taskLoadSeq;
       /* The month is part of this screen now rather than a sheet opened from
@@ -7606,6 +8391,10 @@ function handleError(e, draft){
     checkSubscription(true);
     return;
   }
+  if(e.status === 402 && e.detail === "plan_limit"){
+    haptic("medium");
+    return openSheet(plansSheet(e.body), "plans");
+  }
   if(e.status === 409 && e.detail === "onboarding_required"){
     setState({needsSetup:true, loading:false}); return; }
   if(e.status === 409 && e.detail === "mirrored"){ toast(t("habit_mirrored")); return; }
@@ -7694,20 +8483,29 @@ async function save(request, reload, quiet, message, draft){
 /* An optimistic tick: the row changes now, the request follows, and a
    failure puts it back. Waiting 300ms for a checkbox is what makes an
    app feel like a web page. */
-function optimistic(mutate, request, reload, queued){
-  const snapshot = JSON.stringify({home:state.home, habits:state.habits,
-                                   tasks:state.tasks, project:state.project});
+/* Per item (K06): `undo` puts back only this item, so a failure never
+   rewinds a whole list over other ticks that succeeded meanwhile. Requests
+   for one item go out one after another (`chain`), so a quick done → undo →
+   done reaches the server in the order it was tapped. */
+const tickChains = {};
+function optimistic(mutate, request, reload, queued, undo, chain){
+  const snapshot = undo ? null : JSON.stringify({home:state.home, habits:state.habits,
+                                                 tasks:state.tasks, project:state.project});
   mutate();
   render();
-  request().then(() => { state.calendarStale = true; if(reload) loadScreen(reload); })
+  const run = () => request().then(() => { state.calendarStale = true; if(reload) loadScreen(reload); })
     .catch(e => {
       // No connection at all: the tick stays on screen and waits in the
       // queue instead of being undone (audit #18).
-      if(queued && isOffline(e)){ enqueue(queued); return; }
-      const back = JSON.parse(snapshot);
-      setState(back);
+      if(queued && isOffline(e)){ if(enqueue(queued)) return; }
+      if(undo) undo(); else setState(JSON.parse(snapshot));
+      render();
       handleError(e);
     });
+  if(!chain) return run();
+  const next = (tickChains[chain] || Promise.resolve()).then(run, run);
+  tickChains[chain] = next.finally(() => { if(tickChains[chain] === next) delete tickChains[chain]; });
+  return next;
 }
 
 /* ---------- offline queue (audit #18) ----------
@@ -7715,59 +8513,133 @@ function optimistic(mutate, request, reload, queued){
    must not need a signal. Such an action that fails for want of a network is
    kept on the phone with its own idempotency key and sent, in order, once
    the connection is back; the server answers a repeat of the same key with
-   the first answer, so nothing is applied twice. A refusal (4xx) is dropped
-   and named, never retried forever. */
+   the first answer, so nothing is applied twice. A refusal (4xx) is never
+   dropped silently: the item stays, marked with the reason, until the user
+   retries or removes it from the queue sheet (K04). */
 const queueKey = () => `ernestos-queue-${state.me?.telegram_id || "anon"}`;
 const isOffline = e => !e?.status && (e?.name === "TypeError" || e?.name === "AbortError"
   || e?.name === "TimeoutError" || /fetch|network|Failed/i.test(String(e?.message || "")));
 function loadQueue(){ try{ return JSON.parse(localStorage.getItem(queueKey()) || "[]"); }catch(_){ return []; } }
+/* True only when the phone actually kept it: "saved on this device" is never
+   said about something that did not reach storage (K08). */
 function storeQueue(q){
-  try{ q.length ? localStorage.setItem(queueKey(), JSON.stringify(q)) : localStorage.removeItem(queueKey()); }
-  catch(_){}
+  try{ q.length ? localStorage.setItem(queueKey(), JSON.stringify(q)) : localStorage.removeItem(queueKey());
+       return true; }
+  catch(_){ return false; }
 }
 function enqueue(item){
   const q = loadQueue();
   // The key the first attempt already carried, if any: a request that timed
   // out may have reached the server, and its replay must not apply twice.
-  q.push({...item, key: item.key || newKey(), at: Date.now()});
-  storeQueue(q);
+  // The body already says the state wanted and the day it was meant for, so
+  // a replay after midnight lands on the right day (K05).
+  q.push({...item, key: item.key || newKey(), at: Date.now(), day: item.day || todayISO()});
+  if(!storeQueue(q)){ toast(t("queue_store_failed")); return false; }
   toast(t("queued_offline"));
   render();
+  return true;
 }
+/* Why an item is waiting for the person rather than the network. */
+const queueReason = e => e.status === 401 ? "auth" : e.status === 402 ? "plan"
+  : e.status === 403 ? "forbidden" : e.status === 404 ? "gone"
+  : e.status === 409 ? "conflict" : "invalid";
 let flushing = null;
 function flushQueue(){
+  if(state.erasing) return Promise.resolve();
   if(flushing) return flushing;
   flushing = (async () => {
-    let q = loadQueue(), sent = 0;
-    const refused = [];
-    while(q.length){
-      const item = q[0];
+    let sent = 0, blocked = 0;
+    /* In order, one at a time. Nothing is ever dropped here (K04):
+       - no network, 5xx, 429, or the same key still running → stop, retry later;
+       - 401 (signed out) → stop; it goes once the person is back in;
+       - any other refusal → the item waits for the person, marked with why,
+         and the rest of the queue carries on. Only the person discards. */
+    for(;;){
+      const item = loadQueue().find(x => !x.blocked);
+      if(!item) break;
       try{
         await api(item.path, {method: item.method, body: item.body,
                               headers: {"X-Idempotency-Key": item.key}});
         sent++;
+        storeQueue(loadQueue().filter(x => x.key !== item.key));
       }catch(e){
-        // Still being processed (the same key is in flight): try again later.
         if(isOffline(e) || e.status >= 500 || e.status === 429
            || (e.status === 409 && e.detail === "in_progress")) break;
-        refused.push(item.label || item.path);
+        if(e.status === 401){ state.queueNeedsLogin = true; break; }
+        storeQueue(loadQueue().map(x => x.key === item.key
+          ? {...x, blocked:{reason: queueReason(e), status: e.status, detail: e.detail || null}} : x));
+        blocked++;
       }
-      q = loadQueue().filter(x => x.key !== item.key);
-      storeQueue(q);
     }
-    if(refused.length) toast(t("queue_refused", {n: refused.length}));
+    if(blocked) toast(t("queue_refused", {n: blocked}));
     else if(sent) toast(t("queue_synced", {n: sent}));
-    if(sent || refused.length){ state.calendarStale = true; await loadScreen(state.screen); }
+    if(sent || blocked){ state.calendarStale = true; await loadScreen(state.screen); }
   })().finally(() => { flushing = null; render(); });
   return flushing;
 }
-function queueBanner(){
-  const n = loadQueue().length;
-  return n ? `<div class="banner" data-act="queue-flush" role="button" tabindex="0">
-      ${icon("clock", 16)} <div class="grow">${t("queue_pending", {n})}</div>${icon("repeat", 15)}</div>` : "";
+/* ---------- last good state (K08) ----------
+   The last Home that loaded is kept on the phone, so opening the app with no
+   signal shows it — marked with when it is from — instead of an error page.
+   Per account, and only for the same Telegram user that saved it; tokens are
+   left out. Wiping data or deleting the account forgets it. */
+const LAST_GOOD = "ernestos-lastgood";
+function saveLastGood(){
+  try{
+    const me = state.me;
+    if(!me?.telegram_id || !state.home || state.offlineSince) return;
+    const {avatar_token, ...safe} = me;
+    localStorage.setItem(LAST_GOOD, JSON.stringify({at:Date.now(), who:tg?.initDataUnsafe?.user?.id ?? null,
+                                                    me:safe, home:state.home}));
+  }catch(_){}
 }
-window.addEventListener("online", () => flushQueue());
-document.addEventListener("visibilitychange", () => { if(!document.hidden && loadQueue().length) flushQueue(); });
+function loadLastGood(){
+  try{
+    const c = JSON.parse(localStorage.getItem(LAST_GOOD) || "null");
+    if(!c?.me || !c.home) return null;
+    if(c.who !== (tg?.initDataUnsafe?.user?.id ?? null)) return null;
+    return c;
+  }catch(_){ return null; }
+}
+function forgetLastGood(){ try{ localStorage.removeItem(LAST_GOOD); }catch(_){} }
+function offlineBanner(){
+  if(!state.offlineSince) return "";
+  const d = new Date(state.offlineSince);
+  const hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  const when = d.toDateString() === new Date().toDateString() ? hm
+    : `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")} ${hm}`;
+  return `<div class="banner" data-act="offline-retry" role="button" tabindex="0" style="border-color:var(--warn)">
+      ${icon("info", 16)}<div class="grow">${t("offline_snapshot", {when})}</div>${icon("repeat", 15)}</div>`;
+}
+function queueBanner(){
+  const q = loadQueue();
+  const stuck = q.filter(x => x.blocked).length, waiting = q.length - stuck;
+  return (waiting ? `<div class="banner" data-act="queue-flush" role="button" tabindex="0">
+      ${icon("clock", 16)} <div class="grow">${t("queue_pending", {n: waiting})}</div>${icon("repeat", 15)}</div>` : "")
+    + (stuck ? `<div class="banner" data-act="queue-review" role="button" tabindex="0"
+        style="border-color:var(--warn)">${icon("info", 16)}
+        <div class="grow">${t("queue_review", {n: stuck})}</div>${icon("chevron", 15)}</div>` : "");
+}
+/* What the phone is still holding, and why: each item can be sent again or
+   dropped by the person — never by the app. */
+function queueSheet(){
+  const q = loadQueue();
+  const row = x => `<div class="card tight" style="margin-top:8px">
+      <div class="row"><b class="grow wrap">${esc(x.label || x.path)}</b>
+        <span class="t3 tiny">${esc(x.day || "")}</span></div>
+      <div class="t2 small">${x.blocked ? t("queue_why_" + x.blocked.reason) : t("queue_waiting")}</div>
+      <div class="chips" style="margin-top:8px">
+        <div class="chip sm" data-act="queue-retry" data-key="${esc(x.key)}">${t("queue_retry")}</div>
+        <div class="chip sm" data-act="queue-drop" data-key="${esc(x.key)}">${t("queue_drop")}</div></div></div>`;
+  return `<h3>${icon("clock", 18)} ${t("queue_title")}</h3>
+    ${q.length ? q.map(row).join("") : `<div class="hint">${t("queue_empty")}</div>`}
+    <button class="btn secondary" data-act="close" style="margin-top:var(--s3)">${t("close")}</button>`;
+}
+window.addEventListener("online", () => { if(state.offlineSince) boot(); else flushQueue(); });
+document.addEventListener("visibilitychange", () => {
+  if(document.hidden) return;
+  if(state.needsSetup && state.setupAway){ state.setupAway = false; boot(); return; }
+  if(loadQueue().length) flushQueue();
+});
 /* Phone app: a push while open refreshes the bell; a tapped one opens the
    inbox; coming back to the app catches up on what arrived meanwhile. */
 window.addEventListener("ernest:push", () => refreshInbox());
@@ -7776,6 +8648,16 @@ window.addEventListener("ernest:open-inbox", () => {
   if(state.me) A["inbox-open"]();
 });
 document.addEventListener("visibilitychange", () => { if(!document.hidden) refreshInbox(); });
+/* Recording never continues in the background (K01). */
+document.addEventListener("visibilitychange", () => {
+  if(document.hidden && voice.rec && voice.rec.state === "recording"){ voiceAbandon(); closeSheet(); }
+});
+document.addEventListener("visibilitychange", async () => {
+  if(document.hidden || !state.planPending) return;
+  state.planPending = false;
+  await refreshPlan();
+  if(state.sheetView === "plans") openSheet(plansSheet(), "plans");
+});
 
 const A = {
   "tasks-more": moreTasks,
@@ -7793,9 +8675,73 @@ const A = {
   "task-tab": el => { haptic(); setState({taskTab:el.dataset.tab});
                       loadScreen("tasks"); },
   close: closeSheet,
-  settings: () => openSettings("root"),
+  settings: () => {
+    openSettings("root");
+    // The invite card's numbers; the sheet does not wait for them.
+    api("/api/referrals/me").then(r => { state.referral = r;
+      const card = document.getElementById("set-invite");
+      if(card && (state.settingsView || "root") === "root"){
+        const row = (act, ic, tone, label, hint) => `<div class="item pressable" style="min-height:56px" data-act="${act}">
+          <span class="itile ${tone}">${icon(ic, 17)}</span><div class="grow"><div style="font-weight:550">${label}</div>
+          <div class="t3 tiny">${hint}</div></div>${icon("chevron", 15)}</div>`;
+        card.outerHTML = settingsInvite(row);
+      } })
+      .catch(() => {});
+  },
+  "plan-period": el => { haptic(); state.planPeriod = el.dataset.p;
+    openSheet(plansSheet(), "plans"); },
+  "avatar-pick": async el => {
+    const file = el.files?.[0];
+    el.value = "";
+    if(!file) return;
+    try{
+      const image = await shrinkImage(file);
+      const r = await api("/api/avatar", {method:"POST", body:{image}});
+      state.avatarLocal = image;
+      Object.assign(state.me, {avatar_custom:r.avatar_custom, avatar_token:r.avatar_token, has_photo:true});
+      notify("success"); toast(t("avatar_saved"));
+      reopenSettings(); render();
+    }catch(e){ if(e?.status) handleError(e); else toast(t("avatar_bad")); }
+  },
+  "avatar-remove": async () => {
+    try{
+      await api("/api/avatar", {method:"DELETE"});
+      state.avatarLocal = null;
+      state.me.avatar_custom = null;
+      try{ const me = await api("/api/me"); Object.assign(state.me, me); }catch(_){}
+      reopenSettings(); render();
+    }catch(e){ handleError(e); }
+  },
+  /* Signing out of the phone app: the microphone stops, what can still be
+     sent is sent, and anything left is named before the person leaves — it
+     stays on this phone, under this account, for the next sign-in (K07).
+     In Telegram there is no session of ours to end; the window closes. */
+  "offline-retry": () => { haptic(); boot(); },
+  "sign-out": async () => {
+    haptic("medium");
+    if(!IS_APP){ tg?.close?.(); return; }
+    voiceAbandon();
+    try{ await flushQueue(); }catch(_){}
+    try{ await journalChain; }catch(_){}
+    const left = loadQueue().length + journalPendingCount();
+    if(!confirm(left ? t("sign_out_pending", {n:left}) : t("app_sign_out_ask"))) return;
+    clearTimeout(journalTimer);
+    // The next person to sign in on this phone must not open on this Home.
+    forgetLastGood();
+    window.ErnestApp?.signOut();
+  },
   "set-look": () => { haptic(); openSettings("look"); },
-  "set-notify": () => { haptic(); openSettings("notify"); },
+  "set-notify": () => {
+    haptic();
+    openSettings("notify");
+    window.ErnestApp?.pushStatus?.().then(v => { state.pushStatus = v;
+      if(state.settingsView === "notify") reopenSettings(); }).catch(() => {});
+  },
+  "push-allow": async () => {
+    haptic();
+    try{ state.pushStatus = await window.ErnestApp.requestPush(); }catch(_){}
+    if(state.settingsView === "notify") reopenSettings();
+  },
   "set-account": () => { haptic(); openSettings("account"); },
 
   /* ---- quick capture: one field, five seconds ---- */
@@ -7836,12 +8782,19 @@ const A = {
     catch(_){ voiceStopTracks(); return A["agent-open"](); }
     voice.mime = voice.rec.mimeType || mime || "audio/webm";
     voice.chunks = []; voice.cancelled = false;
-    voice.rec.ondataavailable = e => { if(e.data?.size) voice.chunks.push(e.data); };
-    voice.rec.onstop = () => { voiceStopTracks(); if(!voice.cancelled && voice.chunks.length) voiceSend(); };
+    const session = voice.session = (voice.session || 0) + 1;
+    const rec = voice.rec;
+    rec.ondataavailable = e => { if(e.data?.size && session === voice.session) voice.chunks.push(e.data); };
+    rec.onstop = () => {
+      if(session !== voice.session) return;          // abandoned meanwhile
+      voiceStopTracks();
+      if(!voice.cancelled && voice.chunks.length) voiceSend();
+    };
     voice.rec.start(250);
     voice.started = Date.now();
     openSheet(voiceRecordingSheet(), "voice");
     voice.timer = setInterval(() => {
+      if(session !== voice.session || state.sheetView !== "voice") return voiceAbandon();
       const s = Math.floor((Date.now() - voice.started) / 1000);
       const el = document.getElementById("voice-time");
       if(el) el.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -7852,11 +8805,7 @@ const A = {
     haptic();
     if(voice.rec && voice.rec.state !== "inactive") voice.rec.stop();
   },
-  "voice-cancel": () => {
-    voice.cancelled = true;
-    if(voice.rec && voice.rec.state !== "inactive") voice.rec.stop();
-    voiceStopTracks(); closeSheet();
-  },
+  "voice-cancel": () => { voiceAbandon(); closeSheet(); },
   "voice-consent": async () => {
     try{
       await api("/api/agent/consent", {method:"POST"});
@@ -8146,24 +9095,32 @@ const A = {
     haptic();
     const id = Number(el.dataset.id), key = newKey();
     const kind = el.dataset.kind;
-    optimistic(() => {
-      /* The same row can be on screen in several places — the Team tab, the
-         shared rows inside Tasks and Habits, Home — so every copy flips. */
+    let wanted = null;
+    const setAll = v => {
       const lists = [];
       for(const team of (state.team?.teams || []))
         lists.push(kind === "task" ? team.tasks : team.habits);
       lists.push(kind === "task" ? state.tasks?.team_tasks : state.habits?.team_habits);
       if(kind === "task") lists.push(state.home?.team_today);
       for(const cat of Object.values(state.habits?.grouped || {})) lists.push(cat);
-      let flipped = null;
       for(const list of lists)
         for(const row of (list || []))
-          if(row.id === id && (kind === "task" || row.source === "team" || row.team_id)){
-            if(flipped === null) flipped = !row.done;
-            row.done = flipped;
-          }
-    }, () => api(`/api/teams/${kind}s/${id}/toggle`, {method:"POST", headers:{"X-Idempotency-Key": key}}),
-       state.screen, {path:`/api/teams/${kind}s/${id}/toggle`, method:"POST", key});
+          if(row.id === id && (kind === "task" || row.source === "team" || row.team_id)) row.done = v;
+    };
+    const path = `/api/teams/${kind}s/${id}/toggle`;
+    /* The same row can be on screen in several places — the Team tab, the
+       shared rows inside Tasks and Habits, Home — so every copy is set. The
+       request says which state is wanted, so a replay never flips twice. */
+    const lists = [...(state.team?.teams || []).map(tm => kind === "task" ? tm.tasks : tm.habits),
+                   kind === "task" ? state.tasks?.team_tasks : state.habits?.team_habits,
+                   kind === "task" ? state.home?.team_today : null];
+    for(const list of lists) for(const row of (list || [])) if(row.id === id && wanted === null) wanted = !row.done;
+    if(wanted === null) wanted = true;
+    const want = wanted, body = {done: want};
+    optimistic(() => setAll(want),
+      () => api(path, {method:"POST", body, headers:{"X-Idempotency-Key": key}}),
+      state.screen, {path, method:"POST", body, key, label: el.dataset.title || ""},
+      () => setAll(!want), "t" + kind + id);
   },
 
   /* A shared task opens the full task sheet, headed for the team. */
@@ -8226,9 +9183,23 @@ const A = {
     const f = readMoneyForm();
     const amount = Math.round(Number(f.amount));
     if(!amount || amount <= 0) return toast(t("money_no_amount"));
+    if(f.id){
+      const body = {kind: f.kind, amount, category: f.category, note: (f.note || "").trim(),
+                    day: f.day || null};
+      return save(() => api(`/api/money/${f.id}`, {method:"PATCH", body}), "money", false, t("saved"));
+    }
     const body = {kind: f.kind, amount, category: f.category, note: (f.note || "").trim(), source:f.source || "manual"};
     save(() => api("/api/money", {method:"POST", body}), "money", false,
          t("money_saved_toast"), {body});
+  },
+  /* Tap an entry to correct it — amount, direction, category, note, day —
+     instead of deleting and typing it again (K21). */
+  "money-edit": el => {
+    const e = (state.money?.entries || []).find(x => String(x.id) === String(el.dataset.id));
+    if(!e) return;
+    haptic();
+    state.moneyForm = {id:e.id, kind:e.kind, amount:e.amount, category:e.category, note:e.note, day:e.day};
+    openSheet(moneySheet());
   },
   "money-text-save": el => moneyText(trimmed("money-text"), "manual", el?.dataset?.kind),
   "money-voice": () => moneyVoice(),
@@ -8585,13 +9556,18 @@ const A = {
   "habit-toggle": el => {
     haptic();
     const id = Number(el.dataset.id), key = newKey();
-    optimistic(() => {
+    const row0 = state.habits?.habits?.find(x => x.id === id);
+    const was = !!row0?.done, want = !was, day = todayISO();
+    const set = v => {
       const row = state.habits?.habits?.find(x => x.id === id);
-      if(row) row.done = !row.done;
+      if(row) row.done = v;
       for(const cat of Object.values(state.habits?.grouped || {}))
-        for(const x of cat) if(x.id === id) x.done = row ? row.done : x.done;
-    }, () => api(`/api/habits/${id}/toggle`, {method:"POST", headers:{"X-Idempotency-Key": key}}), "habits",
-       {path:`/api/habits/${id}/toggle`, method:"POST", key, label: el.dataset.name || ""});
+        for(const x of cat) if(x.id === id && !x.team_id) x.done = v;
+    };
+    const path = `/api/habits/${id}/toggle`, body = {done: want, day};
+    optimistic(() => set(want),
+      () => api(path, {method:"POST", body, headers:{"X-Idempotency-Key": key}}), "habits",
+      {path, method:"POST", body, key, label: el.dataset.name || ""}, () => set(was), "h" + id);
   },
   "habit-toggle-home": el => {
     haptic();
@@ -8616,7 +9592,11 @@ const A = {
     const f = state.habitForm || {};
     f.name = val("habit-name");
     f.timer = pickedTimer("habit-timer");
+    // The amount fields are redrawn too; what was typed in them stays (K17).
+    if(document.getElementById("hq-target"))
+      f.qty = {target_qty: val("hq-target"), min_qty: val("hq-min"), unit: val("hq-unit")};
     f[el.dataset.field] = el.dataset.value;
+    state.habitForm = f;
     openSheet(habitAddSheet());
   },
   "habit-save": () => {
@@ -8663,9 +9643,21 @@ const A = {
     const path = `/api/habits/${el.dataset.id}/qty`;
     closeSheet();
     api(path, {method:"POST", body:{qty}}).then(() => { toast(t("saved")); loadScreen("habits"); })
-      .catch(e => isOffline(e) ? enqueue({path, method:"POST", body:{qty}}) : handleError(e));
+      .catch(e => isOffline(e) ? enqueue({path, method:"POST", body:{qty}, label: el.dataset.name || ""}) : handleError(e));
   },
   "queue-flush": () => { haptic(); flushQueue(); },
+  "queue-review": () => { haptic(); openSheet(queueSheet(), "queue"); },
+  "queue-retry": async el => {
+    storeQueue(loadQueue().map(x => x.key === el.dataset.key ? {...x, blocked:null} : x));
+    await flushQueue();
+    openSheet(queueSheet(), "queue");
+  },
+  "queue-drop": el => {
+    storeQueue(loadQueue().filter(x => x.key !== el.dataset.key));
+    toast(t("queue_dropped"));
+    openSheet(queueSheet(), "queue");
+    render();
+  },
   "habit-remind-enable": async () => {
     haptic();
     await prefSave({habit_reminders: true}, false);
@@ -8782,12 +9774,15 @@ const A = {
   prayer: el => {
     haptic();
     const {prayer, status} = el.dataset;
+    const was = state.prayer?.prayers?.[prayer] ?? null, day = state.prayer?.day || todayISO();
+    const body = {prayer, status, day}, key = newKey();
     optimistic(() => { if(state.prayer) state.prayer.prayers[prayer] = status; },
       async () => {
-        state.prayer = await api("/api/prayers", {method:"POST", body:{prayer, status}});
+        state.prayer = await api("/api/prayers", {method:"POST", body, headers:{"X-Idempotency-Key": key}});
         await refreshHabits();
         render();
-      }, null, {path:"/api/prayers", method:"POST", body:{prayer, status}});
+      }, null, {path:"/api/prayers", method:"POST", body, key, label: prayer},
+      () => { if(state.prayer) state.prayer.prayers[prayer] = was; }, "p" + prayer);
   },
   "prayer-clear": el => {
     haptic();
@@ -8805,6 +9800,24 @@ const A = {
     }, null, true); },
 
   /* ---- journal ---- */
+  /* One field of a journal conflict: keep this phone's text, the other one,
+     or both one after the other (K03). */
+  jconf: el => {
+    const k = el.dataset.key, pick = el.dataset.pick;
+    const clash = {...journalConflicts()}, c = clash[k];
+    if(!c) return;
+    delete clash[k];
+    const plain = loadDraftRaw();
+    delete plain._conflict;
+    const base = state.journal?.updated_at || null;
+    if(pick === "theirs"){ delete plain[k]; writeDraft(plain, base, clash); render(); return; }
+    const value = pick === "both" ? `${c.theirs}\n\n${c.mine}` : c.mine;
+    plain[k] = value;
+    writeDraft(plain, base, clash);
+    journalPending[k] = value;
+    render();
+    flushJournal();
+  },
   "journal-save": () => {
     const answers = {};
     state.journalQuestions.forEach(q => { answers[q.id] = val("jq-" + q.id); });
@@ -8893,7 +9906,8 @@ const A = {
                        {method:"PATCH", body:{status:"waiting"}}), screen, true));
     }catch(e){
       // Done is done, signal or not: it goes out when the connection is back.
-      if(isOffline(e)) return enqueue({path:`/api/tasks/${id}`, method:"PATCH", body:{status:"done"}});
+      if(isOffline(e)) return enqueue({path:`/api/tasks/${id}`, method:"PATCH", body:{status:"done"},
+                                       label: el.dataset.title || ""});
       handleError(e);
     }
   },
@@ -8911,8 +9925,15 @@ const A = {
       body:{reason: el.dataset.reason, until: el.dataset.until}}), state.screen, false, t("block_saved")); },
   "task-unblock": el => { haptic(); closeSheet();
     save(() => api(`/api/tasks/${el.dataset.id}/block`, {method:"DELETE"}), state.screen, false, t("saved")); },
+  "task-move-menu": el => {
+    haptic();
+    const opt = when => `<button class="btn secondary" data-act="task-reschedule" data-id="${esc(el.dataset.id)}"
+        data-source="${esc(el.dataset.source)}" data-when="${when}" style="margin-top:8px">${t("when_" + when)}</button>`;
+    openSheet(`${sheetHead(t("reschedule"))}${opt("today")}${opt("tomorrow")}${opt("none")}`);
+  },
   "task-reschedule": el => {
     haptic();
+    if(el.closest?.("#sheet-body")) closeSheet();
     const id = el.dataset.id, when = el.dataset.when;
     if(el.dataset.source === "team"){
       const deadline = when === "none" ? null
@@ -8944,7 +9965,11 @@ const A = {
     {method:"POST", body:{picked:false}}), "home", true),
   "task-add": el => {
     state.dest = el?.dataset?.dest || "personal";
-    const project = el?.dataset?.project || state.project?.project?.id || "";
+    /* The open project is the default only while it is on screen: the last
+       project visited used to follow the person to Home and Tasks and
+       quietly file new tasks into it (K16). */
+    const project = el?.dataset?.project
+      || (state.screen === "project" ? state.project?.project?.id : "") || "";
     // "Batafsil" from quick add keeps what was already typed.
     state.form = {when:"today", priority:"medium", project_id: project || null,
                   remind_before: DEFAULT_REMIND_BEFORE, title: val("quick-title")};
@@ -9328,6 +10353,23 @@ const A = {
   "set-privacy": () => { haptic(); openSettings("privacy"); },
   "privacy-info": () => openSheet(privacySheet()),
   sessions: () => openSheet(sessionsSheet()),
+  "set-plan": () => { haptic(); openSheet(plansSheet(), "plans"); },
+  "plan-buy": async el => {
+    haptic("medium");
+    let link;
+    try{ link = (await api("/api/plans/invoice", {method:"POST", body:{product: el.dataset.key}})).url; }
+    catch(e){ return handleError(e); }
+    const done = async status => {
+      if(status === "paid"){ notify(); toast(t("plan_paid")); await refreshPlan(); closeSheet(); render(); }
+      else if(status === "failed") toast(t("error"));
+    };
+    if(link === "preview:paid"){ await done("paid"); return; }   // design preview only
+    if(tg?.openInvoice && !IS_APP) return tg.openInvoice(link, done);
+    // Phone app: the invoice opens in Telegram; the plan updates when the
+    // app comes back to the front.
+    (window.ErnestApp?.open || (u => window.open(u, "_blank")))(link);
+    state.planPending = true;
+  },
   "inbox-open": async () => {
     haptic();
     openSheet(inboxSheet(), "inbox");
@@ -9361,9 +10403,7 @@ const A = {
     }
   },
   /* Phone app only (native.js): end this phone's session. Data stays. */
-  "app-sign-out": () => {
-    if(confirm(t("app_sign_out_ask"))) window.ErnestApp?.signOut();
-  },
+  "app-sign-out": () => A["sign-out"](),
   export: async () => {
     // The phone app keeps the file on the phone; Telegram gets it in the chat.
     if(window.ErnestApp?.saveFile) return A.backup();
@@ -9410,11 +10450,14 @@ const A = {
   "wipe-data-confirm": async () => {
     // Step two of two. The first tap opened a sheet naming what goes; this one
     // sends the word the server insists on, so a stray tap cannot reach here.
+    // Nothing is sent while the wipe is out, and nothing local is lost
+    // unless the server confirms it (K02).
+    const snap = await freezeLocalDrafts();
+    try{ await api("/api/account/wipe", {method:"POST", body:{confirm:"WIPE"}}); }
+    catch(e){ thawLocalDrafts(snap); handleError(e); return; }
     try{
-      // No autosave may land after the wipe and bring an entry back.
       await forgetLocalDrafts();
-      await api("/api/account/wipe", {method:"POST", body:{confirm:"WIPE"}});
-      await forgetLocalDrafts();
+      state.erasing = false;
       state.journal = null;
       closeSheet();
       toast(t("wipe_done"));
@@ -9436,11 +10479,18 @@ const A = {
   "delete-account": () => openSheet(deleteAccountSheet()),
   "delete-account-go": async () => {
     if(trimmed("del-confirm").toUpperCase() !== "DELETE") return;
+    const snap = await freezeLocalDrafts();
+    try{ await api("/api/account/delete", {method:"POST", body:{confirm:"DELETE"}}); }
+    catch(e){
+      thawLocalDrafts(snap);
+      closeSheet();
+      // A team with other people in it needs a new owner first (K02).
+      if(e?.detail === "owner_must_transfer") return toast(t("owner_must_transfer_delete"));
+      return handleError(e);
+    }
     try{
       await forgetLocalDrafts();
-      await api("/api/account/delete", {method:"POST",
-        body:{confirm:"DELETE"}});
-      await forgetLocalDrafts();
+      state.erasing = false;
       closeSheet();
       setState({error:t("account_deleted"), loading:false, me:null, home:null});
       tg?.close?.();
@@ -9463,7 +10513,11 @@ const A = {
       try{
         const res = await fetch("/api/stats/csv?period=" + state.statsPeriod,
                                 {headers:{"X-Telegram-Init-Data": tg?.initData || ""}});
-        if(!res.ok){ const err = new Error("http_" + res.status); err.status = res.status; throw err; }
+        if(!res.ok){
+          const err = new Error("http_" + res.status); err.status = res.status;
+          try{ err.body = await res.json(); err.detail = err.body?.detail; }catch(_){}
+          throw err;
+        }
         const name = (res.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1]
                      || `ernestos-${state.statsPeriod}-${todayISO()}.csv`;
         await window.ErnestApp.saveFile(name, await res.text(), "text/csv");
@@ -9485,7 +10539,16 @@ const A = {
     await checkSubscription(false);
   },
   "sub-open": () => { openSheet(blockedSheet(), "sub"); checkSubscription(true); },
-  "back-to-bot": () => { tg?.close?.(); },
+  /* In Telegram the bot is under this window, so closing it is the way back.
+     The phone app has no chat beneath it: closing it just quit the app
+     (K10). There, the bot is opened instead, and coming back to the app
+     checks again by itself. */
+  "back-to-bot": () => {
+    if(!IS_APP) return tg?.close?.();
+    const bot = state.me?.bot_username;
+    state.setupAway = true;
+    window.ErnestApp?.open?.(bot ? `https://t.me/${bot}?start=setup` : "https://t.me/");
+  },
   "set-modules": () => { haptic(); openSettings("modules"); },
   "mod-toggle": async el => {
     haptic();
@@ -9636,7 +10699,7 @@ function habitAddSheet(){
       .map(v => chip("remind_at", v, v)).join("")}</div>
     ${f.remind_at ? reminderSwitchNote() : ""}
     ${timerPicker("habit-timer", f.timer)}
-    ${destOf().team ? "" : qtyFields({}, false)}
+    ${destOf().team ? "" : qtyFields(f.qty || {}, false)}
     <button class="btn" data-act="habit-save" style="margin-top:16px">${t("save")}</button>`;
 }
 
@@ -9851,7 +10914,10 @@ document.addEventListener("click", e => {
   if(el.tagName === "BUTTON" && now - (lastTap.get(el) || 0) < 700) return;
   lastTap.set(el, now);
   pressedBtn = el.tagName === "BUTTON" ? el : null;
+  const d = el.dataset;
+  lastTapped = {act:d.act, id:d.id, value:d.value, screen:d.screen, at:now};
   const out = action(el);
+  markJust();
   // An async action shows its button as busy until it settles.
   if(el.tagName === "BUTTON" && out && typeof out.then === "function"){
     el.classList.add("busy"); el.setAttribute("aria-busy", "true");
@@ -9919,7 +10985,8 @@ async function boot(){
       if(home.failed) throw home.failed;
       state.home = home;
     }
-    setState({me, loading:false, blocked:null, error:null, needsSetup:false});
+    setState({me, loading:false, blocked:null, error:null, needsSetup:false, offlineSince:null});
+    saveLastGood();
     // Ticks recorded while offline in an earlier session go out now.
     if(loadQueue().length) flushQueue();
     if(IS_APP){
@@ -9932,6 +10999,15 @@ async function boot(){
   }catch(e){
     console.error("ErnestOS boot failed:", e);
     if(e.status === 403){ setState({loading:false}); await checkSubscription(true); return; }
+    // No signal: the last Home that loaded, marked as such (K08).
+    const snap = isOffline(e) ? loadLastGood() : null;
+    if(snap){
+      state.lang = snap.me.language || "uz";
+      state.teams = snap.me.teams || [];
+      setState({me:snap.me, home:snap.home, screen:"home", loading:false, error:null,
+                offlineSince:snap.at});
+      return;
+    }
     setState({loading:false,
       error: errorMessage(e)});
   }

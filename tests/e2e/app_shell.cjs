@@ -9,6 +9,7 @@ const assert = require('assert/strict');
 const SHELL = process.env.APP_SHELL_BASE;        // where mobile/www is served
 const OUT = process.env.E2E_OUT;
 const PY = process.env.PY;
+const py = code => execFileSync(PY, ['-c', code], { encoding: 'utf8' });
 const issue = () => execFileSync(PY, ['-c',
   'import db, app_auth\nwith db.SessionLocal() as s: print(app_auth.issue_code(s, 777001))'],
   { encoding: 'utf8' }).trim();
@@ -47,7 +48,8 @@ const step = async (name, fn) => {
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
-  page.on('console', m => { if (m.type() === 'error' && !/401|ErnestOS:/.test(m.text())) errors.push('console: ' + m.text()); });
+  // 401 (signed out) and 402 (plan limit) are answers the app handles.
+  page.on('console', m => { if (m.type() === 'error' && !/401|402|ErnestOS:/.test(m.text())) errors.push('console: ' + m.text()); });
   const shot = n => page.screenshot({ path: path.join(OUT, 'app-' + n + '.png') });
 
   await step('No session: the app opens on the sign-in screen', async () => {
@@ -57,9 +59,19 @@ const step = async (name, fn) => {
     await shot('01-login');
   });
 
+  await step('The sign-in language is picked there and remembered', async () => {
+    await page.click('[data-lang="ru"]');
+    assert.match(await page.textContent('#t-lead'), /Войдите/);
+    await page.reload();
+    await page.waitForSelector('#code');
+    assert.match(await page.textContent('#t-lead'), /Войдите/);
+    await page.click('[data-lang="uz"]');
+    assert.match(await page.textContent('#t-lead'), /kirig|kod bilan/);
+  });
+
   await step('A wrong code is refused in place', async () => {
+    // A complete code is sent by itself — no button press needed.
     await page.fill('#code', 'ZZZZZZZZ');
-    await page.click('#submit');
     await page.waitForFunction(() => document.getElementById('msg').textContent.length > 0);
     assert.match(await page.textContent('#msg'), /noto'g'ri|wrong|неверный/);
     await shot('02-bad-code');
@@ -67,8 +79,6 @@ const step = async (name, fn) => {
 
   await step('The bot code signs in and the Mini App home renders', async () => {
     await page.fill('#code', issue().toLowerCase());
-    assert.match(await page.inputValue('#code'), /^[A-Z0-9]{4}-[A-Z0-9]{4}$/, 'typed code is formatted');
-    await page.click('#submit');
     await page.waitForURL(/index\.html$/);
     await page.waitForFunction(() => typeof state !== 'undefined' && state.me && !state.loading, null, { timeout: 15000 });
     await page.waitForTimeout(500);
@@ -96,9 +106,17 @@ const step = async (name, fn) => {
     assert.deepEqual(await page.evaluate(() => window.__shared.files), ['file:///cache/' + saved.path]);
   });
 
-  await step('Statistics CSV is saved on the phone', async () => {
+  await step('Statistics file is a Max feature: Pro is offered the plan', async () => {
     await page.evaluate(() => goto('stats'));
     await page.waitForTimeout(400);
+    await page.evaluate(() => A['stats-download']());
+    await page.waitForSelector('#sheet-body [data-act="plan-buy"]', { timeout: 5000 });
+    assert.equal(await page.evaluate(() => (window.__saved || []).length), 1, 'nothing saved');
+    await page.evaluate(() => closeSheet());
+  });
+
+  await step('Statistics CSV is saved on the phone', async () => {
+    py('import db, plans\nwith db.SessionLocal() as s:\n plans.grant(s, 777001, "max", 30, "admin"); s.commit()');
     await page.evaluate(() => A['stats-download']());
     await page.waitForFunction(() => window.__saved.length === 2, null, { timeout: 5000 });
     const saved = await page.evaluate(() => window.__saved[1]);
@@ -156,6 +174,33 @@ const step = async (name, fn) => {
     assert.ok(await page.evaluate(() => Telegram.WebApp.BackButton.isVisible), 'back shown with a sheet');
   });
 
+  await step('Settings: profile on top, a chosen photo is saved and served', async () => {
+    await page.evaluate(() => A.settings());
+    await page.waitForSelector('#sheet-body .set-profile');
+    // A real 1x1 PNG, so the phone-side shrink has something to decode.
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    await page.setInputFiles('#sheet-body input[data-act="avatar-pick"]', { name: 'me.png', mimeType: 'image/png', buffer: png });
+    await page.waitForFunction(() => !!state.me.avatar_custom, null, { timeout: 8000 });
+    const served = await page.evaluate(async () => {
+      const r = await fetch(`${API_BASE}/api/avatar?token=${encodeURIComponent(state.me.avatar_token)}`);
+      return [r.status, r.headers.get('content-type')];
+    });
+    assert.deepEqual(served, [200, 'image/jpeg']);
+    assert.ok(await page.locator('#sheet-body .set-profile img').count(), 'the new photo is shown');
+    assert.ok(await page.locator('#sheet-body [data-act="sign-out"]').count(), 'sign out is on the settings root');
+  });
+
+  await step('Plans: a month/year switch and two buy buttons, closed by the cross', async () => {
+    await page.click('#sheet-body [data-act="set-plan"]');
+    await page.waitForSelector('#sheet-body .pcards');
+    assert.equal(await page.locator('#sheet-body [data-act="plan-buy"]').count(), 2);
+    await page.click('#sheet-body [data-act="plan-period"][data-p="year"]');
+    const keys = await page.locator('#sheet-body [data-act="plan-buy"]').evaluateAll(b => b.map(x => x.dataset.key));
+    assert.deepEqual(keys, ['pro_year', 'max_year']);
+    await page.click('#sheet-body .sheet-head [data-act="close"]');
+    await page.waitForFunction(() => !document.getElementById('sheet').classList.contains('show'));
+  });
+
   await step('An ended session goes back to sign-in', async () => {
     revokeAll();
     await page.evaluate(() => api('/api/me').catch(() => null));
@@ -165,7 +210,6 @@ const step = async (name, fn) => {
 
   await step('Sign out from settings ends the session on the server too', async () => {
     await page.fill('#code', issue());
-    await page.click('#submit');
     await page.waitForURL(/index\.html$/);
     await page.waitForFunction(() => typeof state !== 'undefined' && state.me && !state.loading, null, { timeout: 15000 });
     const token = await page.evaluate(() => localStorage.getItem('ernest.app.token'));
