@@ -108,6 +108,13 @@ def install(app, auth):
                                   mime=request.headers.get("content-type"))
         return card(draft, user.language)
 
+    @router.get("/now")
+    async def now(x_telegram_init_data: str | None = Header(None)):
+        """The AI pick for the Hozir card (Pro and Max, with the agent consent)."""
+        import now_ai
+        user, ws = auth(x_telegram_init_data)
+        return await now_ai.pick(user.telegram_id, ws)
+
     @router.post("/journal/text")
     async def journal_text(body: JournalText, x_telegram_init_data: str | None = Header(None)):
         user, ws = auth(x_telegram_init_data)

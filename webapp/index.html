@@ -307,6 +307,13 @@ h3{font-size:18px;font-weight:640;letter-spacing:-.3px;line-height:1.3;
 .now-meta{display:flex;flex-wrap:nowrap;gap:var(--s1);margin-top:6px;overflow:hidden;
           font-size:12.5px;color:var(--text-3);align-items:center;white-space:nowrap}
 .now-why{font-size:12.5px;color:var(--text-3);margin-top:4px}
+.now-why.ai{color:var(--text-2);font-size:13px}
+.now-ai-chip{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;letter-spacing:.06em;padding:2px 7px;
+             border-radius:var(--radius-pill);background:color-mix(in srgb, var(--primary) 14%, transparent);
+             color:var(--primary);vertical-align:middle;margin-left:6px}
+.now-ai-row{display:flex;align-items:center;gap:8px;margin-top:8px;padding:10px 12px;min-height:44px;
+            border-radius:var(--radius);border:var(--border-w) dashed var(--border-2);font-size:13.5px;
+            color:var(--text-2);cursor:pointer}
 .now-acts{display:flex;gap:var(--s1);margin-top:var(--s2);flex-wrap:wrap}
 .now-acts .btn{flex:1 1 160px;min-height:42px}
 
@@ -2064,6 +2071,7 @@ const DICT = {
   plan_limit_now_ai:"AI «Hozir» tavsiyasi — Pro va Max'da",
   groups_tab:"Guruhlar", team_new_short:"Yangi guruh",
   group_settings:"Guruh sozlamalari va a'zolar",
+  now_ai_label:"AI «Hozir» tavsiyasi", now_ai_enable:"AI tavsiyasini yoqish", now_ai_consent:"Hozir nima qilishni AI tanlashi uchun bugungi ochiq vazifalaringiz nomlari AI xizmatiga (Groq yoki Google, AQSh) yuboriladi. Tanlov faqat sizning vazifalaringiz orasidan bo'ladi va hech narsa o'zgartirilmaydi.",
   draft_restored:"Saqlanmagan matn tiklandi", autosaved:"Saqlanmoqda…",
   mood_q:"Bugun o'zingizni qanday his qildingiz?",
   mood_awful:"Juda yomon", mood_low:"Yomon", mood_ok:"O'rtacha",
@@ -2585,6 +2593,7 @@ const DICT = {
   plan_limit_now_ai:"AI «Now» suggestion — on Pro and Max",
   groups_tab:"Groups", team_new_short:"New group",
   group_settings:"Group settings and members",
+  now_ai_label:"AI «Now» suggestion", now_ai_enable:"Turn on the AI suggestion", now_ai_consent:"To let AI choose what to do now, the names of today's open tasks are sent to an AI service (Groq or Google, USA). It only chooses among your own tasks and changes nothing.",
   draft_restored:"Unsaved text restored", autosaved:"Saving…",
   mood_q:"How did you feel today?",
   mood_awful:"Awful", mood_low:"Low", mood_ok:"Okay",
@@ -3100,6 +3109,7 @@ const DICT = {
   plan_limit_now_ai:"AI-совет «Сейчас» — в Pro и Max",
   groups_tab:"Группы", team_new_short:"Новая группа",
   group_settings:"Настройки и участники группы",
+  now_ai_label:"AI-совет «Сейчас»", now_ai_enable:"Включить AI-совет", now_ai_consent:"Чтобы AI выбрал, чем заняться сейчас, названия сегодняшних открытых задач отправляются AI-сервису (Groq или Google, США). Он выбирает только из ваших задач и ничего не меняет.",
   draft_restored:"Несохранённый текст восстановлен", autosaved:"Сохраняем…",
   mood_q:"Как вы себя чувствовали сегодня?",
   mood_awful:"Очень плохо", mood_low:"Плохо", mood_ok:"Нормально",
@@ -4395,8 +4405,46 @@ function headBlock(d){
    pinning something overrides the ladder for the rest of the day. The one-line
    reason under the title is what makes that offer legible — a card that
    decides on the user's behalf owes them the sentence saying why. */
+/* v16: on Pro and Max the model picks the task to do now from the person's
+   own open tasks, with one sentence why. It never replaces a pinned task or
+   a time-bound wake-up/prayer card, and the rule ladder stays the answer
+   whenever the model is off, refused, slow or out of budget. */
+const nowAiPlan = () => !state.me?.plan?.enabled || ["pro", "max"].includes(state.me.plan.tier);
+let nowAiBusy = false;
+async function loadNowAi(){
+  const agent = state.me?.agent;
+  if(!agent?.available || !agent.consent || !nowAiPlan() || nowAiBusy) return;
+  if(!navigator.onLine) return;
+  nowAiBusy = true;
+  try{
+    const r = await api("/api/agent/now");
+    state.nowAi = {...r, day: todayISO()};
+  }catch(e){
+    state.nowAi = {source: "error", pick: null, day: todayISO()};
+  }finally{ nowAiBusy = false; }
+  if(state.screen === "home") render();
+}
+function nowAiPick(n){
+  const ai = state.nowAi;
+  if(!ai?.pick || ai.day !== todayISO() || !nowAiPlan()) return null;
+  if(n.kind !== "task" || n.reason === "pinned") return null;
+  return ai.pick;
+}
+/* Under the card: the lock on Free, the switch-on when consent is missing. */
+function nowAiRow(){
+  const agent = state.me?.agent;
+  if(!agent?.available) return "";
+  if(!nowAiPlan()) return `<div class="now-ai-row" data-act="w-locked" data-key="now_ai" data-needs="pro" role="button" tabindex="0">
+      ${icon("star", 14)}<span class="grow">${t("now_ai_label")}</span><span class="wlock">${icon("shield", 11)} Pro</span></div>`;
+  if(!agent.consent) return `<div class="now-ai-row" data-act="now-ai-consent" role="button" tabindex="0">
+      ${icon("star", 14)}<span class="grow">${t("now_ai_enable")}</span>${icon("chevron", 14)}</div>`;
+  return "";
+}
+
 function nowBlock(d){
-  const n = d.now || {kind:"clear", reason:"clear"};
+  const rule = d.now || {kind:"clear", reason:"clear"};
+  const aiPick = nowAiPick(rule);
+  const n = aiPick ? {...aiPick, overdue: rule.overdue, upcoming: rule.upcoming} : rule;
 
   /* Everything the card needs to draw, per kind, in one place: the line to
      show, the tap target for finishing it, and whether it is a real task
@@ -4423,7 +4471,7 @@ function nowBlock(d){
   /* The pencil is "choose for today": pin one task, and it stays the answer
      for the rest of the day (at most one — a second asks to replace it). */
   const head = `<div class="row" style="gap:var(--s1);align-items:center">
-      <div class="grow now-label">${t("now")}</div>
+      <div class="grow now-label">${t("now")}${aiPick ? ` <span class="now-ai-chip">${icon("star", 11)} AI</span>` : ""}</div>
       <button class="iconbtn sm now-swap" data-act="mission-pick" aria-label="${t("mission_change")}"
               title="${t("mission_change")}">${icon("repeat", 18)}</button>
     </div>`;
@@ -4468,7 +4516,8 @@ function nowBlock(d){
       <div class="now-title ${n.kind === "task" && n.source !== "team" && n.id ? "pressable" : ""}"
            ${n.kind === "task" && n.source !== "team" && n.id ? `data-act="task-open" data-id="${n.id}" role="button" tabindex="0"` : ""}>${esc(kind.title)}</div>
       ${meta.length ? `<div class="now-meta">${meta.join("")}</div>` : ""}
-      ${why && n.reason !== "pinned" ? `<div class="now-why">${t(why)}</div>` : ""}
+      ${aiPick && aiPick.ai_reason ? `<div class="now-why ai">${esc(aiPick.ai_reason)}</div>`
+        : why && n.reason !== "pinned" ? `<div class="now-why">${t(why)}</div>` : ""}
       ${n.overdue ? `<div class="now-late" data-act="nav" data-screen="tasks"
           role="button" tabindex="0">${icon("clock", 14)}
           <span class="grow ellipsis">${t("now_also_late")}: ${esc(n.overdue.title)}</span>
@@ -4480,7 +4529,7 @@ function nowBlock(d){
         <button class="btn" data-act="${kind.act}" ${kind.data || ""}
                 ${n.id ? `data-id="${n.id}"` : ""}>${icon(glyph, 17)} ${label}</button>
       </div>
-    </div>`;
+    </div>${nowAiRow()}`;
 }
 
 /* Today's work, grouped by the project it belongs to. */
@@ -10004,6 +10053,7 @@ async function loadScreen(screen){
          slowest part of opening the app was for blocks it no longer shows. */
       setState({home: await api("/api/home")});
       saveLastGood();
+      loadNowAi();
     } else if(screen === "money"){
       await loadMoney(state.moneyMonth);
     } else if(screen === "team"){
@@ -12433,6 +12483,21 @@ const A = {
     state.inboxTab = "chat";
     openMessages();
     if(!state.chat?.loaded) loadChat();
+  },
+  "now-ai-consent": async () => {
+    haptic();
+    openSheet(`${sheetHead(t("now_ai_label"))}
+      <p class="small">${t("now_ai_consent")}</p>
+      <button class="btn" data-act="now-ai-agree">${t("voice_agree")}</button>
+      <button class="btn secondary" data-act="close" style="margin-top:8px">${t("cancel")}</button>`);
+  },
+  "now-ai-agree": async () => {
+    try{
+      await api("/api/agent/consent", {method:"POST"});
+      if(state.me?.agent) state.me.agent.consent = true;
+      closeSheet();
+      await loadNowAi();
+    }catch(e){ handleError(e); }
   },
   "chat-consent": async () => {
     try{

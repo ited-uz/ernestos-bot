@@ -1091,3 +1091,78 @@ def test_chat_over_http(client, person, monkeypatch):
     assert fresh.get("/api/export").json()["agent_chat"][0]["text"] == "salom"
     assert fresh.delete("/api/agent/chat").status_code == 200
     assert fresh.get("/api/agent/chat").json()["messages"] == []
+
+
+# ---------------------------------------------------------------------------
+# AI pick for the Hozir card (v16) — the model is mocked, never called.
+# ---------------------------------------------------------------------------
+
+def _now_reset():
+    import now_ai
+    now_ai._cache.clear()
+    now_ai._calls.clear()
+
+
+def test_now_ai_picks_only_among_the_persons_own_open_tasks(person, monkeypatch):
+    import now_ai
+    _now_reset()
+    caller, uid, ws = person
+    today = svc.today_local().isoformat()
+    a = caller.post("/api/tasks", {"title": "Hisobotni yuborish", "deadline": today,
+                                   "priority": "high"}).json()["id"]
+    caller.post("/api/tasks", {"title": "Kitob o'qish", "deadline": today})
+    seen = {}
+    async def fake(payload):
+        seen.update(payload)
+        return provider.NowPick(key=f"p{a}", reason="Bugungi muddat va yuqori muhimlik: hisobot birinchi.")
+    monkeypatch.setattr(provider, "now_pick", fake)
+    r = caller.get("/api/agent/now")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["source"] == "ai" and body["pick"]["id"] == a and body["pick"]["reason"] == "ai"
+    assert body["pick"]["ai_reason"].startswith("Bugungi muddat")
+    keys = {t["key"] for t in seen["tasks"]}
+    assert f"p{a}" in keys and all(not k.startswith("_") for t in seen["tasks"] for k in t)
+
+    # Same list, same answer: served from the cache without asking again.
+    calls = {"n": 0}
+    async def counting(payload):
+        calls["n"] += 1
+        return provider.NowPick(key=f"p{a}", reason="x")
+    monkeypatch.setattr(provider, "now_pick", counting)
+    assert caller.get("/api/agent/now").json()["cached"] is True and calls["n"] == 0
+
+    # A key that is not a candidate is refused, never shown.
+    _now_reset()
+    async def invented(payload):
+        return provider.NowPick(key="p999999", reason="Uydirma vazifa")
+    monkeypatch.setattr(provider, "now_pick", invented)
+    assert caller.get("/api/agent/now").status_code == 422
+
+
+def test_now_ai_is_pro_and_max_with_consent_and_a_daily_cap(person, monkeypatch):
+    import now_ai
+    import plans
+    _now_reset()
+    caller, uid, ws = person
+    caller.post("/api/tasks", {"title": "Qo'ng'iroq", "deadline": svc.today_local().isoformat()})
+    monkeypatch.setattr(provider, "now_pick", AsyncMock(side_effect=AssertionError("no call expected")))
+    monkeypatch.setattr(plans, "ENABLED", True)
+    monkeypatch.setattr(plans, "tier_of", lambda s, u: "free")
+    r = caller.get("/api/agent/now")
+    assert r.status_code == 402 and r.json()["detail"] == "plan_limit"
+
+    monkeypatch.setattr(plans, "tier_of", lambda s, u: "pro")
+    core.consent(ws, False)
+    assert caller.get("/api/agent/now").status_code == 403
+    core.consent(ws, True)
+
+    monkeypatch.setattr(now_ai, "DAILY_CAP", 0)
+    assert caller.get("/api/agent/now").status_code == 429
+
+
+def test_now_ai_with_nothing_open_says_so_without_a_call(person, monkeypatch):
+    _now_reset()
+    caller, _, _ = person
+    monkeypatch.setattr(provider, "now_pick", AsyncMock(side_effect=AssertionError("no call expected")))
+    assert caller.get("/api/agent/now").json() == {"source": "none", "pick": None}

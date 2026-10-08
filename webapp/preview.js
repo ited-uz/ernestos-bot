@@ -470,6 +470,17 @@
               steps:steps.map(([target, tier, days]) => ({target, tier, days, have:Math.min(q, target),
                                                           reached:q >= target, granted:q >= target}))};
     }],
+    // The AI pick for Hozir, as the server shapes it. Demo text, not a model.
+    [/^\/api\/agent\/now$/, () => {
+      const open = DB.tasks.filter(x => x.status !== "done");
+      const x = open.find(t => t.overdue && t.priority === "high") || open.find(t => t.deadline === TODAY);
+      return x ? {source:"ai", pick:{kind:"task", id:x.id, title:x.title, action:"task", source:"personal",
+          reason:"ai", priority:x.priority, due_time:x.due_time, deadline:x.deadline, project:x.project,
+          ai_reason:{uz:"Muddati o'tgan va muhimligi yuqori — bugun yopilsa, ertangi reja bo'shaydi.",
+                     ru:"Просрочено и важно — закроете сегодня, и завтрашний план освободится.",
+                     en:"Late and high priority — closing it today frees tomorrow's plan."}[LANG] || ""}}
+        : {source:"none", pick:null};
+    }],
     [/^\/api\/home$/, home],
     [/^\/api\/summary$/, summary],
     [/^\/api\/progress\/me$/, () => EMPTY ? {
