@@ -20,7 +20,7 @@ psycopg-binary==3.3.6
 psycopg==3.3.6
 pycparser==3.0
 pydantic==2.13.5
-pydantic_core==2.46.5
+pydantic_core==2.49.0
 python-dotenv==1.2.3
 python-telegram-bot==21.11.1
 PyYAML==6.0.3
