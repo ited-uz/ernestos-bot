@@ -84,7 +84,9 @@
   const DB = {
     me:{telegram_id:1, name:"Ernest", first_name:"Ernest", language:LANG, onboarded:true, gated:false,
         today:TODAY, trial:{required:false, remaining:17, free_actions:20, subscribed:false, channel:""},
-        agent:{enabled:false, available:false},
+        // The voice assistant is on in the preview, with a stand-in for the
+        // AI services (see "voice" below) so the whole flow can be tried.
+        agent:{enabled:true, available:true, consent:false},
         // ?plan=pro|max|free (default free, so the limits can be tried).
         plan:{enabled:true, tier:Q.get("plan") || "free", until:null, days_left:null,
               channel_bonus_used:false, channel_bonus_days:7, channel:"https://t.me/ernestos_channel",
@@ -430,7 +432,40 @@
     [/^\/api\/stats\/csv$/, () => "sana,vazifa,odat\n" + TODAY + ",3/5,4/6\n"],
   ];
 
+  /* Voice, for the preview: the microphone is a synthetic tone (no device
+     or permission needed inside a frame), the recording really goes through
+     MediaRecorder, and the "AI" answers with a fixed sample. Nothing here
+     transcribes anything — that happens on the real server. */
+  if(navigator.mediaDevices){
+    navigator.mediaDevices.getUserMedia = async () => {
+      const ac = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ac.createOscillator(), gain = ac.createGain(), lfo = ac.createOscillator(), depth = ac.createGain();
+      osc.frequency.value = 180; lfo.frequency.value = 4; depth.gain.value = 0.25; gain.gain.value = 0.3;
+      lfo.connect(depth).connect(gain.gain); osc.connect(gain);
+      const out = ac.createMediaStreamDestination(); gain.connect(out);
+      osc.start(); lfo.start();
+      const stream = out.stream;
+      stream.getTracks().forEach(tr => { const stop = tr.stop.bind(tr); tr.stop = () => { stop(); ac.close(); }; });
+      return stream;
+    };
+  }
+  const tomorrow = () => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); };
+  const VOICE_DRAFT = () => ({id:"demo-voice", revision:1, status:"ready", language:"uz",
+    transcript:"Ertaga soat o'nda mijozga qo'ng'iroq qilishim kerak",
+    preview:"🗣 «Ertaga soat o'nda mijozga qo'ng'iroq qilishim kerak»\n\n📝 Vazifa: Mijozga qo'ng'iroq qilish\n📅 Ertaga · 10:00\n⭐ Muhimlik: o'rta\n\n(Demo: haqiqiy ilovada ovozingiz matnga aylantiriladi)",
+    editable:[{index:0, fields:{title:"Mijozga qo'ng'iroq qilish", deadline:tomorrow(), due_time:"10:00", priority:"medium"}}]});
+
   function mutate(method, path, body){
+    if(path === "/api/agent/consent"){ DB.me.agent.consent = true; return {ok:true}; }
+    if(path === "/api/agent/audio") return VOICE_DRAFT();
+    if(path === "/api/agent/journal/audio") return {answers:{wins:"Onboarding dizaynini tugatdim.",
+      gratitude:"Jamoamga yordami uchun rahmat.", tomorrow:"Mijozga taklifni yuboraman."}};
+    let vm;
+    if((vm = path.match(/^\/api\/agent\/drafts\/([\w-]+)\/confirm$/))){
+      DB.tasks.push(task(++nextId, "Mijozga qo'ng'iroq qilish", {deadline:tomorrow(), due_time:"10:00"}));
+      return {...VOICE_DRAFT(), status:"executed", message:"✅ Vazifa qo'shildi: Mijozga qo'ng'iroq qilish (ertaga 10:00)"};
+    }
+    if(/^\/api\/agent\/drafts\/[\w-]+\/cancel$/.test(path)) return {ok:true};
     let m;
     if(path === "/api/money/preview"){
       const amount = Number((String(body?.text || "").match(/\d[\d\s]*/) || ["45000"])[0].replace(/\s/g, "")) || 45000;
@@ -536,6 +571,8 @@
     const method = (opts.method || "GET").toUpperCase();
     if(SCEN === "loading") return new Promise(() => {});
     if(SCEN === "offline") { await wait(300); throw new TypeError("preview: offline"); }
+    // The recorded audio, kept so it can be checked against the server's decoder.
+    if(/\/audio$/.test(url.pathname) && opts.body instanceof Blob) window.__voiceBlob = opts.body;
     if(method !== "GET"){
       await wait(650);   // long enough to see the saving state
       let body = null; try{ body = JSON.parse(opts.body || "null"); }catch(_){}
