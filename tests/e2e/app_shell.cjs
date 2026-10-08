@@ -179,7 +179,10 @@ const step = async (name, fn) => {
     await page.waitForSelector('#sheet-body .set-profile');
     // A real 1x1 PNG, so the phone-side shrink has something to decode.
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
-    await page.setInputFiles('#sheet-body input[data-act="avatar-pick"]', { name: 'me.png', mimeType: 'image/png', buffer: png });
+    // A tap on the picture itself opens the phone's picker.
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser', { timeout: 5000 }),
+                                         page.click('#sheet-body .avatar.xl')]);
+    await chooser.setFiles({ name: 'me.png', mimeType: 'image/png', buffer: png });
     await page.waitForFunction(() => !!state.me.avatar_custom, null, { timeout: 8000 });
     const served = await page.evaluate(async () => {
       const r = await fetch(`${API_BASE}/api/avatar?token=${encodeURIComponent(state.me.avatar_token)}`);
@@ -192,7 +195,8 @@ const step = async (name, fn) => {
 
   await step('Plans: a month/year switch and two buy buttons, closed by the cross', async () => {
     await page.click('#sheet-body [data-act="set-plan"]');
-    await page.waitForSelector('#sheet-body .pcards');
+    await page.waitForSelector('#sheet-body .ptable');
+    assert.equal(await page.locator('#sheet-body .ptable tbody tr').count(), 12, 'every limit has a row');
     assert.equal(await page.locator('#sheet-body [data-act="plan-buy"]').count(), 2);
     await page.click('#sheet-body [data-act="plan-period"][data-p="year"]');
     const keys = await page.locator('#sheet-body [data-act="plan-buy"]').evaluateAll(b => b.map(x => x.dataset.key));

@@ -870,7 +870,7 @@ body:has(#app input:focus, #app textarea:focus) nav{visibility:hidden}
 .head .add:active{filter:brightness(.94)}
 
 .privacy-strip{margin:var(--s5) auto var(--s1);text-align:center;max-width:420px;
-  font-size:12.5px;line-height:1.45;color:var(--text-3);text-wrap:pretty}
+  font-size:12px;line-height:1.45;color:var(--text-3);text-wrap:pretty}
 
 .sheet{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;
        -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
@@ -1010,6 +1010,26 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
 .pcard li{display:flex;align-items:center;gap:8px}
 .pchk{color:var(--ok);display:inline-flex;flex:none}
 .pstar{color:var(--warn);font-size:.8em}
+/* The comparison table: one row per limit, the current plan's column lit. */
+.ptable-wrap{margin-top:var(--s2);border:var(--border-w) solid var(--border);border-radius:var(--radius);
+  overflow:hidden;background:var(--surface)}
+.ptable{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}
+.ptable th,.ptable td{padding:9px 6px;text-align:center;border-bottom:var(--border-w) solid var(--border);
+  vertical-align:middle}
+.ptable tbody tr:last-child th,.ptable tbody tr:last-child td{border-bottom:0}
+.ptable tbody th{text-align:left;font-weight:500;color:var(--text-2);padding-left:12px;width:38%}
+.ptable thead th{padding-top:12px;padding-bottom:10px;vertical-align:top}
+.ptable .pt-name{font-weight:700;font-size:14px;color:var(--text)}
+.ptable .pt-price{font-weight:800;font-size:15px;margin-top:2px;font-variant-numeric:tabular-nums}
+.ptable .pbadge{display:inline-block;margin-top:5px;font-size:9px;padding:2px 6px}
+.ptable .cur{background:color-mix(in srgb, var(--primary) 9%, transparent)}
+.ptable .c-max{background:color-mix(in srgb, var(--warn) 6%, transparent)}
+.ptable .c-max.cur{background:color-mix(in srgb, var(--primary) 9%, transparent)}
+.ptable td b{font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
+.ptable td small{color:var(--text-3);font-size:11px}
+.pt-yes{color:var(--ok);display:inline-flex}
+.pt-no{color:var(--text-3);opacity:.7;display:inline-flex}
+.pt-inf{font-size:17px;font-weight:700;color:var(--ok)}
 .psave{margin-top:8px;font-size:12.5px;font-weight:650;color:var(--ok)}
 .pbadge{font-size:10.5px;font-weight:750;padding:3px 8px;border-radius:9999px;
   text-transform:uppercase;letter-spacing:.04em}
@@ -1026,6 +1046,12 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
 .avatar-edit{position:absolute;right:-2px;bottom:-2px;width:24px;height:24px;border-radius:50%;
   display:grid;place-items:center;font-size:12px;background:var(--surface);
   box-shadow:0 0 0 1.5px var(--border)}
+.avatar-input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;
+  border-radius:50%;z-index:2;font-size:0}
+.avatar.busy img,.avatar.busy{opacity:.55}
+.avatar.busy::after{content:"";position:absolute;inset:22%;border-radius:50%;z-index:3;
+  border:3px solid color-mix(in srgb, var(--on-primary) 40%, transparent);border-top-color:var(--on-primary);
+  animation:spin .8s linear infinite}
 .set-profile .pname{font-size:19px;font-weight:700;line-height:1.2}
 .set-card{margin-top:var(--s2)}
 .set-signout{margin-top:var(--s4);background:var(--danger)!important;color:var(--on-primary)!important;
@@ -1331,7 +1357,7 @@ nav button .ic{transition:background-color var(--dur-2) var(--ease-out), transfo
 [data-theme="bento"] #app::before{display:none}
 
 /* A greeting that reads as a title. */
-h1.greet{font-size:clamp(22px, 6.6vw, 28px);font-weight:760;letter-spacing:-.6px;line-height:1.12}
+h1.greet{font-size:17px;font-weight:650;letter-spacing:-.2px;line-height:1.25}
 
 /* Grouped rows answer with a ripple, not a shrink: a row scaling inside a
    joined list pulls away from its neighbours. */
@@ -1465,7 +1491,7 @@ const DICT = {
   team_project_ph:"Loyiha nomi", team_open:"Ochish",
   dest_where:"Qayerga qo'shilsin", dest_personal:"Shaxsiy",
   team_badge:"jamoa",
-  privacy_line:"Ma'lumotlaringiz boshqa foydalanuvchilardan ajratilgan va xavfsiz saqlanadi. 🔒",
+  privacy_line:"🔒 Ma'lumotlaringiz boshqa foydalanuvchilardan ajratilgan va himoyalangan ulanish (HTTPS) orqali uzatiladi. Istalgan vaqtda yuklab olasiz yoki butunlay o'chirasiz.",
   /* common */
   save:"Saqlash", cancel:"Bekor qilish", close:"Yopish", delete:"O'chirish",
   edit:"Tahrirlash", saved:"Saqlandi", deleted:"O'chirildi", undo:"Qaytarish",
@@ -1594,6 +1620,8 @@ const DICT = {
   money_edit:"Yozuvni tahrirlash",
   push_title:"Telefon bildirishnomalari", push_on:"Yoqilgan — eslatmalar telefonga ham keladi.", push_ask:"Hali ruxsat berilmagan. Eslatmalar faqat ilova ichidagi Xabarlarda.", push_denied:"Telefonda o'chirilgan. Yoqish uchun telefon Sozlamalari → Ilovalar → ErnestOS → Bildirishnomalar.", push_no_build:"Bu versiyada telefon bildirishnomasi yo'q. Eslatmalar ilova ichidagi Xabarlarda va Telegram botda.", push_allow:"Ruxsat berish",
   plan_save_stars:"Yiliga {n} ⭐ tejaysiz",
+  avatar_heic:"Bu rasm HEIC formatida — telefon uni o'qiy olmadi. Kamerada JPG ni tanlang yoki boshqa rasm yuboring.", avatar_too_big:"Rasm juda katta. Boshqasini tanlang.", avatar_server_old:"Server hali yangilanmagan — rasm yuklash keyinroq ishlaydi.", avatar_offline:"Internet yo'q — rasm saqlanmadi.",
+  pt_habits:"Odatlar", pt_active_tasks:"Faol vazifalar", pt_recurring_tasks:"Takrorlanuvchi vazifalar", pt_projects:"Loyihalar", pt_open_debts:"Ochiq qarzlar", pt_teams_owned:"Jamoa yaratish", pt_team_members:"Jamoa a'zolari", pt_voice:"Ovozli buyruq", pt_journal_ai:"AI kun xulosasi", pt_timer_rhythm:"Ish/tanaffus ritmi", pt_stats_history:"Oylik va yillik statistika", pt_stats_csv:"Statistika fayli", pt_week:"hafta", pt_day:"kun", plan_save_year:"Yillik to'lovda tejaysiz — {list}", plan_free_has:"Free'da — {list}",
   draft_restored:"Saqlanmagan matn tiklandi", autosaved:"Saqlanmoqda…",
   mood_q:"Bugun o'zingizni qanday his qildingiz?",
   mood_awful:"Juda yomon", mood_low:"Yomon", mood_ok:"O'rtacha",
@@ -1904,7 +1932,7 @@ const DICT = {
   team_project_ph:"Project name", team_open:"Open",
   dest_where:"Where does this go", dest_personal:"Personal",
   team_badge:"team",
-  privacy_line:"Your data is kept separate from other users' and stored securely. 🔒",
+  privacy_line:"🔒 Your data is kept separate from other users' and travels over a secure connection (HTTPS). Download it or delete it for good at any time.",
   save:"Save", cancel:"Cancel", close:"Close", delete:"Delete",
   edit:"Edit", saved:"Saved", deleted:"Deleted", undo:"Undo",
   empty:"Nothing yet", error:"Something went wrong", offline:"No connection",
@@ -2025,6 +2053,8 @@ const DICT = {
   money_edit:"Edit entry",
   push_title:"Phone notifications", push_on:"On — reminders also reach the phone.", push_ask:"Not allowed yet. Reminders are only in the in-app Inbox.", push_denied:"Turned off on the phone. To turn on, open phone Settings → Apps → ErnestOS → Notifications.", push_no_build:"This version has no phone notifications. Reminders are in the in-app Inbox and the Telegram bot.", push_allow:"Allow",
   plan_save_stars:"You save {n} ⭐ a year",
+  avatar_heic:"This photo is HEIC and the phone could not read it. Pick a JPG or another photo.", avatar_too_big:"This picture is too large. Pick another.", avatar_server_old:"The server is not updated yet — photo upload will work after it is.", avatar_offline:"No connection — the photo was not saved.",
+  pt_habits:"Habits", pt_active_tasks:"Open tasks", pt_recurring_tasks:"Repeating tasks", pt_projects:"Projects", pt_open_debts:"Open debts", pt_teams_owned:"Create teams", pt_team_members:"Team members", pt_voice:"Voice commands", pt_journal_ai:"AI day summary", pt_timer_rhythm:"Work/break rhythm", pt_stats_history:"Month and year statistics", pt_stats_csv:"Statistics file", pt_week:"week", pt_day:"day", plan_save_year:"Paying yearly you save — {list}", plan_free_has:"On Free — {list}",
   draft_restored:"Unsaved text restored", autosaved:"Saving…",
   mood_q:"How did you feel today?",
   mood_awful:"Awful", mood_low:"Low", mood_ok:"Okay",
@@ -2329,7 +2359,7 @@ const DICT = {
   team_project_ph:"Название проекта", team_open:"Открыть",
   dest_where:"Куда добавить", dest_personal:"Личное",
   team_badge:"команда",
-  privacy_line:"Ваши данные отделены от данных других пользователей и хранятся безопасно. 🔒",
+  privacy_line:"🔒 Ваши данные отделены от данных других пользователей и передаются по защищённому соединению (HTTPS). Их можно скачать или удалить в любой момент.",
   save:"Сохранить", cancel:"Отмена", close:"Закрыть", delete:"Удалить",
   edit:"Изменить", saved:"Сохранено", deleted:"Удалено", undo:"Вернуть",
   empty:"Пока пусто", error:"Произошла ошибка", offline:"Нет соединения",
@@ -2450,6 +2480,8 @@ const DICT = {
   money_edit:"Изменить запись",
   push_title:"Уведомления на телефоне", push_on:"Включены — напоминания приходят и на телефон.", push_ask:"Ещё не разрешены. Напоминания только во Входящих в приложении.", push_denied:"Выключены на телефоне. Включить можно в Настройках телефона → Приложения → ErnestOS → Уведомления.", push_no_build:"В этой версии нет уведомлений на телефон. Напоминания — во Входящих и в Telegram-боте.", push_allow:"Разрешить",
   plan_save_stars:"Экономия {n} ⭐ в год",
+  avatar_heic:"Это фото в HEIC, телефон не смог его прочитать. Выберите JPG или другое фото.", avatar_too_big:"Картинка слишком большая. Выберите другую.", avatar_server_old:"Сервер ещё не обновлён — загрузка фото заработает после обновления.", avatar_offline:"Нет связи — фото не сохранено.",
+  pt_habits:"Привычки", pt_active_tasks:"Открытые задачи", pt_recurring_tasks:"Повторяющиеся задачи", pt_projects:"Проекты", pt_open_debts:"Открытые долги", pt_teams_owned:"Создание команд", pt_team_members:"Участники команды", pt_voice:"Голосовые команды", pt_journal_ai:"AI-итоги дня", pt_timer_rhythm:"Ритм работа/перерыв", pt_stats_history:"Статистика за месяц и год", pt_stats_csv:"Файл статистики", pt_week:"нед", pt_day:"день", plan_save_year:"При оплате за год экономия — {list}", plan_free_has:"На Free — {list}",
   draft_restored:"Несохранённый текст восстановлен", autosaved:"Сохраняем…",
   mood_q:"Как вы себя чувствовали сегодня?",
   mood_awful:"Очень плохо", mood_low:"Плохо", mood_ok:"Нормально",
@@ -3282,6 +3314,60 @@ function planLine(){
   return p.until ? t("plan_until", {plan:PLAN_NAME[p.tier], n:p.days_left})
                  : t("plan_now", {plan:PLAN_NAME[p.tier]});
 }
+/* What each plan allows, row by row — the question people actually ask is
+   "what can't I do on Free". Numbers come from the server (/api/plans) and
+   fall back to the same table built into the app. */
+const PLAN_MATRIX_FALLBACK = {
+  limits:{habits:{free:3, pro:25, max:null}, active_tasks:{free:30, pro:null, max:null},
+          recurring_tasks:{free:3, pro:25, max:null}, projects:{free:1, pro:15, max:null},
+          open_debts:{free:3, pro:null, max:null}, teams_owned:{free:0, pro:2, max:10},
+          team_members:{free:8, pro:10, max:50}, voice_day:{free:null, pro:30, max:100},
+          voice_week:{free:5, pro:null, max:null}},
+  features:{journal_ai:["pro","max"], timer_rhythm:["pro","max"], stats_history:["pro","max"], stats_csv:["max"]},
+};
+function planTable(p, period, price){
+  const m = state.planMatrix || PLAN_MATRIX_FALLBACK;
+  const L = m.limits || {}, F = m.features || {};
+  const yes = `<span class="pt-yes" aria-label="✓">${icon("check", 15)}</span>`;
+  const no = `<span class="pt-no" aria-label="—">${icon("x", 13)}</span>`;
+  const num = v => v === null || v === undefined ? `<span class="pt-inf">∞</span>` : v === 0 ? no : `<b>${v}</b>`;
+  const voice = tier => {
+    const w = L.voice_week?.[tier], d = L.voice_day?.[tier];
+    if(w != null) return `<b>${w}</b><small>/${t("pt_week")}</small>`;
+    if(d != null) return `<b>${d}</b><small>/${t("pt_day")}</small>`;
+    return num(null);
+  };
+  const rows = [
+    ["habits", tier => num(L.habits?.[tier])],
+    ["active_tasks", tier => num(L.active_tasks?.[tier])],
+    ["recurring_tasks", tier => num(L.recurring_tasks?.[tier])],
+    ["projects", tier => num(L.projects?.[tier])],
+    ["open_debts", tier => num(L.open_debts?.[tier])],
+    ["teams_owned", tier => num(L.teams_owned?.[tier])],
+    ["team_members", tier => num(L.team_members?.[tier])],
+    ["voice", voice],
+    ["journal_ai", tier => (F.journal_ai || []).includes(tier) ? yes : no],
+    ["timer_rhythm", tier => (F.timer_rhythm || []).includes(tier) ? yes : no],
+    ["stats_history", tier => (F.stats_history || []).includes(tier) ? yes : no],
+    ["stats_csv", tier => (F.stats_csv || []).includes(tier) ? yes : no],
+  ];
+  const tiers = ["free", "pro", "max"];
+  const head = tier => { const x = tier === "free" ? null : price(tier, period);
+    return `<th class="c-${tier} ${p.tier === tier ? "cur" : ""}" scope="col">
+      <div class="pt-name">${PLAN_NAME[tier]}</div>
+      <div class="pt-price">${x ? `<span class="pstar">★</span>${x.stars}` : t("plan_free_price")}</div>
+      ${p.tier === tier ? `<span class="pbadge cur">${t("plan_current")}</span>`
+        : tier === "max" ? `<span class="pbadge rec">${t("plan_recommended")}</span>` : ""}</th>`; };
+  return `<div class="ptable-wrap"><table class="ptable">
+      <thead><tr><th scope="col"><span class="sr-only">${t("plan_title")}</span></th>${tiers.map(head).join("")}</tr></thead>
+      <tbody>${rows.map(([key, cell]) => `<tr><th scope="row">${t("pt_" + key)}</th>${
+        tiers.map(tier => `<td class="c-${tier} ${p.tier === tier ? "cur" : ""}">${cell(tier)}</td>`).join("")}</tr>`).join("")}
+      </tbody></table></div>
+    ${period === "year" ? (() => { const bits = ["pro", "max"].map(tier => {
+        const mo = price(tier, "month"), yr = price(tier, "year");
+        return mo && yr && mo.stars * 12 > yr.stars ? `${PLAN_NAME[tier]} ${mo.stars * 12 - yr.stars} ★` : ""; }).filter(Boolean);
+      return bits.length ? `<div class="psave">${t("plan_save_year", {list: bits.join(" · ")})}</div>` : ""; })() : ""}`;
+}
 /* A sheet title with its close cross on the right. */
 const sheetHead = (title) => `<div class="sheet-head"><h3>${title}</h3>
     <button class="iconbtn" data-act="close" aria-label="${t("close")}">${icon("x", 20)}</button></div>`;
@@ -3299,20 +3385,6 @@ function plansSheet(limit){
     const m = price(tier, "month"), y = price(tier, "year");
     return m && y ? Math.floor((1 - y.stars / (m.stars * 12)) * 100) : 0; }).filter(n => n > 0);
   const saving = saves.length ? Math.min(...saves) : 0;
-  const card = (tier, lines) => {
-    const cur = p.tier === tier, rec = tier === "max";
-    const x = tier === "free" ? null : price(tier, period);
-    return `<div class="pcard ${cur ? "cur" : ""} ${rec ? "rec" : ""}">
-      <div class="pcard-h"><b>${PLAN_NAME[tier]}</b>
-        ${cur ? `<span class="pbadge cur">${t("plan_current")}</span>`
-              : rec ? `<span class="pbadge rec">${t("plan_recommended")}</span>` : ""}
-        <span class="grow"></span>
-        <span class="pprice">${x ? `<span class="pstar">★</span>${x.stars}` : t("plan_free_price")}</span></div>
-      <ul>${lines.map(l => `<li><span class="pchk">${icon("check", 14)}</span>${esc(l)}</li>`).join("")}</ul>
-      ${x && period === "year" ? (() => { const m = price(tier, "month");
-        const saved = m ? m.stars * 12 - x.stars : 0;
-        return saved > 0 ? `<div class="psave">${t("plan_save_stars", {n:saved})}</div>` : ""; })() : ""}</div>`;
-  };
   const buy = tier => { const x = price(tier, period);
     if(!x) return "";
     return `<button class="btn ${tier === "max" ? "glow" : "secondary"}" data-act="plan-buy" data-key="${x.key}">
@@ -3333,11 +3405,7 @@ function plansSheet(limit){
            role="tab" aria-selected="${period === "year"}">${t("plan_period_year")}${
         saving ? `<span class="save">−${saving}%</span>` : ""}</div>
     </div>
-    <div class="pcards">
-      ${card("free", t("plan_free_lines").split("|"))}
-      ${card("pro", t("plan_pro_lines").split("|"))}
-      ${card("max", t("plan_max_lines").split("|"))}
-    </div>
+    ${planTable(p, period, price)}
     <div class="plan-buy">${buy("pro")}${buy("max")}</div>
     <div class="t3" style="margin-top:10px;font-size:11.5px;line-height:1.4">${t("plan_pay_how")}</div>
     ${p.channel && !p.channel_bonus_used ? `<button class="btn secondary" data-act="sub-join"
@@ -3396,32 +3464,65 @@ async function refreshInbox(){
 /* The picture the person chose in the app wins; then the photo Telegram
    hands the Mini App in initData; then one sent to the bot long ago; then the
    initial. One function, so Home, Profile and Settings never disagree. */
+/* One picture URL per picture, kept for four minutes (the token lives five):
+   a new token on every /api/me made each screen download the image again,
+   and that was what ran into the rate limit. */
+let avatarUrlCache = {key:"", url:"", at:0};
+function avatarUrl(me){
+  if(!me.avatar_token || !(me.avatar_custom || me.has_photo)) return "";
+  const key = `${me.telegram_id}|${me.avatar_custom || "tg"}`;
+  if(avatarUrlCache.key !== key || Date.now() - avatarUrlCache.at > 240000){
+    const v = me.avatar_custom ? `&v=${encodeURIComponent(me.avatar_custom)}` : "";
+    avatarUrlCache = {key, at:Date.now(),
+      url:`${API_BASE}/api/avatar?token=${encodeURIComponent(me.avatar_token)}${v}`};
+  }
+  return avatarUrlCache.url;
+}
 function avatarHtml(name){
   const me = state.me || {};
-  const token = encodeURIComponent(me.avatar_token || "");
   const tgPhoto = tg?.initDataUnsafe?.user?.photo_url;
   const src = state.avatarLocal
-    || (me.avatar_custom && me.avatar_token
-        ? `${API_BASE}/api/avatar?token=${token}&v=${encodeURIComponent(me.avatar_custom)}` : "")
+    || (me.avatar_custom ? avatarUrl(me) : "")
     || tgPhoto
-    || (me.has_photo && me.avatar_token ? `${API_BASE}/api/avatar?token=${token}` : "");
+    || (me.has_photo ? avatarUrl(me) : "");
   return src ? `<img src="${esc(src)}" alt="" />`
              : esc((name || me.first_name || "E").charAt(0).toUpperCase());
 }
-/* A phone photo is megabytes; the server keeps a 256 px square. */
-async function shrinkImage(file, size = 256){
-  const url = URL.createObjectURL(file);
+/* A phone photo is megabytes; the server keeps a small square. Decoded with
+   createImageBitmap where there is one (less memory, EXIF rotation applied),
+   and shrunk until it fits the server's 96 KB. */
+async function shrinkImage(file){
+  if(/hei[cf]/i.test(file.type || "") || /\.hei[cf]$/i.test(file.name || "")){
+    const e = new Error("heic"); e.code = "heic"; throw e;
+  }
+  let src, w, h, release = () => {};
+  if(window.createImageBitmap){
+    try{ src = await createImageBitmap(file, {imageOrientation:"from-image"}); }catch(_){ src = null; }
+    if(src){ w = src.width; h = src.height; release = () => src.close?.(); }
+  }
+  if(!src){
+    const url = URL.createObjectURL(file);
+    try{
+      src = await new Promise((ok, bad) => { const i = new Image();
+        i.onload = () => ok(i); i.onerror = () => bad(Object.assign(new Error("decode"), {code:"decode"}));
+        i.src = url; });
+    }finally{ setTimeout(() => URL.revokeObjectURL(url), 1000); }
+    w = src.naturalWidth; h = src.naturalHeight;
+  }
   try{
-    const img = await new Promise((ok, bad) => { const i = new Image();
-      i.onload = () => ok(i); i.onerror = bad; i.src = url; });
-    const side = Math.min(img.naturalWidth, img.naturalHeight);
-    if(!side) throw new Error("empty_image");
-    const c = document.createElement("canvas");
-    c.width = c.height = size;
-    c.getContext("2d").drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2,
-                                 side, side, 0, 0, size, size);
-    return c.toDataURL("image/jpeg", 0.85);
-  }finally{ URL.revokeObjectURL(url); }
+    const side = Math.min(w, h);
+    if(!side){ const e = new Error("decode"); e.code = "decode"; throw e; }
+    for(const [size, q] of [[256, .85], [256, .72], [192, .7], [160, .6]]){
+      const c = document.createElement("canvas");
+      c.width = c.height = size;
+      const g = c.getContext("2d");
+      g.imageSmoothingQuality = "high";
+      g.drawImage(src, (w - side) / 2, (h - side) / 2, side, side, 0, 0, size, size);
+      const out = c.toDataURL("image/jpeg", q);
+      if(out.length < 120000) return out;
+    }
+    const e = new Error("too_big"); e.code = "too_big"; throw e;
+  }finally{ release(); }
 }
 
 function headBlock(d){
@@ -3445,9 +3546,8 @@ function headBlock(d){
 
   // The quote is one quiet line when there is one. An empty one is not an
   // underlined grey link on the first screen — it is set in Settings.
-  // Shown only on an empty day, where it encourages; on a busy one it was a
-  // line between the person and their first task.
-  if(d.quote && (!d.now || d.now.kind === "clear")) h += `<div class="t2 small wrap" data-act="quote"
+  // The person's own line, under the greeting.
+  if(d.quote) h += `<div class="t2 small wrap" data-act="quote"
             style="margin-top:var(--s2)">“${esc(d.quote)}”</div>`;
 
   // Returning after a break gets one offer, not a wall of red.
@@ -7269,7 +7369,8 @@ function settingsSheet(){
   const profile = `<div class="set-profile">
       <label class="avatar xl" aria-label="${t("avatar_change")}">
         ${avatarHtml(me.first_name)}<span class="avatar-edit">✏️</span>
-        <input type="file" accept="image/*" data-act="avatar-pick" hidden /></label>
+        <input type="file" accept="image/jpeg,image/png,image/webp,image/*" data-act="avatar-pick"
+               class="avatar-input" aria-label="${t("avatar_change")}" /></label>
       <div class="grow" style="min-width:0">
         <div class="pname">${esc(name)}</div>
         <div class="t3 small">${me.username ? "@" + esc(me.username)
@@ -7284,7 +7385,10 @@ function settingsSheet(){
       <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
         <span class="plan-pill">${icon("star", 13)} ${PLAN_NAME[p.tier] || "Free"}</span>
         <span class="t2 small">${p.tier === "free" ? t("plan_current") : esc(planLine())}</span></div>
-      ${p.tier === "free" ? `<div class="t3 tiny" style="margin-top:4px">${t("plan_free_cta")}</div>` : ""}
+      ${p.tier === "free" ? `<div class="t3 tiny" style="margin-top:4px">${t("plan_free_has", {list:
+          [`${p.limits?.habits ?? 3} ${t("pt_habits").toLowerCase()}`,
+           `${p.limits?.projects ?? 1} ${t("pt_projects").toLowerCase()}`,
+           `${t("pt_voice").toLowerCase()} ${p.limits?.voice_week ?? 5}/${t("pt_week")}`].join(" · ")})}</div>` : ""}
       <button class="btn ${p.tier === "max" ? "secondary" : ""}" data-act="set-plan"
               style="margin-top:10px">${t(p.tier === "max" ? "plan_change" : "plan_upgrade")}</button>
     </div>` : "";
@@ -8693,15 +8797,31 @@ const A = {
   "avatar-pick": async el => {
     const file = el.files?.[0];
     el.value = "";
-    if(!file) return;
+    if(!file || state.avatarBusy) return;
+    const host = el.closest?.(".avatar");
+    state.avatarBusy = true;
+    host?.classList?.add("busy");
     try{
       const image = await shrinkImage(file);
       const r = await api("/api/avatar", {method:"POST", body:{image}});
       state.avatarLocal = image;
       Object.assign(state.me, {avatar_custom:r.avatar_custom, avatar_token:r.avatar_token, has_photo:true});
       notify("success"); toast(t("avatar_saved"));
+    }catch(e){
+      /* Say what actually went wrong, so the next try can succeed. */
+      const why = e?.code === "heic" ? "avatar_heic"
+        : e?.code === "decode" ? "avatar_bad"
+        : e?.code === "too_big" || e?.status === 413 ? "avatar_too_big"
+        : e?.status === 404 || e?.status === 405 ? "avatar_server_old"
+        : e?.status === 422 ? "avatar_bad"
+        : e?.status === 429 ? null
+        : !e?.status ? "avatar_offline" : null;
+      if(why) toast(t(why)); else handleError(e);
+    }finally{
+      state.avatarBusy = false;
+      host?.classList?.remove("busy");
       reopenSettings(); render();
-    }catch(e){ if(e?.status) handleError(e); else toast(t("avatar_bad")); }
+    }
   },
   "avatar-remove": async () => {
     try{
@@ -10353,7 +10473,14 @@ const A = {
   "set-privacy": () => { haptic(); openSettings("privacy"); },
   "privacy-info": () => openSheet(privacySheet()),
   sessions: () => openSheet(sessionsSheet()),
-  "set-plan": () => { haptic(); openSheet(plansSheet(), "plans"); },
+  "set-plan": () => {
+    haptic();
+    openSheet(plansSheet(), "plans");
+    if(!state.planMatrix) api("/api/plans").then(r => {
+      state.planMatrix = {limits:r.all_limits, features:r.all_features};
+      if(state.sheetView === "plans") openSheet(plansSheet(), "plans");
+    }).catch(() => {});
+  },
   "plan-buy": async el => {
     haptic("medium");
     let link;

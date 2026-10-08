@@ -6067,7 +6067,9 @@ def test_the_recovery_allowance_runs_out():
     uid = _progress_user()
     with SessionLocal() as s:
         p = svc._progress_row(s, uid)
-        start = svc.today_local() - timedelta(days=10)
+        # Inside one month: the allowance renews on the 1st, so a window
+        # counted back from today failed whenever it crossed a month end.
+        start = date(2026, 8, 10)
         svc._apply_day_to_streak(p, start, 80)
         for i in (1, 2):
             svc._apply_day_to_streak(p, start + timedelta(days=i), 10)
@@ -12201,3 +12203,20 @@ def test_the_export_can_be_put_back_together(fresh):
     task_ids = {t["id"] for t in data["tasks"]}
     project_ids = {p["id"] for p in data["projects"]}
     assert all(t["project_id"] in project_ids for t in data["tasks"] if t["project_id"]) or not task_ids
+
+
+def test_the_profile_picture_is_not_rate_limited_like_an_export():
+    """Shown on Home, Settings and Profile: at five a minute the second screen
+    got a 429 and the upload after it failed too."""
+    from types import SimpleNamespace as NS
+    rc = application._rate_class
+    req = lambda method, path: NS(method=method, url=NS(path=path))
+    assert rc(req("GET", "/api/avatar")) == "read"
+    assert rc(req("POST", "/api/avatar")) == "write"
+    assert rc(req("DELETE", "/api/avatar")) == "write"
+    assert rc(req("GET", "/api/stats/export")) == "heavy"
+    html = (ROOT / "webapp" / "index.html").read_text()
+    # One URL per picture while its token lives, so the phone can cache it.
+    assert "avatarUrlCache" in html and "240000" in html
+    # The picker is tapped directly, not reached through a hidden input.
+    assert 'data-act="avatar-pick" hidden' not in html

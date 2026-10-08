@@ -7159,8 +7159,12 @@ _buckets = limiter._hits
 
 def _rate_class(request: Request) -> str:
     path = request.url.path
-    if path.startswith(("/api/stats/export", "/api/avatar")):
+    if path.startswith("/api/stats/export"):
         return "heavy"
+    # The picture is shown on several screens; at five a minute (the old
+    # "heavy" class) the second screen already got a 429 and an empty circle,
+    # and the upload after it failed the same way. It is an ordinary read, and
+    # setting or removing it an ordinary write.
     if path == "/api/app/login":
         return "auth"
     return "read" if request.method == "GET" else "write"

@@ -169,8 +169,7 @@ T: dict[str, dict[str, str]] = {
         "now_prayer": "Namozni kiriting",
         "now_journal": "Kun yakuni",
         "now_clear": "Bugungi muhim ishlar tugadi",
-        "privacy_line": ("🔒 Ma'lumotlaringiz boshqa foydalanuvchilardan "
-                         "ajratilgan va xavfsiz saqlanadi."),
+        "privacy_line": "🔒 Ma'lumotlaringiz boshqa foydalanuvchilardan ajratilgan va himoyalangan ulanish (HTTPS) orqali uzatiladi. Istalgan vaqtda yuklab olasiz yoki butunlay o'chirasiz.",
         "stats_title": "📊 Statistika",
         "st_today": "📅 Bugun",
         "st_week": "📆 Oxirgi 7 kun",
@@ -548,8 +547,7 @@ T: dict[str, dict[str, str]] = {
         "now_prayer": "Log your prayers",
         "now_journal": "Close the day",
         "now_clear": "Today's important work is done",
-        "privacy_line": ("🔒 Your data is kept separate from other users' "
-                         "and stored securely."),
+        "privacy_line": "🔒 Your data is kept separate from other users' and travels over a secure connection (HTTPS). Download it or delete it for good at any time.",
         "stats_title": "📊 Statistics",
         "st_today": "📅 Today",
         "st_week": "📆 Last 7 days",
@@ -914,8 +912,7 @@ T: dict[str, dict[str, str]] = {
         "now_prayer": "Отметьте намазы",
         "now_journal": "Итоги дня",
         "now_clear": "Важные дела на сегодня закрыты",
-        "privacy_line": ("🔒 Ваши данные отделены от данных других "
-                         "пользователей и хранятся безопасно."),
+        "privacy_line": '🔒 Ваши данные отделены от данных других пользователей и передаются по защищённому соединению (HTTPS). Их можно скачать или удалить в любой момент.',
         "stats_title": "📊 Статистика",
         "st_today": "📅 Сегодня",
         "st_week": "📆 Последние 7 дней",
