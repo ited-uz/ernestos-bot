@@ -889,6 +889,11 @@ nav:empty{display:none}
 #fab{position:fixed;right:16px;bottom:calc(var(--nav-h, 64px) + 16px);z-index:41;
      display:grid;gap:12px;justify-items:center}
 #fab:empty{display:none}
+/* v16 (audit 01/18): while the page scrolls down the + steps out of the
+   way, so it never sits over a row being read; it is back on the first
+   scroll up, near the top and at the end of the page. */
+#fab{transition:transform 260ms var(--ease-out, ease), opacity 200ms}
+#fab.away{transform:translateY(calc(100% + 24px));opacity:0;pointer-events:none}
 #fab button{border:0;border-radius:50%;display:grid;place-items:center;cursor:pointer;
             box-shadow:0 8px 20px -6px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.15)}
 #fab .fab-add{width:62px;height:62px;background:var(--primary-fill);color:var(--on-primary)}
@@ -2152,6 +2157,8 @@ const DICT = {
   group_settings:"Guruh sozlamalari va a'zolar",
   now_ai_label:"AI «Hozir» tavsiyasi", now_ai_enable:"AI tavsiyasini yoqish", now_ai_consent:"Hozir nima qilishni AI tanlashi uchun bugungi ochiq vazifalaringiz nomlari AI xizmatiga (Groq yoki Google, AQSh) yuboriladi. Tanlov faqat sizning vazifalaringiz orasidan bo'ladi va hech narsa o'zgartirilmaydi.",
   voice_queued:"Internet yo'q — ovoz telefonda saqlandi. Internet kelishi bilan yuboriladi va tasdiqlash uchun shu yerda chiqadi.", voice_synced_journal:"Kun xulosasi uchun ovozli yozuv tayyor — tekshirib, saqlang",
+  team_work_closed:"Guruh ishlari {done}/{total} yopildi", team_checkins:"Shaxsiy belgilar {done}/{total}", my_group_tasks:"Guruhdagi ishlarim",
+  team_responsible:"Mas'ullar", team_remove_note:"Bu guruhdan barcha a'zolar uchun olib tashlanadi.",
   draft_restored:"Saqlanmagan matn tiklandi", autosaved:"Saqlanmoqda…",
   mood_q:"Bugun o'zingizni qanday his qildingiz?",
   mood_awful:"Juda yomon", mood_low:"Yomon", mood_ok:"O'rtacha",
@@ -2675,6 +2682,8 @@ const DICT = {
   group_settings:"Group settings and members",
   now_ai_label:"AI «Now» suggestion", now_ai_enable:"Turn on the AI suggestion", now_ai_consent:"To let AI choose what to do now, the names of today's open tasks are sent to an AI service (Groq or Google, USA). It only chooses among your own tasks and changes nothing.",
   voice_queued:"No connection — the recording is kept on this phone. It is sent as soon as you are back online and shows up here to confirm.", voice_synced_journal:"Your voice note for the day summary is ready — check it and save",
+  team_work_closed:"Group work {done}/{total} closed", team_checkins:"Personal check-ins {done}/{total}", my_group_tasks:"My group work",
+  team_responsible:"Assigned to", team_remove_note:"This is removed from the group for every member.",
   draft_restored:"Unsaved text restored", autosaved:"Saving…",
   mood_q:"How did you feel today?",
   mood_awful:"Awful", mood_low:"Low", mood_ok:"Okay",
@@ -3192,6 +3201,8 @@ const DICT = {
   group_settings:"Настройки и участники группы",
   now_ai_label:"AI-совет «Сейчас»", now_ai_enable:"Включить AI-совет", now_ai_consent:"Чтобы AI выбрал, чем заняться сейчас, названия сегодняшних открытых задач отправляются AI-сервису (Groq или Google, США). Он выбирает только из ваших задач и ничего не меняет.",
   voice_queued:"Нет сети — запись сохранена на телефоне. Отправим, как только появится интернет, и покажем здесь для подтверждения.", voice_synced_journal:"Голосовая запись для итогов дня готова — проверьте и сохраните",
+  team_work_closed:"Дела группы закрыто {done}/{total}", team_checkins:"Личные отметки {done}/{total}", my_group_tasks:"Мои дела в группах",
+  team_responsible:"Ответственные", team_remove_note:"Это удалится из группы для всех участников.",
   draft_restored:"Несохранённый текст восстановлен", autosaved:"Сохраняем…",
   mood_q:"Как вы себя чувствовали сегодня?",
   mood_awful:"Очень плохо", mood_low:"Плохо", mood_ok:"Нормально",
@@ -4878,10 +4889,15 @@ const TEAM_TABS = [["today", "team_tab_today"], ["work", "team_tab_work"],
 
 /* "5 ta ish · 10 ta tasdiq · 9 tasi qolgan" — three numbers that can be
    counted by hand, instead of a percentage of nobody knows what (#25). */
+/* Audit V27: two different things, each named — the group's work (items
+   closed for everyone) and the members' own check-ins. A pooled task is one
+   item, never one per member. */
 function teamUnits(units){
   if(!units || !units.items) return t("team_nothing");
-  return t("team_units", {items: units.items, confirmations: units.confirmations,
-                          left: units.left});
+  if(units.closed === undefined)
+    return t("team_units", {items: units.items, confirmations: units.confirmations, left: units.left});
+  return `${t("team_work_closed", {done: units.closed, total: units.items})} · ${
+    t("team_checkins", {done: units.confirmed ?? (units.confirmations - units.left), total: units.confirmations})}`;
 }
 
 function teamTodayTab(team, board){
@@ -5140,12 +5156,20 @@ function teamItemMeta(x, kind){
 
 function sharedRow(x, kind, label, board, team){
   const me = state.me?.telegram_id;
-  const others = (board?.members || []).filter(m => m.user_id !== me);
-  const marks = others.map(m => {
-    const got = (x.done_by || []).includes(m.user_id);
-    return `<span class="${got ? "band-great" : "muted"}" style="font-size:12px">${
-      got ? "✓" : "○"} ${esc(m.name)}</span>`;
-  }).join(" ");
+  /* Audit V25: who it is for and who has done it, as two named lines — a
+     bare "○ Gulyora" read as either. */
+  const members = board?.members || [];
+  const nameOf = id => esc(members.find(m => m.user_id === id)?.name || "?");
+  const owed = Array.isArray(x.owed_by) && x.owed_by.length ? x.owed_by
+    : members.map(m => m.user_id);
+  const doneIds = (x.done_by || []).filter(id => owed.includes(id) || x.completion === "any");
+  const waiting = x.completion === "any" && doneIds.length ? []
+    : owed.filter(id => !doneIds.includes(id) && id !== me);
+  const marks = [
+    owed.length > 1 || x.completion === "assignees" ? `<span>${t("team_responsible")} · ${owed.map(nameOf).join(", ")}</span>` : "",
+    doneIds.length ? `<span class="band-great">✓ ${doneIds.map(nameOf).join(", ")}</span>` : "",
+    waiting.length ? `<span>${t("team_waiting_on")} · ${waiting.map(nameOf).join(", ")}</span>` : "",
+  ].filter(Boolean).join("<br>");
   const meta = teamItemMeta(x, kind);
   const canRemove = !x.protected && !x.mirrored
     && (x.created_by === me || team?.permissions?.manage_items);
@@ -5157,8 +5181,8 @@ function sharedRow(x, kind, label, board, team){
         ${meta.length ? `<div class="muted sm">${meta.join(" · ")}</div>` : ""}
         ${marks ? `<div class="muted sm">${marks}</div>` : ""}
       </div>
-      ${canRemove ? `<button class="ghost" data-act="team-remove" data-kind="${kind}"
-          data-id="${x.id}" aria-label="${t("delete")}">✕</button>` : ""}
+      ${canRemove ? `<button class="iconbtn sm bare" data-act="team-remove-ask" data-kind="${kind}"
+          data-id="${x.id}" data-title="${esc(label)}" aria-label="${t("delete")}">${icon("dots", 16)}</button>` : ""}
     </div>`;
 }
 
@@ -8087,7 +8111,7 @@ SCREENS.stats = () => {
       ${sum.habits_total !== undefined
         ? countTile("habits", t("habits"), sum.habits_done || 0, sum.habits_total || 0, today.habits, st.deltas.habits, "of_habits", "weighted_habits_n")
         : tile("habits", t("habits"), pct(today.habits), today.habits || 0, st.deltas.habits, "")}
-      ${tile("team", t("team"), pct(today.team),
+      ${tile("team", t("my_group_tasks"), pct(today.team),
              today.team || 0, st.deltas.team,
              sum.team_total ? `${sum.team_done}/${sum.team_total}`
                : today.team === null || today.team === undefined ? t("team_none_today") : "")}
@@ -10686,6 +10710,23 @@ document.addEventListener("visibilitychange", () => {
   if(loadQueue().length) flushQueue();
   flushVoice();
 });
+let fabY = 0, fabTick = false;
+window.addEventListener("scroll", () => {
+  if(fabTick) return;
+  fabTick = true;
+  requestAnimationFrame(() => {
+    fabTick = false;
+    const fab = document.getElementById("fab");
+    if(!fab) return;
+    const y = window.scrollY;
+    const end = window.innerHeight + y >= document.documentElement.scrollHeight - 24;
+    const down = y > fabY + 6, up = y < fabY - 6;
+    if(y < 80 || end || up) fab.classList.remove("away");
+    else if(down) fab.classList.add("away");
+    if(down || up) fabY = y;
+  });
+}, {passive:true});
+
 /* Phone app: a push while open refreshes the bell; a tapped one opens the
    inbox; coming back to the app catches up on what arrived meanwhile. */
 window.addEventListener("ernest:push", () => refreshInbox());
@@ -11236,6 +11277,16 @@ const A = {
     save(() => api(`/api/teams/${team.id}/${kind}s`, {method:"POST", body}), "team");
   },
 
+  /* Audit V26: removing a shared item is said in words and confirmed — it
+     goes for every member, not just the one who tapped. */
+  "team-remove-ask": el => {
+    haptic();
+    openSheet(`${sheetHead(esc(el.dataset.title || ""))}
+      <p class="small t2">${t("team_remove_note")}</p>
+      <button class="btn danger" data-act="team-remove" data-kind="${esc(el.dataset.kind)}" data-id="${esc(el.dataset.id)}">
+        ${icon("trash", 16)} ${t("delete")}</button>
+      <button class="btn secondary" data-act="close" style="margin-top:8px">${t("cancel")}</button>`);
+  },
   "team-remove": el => {
     haptic();
     const kind = el.dataset.kind;

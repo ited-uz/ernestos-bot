@@ -180,7 +180,7 @@
     permissions:{manage_items:true},
     board:{
       members:[{user_id:1, name:"Ernest"}, {user_id:2, name:"Gulyora"}],
-      units:{items:4, confirmations:8, left:3},
+      units:{items:4, closed:1, confirmations:8, confirmed:5, left:3},
       periods:{
         day:[{user_id:1, name:"Ernest", percent:50, delta:10, done:2, total:4},
              {user_id:2, name:"Gulyora", percent:75, delta:-5, done:3, total:4}],

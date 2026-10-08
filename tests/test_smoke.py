@@ -12916,3 +12916,22 @@ def test_the_offline_queue_takes_every_record_but_not_sign_in_or_payments():
     assert "if(queueIfOffline(e)){ lastDraft = null; closeSheet(); render(); }" in html
     assert 'q.path === "/api/quick"' in html and "offline: true, recorded_day: todayISO()" in html
     assert "async function flushVoice()" in html and 'indexedDB.open(VOICE_DB, 1)' in html
+
+
+def test_a_groups_work_and_its_members_check_ins_are_counted_apart(client):
+    """Audit V27/T53: one pooled ('any') task is one item of group work, not
+    one per member; it closes for the group when either member ticks it,
+    while an 'all' task stays open until both have."""
+    one, two, team_id = _pair(client)
+    a = Caller(client, {"id": one, "first_name": "Ernest"})
+    today = svc.today_local().isoformat()
+    shop = a.post(f"/api/teams/{team_id}/tasks", {"title": "Oziq-ovqat", "deadline": today,
+                                                  "completion": "any"}).json()["id"]
+    a.post(f"/api/teams/{team_id}/tasks", {"title": "Kechki sayr", "deadline": today,
+                                           "completion": "all"})
+    assert a.post(f"/api/teams/tasks/{shop}/toggle", {}).status_code == 200
+    teams = a.get("/api/teams").json()["teams"]
+    units = next(t for t in teams if t["id"] == team_id)["board"]["units"]
+    assert units["items"] == 2 and units["closed"] == 1, units
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert 't("team_work_closed", {done: units.closed, total: units.items})' in html

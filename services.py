@@ -9013,6 +9013,9 @@ def team_day_summary(s: Session, team_id: int, day: date | None = None, *,
         "total": len(detail["tasks"]) + len(detail["habits"]),
         # The three numbers the screen needs to stay countable by hand.
         "units": {"items": len(detail["tasks"]) + len(detail["habits"]),
+                  # Items closed for the whole group (audit V27): every member
+                  # who owed it is done — under "any", one is enough.
+                  "closed": sum(1 for x in detail["tasks"] + detail["habits"] if not x["missing"]),
                   "confirmations": confirmations, "confirmed": confirmed,
                   "left": confirmations - confirmed},
     }
@@ -9198,6 +9201,7 @@ def team_scoreboard(s: Session, user_id: int, team_id: int, *,
             "open": open_items, "done": done_items,
             "open_count": len(open_items), "done_count": len(done_items),
             "units": {"items": len(open_items) + len(done_items),
+                      "closed": len(done_items),
                       "confirmations": confirmations, "confirmed": confirmed,
                       "left": confirmations - confirmed}}
 
