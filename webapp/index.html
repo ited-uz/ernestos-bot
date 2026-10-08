@@ -290,7 +290,7 @@ h3{font-size:18px;font-weight:640;letter-spacing:-.3px;line-height:1.3;
 .hero{background:var(--hero-fill);color:var(--hero-text);
       border:var(--border-w) solid var(--hero-border);
       border-radius:var(--radius-lg);
-      padding:var(--s3) var(--s3) var(--s3);box-shadow:var(--shadow-2);
+      padding:14px var(--s3) 14px;box-shadow:var(--shadow-2);
       position:relative;overflow:hidden}
 .hero .t2{color:var(--text-2)} .hero .t3{color:var(--text-3)}
 /* The ErnestOS signature: the Now card sits on a hairline of today's
@@ -301,13 +301,14 @@ h3{font-size:18px;font-weight:640;letter-spacing:-.3px;line-height:1.3;
 .now-rail > span{display:block;height:100%;background:var(--primary);
                  border-radius:0 var(--radius-pill) var(--radius-pill) 0;
                  transition:width var(--motion)}
-.now-title{font-size:19px;font-weight:640;line-height:1.3;letter-spacing:-.2px;
-           margin-top:var(--s1);overflow-wrap:anywhere}
-.now-meta{display:flex;flex-wrap:wrap;gap:4px var(--s2);margin-top:var(--s1);
-          font-size:14px;color:var(--text-2);align-items:center}
-.now-why{font-size:13px;color:var(--text-3);margin-top:4px}
-.now-acts{display:flex;gap:var(--s1);margin-top:var(--s3);flex-wrap:wrap}
-.now-acts .btn{flex:1 1 160px}
+.now-title{font-size:18px;font-weight:650;line-height:1.3;letter-spacing:-.2px;
+           margin-top:6px;overflow-wrap:anywhere;
+           display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.now-meta{display:flex;flex-wrap:nowrap;gap:var(--s1);margin-top:6px;overflow:hidden;
+          font-size:12.5px;color:var(--text-3);align-items:center;white-space:nowrap}
+.now-why{font-size:12.5px;color:var(--text-3);margin-top:4px}
+.now-acts{display:flex;gap:var(--s1);margin-top:var(--s2);flex-wrap:wrap}
+.now-acts .btn{flex:1 1 160px;min-height:42px}
 
 .stack{display:flex;flex-direction:column;gap:var(--s1)}
 .divide > * + *{border-top:var(--border-w) solid var(--border);
@@ -590,7 +591,7 @@ label{display:block;font-size:14px;color:var(--text-2);margin:var(--s3) 0 6px;
    by a quiet edge; urgent work is never signalled by colour alone. */
 .trow{align-items:flex-start;border-left-width:3px}
 .trow.pri-high{border-left-color:var(--danger)}
-.trow.pri-medium{border-left-color:color-mix(in srgb,var(--warn) 30%,var(--border))}
+.trow.pri-medium{border-left-color:var(--border-2)}
 .trow.pri-low{border-left-color:var(--border)}
 .trow > .check{margin-top:1px}
 .trow .tt{font-weight:560;line-height:1.4;overflow-wrap:anywhere;cursor:pointer;
@@ -846,8 +847,6 @@ nav:empty{display:none}
 #fab button{border:0;border-radius:50%;display:grid;place-items:center;cursor:pointer;
             box-shadow:0 8px 20px -6px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.15)}
 #fab .fab-add{width:62px;height:62px;background:var(--primary-fill);color:var(--on-primary)}
-#fab .fab-mic{width:48px;height:48px;background:var(--surface);color:var(--primary);
-              border:var(--border-w) solid var(--border)}
 #fab button:active{transform:scale(.94)}
 #fab .fab-add{background:linear-gradient(145deg, color-mix(in srgb, var(--primary-fill) 82%, var(--surface) 18%), var(--primary-fill))}
 .voice-box{display:grid;justify-items:center;gap:10px;padding:8px 0 4px;text-align:center}
@@ -1053,12 +1052,12 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
 .now-label{font-size:15px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--primary)}
 .now-swap{color:var(--primary);background:color-mix(in srgb, var(--primary) 10%, transparent)}
 /* The person's own line, under the Now card. */
-.quote-card{position:relative;margin-top:var(--s2);padding:14px 16px 14px 44px;border-radius:var(--radius);
-  background:linear-gradient(135deg, color-mix(in srgb, var(--primary) 9%, var(--surface)), var(--surface));
-  border:var(--border-w) solid color-mix(in srgb, var(--primary) 18%, var(--border));cursor:pointer}
+.quote-card{position:relative;margin-top:var(--s2);padding:10px 14px 10px 40px;border-radius:var(--radius);
+  background:color-mix(in srgb, var(--primary) 5%, var(--surface));
+  border:var(--border-w) solid var(--border);cursor:pointer}
 .quote-card .qmark{position:absolute;left:14px;top:4px;font-size:40px;line-height:1;font-family:Georgia,serif;
   color:var(--primary);opacity:.55}
-.quote-card .qtext{font-size:15px;line-height:1.45;font-style:italic;color:var(--text);text-wrap:pretty}
+.quote-card .qtext{font-size:14px;line-height:1.45;font-style:italic;color:var(--text-2);text-wrap:pretty}
 /* First open: everything but Now waits, blurred, until a tap. */
 .home-rest{transition:filter 420ms var(--ease-out, ease), opacity 420ms var(--ease-out, ease)}
 .home-rest.veiled{filter:blur(7px) saturate(.8);opacity:.55;pointer-events:none;user-select:none}
@@ -1133,8 +1132,10 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
   animation:spin .8s linear infinite}
 .set-profile .pname{font-size:19px;font-weight:700;line-height:1.2}
 .set-card{margin-top:var(--s2)}
-.set-signout{margin-top:var(--s4);background:var(--danger)!important;color:var(--on-primary)!important;
-  border:0!important}
+.set-signout{margin-top:var(--s3);min-height:52px;border:var(--border-w) solid var(--border-2);
+  background:transparent;color:var(--text);font-weight:600}
+.set-signout .itile{color:var(--text-2);background:var(--surface-2)}
+.set-edit{padding-left:0;min-height:30px;font-size:13px;margin-top:2px}
 .set-delete{display:block;margin:10px auto 0;background:none;border:0;padding:8px;
   color:var(--text-3);font-size:13px;cursor:pointer;min-height:40px}
 .ref-steps{display:grid;gap:10px;margin-top:var(--s2)}
@@ -1215,14 +1216,22 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
   outline:2px solid var(--primary);outline-offset:2px}
 
 /* ---- Home: today as counts, one row, tap for Statistics ---- */
-.counts{display:flex;align-items:center;gap:var(--s1) var(--s3);flex-wrap:wrap;
-        margin-top:var(--s2);padding:var(--s2) 44px var(--s2) var(--s3);min-height:48px;
+.counts{display:block;margin-top:var(--s2);padding:12px var(--s3);min-height:48px;
         position:relative;
         background:var(--surface);border:var(--border-w) solid var(--border);
         border-radius:var(--radius);font-size:14.5px;color:var(--text-2);
         cursor:pointer}
-.counts b{color:var(--text);font-weight:640;font-variant-numeric:tabular-nums}
-.counts > span{white-space:nowrap}
+.counts-head{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--text)}
+.counts-streak{display:inline-flex;align-items:center;gap:3px;font-size:12px;font-weight:600;color:var(--text-3)}
+.counts-streak b{color:var(--warn)}
+.counts-grid{display:grid;grid-template-columns:repeat(auto-fit, minmax(64px, 1fr));gap:12px;margin-top:10px}
+.cnt{display:flex;flex-direction:column;gap:3px;min-width:0}
+.cnt-l{font-size:12px;color:var(--text-3)}
+.cnt b{font-size:18px;font-weight:800;color:var(--text);line-height:1.1}
+.cnt-bar{display:block;height:4px;border-radius:var(--radius-pill);overflow:hidden;
+  background:color-mix(in srgb, var(--text) 9%, transparent)}
+.cnt-bar i{display:block;height:100%;width:calc(var(--w, 0) * 1%);border-radius:inherit;background:var(--ok);transition:width 600ms var(--ease-out)}
+.quick-voice{margin-bottom:12px;min-height:48px;gap:8px}
 .counts > .i{position:absolute;right:var(--s3);top:50%;margin-top:-7.5px}
 .head .iconbtn.add{width:40px;height:40px;min-width:40px;border-radius:12px}
 .counts:hover{border-color:var(--border-2)}
@@ -1783,7 +1792,7 @@ const DICT = {
   now_wake:"Turdim", now_prayer:"Namozni kiriting", now_journal:"Kun yakuni",
   now_clear:"Bugungi muhim ishlar tugadi", now_clear_hint:"Xohlasangiz yana ish qo'shing",
   now_open:"Ochish", now_done:"Bajarildi",
-  quote_ph:"O'zingizga kuch beradigan gap", quote_add:"Quote qo'shish",
+  quote_ph:"O'zingizga kuch beradigan gap", quote_add:"Iqtibosni tahrirlash",
   overall:"Umumiy", main_task:"Bugungi asosiy ish", main_goal:"Hafta maqsadi", overall_means:"Bu foiz — bugungi rejaning qancha bajarilgani, kun qanchalik muhim o'tgani emas. Yuklamasi turli kunlarni shu raqam bilan solishtirmang.", overall_plan_size:"Bugun rejada {n} ta vazifa.", streak_short:"Ketma-ket", prayer:"Namoz",
   overall_sub:"Kun · hafta · oy", today_parts:"Bugungi ko'rsatkichlar",
   overall_section:"Umumiy ko'rsatkichlar",
@@ -1967,6 +1976,14 @@ const DICT = {
   promo_err_not_found:"Bunday promokod yo'q. Harflarini tekshiring.", promo_err_inactive:"Bu promokod o'chirilgan.",
   promo_err_expired:"Bu promokodning muddati tugagan.", promo_err_exhausted:"Bu promokod tugab bo'lgan.",
   promo_err_already_used:"Siz bu promokoddan foydalangansiz.", promo_err_plans_off:"Tariflar hozircha o'chiq.",
+  profile_edit:"Profilni tahrirlash", appearance_only:"Ko'rinish", set_account_group:"Hisob va ma'lumotlar",
+  fresh_start_hint:"Kechikkan ishlarni bir bosishda tartibga solish", feedback_hint:"Taklif yoki xato haqida yozing",
+  notify_morning_short:"Ertalab", notify_evening_short:"Kechqurun", notify_reminders_on:"eslatmalar yoqilgan",
+  notify_reminders_off:"eslatmalar o'chiq", modules_none:"Hech biri yoqilmagan",
+  account_privacy_moved:"Eksport, maxfiylik va akkauntni o'chirish — «Maxfiylik va ma'lumotlar»da.",
+  ref_offer:"{n} do'st taklif qiling — {reward} oling", ref_prize:"{n} oy {plan}",
+  ref_progress:"{q} ta do'st ro'yxatdan o'tdi · Mukofot uchun yana {left} ta kerak",
+  today_progress:"Bugungi progress", home_all_tasks:"Barchasini ko'rish ({n} ta vazifa)", quick_voice_btn:"Ovoz bilan kiritish",
   draft_restored:"Saqlanmagan matn tiklandi", autosaved:"Saqlanmoqda…",
   mood_q:"Bugun o'zingizni qanday his qildingiz?",
   mood_awful:"Juda yomon", mood_low:"Yomon", mood_ok:"O'rtacha",
@@ -2006,7 +2023,7 @@ const DICT = {
   timezone_hint:"Hisobotlar shu mintaqa vaqtida yuboriladi",
   appearance_hint:"Til, rejim va tema",
   notify_hint:"Hisobot vaqtlari va eslatmalar",
-  account_hint:"Ma'lumotlar, maxfiylik va export",
+  account_hint:"Ism, profil rasmi, jins",
   profile:"Profil", member:"Foydalanuvchi", photo_hint:"Telegram rasmi ishlatiladi",
   data_privacy:"Ma'lumotlar va maxfiylik",
   plan_title:"Tarif", plan_now:"{plan} tarifi", plan_until:"{plan} · yana {n} kun",
@@ -2037,7 +2054,7 @@ const DICT = {
   avatar_remove:"Rasmni olib tashlash",
   avatar_saved:"Rasm saqlandi",
   avatar_bad:"Bu rasmni saqlab bo'lmadi",
-  ref_grow_title:"ErnestOS'ni ulashing va Max oling",
+  ref_grow_title:"Do'stlarni taklif qiling — Pro va Max oling",
   ref_step_n:"{n} do'st",
   ref_months:"+{n} oy {plan}",
   ref_got:"Olindi ✓",
@@ -2063,7 +2080,7 @@ const DICT = {
   app_sign_out:"Ilovadan chiqish", app_sign_out_ask:"Bu telefondan chiqasizmi? Ma'lumotlaringiz saqlanadi.",
   export_data:"Ma'lumotlarimni export qilish", export_sent:"Fayl botga yuborildi",
   privacy_info:"Maxfiylik haqida",
-  privacy_data:"Maxfiylik va ma'lumotlar", privacy_hint:"Ma'lumotlaringiz sizniki",
+  privacy_data:"Maxfiylik va ma'lumotlar", privacy_hint:"Eksport, maxfiylik, akkauntni o'chirish",
   /* Referral. "Tasdiqlangan" — do'st ro'yxatdan o'tib, ErnestOS'dan
      haqiqatan foydalana boshlagach hisobga olinadi. */
   ref_title:"Do'stlarni taklif qilish", ref_hint:"Havolangiz va progress",
@@ -2208,7 +2225,7 @@ const DICT = {
   setup_title:"Sozlash botda yakunlanadi",
   setup_body:"ErnestOS botiga qayting va bir necha savolga javob bering — keyin hammasi shu yerda ochiladi.",
   back_to_bot:"Botga qaytish",
-  modules:"Modullar", modules_hint:"Nimani kuzatasiz", mod_wake:"Erta turish", mod_prayer:"Namoz",
+  modules:"Kuzatiladigan bo'limlar", modules_hint:"Nimani kuzatasiz", mod_wake:"Erta turish", mod_prayer:"Namoz",
   mod_journal:"Kun xulosasi",
   modules_note:"O'chirilgan modul tarixini saqlaydi. Qayta yoqsangiz, o'chiq turgan kunlar «bajarilmadi» deb sanalmaydi.",
   wake_enter:"Vaqtni kiritish", wake_enter_hint:"Qachon turganingizni yozing — tugmani bosgan vaqtingiz emas",
@@ -2289,7 +2306,7 @@ const DICT = {
   now_wake:"I'm up", now_prayer:"Log your prayers", now_journal:"Close the day",
   now_clear:"Today's important work is done", now_clear_hint:"Add something else if you want",
   now_open:"Open", now_done:"Done",
-  quote_ph:"Something that keeps you going", quote_add:"Add a quote",
+  quote_ph:"Something that keeps you going", quote_add:"Edit the quote",
   overall:"Overall", main_task:"Today's main task", main_goal:"Week goal", overall_means:"This is how much of today's plan got done — not how much the day mattered. Days with different loads are not comparable by it.", overall_plan_size:"Tasks planned today: {n}.", streak_short:"Streak", prayer:"Prayer",
   overall_sub:"Day · week · month", today_parts:"Today's numbers",
   overall_section:"Overall numbers",
@@ -2467,6 +2484,14 @@ const DICT = {
   promo_err_not_found:"No such promo code. Check the letters.", promo_err_inactive:"This promo code is switched off.",
   promo_err_expired:"This promo code has expired.", promo_err_exhausted:"This promo code has been used up.",
   promo_err_already_used:"You have already used this code.", promo_err_plans_off:"Plans are off for now.",
+  profile_edit:"Edit profile", appearance_only:"Appearance", set_account_group:"Account and data",
+  fresh_start_hint:"Sort out late work in one tap", feedback_hint:"Write about an idea or a bug",
+  notify_morning_short:"Morning", notify_evening_short:"Evening", notify_reminders_on:"reminders on",
+  notify_reminders_off:"reminders off", modules_none:"None switched on",
+  account_privacy_moved:"Export, privacy and deleting the account are in «Privacy and data».",
+  ref_offer:"Invite {n} friends — get {reward}", ref_prize:"{n} month {plan}",
+  ref_progress:"{q} friends signed up · {left} more for the reward",
+  today_progress:"Today's progress", home_all_tasks:"See all ({n} tasks)", quick_voice_btn:"Add by voice",
   draft_restored:"Unsaved text restored", autosaved:"Saving…",
   mood_q:"How did you feel today?",
   mood_awful:"Awful", mood_low:"Low", mood_ok:"Okay",
@@ -2503,7 +2528,7 @@ const DICT = {
   timezone_hint:"Reports are sent on this zone's clock",
   appearance_hint:"Language, mode and theme",
   notify_hint:"Report times and reminders",
-  account_hint:"Data, privacy and export",
+  account_hint:"Name, profile photo, gender",
   profile:"Profile", member:"Member", photo_hint:"Your Telegram photo is used",
   data_privacy:"Data and privacy",
   plan_title:"Plan", plan_now:"{plan} plan", plan_until:"{plan} · {n} days left",
@@ -2534,7 +2559,7 @@ const DICT = {
   avatar_remove:"Remove photo",
   avatar_saved:"Photo saved",
   avatar_bad:"This picture could not be saved",
-  ref_grow_title:"Share ErnestOS, get Max",
+  ref_grow_title:"Invite friends — get Pro and Max",
   ref_step_n:"{n} friends",
   ref_months:"+{n} mo {plan}",
   ref_got:"Received ✓",
@@ -2560,7 +2585,7 @@ const DICT = {
   app_sign_out:"Sign out of the app", app_sign_out_ask:"Sign out on this phone? Your data stays.",
   export_data:"Export my data", export_sent:"File sent to the bot chat",
   privacy_info:"About privacy",
-  privacy_data:"Privacy & data", privacy_hint:"Your data belongs to you",
+  privacy_data:"Privacy & data", privacy_hint:"Export, privacy, deleting the account",
   ref_title:"Invite friends", ref_hint:"Your link and progress",
   ref_head:"🎁 Invite your friends",
   ref_body:"If ErnestOS is useful to you, share it with your friends.",
@@ -2702,7 +2727,7 @@ const DICT = {
   setup_title:"Setup finishes in the bot",
   setup_body:"Go back to the ErnestOS bot and answer a few questions — then everything opens here.",
   back_to_bot:"Back to the bot",
-  modules:"Modules", modules_hint:"What you keep track of", mod_wake:"Early rising", mod_prayer:"Prayer",
+  modules:"Tracked sections", modules_hint:"What you keep track of", mod_wake:"Early rising", mod_prayer:"Prayer",
   mod_journal:"Day summary",
   modules_note:"A module switched off keeps its history. Switched back on, the days it was off are not counted as missed.",
   wake_enter:"Enter the time", wake_enter_hint:"When you actually got up — not when you pressed the button",
@@ -2783,7 +2808,7 @@ const DICT = {
   now_wake:"Я встал", now_prayer:"Отметьте намазы", now_journal:"Итоги дня",
   now_clear:"Важные дела на сегодня закрыты", now_clear_hint:"Можно добавить ещё",
   now_open:"Открыть", now_done:"Выполнено",
-  quote_ph:"Фраза, которая вас держит", quote_add:"Добавить цитату",
+  quote_ph:"Фраза, которая вас держит", quote_add:"Изменить цитату",
   overall:"Общий результат", main_task:"Главное дело дня", main_goal:"Цель недели", overall_means:"Это доля выполненного плана на сегодня, а не ценность дня. Дни с разной нагрузкой по нему не сравнить.", overall_plan_size:"Задач на сегодня: {n}.", streak_short:"Серия", prayer:"Намаз",
   overall_sub:"День · неделя · месяц", today_parts:"Показатели дня",
   overall_section:"Общие показатели",
@@ -2961,6 +2986,14 @@ const DICT = {
   promo_err_not_found:"Такого промокода нет. Проверьте буквы.", promo_err_inactive:"Этот промокод отключён.",
   promo_err_expired:"Срок этого промокода истёк.", promo_err_exhausted:"Этот промокод закончился.",
   promo_err_already_used:"Вы уже использовали этот промокод.", promo_err_plans_off:"Тарифы пока выключены.",
+  profile_edit:"Редактировать профиль", appearance_only:"Оформление", set_account_group:"Аккаунт и данные",
+  fresh_start_hint:"Разобрать просроченное одним касанием", feedback_hint:"Напишите об идее или ошибке",
+  notify_morning_short:"Утром", notify_evening_short:"Вечером", notify_reminders_on:"напоминания включены",
+  notify_reminders_off:"напоминания выключены", modules_none:"Ничего не включено",
+  account_privacy_moved:"Экспорт, приватность и удаление аккаунта — в «Приватность и данные».",
+  ref_offer:"Пригласите {n} друзей — получите {reward}", ref_prize:"{n} мес. {plan}",
+  ref_progress:"Зарегистрировались {q} друзей · для награды нужно ещё {left}",
+  today_progress:"Прогресс за сегодня", home_all_tasks:"Показать все ({n} задач)", quick_voice_btn:"Добавить голосом",
   draft_restored:"Несохранённый текст восстановлен", autosaved:"Сохраняем…",
   mood_q:"Как вы себя чувствовали сегодня?",
   mood_awful:"Очень плохо", mood_low:"Плохо", mood_ok:"Нормально",
@@ -2997,7 +3030,7 @@ const DICT = {
   timezone_hint:"Отчёты приходят по времени этой зоны",
   appearance_hint:"Язык, режим и тема",
   notify_hint:"Время отчётов и напоминания",
-  account_hint:"Данные, приватность и экспорт",
+  account_hint:"Имя, фото профиля, пол",
   profile:"Профиль", member:"Участник", photo_hint:"Используется фото из Telegram",
   data_privacy:"Данные и приватность",
   plan_title:"Тариф", plan_now:"Тариф {plan}", plan_until:"{plan} · ещё {n} дн.",
@@ -3028,7 +3061,7 @@ const DICT = {
   avatar_remove:"Убрать фото",
   avatar_saved:"Фото сохранено",
   avatar_bad:"Не удалось сохранить фото",
-  ref_grow_title:"Поделитесь ErnestOS — получите Max",
+  ref_grow_title:"Приглашайте друзей — получайте Pro и Max",
   ref_step_n:"{n} друзей",
   ref_months:"+{n} мес {plan}",
   ref_got:"Получено ✓",
@@ -3054,7 +3087,7 @@ const DICT = {
   app_sign_out:"Выйти из приложения", app_sign_out_ask:"Выйти на этом телефоне? Данные сохранятся.",
   export_data:"Экспорт моих данных", export_sent:"Файл отправлен в чат бота",
   privacy_info:"О приватности",
-  privacy_data:"Приватность и данные", privacy_hint:"Ваши данные принадлежат вам",
+  privacy_data:"Приватность и данные", privacy_hint:"Экспорт, приватность, удаление аккаунта",
   ref_title:"Пригласить друзей", ref_hint:"Ваша ссылка и прогресс",
   ref_head:"🎁 Пригласите друзей",
   ref_body:"Если ErnestOS вам полезен — поделитесь с друзьями.",
@@ -3196,7 +3229,7 @@ const DICT = {
   setup_title:"Настройка завершается в боте",
   setup_body:"Вернитесь в бот ErnestOS и ответьте на несколько вопросов — затем здесь откроется всё.",
   back_to_bot:"Вернуться в бот",
-  modules:"Модули", modules_hint:"Что вы отслеживаете", mod_wake:"Ранний подъём", mod_prayer:"Намаз",
+  modules:"Отслеживаемые разделы", modules_hint:"Что вы отслеживаете", mod_wake:"Ранний подъём", mod_prayer:"Намаз",
   mod_journal:"Итоги дня",
   modules_note:"Выключенный модуль хранит историю. При включении дни, когда он был выключен, не считаются пропущенными.",
   wake_enter:"Ввести время", wake_enter_hint:"Когда вы действительно встали — а не когда нажали кнопку",
@@ -3286,6 +3319,7 @@ const themeMeta = name => THEMES.find(x => x.id === themeOf(name));
 const ICONS = {
   dots:'<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
   home:'<path d="M3.6 10.4 12 3.6l8.4 6.8"/><path d="M6 9.6V20h12V9.6"/>',
+  camera:'<path d="M4 8.5a2 2 0 0 1 2-2h2.2l1.4-2h4.8l1.4 2H18a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/><circle cx="12" cy="13" r="3.4"/>',
   check:'<path d="M4.5 12.5 9 17 19.5 6.5"/>',
   list:'<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
   chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
@@ -3766,29 +3800,32 @@ function capacitySheet(){
 function countsRow(d){
   const c = d.counts;
   if(!c) return "";
+  /* "Bugungi progress": one card, each part as a bold count over its own
+     small track. Counts, not percentages — what was promised and what is
+     done; the weighted score lives on Statistics. */
   const parts = [];
-  if(c.tasks.total) parts.push(`${t("cnt_tasks")}
-    <b>${c.tasks.done}/${c.tasks.total}</b>`);
-  // Late or undated work finished today is work done too, shown beside the
-  // day's promises rather than mixed into them.
-  const extraDone = (c.tasks.finished || 0) - (c.tasks.done || 0);
-  if(extraDone > 0) parts.push(`${c.tasks.total ? "+" : `${t("cnt_tasks")} `}<b>${extraDone}</b> ${t("cnt_finished")}`);
-  if(c.habits.total) parts.push(`${t("cnt_habits")}
-    <b>${c.habits.done}/${c.habits.total}</b>`);
-  if(c.team?.total) parts.push(`${t("team")}
-    <b>${c.team.done}/${c.team.total}</b>`);
+  const add = (label, done, total, text) => parts.push({label, done, total, text});
+  if(c.tasks.total) add(t("cnt_tasks"), c.tasks.done, c.tasks.total);
+  if(c.habits.total) add(t("cnt_habits"), c.habits.done, c.habits.total);
+  if(c.team?.total) add(t("team"), c.team.done, c.team.total);
   if(c.prayer.owed !== false && d.modules?.prayer !== false)
-    parts.push(`${t("cnt_prayer")}
-      <b>${c.prayer.excused ? "✓" : `${c.prayer.done}/${c.prayer.total}`}</b>`);
-  // The habit streak — every scheduled habit done — named, so it is not
-  // read as the score-based "steady days" on the Steps screen (audit #8).
-  if(d.streak) parts.push(`<span title="${esc(t("streak_habits_hint"))}">${icon("flame", 15)} <b>${d.streak}</b>
-    <span class="t3 tiny">${t("streak_habits")}</span></span>`);
+    add(t("cnt_prayer"), c.prayer.excused ? 1 : c.prayer.done, c.prayer.excused ? 1 : c.prayer.total,
+        c.prayer.excused ? "✓" : null);
+  // Late or undated work finished today is work done too.
+  const extraDone = (c.tasks.finished || 0) - (c.tasks.done || 0);
   if(!parts.length) return "";
   return `<div class="counts" data-act="nav" data-screen="stats" role="button"
       tabindex="0" aria-label="${t("stats")}">
-      ${parts.map(p => `<span>${p}</span>`).join("")}
-      ${icon("chevron", 15)}</div>`;
+      <div class="counts-head"><span class="grow">${t("today_progress")}</span>
+        ${d.streak ? `<span class="counts-streak" title="${esc(t("streak_habits_hint"))}">${icon("flame", 13)}
+          <b>${d.streak}</b> ${t("streak_habits")}</span>` : ""}${icon("chevron", 15)}</div>
+      <div class="counts-grid">${parts.map(x => `<div class="cnt">
+        <span class="cnt-l">${x.label}</span>
+        <b class="num">${x.text || `${x.done}/${x.total}`}</b>
+        <i class="cnt-bar"><i style="--w:${x.total ? Math.round(Math.min(1, x.done / x.total) * 100) : 0}"></i></i>
+      </div>`).join("")}</div>
+      ${extraDone > 0 ? `<div class="t3 tiny" style="margin-top:6px">+${extraDone} ${t("cnt_finished")}</div>` : ""}
+    </div>`;
 }
 
 /* The privacy promise, once, at the foot of the first screen — not a fixed
@@ -4276,7 +4313,7 @@ function nowBlock(d){
   const meta = [];
   if(n.due_time) meta.push(`<span class="num">${icon("clock", 14)} ${esc(n.due_time)}</span>`);
   else if(n.meta && n.kind !== "task") meta.push(`<span>${esc(n.meta)}</span>`);
-  if(n.priority === "high") meta.push(`<span class="tag hot">${t("high")}</span>`);
+  if(n.priority === "high") meta.push(`<span class="tag hot">${icon("flame", 12)} ${t("high")}</span>`);
   if(n.project) meta.push(`<span>${icon("folder", 14)} ${esc(n.project)}</span>`);
   if(n.source === "team") meta.push(`<span>${icon("users", 14)} ${esc(n.team_name || "")}</span>`);
 
@@ -4362,7 +4399,7 @@ function tasksBlock(d){
   const more = all.length - 3;
   return h + all.slice(0, 3).map(x => taskRow(x, {hideDate: true})).join("")
     + (more > 0 ? `<div class="more-link" data-act="nav" data-screen="tasks" role="button" tabindex="0">
-        ${t("home_more_tasks", {n: more})} →</div>` : "") + shared;
+        ${t("home_all_tasks", {n: all.length})} →</div>` : "") + shared;
 }
 
 function calendarBlock(){
@@ -6390,7 +6427,7 @@ function taskRow(task, opts){
   // every row is noise that pushes the useful details off the line.
   // Urgency is written, not only painted: the edge colour repeats the word.
   if(task.priority === "high" && task.status !== "done")
-    meta.unshift(`<span class="tag hot">${t("high")}</span>`);
+    meta.unshift(`<span class="tag hot">${icon("flame", 12)} ${t("high")}</span>`);
   if(task.blocked && task.status !== "done")
     meta.unshift(`<span class="tag">⏳ ${t(task.recheck ? "block_recheck" : "block_" + task.blocked)}</span>`);
   if(task.project && !opts?.hideProject) meta.push(esc(task.project));
@@ -7275,7 +7312,9 @@ function voiceConsentSheet(){
 
 function quickSheet(){
   const habit = state.quickType === "habit";
-  return `<div class="seg big" style="margin-bottom:12px">
+  const voice = state.me?.agent?.available ? `<button class="btn secondary quick-voice" data-act="voice-start">
+      ${icon("mic", 18)} ${t("quick_voice_btn")}</button>` : "";
+  return `${voice}<div class="seg big" style="margin-bottom:12px">
       <div class="${habit ? "" : "on"}" data-act="quick-type" data-value="task">${icon("check", 16)} ${t("task_word")}</div>
       <div class="${habit ? "on" : ""}" data-act="quick-type" data-value="habit">${icon("repeat", 16)} ${t("habit_word")}</div>
     </div>
@@ -8404,6 +8443,26 @@ function freshPreviewSheet(p, mode){
    where finding the timezone meant scrolling past every theme in the app.
    The split is by the question being asked: how it looks, when it speaks,
    and what it holds. */
+/* The value each settings row is set to, shown under its name (ST07). */
+const LANG_NAME = {uz:"O'zbekcha", en:"English", ru:"Русский"};
+function lookLine(){
+  const theme = themeLocked() ? FREE_THEME : themeOf(state.me?.theme);
+  const mode = themeLocked() ? "light" : (state.appearance || "auto");
+  return `${THEME_NAMES[theme]} · ${t(mode)}`;
+}
+function notifyLine(){
+  const p = state.me?.prefs || {};
+  const bits = [];
+  if(p.morning_report !== false && p.morning_time) bits.push(`${t("notify_morning_short")} ${p.morning_time}`);
+  if(p.evening_report !== false && p.evening_time) bits.push(`${t("notify_evening_short")} ${p.evening_time}`);
+  bits.push(t(p.task_reminders === false ? "notify_reminders_off" : "notify_reminders_on"));
+  return bits.join(" · ");
+}
+function modulesLine(){
+  const m = state.me?.modules || {};
+  const on = ["wake", "prayer", "journal"].filter(k => m[k]).map(k => t("mod_" + k));
+  return on.length ? on.join(", ") : t("modules_none");
+}
 function settingsSheet(){
   const me = state.me || {};
   /* An icon tile per row, in its own colour, the way a native settings list
@@ -8421,13 +8480,14 @@ function settingsSheet(){
      handle — so nobody has to guess which account this is. */
   const profile = `<div class="set-profile">
       <label class="avatar xl" aria-label="${t("avatar_change")}">
-        ${avatarHtml(me.first_name)}<span class="avatar-edit">✏️</span>
+        ${avatarHtml(me.first_name)}<span class="avatar-edit">${icon("camera", 14)}</span>
         <input type="file" accept="image/jpeg,image/png,image/webp,image/*" data-act="avatar-pick"
                class="avatar-input" aria-label="${t("avatar_change")}" /></label>
       <div class="grow" style="min-width:0">
         <div class="pname">${esc(name)}</div>
         <div class="t3 small">${me.username ? "@" + esc(me.username)
                                             : `${t("member")} #${me.member_no ?? "—"}`}</div>
+        <button class="btn text sm set-edit" data-act="set-account">${icon("edit", 14)} ${t("profile_edit")}</button>
         ${me.avatar_custom ? `<button class="btn text" data-act="avatar-remove"
             style="padding-left:0;min-height:32px;font-size:13px">${t("avatar_remove")}</button>` : ""}
       </div></div>`;
@@ -8457,17 +8517,22 @@ function settingsSheet(){
     ${invite}
 
     <label>${t("set_app")}</label>
-    ${row("set-look", "sun", "tone-4", t("appearance"), t("appearance_hint"))}
-    ${row("set-notify", "bell", "tone-1", t("notifications"), t("notify_hint"))}
-    ${row("set-modules", "check", "tone-4", t("modules"), t("modules_hint"))}
-    ${row("set-account", "user", "tone-3", t("account"), t("account_hint"))}
+    ${row("set-lang-open", "globe", "tone-1", t("language"), LANG_NAME[me.language] || LANG_NAME.uz)}
+    ${row("set-look", "sun", "tone-4", t("appearance_only"), lookLine())}
+    ${row("set-notify", "bell", "tone-1", t("notifications"), notifyLine())}
+    ${row("set-modules", "check", "tone-4", t("modules"), modulesLine())}
     ${row("quote", "edit", "tone-2", t("quote_add"),
           state.home?.quote ? `“${esc(state.home.quote)}”` : t("quote_ph"))}
-    ${row("set-privacy", "shield", "tone-5", t("privacy_data"), t("privacy_hint"))}
 
-    <button class="btn set-signout" data-act="sign-out">${t("sign_out")}</button>
+    <label>${t("set_account_group")}</label>
+    ${row("set-account", "user", "tone-3", t("account"), t("account_hint"))}
+    ${row("set-privacy", "shield", "tone-5", t("privacy_data"), t("privacy_hint"))}
+    ${row("fresh-start", "repeat", "tone-4", t("fresh_start"), t("fresh_start_hint"))}
+    ${row("feedback", "message", "tone-3", t("feedback"), t("feedback_hint"))}
+
+    <div class="item pressable set-signout" data-act="sign-out">
+      <span class="itile">${icon("back", 17)}</span><div class="grow">${t("sign_out")}</div></div>
     ${IS_APP ? "" : `<div class="t3 tiny" style="text-align:center;margin-top:6px">${t("sign_out_tg_hint")}</div>`}
-    <button class="set-delete" data-act="delete-account">${t("delete_account_short")}</button>
     <div class="brandline"><img src="${BRAND_MARK}" alt="" width="22" height="22" />
       <span>ErnestOS${me.version ? ` v${esc(me.version)} · ${esc(me.build || "")}` : ""}</span></div>`;
 }
@@ -8480,8 +8545,9 @@ function settingsInvite(row){
   const q = r?.counts?.qualified ?? 0;
   const next = steps.find(x => !x.reached);
   return steps.length ? `<div class="tinted block tone-2 pressable set-card" id="set-invite" data-act="set-referral">
-      <div class="bh"><span class="itile">${icon("gift", 17)}</span><div class="grow"><div class="bt">${t("ref_grow_title")}</div>
-        <div class="t2 tiny">${next ? `${q} / ${next.target} → ${refReward(next)}` : t("ref_all_done")}</div></div>
+      <div class="bh"><span class="itile">${icon("gift", 17)}</span><div class="grow"><div class="bt">${next
+          ? t("ref_offer", {n: next.target, reward: refPrize(next)}) : t("ref_grow_title")}</div>
+        <div class="t2 tiny">${next ? t("ref_progress", {q, left: Math.max(0, next.target - q)}) : t("ref_all_done")}</div></div>
         ${icon("chevron", 15)}</div>
       <div style="margin-top:8px">${bar(next ? Math.min(100, Math.round(q / next.target * 100)) : 100)}</div>
     </div>` : `<div id="set-invite">${row("set-referral", "gift", "tone-2", t("ref_title"), t("ref_hint"))}</div>`;
@@ -8490,12 +8556,14 @@ function settingsInvite(row){
 /* The ErnestOS mark, small enough to carry inline (no extra request). */
 const BRAND_MARK = "data:image/png;base64,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";
 const refReward = x => t("ref_months", {n:Math.max(1, Math.round(x.days / 30)), plan:PLAN_NAME[x.tier] || "Pro"});
+//: "1 oy Pro" — what the next step really gives (never a bigger promise).
+const refPrize = x => t("ref_prize", {n:Math.max(1, Math.round(x.days / 30)), plan:PLAN_NAME[x.tier] || "Pro"});
 
 /* Which of the four is on screen, so that a control which saves and
    re-renders lands the user back where they were rather than at the top of
    the settings list. */
 const SETTINGS_VIEWS = {
-  root: () => settingsSheet(), look: () => appearanceSheet(),
+  root: () => settingsSheet(), look: () => appearanceSheet(), lang: () => langSheet(),
   notify: () => notifySheet(), account: () => accountSheet(),
   privacy: () => privacyDataSheet(), referral: () => referralSheet(),
   modules: () => modulesSheet(),
@@ -8525,19 +8593,22 @@ function reopenSettings(){
   if(sheetOpen()) openSettings(state.settingsView || "root");
 }
 
+/* The language on its own (ST05): it is not part of how the app looks. */
+function langSheet(){
+  const me = state.me || {};
+  return `${sheetHead(`${icon("lang", 18)} ${t("language")}`)}
+    <div class="stack">${[["uz","🇺🇿 O'zbekcha"],["en","🇬🇧 English"],["ru","🇷🇺 Русский"]].map(([c, l]) =>
+      `<div class="item pressable ${me.language === c ? "on" : ""}" data-act="set-lang" data-value="${c}" style="min-height:52px">
+        <div class="grow" style="font-weight:600">${l}</div>${me.language === c ? icon("check", 17) : ""}</div>`).join("")}</div>
+    <button class="btn secondary" data-act="settings" style="margin-top:14px">${t("back")}</button>`;
+}
 /* Language, light or dark, and the theme — everything about how it looks. */
 function appearanceSheet(){
   const me = state.me || {};
   const locked = themeLocked();
-  const langs = [["uz","🇺🇿 O'zbek"],["en","🇬🇧 English"],["ru","🇷🇺 Русский"]];
 
   return `
-    <h3>${icon("sun", 18)} ${t("appearance")}</h3>
-
-    <label>${t("language")}</label>
-    <div class="chips">${langs.map(([c, l]) =>
-      `<div class="chip sm ${me.language === c ? "on" : ""}" data-act="set-lang"
-        data-value="${c}">${l}</div>`).join("")}</div>
+    <h3>${icon("sun", 18)} ${t("appearance_only")}</h3>
 
     <label>${t("mode")}${locked ? ` <span class="wlock">${icon("shield", 11)} Pro</span>` : ""}</label>
     <div class="seg" style="margin-bottom:var(--s2)">
@@ -8710,16 +8781,8 @@ function accountSheet(){
              data-act="set-gender" data-value="female">${t("female")}</div>
       </div></div>` : ""}
 
-    <label>${t("data_privacy")}</label>
-    ${row("export", "download", "tone-1", t("export_data"))}
-    ${row("privacy-info", "shield", "tone-5", t("privacy_info"))}
-    ${row("fresh-start", "repeat", "tone-4", t("fresh_start"))}
-    ${row("feedback", "message", "tone-3", t("feedback"))}
-    ${IS_APP ? row("app-sign-out", "user", "tone-2", t("app_sign_out")) : ""}
-    <div class="item pressable" style="min-height:48px;margin-top:var(--s2)"
-         data-act="delete-account">
-      <span style="color:var(--danger)">${icon("trash", 17)}</span>
-      <div class="grow" style="color:var(--danger)">${t("delete_account")}</div></div>
+    <div class="t3 tiny" style="margin-top:var(--s2)">${t("account_privacy_moved")}</div>
+    ${row("set-privacy", "shield", "tone-5", t("privacy_data"))}
 
     <button class="btn secondary" data-act="settings" style="margin-top:14px">
       ${t("back")}</button>`;
@@ -9519,9 +9582,9 @@ function render(){
   /* Prayer and the journal are filled in place; a + over them only covered
      their last row and the Save/History buttons. */
   const noFab = state.screen === "habits" && (state.tab === "prayer" || state.tab === "journal");
+  /* One button (D04): + opens the quick sheet, where typing and speaking
+     sit side by side; the separate microphone covered list rows. */
   document.getElementById("fab").innerHTML = chromeOff || noFab ? "" : `
-    ${state.me?.agent?.available && state.screen !== "money" ? `<button class="fab-mic" data-act="voice-start"
-        aria-label="${t("quick_voice")}">${icon("mic", 22)}</button>` : ""}
     ${fabAdd()}`;
 
   syncShell();
@@ -10090,6 +10153,7 @@ const A = {
     if(state.settingsView === "notify") reopenSettings();
   },
   "set-account": () => { haptic(); openSettings("account"); },
+  "set-lang-open": () => { haptic(); openSettings("lang"); },
 
   /* ---- quick capture: one field, five seconds ---- */
   /* Picking a destination re-renders the open sheet rather than the screen

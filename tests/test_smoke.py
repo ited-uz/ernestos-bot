@@ -4752,10 +4752,11 @@ def test_the_brand_surface_control_is_visible_on_it():
 
 
 def test_the_floating_add_never_covers_the_page():
-    """v12.2: one + (type) and a microphone (speak) bottom right, as the owner
-    asked. The v9.1 problems stay solved: nothing floats over a blank page
-    while loading, the page is padded so the last row stays reachable, and
-    the buttons step aside for a sheet or the keyboard."""
+    """v15 (audit D03): one + bottom right; speaking moved inside the quick
+    sheet it opens, so two round buttons no longer stack over the last row.
+    The v9.1 problems stay solved: nothing floats over a blank page while
+    loading, the page is padded so the last row stays reachable, and the
+    button steps aside for a sheet or the keyboard."""
     html = (ROOT / "webapp" / "index.html").read_text()
     assert 'id="fab"' in html and "#fab:empty{display:none}" in html
     render = html[html.index('document.getElementById("fab").innerHTML'):]
@@ -4763,7 +4764,9 @@ def test_the_floating_add_never_covers_the_page():
     assert "chromeOff" in first and first.endswith('? "" : `'), "fab drawn while loading"
     # Not over prayer or the journal, which are filled in place.
     assert 'state.tab === "prayer" || state.tab === "journal"' in html
-    assert "fabAdd()" in render[:700] and 'data-act="voice-start"' in render[:700]
+    assert "fabAdd()" in render[:700] and 'data-act="voice-start"' not in render[:700]
+    quick = html[html.index("function quickSheet("):]
+    assert 'data-act="voice-start"' in quick[:quick.index("\n}\n")], "voice lost"
     fab = html[html.index("function fabAdd(){"):]
     fab = fab[:fab.index("\n}\n")]
     assert '"quick-add"' in fab and '"money-add"' in fab, "on Money the + adds money"
@@ -5837,16 +5840,16 @@ def test_referral_work_did_not_change_the_new_user_defaults():
 # ==========================================================================
 
 def test_every_priority_paints_its_own_edge():
-    """Red, amber, and a quiet default — not one colour and two blanks.
+    """Red for urgent, a quiet grey for the default, the plain border for low.
 
-    Only `.pri-high` was styled, so "is this urgent?" had exactly two answers
-    on screen: red, or unknown. Medium is deliberately the weaker of the two
-    colours — it is what every task is born with, and at full strength it would
-    drown the red it exists to set off.
+    Only `.pri-high` was styled once, so "is this urgent?" had two answers:
+    red, or unknown. v15 (audit D05): medium was amber, but amber next to red
+    on every row read as "everything is a warning". Medium is what every task
+    is born with, so it gets a neutral stripe and red keeps its meaning.
     """
     html = (ROOT / "webapp" / "index.html").read_text()
     assert ".trow.pri-high{border-left-color:var(--danger)}" in html
-    assert ".trow.pri-medium{border-left-color:color-mix(" in html
+    assert ".trow.pri-medium{border-left-color:var(--border-2)}" in html
     assert ".trow.pri-low{border-left-color:var(--border)}" in html
     # And the row still carries the class the CSS hangs off.
     assert 'return `<div class="trow pri-${task.priority}">' in html
