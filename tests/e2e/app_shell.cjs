@@ -87,6 +87,16 @@ const step = async (name, fn) => {
     await shot('03-home');
   });
 
+  await step('Opening the app shows Now in focus; the rest waits until a tap', async () => {
+    await page.evaluate(() => goto('home'));
+    await page.evaluate(() => { state.homeVeil = true; render(); });
+    assert.ok(await page.locator('.home-rest.veiled').count(), 'the rest is veiled');
+    assert.equal(await page.locator('.home-rest').getAttribute('inert'), '', 'veiled part cannot be tapped');
+    await page.click('.unveil');
+    await page.waitForFunction(() => !document.querySelector('.home-rest.veiled'));
+    assert.ok(await page.locator('.now-swap svg').count(), 'swap is an icon');
+  });
+
   await step('A habit tick reaches the server through the app token', async () => {
     await page.evaluate(() => goto('habits', { tab: 'habits' }));
     await page.waitForTimeout(500);

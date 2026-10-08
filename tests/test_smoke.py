@@ -1114,16 +1114,17 @@ def test_the_privacy_line_is_said_once_on_home():
     assert html.count('class="privacy-strip"') == 1
     assert html.count("privacyNote()") == 2, \
         "the privacy note is defined once and rendered once, on Home"
-    assert "+ privacyNote();" in html.split("SCREENS.home")[1][:2000], \
+    assert "+ privacyNote()" in html.split("SCREENS.home")[1][:2400], \
         "the privacy note left Home"
     rule = html.split(".privacy-strip{")[1].split("}")[0]
     assert "position:fixed" not in rule, "the privacy line is chrome again"
     # "Fully protected" was a promise no product can keep, and the one
     # sentence a user is entitled to hold you to. What replaced it is what is
     # actually true, and is also what they wanted to know.
-    for lang, phrase in (("uz", "boshqa foydalanuvchilardan ajratilgan"),
-                         ("en", "separate from other users"),
-                         ("ru", "отделены от данных других")):
+    # Short, as the owner asked: "protected", never "fully protected".
+    for lang, phrase in (("uz", "Ma'lumotlaringiz himoyalangan"),
+                         ("en", "Your data is protected"),
+                         ("ru", "Ваши данные защищены")):
         assert phrase in html, f"{lang} privacy line missing"
         assert phrase in application.t(lang, "privacy_line")
 
@@ -1149,7 +1150,8 @@ def test_no_unimplemented_security_claim_is_made():
     text = ((ROOT / "webapp" / "index.html").read_text()
             + (ROOT / "app.py").read_text()).lower()
     for claim in ("end-to-end", "e2e encrypt", "shifrlangan", "зашифрован",
-                  "hatto admin", "даже админ"):
+                  "hatto admin", "даже админ", "to'liq himoyalangan",
+                  "fully protected", "полностью защищ", "aes-256", "hatto biz"):
         assert claim not in text, f"unimplemented security claim: {claim!r}"
 
 

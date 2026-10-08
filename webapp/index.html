@@ -1010,6 +1010,25 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
 .coin-item:last-child{border-bottom:0}
 .coin-item.off b{color:var(--text-2)}
 .coin-buy{white-space:nowrap;min-width:84px;font-variant-numeric:tabular-nums}
+/* Now: the label carries the card, the swap is a quiet icon. */
+.now-label{font-size:15px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--primary)}
+.now-swap{color:var(--primary);background:color-mix(in srgb, var(--primary) 10%, transparent)}
+/* The person's own line, under the Now card. */
+.quote-card{position:relative;margin-top:var(--s2);padding:14px 16px 14px 44px;border-radius:var(--radius);
+  background:linear-gradient(135deg, color-mix(in srgb, var(--primary) 9%, var(--surface)), var(--surface));
+  border:var(--border-w) solid color-mix(in srgb, var(--primary) 18%, var(--border));cursor:pointer}
+.quote-card .qmark{position:absolute;left:14px;top:4px;font-size:40px;line-height:1;font-family:Georgia,serif;
+  color:var(--primary);opacity:.55}
+.quote-card .qtext{font-size:15px;line-height:1.45;font-style:italic;color:var(--text);text-wrap:pretty}
+/* First open: everything but Now waits, blurred, until a tap. */
+.home-rest{transition:filter 420ms var(--ease-out, ease), opacity 420ms var(--ease-out, ease)}
+.home-rest.veiled{filter:blur(7px) saturate(.8);opacity:.55;pointer-events:none;user-select:none}
+.unveil{position:sticky;bottom:calc(var(--shell-b, 58px) + 18px);display:flex;align-items:center;gap:6px;
+  margin:-120px auto 40px;z-index:5;padding:12px 18px;border-radius:9999px;border:0;cursor:pointer;
+  font:inherit;font-size:14.5px;font-weight:650;color:var(--on-primary);background:var(--primary-fill);
+  box-shadow:var(--accent-glow, 0 8px 24px -8px rgba(0,0,0,.4))}
+.unveil .i{transform:rotate(90deg)}
+@media (prefers-reduced-motion:no-preference){ .unveil{animation:rise 400ms var(--ease-out, ease) 300ms backwards} }
 .sr-only{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 /* A sheet's own close: a cross in the corner, so the bottom of the sheet is
    free for what the sheet is for. */
@@ -1512,7 +1531,7 @@ const DICT = {
   team_project_ph:"Loyiha nomi", team_open:"Ochish",
   dest_where:"Qayerga qo'shilsin", dest_personal:"Shaxsiy",
   team_badge:"jamoa",
-  privacy_line:"🔒 Ma'lumotlaringiz boshqa foydalanuvchilardan ajratilgan va himoyalangan ulanish (HTTPS) orqali uzatiladi. Istalgan vaqtda yuklab olasiz yoki butunlay o'chirasiz.",
+  privacy_line:"🔒 Ma'lumotlaringiz himoyalangan.",
   /* common */
   save:"Saqlash", cancel:"Bekor qilish", close:"Yopish", delete:"O'chirish",
   edit:"Tahrirlash", saved:"Saqlandi", deleted:"O'chirildi", undo:"Qaytarish",
@@ -1645,6 +1664,7 @@ const DICT = {
   pt_habits:"Odatlar", pt_active_tasks:"Faol vazifalar", pt_recurring_tasks:"Takrorlanuvchi vazifalar", pt_projects:"Loyihalar", pt_open_debts:"Ochiq qarzlar", pt_teams_owned:"Jamoa yaratish", pt_team_members:"Jamoa a'zolari", pt_voice:"Ovozli buyruq", pt_journal_ai:"AI kun xulosasi", pt_timer_rhythm:"Ish/tanaffus ritmi", pt_stats_history:"Oylik va yillik statistika", pt_stats_csv:"Statistika fayli", pt_week:"hafta", pt_day:"kun", plan_save_year:"Yillik to'lovda tejaysiz — {list}", plan_free_has:"Free'da — {list}",
   rank_title:"Reyting", rank_among:"{n} kishi orasida", rank_top:"Siz eng faol {n}% ichidasiz", rank_top_short:"TOP {n}%", rank_week:"Haftalik", rank_best:"Eng yaxshi", rank_move:"O'zgarish", rank_private:"Faqat o'rningiz ko'rinadi — boshqalarning ismi va natijasi hech kimga ko'rsatilmaydi.", rank_soon:"Reytingga {n} kundan keyin kirasiz", rank_soon_hint:"7 kunlik faollikdan keyin o'rningiz hisoblanadi.", steps_unavailable:"Qadam ma'lumoti hali kelmadi. Server yangilangach ko'rinadi.",
   coins_title:"Coinlar", coins_shop:"Coin do'koni", coins_today:"Bugun +{n} / {cap} coin", coins_hint:"Vazifa, odat, namoz va xulosa coin beradi", coins_how:"Har {n} ball = 1 coin. Vazifa, odat, namoz, xulosa va hafta maqsadi ball beradi — kuniga {cap} coingacha, yutuqlar alohida. Bir narsa ikki marta hisoblanmaydi.", coins_item_plan:"{plan} — {n} kun", coins_item_freeze:"Seriyani muzlatish +1", coins_plan_hint:"Tarifingizga qo'shiladi, hozirgisidan keyin", coins_freeze_hint:"Shu oy bir zaif kun seriyani uzmaydi", coins_need:"Yana {n} coin kerak", coins_confirm:"Tasdiqlash ", coins_bought:"Sotib olindi ✓", coins_plans_off:"Tariflar hozir o'chiq", coins_freeze_limit:"Bu oy 2 ta muzlatish olingan", coins_history:"Xaridlar", coins_or:"Yoki coin bilan oling",
+  home_unveil:"Kunning qolgan qismini ko'rish",
   draft_restored:"Saqlanmagan matn tiklandi", autosaved:"Saqlanmoqda…",
   mood_q:"Bugun o'zingizni qanday his qildingiz?",
   mood_awful:"Juda yomon", mood_low:"Yomon", mood_ok:"O'rtacha",
@@ -1955,7 +1975,7 @@ const DICT = {
   team_project_ph:"Project name", team_open:"Open",
   dest_where:"Where does this go", dest_personal:"Personal",
   team_badge:"team",
-  privacy_line:"🔒 Your data is kept separate from other users' and travels over a secure connection (HTTPS). Download it or delete it for good at any time.",
+  privacy_line:"🔒 Your data is protected.",
   save:"Save", cancel:"Cancel", close:"Close", delete:"Delete",
   edit:"Edit", saved:"Saved", deleted:"Deleted", undo:"Undo",
   empty:"Nothing yet", error:"Something went wrong", offline:"No connection",
@@ -2080,6 +2100,7 @@ const DICT = {
   pt_habits:"Habits", pt_active_tasks:"Open tasks", pt_recurring_tasks:"Repeating tasks", pt_projects:"Projects", pt_open_debts:"Open debts", pt_teams_owned:"Create teams", pt_team_members:"Team members", pt_voice:"Voice commands", pt_journal_ai:"AI day summary", pt_timer_rhythm:"Work/break rhythm", pt_stats_history:"Month and year statistics", pt_stats_csv:"Statistics file", pt_week:"week", pt_day:"day", plan_save_year:"Paying yearly you save — {list}", plan_free_has:"On Free — {list}",
   rank_title:"Rating", rank_among:"among {n} people", rank_top:"You are in the most active {n}%", rank_top_short:"TOP {n}%", rank_week:"This week", rank_best:"Best", rank_move:"Change", rank_private:"Only your position is shown — nobody else's name or result is shown to anyone.", rank_soon:"You join the rating in {n} days", rank_soon_hint:"Your position is counted after 7 days of activity.", steps_unavailable:"Steps have not arrived yet. They show once the server is updated.",
   coins_title:"Coins", coins_shop:"Coin shop", coins_today:"Today +{n} / {cap} coins", coins_hint:"Tasks, habits, prayer and the journal earn coins", coins_how:"Every {n} points = 1 coin. Tasks, habits, prayer, the journal and the week goal earn points — up to {cap} coins a day, achievements on top. Nothing counts twice.", coins_item_plan:"{plan} — {n} days", coins_item_freeze:"Streak freeze +1", coins_plan_hint:"Added to your plan, after the current one", coins_freeze_hint:"One weak day this month will not break the streak", coins_need:"{n} more coins needed", coins_confirm:"Confirm ", coins_bought:"Bought ✓", coins_plans_off:"Plans are off right now", coins_freeze_limit:"Two freezes already bought this month", coins_history:"Purchases", coins_or:"Or get it with coins",
+  home_unveil:"See the rest of the day",
   draft_restored:"Unsaved text restored", autosaved:"Saving…",
   mood_q:"How did you feel today?",
   mood_awful:"Awful", mood_low:"Low", mood_ok:"Okay",
@@ -2384,7 +2405,7 @@ const DICT = {
   team_project_ph:"Название проекта", team_open:"Открыть",
   dest_where:"Куда добавить", dest_personal:"Личное",
   team_badge:"команда",
-  privacy_line:"🔒 Ваши данные отделены от данных других пользователей и передаются по защищённому соединению (HTTPS). Их можно скачать или удалить в любой момент.",
+  privacy_line:"🔒 Ваши данные защищены.",
   save:"Сохранить", cancel:"Отмена", close:"Закрыть", delete:"Удалить",
   edit:"Изменить", saved:"Сохранено", deleted:"Удалено", undo:"Вернуть",
   empty:"Пока пусто", error:"Произошла ошибка", offline:"Нет соединения",
@@ -2509,6 +2530,7 @@ const DICT = {
   pt_habits:"Привычки", pt_active_tasks:"Открытые задачи", pt_recurring_tasks:"Повторяющиеся задачи", pt_projects:"Проекты", pt_open_debts:"Открытые долги", pt_teams_owned:"Создание команд", pt_team_members:"Участники команды", pt_voice:"Голосовые команды", pt_journal_ai:"AI-итоги дня", pt_timer_rhythm:"Ритм работа/перерыв", pt_stats_history:"Статистика за месяц и год", pt_stats_csv:"Файл статистики", pt_week:"нед", pt_day:"день", plan_save_year:"При оплате за год экономия — {list}", plan_free_has:"На Free — {list}",
   rank_title:"Рейтинг", rank_among:"среди {n} человек", rank_top:"Вы в числе {n}% самых активных", rank_top_short:"ТОП {n}%", rank_week:"За неделю", rank_best:"Лучшее", rank_move:"Изменение", rank_private:"Видно только ваше место — имена и результаты других никому не показываются.", rank_soon:"Вы попадёте в рейтинг через {n} дн.", rank_soon_hint:"Место считается после 7 дней активности.", steps_unavailable:"Шаги ещё не пришли. Появятся после обновления сервера.",
   coins_title:"Монеты", coins_shop:"Магазин монет", coins_today:"Сегодня +{n} / {cap} монет", coins_hint:"Задачи, привычки, намаз и итоги дня дают монеты", coins_how:"Каждые {n} баллов = 1 монета. Задачи, привычки, намаз, итоги дня и цель недели дают баллы — до {cap} монет в день, достижения сверху. Ничего не считается дважды.", coins_item_plan:"{plan} — {n} дн.", coins_item_freeze:"Заморозка серии +1", coins_plan_hint:"Добавится к тарифу, после текущего", coins_freeze_hint:"Один слабый день в этом месяце не прервёт серию", coins_need:"Нужно ещё {n} монет", coins_confirm:"Подтвердить ", coins_bought:"Куплено ✓", coins_plans_off:"Тарифы сейчас выключены", coins_freeze_limit:"В этом месяце уже 2 заморозки", coins_history:"Покупки", coins_or:"Или за монеты",
+  home_unveil:"Показать остальной день",
   draft_restored:"Несохранённый текст восстановлен", autosaved:"Сохраняем…",
   mood_q:"Как вы себя чувствовали сегодня?",
   mood_awful:"Очень плохо", mood_low:"Плохо", mood_ok:"Нормально",
@@ -3241,16 +3263,31 @@ SCREENS.home = () => {
      The month grid opens from the date in the header. */
   /* v12.2: everything serves the Now card. Under it only the week goal and
      the next three things, each one line; the rest is one tap away. */
+  /* Opening the app shows the one thing to do now, with the person's own
+     line under it; the rest of the day waits, softly blurred, until a tap. */
+  const veil = state.homeVeil && d.now && d.now.kind !== "clear";
   return headBlock(d)
        + timerBanner(d.active_timer)
        + nowBlock(d)
+       + quoteBlock(d)
+       + `<div class="home-rest ${veil ? "veiled" : ""}" ${veil ? "inert aria-hidden=\"true\"" : ""}>`
        + countsRow(d)
        + loadBlock(d)
        + homeGoal(d)
        + tasksBlock(d)
        + presetsOffer(d)
-       + privacyNote();
+       + privacyNote()
+       + `</div>`
+       + (veil ? `<button class="unveil" data-act="home-unveil">${icon("chevron", 16)} ${t("home_unveil")}</button>` : "");
 };
+/* The person's own line, set in Settings — under the Now card, as a quiet
+   card of its own. Tap to change it. */
+function quoteBlock(d){
+  if(!d.quote) return "";
+  return `<div class="quote-card" data-act="quote" role="button" tabindex="0">
+      <span class="qmark" aria-hidden="true">“</span>
+      <div class="qtext">${esc(d.quote)}</div></div>`;
+}
 
 /* ---------- today's plan against today's time (audit #2) ----------
    Shown only once something has a length. Over the limit, the least
@@ -3577,9 +3614,6 @@ function headBlock(d){
 
   // The quote is one quiet line when there is one. An empty one is not an
   // underlined grey link on the first screen — it is set in Settings.
-  // The person's own line, under the greeting.
-  if(d.quote) h += `<div class="t2 small wrap" data-act="quote"
-            style="margin-top:var(--s2)">“${esc(d.quote)}”</div>`;
 
   // Returning after a break gets one offer, not a wall of red.
   const b = d.break;
@@ -3636,9 +3670,10 @@ function nowBlock(d){
 
   /* The pencil is "choose for today": pin one task, and it stays the answer
      for the rest of the day (at most one — a second asks to replace it). */
-  const head = `<div class="row" style="gap:var(--s1)">
-      <div class="grow eyebrow">${t("now")}</div>
-      <button class="btn text now-swap" data-act="mission-pick">${t("now_swap")}</button>
+  const head = `<div class="row" style="gap:var(--s1);align-items:center">
+      <div class="grow now-label">${t("now")}</div>
+      <button class="iconbtn sm now-swap" data-act="mission-pick" aria-label="${t("mission_change")}"
+              title="${t("mission_change")}">${icon("repeat", 18)}</button>
     </div>`;
 
   // Nothing left. Not an empty state — a finished one, with the one useful
@@ -8589,6 +8624,7 @@ async function loadStats(period){
 
 function goto(screen, patch){
   haptic();
+  if(screen !== "home") state.homeVeil = false;
   if(screen === "habits" || screen === "tasks") state.trackerLast = screen;
   if(["steps", "stats", "team"].includes(screen)) state.profileLast = screen;
   setState({screen, error:null, screenError:null, reorderMode:false, ...(patch || {})});
@@ -10595,6 +10631,7 @@ const A = {
   "set-privacy": () => { haptic(); openSettings("privacy"); },
   "privacy-info": () => openSheet(privacySheet()),
   sessions: () => openSheet(sessionsSheet()),
+  "home-unveil": () => { haptic(); state.homeVeil = false; render(); },
   "coins-open": () => {
     haptic();
     state.coinConfirm = null;
@@ -11263,6 +11300,8 @@ async function boot(){
       if(home.failed) throw home.failed;
       state.home = home;
     }
+    // The first Home after opening the app shows only the Now card in focus.
+    state.homeVeil = state.homeVeil ?? true;
     setState({me, loading:false, blocked:null, error:null, needsSetup:false, offlineSince:null});
     saveLastGood();
     // Ticks recorded while offline in an earlier session go out now.
