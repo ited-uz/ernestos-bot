@@ -129,10 +129,10 @@ navbatga tushadi va ulanganda bir marta yuboriladi.
 | | Free | Pro | Max |
 |---|---|---|---|
 | Odatlar (marosimlardan tashqari) | **3** | **25** | cheksiz |
-| Faol vazifalar | **30** | cheksiz | cheksiz |
+| Faol vazifalar | **20** | cheksiz | cheksiz |
 | Takrorlanuvchi vazifalar | **3** | **25** | cheksiz |
 | Loyihalar | **1** | **15** | cheksiz |
-| Maqsadlar (bosqich va asosiy, ochiqlari) | **3** | **25** | cheksiz |
+| Maqsadlar (bosqich va asosiy, ochiqlari) | **2** | **25** | cheksiz |
 | Ochiq qarzlar | **3** | cheksiz | cheksiz |
 | Moliya hisoblari (naqd, karta, bank…) | **1** | **3** | cheksiz |
 | Doimiy to‘lovlar | — | **3** | cheksiz |
@@ -140,8 +140,8 @@ navbatga tushadi va ulanganda bir marta yuboriladi.
 | Yillik moliya (12 oy) | — | — | bor |
 | O‘zi yaratgan jamoalar | **0** | **2** | **10** |
 | Jamoa a’zolari (egasining tarifi) | **8** | **10** | **50** |
-| Ovozli buyruq | **5** / hafta | **30** / kun | **100** / kun |
-| AI kun xulosasi, taymer ritmi, oylik/yillik statistika | — | bor | bor |
+| Ovozli buyruq | **3** / hafta | **30** / kun | **100** / kun |
+| AI kun xulosasi, AI «Hozir» tavsiyasi, taymer ritmi, oylik/yillik statistika | — | bor | bor |
 | Statistikani faylga yuklash | — | — | bor |
 
 - Yangi akkaunt **3** kunlik Pro bilan boshlanadi. Tariflar yoqilgunga qadar
@@ -213,6 +213,8 @@ navbatga tushadi va ulanganda bir marta yuboriladi.
 - Kod kunlari shu tarifdagi mavjud muddatdan keyin qo'shiladi.
 - Ko'p urinish bilan kod topishning oldi olingan: 10 daqiqada ko'pi bilan **10** urinish.
 - Mavzular: **Clean White** (hamma uchun), **Blossom**, **Obsidian Slate**, **Emerald Royal** (Pro va Max).
-- Free tarifda ilova doim Clean White va yorug' rejimda ko'rinadi; tanlangan mavzu saqlanib qoladi
-  va tarif qaytsa, o'zi tiklanadi.
+- Free tarifda ilova Clean White mavzusida ko'rinadi; yorug' va tungi rejim ikkalasi ham ochiq (v16).
+  Tanlangan rangli mavzu saqlanib qoladi va tarif qaytsa, o'zi tiklanadi.
+- Tarif jadvalida yo'q funksiya qizil ✕, Max'dan kichik limit qizil raqam bilan ko'rsatiladi;
+  ilova ichidagi qulflar ham qizil.
 - Eski mavzu nomlari `python migrations.py 0014` bilan yangilariga o'tkaziladi.

@@ -1536,11 +1536,13 @@ def test_free_keeps_clean_white_and_pro_may_choose(client, plans_on):
     assert caller.get("/api/me").json()["theme"] == "emerald"
 
 
-def test_the_mini_app_holds_free_to_clean_white_in_light_mode():
+def test_the_mini_app_holds_free_to_clean_white_with_dark_mode_open():
+    """v16: Free keeps Clean White but has dark mode too — a light-only app
+    at night is one people delete. The colour themes stay Pro."""
     html = (ROOT / "webapp" / "index.html").read_text()
     assert 'root.dataset.theme = themeLocked() ? FREE_THEME : themeOf(state.me?.theme);' in html
     mode = html[html.index("function resolveMode(){"):]
-    assert mode.split("\n")[1].strip() == 'if(themeLocked()) return "light";'
+    assert "themeLocked()" not in mode[:mode.index("\n}\n")]
     assert '"theme-locked"' in html
 
 

@@ -5112,7 +5112,7 @@ PLAN_TEXT = {
                  "voice_day": "Ko'proq ovozli buyruq", "journal_ai": "AI bilan kundalik",
                  "timer_rhythm": "Ish va tanaffus ritmi", "stats_history": "Oylik va yillik statistika",
                  "stats_csv": "Statistikani faylga yuklash",
-                 "themes": "Rangli mavzular va tungi rejim"},
+                 "themes": "Rangli mavzular", "now_ai": "AI «Hozir» tavsiyasi"},
     },
     "ru": {
         "title": "💎 <b>Ваш тариф: {tier}</b>",
@@ -5142,7 +5142,7 @@ PLAN_TEXT = {
                  "voice_day": "Больше голосовых команд", "journal_ai": "AI-итоги дня",
                  "timer_rhythm": "Ритм работы и отдыха", "stats_history": "Статистика за месяц и год",
                  "stats_csv": "Выгрузка статистики в файл",
-                 "themes": "Цветные темы и тёмный режим"},
+                 "themes": "Цветные темы", "now_ai": "AI-совет «Сейчас»"},
     },
     "en": {
         "title": "💎 <b>Your plan: {tier}</b>",
@@ -5172,7 +5172,7 @@ PLAN_TEXT = {
                  "voice_day": "More voice commands", "journal_ai": "AI day summary",
                  "timer_rhythm": "Work and break rhythm", "stats_history": "Month and year statistics",
                  "stats_csv": "Statistics as a file",
-                 "themes": "Colour themes and dark mode"},
+                 "themes": "Colour themes", "now_ai": "AI «Now» suggestion"},
     },
 }
 

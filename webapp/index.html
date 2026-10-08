@@ -1148,7 +1148,8 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
 .ptable td b{font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
 .ptable td small{color:var(--text-3);font-size:11px}
 .pt-yes{color:var(--ok);display:inline-flex}
-.pt-no{color:var(--text-3);opacity:.7;display:inline-flex}
+.pt-no{color:var(--danger);display:inline-flex;font-weight:800}
+.pt-low{color:var(--danger)}
 .pt-inf{font-size:17px;font-weight:700;color:var(--ok)}
 .psave{margin-top:8px;font-size:12.5px;font-weight:650;color:var(--ok)}
 .pbadge{font-size:10.5px;font-weight:750;padding:3px 8px;border-radius:9999px;
@@ -1439,8 +1440,8 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
 .wactions{display:grid;grid-template-columns:1fr 1fr;gap:var(--s1);margin:var(--s2) 0}
 .wactions .btn{width:100%}
 .wlock{display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:2px 7px;border-radius:var(--radius-pill);
-  font-size:10.5px;font-weight:750;letter-spacing:.03em;color:var(--warn);
-  background:color-mix(in srgb, var(--warn) 12%, transparent)}
+  font-size:10.5px;font-weight:750;letter-spacing:.03em;color:var(--danger);
+  background:color-mix(in srgb, var(--danger) 12%, transparent)}
 .wlocked{display:flex;align-items:center;gap:var(--s2);padding:var(--s3);border-radius:var(--radius);cursor:pointer;
   border:var(--border-w) dashed color-mix(in srgb, var(--warn) 45%, var(--border));
   background:color-mix(in srgb, var(--warn) 5%, var(--surface))}
@@ -2028,8 +2029,8 @@ const DICT = {
   chat_err_provider_not_configured:"AI kaliti ulanmagan.", chat_err_agent_disabled:"AI yordamchi o'chirilgan.",
   chat_err_offline:"Internet yo'q. Ulanganda qayta yuboring.", chat_err:"Xatolik. Qayta yuboring.",
   steps_here:"Siz shu yerdasiz", steps_unit:"qadam",
-  pt_themes:"Rangli mavzular va tungi rejim", plan_limit_themes:"Rangli mavzular va tungi rejim",
-  theme_free_note:"Free tarifda — Clean White, yorug' rejimda. Boshqa mavzular va tungi rejim Pro'da.",
+  pt_themes:"Rangli mavzular", plan_limit_themes:"Rangli mavzular (Blossom, Obsidian, Emerald)",
+  theme_free_note:"Free tarifda — Clean White (yorug' va tungi rejim). Blossom, Obsidian va Emerald Pro'da.",
   plan_badge_active:"{plan} · Faol", plan_until_line:"Amal qilish muddati — {d} gacha",
   plan_lifetime:"Faol · Doimiy kirish", plan_free_line:"Bepul tarif · Cheklangan funksiyalar",
   promo_title:"Promokod kiritish", promo_ph:"Masalan, ERNEST30", promo_apply:"Faollashtirish",
@@ -2054,6 +2055,8 @@ const DICT = {
   no_plan:"Reja yo'q", weighted_tasks_n:"Muhimlik bo'yicha {n}%", weighted_habits_n:"Daraja bo'yicha {n}%", avg_by_days:"kunlar o'rtachasi",
   team_in_group:"Guruhda {done}/{total}", team_done_items:"Bajarilgan ishlar",
   steps_in_level:"Bu darajada {done}/{span} ({pct}%)", steps_xp_def:"Qadam — faollik ochkosi (XP): bajarilgan vazifa, odat, namoz va xulosa uchun beriladi.", rank_ahead:"Foydalanuvchilarning {n}% idan oldindasiz", streak_why_title:"Seriya va himoya", streak_why_body:"Seriya — kun bali {n}+ bo'lgan kunlar ketma-ketligi. Rejasiz kun hisobga kirmaydi va seriyani uzmaydi.", freeze_why_body:"Himoya kuni — bali past kunda seriyani saqlab qoladi. Har oy 2 ta beriladi, kuniga ko'pi bilan bittasi ishlatiladi; coin do'konidan yana sotib olish mumkin. Hozir qolgan {left} ta.",
+  pt_now_ai:"AI «Hozir» tavsiyasi",
+  plan_limit_now_ai:"AI «Hozir» tavsiyasi — Pro va Max'da",
   draft_restored:"Saqlanmagan matn tiklandi", autosaved:"Saqlanmoqda…",
   mood_q:"Bugun o'zingizni qanday his qildingiz?",
   mood_awful:"Juda yomon", mood_low:"Yomon", mood_ok:"O'rtacha",
@@ -2545,8 +2548,8 @@ const DICT = {
   chat_err_provider_not_configured:"The AI key is not connected.", chat_err_agent_disabled:"The AI assistant is switched off.",
   chat_err_offline:"No internet. Send again when connected.", chat_err:"Something went wrong. Send again.",
   steps_here:"You are here", steps_unit:"steps",
-  pt_themes:"Colour themes and dark mode", plan_limit_themes:"Colour themes and dark mode",
-  theme_free_note:"Free has Clean White in light mode. Other themes and dark mode come with Pro.",
+  pt_themes:"Colour themes", plan_limit_themes:"Colour themes (Blossom, Obsidian, Emerald)",
+  theme_free_note:"Free has Clean White, light and dark. Blossom, Obsidian and Emerald come with Pro.",
   plan_badge_active:"{plan} · Active", plan_until_line:"Active until {d}",
   plan_lifetime:"Active · Permanent access", plan_free_line:"Free plan · Limited features",
   promo_title:"Enter a promo code", promo_ph:"For example ERNEST30", promo_apply:"Activate",
@@ -2571,6 +2574,8 @@ const DICT = {
   no_plan:"No plan", weighted_tasks_n:"By priority {n}%", weighted_habits_n:"By tier {n}%", avg_by_days:"average of days",
   team_in_group:"Group {done}/{total}", team_done_items:"Done",
   steps_in_level:"In this level {done}/{span} ({pct}%)", steps_xp_def:"A step is an activity point (XP): earned for done tasks, habits, prayers and the day summary.", rank_ahead:"Ahead of {n}% of users", streak_why_title:"Streak and protection", streak_why_body:"Your streak counts days in a row scoring {n}+. A day with no plan does not count and does not break it.", freeze_why_body:"A protection day keeps the streak through a weak day. You get 2 a month, at most one is used per day, and more can be bought in the coin shop. Left now {left}.",
+  pt_now_ai:"AI «Now» suggestion",
+  plan_limit_now_ai:"AI «Now» suggestion — on Pro and Max",
   draft_restored:"Unsaved text restored", autosaved:"Saving…",
   mood_q:"How did you feel today?",
   mood_awful:"Awful", mood_low:"Low", mood_ok:"Okay",
@@ -3056,8 +3061,8 @@ const DICT = {
   chat_err_provider_not_configured:"Ключ AI не подключён.", chat_err_agent_disabled:"AI-помощник выключен.",
   chat_err_offline:"Нет интернета. Отправьте снова, когда появится связь.", chat_err:"Ошибка. Отправьте снова.",
   steps_here:"Вы здесь", steps_unit:"шагов",
-  pt_themes:"Цветные темы и тёмный режим", plan_limit_themes:"Цветные темы и тёмный режим",
-  theme_free_note:"На Free — Clean White в светлом режиме. Другие темы и тёмный режим — в Pro.",
+  pt_themes:"Цветные темы", plan_limit_themes:"Цветные темы (Blossom, Obsidian, Emerald)",
+  theme_free_note:"На Free — Clean White, светлый и тёмный режим. Blossom, Obsidian и Emerald — в Pro.",
   plan_badge_active:"{plan} · Активен", plan_until_line:"Действует до {d}",
   plan_lifetime:"Активен · Бессрочный доступ", plan_free_line:"Бесплатный тариф · Ограниченные функции",
   promo_title:"Ввести промокод", promo_ph:"Например, ERNEST30", promo_apply:"Активировать",
@@ -3082,6 +3087,8 @@ const DICT = {
   no_plan:"Нет плана", weighted_tasks_n:"С учётом важности {n}%", weighted_habits_n:"С учётом уровня {n}%", avg_by_days:"среднее по дням",
   team_in_group:"В группе {done}/{total}", team_done_items:"Выполнено",
   steps_in_level:"На этом уровне {done}/{span} ({pct}%)", steps_xp_def:"Шаг — очко активности (XP): за выполненные задачи, привычки, намазы и итоги дня.", rank_ahead:"Вы впереди {n}% пользователей", streak_why_title:"Серия и защита", streak_why_body:"Серия — дни подряд с баллом {n}+. День без плана не считается и серию не обрывает.", freeze_why_body:"День защиты сохраняет серию в слабый день. Даётся 2 в месяц, тратится не больше одного в день, ещё можно купить в магазине монет. Осталось {left}.",
+  pt_now_ai:"AI-совет «Сейчас»",
+  plan_limit_now_ai:"AI-совет «Сейчас» — в Pro и Max",
   draft_restored:"Несохранённый текст восстановлен", autosaved:"Сохраняем…",
   mood_q:"Как вы себя чувствовали сегодня?",
   mood_awful:"Очень плохо", mood_low:"Плохо", mood_ok:"Нормально",
@@ -3975,44 +3982,54 @@ function planLine(){
    "what can't I do on Free". Numbers come from the server (/api/plans) and
    fall back to the same table built into the app. */
 const PLAN_MATRIX_FALLBACK = {
-  limits:{habits:{free:3, pro:25, max:null}, active_tasks:{free:30, pro:null, max:null},
+  limits:{habits:{free:3, pro:25, max:null}, active_tasks:{free:20, pro:null, max:null},
           recurring_tasks:{free:3, pro:25, max:null}, projects:{free:1, pro:15, max:null},
-          life_goals:{free:3, pro:25, max:null},
+          life_goals:{free:2, pro:25, max:null},
           open_debts:{free:3, pro:null, max:null}, money_accounts:{free:1, pro:3, max:null},
           money_subs:{free:0, pro:3, max:null}, teams_owned:{free:0, pro:2, max:10},
           team_members:{free:8, pro:10, max:50}, voice_day:{free:null, pro:30, max:100},
-          voice_week:{free:5, pro:null, max:null}},
+          voice_week:{free:3, pro:null, max:null}},
   features:{journal_ai:["pro","max"], timer_rhythm:["pro","max"], stats_history:["pro","max"], stats_csv:["max"],
-            money_transfers:["pro","max"], money_year:["max"], themes:["pro","max"]},
+            money_transfers:["pro","max"], money_year:["max"], themes:["pro","max"], now_ai:["pro","max"]},
 };
 function planTable(p, period, price){
   // A partial answer never blanks the table: each half falls back on its own.
   const m = state.planMatrix || {};
   const L = m.limits && Object.keys(m.limits).length ? m.limits : PLAN_MATRIX_FALLBACK.limits;
   const F = m.features && Object.keys(m.features).length ? m.features : PLAN_MATRIX_FALLBACK.features;
+  /* What a plan does not have is a red ✕, and a limit smaller than Max's
+     is a red number: the gap is meant to be seen. */
   const yes = `<span class="pt-yes" aria-label="✓">${icon("check", 15)}</span>`;
-  const no = `<span class="pt-no" aria-label="—">${icon("x", 13)}</span>`;
+  const no = `<span class="pt-no" aria-label="✕">${icon("x", 14)}</span>`;
+  const lim = key => tier => {
+    const v = L[key]?.[tier], top = L[key]?.max;
+    if(v === null || v === undefined) return `<span class="pt-inf">∞</span>`;
+    if(v === 0) return no;
+    const low = tier !== "max" && (top === null || top === undefined || v < top);
+    return `<b class="${low ? "pt-low" : ""}">${v}</b>`;
+  };
   const num = v => v === null || v === undefined ? `<span class="pt-inf">∞</span>` : v === 0 ? no : `<b>${v}</b>`;
   const voice = tier => {
     const w = L.voice_week?.[tier], d = L.voice_day?.[tier];
-    if(w != null) return `<b>${w}</b><small>/${t("pt_week")}</small>`;
-    if(d != null) return `<b>${d}</b><small>/${t("pt_day")}</small>`;
+    if(w != null) return `<b class="pt-low">${w}</b><small>/${t("pt_week")}</small>`;
+    if(d != null) return `<b class="${tier !== "max" ? "pt-low" : ""}">${d}</b><small>/${t("pt_day")}</small>`;
     return num(null);
   };
   const rows = [
-    ["habits", tier => num(L.habits?.[tier])],
-    ["active_tasks", tier => num(L.active_tasks?.[tier])],
-    ["recurring_tasks", tier => num(L.recurring_tasks?.[tier])],
-    ["projects", tier => num(L.projects?.[tier])],
-    ["life_goals", tier => num(L.life_goals?.[tier])],
-    ["open_debts", tier => num(L.open_debts?.[tier])],
-    ["money_accounts", tier => num(L.money_accounts?.[tier])],
-    ["money_subs", tier => num(L.money_subs?.[tier])],
+    ["habits", lim("habits")],
+    ["active_tasks", lim("active_tasks")],
+    ["recurring_tasks", lim("recurring_tasks")],
+    ["projects", lim("projects")],
+    ["life_goals", lim("life_goals")],
+    ["open_debts", lim("open_debts")],
+    ["money_accounts", lim("money_accounts")],
+    ["money_subs", lim("money_subs")],
     ["money_transfers", tier => (F.money_transfers || []).includes(tier) ? yes : no],
     ["money_year", tier => (F.money_year || []).includes(tier) ? yes : no],
-    ["teams_owned", tier => num(L.teams_owned?.[tier])],
-    ["team_members", tier => num(L.team_members?.[tier])],
+    ["teams_owned", lim("teams_owned")],
+    ["team_members", lim("team_members")],
     ["voice", voice],
+    ["now_ai", tier => (F.now_ai || []).includes(tier) ? yes : no],
     ["journal_ai", tier => (F.journal_ai || []).includes(tier) ? yes : no],
     ["timer_rhythm", tier => (F.timer_rhythm || []).includes(tier) ? yes : no],
     ["stats_history", tier => (F.stats_history || []).includes(tier) ? yes : no],
@@ -7822,9 +7839,12 @@ SCREENS.stats = () => {
              today.prayer || 0, st.deltas.prayer)}
     </div>`;
 
+  /* Month and year are Pro: on Free they carry a red lock before the tap. */
+  const statsLocked = Boolean(state.me?.plan?.enabled && state.me.plan.tier === "free");
   h += `<div class="seg" style="margin:16px 0 6px">
       ${["week","month","year"].map(p => `<div class="${st.period === p ? "on" : ""}"
-        data-act="stats-period" data-period="${p}">${t(p)}</div>`).join("")}</div>`;
+        data-act="stats-period" data-period="${p}">${t(p)}${statsLocked && p !== "week"
+          ? `<span class="wlock">${icon("shield", 11)} Pro</span>` : ""}</div>`).join("")}</div>`;
   const range = (st.series || []).length
     ? `${isoToLabel(st.series[0].day)} — ${isoToLabel(st.series[st.series.length - 1].day)}` : "";
   if(range) h += `<div class="t3 small num" style="text-align:center;margin-bottom:10px">${range}</div>`;
@@ -8789,7 +8809,7 @@ function freshPreviewSheet(p, mode){
 const LANG_NAME = {uz:"O'zbekcha", en:"English", ru:"Русский"};
 function lookLine(){
   const theme = themeLocked() ? FREE_THEME : themeOf(state.me?.theme);
-  const mode = themeLocked() ? "light" : (state.appearance || "auto");
+  const mode = state.appearance || "auto";
   return `${THEME_NAMES[theme]} · ${t(mode)}`;
 }
 function notifyLine(){
@@ -8952,11 +8972,11 @@ function appearanceSheet(){
   return `
     <h3>${icon("sun", 18)} ${t("appearance_only")}</h3>
 
-    <label>${t("mode")}${locked ? ` <span class="wlock">${icon("shield", 11)} Pro</span>` : ""}</label>
+    <label>${t("mode")}</label>
     <div class="seg" style="margin-bottom:var(--s2)">
       ${[["auto", t("auto")], ["light", t("light")], ["dark", t("dark")]]
-        .map(([v, l]) => `<div class="${(locked ? v === "light" : state.appearance === v) ? "on" : ""}"
-          data-act="${locked && v !== "light" ? "theme-locked" : "set-appearance"}" data-value="${v}">${l}</div>`).join("")}</div>
+        .map(([v, l]) => `<div class="${(state.appearance || "auto") === v ? "on" : ""}"
+          data-act="set-appearance" data-value="${v}">${l}</div>`).join("")}</div>
     ${locked ? `<div class="t3 tiny" style="margin:-4px 0 8px">${t("theme_free_note")}</div>` : ""}
 
     <label>${t("theme")}</label>
@@ -8971,7 +8991,7 @@ function appearanceSheet(){
         <div class="grow">
           <div style="font-weight:600">${THEME_NAMES[th.id]}</div>
           <div class="t2 tiny">${t("theme_" + th.id.replace("-", "_"))}</div></div>
-        ${on ? icon("check", 17) : lock ? `<span class="wlock">🔒 Pro</span>` : ""}</div>`; }).join("")}
+        ${on ? icon("check", 17) : lock ? `<span class="wlock">${icon("shield", 11)} Pro</span>` : ""}</div>`; }).join("")}
     </div>
 
     <button class="btn secondary" data-act="settings" style="margin-top:14px">
@@ -9834,7 +9854,6 @@ function errorScreen(){
    when it reports one and the operating system otherwise, so the app matches
    the chat it opened from. */
 function resolveMode(){
-  if(themeLocked()) return "light";
   if(state.appearance === "light" || state.appearance === "dark")
     return state.appearance;
   if(tg?.colorScheme === "light" || tg?.colorScheme === "dark")
