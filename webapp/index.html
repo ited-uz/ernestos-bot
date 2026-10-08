@@ -781,26 +781,91 @@ nav:empty{display:none}
 .step-chip .ck{width:20px;height:20px;border-radius:50%;border:2px solid var(--border);display:grid;place-items:center}
 .step-chip.ok .ck{background:var(--ok);border-color:var(--ok);color:var(--on-primary)}
 .steps-go{margin-top:14px}
-.qhero{background:var(--surface);border:var(--border-w) solid var(--border);border-radius:var(--radius-lg);
-       padding:16px;box-shadow:var(--shadow-1)}
-.qtop{display:flex;align-items:center;gap:12px}
-.qtop .badge{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;font-size:28px;
-             background:var(--surface-2);box-shadow:0 0 0 3px color-mix(in srgb, var(--warn) 70%, transparent)}
-.qtop .ln{font-size:21px;font-weight:760}
-.qtotal{text-align:right}.qtotal .tv{font-size:30px;font-weight:800;line-height:1}
-.sbar.big{height:10px;margin:14px 0 6px}
-.qstats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:14px}
-.qstats>div{background:var(--surface-2);border-radius:var(--radius-sm);padding:8px 4px;text-align:center}
-.qstats b{display:block;font-size:16px}
-.qstats span{display:block;font-size:11px;color:var(--text-3)}
-.qlist{padding:4px 12px}
-.qrow{display:flex;align-items:center;gap:10px;min-height:48px;cursor:pointer;
-      border-bottom:var(--border-w) solid var(--border)}
+/* ---- Qadam: the level ring, today's parts, the path ---- */
+.qhero{display:flex;align-items:center;gap:var(--s3);padding:var(--s3);border-radius:var(--radius-lg);
+  background:linear-gradient(150deg, color-mix(in srgb, var(--primary) 9%, var(--surface)), var(--surface) 65%);
+  border:var(--border-w) solid var(--border);box-shadow:var(--shadow-1)}
+.qring-wrap{position:relative;flex:none;width:124px;height:124px}
+.qring circle{fill:none;stroke-width:10}
+.qring .trk{stroke:color-mix(in srgb, var(--text) 9%, transparent)}
+.qring .val{stroke:var(--primary);stroke-linecap:round;stroke-dashoffset:var(--off);
+  transition:stroke-dashoffset 700ms var(--ease-out)}
+.qring-c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.qring-c b{font-size:32px;font-weight:800;letter-spacing:-.03em;line-height:1}
+.qring-c span{font-size:10.5px;color:var(--text-3);margin-top:3px;text-align:center;max-width:80px;line-height:1.2}
+.qhero-info{min-width:0;display:flex;flex-direction:column;gap:4px}
+.qlvl-chip{align-self:flex-start;font-size:11px;font-weight:750;letter-spacing:.04em;text-transform:uppercase;
+  padding:3px 9px;border-radius:var(--radius-pill);color:var(--primary);
+  background:color-mix(in srgb, var(--primary) 12%, transparent)}
+.qlvl-name{font-size:22px;font-weight:780;letter-spacing:-.01em;line-height:1.15}
+.qpct{font-size:13px;font-weight:750;color:var(--primary)}
+.qstats{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s1);margin-top:var(--s2);cursor:pointer}
+.qstat{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:10px 12px;border-radius:var(--radius);
+  background:var(--surface);border:var(--border-w) solid var(--border);box-shadow:var(--shadow-1)}
+.qstat b{font-size:18px;font-weight:780;line-height:1.1;margin-top:4px}
+.qstat > span:last-child{font-size:11px;color:var(--text-3);line-height:1.2}
+.qstat-ic{width:28px;height:28px;border-radius:9px;display:grid;place-items:center}
+.qstat-ic.warm{color:var(--warn);background:color-mix(in srgb, var(--warn) 14%, transparent)}
+.qstat-ic.cool{color:var(--c2);background:color-mix(in srgb, var(--c2) 14%, transparent)}
+.qstat-ic.gold{color:var(--c4);background:color-mix(in srgb, var(--c4) 14%, transparent)}
+.qsec{display:flex;align-items:center;gap:10px;margin:var(--s4) 2px var(--s1);font-weight:720;font-size:16px}
+.qsegs{display:flex;gap:3px}
+.qsegs i{width:14px;height:6px;border-radius:3px;background:color-mix(in srgb, var(--text) 10%, transparent)}
+.qsegs i.half{background:color-mix(in srgb, var(--ok) 45%, transparent)} .qsegs i.on{background:var(--ok)}
+.qlist{padding:2px 14px}
+.qrow{display:flex;align-items:center;gap:12px;min-height:58px;cursor:pointer;
+  border-bottom:var(--border-w) solid var(--border)}
 .qrow:last-child{border-bottom:0}
-.qrow .ci{font-size:18px}
-.qrow .ck{width:22px;height:22px;border-radius:50%;border:2px solid var(--border);display:grid;place-items:center}
-.qrow.ok .ck{background:var(--ok);border-color:var(--ok);color:var(--on-primary)}
-.qrow.ok .grow{color:var(--text-2)}
+.qic{flex:none;width:34px;height:34px;border-radius:10px;display:grid;place-items:center}
+.qic.k-tasks{color:var(--c1);background:color-mix(in srgb, var(--c1) 13%, transparent)}
+.qic.k-habits{color:var(--c3);background:color-mix(in srgb, var(--c3) 13%, transparent)}
+.qic.k-prayer{color:var(--c2);background:color-mix(in srgb, var(--c2) 13%, transparent)}
+.qic.k-journal{color:var(--c4);background:color-mix(in srgb, var(--c4) 13%, transparent)}
+.qic.k-goal{color:var(--c5);background:color-mix(in srgb, var(--c5) 13%, transparent)}
+.qrow-t{display:flex;align-items:center;gap:8px;font-weight:620}
+.qpill{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:var(--radius-pill);color:var(--warn);
+  background:color-mix(in srgb, var(--warn) 12%, transparent)}
+.qbar{height:4px;border-radius:var(--radius-pill);margin-top:7px;overflow:hidden;
+  background:color-mix(in srgb, var(--text) 8%, transparent)}
+.qbar i{display:block;height:100%;width:var(--p);border-radius:inherit;background:var(--primary);
+  transition:width 600ms var(--ease-out)}
+.qrow.ok .qbar i{background:var(--ok)}
+.qrow.ok .qrow-t{color:var(--text-2)}
+.qcount{font-size:13px;font-weight:700;color:var(--text-2);min-width:30px;text-align:right}
+.qck{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;
+  border:2px solid var(--border-2);color:var(--on-primary)}
+.qrow.ok .qck{background:var(--ok);border-color:var(--ok)}
+.qck.add{border-style:dashed;color:var(--text-3)}
+.qrow.offer .qic{opacity:.75}
+.steps-go{margin-top:var(--s2);display:flex;align-items:center;justify-content:center;gap:6px}
+.qdone{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:var(--s2);padding:12px;
+  border-radius:var(--radius);font-weight:650;color:var(--ok);background:color-mix(in srgb, var(--ok) 10%, transparent)}
+.qpath{padding:6px 14px}
+.qnode{position:relative;display:flex;align-items:center;gap:12px;min-height:58px}
+.qnode + .qnode::before{content:"";position:absolute;left:16px;top:-14px;height:28px;width:2px;
+  background:linear-gradient(var(--ok) var(--prev, 0%), var(--border) 0)}
+.qnode.past + .qnode::before{--prev:100%}
+.qnode-dot{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:12px;
+  font-weight:800;color:var(--text-3);background:var(--surface-2);border:2px solid var(--border);z-index:1}
+.qnode.past .qnode-dot{background:var(--ok);border-color:var(--ok);color:var(--on-primary)}
+.qnode.now .qnode-dot{color:var(--primary);border-color:var(--primary);background:var(--surface);
+  box-shadow:0 0 0 5px color-mix(in srgb, var(--primary) 14%, transparent)}
+.qnode.lock{opacity:.6}
+.qhere{font-size:11px;font-weight:750;padding:3px 9px;border-radius:var(--radius-pill);color:var(--on-primary);
+  background:var(--primary-fill)}
+@media (prefers-reduced-motion:no-preference){
+  .qanim .qring .val{animation:qring 1100ms var(--ease-out) 120ms backwards}
+  .qanim .qbar i{animation:qbar 800ms var(--ease-out) backwards;animation-delay:calc(var(--i, 0) * 70ms + 250ms)}
+  .qanim .qrow{animation:rise 380ms var(--ease-out) backwards;animation-delay:calc(var(--i, 0) * 50ms + 120ms)}
+  .qanim .qnode{animation:rise 380ms var(--ease-out) backwards;animation-delay:calc(var(--i, 0) * 60ms + 200ms)}
+  .qanim .qnode.now .qnode-dot{animation:qpulse 1.8s var(--ease-out) 900ms 2}
+  .qanim .qstat{animation:rise 360ms var(--ease-out) backwards}
+  .qanim .qstat:nth-child(2){animation-delay:60ms} .qanim .qstat:nth-child(3){animation-delay:120ms}
+}
+@keyframes qring{from{stroke-dashoffset:var(--c)}}
+@keyframes qbar{from{width:0}}
+@keyframes qpulse{0%{box-shadow:0 0 0 0 color-mix(in srgb, var(--primary) 35%, transparent)}
+  100%{box-shadow:0 0 0 12px color-mix(in srgb, var(--primary) 0%, transparent)}}
 
 .profile-head .pname{font-size:20px;font-weight:700}
 /* The two ways to add anything, always in the same place: + for typing and
@@ -1918,6 +1983,7 @@ const DICT = {
   chat_err_provider_unavailable:"AI javob bermadi. Qayta yuboring.",
   chat_err_provider_not_configured:"AI kaliti ulanmagan.", chat_err_agent_disabled:"AI yordamchi o'chirilgan.",
   chat_err_offline:"Internet yo'q. Ulanganda qayta yuboring.", chat_err:"Xatolik. Qayta yuboring.",
+  steps_here:"Siz shu yerdasiz", steps_unit:"qadam",
   draft_restored:"Saqlanmagan matn tiklandi", autosaved:"Saqlanmoqda…",
   mood_q:"Bugun o'zingizni qanday his qildingiz?",
   mood_awful:"Juda yomon", mood_low:"Yomon", mood_ok:"O'rtacha",
@@ -2409,6 +2475,7 @@ const DICT = {
   chat_err_provider_unavailable:"The AI did not answer. Send again.",
   chat_err_provider_not_configured:"The AI key is not connected.", chat_err_agent_disabled:"The AI assistant is switched off.",
   chat_err_offline:"No internet. Send again when connected.", chat_err:"Something went wrong. Send again.",
+  steps_here:"You are here", steps_unit:"steps",
   draft_restored:"Unsaved text restored", autosaved:"Saving…",
   mood_q:"How did you feel today?",
   mood_awful:"Awful", mood_low:"Low", mood_ok:"Okay",
@@ -2894,6 +2961,7 @@ const DICT = {
   chat_err_provider_unavailable:"AI не ответил. Отправьте снова.",
   chat_err_provider_not_configured:"Ключ AI не подключён.", chat_err_agent_disabled:"AI-помощник выключен.",
   chat_err_offline:"Нет интернета. Отправьте снова, когда появится связь.", chat_err:"Ошибка. Отправьте снова.",
+  steps_here:"Вы здесь", steps_unit:"шагов",
   draft_restored:"Несохранённый текст восстановлен", autosaved:"Сохраняем…",
   mood_q:"Как вы себя чувствовали сегодня?",
   mood_awful:"Очень плохо", mood_low:"Плохо", mood_ok:"Нормально",
@@ -8660,6 +8728,19 @@ const STEP_TODAY_ICON = {tasks:"✅", habits:"🔁", prayer:"🕌", journal:"�
    steps as rows that open where each is done; the path below. */
 const STEP_GO = {tasks:["tasks"], habits:["habits", "habits"], prayer:["habits", "prayer"],
                  journal:["habits", "journal"], goal:["home"]};
+/* The level as a ring that fills to how far the next level is; the total
+   counts up when the screen opens. */
+const STEP_IC = {tasks:"check", habits:"repeat", prayer:"moon", journal:"book", goal:"target"};
+const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII"];
+function stepRing(pct){
+  const size = 124, r = 54, c = +(2 * Math.PI * r).toFixed(1), off = +(c * (1 - pct / 100)).toFixed(1);
+  return `<svg class="qring" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" aria-hidden="true">
+      <circle class="trk" cx="62" cy="62" r="${r}"/>
+      <circle class="val" cx="62" cy="62" r="${r}" stroke-dasharray="${c}"
+        style="--c:${c};--off:${off}" transform="rotate(-90 62 62)"/></svg>`;
+}
+//: The Qadam screen animates once per visit, when its data first draws.
+let stepsShown = false;
 SCREENS.steps = () => {
   const p = state.progress, st = p?.steps;
   if(!p) return `<div class="spin"></div>`;
@@ -8672,66 +8753,98 @@ SCREENS.steps = () => {
   const pct = st.next ? Math.round(Math.min(1, (st.total - lvl.min) / span) * 100) : 100;
   const rank = p.rank || {};
   const streak = p.streak?.current ?? 0;
-  const path = st.levels.map((l, i) => {
-    const s_ = i + 1 < st.level ? "past" : i + 1 === st.level ? "now" : "lock";
-    return `<div class="step-node ${s_}">
-        <div class="dot">${STEP_ICON[l.key]}${s_ === "lock" ? '<span class="lk">🔒</span>' : ""}</div>
-        <div class="nm">${t("step_lvl_" + l.key)}</div>
-        <div class="rg">${l.max === null ? l.min + "+" : `${l.min}–${l.max}`}</div></div>`;
-  }).join('<div class="step-line"></div>');
   const next = st.today.find(c => !c.ok && !c.empty);
   const counted = st.today_counted ?? st.today.length;
-  return `<div class="qhero">
-      <div class="qtop">
-        <div class="badge">${STEP_ICON[lvl.key]}</div>
-        <div class="grow">
-          <div class="ln">${t("step_lvl_" + lvl.key)}</div>
-          <div class="t2 small">${t("steps_level_n", {n: st.level})}</div>
-        </div>
-        <div class="qtotal"><div class="tv num">${st.total}</div><div class="t3 tiny">${t("steps_total")}</div></div>
-      </div>
-      <div class="sbar big"><i style="width:${pct}%"></i></div>
-      <div class="t2 small">${nextLvl ? t("steps_to_next", {n: st.next - st.total, name: t("step_lvl_" + nextLvl.key)})
-        : t("steps_max")}</div>
-      <div class="qstats" data-act="progress-open" role="button" tabindex="0">
-        <div><b class="num">📈 ${streak}</b><span>${t("streak_days")}</span></div>
-        <div><b class="num">❄️ ${st.freeze || 0}</b><span>${t("steps_freeze_short")}</span></div>
-        <div><b class="num">🏆 ${rank.eligible ? "#" + rank.global : "—"}</b><span>${rank.eligible
-          ? t("rank_global") : t("steps_rank_in", {n: rank.days_remaining ?? 0})}</span></div>
-      </div>
-    </div>
+  const stat = (ic, tone, value, label) => `<div class="qstat">
+      <span class="qstat-ic ${tone}">${icon(ic, 16)}</span>
+      <b class="num">${value}</b><span>${label}</span></div>`;
 
-    <div class="steps-sub row"><span class="grow">${t("steps_today")}</span>
-      <span class="t2 small num">${st.today_done}/${counted}</span></div>
-    <div class="card qlist">${st.today.map(c => {
-      /* A full tick only for the whole plan; one of ten is "started". An
-         empty goal row is an offer, not a miss. */
-      const full = c.complete ?? c.ok;
-      if(c.empty) return `<div class="qrow" data-act="steps-go" data-key="${c.key}" role="button" tabindex="0">
-        <span class="ci">${STEP_TODAY_ICON[c.key] || "•"}</span>
-        <div class="grow t2">${t("step_goal_add")}</div>${icon("plus", 14)}</div>`;
-      const count = c.total ? (c.done > c.total ? `${c.done}` : `${c.done}/${c.total}`) : `${c.done}`;
-      return `<div class="qrow ${full ? "ok" : ""}"
+  const hero = `<div class="qhero">
+      <div class="qring-wrap">${stepRing(pct)}
+        <div class="qring-c"><b class="num" data-count="${st.total}">${st.total}</b><span>${t("steps_total")}</span></div></div>
+      <div class="qhero-info">
+        <span class="qlvl-chip">${ROMAN[st.level - 1] || st.level} · ${t("steps_level_n", {n: st.level})}</span>
+        <div class="qlvl-name">${t("step_lvl_" + lvl.key)}</div>
+        <div class="t2 small">${nextLvl ? t("steps_to_next", {n: st.next - st.total, name: t("step_lvl_" + nextLvl.key)})
+          : t("steps_max")}</div>
+        <div class="qpct num">${pct}%</div>
+      </div></div>
+    <div class="qstats" data-act="progress-open" role="button" tabindex="0">
+      ${stat("flame", "warm", streak, t("streak_days"))}
+      ${stat("shield", "cool", st.freeze || 0, t("steps_freeze_short"))}
+      ${stat("star", "gold", rank.eligible ? "#" + rank.global : "—",
+             rank.eligible ? t("rank_global") : t("steps_rank_in", {n: rank.days_remaining ?? 0}))}
+    </div>`;
+
+  /* Today: one row per part, each with its own small bar. A full tick only
+     for the whole part; one of ten is "started". An empty goal row is an
+     offer, not a miss. */
+  const rows = st.today.map((c, i) => {
+    if(c.empty) return `<div class="qrow offer" style="--i:${i}" data-act="steps-go" data-key="${c.key}" role="button" tabindex="0">
+        <span class="qic k-${c.key}">${icon(STEP_IC[c.key] || "target", 16)}</span>
+        <div class="grow t2">${t("step_goal_add")}</div><span class="qck add">${icon("plus", 13)}</span></div>`;
+    const full = c.complete ?? c.ok;
+    const part = c.total ? Math.min(100, Math.round(c.done / c.total * 100)) : (c.ok ? 100 : 0);
+    const count = c.total ? (c.done > c.total ? `${c.done}` : `${c.done}/${c.total}`) : `${c.done}`;
+    return `<div class="qrow ${full ? "ok" : c.ok ? "part" : ""}" style="--i:${i}"
         data-act="steps-go" data-key="${c.key}" role="button" tabindex="0">
-        <span class="ci">${STEP_TODAY_ICON[c.key] || "•"}</span>
-        <div class="grow">${t("step_" + c.key)}${c.ok && !full
-          ? ` <span class="t3 tiny">· ${t("step_started")}</span>` : ""}</div>
-        <span class="t2 small num">${count}</span>
-        <span class="ck">${full ? icon("check", 14) : c.ok ? "·" : ""}</span></div>`;
-    }).join("")}</div>
+        <span class="qic k-${c.key}">${icon(STEP_IC[c.key] || "target", 16)}</span>
+        <div class="grow"><div class="qrow-t">${t("step_" + c.key)}${c.ok && !full
+            ? `<span class="qpill">${t("step_started")}</span>` : ""}</div>
+          <div class="qbar"><i style="--p:${full ? 100 : part}%"></i></div></div>
+        <span class="qcount num">${count}</span>
+        <span class="qck">${full ? icon("check", 13) : ""}</span></div>`;
+  }).join("");
+  const segs = st.today.filter(c => !c.empty).map(c => `<i class="${(c.complete ?? c.ok) ? "on" : c.ok ? "half" : ""}"></i>`).join("");
+
+  const path = st.levels.map((l, i) => {
+    const state_ = i + 1 < st.level ? "past" : i + 1 === st.level ? "now" : "lock";
+    return `<div class="qnode ${state_}" style="--i:${i};--fill:${state_ === "past" ? 100 : state_ === "now" ? pct : 0}%">
+        <div class="qnode-dot">${state_ === "past" ? icon("check", 14) : ROMAN[i] || i + 1}</div>
+        <div class="grow"><b>${t("step_lvl_" + l.key)}</b>
+          <div class="t3 tiny num">${l.max === null ? l.min + "+" : `${l.min}–${l.max}`} · ${t("steps_unit")}</div></div>
+        ${state_ === "now" ? `<span class="qhere">${t("steps_here")}</span>` : ""}
+      </div>`;
+  }).join("");
+
+  const anim = !stepsShown;
+  stepsShown = true;
+  return `<div class="qscreen ${anim ? "qanim" : ""}">` + hero
+    + `<div class="qsec"><span class="grow">${t("steps_today")}</span>
+        <span class="qsegs" aria-hidden="true">${segs}</span>
+        <span class="t2 small num">${st.today_done}/${counted}</span></div>
+    <div class="card qlist">${rows}</div>
     ${next ? `<button class="btn steps-go" data-act="steps-go" data-key="${next.key}">
-        ${t("steps_next")}: ${t("step_" + next.key)} →</button>`
-      : `<div class="hint" style="text-align:center;margin-top:12px">${t("steps_all_done")}</div>`}
+        ${t("steps_next")}: ${t("step_" + next.key)} ${icon("chevron", 16)}</button>`
+      : `<div class="qdone">${icon("check", 16)} ${t("steps_all_done")}</div>`}
 
     ${rankBlock(rank)}
     ${coinCard()}
 
-    <div class="steps-sub">${t("steps_path")}</div>
-    <div class="card"><div class="steps-path">${path}</div></div>
+    <div class="qsec"><span class="grow">${t("steps_path")}</span></div>
+    <div class="card qpath">${path}</div>
     <div class="item pressable" style="margin-top:var(--s2)" data-act="progress-open">
-      <span style="font-size:18px">🏅</span><div class="grow">${t("steps_more")}</div>${icon("chevron", 15)}</div>
-    <div class="t3 tiny" style="text-align:center;margin-top:12px">${t("steps_motto")}</div>`;
+      <span class="qic k-goal">${icon("star", 16)}</span><div class="grow">${t("steps_more")}</div>${icon("chevron", 15)}</div>
+    <div class="t3 tiny" style="text-align:center;margin-top:12px">${t("steps_motto")}</div></div>`;
 };
+
+/* Numbers that count up from zero when their screen opens (not on every
+   redraw of the same screen). */
+function animateCounts(root){
+  if(!root || reduceMotion()) return;
+  root.querySelectorAll("[data-count]").forEach(el => {
+    const to = Number(el.dataset.count);
+    if(!Number.isFinite(to) || to <= 0) return;
+    const start = performance.now(), dur = 900;
+    const tick = now => {
+      const k = Math.min(1, (now - start) / dur), eased = 1 - Math.pow(1 - k, 3);
+      el.textContent = String(Math.round(to * eased));
+      if(k < 1) requestAnimationFrame(tick);
+    };
+    el.textContent = "0";
+    requestAnimationFrame(tick);
+  });
+}
 
 /* Coins: earned by doing (read off the XP the day already pays), spent in a
    small shop on Pro/Max days or a streak freeze. */
@@ -9381,6 +9494,8 @@ function render(){
   syncShell();
   syncBackButton();
   markJust();
+  const counting = app.querySelector?.(".qanim");
+  if(counting && !counting.dataset.counted){ counting.dataset.counted = "1"; animateCounts(counting); }
 }
 
 /* The navigation is the only fixed thing left at the bottom, and its height
@@ -9541,6 +9656,7 @@ function goto(screen, patch){
   if(screen === "habits" || screen === "tasks" || screen === "goals") state.trackerLast = screen;
   if(screen === "goals") lastGoalView = "";
   if(["steps", "stats", "team"].includes(screen)) state.profileLast = screen;
+  if(screen === "steps") stepsShown = false;
   setState({screen, error:null, screenError:null, reorderMode:false, ...(patch || {})});
   loadScreen(screen);
 }
