@@ -1244,6 +1244,11 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
   display:inline-flex;align-items:center;
   white-space:nowrap;cursor:pointer;font-size:14.5px;font-weight:560}
 .tab.on{background:var(--primary-fill);border-color:transparent;color:var(--on-primary)}
+.gtabs{margin:0 0 var(--s2)}
+.gtabs .tab{font-size:15px;font-weight:650}
+.gtabs .tab.add{border-style:dashed;color:var(--primary);gap:4px}
+h1.gname{font-size:26px;letter-spacing:-.4px;line-height:1.15;overflow-wrap:anywhere}
+.groupseg.four > *{font-size:14.5px;padding-left:2px;padding-right:2px}
 .banner{display:flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s3);
   border-radius:var(--radius);background:var(--surface);
   border:var(--border-w) solid var(--border);margin:var(--s2) 0;font-size:14.5px;
@@ -2057,6 +2062,8 @@ const DICT = {
   steps_in_level:"Bu darajada {done}/{span} ({pct}%)", steps_xp_def:"Qadam — faollik ochkosi (XP): bajarilgan vazifa, odat, namoz va xulosa uchun beriladi.", rank_ahead:"Foydalanuvchilarning {n}% idan oldindasiz", streak_why_title:"Seriya va himoya", streak_why_body:"Seriya — kun bali {n}+ bo'lgan kunlar ketma-ketligi. Rejasiz kun hisobga kirmaydi va seriyani uzmaydi.", freeze_why_body:"Himoya kuni — bali past kunda seriyani saqlab qoladi. Har oy 2 ta beriladi, kuniga ko'pi bilan bittasi ishlatiladi; coin do'konidan yana sotib olish mumkin. Hozir qolgan {left} ta.",
   pt_now_ai:"AI «Hozir» tavsiyasi",
   plan_limit_now_ai:"AI «Hozir» tavsiyasi — Pro va Max'da",
+  groups_tab:"Guruhlar", team_new_short:"Yangi guruh",
+  group_settings:"Guruh sozlamalari va a'zolar",
   draft_restored:"Saqlanmagan matn tiklandi", autosaved:"Saqlanmoqda…",
   mood_q:"Bugun o'zingizni qanday his qildingiz?",
   mood_awful:"Juda yomon", mood_low:"Yomon", mood_ok:"O'rtacha",
@@ -2576,6 +2583,8 @@ const DICT = {
   steps_in_level:"In this level {done}/{span} ({pct}%)", steps_xp_def:"A step is an activity point (XP): earned for done tasks, habits, prayers and the day summary.", rank_ahead:"Ahead of {n}% of users", streak_why_title:"Streak and protection", streak_why_body:"Your streak counts days in a row scoring {n}+. A day with no plan does not count and does not break it.", freeze_why_body:"A protection day keeps the streak through a weak day. You get 2 a month, at most one is used per day, and more can be bought in the coin shop. Left now {left}.",
   pt_now_ai:"AI «Now» suggestion",
   plan_limit_now_ai:"AI «Now» suggestion — on Pro and Max",
+  groups_tab:"Groups", team_new_short:"New group",
+  group_settings:"Group settings and members",
   draft_restored:"Unsaved text restored", autosaved:"Saving…",
   mood_q:"How did you feel today?",
   mood_awful:"Awful", mood_low:"Low", mood_ok:"Okay",
@@ -3089,6 +3098,8 @@ const DICT = {
   steps_in_level:"На этом уровне {done}/{span} ({pct}%)", steps_xp_def:"Шаг — очко активности (XP): за выполненные задачи, привычки, намазы и итоги дня.", rank_ahead:"Вы впереди {n}% пользователей", streak_why_title:"Серия и защита", streak_why_body:"Серия — дни подряд с баллом {n}+. День без плана не считается и серию не обрывает.", freeze_why_body:"День защиты сохраняет серию в слабый день. Даётся 2 в месяц, тратится не больше одного в день, ещё можно купить в магазине монет. Осталось {left}.",
   pt_now_ai:"AI-совет «Сейчас»",
   plan_limit_now_ai:"AI-совет «Сейчас» — в Pro и Max",
+  groups_tab:"Группы", team_new_short:"Новая группа",
+  group_settings:"Настройки и участники группы",
   draft_restored:"Несохранённый текст восстановлен", autosaved:"Сохраняем…",
   mood_q:"Как вы себя чувствовали сегодня?",
   mood_awful:"Очень плохо", mood_low:"Плохо", mood_ok:"Нормально",
@@ -4679,21 +4690,23 @@ SCREENS.team = () => {
   const team = teamCurrent();
   const board = team.board || {};
   const tab = state.teamTab || "today";
-  const pick = teams.length > 1 ? `
-    <div class="tabs" role="tablist">${teams.map(x => `
+  /* v16: every group by its name, one tap apart, and making another is the
+     last chip. Free can join any group but owns none: its chip is locked. */
+  const freeOwner = Boolean(state.me?.plan?.enabled && state.me.plan.tier === "free");
+  const pick = `
+    <div class="tabs gtabs" role="tablist">${teams.map(x => `
       <div class="tab ${x.id === team.id ? "on" : ""}" role="tab" tabindex="0"
            aria-selected="${x.id === team.id}"
            data-act="team-pick" data-id="${x.id}">${esc(x.name)}</div>`).join("")}
-    </div>` : "";
+      <div class="tab add" role="button" tabindex="0" data-act="team-new">${icon("plus", 15)} ${t("team_new_short")}${
+        freeOwner ? `<span class="wlock">${icon("shield", 11)} Pro</span>` : ""}</div>
+    </div>`;
 
   let h = `
     <div class="head">
-      <div class="grow"><h1>${esc(team.name)}</h1>
-        <div class="muted sm">${(team.members || []).map(m => esc(m.name)
-          + (m.role === "owner" || m.role === "admin"
-            ? ` <span class="role-badge ${m.role}">${m.role === "owner" ? t("role_owner") : t("role_admin")}</span>` : "")).join(" · ")}</div></div>
+      <div class="grow"><h1 class="gname">${esc(team.name)}</h1></div>
       <button class="ghost" data-act="team-menu" data-id="${team.id}"
-              aria-label="${t("settings")}">⋯</button>
+              aria-label="${t("group_settings")}" title="${t("group_settings")}">⋯</button>
       <button class="iconbtn add" data-act="team-add" data-kind="task"
               aria-label="${t("team_add_task")}" title="${t("team_add_task")}">${icon("plus", 22)}</button>
     </div>
@@ -9700,7 +9713,7 @@ const NAV = [
 ];
 //: Which tab stays lit for each screen. A project opens from Tasks.
 const NAV_OF = {habits:"tracker", tasks:"tracker", goals:"tracker", project:"tracker",
-                steps:"profile", stats:"profile", team:"profile", more:"profile"};
+                team:"tracker", steps:"profile", stats:"profile", more:"profile"};
 //: A tab opens where the person last was inside it.
 function navTarget(id){
   if(id === "tracker") return state.trackerLast || "habits";
@@ -9718,11 +9731,13 @@ function screenClass(){
 }
 /* The switch at the top of a two-screen tab. */
 function groupBar(screen){
-  const seg = (items, cur) => `<div class="seg big groupseg">${items.map(([id, key]) =>
+  const seg = (items, cur) => `<div class="seg big groupseg ${items.length > 3 ? "four" : ""}">${items.map(([id, key]) =>
     `<div class="${cur === id ? "on" : ""}" data-act="nav" data-screen="${id}">${t(key)}</div>`).join("")}</div>`;
-  if(screen === "habits" || screen === "tasks" || screen === "goals")
-    return seg([["habits", "habits"], ["tasks", "tasks"], ["goals", "goals_tab"]], screen);
-  if(screen === "steps" || screen === "stats" || screen === "team"){
+  /* v16: groups are planning, so they sit in Reja beside habits, tasks and
+     goals — not three levels down under Profile. */
+  if(screen === "habits" || screen === "tasks" || screen === "goals" || screen === "team")
+    return seg([["habits", "habits"], ["tasks", "tasks"], ["goals", "goals_tab"], ["team", "groups_tab"]], screen);
+  if(screen === "steps" || screen === "stats"){
     const me = state.me || {};
     const name = esc(me.first_name || me.name || "");
     const st = state.progress?.steps;
@@ -9732,7 +9747,7 @@ function groupBar(screen){
           <div class="t3 tiny">${st ? `${STEP_ICON[st.level_key] || ""} ${t("step_lvl_" + st.level_key)} · ${
             t("steps_level_n", {n: st.level})}` : t("nav_profile")}</div></div>
         <button class="iconbtn" data-act="settings" aria-label="${t("settings")}">${icon("settings", 22)}</button>
-      </div>` + seg([["steps", "nav_steps"], ["stats", "nav_stats"], ["team", "team"]], screen);
+      </div>` + seg([["steps", "nav_steps"], ["stats", "nav_stats"]], screen);
   }
   return "";
 }
@@ -10118,7 +10133,7 @@ async function loadStats(period){
 function goto(screen, patch){
   haptic();
   if(screen !== "home") state.homeVeil = false;
-  if(screen === "habits" || screen === "tasks" || screen === "goals") state.trackerLast = screen;
+  if(screen === "habits" || screen === "tasks" || screen === "goals" || screen === "team") state.trackerLast = screen;
   if(screen === "goals") lastGoalView = "";
   if(["steps", "stats", "team"].includes(screen)) state.profileLast = screen;
   if(screen === "steps") stepsShown = false;
@@ -12723,7 +12738,7 @@ function teamMembersSheet(team){
         actions.push(`<button class="btn sm danger" data-act="team-kick"
           data-id="${m.user_id}">${t("remove_member")}</button>`);
       if(p.transfer) actions.push(`<button class="btn sm secondary" data-act="team-transfer"
-          data-id="${m.user_id}">👑 ${t("give_owner")}</button>`);
+          data-id="${m.user_id}">${icon("user", 14)} ${t("give_owner")}</button>`);
     }
     return `<div class="card tight" style="margin-top:6px">
       <div class="row"><div class="grow"><b>${esc(m.name)}</b>${

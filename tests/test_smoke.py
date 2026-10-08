@@ -1086,9 +1086,10 @@ def test_the_old_goals_stay_retired_and_new_goals_have_their_own_table():
 
 
 def test_the_mini_app_navigation_is_four_places():
-    """Bugun · Reja · Moliya · Profil (K13). Reja switches Habits ↔ Tasks and
-    Profil switches Steps ↔ Statistics ↔ Team at the top, while the bar stays,
-    so leaving is always one tap."""
+    """Bugun · Reja · Moliya · Profil (K13). Reja switches Habits ↔ Tasks ↔
+    Goals ↔ Groups and Profil switches Steps ↔ Statistics at the top, while the
+    bar stays, so leaving is always one tap. v16: groups moved from Profil to
+    Reja — they are planning, and were three levels deep."""
     html = (ROOT / "webapp" / "index.html").read_text()
     nav = html[html.index("const NAV = ["):html.index("const NAV_OF")]
     assert [line.split('id:"')[1].split('"')[0]
@@ -1099,8 +1100,9 @@ def test_the_mini_app_navigation_is_four_places():
     for word in ('nav_home:"Bugun"', 'nav_tracker:"Reja"', 'nav_money:"Moliya"', 'nav_profile:"Profil"'):
         assert word in html, word
     group = html[html.index("function groupBar(screen){"):html.index("const offerKey")]
-    assert '[["habits", "habits"], ["tasks", "tasks"], ["goals", "goals_tab"]]' in group
-    assert '[["steps", "nav_steps"], ["stats", "nav_stats"], ["team", "team"]]' in group
+    assert '[["habits", "habits"], ["tasks", "tasks"], ["goals", "goals_tab"], ["team", "groups_tab"]]' in group
+    assert '[["steps", "nav_steps"], ["stats", "nav_stats"]]' in group
+    assert 'team:"tracker"' in html
     assert 'data-act="settings"' in group, "settings one tap from Profil"
     nav_of = html[html.index("const NAV_OF"):html.index("function navTarget(")]
     for screen in ("habits", "tasks", "goals", "project", "steps", "stats", "team"):
