@@ -1003,7 +1003,19 @@ details[open] > summary .i{transform:rotate(90deg)}
         color:var(--text-2);margin-top:var(--s2);flex-wrap:wrap}
 .legend span{cursor:pointer;display:inline-flex;align-items:center;gap:6px;
              min-height:32px;padding:0 4px;border-radius:var(--radius-sm)}
-.legend span.off{opacity:.45;text-decoration:line-through}
+/* Audit V29: switches, not struck-out words — on is filled, off is an
+   empty outline. */
+.legend span{border:var(--border-w) solid var(--border);padding:0 10px;border-radius:var(--radius-pill)}
+.legend span.on{background:var(--surface-2);color:var(--text);border-color:var(--border-2)}
+.legend span.off{opacity:.7}
+.qxp{margin:6px 2px 0}
+.role-badge{font-size:11px;font-weight:650;padding:1px 7px;border-radius:var(--radius-pill);
+            background:var(--surface-2);color:var(--text-2);border:var(--border-w) solid var(--border)}
+.role-badge.owner{color:var(--primary);border-color:color-mix(in srgb, var(--primary) 40%, var(--border))}
+.team-done{margin-top:10px;border-top:var(--border-w) solid var(--border);padding-top:8px}
+.team-done summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--text-2);display:flex;align-items:center;gap:6px;list-style:none}
+.legend span.off i{background:none !important;box-shadow:inset 0 0 0 1.5px var(--text-3)}
+.tile .v .none{font-size:17px;color:var(--text-2);font-weight:650}
 .legend i{width:12px;height:4px;border-radius:2px;display:inline-block}
 .scrollx{overflow-x:auto;scrollbar-width:none}
 .scrollx::-webkit-scrollbar{display:none}
@@ -1955,8 +1967,8 @@ const DICT = {
   plan_save_stars:"Yiliga {n} ⭐ tejaysiz",
   avatar_heic:"Bu rasm HEIC formatida — telefon uni o'qiy olmadi. Kamerada JPG ni tanlang yoki boshqa rasm yuboring.", avatar_too_big:"Rasm juda katta. Boshqasini tanlang.", avatar_server_old:"Server hali yangilanmagan — rasm yuklash keyinroq ishlaydi.", avatar_offline:"Internet yo'q — rasm saqlanmadi.",
   pt_habits:"Odatlar", pt_active_tasks:"Faol vazifalar", pt_recurring_tasks:"Takrorlanuvchi vazifalar", pt_projects:"Loyihalar", pt_open_debts:"Ochiq qarzlar", pt_teams_owned:"Jamoa yaratish", pt_team_members:"Jamoa a'zolari", pt_voice:"Ovozli buyruq", pt_journal_ai:"AI kun xulosasi", pt_timer_rhythm:"Ish/tanaffus ritmi", pt_stats_history:"Oylik va yillik statistika", pt_stats_csv:"Statistika fayli", pt_week:"hafta", pt_day:"kun", plan_save_year:"Yillik to'lovda tejaysiz — {list}", plan_free_has:"Free'da — {list}",
-  rank_title:"Reyting", rank_among:"{n} kishi orasida", rank_top:"Siz eng faol {n}% ichidasiz", rank_top_short:"TOP {n}%", rank_week:"Haftalik", rank_best:"Eng yaxshi", rank_move:"O'zgarish", rank_private:"Faqat o'rningiz ko'rinadi — boshqalarning ismi va natijasi hech kimga ko'rsatilmaydi.", rank_soon:"Reytingga {n} kundan keyin kirasiz", rank_soon_hint:"7 kunlik faollikdan keyin o'rningiz hisoblanadi.", steps_unavailable:"Qadam ma'lumoti hali kelmadi. Server yangilangach ko'rinadi.",
-  coins_title:"Coinlar", coins_shop:"Coin do'koni", coins_today:"Bugun +{n} / {cap} coin", coins_hint:"Vazifa, odat, namoz va xulosa coin beradi", coins_how:"Har {n} ball = 1 coin. Vazifa, odat, namoz, xulosa va hafta maqsadi ball beradi — kuniga {cap} coingacha, yutuqlar alohida. Bir narsa ikki marta hisoblanmaydi.", coins_item_plan:"{plan} — {n} kun", coins_item_freeze:"Seriyani muzlatish +1", coins_plan_hint:"Tarifingizga qo'shiladi, hozirgisidan keyin", coins_freeze_hint:"Shu oy bir zaif kun seriyani uzmaydi", coins_need:"Yana {n} coin kerak", coins_confirm:"Tasdiqlash ", coins_bought:"Sotib olindi ✓", coins_plans_off:"Tariflar hozir o'chiq", coins_freeze_limit:"Bu oy 2 ta muzlatish olingan", coins_history:"Xaridlar", coins_or:"Yoki coin bilan oling",
+  rank_title:"Reyting", rank_among:"{n} kishi orasida", rank_top:"Siz eng faol {n}% ichidasiz", rank_top_short:"TOP {n}%", rank_week:"Shu haftalik o'rin", rank_best:"Shaxsiy rekord", rank_move:"Pog'ona o'sishi", rank_private:"Faqat o'rningiz ko'rinadi — boshqalarning ismi va natijasi hech kimga ko'rsatilmaydi.", rank_soon:"Reytingga {n} kundan keyin kirasiz", rank_soon_hint:"7 kunlik faollikdan keyin o'rningiz hisoblanadi.", steps_unavailable:"Qadam ma'lumoti hali kelmadi. Server yangilangach ko'rinadi.",
+  coins_title:"Coinlar", coins_shop:"Coin do'koni", coins_today:"Bugun olindi +{n} · Kunlik limit {cap}", coins_hint:"Vazifa, odat, namoz va xulosa coin beradi", coins_how:"Har {n} ball = 1 coin. Vazifa, odat, namoz, xulosa va hafta maqsadi ball beradi — kuniga {cap} coingacha, yutuqlar alohida. Bir narsa ikki marta hisoblanmaydi.", coins_item_plan:"{plan} — {n} kun", coins_item_freeze:"Seriyani muzlatish +1", coins_plan_hint:"Tarifingizga qo'shiladi, hozirgisidan keyin", coins_freeze_hint:"Shu oy bir zaif kun seriyani uzmaydi", coins_need:"Yana {n} coin kerak", coins_confirm:"Tasdiqlash ", coins_bought:"Sotib olindi ✓", coins_plans_off:"Tariflar hozir o'chiq", coins_freeze_limit:"Bu oy 2 ta muzlatish olingan", coins_history:"Xaridlar", coins_or:"Yoki coin bilan oling",
   home_unveil:"Kunning qolgan qismini ko'rish",
   goals_tab:"Maqsadlar", gl_tactical:"Haftalik", gl_milestone:"Bosqichlar", gl_ultimate:"Hayotiy",
   gl_tactical_sub:"bu hafta", gl_milestone_sub:"1–3 yil", gl_ultimate_sub:"umr bo'yi",
@@ -2037,6 +2049,9 @@ const DICT = {
   gl_u_done:"bajarildi", gl_u_active:"faol", gl_u_goals:"ta", gl_ms_one:"Bosqich", gl_target:"Maqsad", focus_milestone:"Qaysi bosqichga xizmat qiladi", focus_no_milestone:"Bog'lanmagan",
   cal_items:"{n} ta element", cal_today:"Bugunga",
   money_rest_cats:"Qolgan kategoriyalar", money_split_head:"Chiqimlar tarkibi", money_total_word:"Jami", money_spent_limit:"Sarflandi / Limit", money_left:"Qoldi {n}", money_set_limit:"Limit qo'yish", money_pending:"Kutilmoqda", amt_k:"ming", amt_m:"mln", amt_b:"mlrd", money_all_accounts:"Barcha hisoblar", debt_all_open:"Barcha ochiq qarzlar", debt_this_month:"Shu oy qaytarilishi kerak", w_plan_month:"Oylik reja", w_paid_month:"To'langan", w_left_month:"Qolgan", w_paid_on:"To'langan · {d}", w_due_word:"Muddat", w_crypto_hint:"summa so'mda yuritiladi",
+  no_plan:"Reja yo'q", weighted_tasks_n:"Muhimlik bo'yicha {n}%", weighted_habits_n:"Daraja bo'yicha {n}%", avg_by_days:"kunlar o'rtachasi",
+  team_in_group:"Guruhda {done}/{total}", team_done_items:"Bajarilgan ishlar",
+  steps_in_level:"Bu darajada {done}/{span} ({pct}%)", steps_xp_def:"Qadam — faollik ochkosi (XP): bajarilgan vazifa, odat, namoz va xulosa uchun beriladi.", rank_ahead:"Foydalanuvchilarning {n}% idan oldindasiz", streak_why_title:"Seriya va himoya", streak_why_body:"Seriya — kun bali {n}+ bo'lgan kunlar ketma-ketligi. Rejasiz kun hisobga kirmaydi va seriyani uzmaydi.", freeze_why_body:"Himoya kuni — bali past kunda seriyani saqlab qoladi. Har oy 2 ta beriladi, kuniga ko'pi bilan bittasi ishlatiladi; coin do'konidan yana sotib olish mumkin. Hozir qolgan {left} ta.",
   draft_restored:"Saqlanmagan matn tiklandi", autosaved:"Saqlanmoqda…",
   mood_q:"Bugun o'zingizni qanday his qildingiz?",
   mood_awful:"Juda yomon", mood_low:"Yomon", mood_ok:"O'rtacha",
@@ -2284,7 +2299,7 @@ const DICT = {
   wake_enter:"Vaqtni kiritish", wake_enter_hint:"Qachon turganingizni yozing — tugmani bosgan vaqtingiz emas",
   pause_today:"Bugundan", pause_tomorrow:"Ertadan", pause_when:"Qachondan to'xtatamiz?",
   pause_note:"Bugundan desangiz, bugungi hisobdan ham chiqadi",
-  pts:"p.", team_join_hint:"Taklif havolasini bosing — jamoani ko'rib, keyin qo'shilasiz",
+  pts:"foiz punkt", team_join_hint:"Taklif havolasini bosing — jamoani ko'rib, keyin qo'shilasiz",
   nav_home:"Bugun", nav_stats:"Statistika", money:"Pul", money_add:"Pul yozuvi",
   money_this_month:"bu oy", money_tab_entries:"Yozuvlar", money_tab_cats:"Tahlil", money_tab_debts:"Qarzlar", debt_overdue_n:"{n} tasi muddati o'tgan", debt_owed_to_me:"Sizga qaytarishadi", debt_i_owe:"Siz qaytarasiz", debt_add:"Qarz yozish", debt_empty:"Hozircha qarz yo'q. Kimgadir pul bersangiz yoki olsangiz — shu yerga yozing, unutilmaydi.", debt_settled:"Yopilganlar", debt_lent_meta:"men berdim", debt_borrowed_meta:"men oldim", debt_overdue:"muddati o'tdi", debt_until:"{d} gacha", debt_returned:"Qaytdi", debt_returned_full:"To'liq qaytdi", debt_lent:"Men qarz berdim", debt_borrowed:"Men qarz oldim", debt_person:"Kim? Ismini yozing", debt_amount:"Summa (200 ming, 1,5 mln…)", debt_due:"Qachongacha qaytariladi", debt_due_week:"1 haftada", debt_due_month:"1 oyda", debt_note:"Izoh (ixtiyoriy)", debt_bad_amount:"Summani yozing — 200 ming yoki 200000", debt_saved:"✓ Qarz yozildi", debt_closed:"✓ Qarz yopildi", debt_partial:"Bir qismi qaytdimi?", debt_partial_ph:"Qancha? Masalan, 50 ming", debt_reopen:"Qayta ochish", debt_paid_more:"Bu summa qolgan qarzdan ko'p. Qolgani: {n}", debt_of:"jami {n}", debt_payments:"To'lovlar", debt_delete_q:"Qarzni o'chirasizmi?", debt_archived:"O'chirilganlar", debt_restore:"Qaytarish", debt_purge:"Butunlay o'chirish", debt_purge_q:"Butunlay o'chirilsinmi? Buni qaytarib bo'lmaydi.",
   money_apart:"Alohida bo'lim — hech qanday foiz, streak yoki reytingga qo'shilmaydi.",
@@ -2469,8 +2484,8 @@ const DICT = {
   plan_save_stars:"You save {n} ⭐ a year",
   avatar_heic:"This photo is HEIC and the phone could not read it. Pick a JPG or another photo.", avatar_too_big:"This picture is too large. Pick another.", avatar_server_old:"The server is not updated yet — photo upload will work after it is.", avatar_offline:"No connection — the photo was not saved.",
   pt_habits:"Habits", pt_active_tasks:"Open tasks", pt_recurring_tasks:"Repeating tasks", pt_projects:"Projects", pt_open_debts:"Open debts", pt_teams_owned:"Create teams", pt_team_members:"Team members", pt_voice:"Voice commands", pt_journal_ai:"AI day summary", pt_timer_rhythm:"Work/break rhythm", pt_stats_history:"Month and year statistics", pt_stats_csv:"Statistics file", pt_week:"week", pt_day:"day", plan_save_year:"Paying yearly you save — {list}", plan_free_has:"On Free — {list}",
-  rank_title:"Rating", rank_among:"among {n} people", rank_top:"You are in the most active {n}%", rank_top_short:"TOP {n}%", rank_week:"This week", rank_best:"Best", rank_move:"Change", rank_private:"Only your position is shown — nobody else's name or result is shown to anyone.", rank_soon:"You join the rating in {n} days", rank_soon_hint:"Your position is counted after 7 days of activity.", steps_unavailable:"Steps have not arrived yet. They show once the server is updated.",
-  coins_title:"Coins", coins_shop:"Coin shop", coins_today:"Today +{n} / {cap} coins", coins_hint:"Tasks, habits, prayer and the journal earn coins", coins_how:"Every {n} points = 1 coin. Tasks, habits, prayer, the journal and the week goal earn points — up to {cap} coins a day, achievements on top. Nothing counts twice.", coins_item_plan:"{plan} — {n} days", coins_item_freeze:"Streak freeze +1", coins_plan_hint:"Added to your plan, after the current one", coins_freeze_hint:"One weak day this month will not break the streak", coins_need:"{n} more coins needed", coins_confirm:"Confirm ", coins_bought:"Bought ✓", coins_plans_off:"Plans are off right now", coins_freeze_limit:"Two freezes already bought this month", coins_history:"Purchases", coins_or:"Or get it with coins",
+  rank_title:"Rating", rank_among:"among {n} people", rank_top:"You are in the most active {n}%", rank_top_short:"TOP {n}%", rank_week:"This week's place", rank_best:"Personal best", rank_move:"Places moved", rank_private:"Only your position is shown — nobody else's name or result is shown to anyone.", rank_soon:"You join the rating in {n} days", rank_soon_hint:"Your position is counted after 7 days of activity.", steps_unavailable:"Steps have not arrived yet. They show once the server is updated.",
+  coins_title:"Coins", coins_shop:"Coin shop", coins_today:"Earned today +{n} · Daily limit {cap}", coins_hint:"Tasks, habits, prayer and the journal earn coins", coins_how:"Every {n} points = 1 coin. Tasks, habits, prayer, the journal and the week goal earn points — up to {cap} coins a day, achievements on top. Nothing counts twice.", coins_item_plan:"{plan} — {n} days", coins_item_freeze:"Streak freeze +1", coins_plan_hint:"Added to your plan, after the current one", coins_freeze_hint:"One weak day this month will not break the streak", coins_need:"{n} more coins needed", coins_confirm:"Confirm ", coins_bought:"Bought ✓", coins_plans_off:"Plans are off right now", coins_freeze_limit:"Two freezes already bought this month", coins_history:"Purchases", coins_or:"Or get it with coins",
   home_unveil:"See the rest of the day",
   goals_tab:"Goals", gl_tactical:"Weekly", gl_milestone:"Milestones", gl_ultimate:"Lifetime",
   gl_tactical_sub:"this week", gl_milestone_sub:"1–3 years", gl_ultimate_sub:"lifelong",
@@ -2551,6 +2566,9 @@ const DICT = {
   gl_u_done:"done", gl_u_active:"active", gl_u_goals:"goals", gl_ms_one:"Milestone", gl_target:"Target", focus_milestone:"Milestone it moves forward", focus_no_milestone:"Not linked",
   cal_items:"{n} items", cal_today:"Today",
   money_rest_cats:"Other categories", money_split_head:"Spending breakdown", money_total_word:"Total", money_spent_limit:"Spent / Limit", money_left:"{n} left", money_set_limit:"Set a limit", money_pending:"Upcoming", amt_k:"k", amt_m:"M", amt_b:"B", money_all_accounts:"All accounts", debt_all_open:"All open debts", debt_this_month:"Due this month", w_plan_month:"Monthly plan", w_paid_month:"Paid", w_left_month:"Left", w_paid_on:"Paid · {d}", w_due_word:"Due", w_crypto_hint:"kept in so'm",
+  no_plan:"No plan", weighted_tasks_n:"By priority {n}%", weighted_habits_n:"By tier {n}%", avg_by_days:"average of days",
+  team_in_group:"Group {done}/{total}", team_done_items:"Done",
+  steps_in_level:"In this level {done}/{span} ({pct}%)", steps_xp_def:"A step is an activity point (XP): earned for done tasks, habits, prayers and the day summary.", rank_ahead:"Ahead of {n}% of users", streak_why_title:"Streak and protection", streak_why_body:"Your streak counts days in a row scoring {n}+. A day with no plan does not count and does not break it.", freeze_why_body:"A protection day keeps the streak through a weak day. You get 2 a month, at most one is used per day, and more can be bought in the coin shop. Left now {left}.",
   draft_restored:"Unsaved text restored", autosaved:"Saving…",
   mood_q:"How did you feel today?",
   mood_awful:"Awful", mood_low:"Low", mood_ok:"Okay",
@@ -2792,7 +2810,7 @@ const DICT = {
   wake_enter:"Enter the time", wake_enter_hint:"When you actually got up — not when you pressed the button",
   pause_today:"From today", pause_tomorrow:"From tomorrow", pause_when:"Pause from when?",
   pause_note:"From today takes today out of the count as well",
-  pts:"pts", team_join_hint:"Open an invite link — you see the team first, then join",
+  pts:"pp", team_join_hint:"Open an invite link — you see the team first, then join",
   nav_home:"Today", nav_stats:"Stats", money:"Money", money_add:"Money entry",
   money_this_month:"this month", money_tab_entries:"Entries", money_tab_cats:"Insights", money_tab_debts:"Debts", debt_overdue_n:"{n} overdue", debt_owed_to_me:"Owed to you", debt_i_owe:"You owe", debt_add:"Record a debt", debt_empty:"No debts yet. Lend or borrow money — write it here and it won't be forgotten.", debt_settled:"Closed", debt_lent_meta:"I lent", debt_borrowed_meta:"I borrowed", debt_overdue:"overdue", debt_until:"by {d}", debt_returned:"Returned", debt_returned_full:"Fully returned", debt_lent:"I lent", debt_borrowed:"I borrowed", debt_person:"Who? Type a name", debt_amount:"Amount (200k, 1.5 mln…)", debt_due:"Return by", debt_due_week:"In 1 week", debt_due_month:"In 1 month", debt_note:"Note (optional)", debt_bad_amount:"Type an amount — 200 ming or 200000", debt_saved:"✓ Debt recorded", debt_closed:"✓ Debt closed", debt_partial:"Part of it returned?", debt_partial_ph:"How much? E.g. 50 ming", debt_reopen:"Reopen", debt_paid_more:"That is more than what is left. Remaining: {n}", debt_of:"of {n}", debt_payments:"Payments", debt_delete_q:"Delete this debt?", debt_archived:"Deleted", debt_restore:"Restore", debt_purge:"Delete forever", debt_purge_q:"Delete forever? This cannot be undone.",
   money_apart:"A separate section — never counted in any percentage, streak or rank.",
@@ -2977,8 +2995,8 @@ const DICT = {
   plan_save_stars:"Экономия {n} ⭐ в год",
   avatar_heic:"Это фото в HEIC, телефон не смог его прочитать. Выберите JPG или другое фото.", avatar_too_big:"Картинка слишком большая. Выберите другую.", avatar_server_old:"Сервер ещё не обновлён — загрузка фото заработает после обновления.", avatar_offline:"Нет связи — фото не сохранено.",
   pt_habits:"Привычки", pt_active_tasks:"Открытые задачи", pt_recurring_tasks:"Повторяющиеся задачи", pt_projects:"Проекты", pt_open_debts:"Открытые долги", pt_teams_owned:"Создание команд", pt_team_members:"Участники команды", pt_voice:"Голосовые команды", pt_journal_ai:"AI-итоги дня", pt_timer_rhythm:"Ритм работа/перерыв", pt_stats_history:"Статистика за месяц и год", pt_stats_csv:"Файл статистики", pt_week:"нед", pt_day:"день", plan_save_year:"При оплате за год экономия — {list}", plan_free_has:"На Free — {list}",
-  rank_title:"Рейтинг", rank_among:"среди {n} человек", rank_top:"Вы в числе {n}% самых активных", rank_top_short:"ТОП {n}%", rank_week:"За неделю", rank_best:"Лучшее", rank_move:"Изменение", rank_private:"Видно только ваше место — имена и результаты других никому не показываются.", rank_soon:"Вы попадёте в рейтинг через {n} дн.", rank_soon_hint:"Место считается после 7 дней активности.", steps_unavailable:"Шаги ещё не пришли. Появятся после обновления сервера.",
-  coins_title:"Монеты", coins_shop:"Магазин монет", coins_today:"Сегодня +{n} / {cap} монет", coins_hint:"Задачи, привычки, намаз и итоги дня дают монеты", coins_how:"Каждые {n} баллов = 1 монета. Задачи, привычки, намаз, итоги дня и цель недели дают баллы — до {cap} монет в день, достижения сверху. Ничего не считается дважды.", coins_item_plan:"{plan} — {n} дн.", coins_item_freeze:"Заморозка серии +1", coins_plan_hint:"Добавится к тарифу, после текущего", coins_freeze_hint:"Один слабый день в этом месяце не прервёт серию", coins_need:"Нужно ещё {n} монет", coins_confirm:"Подтвердить ", coins_bought:"Куплено ✓", coins_plans_off:"Тарифы сейчас выключены", coins_freeze_limit:"В этом месяце уже 2 заморозки", coins_history:"Покупки", coins_or:"Или за монеты",
+  rank_title:"Рейтинг", rank_among:"среди {n} человек", rank_top:"Вы в числе {n}% самых активных", rank_top_short:"ТОП {n}%", rank_week:"За неделю", rank_best:"Лучшее", rank_move:"Изменение мест", rank_private:"Видно только ваше место — имена и результаты других никому не показываются.", rank_soon:"Вы попадёте в рейтинг через {n} дн.", rank_soon_hint:"Место считается после 7 дней активности.", steps_unavailable:"Шаги ещё не пришли. Появятся после обновления сервера.",
+  coins_title:"Монеты", coins_shop:"Магазин монет", coins_today:"Сегодня получено +{n} · Дневной лимит {cap}", coins_hint:"Задачи, привычки, намаз и итоги дня дают монеты", coins_how:"Каждые {n} баллов = 1 монета. Задачи, привычки, намаз, итоги дня и цель недели дают баллы — до {cap} монет в день, достижения сверху. Ничего не считается дважды.", coins_item_plan:"{plan} — {n} дн.", coins_item_freeze:"Заморозка серии +1", coins_plan_hint:"Добавится к тарифу, после текущего", coins_freeze_hint:"Один слабый день в этом месяце не прервёт серию", coins_need:"Нужно ещё {n} монет", coins_confirm:"Подтвердить ", coins_bought:"Куплено ✓", coins_plans_off:"Тарифы сейчас выключены", coins_freeze_limit:"В этом месяце уже 2 заморозки", coins_history:"Покупки", coins_or:"Или за монеты",
   home_unveil:"Показать остальной день",
   goals_tab:"Цели", gl_tactical:"Недельные", gl_milestone:"Этапы", gl_ultimate:"Жизненные",
   gl_tactical_sub:"эта неделя", gl_milestone_sub:"1–3 года", gl_ultimate_sub:"на всю жизнь",
@@ -3059,6 +3077,9 @@ const DICT = {
   gl_u_done:"сделано", gl_u_active:"активных", gl_u_goals:"целей", gl_ms_one:"Этап", gl_target:"Цель", focus_milestone:"Какой этап продвигает", focus_no_milestone:"Не связано",
   cal_items:"Элементов · {n}", cal_today:"К сегодня",
   money_rest_cats:"Остальные категории", money_split_head:"Структура расходов", money_total_word:"Всего", money_spent_limit:"Потрачено / Лимит", money_left:"Осталось {n}", money_set_limit:"Задать лимит", money_pending:"Ожидается", amt_k:"тыс", amt_m:"млн", amt_b:"млрд", money_all_accounts:"Все счета", debt_all_open:"Все открытые долги", debt_this_month:"Вернуть в этом месяце", w_plan_month:"План на месяц", w_paid_month:"Оплачено", w_left_month:"Осталось", w_paid_on:"Оплачено · {d}", w_due_word:"Срок", w_crypto_hint:"учёт в сумах",
+  no_plan:"Нет плана", weighted_tasks_n:"С учётом важности {n}%", weighted_habits_n:"С учётом уровня {n}%", avg_by_days:"среднее по дням",
+  team_in_group:"В группе {done}/{total}", team_done_items:"Выполнено",
+  steps_in_level:"На этом уровне {done}/{span} ({pct}%)", steps_xp_def:"Шаг — очко активности (XP): за выполненные задачи, привычки, намазы и итоги дня.", rank_ahead:"Вы впереди {n}% пользователей", streak_why_title:"Серия и защита", streak_why_body:"Серия — дни подряд с баллом {n}+. День без плана не считается и серию не обрывает.", freeze_why_body:"День защиты сохраняет серию в слабый день. Даётся 2 в месяц, тратится не больше одного в день, ещё можно купить в магазине монет. Осталось {left}.",
   draft_restored:"Несохранённый текст восстановлен", autosaved:"Сохраняем…",
   mood_q:"Как вы себя чувствовали сегодня?",
   mood_awful:"Очень плохо", mood_low:"Плохо", mood_ok:"Нормально",
@@ -3300,7 +3321,7 @@ const DICT = {
   wake_enter:"Ввести время", wake_enter_hint:"Когда вы действительно встали — а не когда нажали кнопку",
   pause_today:"С сегодня", pause_tomorrow:"С завтра", pause_when:"С какого дня пауза?",
   pause_note:"С сегодня — сегодняшний день тоже не считается",
-  pts:"п.", team_join_hint:"Откройте ссылку-приглашение — сначала увидите команду, потом вступите",
+  pts:"п.п.", team_join_hint:"Откройте ссылку-приглашение — сначала увидите команду, потом вступите",
   nav_home:"Сегодня", nav_stats:"Итоги", money:"Деньги", money_add:"Запись о деньгах",
   money_this_month:"за месяц", money_tab_entries:"Записи", money_tab_cats:"Анализ", money_tab_debts:"Долги", debt_overdue_n:"просрочено: {n}", debt_owed_to_me:"Вам должны", debt_i_owe:"Вы должны", debt_add:"Записать долг", debt_empty:"Долгов пока нет. Дали или взяли деньги — запишите здесь, и это не забудется.", debt_settled:"Закрытые", debt_lent_meta:"я дал", debt_borrowed_meta:"я взял", debt_overdue:"просрочен", debt_until:"до {d}", debt_returned:"Вернули", debt_returned_full:"Вернули полностью", debt_lent:"Я дал", debt_borrowed:"Я взял", debt_person:"Кто? Введите имя", debt_amount:"Сумма (200 тыс, 1,5 млн…)", debt_due:"Вернуть до", debt_due_week:"Через неделю", debt_due_month:"Через месяц", debt_note:"Заметка (необязательно)", debt_bad_amount:"Введите сумму — 200 тыс или 200000", debt_saved:"✓ Долг записан", debt_closed:"✓ Долг закрыт", debt_partial:"Вернули часть?", debt_partial_ph:"Сколько? Например, 50 тыс", debt_reopen:"Открыть снова", debt_paid_more:"Это больше остатка долга. Осталось: {n}", debt_of:"из {n}", debt_payments:"Платежи", debt_delete_q:"Удалить долг?", debt_archived:"Удалённые", debt_restore:"Вернуть", debt_purge:"Удалить навсегда", debt_purge_q:"Удалить навсегда? Это нельзя отменить.",
   money_apart:"Отдельный раздел — не входит ни в какие проценты, серии и рейтинги.",
@@ -4650,11 +4671,12 @@ SCREENS.team = () => {
     <div class="head">
       <div class="grow"><h1>${esc(team.name)}</h1>
         <div class="muted sm">${(team.members || []).map(m => esc(m.name)
-          + (m.role === "owner" ? " 👑" : m.role === "admin" ? " ⭐" : "")).join(" · ")}</div></div>
+          + (m.role === "owner" || m.role === "admin"
+            ? ` <span class="role-badge ${m.role}">${m.role === "owner" ? t("role_owner") : t("role_admin")}</span>` : "")).join(" · ")}</div></div>
       <button class="ghost" data-act="team-menu" data-id="${team.id}"
               aria-label="${t("settings")}">⋯</button>
       <button class="iconbtn add" data-act="team-add" data-kind="task"
-              aria-label="${t("team_add_task")}">${icon("plus", 22)}</button>
+              aria-label="${t("team_add_task")}" title="${t("team_add_task")}">${icon("plus", 22)}</button>
     </div>
     ${pick}`;
 
@@ -4714,18 +4736,25 @@ function teamTodayTab(team, board){
       .find(r => r.id === x.id)
     || {...x, owed: (x.missing || []).includes(me) || (x.done_by || []).includes(me),
         done: (x.done_by || []).includes(me)};
+  /* Audit V23/V24: your own tick and the group's state are two facts —
+     "Siz bajardingiz · Guruhda 1/2" — and a pooled task says its rule. */
   const open = (board.open || []).map(x => `<div class="row" style="padding:6px 0">
       ${teamBox({...full(x), mirrored: x.mirrored}, x.kind)}
       <div class="grow">${icon(x.kind === "task" ? "list" : "check", 15)} ${esc(x.title)}
-        ${full(x).done ? `<div class="muted sm">${t("team_you_done")}</div>` : ""}
+        ${x.completion === "any" ? `<div class="muted sm">${t("completion_any")}</div>` : ""}
+        ${full(x).done ? `<div class="muted sm">${t("team_you_done")} · ${t("team_in_group", {done: x.done_count ?? (x.done_by || []).length,
+          total: x.owed ?? ((x.done_by || []).length + (x.missing || []).length)})}</div>` : ""}
         ${(x.missing || []).length ? `<div class="muted sm">${t("team_waiting_on")}: ${
           (x.missing || []).map(nameOf).join(" · ")}</div>` : ""}</div>
     </div>`).join("");
-  const done = (board.done || []).map(x => `
-    <div class="row" style="opacity:.55;padding:4px 0">
+  /* Audit V22: finished items fold away under their own heading instead of
+     sitting struck through inside "still open". */
+  const doneRows = (board.done || []).map(x => `
+    <div class="row" style="opacity:.7;padding:4px 0">
       <span class="itile sm">${icon("check", 13)}</span>
-      <div class="grow done">${esc(x.title)}</div>
+      <div class="grow">${esc(x.title)}</div>
     </div>`).join("");
+  const done = doneRows ? `<details class="team-done"><summary>${icon("chevron", 14)} ${t("team_done_items")} · ${(board.done || []).length}</summary>${doneRows}</details>` : "";
   const work = `<div class="card">
       <div class="row" style="padding:0 0 6px">
         <div class="card-t grow" style="margin:0">${t("team_left_today")}</div>
@@ -7260,6 +7289,10 @@ function walletView(){
   return h;
 }
 
+/* The day score a streak day needs — services.STREAK_THRESHOLD, checked
+   by a test so the two cannot drift. */
+const STREAK_MIN = 60;
+
 /* Audit F27: three letters a month — "I" stood for both Iyun and Iyul. */
 const MONTHS_SHORT = {
   uz:["Yan", "Fev", "Mar", "Apr", "May", "Iyn", "Iyl", "Avg", "Sen", "Okt", "Noy", "Dek"],
@@ -7751,24 +7784,33 @@ SCREENS.stats = () => {
   /* A percentage never stands alone: under it, the counts it came from
      ("4 of 7 tasks done") when the summary has them, then the change. */
   const sum = state.summary?.today || {};
-  const tile = (key, label, value, percent, delta, count) => `
+  const tile = (key, label, value, percent, delta, count, extra) => `
     <div class="tinted tile ${COMPONENT_TONE[key]}">
       <div class="row" style="gap:var(--s1)">
         <span class="itile">${icon(COMPONENT_ICON[key], 17)}</span>
       </div>
       <div class="k ellipsis">${label}</div>
       <div class="v num">${value}</div>
-      <div class="sub num">${count ? `<div>${count}</div>` : ""}${teamDelta(delta)}</div>
-      ${bar(percent)}
+      <div class="sub num">${count ? `<div>${count}</div>` : ""}${extra ? `<div class="t3">${extra}</div>` : ""}${teamDelta(delta)}</div>
+      ${percent === null ? "" : bar(percent)}
     </div>`;
+  /* Audit V01/V02/S73: the big number is the count's own share — 1 of 5 is
+     20% — and the weighted score that feeds Overall is written under it
+     with its name. No plan today reads "Reja yo'q", never 0% or 100%. */
+  const countTile = (key, label, done, total, weighted, delta, countKey, weightKey) => {
+    if(!total) return tile(key, label, `<span class="none">${t("no_plan")}</span>`, null, delta, "", "");
+    const share = Math.round(done / total * 100);
+    return tile(key, label, share + "%", share, delta, t(countKey, {done, total}),
+      weighted !== null && weighted !== undefined && weighted !== share ? t(weightKey, {n: weighted}) : "");
+  };
 
   h += `<div class="tiles two" style="margin-top:var(--s2)">
-      ${tile("tasks", t("tasks"), pct(today.tasks),
-             today.tasks || 0, st.deltas.tasks,
-             sum.tasks_total ? t("of_tasks", {done: sum.tasks_done, total: sum.tasks_total}) : "")}
-      ${tile("habits", t("habits"), pct(today.habits),
-             today.habits || 0, st.deltas.habits,
-             sum.habits_total ? t("of_habits", {done: sum.habits_done, total: sum.habits_total}) : "")}
+      ${sum.tasks_total !== undefined
+        ? countTile("tasks", t("tasks"), sum.tasks_done || 0, sum.tasks_total || 0, today.tasks, st.deltas.tasks, "of_tasks", "weighted_tasks_n")
+        : tile("tasks", t("tasks"), pct(today.tasks), today.tasks || 0, st.deltas.tasks, "")}
+      ${sum.habits_total !== undefined
+        ? countTile("habits", t("habits"), sum.habits_done || 0, sum.habits_total || 0, today.habits, st.deltas.habits, "of_habits", "weighted_habits_n")
+        : tile("habits", t("habits"), pct(today.habits), today.habits || 0, st.deltas.habits, "")}
       ${tile("team", t("team"), pct(today.team),
              today.team || 0, st.deltas.team,
              sum.team_total ? `${sum.team_done}/${sum.team_total}`
@@ -7778,9 +7820,12 @@ SCREENS.stats = () => {
              today.prayer || 0, st.deltas.prayer)}
     </div>`;
 
-  h += `<div class="seg" style="margin:16px 0 12px">
+  h += `<div class="seg" style="margin:16px 0 6px">
       ${["week","month","year"].map(p => `<div class="${st.period === p ? "on" : ""}"
         data-act="stats-period" data-period="${p}">${t(p)}</div>`).join("")}</div>`;
+  const range = (st.series || []).length
+    ? `${isoToLabel(st.series[0].day)} — ${isoToLabel(st.series[st.series.length - 1].day)}` : "";
+  if(range) h += `<div class="t3 small num" style="text-align:center;margin-bottom:10px">${range}</div>`;
 
   // The series are togglable, because four lines at once is a mess and
   // which two matter is the user's call, not ours.
@@ -7798,7 +7843,8 @@ SCREENS.stats = () => {
   h += `<div class="card">
       ${lineChart(st.series, active.length ? active : [SERIES[0]])}
       <div class="legend">${SERIES.map(k =>
-        `<span class="${state.statsSeries[k.field] ? "" : "off"}"
+        `<span class="${state.statsSeries[k.field] ? "on" : "off"}" role="switch" tabindex="0"
+          aria-checked="${Boolean(state.statsSeries[k.field])}"
           data-act="series-toggle" data-field="${k.field}">
           <i style="background:${k.color}"></i>${k.label}</span>`).join("")}</div>
     </div>`;
@@ -7807,7 +7853,7 @@ SCREENS.stats = () => {
      boxed cells. The four cells that used to sit here carried the *same*
      four deltas as the four at the top of the screen, so half of the block
      was a second printing of numbers already read. */
-  h += `<h2>${t("average")}</h2>
+  h += `<h2>${t("average")}</h2>${range ? `<div class="t3 small num" style="margin:-6px 0 8px">${t("avg_by_days")} · ${range}</div>` : ""}
     <div class="card"><div class="trio" style="grid-template-columns:repeat(5,1fr)">
       <div><div class="k">${t("overall")}</div>
         <div class="v num">${pct(st.averages.overall)}</div></div>
@@ -9156,11 +9202,12 @@ SCREENS.steps = () => {
         <div class="qlvl-name">${t("step_lvl_" + lvl.key)}</div>
         <div class="t2 small">${nextLvl ? t("steps_to_next", {n: st.next - st.total, name: t("step_lvl_" + nextLvl.key)})
           : t("steps_max")}</div>
-        <div class="qpct num">${pct}%</div>
+        <div class="qpct num">${nextLvl ? t("steps_in_level", {done: st.total - lvl.min, span, pct}) : pct + "%"}</div>
       </div></div>
+    <div class="t3 tiny qxp">${t("steps_xp_def")}</div>
     <div class="qstats" data-act="progress-open" role="button" tabindex="0">
-      ${stat("flame", "warm", streak, t("streak_days"))}
-      ${stat("shield", "cool", st.freeze || 0, t("steps_freeze_short"))}
+      <div data-act="streak-why" role="button" tabindex="0">${stat("flame", "warm", streak, t("streak_days"))}</div>
+      <div data-act="streak-why" role="button" tabindex="0">${stat("shield", "cool", st.freeze || 0, t("steps_freeze_short"))}</div>
       ${stat("star", "gold", rank.eligible ? "#" + rank.global : "—",
              rank.eligible ? t("rank_global") : t("steps_rank_in", {n: rank.days_remaining ?? 0}))}
     </div>`;
@@ -9184,7 +9231,9 @@ SCREENS.steps = () => {
         <span class="qcount num">${count}</span>
         <span class="qck">${full ? icon("check", 13) : ""}</span></div>`;
   }).join("");
-  const segs = st.today.filter(c => !c.empty).map(c => `<i class="${(c.complete ?? c.ok) ? "on" : c.ok ? "half" : ""}"></i>`).join("");
+  /* Audit V11: as many segments as the count's denominator. */
+  const segRows = counted === st.today.length ? st.today : st.today.filter(c => !c.empty);
+  const segs = segRows.map(c => `<i class="${c.empty ? "" : (c.complete ?? c.ok) ? "on" : c.ok ? "half" : ""}"></i>`).join("");
 
   const path = st.levels.map((l, i) => {
     const state_ = i + 1 < st.level ? "past" : i + 1 === st.level ? "now" : "lock";
@@ -9300,7 +9349,7 @@ function rankBlock(rank){
   }
   const top = rank.top_percent ?? 100;
   const move = rank.movement;
-  const moveTxt = move > 0 ? `<span class="rank-up">↑ ${move}</span>` : move < 0 ? `<span class="rank-down">↓ ${-move}</span>` : `<span class="t3">—</span>`;
+  const moveTxt = move > 0 ? `<span class="rank-up">+${move}</span>` : move < 0 ? `<span class="rank-down">−${-move}</span>` : `<span class="t3">—</span>`;
   return `<div class="steps-sub">${icon("chart", 15)} ${t("rank_title")}</div>
     <div class="card rank-card" data-act="progress-open" role="button" tabindex="0">
       <div class="row" style="gap:14px;align-items:center">
@@ -9309,6 +9358,7 @@ function rankBlock(rank){
           <div class="t3 tiny" style="margin-top:2px">${t("rank_top", {n: top})}</div></div>
         <span class="rank-pill">${t("rank_top_short", {n: top})}</span></div>
       <div class="sbar" style="margin-top:12px"><i style="width:${Math.max(4, 100 - top)}%"></i></div>
+      <div class="t3 tiny" style="margin-top:4px">${t("rank_ahead", {n: Math.max(0, 100 - top)})}</div>
       <div class="rank-facts">
         <div><b class="num">${rank.weekly ? "#" + rank.weekly : "—"}</b><span>${t("rank_week")}</span></div>
         <div><b class="num">${rank.best ? "#" + rank.best : "—"}</b><span>${t("rank_best")}</span></div>
@@ -9703,6 +9753,8 @@ function fabAdd(){
     return `<button class="fab-add" ${attrs} aria-label="${t(tab === "tactical" ? "add_mission"
       : "gl_add_" + tab)}">${icon("plus", 30)}</button>`;
   }
+  if(sc === "team" && (state.team?.teams || []).length) return `<button class="fab-add" data-act="team-add" data-kind="task"
+      aria-label="${t("team_add_task")}" title="${t("team_add_task")}">${icon("plus", 30)}</button>`;
   return `<button class="fab-add" data-act="${sc !== "money" ? "quick-add"
       : state.moneyTab === "debts" ? "debt-add" : state.moneyTab === "accounts" ? "acct-add" : "money-add"}"
         aria-label="${t(sc === "money" ? "money_add" : sc === "habits" ? "add_habit"
@@ -12196,6 +12248,14 @@ const A = {
     const [screen, tab] = STEP_GO[el.dataset.key] || ["home"];
     if(tab) state.tab = tab;
     goto(screen);
+  },
+  "streak-why": () => {
+    haptic();
+    const st = state.progress?.steps || {};
+    openSheet(`${sheetHead(t("streak_why_title"))}
+      <p class="small">${t("streak_why_body", {n: STREAK_MIN})}</p>
+      <p class="small">${t("freeze_why_body", {left: st.freeze ?? 0})}</p>
+      <button class="btn secondary" data-act="close" style="margin-top:8px">${t("close")}</button>`);
   },
   "progress-open": async () => {
     haptic();

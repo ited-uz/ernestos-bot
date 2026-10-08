@@ -361,6 +361,22 @@
     const lbl = i => { const d = new Date(now); d.setDate(d.getDate() - (n - 1 - i));
       return period === "year" ? String(i + 1) : String(d.getDate()); };
     const wave = (i, base, amp) => Math.max(0, Math.min(100, Math.round(base + amp * Math.sin(i * 1.3))));
+    /* Audit S76: the demo's numbers come from one series, as the server's
+       do — the last point is today, the averages are its averages and the
+       best day is its highest point. */
+    const series = EMPTY ? [] : Array.from({length:n}, (_, i) => {
+      const last = i === n - 1 && period !== "year";
+      const d = new Date(now); d.setDate(d.getDate() - (n - 1 - i));
+      return {label:lbl(i), day:period === "year" ? `${now.getFullYear()}-${String(i + 1).padStart(2, "0")}-01`
+                : d.toISOString().slice(0, 10),
+        overall:last ? f.overall : wave(i, 64, 14), tasks:last ? f.taskPct : wave(i + 1, 58, 20),
+        habits:last ? f.habitPct : wave(i + 2, 70, 15), team:last ? 50 : wave(i + 3, 52, 18),
+        prayer:last ? f.prayerPct : wave(i + 4, 66, 12)};
+    });
+    const avg = k => series.length ? Math.round(series.reduce((a, p) => a + p[k], 0) / series.length) : null;
+    const averages = {overall:avg("overall"), tasks:avg("tasks"), habits:avg("habits"), team:avg("team"), prayer:avg("prayer")};
+    const top = series.reduce((b, p) => !b || p.overall > b.overall ? p : b, null);
+    const best_day = top && top.overall > 0 ? {day:top.day, overall:top.overall} : null;
     return {period,
       today:{overall:f.overall, measured:!EMPTY, yesterday:EMPTY ? null : 55,
              tasks:f.taskPct, habits:f.habitPct, team:EMPTY ? null : 50, prayer:f.prayerPct,
@@ -368,11 +384,7 @@
              prayer_score:f.prayerScore, prayer_max:5,
              prayer_performed:f.performed, prayer_required:5, streak:EMPTY ? 0 : 6},
       deltas:{tasks:5, habits:-4, team:10, prayer:0},
-      series:EMPTY ? [] : Array.from({length:n}, (_, i) => ({label:lbl(i),
-        overall:wave(i, 64, 14), tasks:wave(i + 1, 58, 20), habits:wave(i + 2, 70, 15),
-        team:wave(i + 3, 52, 18), prayer:wave(i + 4, 66, 12)})),
-      averages:{overall:66, tasks:61, habits:72, team:55, prayer:70},
-      best_day:{day:day(-3), overall:88},
+      series, averages, best_day,
       prayer_detail:{full_days:4, days:7, on_time_percent:76, jamaat:9, qaza:3, missed:2,
                      consistency:81}};
   };

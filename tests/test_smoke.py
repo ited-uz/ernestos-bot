@@ -12853,3 +12853,21 @@ console.log(JSON.stringify(cases.map(sharePercents)));"""
         assert sum(shares) == 100, shares
     assert results[0] == [3, 2, 9, 86] or sum(results[0]) == 100
     assert results[3] == [0, 0]
+
+
+def test_csv_cells_cannot_become_formulas():
+    """Audit S78: text that a spreadsheet would run is made plain text;
+    numbers, negative ones included, stay numbers."""
+    assert svc.csv_cell("=HYPERLINK(\"x\")") == "\"'=HYPERLINK(\"\"x\"\")\""
+    assert svc.csv_cell("+998901234567") == "'+998901234567"
+    assert svc.csv_cell("@cmd") == "'@cmd"
+    assert svc.csv_cell("-2+3") == "'-2+3"
+    assert svc.csv_cell(-5) == "-5" and svc.csv_cell(12.5) == "12.5"
+    assert svc.csv_cell("Ish, oila") == '"Ish, oila"'
+    assert svc.csv_cell("on_time") == "on_time"
+
+
+def test_the_streak_sheet_uses_the_servers_threshold():
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert f"const STREAK_MIN = {svc.STREAK_THRESHOLD};" in html
+    assert '"streak-why": () =>' in html

@@ -4882,6 +4882,24 @@ def summary(s: Session, ws: int, *, gender: str | None = None,
     return out
 
 
+def csv_cell(value) -> str:
+    """One CSV cell that a spreadsheet will not run (audit S78).
+
+    Text starting with = + - @ (or a tab / carriage return) is read as a
+    formula by Excel and Sheets; a leading apostrophe makes it plain text.
+    Numbers pass through untouched, so "-5" stays a number. Quotes and
+    commas are escaped the CSV way.
+    """
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    text = "" if value is None else str(value)
+    if text[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        text = "'" + text
+    if any(c in text for c in (",", '"', "\n", "\r")):
+        text = '"' + text.replace('"', '""') + '"'
+    return text
+
+
 def stats_csv(s: Session, ws: int, period: str = "month", *,
               gender: str | None = None, tz: ZoneInfo | None = None) -> str:
     """The statistics view as CSV, for the download button."""
@@ -4904,7 +4922,7 @@ def stats_csv(s: Session, ws: int, period: str = "month", *,
     lines.append(f"prayer on-time %,{detail['on_time_percent']}")
     lines.append("prayer status,count")
     for status, count in sorted(detail["counts"].items()):
-        lines.append(f"{status},{count}")
+        lines.append(f"{csv_cell(status)},{csv_cell(count)}")
     lines.append("")
     lines.append("date,overall %,tasks %,habits %,prayer %,measured")
     for point in data["series"]:
@@ -9166,6 +9184,8 @@ def team_scoreboard(s: Session, user_id: int, team_id: int, *,
                      "done_by": row["finished_for"],
                      "owed": len(row["owed_by"]),
                      "done_count": len(row["finished_for"]),
+                     # all | any: whether one member's tick closes it for everyone.
+                     "completion": row.get("completion", "all"),
                      "missing": row["missing"]}
             (done_items if not entry["missing"] else open_items).append(entry)
 
