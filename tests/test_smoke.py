@@ -5162,7 +5162,7 @@ def test_tasks_is_today_plan_calendar():
     assert "calendarBlock()" not in main, "the month is the calendar tab now"
     assert "projectsTab()" not in main, "projects are a view of their own"
     calendar = html[html.index("function calendarTab("):html.index("function sectionHead(")]
-    assert "calendarBlock()" in calendar and "countdownBlock(" in calendar
+    assert "calendarBlock(true)" in calendar and "calAgenda()" in calendar and "countdownBlock(" in calendar
 
     open_tab = html[html.index("function openTab("):html.index("function doneTab(")]
     assert "weekFocusBlock()" not in open_tab, "the focus block is printed twice"
@@ -5848,11 +5848,13 @@ def test_every_priority_paints_its_own_edge():
     is born with, so it gets a neutral stripe and red keeps its meaning.
     """
     html = (ROOT / "webapp" / "index.html").read_text()
-    assert ".trow.pri-high{border-left-color:var(--danger)}" in html
+    # v15 (audit S07): red is kept for what is late; urgent is amber.
+    assert ".trow.pri-high{border-left-color:var(--warn)}" in html
+    assert ".trow.late{border-left-color:var(--danger)}" in html
     assert ".trow.pri-medium{border-left-color:var(--border-2)}" in html
     assert ".trow.pri-low{border-left-color:var(--border)}" in html
     # And the row still carries the class the CSS hangs off.
-    assert 'return `<div class="trow pri-${task.priority}">' in html
+    assert 'return `<div class="trow pri-${task.priority}${late > 0 ? " late" : ""}">' in html
 
 
 def test_the_prayer_screen_asks_for_honesty_in_every_language():
@@ -10186,7 +10188,7 @@ def test_the_calendar_plans_only_today_and_later():
     """A past day shows what was done and offers nothing to add; today and the
     days ahead open even when empty, and that is where a task is planned."""
     html = (ROOT / "webapp" / "index.html").read_text()
-    grid = html[html.index("function calendarBlock(){"):html.index("const TREND_ICON")]
+    grid = html[html.index("function calendarBlock(inline){"):html.index("const TREND_ICON")]
     assert "const past = iso < c.today;" in grid
     assert "const opens = events.length || !past;" in grid
     assert 'class="cal-day pad"' in grid and "cal-day empty" not in grid
@@ -12766,3 +12768,39 @@ def test_promo_redemptions_leave_with_the_account_and_are_exported(client, plans
         svc.delete_account(s, uid)
         assert not s.scalars(select(db.PromoCodeRedemption).where(
             db.PromoCodeRedemption.user_id == uid)).all()
+
+
+def test_a_weeks_goal_names_the_milestone_it_moves_forward(client):
+    """Audit S24: a tactical goal can point at one milestone. Only the owner's
+    own live milestones are accepted, the link travels when the goal is moved
+    to next week, and the app shows it as a pill under the goal."""
+    uid = next(_next_id)
+    _fresh_account(uid)
+    me = Caller(client, {"id": uid, "first_name": "G"})
+    big = me.post("/api/goals", {"level": "ultimate", "title": "Kapital"}).json()["id"]
+    ms = me.post("/api/goals", {"level": "milestone", "title": "Birinchi $100k",
+                                "parent_id": big}).json()["id"]
+    made = me.post("/api/focus", {"title": "10 ta mijoz", "goal_id": ms})
+    assert made.status_code == 200, made.text
+    fid = made.json()["id"]
+    week = me.get("/api/focus").json()["week"]
+    assert week["primary"]["goal_id"] == ms and week["primary"]["goal_title"] == "Birinchi $100k"
+
+    # An ultimate goal is not a milestone; someone else's milestone is not found.
+    assert me.patch(f"/api/focus/{fid}", {"title": "10 ta mijoz", "goal_id": big}).status_code == 404
+    other_uid = next(_next_id)
+    _fresh_account(other_uid)
+    other = Caller(client, {"id": other_uid, "first_name": "O"})
+    theirs = other.post("/api/goals", {"level": "milestone", "title": "Sir"}).json()["id"]
+    assert me.patch(f"/api/focus/{fid}", {"title": "10 ta mijoz", "goal_id": theirs}).status_code == 404
+    assert me.get("/api/focus").json()["week"]["primary"]["goal_id"] == ms
+
+    # A rename that does not mention the link keeps it; null clears it.
+    assert me.patch(f"/api/focus/{fid}", {"title": "12 ta mijoz"}).status_code == 200
+    assert me.get("/api/focus").json()["week"]["primary"]["goal_id"] == ms
+    assert me.patch(f"/api/focus/{fid}", {"title": "12 ta mijoz", "goal_id": None}).status_code == 200
+    assert me.get("/api/focus").json()["week"]["primary"]["goal_id"] is None
+
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert "function focusGoalPill(row)" in html and "${focusGoalPill(primary)}" in html
+    assert "...missionGoalBody()" in html

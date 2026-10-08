@@ -497,7 +497,7 @@
       tasks_done:7, tasks_total:12, status:"active", archived:false, deadline:day(14)},
       tasks:DB.tasks.filter(x => x.project === s.work)})],
     [/^\/api\/focus$/, () => ({week:EMPTY ? {primary:null, supporting:[], slots_free:3} : {
-      primary:{id:301, title:s.f1, priority:"high", done:false},
+      primary:{id:301, title:s.f1, priority:"high", done:false, goal_id:12, goal_title:"ErnestOS: 1 000 pullik mijoz"},
       supporting:[{id:302, title:s.f2, priority:"medium", done:true}], slots_free:1}})],
     [/^\/api\/calendar$/, calendar],
     [/^\/api\/countdowns$/, () => ({countdowns:home().countdowns})],
@@ -791,9 +791,11 @@
   const mark = () => {
     const el = document.createElement("div");
     el.setAttribute("role", "note");
-    el.textContent = {uz:"Sinov nusxasi · namuna ma'lumotlar · hech narsa saqlanmaydi",
-                      ru:"Тестовая версия · пример данных · ничего не сохраняется"}[LANG]
-                     || "Preview · sample data · not connected to an account";
+    // Audit S35: edits do show until the page is reloaded, so "nothing is
+    // saved" was not quite true — they live in this tab and nowhere else.
+    el.textContent = {uz:"Demo rejim · namuna ma'lumotlar · o'zgarishlar faqat shu sessiyada saqlanadi",
+                      ru:"Демо-режим · пример данных · изменения хранятся только в этой сессии"}[LANG]
+                     || "Demo mode · sample data · changes are kept only in this session";
     el.style.cssText = "font:600 12px/1.2 -apple-system,system-ui,sans-serif;" +
       "text-align:center;padding:6px 12px;background:var(--surface-2);" +
       "color:var(--text-2);border-bottom:1px solid var(--border);letter-spacing:.2px";

@@ -2858,8 +2858,9 @@ def focus_is_done(row: WeeklyFocus, linked: dict[int, Task] | None = None) -> bo
 
 
 def _focus_dict(row: WeeklyFocus, linked: dict[int, Task] | None = None,
-                carries: int = 0) -> dict:
+                carries: int = 0, goals: dict[int, "LifeGoal"] | None = None) -> dict:
     task = (linked or {}).get(row.task_id) if row.task_id else None
+    goal = (goals or {}).get(row.goal_id) if row.goal_id else None
     done = focus_is_done(row, linked)
     return {"id": row.id, "slot": row.slot, "title": row.title,
             # Moved on to a later week: kept here as history, not counted.
@@ -2873,7 +2874,30 @@ def _focus_dict(row: WeeklyFocus, linked: dict[int, Task] | None = None,
             # A goal delivered by a task is done when the task is, and is
             # scored through the task — once.
             "task_id": row.task_id if task is not None else None,
-            "task_title": task.title if task is not None else None}
+            "task_title": task.title if task is not None else None,
+            # The milestone this week's goal moves forward (audit S24).
+            "goal_id": goal.id if goal is not None else None,
+            "goal_title": goal.title if goal is not None else None}
+
+
+def _linked_goals(s: Session, ws: int, rows: list[WeeklyFocus]) -> dict[int, "LifeGoal"]:
+    ids = [r.goal_id for r in rows if r.goal_id]
+    if not ids:
+        return {}
+    return {g.id: g for g in s.scalars(select(LifeGoal).where(
+        LifeGoal.workspace_id == ws, LifeGoal.id.in_(ids),
+        LifeGoal.archived_at.is_(None))).all()}
+
+
+def _focus_goal_or_none(s: Session, ws: int, goal_id: int | None) -> int | None:
+    """A week's goal can point at one of the owner's live milestones."""
+    if not goal_id:
+        return None
+    goal = s.get(LifeGoal, goal_id)
+    if (goal is None or goal.workspace_id != ws or goal.archived_at is not None
+            or goal.level != "milestone"):
+        raise NotFound("goal")
+    return goal.id
 
 
 def _linked_tasks(s: Session, ws: int, rows: list[WeeklyFocus]) -> dict[int, Task]:
@@ -2897,7 +2921,8 @@ def list_focus(s: Session, ws: int, when: date | None = None, *,
         stmt = stmt.where(WeeklyFocus.carried_to.is_(None))
     rows = s.scalars(stmt.order_by(WeeklyFocus.slot, WeeklyFocus.id)).all()
     linked = _linked_tasks(s, ws, rows)
-    return [_focus_dict(r, linked, _carry_count(s, r)) for r in rows]
+    goals = _linked_goals(s, ws, rows)
+    return [_focus_dict(r, linked, _carry_count(s, r), goals) for r in rows]
 
 
 def _carry_count(s: Session, row: WeeklyFocus) -> int:
@@ -2944,7 +2969,7 @@ def _focus_task_or_none(s: Session, ws: int, task_id: int | None) -> int | None:
 
 def add_focus(s: Session, ws: int, title: str, when: date | None = None, *,
               priority: str = DEFAULT_MISSION_PRIORITY,
-              task_id: int | None = None,
+              task_id: int | None = None, goal_id: int | None = None,
               tz: ZoneInfo | None = None) -> WeeklyFocus:
     title = title.strip()[:200]
     if not title:
@@ -2959,7 +2984,8 @@ def add_focus(s: Session, ws: int, title: str, when: date | None = None, *,
     if free is None:
         raise ValueError("week is full")
     row = WeeklyFocus(workspace_id=ws, week_start=start, slot=free, title=title,
-                      priority=priority, task_id=_focus_task_or_none(s, ws, task_id))
+                      priority=priority, task_id=_focus_task_or_none(s, ws, task_id),
+                      goal_id=_focus_goal_or_none(s, ws, goal_id))
     s.add(row)
     s.commit()
     return row
@@ -2984,7 +3010,7 @@ def carry_focus_forward(s: Session, ws: int, focus_id: int, *,
         raise ValueError("already_carried")
     moved = WeeklyFocus(workspace_id=ws, week_start=target, slot=free,
                         title=row.title, priority=row.priority, task_id=row.task_id,
-                        carried_from=row.id)
+                        goal_id=row.goal_id, carried_from=row.id)
     s.add(moved)
     s.flush()
     # The old week keeps its row, marked as moved on (audit #17). Its slot is
@@ -2996,7 +3022,7 @@ def carry_focus_forward(s: Session, ws: int, focus_id: int, *,
 
 
 def edit_focus(s: Session, ws: int, focus_id: int, title: str, *,
-               priority: str | None = None, task_id=...) -> WeeklyFocus:
+               priority: str | None = None, task_id=..., goal_id=...) -> WeeklyFocus:
     row = s.get(WeeklyFocus, focus_id)
     if row is None or row.workspace_id != ws:
         raise NotFound("focus")
@@ -3008,6 +3034,8 @@ def edit_focus(s: Session, ws: int, focus_id: int, title: str, *,
         row.priority = priority
     if task_id is not ...:
         row.task_id = _focus_task_or_none(s, ws, task_id)
+    if goal_id is not ...:
+        row.goal_id = _focus_goal_or_none(s, ws, goal_id)
     s.commit()
     return row
 

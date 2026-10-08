@@ -569,6 +569,9 @@ class WeeklyFocus(Base):
     carried_from: Mapped[int | None] = mapped_column(Integer, nullable=True)
     #: The task this mission is delivered by, if any.
     task_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: The milestone (LifeGoal, level "milestone") this week's goal moves
+    #: forward, if any. Added in place, so nullable and without a foreign key.
+    goal_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     __table_args__ = (

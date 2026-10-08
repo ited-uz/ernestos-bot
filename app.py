@@ -7552,6 +7552,8 @@ class FocusIn(BaseModel):
     #: The task this mission is carried out by. Finishing the task finishes
     #: the mission — the day scores it once, as the task.
     task_id: int | None = None
+    #: The milestone this week's goal moves forward (audit S24).
+    goal_id: int | None = None
 
 
 class HabitOrderIn(BaseModel):
@@ -9821,7 +9823,7 @@ def api_focus_add(body: FocusIn, init=Header(default=None, alias="X-Telegram-Ini
         try:
             row = svc.add_focus(s, ws, body.title,
                                 priority=body.priority or svc.DEFAULT_MISSION_PRIORITY,
-                                task_id=body.task_id)
+                                task_id=body.task_id, goal_id=body.goal_id)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
     return {"ok": True, "id": row.id}
@@ -10289,11 +10291,9 @@ def api_focus_edit(focus_id: int, body: FocusIn,
     _, ws = auth(init)
     with SessionLocal() as s:
         try:
-            if "task_id" in body.model_fields_set:
-                svc.edit_focus(s, ws, focus_id, body.title, priority=body.priority,
-                               task_id=body.task_id)
-            else:
-                svc.edit_focus(s, ws, focus_id, body.title, priority=body.priority)
+            links = {k: getattr(body, k) for k in ("task_id", "goal_id")
+                     if k in body.model_fields_set}
+            svc.edit_focus(s, ws, focus_id, body.title, priority=body.priority, **links)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
     return {"ok": True}
