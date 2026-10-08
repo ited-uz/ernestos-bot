@@ -5097,6 +5097,8 @@ PLAN_TEXT = {
                  "recurring_tasks": "Ko'proq takrorlanuvchi vazifa", "projects": "Ko'proq loyiha",
                  "life_goals": "Ko'proq maqsad",
                  "open_debts": "Ko'proq ochiq qarz", "teams_owned": "Jamoa yaratish",
+                 "money_accounts": "Ko'proq hisob", "money_subs": "Ko'proq doimiy to'lov",
+                 "money_transfers": "Hisoblar orasida o'tkazma", "money_year": "Yillik moliya",
                  "team_members": "Jamoada ko'proq a'zo", "voice_week": "Ko'proq ovozli buyruq",
                  "voice_day": "Ko'proq ovozli buyruq", "journal_ai": "AI bilan kundalik",
                  "timer_rhythm": "Ish va tanaffus ritmi", "stats_history": "Oylik va yillik statistika",
@@ -5124,6 +5126,8 @@ PLAN_TEXT = {
                  "recurring_tasks": "Больше повторяющихся задач", "projects": "Больше проектов",
                  "life_goals": "Больше целей",
                  "open_debts": "Больше открытых долгов", "teams_owned": "Создание команд",
+                 "money_accounts": "Больше счетов", "money_subs": "Больше регулярных платежей",
+                 "money_transfers": "Переводы между счетами", "money_year": "Финансы за год",
                  "team_members": "Больше участников в команде", "voice_week": "Больше голосовых команд",
                  "voice_day": "Больше голосовых команд", "journal_ai": "AI-итоги дня",
                  "timer_rhythm": "Ритм работы и отдыха", "stats_history": "Статистика за месяц и год",
@@ -5151,6 +5155,8 @@ PLAN_TEXT = {
                  "recurring_tasks": "More repeating tasks", "projects": "More projects",
                  "life_goals": "More goals",
                  "open_debts": "More open debts", "teams_owned": "Creating teams",
+                 "money_accounts": "More accounts", "money_subs": "More repeating payments",
+                 "money_transfers": "Transfers between accounts", "money_year": "The year of money",
                  "team_members": "More team members", "voice_week": "More voice commands",
                  "voice_day": "More voice commands", "journal_ai": "AI day summary",
                  "timer_rhythm": "Work and break rhythm", "stats_history": "Month and year statistics",
@@ -10242,11 +10248,13 @@ class MoneyIn(BaseModel):
     #: A past day may be named (an undo puts an entry back where it was);
     #: a future one may not.
     day: str | None = Field(default=None, max_length=10)
+    account_id: int | None = None
 
 
 class MoneyTextIn(BaseModel):
     text: str = Field(min_length=1, max_length=300)
     source: str = Field(default="manual", max_length=8)
+    account_id: int | None = None
     #: The Chiqim / Kirim button that was pressed; empty lets the words decide.
     kind: str = Field(default="", max_length=8)
 
@@ -10284,7 +10292,8 @@ def api_money_add(body: MoneyIn, init=Header(default=None, alias="X-Telegram-Ini
     with SessionLocal() as s:
         try:
             return svc.add_money(s, ws, body.kind, body.amount, body.category,
-                                 note=body.note, source=body.source, day=day, tz=tz)
+                                 note=body.note, source=body.source, day=day, tz=tz,
+                                 account_id=body.account_id)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
 
@@ -10309,9 +10318,13 @@ def api_money_text(body: MoneyTextIn,
     if parsed is None:
         raise HTTPException(status_code=422, detail="no_amount")
     with SessionLocal() as s:
-        return svc.add_money(s, ws, parsed["kind"], parsed["amount"],
-                             parsed["category"], note=parsed["note"],
-                             source=body.source, tz=svc.user_tz(user))
+        try:
+            return svc.add_money(s, ws, parsed["kind"], parsed["amount"],
+                                 parsed["category"], note=parsed["note"],
+                                 source=body.source, tz=svc.user_tz(user),
+                                 account_id=body.account_id)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
 
 
 class MoneyPatchIn(BaseModel):
@@ -10320,6 +10333,8 @@ class MoneyPatchIn(BaseModel):
     category: str | None = Field(default=None, max_length=24)
     note: str | None = Field(default=None, max_length=200)
     day: str | None = Field(default=None, max_length=10)
+    #: null takes the entry off its account; leaving it out keeps it.
+    account_id: int | None = None
 
 
 @app.patch("/api/money/{entry_id}")
@@ -10332,8 +10347,10 @@ def api_money_edit(entry_id: int, body: MoneyPatchIn,
         raise HTTPException(status_code=422, detail="future_day")
     with SessionLocal() as s:
         try:
+            extra = ({"account_id": body.account_id}
+                     if "account_id" in body.model_fields_set else {})
             return svc.update_money(s, ws, entry_id, kind=body.kind, amount=body.amount,
-                                    category=body.category, note=body.note, day=day)
+                                    category=body.category, note=body.note, day=day, **extra)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
 
@@ -10344,6 +10361,146 @@ def api_money_delete(entry_id: int,
     _, ws = auth(init)
     with SessionLocal() as s:
         return {"ok": True, "entry": svc.delete_money(s, ws, entry_id)}
+
+
+class AccountIn(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+    kind: str = Field(default="cash", max_length=10)
+    opening: int = Field(default=0, ge=-svc.MONEY_MAX_AMOUNT, le=svc.MONEY_MAX_AMOUNT)
+
+
+class AccountPatch(BaseModel):
+    name: str | None = Field(default=None, max_length=60)
+    kind: str | None = Field(default=None, max_length=10)
+    opening: int | None = Field(default=None, ge=-svc.MONEY_MAX_AMOUNT, le=svc.MONEY_MAX_AMOUNT)
+    archived: bool | None = None
+
+
+class MoneyTransferIn(BaseModel):
+    from_account: int
+    to_account: int
+    amount: int = Field(gt=0, le=svc.MONEY_MAX_AMOUNT)
+    note: str = Field(default="", max_length=200)
+    day: str | None = Field(default=None, max_length=10)
+
+
+class SubIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    amount: int = Field(gt=0, le=svc.MONEY_MAX_AMOUNT)
+    category: str = Field(default="other", max_length=24)
+    account_id: int | None = None
+    period: str = Field(default="monthly", pattern="^(weekly|monthly|yearly)$")
+    next_due: str | None = Field(default=None, max_length=10)
+
+
+class SubPatch(BaseModel):
+    name: str | None = Field(default=None, max_length=80)
+    amount: int | None = Field(default=None, gt=0, le=svc.MONEY_MAX_AMOUNT)
+    category: str | None = Field(default=None, max_length=24)
+    account_id: int | None = None
+    period: str | None = Field(default=None, pattern="^(weekly|monthly|yearly)$")
+    next_due: str | None = Field(default=None, max_length=10)
+    archived: bool | None = None
+
+
+def _wallet_call(fn):
+    """A wallet write: a bad value is a 422 with its reason."""
+    try:
+        return fn()
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.get("/api/money/wallet")
+def api_wallet(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        return svc.wallet_overview(s, ws)
+
+
+@app.post("/api/money/accounts")
+def api_account_add(body: AccountIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        row = _wallet_call(lambda: svc.add_account(s, ws, body.name, body.kind, body.opening))
+        return {"ok": True, "id": row.id}
+
+
+@app.patch("/api/money/accounts/{account_id}")
+def api_account_patch(account_id: int, body: AccountPatch,
+                      init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        _wallet_call(lambda: svc.update_account(s, ws, account_id,
+                                                **body.model_dump(exclude_unset=True)))
+    return {"ok": True}
+
+
+@app.post("/api/money/transfers")
+def api_transfer_add(body: MoneyTransferIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, ws = auth(init)
+    tz = svc.user_tz(user)
+    day = _date(body.day)
+    if day is not None and day > svc.today_local(tz):
+        raise HTTPException(status_code=422, detail="future_day")
+    with SessionLocal() as s:
+        row = _wallet_call(lambda: svc.add_transfer(s, ws, body.from_account, body.to_account,
+                                                    body.amount, note=body.note, day=day, tz=tz))
+        return {"ok": True, "id": row.id}
+
+
+@app.delete("/api/money/transfers/{transfer_id}")
+def api_transfer_delete(transfer_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        svc.delete_transfer(s, ws, transfer_id)
+    return {"ok": True}
+
+
+@app.post("/api/money/subscriptions")
+def api_sub_add(body: SubIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    fields = body.model_dump()
+    fields["next_due"] = _date(fields["next_due"]) if fields["next_due"] else None
+    if fields["next_due"] is None:
+        fields.pop("next_due")
+    with SessionLocal() as s:
+        row = _wallet_call(lambda: svc.add_subscription(s, ws, **fields))
+        return {"ok": True, "id": row.id}
+
+
+@app.patch("/api/money/subscriptions/{sub_id}")
+def api_sub_patch(sub_id: int, body: SubPatch,
+                  init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    fields = body.model_dump(exclude_unset=True)
+    if "next_due" in fields:
+        fields["next_due"] = _date(fields["next_due"])
+    for key in ("name", "amount", "category", "period", "next_due"):
+        if key in fields and fields[key] is None:
+            del fields[key]
+    with SessionLocal() as s:
+        _wallet_call(lambda: svc.update_subscription(s, ws, sub_id, **fields))
+    return {"ok": True}
+
+
+@app.post("/api/money/subscriptions/{sub_id}/pay")
+def api_sub_pay(sub_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """This period's payment, recorded as an ordinary expense."""
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        return svc.pay_subscription(s, ws, sub_id, tz=svc.user_tz(user))
+
+
+@app.get("/api/money/year")
+def api_money_year(year: int | None = None,
+                   init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, ws = auth(init)
+    year = year or svc.today_local(svc.user_tz(user)).year
+    if not 2000 <= year <= 2100:
+        raise HTTPException(status_code=422, detail="bad_year")
+    with SessionLocal() as s:
+        return svc.money_year(s, ws, year)
 
 
 @app.put("/api/money/budgets/{category}")

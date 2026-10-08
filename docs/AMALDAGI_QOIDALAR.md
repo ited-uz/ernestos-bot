@@ -128,6 +128,10 @@ navbatga tushadi va ulanganda bir marta yuboriladi.
 | Loyihalar | **1** | **15** | cheksiz |
 | Maqsadlar (bosqich va asosiy, ochiqlari) | **3** | **25** | cheksiz |
 | Ochiq qarzlar | **3** | cheksiz | cheksiz |
+| Moliya hisoblari (naqd, karta, bank…) | **1** | **3** | cheksiz |
+| Doimiy to‘lovlar | — | **3** | cheksiz |
+| Hisoblar orasida o‘tkazma | — | bor | bor |
+| Yillik moliya (12 oy) | — | — | bor |
 | O‘zi yaratgan jamoalar | **0** | **2** | **10** |
 | Jamoa a’zolari (egasining tarifi) | **8** | **10** | **50** |
 | Ovozli buyruq | **5** / hafta | **30** / kun | **100** / kun |

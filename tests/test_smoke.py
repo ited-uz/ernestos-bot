@@ -12412,3 +12412,151 @@ def test_goals_are_exported_and_leave_with_the_account(client):
     with SessionLocal() as s:
         svc.delete_account(s, uid)
         assert not s.scalars(select(db.LifeGoal).where(db.LifeGoal.title == "Ironman")).all()
+
+
+# ---------------------------------------------------------------------------
+# Money: accounts, transfers, repeating payments, the year
+# ---------------------------------------------------------------------------
+
+def _max_account(uid: int) -> None:
+    with SessionLocal() as s:
+        plans.grant(s, uid, "max", 30, "test", ref=f"test-max-{uid}")
+        s.commit()
+
+
+def test_accounts_hold_their_own_balance_and_transfers_only_move_money(client, plans_on):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    _max_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "W"})
+    cash = caller.post("/api/money/accounts", {"name": "Naqd", "kind": "cash", "opening": 500_000}).json()["id"]
+    card = caller.post("/api/money/accounts", {"name": "Karta", "kind": "card", "opening": 2_000_000}).json()["id"]
+    assert caller.post("/api/money", {"kind": "expense", "amount": 45_000, "category": "food",
+                                      "account_id": cash}).status_code == 200
+    assert caller.post("/api/money/text", {"text": "maosh 3 mln keldi", "account_id": card}).status_code == 200
+    r = caller.post("/api/money/transfers", {"from_account": card, "to_account": cash, "amount": 300_000})
+    assert r.status_code == 200, r.text
+    m = caller.get("/api/money").json()
+    w = m["wallet"]
+    bal = {a["id"]: a["balance"] for a in w["accounts"]}
+    assert bal[cash] == 500_000 - 45_000 + 300_000
+    assert bal[card] == 2_000_000 + 3_000_000 - 300_000
+    # The total counts the opening amounts and is not changed by the transfer.
+    assert m["balance"] == w["total"] == 2_500_000 + 3_000_000 - 45_000
+    assert w["unassigned"] == 0 and w["transfers"][0]["from_name"] == "Karta"
+    # A transfer to the same account, or to somebody else's, is refused.
+    assert caller.post("/api/money/transfers", {"from_account": cash, "to_account": cash,
+                                                "amount": 1}).status_code == 422
+    other = next(_next_id)
+    _fresh_account(other)
+    theirs = Caller(client, {"id": other, "first_name": "T"}).post(
+        "/api/money/accounts", {"name": "Theirs"}).json()["id"]
+    assert caller.post("/api/money/transfers", {"from_account": cash, "to_account": theirs,
+                                                "amount": 1}).status_code == 422
+    assert caller.post("/api/money", {"kind": "expense", "amount": 1, "account_id": theirs}).status_code == 422
+    # Removing an account keeps its entries; their money moves to "unassigned".
+    assert caller.patch(f"/api/money/accounts/{cash}", {"archived": True}).status_code == 200
+    w = caller.get("/api/money/wallet").json()
+    assert [a["id"] for a in w["accounts"]] == [card]
+    assert w["total"] == w["accounts"][0]["balance"] + w["unassigned"]
+
+
+def test_a_repeating_payment_becomes_an_expense_and_moves_its_date(client, plans_on):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    _max_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "S"})
+    card = caller.post("/api/money/accounts", {"name": "Karta", "kind": "card"}).json()["id"]
+    sub = caller.post("/api/money/subscriptions", {"name": "Internet", "amount": 150_000,
+                                                   "category": "home", "account_id": card,
+                                                   "period": "monthly", "next_due": "2026-01-31"})
+    assert sub.status_code == 200, sub.text
+    sid = sub.json()["id"]
+    w = caller.get("/api/money/wallet").json()
+    assert w["subs_monthly"] == 150_000 and w["subscriptions"][0]["next_due"] == "2026-01-31"
+    paid = caller.post(f"/api/money/subscriptions/{sid}/pay").json()
+    assert paid["entry"]["amount"] == 150_000 and paid["entry"]["category"] == "home"
+    assert paid["entry"]["account_id"] == card
+    # The end of January moves to the end of February, not into March.
+    assert paid["next_due"] == "2026-02-28"
+    caller.patch(f"/api/money/subscriptions/{sid}", {"period": "yearly"})
+    w = caller.get("/api/money/wallet").json()
+    assert w["subs_monthly"] == 12_500
+    assert caller.patch(f"/api/money/subscriptions/{sid}", {"archived": True}).status_code == 200
+    assert caller.get("/api/money/wallet").json()["subscriptions"] == []
+
+
+def test_money_extras_follow_the_plan(client, plans_on):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    _expire_grants(uid)
+    caller = Caller(client, {"id": uid, "first_name": "F"})
+    access = caller.get("/api/money/wallet").json()["access"]
+    assert access == {"tier": "free", "accounts": 1, "subs": 0, "transfers": False, "year": False}
+    a = caller.post("/api/money/accounts", {"name": "Naqd"}).json()["id"]
+    second = caller.post("/api/money/accounts", {"name": "Karta"})
+    assert second.status_code == 402 and second.json()["key"] == "money_accounts"
+    sub = caller.post("/api/money/subscriptions", {"name": "Netflix", "amount": 1})
+    assert sub.status_code == 402 and sub.json()["needs"] == "pro"
+    assert caller.post("/api/money/transfers", {"from_account": a, "to_account": a,
+                                                "amount": 1}).json()["key"] == "money_transfers"
+    year = caller.get("/api/money/year")
+    assert year.status_code == 402 and year.json()["needs"] == "max"
+    # Pro: a few accounts and transfers, but the year view stays Max.
+    with SessionLocal() as s:
+        plans.grant(s, uid, "pro", 30, "test", ref=f"test-pro-{uid}")
+        s.commit()
+    b = caller.post("/api/money/accounts", {"name": "Karta"}).json()["id"]
+    assert caller.post("/api/money/transfers", {"from_account": a, "to_account": b,
+                                                "amount": 10}).status_code == 200
+    assert caller.get("/api/money/year").status_code == 402
+
+
+def test_the_year_of_money_month_by_month(client):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "Y"})
+    caller.post("/api/money", {"kind": "income", "amount": 1_000_000, "category": "salary", "day": "2026-03-05"})
+    caller.post("/api/money", {"kind": "expense", "amount": 200_000, "category": "food", "day": "2026-03-07"})
+    caller.post("/api/money", {"kind": "expense", "amount": 50_000, "category": "transport", "day": "2026-07-01"})
+    y = caller.get("/api/money/year?year=2026").json()
+    assert y["months"][2] == {"month": 3, "income": 1_000_000, "expense": 200_000}
+    assert y["months"][6]["expense"] == 50_000
+    assert (y["income"], y["expense"], y["net"]) == (1_000_000, 250_000, 750_000)
+    assert [c["id"] for c in y["categories"]] == ["food", "transport"]
+
+
+def test_wallet_rows_are_exported_and_leave_with_the_account(client, plans_on):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    _max_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "E"})
+    a = caller.post("/api/money/accounts", {"name": "Bank", "kind": "bank"}).json()["id"]
+    b = caller.post("/api/money/accounts", {"name": "Kripto", "kind": "crypto"}).json()["id"]
+    caller.post("/api/money/transfers", {"from_account": a, "to_account": b, "amount": 5})
+    caller.post("/api/money/subscriptions", {"name": "Telefon", "amount": 60_000})
+    w = caller.get("/api/export").json()["money_wallet"]
+    assert [x["name"] for x in w["accounts"]] == ["Bank", "Kripto"]
+    assert w["transfers"][0]["amount"] == 5 and w["subscriptions"][0]["name"] == "Telefon"
+    with SessionLocal() as s:
+        ws = s.scalar(select(db.Workspace.id).where(db.Workspace.user_id == uid))
+        assert s.scalars(select(db.MoneyAccount).where(db.MoneyAccount.workspace_id == ws)).all()
+        svc.delete_account(s, uid)
+        for model in (db.MoneyAccount, db.MoneyTransfer, db.MoneySubscription):
+            assert not s.scalars(select(model).where(model.workspace_id == ws)).all()
+
+
+def test_the_mini_app_declares_each_function_and_action_once():
+    """A second `function x()` silently replaces the first (the later one
+    wins), and a second key in the actions object does the same — a sheet
+    opens that belongs to another screen. Both happened once; never again."""
+    import re
+    from collections import Counter
+    html = (ROOT / "webapp" / "index.html").read_text()
+    script = html[html.index("<script>"):]
+    funcs = Counter(re.findall(r"^(?:async )?function ([A-Za-z_$][\w$]*)\s*\(", script, re.M))
+    assert not [n for n, c in funcs.items() if c > 1], [n for n, c in funcs.items() if c > 1]
+    start = script.index("\nconst A = {")
+    actions = script[start:script.index("\n};", start)]
+    keys = Counter(re.findall(r'^  "([\w-]+)":', actions, re.M))
+    assert not [k for k, c in keys.items() if c > 1], [k for k, c in keys.items() if c > 1]

@@ -40,7 +40,7 @@ from db import (
     AgentAudit, AgentDraft, AgentPreference,
     Birthday, Countdown, DailyReportLog, DailyScore, Feedback, Habit, HabitLog,
     HabitPauseInterval, HabitScheduleVersion, IdempotencyKey, JobRun,
-    Debt, DebtPayment, JournalEntry, LifeGoal, MoneyBudget, ResetLog, Snooze, MoneyEntry, PrayerDay, PrayerLog, Project,
+    Debt, DebtPayment, JournalEntry, LifeGoal, MoneyAccount, MoneyBudget, MoneySubscription, MoneyTransfer, ResetLog, Snooze, MoneyEntry, PrayerDay, PrayerLog, Project,
     Referral, ReferralCode, Task,
     Team, TeamActivity, TeamDayScore, TeamHabit, TeamHabitLog, TeamJoinRequest,
     TeamMember, TeamTask, TeamTaskDone, TimerRun, User, UserAchievement,
@@ -3473,23 +3473,26 @@ def _money_dict(row: MoneyEntry) -> dict:
     return {"id": row.id, "kind": row.kind, "amount": int(row.amount),
             "category": row.category, "note": row.note or "",
             "source": row.source or "manual", "day": row.day.isoformat(),
+            "account_id": row.account_id,
             "created_at": (row.created_at.replace(tzinfo=_utc.utc).isoformat()
                            if row.created_at else None)}
 
 
 def add_money(s: Session, ws: int, kind: str, amount, category: str = "", *,
               note: str = "", source: str = "manual", day: date | None = None,
-              tz: ZoneInfo | None = None) -> dict:
+              tz: ZoneInfo | None = None, account_id: int | None = None) -> dict:
     if kind not in MONEY_KINDS:
         raise ValueError("bad_kind")
     amount = clean_money_amount(amount)
     if money_category_kind(category) != kind:
         category = detect_money_category(note, kind)
+    if account_id is not None:
+        _own_account(s, ws, account_id)
     tz = tz or _habit_tz(s, ws)
     row = MoneyEntry(workspace_id=ws, kind=kind, amount=amount, category=category,
                      note=str(note or "").strip()[:200],
                      source=source if source in ("manual", "voice", "bot") else "manual",
-                     day=day or today_local(tz))
+                     day=day or today_local(tz), account_id=account_id)
     s.add(row)
     s.commit()
     return _money_dict(row)
@@ -3507,7 +3510,7 @@ def delete_money(s: Session, ws: int, entry_id: int) -> dict:
 
 def update_money(s: Session, ws: int, entry_id: int, *, kind: str | None = None,
                  amount=None, category: str | None = None, note: str | None = None,
-                 day: date | None = None) -> dict:
+                 day: date | None = None, account_id=...) -> dict:
     """Correct an entry in place (K21): amount, direction, category, note or
     day. Deleting and typing it again lost its place and its history."""
     row = s.get(MoneyEntry, entry_id)
@@ -3527,15 +3530,24 @@ def update_money(s: Session, ws: int, entry_id: int, *, kind: str | None = None,
             else detect_money_category(row.note, row.kind)
     if day is not None:
         row.day = day
+    if account_id is not ...:
+        if account_id is not None:
+            _own_account(s, ws, account_id)
+        row.account_id = account_id
     s.commit()
     return _money_dict(row)
 
 
 def restore_money(s: Session, ws: int, data: dict) -> dict:
     """Undo a delete: the same entry, back on the day it was."""
+    account_id = data.get("account_id")
+    if account_id is not None:
+        account = s.get(MoneyAccount, account_id)
+        if account is None or account.workspace_id != ws or account.archived_at:
+            account_id = None
     return add_money(s, ws, data["kind"], data["amount"], data["category"],
                      note=data.get("note", ""), source=data.get("source", "manual"),
-                     day=date.fromisoformat(data["day"]))
+                     day=date.fromisoformat(data["day"]), account_id=account_id)
 
 
 def money_budgets(s: Session, ws: int) -> dict[str, int]:
@@ -3596,7 +3608,10 @@ def money_overview(s: Session, ws: int, *, month: date | None = None,
     balance_rows = dict(s.execute(select(MoneyEntry.kind, func.sum(MoneyEntry.amount))
                                   .where(MoneyEntry.workspace_id == ws)
                                   .group_by(MoneyEntry.kind)).all())
-    balance = int(balance_rows.get("income") or 0) - int(balance_rows.get("expense") or 0)
+    # With accounts, what they held when added is part of what one has.
+    opening = int(s.scalar(select(func.coalesce(func.sum(MoneyAccount.opening), 0)).where(
+        MoneyAccount.workspace_id == ws, MoneyAccount.archived_at.is_(None))) or 0)
+    balance = int(balance_rows.get("income") or 0) - int(balance_rows.get("expense") or 0) + opening
     limits = money_budgets(s, ws)
     categories = []
     for cid, icon, colour, _default, kind in MONEY_CATEGORIES:
@@ -3623,7 +3638,302 @@ def money_overview(s: Session, ws: int, *, month: date | None = None,
             "kinds": {c[0]: c[4] for c in MONEY_CATEGORIES},
             "icons": {c[0]: c[1] for c in MONEY_CATEGORIES},
             "colors": {c[0]: c[2] for c in MONEY_CATEGORIES},
-            "debts": debts_overview(s, ws, tz=tz)}
+            "debts": debts_overview(s, ws, tz=tz),
+            "wallet": wallet_overview(s, ws, today=today, balance=balance)}
+
+
+# ---------------------------------------------------------------------------
+# Accounts, transfers and repeating payments
+#
+# Accounts say where the money is; transfers move it between them without
+# being income or spending; a repeating payment becomes an ordinary expense
+# the moment it is marked paid. Free has one account, Pro a few with
+# transfers and three repeating payments, Max all of it and the year view.
+# ---------------------------------------------------------------------------
+
+MONEY_ACCOUNT_KINDS = ["cash", "card", "bank", "crypto", "invest", "business", "other"]
+SUB_PERIODS = ["weekly", "monthly", "yearly"]
+#: How many of a period's payments fall in a month, for the "per month" sum.
+_PER_MONTH = {"weekly": 52 / 12, "monthly": 1, "yearly": 1 / 12}
+
+
+def _own_account(s: Session, ws: int, account_id: int, *, archived: bool = False) -> MoneyAccount:
+    row = s.get(MoneyAccount, int(account_id))
+    if row is None or row.workspace_id != ws or (row.archived_at is not None and not archived):
+        raise ValueError("bad_account")
+    return row
+
+
+def _clean_opening(value) -> int:
+    try:
+        value = int(round(float(value or 0)))
+    except (TypeError, ValueError):
+        raise ValueError("bad_amount")
+    if abs(value) > MONEY_MAX_AMOUNT:
+        raise ValueError("bad_amount")
+    return value
+
+
+def _next_due(day: date, period: str) -> date:
+    if period == "weekly":
+        return day + timedelta(days=7)
+    if period == "yearly":
+        try:
+            return day.replace(year=day.year + 1)
+        except ValueError:                      # 29 February
+            return day.replace(year=day.year + 1, day=28)
+    month = day.month % 12 + 1
+    year = day.year + (day.month == 12)
+    last = _month_bounds(date(year, month, 1))[1].day
+    return date(year, month, min(day.day, last))
+
+
+def money_access(s: Session, ws: int) -> dict:
+    """What this workspace's plan opens in Money, for the screen to draw
+    locks rather than discover them by being refused."""
+    owner = workspace_owner(s, ws)
+    tier = plans.tier_of(s, owner)
+    return {"tier": tier,
+            "accounts": plans.LIMITS["money_accounts"][tier] if plans.ENABLED else None,
+            "subs": plans.LIMITS["money_subs"][tier] if plans.ENABLED else None,
+            "transfers": not plans.ENABLED or tier in plans.FEATURES["money_transfers"],
+            "year": not plans.ENABLED or tier in plans.FEATURES["money_year"]}
+
+
+def wallet_overview(s: Session, ws: int, *, today: date | None = None,
+                    balance: int | None = None) -> dict:
+    """Every open account with its balance, the repeating payments, and the
+    latest transfers. `unassigned` is what entries without an account (or
+    on a removed one) add up to, so the accounts and it sum to the total."""
+    today = today or today_local(_habit_tz(s, ws))
+    accounts = s.scalars(select(MoneyAccount).where(
+        MoneyAccount.workspace_id == ws, MoneyAccount.archived_at.is_(None))
+        .order_by(MoneyAccount.position, MoneyAccount.id)).all()
+    ids = [a.id for a in accounts]
+    flow: dict[int, int] = defaultdict(int)
+    if ids:
+        for account_id, kind, total in s.execute(select(
+                MoneyEntry.account_id, MoneyEntry.kind, func.sum(MoneyEntry.amount)).where(
+                MoneyEntry.workspace_id == ws, MoneyEntry.account_id.in_(ids))
+                .group_by(MoneyEntry.account_id, MoneyEntry.kind)).all():
+            flow[account_id] += int(total or 0) * (1 if kind == "income" else -1)
+        for account_id, total in s.execute(select(
+                MoneyTransfer.to_account_id, func.sum(MoneyTransfer.amount)).where(
+                MoneyTransfer.workspace_id == ws).group_by(MoneyTransfer.to_account_id)).all():
+            flow[account_id] += int(total or 0)
+        for account_id, total in s.execute(select(
+                MoneyTransfer.from_account_id, func.sum(MoneyTransfer.amount)).where(
+                MoneyTransfer.workspace_id == ws).group_by(MoneyTransfer.from_account_id)).all():
+            flow[account_id] -= int(total or 0)
+    rows = [{"id": a.id, "name": a.name, "kind": a.kind, "opening": int(a.opening or 0),
+             "balance": int(a.opening or 0) + flow.get(a.id, 0)} for a in accounts]
+    in_accounts = sum(r["balance"] for r in rows)
+    if balance is None:
+        totals = dict(s.execute(select(MoneyEntry.kind, func.sum(MoneyEntry.amount))
+                                .where(MoneyEntry.workspace_id == ws)
+                                .group_by(MoneyEntry.kind)).all())
+        balance = (int(totals.get("income") or 0) - int(totals.get("expense") or 0)
+                   + sum(r["opening"] for r in rows))
+    names = {a.id: a.name for a in s.scalars(select(MoneyAccount).where(
+        MoneyAccount.workspace_id == ws)).all()}
+    subs = s.scalars(select(MoneySubscription).where(
+        MoneySubscription.workspace_id == ws, MoneySubscription.archived_at.is_(None))
+        .order_by(MoneySubscription.next_due, MoneySubscription.id)).all()
+    transfers = s.scalars(select(MoneyTransfer).where(MoneyTransfer.workspace_id == ws)
+                          .order_by(MoneyTransfer.day.desc(), MoneyTransfer.id.desc()).limit(10)).all()
+    return {
+        "accounts": rows, "total": balance, "unassigned": balance - in_accounts,
+        "subscriptions": [{"id": x.id, "name": x.name, "amount": int(x.amount),
+                           "category": x.category, "account_id": x.account_id,
+                           "period": x.period, "next_due": x.next_due.isoformat(),
+                           "days_left": (x.next_due - today).days}
+                          for x in subs],
+        "subs_monthly": round(sum(int(x.amount) * _PER_MONTH.get(x.period, 1) for x in subs)),
+        "transfers": [{"id": x.id, "from": x.from_account_id, "to": x.to_account_id,
+                       "from_name": names.get(x.from_account_id, "?"),
+                       "to_name": names.get(x.to_account_id, "?"),
+                       "amount": int(x.amount), "note": x.note or "", "day": x.day.isoformat()}
+                      for x in transfers],
+        "kinds": MONEY_ACCOUNT_KINDS, "periods": SUB_PERIODS,
+        "access": money_access(s, ws),
+    }
+
+
+def add_account(s: Session, ws: int, name: str, kind: str = "cash", opening=0) -> MoneyAccount:
+    name = " ".join(str(name or "").split())[:60]
+    if not name:
+        raise ValueError("bad_name")
+    plans.require_in_workspace(s, ws, "money_accounts", s.scalar(
+        select(func.count(MoneyAccount.id)).where(MoneyAccount.workspace_id == ws,
+                                                  MoneyAccount.archived_at.is_(None))) or 0)
+    last = s.scalar(select(func.max(MoneyAccount.position)).where(
+        MoneyAccount.workspace_id == ws)) or 0
+    row = MoneyAccount(workspace_id=ws, name=name,
+                       kind=kind if kind in MONEY_ACCOUNT_KINDS else "other",
+                       opening=_clean_opening(opening), position=last + 1)
+    s.add(row)
+    s.commit()
+    return row
+
+
+def update_account(s: Session, ws: int, account_id: int, *, name=None, kind=None,
+                   opening=None, archived: bool | None = None) -> MoneyAccount:
+    row = _own_account(s, ws, account_id, archived=True)
+    if name is not None:
+        name = " ".join(str(name).split())[:60]
+        if not name:
+            raise ValueError("bad_name")
+        row.name = name
+    if kind is not None:
+        row.kind = kind if kind in MONEY_ACCOUNT_KINDS else "other"
+    if opening is not None:
+        row.opening = _clean_opening(opening)
+    if archived is not None:
+        if not archived and row.archived_at is not None:
+            plans.require_in_workspace(s, ws, "money_accounts", s.scalar(
+                select(func.count(MoneyAccount.id)).where(
+                    MoneyAccount.workspace_id == ws, MoneyAccount.archived_at.is_(None))) or 0)
+        row.archived_at = utcnow() if archived else None
+    s.commit()
+    return row
+
+
+def add_transfer(s: Session, ws: int, from_id: int, to_id: int, amount, *,
+                 note: str = "", day: date | None = None,
+                 tz: ZoneInfo | None = None) -> MoneyTransfer:
+    plans.require_feature(s, workspace_owner(s, ws), "money_transfers")
+    if int(from_id) == int(to_id):
+        raise ValueError("same_account")
+    source, target = _own_account(s, ws, from_id), _own_account(s, ws, to_id)
+    row = MoneyTransfer(workspace_id=ws, from_account_id=source.id, to_account_id=target.id,
+                        amount=clean_money_amount(amount), note=str(note or "").strip()[:200],
+                        day=day or today_local(tz or _habit_tz(s, ws)))
+    s.add(row)
+    s.commit()
+    return row
+
+
+def delete_transfer(s: Session, ws: int, transfer_id: int) -> None:
+    row = s.get(MoneyTransfer, transfer_id)
+    if row is None or row.workspace_id != ws:
+        raise NotFound("transfer")
+    s.delete(row)
+    s.commit()
+
+
+def _sub_fields(s: Session, ws: int, fields: dict) -> dict:
+    out: dict = {}
+    if "name" in fields:
+        name = " ".join(str(fields["name"] or "").split())[:80]
+        if not name:
+            raise ValueError("bad_name")
+        out["name"] = name
+    if "amount" in fields:
+        out["amount"] = clean_money_amount(fields["amount"])
+    if "category" in fields:
+        out["category"] = (fields["category"] if money_category_kind(fields["category"]) == "expense"
+                           else "other")
+    if "period" in fields:
+        if fields["period"] not in SUB_PERIODS:
+            raise ValueError("bad_period")
+        out["period"] = fields["period"]
+    if "next_due" in fields:
+        if not isinstance(fields["next_due"], date):
+            raise ValueError("bad_date")
+        out["next_due"] = fields["next_due"]
+    if "account_id" in fields:
+        out["account_id"] = (_own_account(s, ws, fields["account_id"]).id
+                             if fields["account_id"] is not None else None)
+    return out
+
+
+def add_subscription(s: Session, ws: int, **fields) -> MoneySubscription:
+    plans.require_in_workspace(s, ws, "money_subs", s.scalar(
+        select(func.count(MoneySubscription.id)).where(
+            MoneySubscription.workspace_id == ws,
+            MoneySubscription.archived_at.is_(None))) or 0)
+    values = _sub_fields(s, ws, fields)
+    if "name" not in values or "amount" not in values:
+        raise ValueError("bad_name" if "name" not in values else "bad_amount")
+    values.setdefault("next_due", today_local(_habit_tz(s, ws)))
+    row = MoneySubscription(workspace_id=ws, **values)
+    s.add(row)
+    s.commit()
+    return row
+
+
+def _own_sub(s: Session, ws: int, sub_id: int) -> MoneySubscription:
+    row = s.get(MoneySubscription, sub_id)
+    if row is None or row.workspace_id != ws or row.archived_at is not None:
+        raise NotFound("subscription")
+    return row
+
+
+def update_subscription(s: Session, ws: int, sub_id: int, **fields) -> MoneySubscription:
+    row = _own_sub(s, ws, sub_id)
+    archived = fields.pop("archived", None)
+    for key, value in _sub_fields(s, ws, fields).items():
+        setattr(row, key, value)
+    if archived:
+        row.archived_at = utcnow()
+    s.commit()
+    return row
+
+
+def pay_subscription(s: Session, ws: int, sub_id: int, *, tz: ZoneInfo | None = None) -> dict:
+    """Record this period's payment as an expense and move to the next."""
+    row = _own_sub(s, ws, sub_id)
+    account_id = row.account_id
+    if account_id is not None:
+        account = s.get(MoneyAccount, account_id)
+        if account is None or account.archived_at is not None:
+            account_id = None
+    entry = add_money(s, ws, "expense", int(row.amount), row.category, note=row.name,
+                      tz=tz, account_id=account_id)
+    row.next_due = _next_due(row.next_due, row.period)
+    s.commit()
+    return {"entry": entry, "next_due": row.next_due.isoformat()}
+
+
+def money_year(s: Session, ws: int, year: int) -> dict:
+    """A year of money, month by month, and where the spending went."""
+    plans.require_feature(s, workspace_owner(s, ws), "money_year")
+    first, last = date(year, 1, 1), date(year, 12, 31)
+    months = [{"month": m, "income": 0, "expense": 0} for m in range(1, 13)]
+    by_cat: dict[str, int] = defaultdict(int)
+    for day, kind, category, amount in s.execute(select(
+            MoneyEntry.day, MoneyEntry.kind, MoneyEntry.category, MoneyEntry.amount).where(
+            MoneyEntry.workspace_id == ws, MoneyEntry.day >= first,
+            MoneyEntry.day <= last)).all():
+        months[day.month - 1][kind] += int(amount)
+        if kind == "expense":
+            by_cat[category] += int(amount)
+    income = sum(m["income"] for m in months)
+    expense = sum(m["expense"] for m in months)
+    return {"year": year, "months": months, "income": income, "expense": expense,
+            "net": income - expense,
+            "categories": sorted(({"id": k, "spent": v} for k, v in by_cat.items()),
+                                 key=lambda c: -c["spent"])}
+
+
+def _export_wallet(s: Session, ws: int) -> dict:
+    return {
+        "accounts": [{"id": a.id, "name": a.name, "kind": a.kind, "opening": int(a.opening or 0),
+                      "archived": a.archived_at is not None}
+                     for a in s.scalars(select(MoneyAccount).where(
+                         MoneyAccount.workspace_id == ws).order_by(MoneyAccount.id)).all()],
+        "transfers": [{"from": x.from_account_id, "to": x.to_account_id, "amount": int(x.amount),
+                       "note": x.note, "day": x.day.isoformat()}
+                      for x in s.scalars(select(MoneyTransfer).where(
+                          MoneyTransfer.workspace_id == ws).order_by(MoneyTransfer.id)).all()],
+        "subscriptions": [{"name": x.name, "amount": int(x.amount), "category": x.category,
+                           "account_id": x.account_id, "period": x.period,
+                           "next_due": x.next_due.isoformat(),
+                           "archived": x.archived_at is not None}
+                          for x in s.scalars(select(MoneySubscription).where(
+                              MoneySubscription.workspace_id == ws)
+                              .order_by(MoneySubscription.id)).all()],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -5376,11 +5686,13 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
                                .where(Birthday.workspace_id == ws)).all()],
         "money": [
             {"id": r.id, "day": r.day.isoformat(), "kind": r.kind, "amount": int(r.amount),
-             "category": r.category, "note": r.note, "source": r.source}
+             "category": r.category, "note": r.note, "source": r.source,
+             "account_id": r.account_id}
             for r in s.scalars(select(MoneyEntry)
                                .where(MoneyEntry.workspace_id == ws)
                                .order_by(MoneyEntry.day, MoneyEntry.id)).all()],
         "money_budgets": money_budgets(s, ws),
+        "money_wallet": _export_wallet(s, ws),
         "debts": _export_debts(s, ws),
         "agent_inbox": [
             {"id": r.id, "status": r.status, "revision": r.revision,
@@ -5410,7 +5722,8 @@ WORKSPACE_TABLES = [AgentAudit, AgentDraft, AgentPreference,
                     Habit, PrayerLog, PrayerDay, ResetLog, Task,
                     Project, WeeklyFocus, WeeklyReview, JournalEntry, Birthday,
                     Countdown, Feedback, DailyReportLog, MoneyEntry, MoneyBudget,
-                    DebtPayment, Debt, Snooze, LifeGoal]
+                    DebtPayment, Debt, Snooze, LifeGoal,
+                    MoneyTransfer, MoneySubscription, MoneyAccount]
 
 
 def wipe_workspace(s: Session, telegram_id: int) -> bool:

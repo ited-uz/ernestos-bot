@@ -76,6 +76,9 @@ LIMITS: dict[str, dict[str, int | None]] = {
     #: Milestone and ultimate goals still being worked on.
     "life_goals":      {"free": 3,  "pro": 25,   "max": None},
     "open_debts":      {"free": 3,  "pro": None, "max": None},
+    #: Money accounts (cash, card, bank…) and repeating payments.
+    "money_accounts":  {"free": 1,  "pro": 3,    "max": None},
+    "money_subs":      {"free": 0,  "pro": 3,    "max": None},
     #: Teams an account owns. Joining somebody else's team is always free.
     "teams_owned":     {"free": 0,  "pro": 2,    "max": 10},
     #: Members of a team, set by its owner's plan.
@@ -91,6 +94,8 @@ FEATURES: dict[str, tuple[str, ...]] = {
     "timer_rhythm":  ("pro", "max"),   # 25/5, 50/10, 90/15
     "stats_history": ("pro", "max"),   # month and year views
     "stats_csv":     ("max",),         # statistics as a spreadsheet file
+    "money_transfers": ("pro", "max"), # moving money between own accounts
+    "money_year":    ("max",),         # the year of money, month by month
 }
 
 

@@ -1233,6 +1233,7 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
 .tcols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s2);
        margin-top:var(--s3)}
 .tcols > .card{margin:0;min-width:0}
+.mkind.three{grid-template-columns:repeat(3,minmax(0,1fr))}
 .mkind{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s1);
        margin-top:var(--s1)}
 .mkind .btn{min-height:44px;font-weight:650}
@@ -1266,6 +1267,56 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
 .mnav{display:flex;align-items:center;gap:var(--s1);margin-top:var(--s1)}
 .mnav b{flex:1;text-align:center;font-size:15px}
 
+/* ---- Money: accounts, repeating payments, the year ---- */
+.wtotal{margin:var(--s2) 0;padding:var(--s3);border-radius:var(--radius);background:var(--surface);
+  border:var(--border-w) solid var(--border);box-shadow:var(--shadow-1)}
+.wtotal .k{font-size:13px;color:var(--text-2);font-weight:600}
+.wtotal .v{font-size:28px;font-weight:800;letter-spacing:-.02em;margin:2px 0}
+.wempty{display:flex;flex-direction:column;gap:var(--s2);padding:var(--s3);border-radius:var(--radius);
+  border:var(--border-w) dashed var(--border-2);margin-bottom:var(--s2)}
+.wlist{display:flex;flex-direction:column;border-radius:var(--radius);overflow:hidden;background:var(--surface);
+  border:var(--border-w) solid var(--border);box-shadow:var(--shadow-1)}
+.wacct,.wsub{display:flex;align-items:center;gap:12px;padding:12px 14px;min-height:60px;cursor:pointer}
+.wacct + .wacct{border-top:var(--border-w) solid var(--border)}
+.wacct.muted{cursor:default;opacity:.8}
+.wsub{background:var(--surface);border:var(--border-w) solid var(--border);border-radius:var(--radius);
+  margin-bottom:var(--s1);box-shadow:var(--shadow-1)}
+.wtile{flex:none;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-size:20px;
+  background:var(--surface-2)}
+.wtile.k-cash{background:color-mix(in srgb, var(--c5) 16%, var(--surface))}
+.wtile.k-card{background:color-mix(in srgb, var(--c1) 16%, var(--surface))}
+.wtile.k-bank{background:color-mix(in srgb, var(--c3) 16%, var(--surface))}
+.wtile.k-crypto{background:color-mix(in srgb, var(--c4) 18%, var(--surface))}
+.wtile.k-invest{background:color-mix(in srgb, var(--c2) 16%, var(--surface))}
+.wtile.k-business{background:color-mix(in srgb, var(--c1) 10%, var(--c4) 8%)}
+.wname{font-weight:650}
+.wbal{font-weight:750;font-size:15px;white-space:nowrap}
+.wpay{width:auto;flex:none;min-height:36px;padding:0 12px;font-size:13px;gap:4px;display:inline-flex;align-items:center}
+.wsub .tiny .warn{color:var(--warn);font-weight:650} .wsub .tiny .neg{font-weight:650}
+.wactions{display:grid;grid-template-columns:1fr 1fr;gap:var(--s1);margin:var(--s2) 0}
+.wactions .btn{width:100%}
+.wlock{display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:2px 7px;border-radius:var(--radius-pill);
+  font-size:10.5px;font-weight:750;letter-spacing:.03em;color:var(--warn);
+  background:color-mix(in srgb, var(--warn) 12%, transparent)}
+.wlocked{display:flex;align-items:center;gap:var(--s2);padding:var(--s3);border-radius:var(--radius);cursor:pointer;
+  border:var(--border-w) dashed color-mix(in srgb, var(--warn) 45%, var(--border));
+  background:color-mix(in srgb, var(--warn) 5%, var(--surface))}
+.wtr{min-height:48px}
+.ycard{margin-top:var(--s3)}
+.ytotals{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s1);margin:var(--s2) 0}
+.ytotals div{display:flex;flex-direction:column;gap:2px} .ytotals b{font-size:14px}
+.ybars{display:grid;grid-template-columns:repeat(12,1fr);gap:4px;height:120px;align-items:end;margin-top:var(--s2)}
+.ycol{display:flex;flex-direction:column;align-items:center;gap:4px;height:100%}
+.ycol span{font-size:10px;color:var(--text-3)}
+.ypair{flex:1;width:100%;display:flex;align-items:flex-end;justify-content:center;gap:2px}
+.ypair i{display:block;width:40%;max-width:8px;height:var(--h);min-height:2px;border-radius:3px 3px 1px 1px}
+.ypair .yin{background:var(--ok)} .ypair .yout{background:color-mix(in srgb, var(--danger) 80%, var(--surface))}
+.ycats{margin-top:var(--s2);display:flex;flex-direction:column;gap:6px}
+@media (prefers-reduced-motion:no-preference){
+  .ypair i{animation:ygrow 700ms var(--ease-out) backwards;animation-delay:calc(var(--i, 0) * 35ms)}
+  .enter .wacct{animation:rise 380ms var(--ease-out) backwards;animation-delay:calc(var(--i, 0) * 45ms + 80ms)}
+}
+@keyframes ygrow{from{height:0}}
 /* ---- Goals: three levels ----
    Each area has a hue taken from the theme's own palette, so a goal reads
    the same in every theme and nothing here is a fixed colour. */
@@ -1793,6 +1844,28 @@ const DICT = {
   gc_capital:"Kapital", gc_health:"Salomatlik", gc_islam:"Islom", gc_family:"Oila",
   gc_career:"Biznes", gc_learning:"Ilm", gc_charity:"Xayriya", gc_other:"Boshqa",
   plan_limit_life_goals:"Ko'proq maqsad", pt_life_goals:"Maqsadlar (bosqich va asosiy)",
+  money_tab_accounts:"Hisoblar", w_total:"Jami", w_accounts_n:"{n} ta hisob",
+  w_empty:"Pul qayerda turishini qo'shing — naqd, karta, bank. Har birining qoldig'i alohida ko'rinadi.",
+  acct_cash:"Naqd", acct_card:"Karta", acct_bank:"Bank", acct_crypto:"Kripto", acct_invest:"Investitsiya",
+  acct_business:"Biznes", acct_other:"Boshqa", w_unassigned:"Hisobsiz yozuvlar",
+  w_unassigned_hint:"Hisob tanlanmagan kirim va chiqimlar", w_add_account:"Hisob qo'shish",
+  w_transfer:"Hisoblar orasida o'tkazma", w_transfer_short:"O'tkazma", w_subs:"Doimiy to'lovlar",
+  w_per_month:"oyiga ≈ {n}", w_subs_locked:"Doimiy to'lovlar — Pro'da",
+  w_subs_hint:"Ijara, internet, obunalar. Muddati yaqinlashganini ko'rasiz va bir bosishda to'landi deb yozasiz.",
+  w_add_sub:"To'lov qo'shish", w_paid:"To'landi", w_paid_toast:"✓ Xarajat yozildi, keyingi sana surildi",
+  w_due_today:"bugun", w_due_late:"{n} kun o'tdi", w_due_in:"{n} kundan keyin",
+  w_transfers:"So'nggi o'tkazmalar", w_year:"Yillik ko'rinish",
+  w_year_hint:"12 oy bo'yicha kirim va chiqim, eng katta xarajatlar.", w_net:"Sof",
+  w_account:"Hisob", w_account_name:"Masalan, Naqd, Humo yoki Kapitalbank", w_kind:"Turi",
+  w_opening:"Hozirgi qoldiq", w_opening_hint:"Shu hisobda hozir qancha bor. Keyingi kirim va chiqimlar shunga qo'shiladi.",
+  w_account_del_q:"Hisobni o'chirasizmi? Yozuvlar saqlanib qoladi.", w_need_two:"O'tkazma uchun kamida 2 ta hisob kerak",
+  w_from:"Qayerdan", w_to:"Qayerga", w_moved:"✓ O'tkazildi", w_sub:"Doimiy to'lov",
+  w_sub_name:"Nima uchun? Masalan, ijara yoki internet", w_period:"Takrorlanishi", w_next_due:"Keyingi to'lov",
+  per_weekly:"Har hafta", per_monthly:"Har oy", per_yearly:"Har yil",
+  plan_limit_money_accounts:"Ko'proq hisob", plan_limit_money_subs:"Ko'proq doimiy to'lov",
+  plan_limit_money_transfers:"Hisoblar orasida o'tkazma", plan_limit_money_year:"Yillik moliya",
+  pt_money_accounts:"Moliya hisoblari", pt_money_subs:"Doimiy to'lovlar",
+  pt_money_transfers:"Hisoblar orasida o'tkazma", pt_money_year:"Yillik moliya",
   draft_restored:"Saqlanmagan matn tiklandi", autosaved:"Saqlanmoqda…",
   mood_q:"Bugun o'zingizni qanday his qildingiz?",
   mood_awful:"Juda yomon", mood_low:"Yomon", mood_ok:"O'rtacha",
@@ -2043,7 +2116,7 @@ const DICT = {
   pause_note:"Bugundan desangiz, bugungi hisobdan ham chiqadi",
   pts:"p.", team_join_hint:"Taklif havolasini bosing — jamoani ko'rib, keyin qo'shilasiz",
   nav_home:"Bugun", nav_stats:"Statistika", money:"Pul", money_add:"Pul yozuvi",
-  money_this_month:"bu oy", money_tab_entries:"Yozuvlar", money_tab_cats:"Kategoriyalar", money_tab_debts:"Qarzlar", debt_overdue_n:"{n} tasi muddati o'tgan", debt_owed_to_me:"Sizga qaytarishadi", debt_i_owe:"Siz qaytarasiz", debt_add:"Qarz yozish", debt_empty:"Hozircha qarz yo'q. Kimgadir pul bersangiz yoki olsangiz — shu yerga yozing, unutilmaydi.", debt_settled:"Yopilganlar", debt_lent_meta:"men berdim", debt_borrowed_meta:"men oldim", debt_overdue:"muddati o'tdi", debt_until:"{d} gacha", debt_returned:"Qaytdi", debt_returned_full:"To'liq qaytdi", debt_lent:"Men berdim", debt_borrowed:"Men oldim", debt_person:"Kim? Ismini yozing", debt_amount:"Summa (200 ming, 1,5 mln…)", debt_due:"Qachongacha qaytariladi", debt_due_week:"1 haftada", debt_due_month:"1 oyda", debt_note:"Izoh (ixtiyoriy)", debt_bad_amount:"Summani yozing — 200 ming yoki 200000", debt_saved:"✓ Qarz yozildi", debt_closed:"✓ Qarz yopildi", debt_partial:"Bir qismi qaytdimi?", debt_partial_ph:"Qancha? Masalan, 50 ming", debt_reopen:"Qayta ochish", debt_paid_more:"Bu summa qolgan qarzdan ko'p. Qolgani: {n}", debt_of:"jami {n}", debt_payments:"To'lovlar", debt_delete_q:"Qarzni o'chirasizmi?", debt_archived:"O'chirilganlar", debt_restore:"Qaytarish", debt_purge:"Butunlay o'chirish", debt_purge_q:"Butunlay o'chirilsinmi? Buni qaytarib bo'lmaydi.",
+  money_this_month:"bu oy", money_tab_entries:"Yozuvlar", money_tab_cats:"Tahlil", money_tab_debts:"Qarzlar", debt_overdue_n:"{n} tasi muddati o'tgan", debt_owed_to_me:"Sizga qaytarishadi", debt_i_owe:"Siz qaytarasiz", debt_add:"Qarz yozish", debt_empty:"Hozircha qarz yo'q. Kimgadir pul bersangiz yoki olsangiz — shu yerga yozing, unutilmaydi.", debt_settled:"Yopilganlar", debt_lent_meta:"men berdim", debt_borrowed_meta:"men oldim", debt_overdue:"muddati o'tdi", debt_until:"{d} gacha", debt_returned:"Qaytdi", debt_returned_full:"To'liq qaytdi", debt_lent:"Men berdim", debt_borrowed:"Men oldim", debt_person:"Kim? Ismini yozing", debt_amount:"Summa (200 ming, 1,5 mln…)", debt_due:"Qachongacha qaytariladi", debt_due_week:"1 haftada", debt_due_month:"1 oyda", debt_note:"Izoh (ixtiyoriy)", debt_bad_amount:"Summani yozing — 200 ming yoki 200000", debt_saved:"✓ Qarz yozildi", debt_closed:"✓ Qarz yopildi", debt_partial:"Bir qismi qaytdimi?", debt_partial_ph:"Qancha? Masalan, 50 ming", debt_reopen:"Qayta ochish", debt_paid_more:"Bu summa qolgan qarzdan ko'p. Qolgani: {n}", debt_of:"jami {n}", debt_payments:"To'lovlar", debt_delete_q:"Qarzni o'chirasizmi?", debt_archived:"O'chirilganlar", debt_restore:"Qaytarish", debt_purge:"Butunlay o'chirish", debt_purge_q:"Butunlay o'chirilsinmi? Buni qaytarib bo'lmaydi.",
   money_apart:"Alohida bo'lim — hech qanday foiz, streak yoki reytingga qo'shilmaydi.",
   money_balance:"Umumiy balans", money_income:"Kirim", money_expense:"Chiqim",
   money_unit:"so'm", date_day:"Kun", date_month:"Oy", date_year:"Yil",
@@ -2247,6 +2320,28 @@ const DICT = {
   gc_capital:"Capital", gc_health:"Health", gc_islam:"Faith", gc_family:"Family",
   gc_career:"Business", gc_learning:"Learning", gc_charity:"Charity", gc_other:"Other",
   plan_limit_life_goals:"More goals", pt_life_goals:"Goals (milestone and ultimate)",
+  money_tab_accounts:"Accounts", w_total:"Total", w_accounts_n:"{n} accounts",
+  w_empty:"Add where your money is — cash, a card, a bank. Each one shows its own balance.",
+  acct_cash:"Cash", acct_card:"Card", acct_bank:"Bank", acct_crypto:"Crypto", acct_invest:"Investments",
+  acct_business:"Business", acct_other:"Other", w_unassigned:"Not on an account",
+  w_unassigned_hint:"Income and spending with no account chosen", w_add_account:"Add an account",
+  w_transfer:"Transfer between accounts", w_transfer_short:"Transfer", w_subs:"Repeating payments",
+  w_per_month:"≈ {n} a month", w_subs_locked:"Repeating payments come with Pro",
+  w_subs_hint:"Rent, internet, subscriptions. See what is due soon and mark it paid with one tap.",
+  w_add_sub:"Add a payment", w_paid:"Paid", w_paid_toast:"✓ Expense recorded, next date moved",
+  w_due_today:"today", w_due_late:"{n} days late", w_due_in:"in {n} days",
+  w_transfers:"Latest transfers", w_year:"The year",
+  w_year_hint:"Income and spending month by month, and where most of it went.", w_net:"Net",
+  w_account:"Account", w_account_name:"E.g. Cash, Visa or Savings", w_kind:"Type",
+  w_opening:"Balance now", w_opening_hint:"What is on this account now. Later income and spending add to it.",
+  w_account_del_q:"Remove this account? Its entries stay.", w_need_two:"A transfer needs at least two accounts",
+  w_from:"From", w_to:"To", w_moved:"✓ Moved", w_sub:"Repeating payment",
+  w_sub_name:"What for? E.g. rent or internet", w_period:"Repeats", w_next_due:"Next payment",
+  per_weekly:"Every week", per_monthly:"Every month", per_yearly:"Every year",
+  plan_limit_money_accounts:"More accounts", plan_limit_money_subs:"More repeating payments",
+  plan_limit_money_transfers:"Transfers between accounts", plan_limit_money_year:"The year of money",
+  pt_money_accounts:"Money accounts", pt_money_subs:"Repeating payments",
+  pt_money_transfers:"Transfers between accounts", pt_money_year:"The year of money",
   draft_restored:"Unsaved text restored", autosaved:"Saving…",
   mood_q:"How did you feel today?",
   mood_awful:"Awful", mood_low:"Low", mood_ok:"Okay",
@@ -2491,7 +2586,7 @@ const DICT = {
   pause_note:"From today takes today out of the count as well",
   pts:"pts", team_join_hint:"Open an invite link — you see the team first, then join",
   nav_home:"Today", nav_stats:"Stats", money:"Money", money_add:"Money entry",
-  money_this_month:"this month", money_tab_entries:"Entries", money_tab_cats:"Categories", money_tab_debts:"Debts", debt_overdue_n:"{n} overdue", debt_owed_to_me:"Owed to you", debt_i_owe:"You owe", debt_add:"Record a debt", debt_empty:"No debts yet. Lend or borrow money — write it here and it won't be forgotten.", debt_settled:"Closed", debt_lent_meta:"I lent", debt_borrowed_meta:"I borrowed", debt_overdue:"overdue", debt_until:"by {d}", debt_returned:"Returned", debt_returned_full:"Fully returned", debt_lent:"I lent", debt_borrowed:"I borrowed", debt_person:"Who? Type a name", debt_amount:"Amount (200k, 1.5 mln…)", debt_due:"Return by", debt_due_week:"In 1 week", debt_due_month:"In 1 month", debt_note:"Note (optional)", debt_bad_amount:"Type an amount — 200 ming or 200000", debt_saved:"✓ Debt recorded", debt_closed:"✓ Debt closed", debt_partial:"Part of it returned?", debt_partial_ph:"How much? E.g. 50 ming", debt_reopen:"Reopen", debt_paid_more:"That is more than what is left. Remaining: {n}", debt_of:"of {n}", debt_payments:"Payments", debt_delete_q:"Delete this debt?", debt_archived:"Deleted", debt_restore:"Restore", debt_purge:"Delete forever", debt_purge_q:"Delete forever? This cannot be undone.",
+  money_this_month:"this month", money_tab_entries:"Entries", money_tab_cats:"Insights", money_tab_debts:"Debts", debt_overdue_n:"{n} overdue", debt_owed_to_me:"Owed to you", debt_i_owe:"You owe", debt_add:"Record a debt", debt_empty:"No debts yet. Lend or borrow money — write it here and it won't be forgotten.", debt_settled:"Closed", debt_lent_meta:"I lent", debt_borrowed_meta:"I borrowed", debt_overdue:"overdue", debt_until:"by {d}", debt_returned:"Returned", debt_returned_full:"Fully returned", debt_lent:"I lent", debt_borrowed:"I borrowed", debt_person:"Who? Type a name", debt_amount:"Amount (200k, 1.5 mln…)", debt_due:"Return by", debt_due_week:"In 1 week", debt_due_month:"In 1 month", debt_note:"Note (optional)", debt_bad_amount:"Type an amount — 200 ming or 200000", debt_saved:"✓ Debt recorded", debt_closed:"✓ Debt closed", debt_partial:"Part of it returned?", debt_partial_ph:"How much? E.g. 50 ming", debt_reopen:"Reopen", debt_paid_more:"That is more than what is left. Remaining: {n}", debt_of:"of {n}", debt_payments:"Payments", debt_delete_q:"Delete this debt?", debt_archived:"Deleted", debt_restore:"Restore", debt_purge:"Delete forever", debt_purge_q:"Delete forever? This cannot be undone.",
   money_apart:"A separate section — never counted in any percentage, streak or rank.",
   money_balance:"Balance", money_income:"Income", money_expense:"Spent",
   money_unit:"UZS", date_day:"Day", date_month:"Month", date_year:"Year",
@@ -2695,6 +2790,28 @@ const DICT = {
   gc_capital:"Капитал", gc_health:"Здоровье", gc_islam:"Вера", gc_family:"Семья",
   gc_career:"Бизнес", gc_learning:"Знания", gc_charity:"Благотворительность", gc_other:"Другое",
   plan_limit_life_goals:"Больше целей", pt_life_goals:"Цели (этапы и главные)",
+  money_tab_accounts:"Счета", w_total:"Всего", w_accounts_n:"Счетов {n}",
+  w_empty:"Добавьте, где лежат деньги — наличные, карта, банк. У каждого свой остаток.",
+  acct_cash:"Наличные", acct_card:"Карта", acct_bank:"Банк", acct_crypto:"Крипто", acct_invest:"Инвестиции",
+  acct_business:"Бизнес", acct_other:"Другое", w_unassigned:"Без счёта",
+  w_unassigned_hint:"Доходы и расходы без выбранного счёта", w_add_account:"Добавить счёт",
+  w_transfer:"Перевод между счетами", w_transfer_short:"Перевод", w_subs:"Регулярные платежи",
+  w_per_month:"≈ {n} в месяц", w_subs_locked:"Регулярные платежи — в Pro",
+  w_subs_hint:"Аренда, интернет, подписки. Видно, что скоро платить, и оплата отмечается одним касанием.",
+  w_add_sub:"Добавить платёж", w_paid:"Оплачено", w_paid_toast:"✓ Расход записан, дата перенесена",
+  w_due_today:"сегодня", w_due_late:"просрочено на {n} дн.", w_due_in:"через {n} дн.",
+  w_transfers:"Последние переводы", w_year:"Год целиком",
+  w_year_hint:"Доходы и расходы по месяцам и главные траты.", w_net:"Итог",
+  w_account:"Счёт", w_account_name:"Например, наличные, Visa или вклад", w_kind:"Тип",
+  w_opening:"Остаток сейчас", w_opening_hint:"Сколько на счёте сейчас. Следующие доходы и расходы прибавятся к этому.",
+  w_account_del_q:"Удалить счёт? Записи останутся.", w_need_two:"Для перевода нужно минимум два счёта",
+  w_from:"Откуда", w_to:"Куда", w_moved:"✓ Переведено", w_sub:"Регулярный платёж",
+  w_sub_name:"За что? Например, аренда или интернет", w_period:"Повтор", w_next_due:"Следующий платёж",
+  per_weekly:"Каждую неделю", per_monthly:"Каждый месяц", per_yearly:"Каждый год",
+  plan_limit_money_accounts:"Больше счетов", plan_limit_money_subs:"Больше регулярных платежей",
+  plan_limit_money_transfers:"Переводы между счетами", plan_limit_money_year:"Финансы за год",
+  pt_money_accounts:"Счета", pt_money_subs:"Регулярные платежи",
+  pt_money_transfers:"Переводы между счетами", pt_money_year:"Финансы за год",
   draft_restored:"Несохранённый текст восстановлен", autosaved:"Сохраняем…",
   mood_q:"Как вы себя чувствовали сегодня?",
   mood_awful:"Очень плохо", mood_low:"Плохо", mood_ok:"Нормально",
@@ -2939,7 +3056,7 @@ const DICT = {
   pause_note:"С сегодня — сегодняшний день тоже не считается",
   pts:"п.", team_join_hint:"Откройте ссылку-приглашение — сначала увидите команду, потом вступите",
   nav_home:"Сегодня", nav_stats:"Итоги", money:"Деньги", money_add:"Запись о деньгах",
-  money_this_month:"за месяц", money_tab_entries:"Записи", money_tab_cats:"Категории", money_tab_debts:"Долги", debt_overdue_n:"просрочено: {n}", debt_owed_to_me:"Вам должны", debt_i_owe:"Вы должны", debt_add:"Записать долг", debt_empty:"Долгов пока нет. Дали или взяли деньги — запишите здесь, и это не забудется.", debt_settled:"Закрытые", debt_lent_meta:"я дал", debt_borrowed_meta:"я взял", debt_overdue:"просрочен", debt_until:"до {d}", debt_returned:"Вернули", debt_returned_full:"Вернули полностью", debt_lent:"Я дал", debt_borrowed:"Я взял", debt_person:"Кто? Введите имя", debt_amount:"Сумма (200 тыс, 1,5 млн…)", debt_due:"Вернуть до", debt_due_week:"Через неделю", debt_due_month:"Через месяц", debt_note:"Заметка (необязательно)", debt_bad_amount:"Введите сумму — 200 тыс или 200000", debt_saved:"✓ Долг записан", debt_closed:"✓ Долг закрыт", debt_partial:"Вернули часть?", debt_partial_ph:"Сколько? Например, 50 тыс", debt_reopen:"Открыть снова", debt_paid_more:"Это больше остатка долга. Осталось: {n}", debt_of:"из {n}", debt_payments:"Платежи", debt_delete_q:"Удалить долг?", debt_archived:"Удалённые", debt_restore:"Вернуть", debt_purge:"Удалить навсегда", debt_purge_q:"Удалить навсегда? Это нельзя отменить.",
+  money_this_month:"за месяц", money_tab_entries:"Записи", money_tab_cats:"Анализ", money_tab_debts:"Долги", debt_overdue_n:"просрочено: {n}", debt_owed_to_me:"Вам должны", debt_i_owe:"Вы должны", debt_add:"Записать долг", debt_empty:"Долгов пока нет. Дали или взяли деньги — запишите здесь, и это не забудется.", debt_settled:"Закрытые", debt_lent_meta:"я дал", debt_borrowed_meta:"я взял", debt_overdue:"просрочен", debt_until:"до {d}", debt_returned:"Вернули", debt_returned_full:"Вернули полностью", debt_lent:"Я дал", debt_borrowed:"Я взял", debt_person:"Кто? Введите имя", debt_amount:"Сумма (200 тыс, 1,5 млн…)", debt_due:"Вернуть до", debt_due_week:"Через неделю", debt_due_month:"Через месяц", debt_note:"Заметка (необязательно)", debt_bad_amount:"Введите сумму — 200 тыс или 200000", debt_saved:"✓ Долг записан", debt_closed:"✓ Долг закрыт", debt_partial:"Вернули часть?", debt_partial_ph:"Сколько? Например, 50 тыс", debt_reopen:"Открыть снова", debt_paid_more:"Это больше остатка долга. Осталось: {n}", debt_of:"из {n}", debt_payments:"Платежи", debt_delete_q:"Удалить долг?", debt_archived:"Удалённые", debt_restore:"Вернуть", debt_purge:"Удалить навсегда", debt_purge_q:"Удалить навсегда? Это нельзя отменить.",
   money_apart:"Отдельный раздел — не входит ни в какие проценты, серии и рейтинги.",
   money_balance:"Баланс", money_income:"Доход", money_expense:"Расход",
   money_unit:"сум", date_day:"День", date_month:"Месяц", date_year:"Год",
@@ -3550,10 +3667,12 @@ const PLAN_MATRIX_FALLBACK = {
   limits:{habits:{free:3, pro:25, max:null}, active_tasks:{free:30, pro:null, max:null},
           recurring_tasks:{free:3, pro:25, max:null}, projects:{free:1, pro:15, max:null},
           life_goals:{free:3, pro:25, max:null},
-          open_debts:{free:3, pro:null, max:null}, teams_owned:{free:0, pro:2, max:10},
+          open_debts:{free:3, pro:null, max:null}, money_accounts:{free:1, pro:3, max:null},
+          money_subs:{free:0, pro:3, max:null}, teams_owned:{free:0, pro:2, max:10},
           team_members:{free:8, pro:10, max:50}, voice_day:{free:null, pro:30, max:100},
           voice_week:{free:5, pro:null, max:null}},
-  features:{journal_ai:["pro","max"], timer_rhythm:["pro","max"], stats_history:["pro","max"], stats_csv:["max"]},
+  features:{journal_ai:["pro","max"], timer_rhythm:["pro","max"], stats_history:["pro","max"], stats_csv:["max"],
+            money_transfers:["pro","max"], money_year:["max"]},
 };
 function planTable(p, period, price){
   // A partial answer never blanks the table: each half falls back on its own.
@@ -3576,6 +3695,10 @@ function planTable(p, period, price){
     ["projects", tier => num(L.projects?.[tier])],
     ["life_goals", tier => num(L.life_goals?.[tier])],
     ["open_debts", tier => num(L.open_debts?.[tier])],
+    ["money_accounts", tier => num(L.money_accounts?.[tier])],
+    ["money_subs", tier => num(L.money_subs?.[tier])],
+    ["money_transfers", tier => (F.money_transfers || []).includes(tier) ? yes : no],
+    ["money_year", tier => (F.money_year || []).includes(tier) ? yes : no],
     ["teams_owned", tier => num(L.teams_owned?.[tier])],
     ["team_members", tier => num(L.team_members?.[tier])],
     ["voice", voice],
@@ -6275,7 +6398,8 @@ function moneyRow(e, icons){
       <span class="itile" style="font-size:17px">${icons[e.category] || "•"}</span>
       <div class="grow pressable" data-act="money-edit" data-id="${e.id}" role="button" tabindex="0"
            aria-label="${t("edit")}"><div class="ellipsis">${esc(label)}</div>
-        <div class="meta">${t("mcat_" + e.category)} · <span class="num">${isoToLabel(e.day)}</span>
+        <div class="meta">${t("mcat_" + e.category)} · <span class="num">${isoToLabel(e.day)}</span>${
+          e.account_id && accountName(e.account_id) ? ` · ${esc(accountName(e.account_id))}` : ""}
           ${e.source === "voice" ? icon("mic", 12) : ""}</div></div>
       <div class="amount ${income ? "pos" : "neg"}">${income ? "+" : "−"}${moneyNum(e.amount)}</div>
       <button class="iconbtn sm bare" data-act="money-del" data-id="${e.id}"
@@ -6289,8 +6413,8 @@ SCREENS.money = () => {
   const m = state.money;
   const tab = state.moneyTab || "entries";
   let h = `<div class="head"><h1 class="grow">${t("nav_money")}</h1>
-      <button class="iconbtn add" data-act="${tab === "debts" ? "debt-add" : "money-add"}"
-              aria-label="${t(tab === "debts" ? "debt_add" : "money_add")}">${icon("plus", 22)}</button></div>`;
+      <button class="iconbtn add" data-act="${tab === "debts" ? "debt-add" : tab === "accounts" ? "acct-add" : "money-add"}"
+              aria-label="${t(tab === "debts" ? "debt_add" : tab === "accounts" ? "w_add_account" : "money_add")}">${icon("plus", 22)}</button></div>`;
   if(!m) return h + `<div class="spin"></div>`;
   const debts = m.debts || {open:[], settled:[], owed_to_me:0, i_owe:0, overdue:0};
 
@@ -6320,20 +6444,24 @@ SCREENS.money = () => {
       ${SpeechRec || moneyVoiceViaAgent() ? `<button class="mic ${state.listening ? "on" : ""}" data-act="money-voice"
           aria-label="${t("money_voice")}">${icon("mic", 20)}</button>` : ""}
     </div>
-    <div class="mkind">
+    <div class="mkind ${(m.wallet?.accounts || []).length ? "three" : ""}">
       <button class="btn secondary neg" data-act="money-text-save" data-kind="expense">
         − ${t("money_expense")}</button>
       <button class="btn secondary pos" data-act="money-text-save" data-kind="income">
         + ${t("money_income")}</button>
+      ${(m.wallet?.accounts || []).length ? `<button class="btn secondary" data-act="transfer-open">
+        ⇄ ${t("w_transfer_short")}</button>` : ""}
     </div>`;
 
-  h += `<div class="seg mtabs">${[["entries", t("money_tab_entries")], ["cats", t("money_tab_cats")],
+  h += `<div class="seg mtabs">${[["entries", t("money_tab_entries")], ["accounts", t("money_tab_accounts")],
+      ["cats", t("money_tab_cats")],
       ["debts", t("money_tab_debts") + (debts.open.length ? ` · ${debts.open.length}` : "")]]
       .map(([id, label]) => `<div class="${tab === id ? "on" : ""}" data-act="money-tab"
         data-value="${id}">${label}</div>`).join("")}</div>`;
 
-  if(tab === "cats") return h + moneyCats(m);
+  if(tab === "cats") return h + moneyCats(m) + yearCard();
   if(tab === "debts") return h + debtsView(debts);
+  if(tab === "accounts") return h + walletView();
 
   h += m.entries.length ? m.entries.map(e => moneyRow(e, m.icons)).join("")
     : `<div class="empty">${t("money_empty")}</div>`;
@@ -6444,6 +6572,211 @@ async function reloadDebts(){
   }catch(e){ handleError(e); }
 }
 
+/* ---------- Accounts, transfers, repeating payments, the year ----------
+   Where the money is, and what comes back every month. Each account is a
+   row with its balance; a transfer moves money between two of them without
+   being income or spending; a repeating payment is one tap to record when
+   paid. What the plan does not open is drawn with a lock, not hidden. */
+const ACCOUNT_ICON = {cash:"💵", card:"💳", bank:"🏦", crypto:"🪙", invest:"📈", business:"💼", other:"👛"};
+const wallet = () => state.money?.wallet || {accounts:[], subscriptions:[], transfers:[], total:0,
+  unassigned:0, subs_monthly:0, access:{transfers:true, year:true, accounts:null, subs:null}};
+const accountName = id => (wallet().accounts.find(a => a.id === id) || {}).name || "";
+/* The account new money goes to: the one used last, else the first. */
+function defaultAccount(){
+  const list = wallet().accounts;
+  return (list.find(a => a.id === state.moneyAcct) || list[0] || {}).id || null;
+}
+/* The plans sheet, opened before the server has to refuse anything. */
+function lockedSheet(key, needs){
+  haptic("medium");
+  openSheet(plansSheet({detail:"plan_limit", key, limit:null, tier: wallet().access?.tier || "free", needs}), "plans");
+}
+const signedMoney = n => (n < 0 ? "−" : "") + moneyFmt(n);
+const lockTag = tier => `<span class="wlock">${icon("shield", 11)} ${PLAN_NAME[tier]}</span>`;
+
+function dueLabel(days){
+  if(days === 0) return `<span class="warn">${t("w_due_today")}</span>`;
+  if(days < 0) return `<span class="neg">${t("w_due_late", {n: -days})}</span>`;
+  return t("w_due_in", {n: days});
+}
+
+function walletView(){
+  const w = wallet(), acc = w.access || {};
+  const atLimit = acc.accounts !== null && acc.accounts !== undefined && w.accounts.length >= acc.accounts;
+  let h = `<div class="wtotal">
+      <div class="k">${t("w_total")}</div>
+      <div class="v num ${w.total < 0 ? "neg" : ""}">${signedMoney(w.total)}</div>
+      <div class="t3 tiny">${t("w_accounts_n", {n: w.accounts.length})}</div>
+    </div>`;
+  if(!w.accounts.length){
+    h += `<div class="wempty"><div class="t2">${t("w_empty")}</div>
+      <div class="chips">${["cash", "card", "bank", "crypto", "invest", "business"].map(k =>
+        `<div class="chip" role="button" tabindex="0" data-act="acct-add" data-kind="${k}">${ACCOUNT_ICON[k]} ${t("acct_" + k)}</div>`).join("")}</div></div>`;
+  } else {
+    h += `<div class="wlist">${w.accounts.map((a, i) => `
+      <div class="wacct" style="--i:${i}" data-act="acct-open" data-id="${a.id}" role="button" tabindex="0">
+        <span class="wtile k-${a.kind}">${ACCOUNT_ICON[a.kind] || "👛"}</span>
+        <div class="grow"><div class="ellipsis wname">${esc(a.name)}</div>
+          ${a.name.trim().toLowerCase() !== t("acct_" + a.kind).toLowerCase()
+            ? `<div class="t3 tiny">${t("acct_" + a.kind)}</div>` : ""}</div>
+        <div class="wbal num ${a.balance < 0 ? "neg" : ""}">${signedMoney(a.balance)}</div>
+      </div>`).join("")}
+      ${w.unassigned ? `<div class="wacct muted"><span class="wtile">🧾</span>
+        <div class="grow"><div class="wname">${t("w_unassigned")}</div>
+          <div class="t3 tiny">${t("w_unassigned_hint")}</div></div>
+        <div class="wbal num">${signedMoney(w.unassigned)}</div></div>` : ""}
+    </div>
+    <div class="wactions">
+      <button class="btn secondary sm" data-act="${atLimit ? "w-locked" : "acct-add"}" data-key="money_accounts"
+        data-needs="${acc.tier === "pro" ? "max" : "pro"}">${icon("plus", 15)} ${t("w_add_account")}${atLimit ? lockTag(acc.tier === "pro" ? "max" : "pro") : ""}</button>
+      <button class="btn secondary sm" data-act="transfer-open">⇄ ${t("w_transfer_short")}${acc.transfers ? "" : lockTag("pro")}</button>
+    </div>`;
+  }
+
+  // Repeating payments.
+  const subsLocked = acc.subs === 0;
+  const subsFull = acc.subs !== null && acc.subs !== undefined && w.subscriptions.length >= acc.subs;
+  h += sectionHead("tone-4", "repeat", t("w_subs"), w.subscriptions.length && !subsLocked
+    ? `<span class="t3 small num">${t("w_per_month", {n: moneyNum(w.subs_monthly)})}</span>` : "");
+  if(subsLocked) h += `<div class="wlocked" data-act="w-locked" data-key="money_subs" data-needs="pro" role="button" tabindex="0">
+      <div class="grow"><b>${t("w_subs_locked")}</b><div class="t3 small">${t("w_subs_hint")}</div></div>${lockTag("pro")}</div>`;
+  else {
+    h += w.subscriptions.map(x => `<div class="wsub" data-act="msub-open" data-id="${x.id}" role="button" tabindex="0">
+        <span class="wtile">${(state.money?.icons || {})[x.category] || "🔁"}</span>
+        <div class="grow"><div class="ellipsis wname">${esc(x.name)}</div>
+          <div class="t3 tiny"><b class="num">−${moneyNum(x.amount)}</b> · ${t("per_" + x.period)}</div>
+          <div class="tiny">${dueLabel(x.days_left)}</div></div>
+        <button class="btn ${x.days_left <= 0 ? "" : "secondary"} sm wpay" data-act="msub-pay"
+          data-id="${x.id}">${icon("check", 14)} ${t("w_paid")}</button>
+      </div>`).join("");
+    h += `<button class="btn text sm" data-act="${subsFull ? "w-locked" : "msub-add"}" data-key="money_subs" data-needs="max">
+      ${icon("plus", 15)} ${t("w_add_sub")}${subsFull ? lockTag("max") : ""}</button>`;
+  }
+
+  if(w.transfers.length){
+    h += sectionHead("tone-1", "repeat", t("w_transfers"));
+    h += w.transfers.slice(0, 5).map(x => `<div class="item wtr">
+        <div class="grow"><div class="ellipsis small"><b>${esc(x.from_name)}</b> → <b>${esc(x.to_name)}</b></div>
+          <div class="t3 tiny">${isoToLabel(x.day)}${x.note ? " · " + esc(x.note) : ""}</div></div>
+        <div class="num small">${moneyNum(x.amount)}</div>
+        <button class="iconbtn sm bare" data-act="transfer-del" data-id="${x.id}" aria-label="${t("delete")}">${icon("x", 14)}</button>
+      </div>`).join("");
+  }
+  return h;
+}
+
+/* The year, month by month: income and spending side by side. Max only. */
+function yearCard(){
+  const acc = wallet().access || {};
+  if(!acc.year) return `<div class="wlocked" style="margin-top:var(--s3)" data-act="w-locked" data-key="money_year"
+      data-needs="max" role="button" tabindex="0">
+      <div class="grow"><b>📊 ${t("w_year")}</b><div class="t3 small">${t("w_year_hint")}</div></div>${lockTag("max")}</div>`;
+  const y = state.moneyYear;
+  if(!y) setTimeout(() => { if(!state.moneyYear) loadYear(new Date(todayISO()).getFullYear()); });
+  if(!y || y.loading) return `<div class="card ycard"><div class="spin"></div></div>`;
+  const top = Math.max(1, ...y.months.flatMap(m => [m.income, m.expense]));
+  const months = D().months;
+  return `<div class="card ycard">
+    <div class="row"><b class="grow">📊 ${t("w_year")} · ${y.year}</b>
+      <button class="iconbtn sm" data-act="year-shift" data-delta="-1" aria-label="‹">${icon("back", 15)}</button>
+      <button class="iconbtn sm" data-act="year-shift" data-delta="1" aria-label="›"
+        ${y.year >= new Date().getFullYear() ? "disabled" : ""}>${icon("chevron", 15)}</button></div>
+    <div class="ytotals num">
+      <div><span class="t3 tiny">${t("money_income")}</span><b class="pos">+${moneyNum(y.income)}</b></div>
+      <div><span class="t3 tiny">${t("money_expense")}</span><b class="neg">−${moneyNum(y.expense)}</b></div>
+      <div><span class="t3 tiny">${t("w_net")}</span><b class="${y.net < 0 ? "neg" : ""}">${y.net < 0 ? "−" : ""}${moneyNum(y.net)}</b></div>
+    </div>
+    <div class="ybars" role="img" aria-label="${t("w_year")}">${y.months.map((m, i) => `
+      <div class="ycol" title="${months[i]}">
+        <div class="ypair"><i class="yin" style="--h:${Math.round(m.income / top * 100)}%;--i:${i}"></i>
+          <i class="yout" style="--h:${Math.round(m.expense / top * 100)}%;--i:${i}"></i></div>
+        <span>${months[i].slice(0, 1)}</span></div>`).join("")}</div>
+    ${y.categories.length ? `<div class="ycats">${y.categories.slice(0, 5).map(c =>
+      `<div class="row small"><span>${(state.money?.icons || {})[c.id] || ""}</span>
+        <span class="grow ellipsis">${t("mcat_" + c.id)}</span><span class="num">${moneyNum(c.spent)}</span></div>`).join("")}</div>` : ""}
+  </div>`;
+}
+async function loadYear(year){
+  state.moneyYear = {year, loading:true};
+  render();
+  try{ state.moneyYear = await api("/api/money/year?year=" + year); }
+  catch(e){ state.moneyYear = null; handleError(e); }
+  render();
+}
+
+/* Account chips for a sheet: which account money came out of or went into. */
+function accountChips(act, current, allowNone){
+  const list = wallet().accounts;
+  if(!list.length) return "";
+  return `<div class="chips">${allowNone ? `<div class="chip sm ${current ? "" : "on"}" role="button" tabindex="0"
+      data-act="${act}" data-value="">${t("none_short")}</div>` : ""}${list.map(a =>
+    `<div class="chip sm ${current === a.id ? "on" : ""}" role="button" tabindex="0" data-act="${act}"
+      data-value="${a.id}">${ACCOUNT_ICON[a.kind] || ""} ${esc(a.name)}</div>`).join("")}</div>`;
+}
+
+function moneyAccountSheet(a, kind){
+  const k = a?.kind || kind || "cash";
+  return `${sheetHead(a ? t("w_account") : t("w_add_account"))}
+    <input id="acct-name" maxlength="60" placeholder="${t("w_account_name")}"
+      value="${esc(a?.name ?? (kind ? t("acct_" + kind) : ""))}" />
+    <label>${t("w_kind")}</label>
+    <div class="chips">${Object.keys(ACCOUNT_ICON).map(x => `<div class="chip sm ${k === x ? "on" : ""}"
+      role="button" tabindex="0" data-act="acct-kind" data-value="${x}">${ACCOUNT_ICON[x]} ${t("acct_" + x)}</div>`).join("")}</div>
+    <input type="hidden" id="acct-kind" value="${k}" />
+    <label for="acct-opening">${t("w_opening")}</label>
+    <input id="acct-opening" inputmode="text" autocomplete="off" placeholder="0"
+      value="${a ? moneyNum(a.opening) : ""}" />
+    <div class="hint">${t("w_opening_hint")}</div>
+    <button class="btn" style="margin-top:16px" data-act="acct-save" ${a ? `data-id="${a.id}"` : ""}>${t("save")}</button>
+    ${a ? `<button class="btn danger" style="margin-top:8px" data-act="acct-archive" data-id="${a.id}">
+      ${icon("trash", 15)} ${t("delete")}</button>` : ""}`;
+}
+
+function transferSheet(){
+  const f = state.transferForm || {};
+  const list = wallet().accounts;
+  const pick = (field, cur) => `<div class="chips">${list.map(a => `<div class="chip sm ${cur === a.id ? "on" : ""}"
+      role="button" tabindex="0" data-act="tr-pick" data-field="${field}" data-value="${a.id}">${ACCOUNT_ICON[a.kind] || ""} ${esc(a.name)}</div>`).join("")}</div>`;
+  return `${sheetHead("⇄ " + t("w_transfer"))}
+    <label>${t("w_from")}</label>${pick("from", f.from)}
+    <label>${t("w_to")}</label>${pick("to", f.to)}
+    <label for="tr-amount">${t("money_amount")}</label>
+    <input id="tr-amount" inputmode="text" autocomplete="off" placeholder="300 ming · 1,5 mln"
+      value="${esc(f.amount || "")}" />
+    <input id="tr-note" maxlength="200" placeholder="${t("debt_note")}" value="${esc(f.note || "")}" style="margin-top:10px" />
+    <button class="btn" style="margin-top:16px" data-act="transfer-save">${t("save")}</button>`;
+}
+
+function subSheet(x){
+  const f = state.subForm;
+  const cats = (state.money?.category_ids || []).filter(id => (state.money?.kinds || {})[id] === "expense");
+  const today = todayISO();
+  return `${sheetHead(x ? t("w_sub") : t("w_add_sub"))}
+    <input id="sub-name" maxlength="80" placeholder="${t("w_sub_name")}" value="${esc(f.name || "")}" />
+    <input id="sub-amount" inputmode="text" autocomplete="off" placeholder="${t("money_amount")}"
+      value="${f.amount ? moneyNum(f.amount) : ""}" style="margin-top:10px" />
+    <label>${t("w_period")}</label>
+    <div class="chips">${["weekly", "monthly", "yearly"].map(p => `<div class="chip sm ${f.period === p ? "on" : ""}"
+      role="button" tabindex="0" data-act="msub-form" data-field="period" data-value="${p}">${t("per_" + p)}</div>`).join("")}</div>
+    <label>${t("w_next_due")}</label>
+    ${dateField("sub-due", f.next_due || today, [new Date(today).getFullYear() - 1, new Date(today).getFullYear() + 5])}
+    <label>${t("category")}</label>
+    <div class="chips">${cats.map(id => `<div class="chip sm ${f.category === id ? "on" : ""}" role="button" tabindex="0"
+      data-act="msub-form" data-field="category" data-value="${id}">${(state.money?.icons || {})[id] || ""} ${t("mcat_" + id)}</div>`).join("")}</div>
+    ${wallet().accounts.length ? `<label>${t("w_account")}</label>${accountChips("msub-acct", f.account_id, true)}` : ""}
+    <button class="btn" style="margin-top:16px" data-act="msub-save" ${x ? `data-id="${x.id}"` : ""}>${t("save")}</button>
+    ${x ? `<button class="btn danger" style="margin-top:8px" data-act="msub-archive" data-id="${x.id}">
+      ${icon("trash", 15)} ${t("delete")}</button>` : ""}`;
+}
+function readSubForm(){
+  const f = state.subForm || (state.subForm = {period:"monthly", category:"home"});
+  const g = id => document.getElementById(id);
+  if(g("sub-name")) f.name = g("sub-name").value;
+  if(g("sub-amount")) f.amount = parseMoneyInput(g("sub-amount").value) || g("sub-amount").value;
+  if(g("sub-due")) f.next_due = g("sub-due").value;
+  return f;
+}
+
 function moneySheet(){
   const f = state.moneyForm || (state.moneyForm = {kind:"expense", category:"food"});
   const m = state.money || {};
@@ -6463,6 +6796,7 @@ function moneySheet(){
         data-act="money-cat" data-value="${id}" role="radio" tabindex="0"
         aria-checked="${f.category === id}">${(m.icons || {})[id] || ""} ${t("mcat_" + id)}</div>`)
       .join("")}</div>
+    ${wallet().accounts.length ? `<label>${t("w_account")}</label>${accountChips("money-acct", f.account_id, true)}` : ""}
     <label>${t("money_note")} <span class="t3">(${t("optional")})</span></label>
     <input id="money-note" maxlength="200" value="${esc(f.note || "")}"
            placeholder="${t("money_note_ph")}" />
@@ -6746,7 +7080,7 @@ async function moneyText(text, source, kind){
     if(!state.money?.category_ids) state.money = await api("/api/money");
     const el = document.getElementById("money-text");
     if(el) el.value = "";
-    state.moneyForm = {...e, source, review:true};
+    state.moneyForm = {...e, source, review:true, account_id: defaultAccount()};
     openSheet(moneySheet(), "money");
   }catch(err){
     if(err.status === 422) return toast(t("money_no_amount"));
@@ -8668,7 +9002,7 @@ function fabAdd(){
       : "gl_add_" + tab)}">${icon("plus", 30)}</button>`;
   }
   return `<button class="fab-add" data-act="${sc !== "money" ? "quick-add"
-      : state.moneyTab === "debts" ? "debt-add" : "money-add"}"
+      : state.moneyTab === "debts" ? "debt-add" : state.moneyTab === "accounts" ? "acct-add" : "money-add"}"
         aria-label="${t(sc === "money" ? "money_add" : "quick_add")}">${icon("plus", 30)}</button>`;
 }
 /* The blocked screen. A full screen with a way out, not a 403 string:
@@ -9829,7 +10163,7 @@ const A = {
     }
   },
   /* ---- money ---- */
-  "money-add": () => { haptic(); state.moneyForm = {kind:"expense", category:"food"};
+  "money-add": () => { haptic(); state.moneyForm = {kind:"expense", category:"food", account_id: defaultAccount()};
     openSheet(moneySheet(), "money"); },
   "money-kind": el => { readMoneyForm();
     state.moneyForm.kind = el.dataset.value;
@@ -9843,10 +10177,12 @@ const A = {
     if(!amount || amount <= 0) return toast(t("money_no_amount"));
     if(f.id){
       const body = {kind: f.kind, amount, category: f.category, note: (f.note || "").trim(),
-                    day: f.day || null};
+                    day: f.day || null, account_id: f.account_id || null};
       return save(() => api(`/api/money/${f.id}`, {method:"PATCH", body}), "money", false, t("saved"));
     }
-    const body = {kind: f.kind, amount, category: f.category, note: (f.note || "").trim(), source:f.source || "manual"};
+    const body = {kind: f.kind, amount, category: f.category, note: (f.note || "").trim(), source:f.source || "manual",
+                  account_id: f.account_id || null};
+    if(f.account_id) state.moneyAcct = f.account_id;
     save(() => api("/api/money", {method:"POST", body}), "money", false,
          t("money_saved_toast"), {body});
   },
@@ -9856,12 +10192,88 @@ const A = {
     const e = (state.money?.entries || []).find(x => String(x.id) === String(el.dataset.id));
     if(!e) return;
     haptic();
-    state.moneyForm = {id:e.id, kind:e.kind, amount:e.amount, category:e.category, note:e.note, day:e.day};
+    state.moneyForm = {id:e.id, kind:e.kind, amount:e.amount, category:e.category, note:e.note, day:e.day,
+                       account_id:e.account_id || null};
     openSheet(moneySheet());
   },
   "money-text-save": el => moneyText(trimmed("money-text"), "manual", el?.dataset?.kind),
   "money-voice": () => moneyVoice(),
-  "money-tab": el => { haptic(); state.moneyTab = el.dataset.value; render(); },
+  "money-tab": el => { haptic(); state.moneyTab = el.dataset.value; render();
+    if(el.dataset.value === "cats" && wallet().access?.year && !state.moneyYear)
+      loadYear(new Date(todayISO()).getFullYear()); },
+  "money-acct": el => { readMoneyForm(); state.moneyForm.account_id = Number(el.dataset.value) || null;
+    openSheet(moneySheet(), "money"); },
+  "w-locked": el => lockedSheet(el.dataset.key, el.dataset.needs),
+  "year-shift": el => loadYear((state.moneyYear?.year || new Date().getFullYear()) + Number(el.dataset.delta)),
+  "acct-add": el => openSheet(moneyAccountSheet(null, el?.dataset?.kind)),
+  "acct-open": el => { const a = wallet().accounts.find(x => String(x.id) === el.dataset.id);
+    if(a) openSheet(moneyAccountSheet(a)); },
+  "acct-kind": el => { document.getElementById("acct-kind").value = el.dataset.value;
+    el.parentElement.querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c === el)); },
+  "acct-save": el => {
+    const name = trimmed("acct-name");
+    if(!name) return document.getElementById("acct-name")?.focus();
+    const raw = val("acct-opening");
+    const opening = (parseMoneyInput(raw.replace(/^\s*[-−]/, "")) || 0) * (/^\s*[-−]/.test(raw) ? -1 : 1);
+    const body = {name, kind: val("acct-kind") || "cash", opening};
+    const id = el.dataset.id;
+    return save(() => api(id ? `/api/money/accounts/${id}` : "/api/money/accounts",
+                          {method: id ? "PATCH" : "POST", body}), "money");
+  },
+  "acct-archive": el => confirmSheet("acct-archive-go", el.dataset.id, t("w_account_del_q")),
+  "acct-archive-go": el => save(() => api(`/api/money/accounts/${el.dataset.id}`,
+    {method:"PATCH", body:{archived:true}}), "money", false, t("deleted")),
+  "transfer-open": () => {
+    const w = wallet();
+    if(!w.access?.transfers) return lockedSheet("money_transfers", "pro");
+    if(w.accounts.length < 2) return toast(t("w_need_two"));
+    state.transferForm = {from: w.accounts[0].id, to: w.accounts[1].id};
+    openSheet(transferSheet());
+  },
+  "tr-pick": el => {
+    const f = state.transferForm;
+    f.amount = val("tr-amount"); f.note = val("tr-note");
+    const id = Number(el.dataset.value), other = el.dataset.field === "from" ? "to" : "from";
+    if(f[other] === id) f[other] = f[el.dataset.field];
+    f[el.dataset.field] = id;
+    openSheet(transferSheet());
+  },
+  "transfer-save": () => {
+    const f = state.transferForm || {};
+    const amount = parseMoneyInput(val("tr-amount"));
+    if(!amount) return toast(t("money_no_amount"));
+    return save(() => api("/api/money/transfers", {method:"POST",
+      body:{from_account: f.from, to_account: f.to, amount, note: val("tr-note").trim()}}), "money", false, t("w_moved"));
+  },
+  "transfer-del": el => save(() => api(`/api/money/transfers/${el.dataset.id}`, {method:"DELETE"}),
+                             "money", false, t("deleted")),
+  "msub-add": () => { state.subForm = {period:"monthly", category:"home", account_id: defaultAccount()};
+    openSheet(subSheet(null)); },
+  "msub-open": el => { const x = wallet().subscriptions.find(s => String(s.id) === el.dataset.id);
+    if(!x) return;
+    state.subForm = {...x};
+    openSheet(subSheet(x)); },
+  "msub-form": el => { const f = readSubForm(); f[el.dataset.field] = el.dataset.value;
+    openSheet(subSheet(f.id ? f : null)); },
+  "msub-acct": el => { const f = readSubForm(); f.account_id = Number(el.dataset.value) || null;
+    openSheet(subSheet(f.id ? f : null)); },
+  "msub-save": el => {
+    const f = readSubForm();
+    const amount = Number(f.amount);
+    if(!(f.name || "").trim()) return document.getElementById("sub-name")?.focus();
+    if(!amount) return toast(t("money_no_amount"));
+    const body = {name: f.name.trim(), amount, period: f.period, category: f.category,
+                  next_due: f.next_due, account_id: f.account_id || null};
+    const id = el.dataset.id;
+    return save(() => api(id ? `/api/money/subscriptions/${id}` : "/api/money/subscriptions",
+                          {method: id ? "PATCH" : "POST", body}), "money");
+  },
+  "msub-archive": el => confirmSheet("msub-archive-go", el.dataset.id),
+  "msub-archive-go": el => save(() => api(`/api/money/subscriptions/${el.dataset.id}`,
+    {method:"PATCH", body:{archived:true}}), "money", false, t("deleted")),
+  "msub-pay": el => { haptic("medium");
+    return save(() => api(`/api/money/subscriptions/${el.dataset.id}/pay`, {method:"POST"}),
+                "money", false, t("w_paid_toast")); },
   "debt-add": () => { haptic(); state.debtForm = {direction:"lent", due:""}; openSheet(debtSheet());
     setTimeout(() => document.getElementById("debt-person")?.focus(), 60); },
   "debt-form": el => { haptic(); readDebtForm()[el.dataset.field] = el.dataset.value; openSheet(debtSheet()); },
@@ -9979,7 +10391,7 @@ const A = {
       const e = r.entry;
       toast(t("deleted"), t("undo"), () => save(() => api("/api/money", {method:"POST",
         body:{kind:e.kind, amount:e.amount, category:e.category, note:e.note,
-              source:e.source, day:e.day}}), "money", true));
+              source:e.source, day:e.day, account_id:e.account_id || null}}), "money", true));
     }catch(e){ handleError(e); }
   },
   /* The limit is typed the way money is typed everywhere else here —

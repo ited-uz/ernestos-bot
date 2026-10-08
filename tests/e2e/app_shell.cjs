@@ -28,9 +28,14 @@ const revokeAll = () => execFileSync(PY, ['-c',
   + ' s.execute(update(db.AppSession).values(revoked_at=db.utcnow())); s.commit()']);
 
 const results = [];
+let failPage = null;
 const step = async (name, fn) => {
   try { await fn(); results.push(['ok', name]); console.log('✓', name); }
-  catch (e) { results.push(['FAIL', name]); console.log('✗', name, '—', e.message.split('\n')[0]); }
+  catch (e) {
+    results.push(['FAIL', name]); console.log('✗', name, '—', e.message.split('\n')[0]);
+    // What the screen showed when it failed, next to the other shots.
+    try { await failPage?.screenshot({ path: path.join(OUT, 'fail-' + results.length + '.png') }); } catch (_) {}
+  }
 };
 
 (async () => {
@@ -46,6 +51,7 @@ const step = async (name, fn) => {
     } };
   });
   const page = await context.newPage();
+  failPage = page;
   const errors = [];
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
   // 401 (signed out) and 402 (plan limit) are answers the app handles.
@@ -206,7 +212,7 @@ const step = async (name, fn) => {
   await step('Plans: a month/year switch and two buy buttons, closed by the cross', async () => {
     await page.click('#sheet-body [data-act="set-plan"]');
     await page.waitForSelector('#sheet-body .ptable');
-    assert.equal(await page.locator('#sheet-body .ptable tbody tr').count(), 13, 'every limit has a row');
+    assert.equal(await page.locator('#sheet-body .ptable tbody tr').count(), 17, 'every limit has a row');
     assert.equal(await page.locator('#sheet-body [data-act="plan-buy"]').count(), 2);
     await page.click('#sheet-body [data-act="plan-period"][data-p="year"]');
     const keys = await page.locator('#sheet-body [data-act="plan-buy"]').evaluateAll(b => b.map(x => x.dataset.key));
@@ -273,6 +279,50 @@ const step = async (name, fn) => {
     await page.click('[data-act="goal-tab"][data-tab="tactical"]');
     await page.waitForSelector('.ghint');
     assert.ok(await page.locator('[data-act="focus-add"]').count(), 'week focus reachable from Goals');
+  });
+
+  await step('Moliya: two accounts, a transfer, a repeating payment paid, and the year', async () => {
+    await page.evaluate(() => closeSheet());
+    await page.evaluate(() => goto('money'));
+    await page.waitForSelector('[data-act="money-tab"][data-value="accounts"]', { timeout: 8000 });
+    await page.click('[data-act="money-tab"][data-value="accounts"]');
+    await page.click('.wempty [data-act="acct-add"][data-kind="cash"]');
+    await page.waitForSelector('#sheet-body #acct-name');
+    assert.equal(await page.inputValue('#acct-name'), 'Naqd');
+    await page.fill('#acct-opening', '1 mln');
+    await page.click('#sheet-body [data-act="acct-save"]');
+    await page.waitForSelector('.wacct:has-text("Naqd")', { timeout: 8000 });
+    await page.click('.wactions [data-act="acct-add"]');
+    await page.fill('#acct-name', 'Karta');
+    await page.click('#sheet-body [data-act="acct-kind"][data-value="card"]');
+    await page.fill('#acct-opening', '500000');
+    await page.click('#sheet-body [data-act="acct-save"]');
+    await page.waitForSelector('.wacct:has-text("Karta")', { timeout: 8000 });
+    await page.click('.mkind [data-act="transfer-open"]');
+    await page.waitForSelector('#sheet-body #tr-amount');
+    await page.fill('#tr-amount', '200 ming');
+    await page.click('#sheet-body [data-act="transfer-save"]');
+    await page.waitForSelector('.wtr:has-text("200 000")', { timeout: 8000 });
+    const bal = await page.evaluate(() => state.money.wallet.accounts.map(a => [a.name, a.balance]));
+    assert.deepEqual(bal, [['Naqd', 800000], ['Karta', 700000]]);
+    await page.click('[data-act="msub-add"]');
+    await page.waitForSelector('#sheet-body #sub-name');
+    await page.fill('#sub-name', 'Internet');
+    await page.fill('#sub-amount', '150 ming');
+    await page.click('#sheet-body [data-act="msub-save"]');
+    await page.waitForSelector('.wsub:has-text("Internet")', { timeout: 8000 });
+    await page.click('.wsub:has-text("Internet") [data-act="msub-pay"]');
+    await page.waitForFunction(() => state.money.entries.some(e => e.note === 'Internet' && e.amount === 150000), null, { timeout: 8000 });
+    const rows = py('import db\nfrom sqlalchemy import select\nwith db.SessionLocal() as s:\n'
+       + ' print(len(s.scalars(select(db.MoneyAccount)).all()), len(s.scalars(select(db.MoneyTransfer)).all()),'
+       + ' s.scalar(select(db.MoneyEntry.amount).where(db.MoneyEntry.note == "Internet")))').trim();
+    assert.equal(rows, '2 1 150000');
+    await shot('10-money-accounts');
+    // The account is on Max by now (granted in the statistics step): the
+    // year card is open and counts the payment just made.
+    await page.click('[data-act="money-tab"][data-value="cats"]');
+    await page.waitForSelector('.ycard .ybars', { timeout: 8000 });
+    assert.ok(await page.locator('.ycard .ytotals .neg:has-text("150 000")').count(), 'year counts the payment');
   });
 
   await step('An ended session goes back to sign-in', async () => {

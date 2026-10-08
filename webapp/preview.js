@@ -126,10 +126,10 @@
     ],
     prayers:EMPTY ? {} : {bomdod:"jamaat", peshin:"on_time", asr:"qaza", shom:null, xufton:null},
     money:EMPTY ? [] : [
-      {id:1, kind:"expense", amount:1200000, category:"business", note:"Reklama", source:"manual", day:TODAY},
-      {id:2, kind:"income", amount:5000000, category:"salary", note:"", source:"voice", day:TODAY},
-      {id:3, kind:"expense", amount:120000, category:"health", note:"Dorixona", source:"manual", day:day(-1)},
-      {id:4, kind:"expense", amount:45000, category:"food", note:"Tushlik", source:"manual", day:day(-2)}],
+      {id:1, kind:"expense", amount:1200000, category:"business", note:"Reklama", source:"manual", day:TODAY, account_id:5},
+      {id:2, kind:"income", amount:5000000, category:"salary", note:"", source:"voice", day:TODAY, account_id:2},
+      {id:3, kind:"expense", amount:120000, category:"health", note:"Dorixona", source:"manual", day:day(-1), account_id:1},
+      {id:4, kind:"expense", amount:45000, category:"food", note:"Tushlik", source:"manual", day:day(-2), account_id:1}],
     inbox:EMPTY || !APP ? [] : [
       {id:3, kind:"reminder", title:"🔔 Odat vaqti", body:s.h4,
        actions:[{label:"15 daqiqa", cb:"snz:h:4:15"}, {label:"✅ Bajarildi", cb:"habit:toggle:4"}],
@@ -267,9 +267,51 @@
     ["deep","target",s.h4,false], ["sport","target",s.h7,false], ["read","target",s.h3,false],
     ["water","bonus","2 L",false], ["language","bonus",s.lang,false], ["sleep","bonus","23:00",false]];
   const sumKind = k => DB.money.filter(e => e.kind === k).reduce((n, e) => n + e.amount, 0);
+  /* Accounts, transfers and repeating payments: balances computed the way
+     the server computes them, locks drawn from the preview's plan. */
+  const W = EMPTY ? {accounts:[], subs:[], transfers:[]} : {
+    accounts:[{id:1, name:"Naqd", kind:"cash", opening:850000}, {id:2, name:"Humo karta", kind:"card", opening:4200000},
+              {id:3, name:"Kapitalbank", kind:"bank", opening:12500000}, {id:4, name:"Kripto (USDT)", kind:"crypto", opening:6300000},
+              {id:5, name:"Biznes hisobi", kind:"business", opening:18700000}],
+    subs:[{id:1, name:"Ijara", amount:3500000, category:"home", account_id:2, period:"monthly", next_due:day(3)},
+          {id:2, name:"Internet", amount:150000, category:"home", account_id:2, period:"monthly", next_due:day(-1)},
+          {id:3, name:"Notion + ChatGPT", amount:520000, category:"business", account_id:5, period:"monthly", next_due:day(12)}],
+    transfers:[{id:1, from:3, to:1, amount:1000000, note:"", day:day(-2)}]};
+  let wSeq = 50;
+  const PER_MONTH = {weekly:52 / 12, monthly:1, yearly:1 / 12};
+  function walletState(){
+    const tier = DB.me.plan.tier, live = W.accounts.filter(a => !a.archived);
+    const bal = a => a.opening + DB.money.filter(e => e.account_id === a.id)
+        .reduce((n, e) => n + (e.kind === "income" ? e.amount : -e.amount), 0)
+      + W.transfers.filter(x => x.to === a.id).reduce((n, x) => n + x.amount, 0)
+      - W.transfers.filter(x => x.from === a.id).reduce((n, x) => n + x.amount, 0);
+    const accounts = live.map(a => ({id:a.id, name:a.name, kind:a.kind, opening:a.opening, balance:bal(a)}));
+    const total = sumKind("income") - sumKind("expense") + live.reduce((n, a) => n + a.opening, 0);
+    const name = id => (W.accounts.find(a => a.id === id) || {}).name || "?";
+    const subs = W.subs.filter(x => !x.archived).sort((a, b) => a.next_due < b.next_due ? -1 : 1);
+    return {accounts, total, unassigned:total - accounts.reduce((n, a) => n + a.balance, 0),
+      subscriptions:subs.map(x => ({...x, days_left:Math.round((new Date(x.next_due) - new Date(TODAY)) / 864e5)})),
+      subs_monthly:Math.round(subs.reduce((n, x) => n + x.amount * PER_MONTH[x.period], 0)),
+      transfers:W.transfers.slice().reverse().map(x => ({...x, from_name:name(x.from), to_name:name(x.to)})),
+      kinds:["cash", "card", "bank", "crypto", "invest", "business", "other"], periods:["weekly", "monthly", "yearly"],
+      access:{tier, accounts:{free:1, pro:3, max:null}[tier], subs:{free:0, pro:3, max:null}[tier],
+              transfers:tier !== "free", year:tier === "max"}};
+  }
+  function moneyYear(y){
+    const months = Array.from({length:12}, (_, i) => {
+      const k = i <= now.getMonth() ? 1 : 0, w = 0.7 + ((i * 37) % 10) / 20;
+      return {month:i + 1, income:EMPTY ? 0 : Math.round(k * 9e6 * w / 1e4) * 1e4,
+              expense:EMPTY ? 0 : Math.round(k * 6.2e6 * (1.3 - w / 2) / 1e4) * 1e4};
+    });
+    const income = months.reduce((n, m) => n + m.income, 0), expense = months.reduce((n, m) => n + m.expense, 0);
+    return {year:y, months, income, expense, net:income - expense, categories:EMPTY ? [] : [
+      {id:"home", spent:Math.round(expense * .38)}, {id:"business", spent:Math.round(expense * .24)},
+      {id:"food", spent:Math.round(expense * .19)}, {id:"transport", spent:Math.round(expense * .1)},
+      {id:"health", spent:Math.round(expense * .05)}]};
+  }
   const money = () => ({month:TODAY.slice(0, 7), year:now.getFullYear(), month_no:now.getMonth() + 1,
     is_current:true, income:sumKind("income"), expense:sumKind("expense"),
-    balance:sumKind("income") - sumKind("expense"), count:DB.money.length,
+    balance:walletState().total, count:DB.money.length, wallet:walletState(),
     categories:[["food","🍔",2000000,45000],["transport","🚕",800000,30000],
       ["home","🏠",1500000,0],["health","💊",500000,120000],["fun","🎮",1000000,0],
       ["business","💼",0,1200000],["other","📦",500000,0]].map(([id, icon, limit, spent]) =>
@@ -408,6 +450,9 @@
     [/^\/api\/habits\/presets$/, () => ({presets:PRESETS.map(([key, category, name, system], i) =>
       ({key, category, name, system, added:!EMPTY && i < 7, habit_id:null}))})],
     [/^\/api\/money$/, money],
+    [/^\/api\/money\/wallet$/, walletState],
+    [/^\/api\/money\/year$/, q => DB.me.plan.tier === "max" ? moneyYear(Number(q.get("year")) || now.getFullYear())
+      : {__status:402, detail:"plan_limit", key:"money_year", limit:null, tier:DB.me.plan.tier, needs:"max"}],
     [/^\/api\/teams\/\d+\/stats$/, () => ({together:EMPTY ? null : 71,
       members:[{user_id:1, name:"Ernest"}, {user_id:2, name:"Gulyora"}],
       series:EMPTY ? [] : Array.from({length:7}, (_, i) => {
@@ -451,10 +496,12 @@
     [/^\/api\/plans$/, () => ({...DB.me.plan,
       all_limits:{habits:{free:3, pro:25, max:null}, active_tasks:{free:30, pro:null, max:null},
                   recurring_tasks:{free:3, pro:25, max:null}, projects:{free:1, pro:15, max:null},
-                  life_goals:{free:3, pro:25, max:null}, open_debts:{free:3, pro:null, max:null}, teams_owned:{free:0, pro:2, max:10},
+                  life_goals:{free:3, pro:25, max:null}, open_debts:{free:3, pro:null, max:null},
+                  money_accounts:{free:1, pro:3, max:null}, money_subs:{free:0, pro:3, max:null}, teams_owned:{free:0, pro:2, max:10},
                   team_members:{free:8, pro:10, max:50}, voice_day:{free:null, pro:30, max:100},
                   voice_week:{free:5, pro:null, max:null}},
-      all_features:{journal_ai:["pro","max"], timer_rhythm:["pro","max"], stats_history:["pro","max"], stats_csv:["max"]}})],
+      all_features:{journal_ai:["pro","max"], timer_rhythm:["pro","max"], stats_history:["pro","max"], stats_csv:["max"],
+                    money_transfers:["pro","max"], money_year:["max"]}})],
     [/^\/api\/app\/notifications$/, () => ({items:DB.inbox,
       unread:DB.inbox.filter(n => !n.read).length})],
     [/^\/api\/fresh-start$/, () => {
@@ -574,7 +621,54 @@
     }
     if(path === "/api/money" && method === "POST" && body?.amount){
       DB.money.push({id:++nextId, kind:body.kind || "expense", amount:Number(body.amount),
-                     category:body.category || "other", note:body.note || "", source:"manual", day:TODAY});
+                     category:body.category || "other", note:body.note || "", source:"manual", day:TODAY,
+                     account_id:body.account_id || null});
+      return {ok:true};
+    }
+    const tier = DB.me.plan.tier;
+    const locked = (key, needs) => ({__status:402, detail:"plan_limit", key, limit:null, tier, needs});
+    if(path === "/api/money/accounts" && method === "POST"){
+      const cap = {free:1, pro:3, max:Infinity}[tier];
+      if(W.accounts.filter(a => !a.archived).length >= cap) return locked("money_accounts", tier === "pro" ? "max" : "pro");
+      W.accounts.push({id:++wSeq, name:body.name, kind:body.kind || "cash", opening:Number(body.opening) || 0});
+      return {ok:true};
+    }
+    if((m = path.match(/^\/api\/money\/accounts\/(\d+)$/))){
+      const a = W.accounts.find(x => x.id === Number(m[1]));
+      if(a) Object.assign(a, body || {});
+      return {ok:true};
+    }
+    if(path === "/api/money/transfers" && method === "POST"){
+      if(tier === "free") return locked("money_transfers", "pro");
+      if(body.from_account === body.to_account) return {__status:422, detail:"same_account"};
+      W.transfers.push({id:++wSeq, from:body.from_account, to:body.to_account, amount:Number(body.amount),
+                        note:body.note || "", day:TODAY});
+      return {ok:true};
+    }
+    if((m = path.match(/^\/api\/money\/transfers\/(\d+)$/))){
+      W.transfers = W.transfers.filter(x => x.id !== Number(m[1]));
+      return {ok:true};
+    }
+    if(path === "/api/money/subscriptions" && method === "POST"){
+      const cap = {free:0, pro:3, max:Infinity}[tier];
+      if(W.subs.filter(x => !x.archived).length >= cap) return locked("money_subs", tier === "pro" ? "max" : "pro");
+      W.subs.push({id:++wSeq, ...body, next_due:body.next_due || TODAY});
+      return {ok:true};
+    }
+    if((m = path.match(/^\/api\/money\/subscriptions\/(\d+)\/pay$/))){
+      const x = W.subs.find(v => v.id === Number(m[1]));
+      DB.money.push({id:++nextId, kind:"expense", amount:x.amount, category:x.category, note:x.name,
+                     source:"manual", day:TODAY, account_id:x.account_id});
+      const d = new Date(x.next_due);
+      if(x.period === "weekly") d.setDate(d.getDate() + 7);
+      else if(x.period === "yearly") d.setFullYear(d.getFullYear() + 1);
+      else d.setMonth(d.getMonth() + 1);
+      x.next_due = d.toISOString().slice(0, 10);
+      return {ok:true, next_due:x.next_due};
+    }
+    if((m = path.match(/^\/api\/money\/subscriptions\/(\d+)$/))){
+      const x = W.subs.find(v => v.id === Number(m[1]));
+      if(x) Object.assign(x, body || {});
       return {ok:true};
     }
     if((m = path.match(/^\/api\/money\/(\d+)$/)) && method === "DELETE"){

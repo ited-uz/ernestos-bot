@@ -695,6 +695,72 @@ class MoneyEntry(Base):
     #: The user's local day it belongs to, so a month is the user's month.
     day: Mapped[date] = mapped_column(Date, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    #: The account it came out of or went into (`MoneyAccount`); NULL for an
+    #: entry not tied to one. A plain column, not a foreign key: it is added
+    #: to live tables by the additive schema pass, which cannot add one.
+    account_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class MoneyAccount(Base):
+    """Where money is kept: cash, a card, a bank, crypto, investments.
+
+    Its balance is the opening amount plus what was recorded against it,
+    plus transfers in, minus transfers out. Removing one archives it, so
+    the entries recorded against it keep their history.
+    """
+
+    __tablename__ = "money_accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(60))
+    kind: Mapped[str] = mapped_column(String(10), default="cash")
+    #: What was there when the account was added. May be below zero (a card
+    #: in debt).
+    opening: Mapped[int] = mapped_column(BigInteger, default=0)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class MoneyTransfer(Base):
+    """Money moved between two of one's own accounts. Neither income nor an
+    expense: the total stays the same, only where it sits changes."""
+
+    __tablename__ = "money_transfers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    from_account_id: Mapped[int] = mapped_column(Integer)
+    to_account_id: Mapped[int] = mapped_column(Integer)
+    amount: Mapped[int] = mapped_column(BigInteger)
+    note: Mapped[str] = mapped_column(String(200), default="")
+    day: Mapped[date] = mapped_column(Date, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class MoneySubscription(Base):
+    """A payment that comes back: rent, a phone plan, a service.
+
+    Marking it paid records an ordinary expense and moves `next_due` one
+    period on, so what was paid is in the month like anything else.
+    """
+
+    __tablename__ = "money_subscriptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    amount: Mapped[int] = mapped_column(BigInteger)
+    category: Mapped[str] = mapped_column(String(24), default="other")
+    account_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    period: Mapped[str] = mapped_column(String(8), default="monthly")  # weekly | monthly | yearly
+    next_due: Mapped[date] = mapped_column(Date)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class MoneyBudget(Base):
