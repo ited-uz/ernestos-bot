@@ -261,3 +261,30 @@ Ikki xil muhitda ishga tushirildi:
 | Crawler, haqiqiy server: Max (yorug') va Free (tungi) | topilma yo'q. Barcha javoblar 200, faqat Stars to'lovi 503 qaytardi — lokal testda bot yo'q, bu kutilgan |
 | pytest | 1121 passed |
 | E2E: ilova qobig'i va Mini App | 24/24 va 11/11 |
+
+## v17.1 — foydalanuvchi so'rovlari (9-oktabr)
+
+| So'rov | Natija |
+|---|---|
+| «Profil umuman ishlamayapti» | Profil ekrani ochilardi, lekin «Profilni tahrirlash» oynasida hech narsani o'zgartirib bo'lmasdi. Endi oynada rasm, ism, familiya, @username (takrorlanmas) va jins bor. Telegram ismi ularni qayta bosib ketmaydi. |
+| AI «Hozir»da «Roziman»ni olib tashlash | Rozilik oynasi olib tashlandi. Pro/Max'da AI tavsiyasi o'zi chiqadi. O'chirish tugmasi Sozlamalar → Kuzatiladigan bo'limlarda. Nima yuborilishi Maxfiylik siyosatida yozilgan. |
+| Qo'pol ⇄ ikonka | Ingichka strelkalar, aksent rangidagi dumaloq tugma. |
+| Tariflarda faqat ✕ qizil | Limitlar oddiy raqam bilan, qizil faqat ✕. |
+| Xayriya → Islom, alohida Biznes | Kategoriyalar: Biznes (birinchi), Kapital, Salomatlik, Islom va xayriya, Oila, Ilm, Boshqa. Yo'nalish filtri uchala darajaga ham ishlaydi. Bazani yangilash uchun migratsiya 0015. |
+| Guruhlar: ro'yxatdan kirish, guruh yaratish, topshiriq berish | Avval guruhlar ro'yxati, keyin tanlangan guruh. Vazifa turlari: Birga / Guruh uchun / Aniq odamga (a'zo nomi bilan). Filtrlar: Menga / Men bergan / Birga. Topshiriq berilgan odamga «📌 sizga topshiriq berdi» xabari boradi. |
+| Qarz: bitta odam — bitta profil | Bir odamning hamma qarzi bitta kartada: jami summa va ichida har bir qarz. «Yana qarz berdim / oldim», «Hammasi qaytdi». |
+| Yaqinlarim (Pro+) | Profil → Yaqinlarim: kontaktlar, havolalar, tug'ilgan kun, «har N kunda bog'lanish» ritmi, «Bog'landim». Bog'lanish vaqti kelganlar ertalabki hisobotga chiqadi. Pro'da 50 kishigacha, Max'da cheklovsiz. |
+
+| Tekshiruv | Natija |
+|---|---|
+| pytest | 1126 passed |
+| Frontend: release, audit50, agent UI | o'tdi |
+| E2E (haqiqiy server) | 24/24 va 11/11 |
+| Crawler: demo Max (yorug'), demo Free (tungi) | topilma yo'q |
+| Crawler: haqiqiy server Max (yorug'), Free (tungi) | topilma yo'q. Har serverga ~2 200 so'rov ketdi, barchasi 200; faqat Stars to'lovi 503 qaytardi — lokal testda bot yo'q, bu kutilgan. |
+
+**Mock va haqiqiy:**
+- Demo (`preview.js`) namuna ma'lumot bilan ishlaydi.
+- Haqiqiy server tekshiruvi SQLite test bazasida o'tdi. Production'ga deploy qilinmagan.
+- APK telefonda qo'lda sinalmagan.
+- Bildirishnomalar test bot-stub orqali tekshirildi, real Telegram'ga xabar yuborilmagan.
