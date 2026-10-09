@@ -46,6 +46,8 @@
         h5:"Walk 8,000 steps", h6:"Close the day", h7:"Gym",
         f1:"Ship the onboarding redesign", f2:"Run three user interviews",
         cd1:"IELTS exam", cd2:"Product launch", fam:"Family", walk:"Evening walk together",
+        sales:"Sales team", st1:"Update the client list", st2:"Prepare the commercial offer",
+        st3:"Weekly sales meeting", st4:"Approve the Instagram ad budget",
         bill:"Pay the internet bill", q:"Small steps, every day.",
         j1:"What went well today?", j2:"What will you do differently tomorrow?",
         j3:"What are you grateful for?", a1:"Finished the onboarding flow."},
@@ -58,6 +60,8 @@
         h5:"8 000 qadam yurish", h6:"Kun yakuni", h7:"Sport zal",
         f1:"Onboarding dizaynini ishga tushirish", f2:"Uchta foydalanuvchi bilan suhbat",
         cd1:"IELTS imtihoni", cd2:"Mahsulot taqdimoti", fam:"Oila", walk:"Birga kechki sayr",
+        sales:"Savdo jamoasi", st1:"Mijozlar ro'yxatini yangilash", st2:"Tijoriy taklif tayyorlash",
+        st3:"Haftalik savdo yig'ilishi", st4:"Instagram reklama byudjetini tasdiqlash",
         bill:"Internet to'lovini qilish", q:"Har kuni kichik qadamlar.",
         j1:"Bugun nima yaxshi o'tdi?", j2:"Ertaga nimani boshqacha qilasiz?",
         j3:"Nimadan minnatdorsiz?", a1:"Onboarding oqimini tugatdim."},
@@ -70,6 +74,8 @@
         h5:"Пройти 8 000 шагов", h6:"Итоги дня", h7:"Спортзал",
         f1:"Запустить новый онбординг", f2:"Провести три интервью с пользователями",
         cd1:"Экзамен IELTS", cd2:"Запуск продукта", fam:"Семья", walk:"Вечерняя прогулка вместе",
+        sales:"Отдел продаж", st1:"Обновить список клиентов", st2:"Подготовить коммерческое предложение",
+        st3:"Еженедельная планёрка продаж", st4:"Утвердить бюджет рекламы в Instagram",
         bill:"Оплатить интернет", q:"Маленькие шаги каждый день.",
         j1:"Что сегодня получилось?", j2:"Что завтра сделаете иначе?",
         j3:"За что вы благодарны?", a1:"Закончил сценарий онбординга."},
@@ -101,7 +107,7 @@
         has_photo:false, avatar_token:"",
         prefs:{morning_report:true, morning_time:"05:30", evening_report:true,
                evening_time:"21:30", task_reminders:true, habit_reminders:true,
-               timezone:"Asia/Tashkent"},
+               timezone:"Asia/Tashkent", now_ai:true},
         timezones:["Asia/Tashkent","Europe/Moscow","Europe/London","Asia/Dubai",
                    "Europe/Istanbul","Asia/Almaty","Europe/Berlin","America/New_York",
                    "Asia/Seoul","Asia/Tokyo","Asia/Shanghai","UTC","Asia/Samarkand"]},
@@ -174,29 +180,56 @@
       habitsDone:habits.filter(x=>x.done).length,habitsTotal:habits.length};
   };
 
-  const team = () => EMPTY ? [] : [{
+  /* Two groups: the family, and a sales team where tasks are given to people
+     by name — one to Aziz from Ernest, one to Ernest from Bobur. Kept in one
+     array so a group or a task added in the demo stays for the session. */
+  const ME = {user_id:1, name:"Ernest", role:"owner", is_you:true};
+  const boardOf = (members, day, open, done) => ({
+    members, units:{items:open.length + done.length, closed:done.length,
+                    confirmations:open.length * 2 + done.length, confirmed:done.length + 2, left:open.length},
+    periods:{day, week:day.map(r => ({...r, percent:Math.min(100, r.percent + 8), delta:4, done:r.done * 6, total:r.total * 7})),
+             month:day.map(r => ({...r, delta:null, done:r.done * 25, total:r.total * 30}))},
+    open, done, open_count:open.length});
+  const TEAMS = EMPTY ? [] : [{
     id:1, name:s.fam,
-    members:[{user_id:1, name:"Ernest", role:"owner"}, {user_id:2, name:"Gulyora", role:"member"}],
-    permissions:{manage_items:true},
-    board:{
-      members:[{user_id:1, name:"Ernest"}, {user_id:2, name:"Gulyora"}],
-      units:{items:4, closed:1, confirmations:8, confirmed:5, left:3},
-      periods:{
-        day:[{user_id:1, name:"Ernest", percent:50, delta:10, done:2, total:4},
-             {user_id:2, name:"Gulyora", percent:75, delta:-5, done:3, total:4}],
-        week:[{user_id:1, name:"Ernest", percent:71, delta:6, done:20, total:28},
-              {user_id:2, name:"Gulyora", percent:82, delta:3, done:23, total:28}],
-        month:[{user_id:1, name:"Ernest", percent:68, delta:null, done:81, total:120},
-               {user_id:2, name:"Gulyora", percent:77, delta:null, done:92, total:120}]},
-      open:[{id:201, kind:"task", title:s.team1, missing:[1, 2], done_by:[]},
-            {id:401, kind:"habit", title:s.walk, missing:[2], done_by:[1]}],
-      done:[{title:s.bill}], open_count:2},
+    members:[ME, {user_id:2, name:"Gulyora", role:"member"}],
+    permissions:{manage_items:true, invite:true}, invite_link:"https://t.me/ernestos_bot?start=team_demo1",
+    board:boardOf([{user_id:1, name:"Ernest"}, {user_id:2, name:"Gulyora"}],
+      [{user_id:1, name:"Ernest", percent:50, delta:10, done:2, total:4},
+       {user_id:2, name:"Gulyora", percent:75, delta:-5, done:3, total:4}],
+      [{id:201, kind:"task", title:s.team1, missing:[1, 2], done_by:[], completion:"any"},
+       {id:401, kind:"habit", title:s.walk, missing:[2], done_by:[1]}],
+      [{title:s.bill}]),
     tasks:[{id:201, title:s.team1, done:false, owed:true, deadline:TODAY, completion:"any",
             done_by:[], created_by:1, priority:"medium", team_id:1, team_name:s.fam}],
     habits:[{id:401, name:s.walk, done:true, due:true, done_by:[1], created_by:1}],
     projects:[{id:9, name:s.trip, tasks_done:3, tasks_total:8, percent:38}],
     countdowns:[],
+  }, {
+    id:2, name:s.sales,
+    members:[ME, {user_id:3, name:"Aziz", role:"member"}, {user_id:4, name:"Bobur", role:"member"}],
+    permissions:{manage_items:true, invite:true}, invite_link:"https://t.me/ernestos_bot?start=team_demo2",
+    board:boardOf([{user_id:1, name:"Ernest"}, {user_id:3, name:"Aziz"}, {user_id:4, name:"Bobur"}],
+      [{user_id:1, name:"Ernest", percent:33, delta:-8, done:1, total:3},
+       {user_id:3, name:"Aziz", percent:50, delta:5, done:1, total:2},
+       {user_id:4, name:"Bobur", percent:100, delta:20, done:2, total:2}],
+      [{id:212, kind:"task", title:s.st2, missing:[1], done_by:[], completion:"assignees"},
+       {id:211, kind:"task", title:s.st1, missing:[3], done_by:[], completion:"assignees"},
+       {id:213, kind:"task", title:s.st3, missing:[1, 3], done_by:[4], completion:"all"}],
+      [{title:s.st4}]),
+    tasks:[
+      {id:212, title:s.st2, done:false, owed:true, deadline:TODAY, priority:"high", completion:"assignees",
+       assignees:[1], assignee_names:["Ernest"], done_by:[], created_by:4, team_id:2, team_name:s.sales},
+      {id:211, title:s.st1, done:false, owed:false, deadline:TODAY, priority:"medium", completion:"assignees",
+       assignees:[3], assignee_names:["Aziz"], done_by:[], created_by:1, team_id:2, team_name:s.sales},
+      {id:213, title:s.st3, done:false, owed:true, deadline:TODAY, priority:"medium", completion:"all",
+       done_by:[4], created_by:1, team_id:2, team_name:s.sales},
+      {id:214, title:s.st4, done:true, owed:true, deadline:TODAY, priority:"medium", completion:"any",
+       done_by:[3], created_by:3, team_id:2, team_name:s.sales}],
+    habits:[], projects:[], countdowns:[],
   }];
+  let teamSeq = 10, teamTaskSeq = 900;
+  const team = () => TEAMS;
 
   const tasksPayload = () => {
     const open = DB.tasks.filter(x => x.status !== "done");
@@ -204,7 +237,7 @@
       overdue: open.filter(x => x.overdue),
       upcoming: open.filter(x => !x.overdue && x.deadline),
       undated: open.filter(x => !x.deadline), later: [],
-      team_tasks: team()[0]?.tasks || [], teams: EMPTY ? [] : [{id:1, name:s.fam}],
+      team_tasks: team()[0]?.tasks || [], teams: TEAMS.map(x => ({id:x.id, name:x.name})),
       active_timer:null,
     };
   };
@@ -419,10 +452,12 @@
     G(2, "ultimate", "Ironman triathlon | champion", "health", "2030", "active", {cover:"🏊"}),
     G(3, "ultimate", "Belovedim bilan Qur'onni to'liq yod olish", "islam", "lifetime", "active", {cover:"🕌"}),
     G(4, "ultimate", "Get married | إن شاء الله", "family", "2030", "dream", {cover:"💍"}),
-    G(5, "ultimate", "Beloved bilan xayriya jamg'armasini tashkil etish", "charity", "2040", "dream", {amount:1000000, cover:"🤲"}),
+    G(5, "ultimate", "Beloved bilan xayriya jamg'armasini tashkil etish", "islam", "2040", "dream", {amount:1000000, cover:"🤲"}),
+    G(7, "ultimate", "AI agentlar kompaniyasi: 1 mln mijoz", "business", "2035", "active", {amount:1000000000, cover:"💼"}),
     G(6, "ultimate", "Ernest Academy: ilm-fan va Islom uchun o'quv markaz", "learning", "2040", "dream", {amount:1000000, cover:"📚"}),
     G(11, "milestone", "Birinchi $100 000 kapital", "capital", "2027", "active", {parent_id:1, progress:35, amount:100000}),
-    G(12, "milestone", "ErnestOS: 1 000 pullik mijoz", "career", "2027", "active", {parent_id:1, progress:12}),
+    G(12, "milestone", "ErnestOS: 1 000 pullik mijoz", "business", "2027", "active", {parent_id:7, progress:12}),
+    G(16, "milestone", "Marketing va savdo AI mutaxassisini ishga tushirish", "business", "2026", "active", {parent_id:7, progress:55}),
     G(13, "milestone", "Olimpiya masofasida triatlon", "health", "2027", "active", {parent_id:2, progress:40}),
     G(14, "milestone", "Yarim marafon 2 soatdan tez", "health", "2026", "done", {parent_id:2, progress:100}),
     G(15, "milestone", "Qur'ondan 10 pora yod", "islam", "2027", "active", {parent_id:3, progress:30}),
@@ -440,7 +475,7 @@
     const rank = {active:0, dream:1, done:2};
     out.sort((a, b) => rank[a.status] - rank[b.status] || a.position - b.position);
     return {goals:out, levels:["milestone", "ultimate"], statuses:["dream", "active", "done"],
-            categories:["capital", "health", "islam", "family", "career", "learning", "charity", "other"],
+            categories:["business", "capital", "health", "islam", "family", "learning", "other"],
             units:["USD", "UZS", "EUR", "RUB"]};
   }
   /* The assistant chat, for the preview: fixed sample answers picked by the
@@ -458,9 +493,43 @@
     return {text:"Bugungi xulosa:\n• 5 ta vazifadan 1 tasi bajarildi, 1 tasi muddati o'tgan («Hisobni to'lash»).\n• Odatlar 4/5, namoz 3/5.\n• Keyingi qadam: hozir «Hisobni to'lash»ni yoping (5 daqiqa), keyin 90 daqiqa chuqur ish."};
   }
   /* Demo debts, shaped like /api/debts on the server. */
+  /* Yaqinlarim: a few people with a rhythm and birthdays, read the way the
+     server reads them (who is due, how many days since). */
+  const PEOPLE = EMPTY ? [] : [
+    {id:1, first_name:"Onam", last_name:"", relation:"family", phone:"+998 90 111 22 33", telegram:"", instagram:"",
+     link:"", note:"", touch_days:7, last_contact:day(-9), bday:"1968-" + day(12).slice(5)},
+    {id:2, first_name:"Aziz", last_name:"Karimov", relation:"friend", phone:"+998 93 555 44 11", telegram:"aziz_k",
+     instagram:"aziz.k", link:"", note:"Futbol, kitob", touch_days:14, last_contact:day(-3), bday:"1995-" + day(26).slice(5)},
+    {id:3, first_name:"Ustoz", last_name:"Rahimov", relation:"mentor", phone:"", telegram:"ustoz_r", instagram:"",
+     link:"https://linkedin.com/in/ustoz", note:"", touch_days:30, last_contact:null, bday:null}];
+  let personSeq = 10;
+  const peoplePayload = () => {
+    const today = new Date(now); today.setHours(0, 0, 0, 0);
+    const out = PEOPLE.filter(p => !p.archived).map(p => {
+      const since = p.last_contact ? Math.round((today - new Date(p.last_contact + "T00:00:00")) / 864e5) : null;
+      const due = Boolean(p.touch_days) && (since === null || since >= p.touch_days);
+      let birthday = null;
+      if(p.bday){
+        let next = new Date(`${today.getFullYear()}-${p.bday.slice(5)}T00:00:00`);
+        if(next < today) next.setFullYear(next.getFullYear() + 1);
+        birthday = {date:p.bday, next:iso(next), days_left:Math.round((next - today) / 864e5),
+                    turning:next.getFullYear() - Number(p.bday.slice(0, 4))};
+      }
+      return {id:p.id, name:[p.first_name, p.last_name].filter(Boolean).join(" "), first_name:p.first_name,
+              last_name:p.last_name, relation:p.relation, phone:p.phone, telegram:p.telegram, instagram:p.instagram,
+              link:p.link, note:p.note, touch_days:p.touch_days, last_contact:p.last_contact, days_since:since,
+              touch_due:due, touch_in:p.touch_days && since !== null && !due ? p.touch_days - since : null, birthday};
+    }).sort((a, b) => a.name.localeCompare(b.name));
+    const tier = DB.me.plan.enabled ? DB.me.plan.tier : "max";
+    const limit = {free:0, pro:50, max:null}[tier];
+    return {people:limit === 0 ? [] : out, relations:["family", "partner", "friend", "colleague", "mentor", "client", "other"],
+            touch_days:[7, 14, 30, 90], access:{tier, limit, allowed:limit === null || limit > 0}};
+  };
   const DEBTS = EMPTY ? [] : [
     {id:1, person:"Aziz", amount:500000, original:500000, paid:0, payments:[], direction:"lent", note:"",
      due:day(5), overdue:false, settled:false, archived:false},
+    {id:4, person:"Aziz", amount:200000, original:200000, paid:0, payments:[], direction:"lent", note:"Telefon uchun",
+     due:day(20), overdue:false, settled:false, archived:false},
     {id:2, person:"Bobur", amount:150000, original:200000, paid:50000,
      payments:[{id:1, amount:50000, day:day(-6)}], direction:"borrowed", note:"",
      due:day(-2), overdue:true, settled:false, archived:false},
@@ -496,6 +565,7 @@
     [/^\/api\/habits\/(\d+)\/history$/, (q, m) => habitHistory(Number(m[1]))],
     [/^\/api\/teams\/habits\/(\d+)\/history$/, (q, m) => habitHistory(Number(m[1]))],
     [/^\/api\/debts$/, debtsPayload],
+    [/^\/api\/people$/, () => peoplePayload()],
     [/^\/api\/birthdays$/, () => ({birthdays:EMPTY ? [] : [
       {id:1, person_name:"Gulyora", birth_date:"1998-" + day(3).slice(5), next:day(3), days_left:3, turning:28, note:""}]})],
     [/^\/api\/review$/, () => ({week_start:day(-((now.getDay() + 6) % 7)), tasks_done:EMPTY ? 0 : 7, tasks_overdue:EMPTY ? 0 : 1,
@@ -657,6 +727,54 @@
     editable:[{index:0, fields:{title:"Mijozga qo'ng'iroq qilish", deadline:tomorrow(), due_time:"10:00", priority:"medium"}}]});
 
   function mutate(method, path, body){
+    if(path === "/api/people" && method === "POST"){
+      if(!peoplePayload().access.allowed)
+        return {__status:402, detail:"plan_limit", key:"close_people", limit:0, tier:DB.me.plan.tier, needs:"pro"};
+      if(!String(body.first_name || "").trim()) return {__status:422, detail:"empty_name"};
+      PEOPLE.push({id:++personSeq, first_name:body.first_name.trim(), last_name:body.last_name || "",
+                   relation:body.relation || "friend", phone:body.phone || "", telegram:String(body.telegram || "").replace(/^@/, ""),
+                   instagram:String(body.instagram || "").replace(/^@/, ""), link:body.link || "", note:body.note || "",
+                   touch_days:body.touch_days || null, last_contact:null, bday:body.birth_date || null});
+      return {ok:true, id:personSeq};
+    }
+    let pm;
+    if((pm = path.match(/^\/api\/people\/(\d+)(\/touched)?$/))){
+      const p = PEOPLE.find(x => x.id === Number(pm[1]));
+      if(!p) return {__status:404, detail:"not_found"};
+      if(pm[2]){ p.last_contact = day(0); return {ok:true, last_contact:p.last_contact}; }
+      if(method === "DELETE"){ p.archived = true; return {ok:true}; }
+      for(const k of ["first_name", "last_name", "relation", "phone", "telegram", "instagram", "link", "note"])
+        if(body?.[k] !== undefined) p[k] = k === "telegram" || k === "instagram" ? String(body[k]).replace(/^@/, "") : body[k];
+      if(body?.touch_days !== undefined) p.touch_days = body.touch_days || null;
+      if(body?.birth_date !== undefined) p.bday = body.birth_date || null;
+      return {ok:true};
+    }
+    if(path === "/api/teams" && method === "POST"){
+      if(DB.me.plan.enabled && DB.me.plan.tier === "free")
+        return {__status:402, detail:"plan_limit", key:"teams", limit:0, tier:"free", needs:"pro"};
+      const id = ++teamSeq, name = String(body?.name || "").trim() || "?";
+      TEAMS.push({id, name, members:[ME], permissions:{manage_items:true, invite:true},
+                  invite_link:`https://t.me/ernestos_bot?start=team_demo${id}`,
+                  board:boardOf([{user_id:1, name:"Ernest"}], [{user_id:1, name:"Ernest", percent:null, delta:null, done:0, total:0}], [], []),
+                  tasks:[], habits:[], projects:[], countdowns:[]});
+      return {id, name, invite_link:`https://t.me/ernestos_bot?start=team_demo${id}`};
+    }
+    let tm;
+    if((tm = path.match(/^\/api\/teams\/(\d+)\/tasks$/)) && method === "POST"){
+      const g = TEAMS.find(x => x.id === Number(tm[1]));
+      if(!g) return {__status:404, detail:"not_found"};
+      const given = body.completion === "assignees" ? (body.assignees || []).map(Number) : [];
+      const row = {id:++teamTaskSeq, title:body.title, done:false, owed:!given.length || given.includes(1),
+                   deadline:body.deadline || null, priority:body.priority || "medium",
+                   completion:body.completion || "all", assignees:given,
+                   assignee_names:given.map(u => g.members.find(m => m.user_id === u)?.name || "?"),
+                   done_by:[], created_by:1, team_id:g.id, team_name:g.name};
+      g.tasks.unshift(row);
+      g.board.open.unshift({id:row.id, kind:"task", title:row.title, completion:row.completion,
+                            missing:given.length ? given : g.members.map(m => m.user_id), done_by:[]});
+      g.board.open_count = g.board.open.length;
+      return row;
+    }
     if(path === "/api/debts" && method === "POST"){
       const amount = Math.round(Number(String(body.amount || "").replace(/[^0-9]/g, "")) * (/mln/i.test(body.amount) ? 1e6 : /ming|k/i.test(body.amount) ? 1e3 : 1)) || 0;
       DEBTS.unshift({id:++debtSeq, person:body.person || "?", amount, original:amount, paid:0, payments:[],
@@ -872,6 +990,16 @@
       Object.assign(DB.me, body);
     } else if(path === "/api/prefs" && body){
       Object.assign(DB.me.prefs, body);
+      return {ok:true, prefs:DB.me.prefs};
+    } else if(path === "/api/profile" && body){
+      const handle = String(body.username ?? DB.me.username ?? "").replace(/^@/, "");
+      if(handle && !/^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(handle)) return {__status:422, detail:"bad_username"};
+      if(body.first_name !== undefined && !String(body.first_name).trim()) return {__status:422, detail:"empty_name"};
+      Object.assign(DB.me, {first_name:String(body.first_name ?? DB.me.first_name).trim(),
+                            last_name:String(body.last_name ?? DB.me.last_name ?? "").trim(),
+                            username:handle}, body.gender ? {gender:body.gender} : {});
+      return {ok:true, profile:{first_name:DB.me.first_name, last_name:DB.me.last_name,
+                                username:DB.me.username, gender:DB.me.gender}};
     }
     return {ok:true, done:true, at:"05:52", answered:1, complete:false, id:999};
   }

@@ -215,8 +215,8 @@ navbatga tushadi va ulanganda bir marta yuboriladi.
 - Mavzular: **Clean White** (hamma uchun), **Blossom**, **Obsidian Slate**, **Emerald Royal** (Pro va Max).
 - Free tarifda ilova Clean White mavzusida ko'rinadi; yorug' va tungi rejim ikkalasi ham ochiq (v16).
   Tanlangan rangli mavzu saqlanib qoladi va tarif qaytsa, o'zi tiklanadi.
-- Tarif jadvalida yo'q funksiya qizil ✕, Max'dan kichik limit qizil raqam bilan ko'rsatiladi;
-  ilova ichidagi qulflar ham qizil.
+- Tarif jadvalida yo'q funksiya qizil ✕ bilan ko'rsatiladi. Jadvaldagi yagona qizil narsa — shu ✕;
+  limitlar oddiy raqam bilan yoziladi (v17).
 - Eski mavzu nomlari `python migrations.py 0014` bilan yangilariga o'tkaziladi.
 
 ## Internetsiz ishlash va AI Hozir (v16)
@@ -225,5 +225,39 @@ navbatga tushadi va ulanganda bir marta yuboriladi.
   bir marta yuboriladi: tezkor qo'shish, vazifa, odat, namoz, pul, xulosa, qarz, maqsad, guruh.
   Ovozli yozuv telefonda saqlanadi va internet kelganda tasdiqlash kartasi chiqadi.
 - Kirish, to'lov, tarif, sozlamalar va AI so'rovlari navbatga olinmaydi.
-- AI «Hozir» tavsiyasi faqat Pro va Max'da, rozilik bilan: AI faqat ochiq vazifalaringiz orasidan
+- AI «Hozir» tavsiyasi faqat Pro va Max'da. v17 dan rozilik oynasi yo'q: Pro/Max'da o'zi ishlaydi,
+  **Sozlamalar → Kuzatiladigan bo'limlar → AI «Hozir» tavsiyasi** orqali o'chiriladi. Bugungi ochiq
+  vazifalar nomlari AI xizmatiga yuborilishi Maxfiylik siyosatida yozilgan. AI faqat ochiq vazifalaringiz orasidan
   bittasini tanlaydi va bir jumla sabab yozadi. Javob 45 daqiqa keshlanadi, kuniga cheklangan.
+
+## Profil, maqsadlar, guruhlar, qarzlar va Yaqinlarim (v17)
+
+- **Profilni tahrirlash:** ism, familiya, @username, jins va rasm ilovada o'zgaradi.
+  - Username 5–32 belgidan iborat, lotin harfi bilan boshlanadi. Unda harf, raqam va `_` bo'lishi mumkin.
+  - Username takrorlanmaydi: katta-kichik harf farqi hisobga olinmaydi.
+  - Bo'sh qoldirilsa, username ko'rsatilmaydi.
+  - Ilovada bir marta tahrirlangandan keyin Telegram'dagi ism va username uning ustiga yozilmaydi.
+- **Maqsad yo'nalishlari:** Biznes, Kapital, Salomatlik, Islom va xayriya, Oila, Ilm, Boshqa.
+  - Eski «Xayriya» endi «Islom va xayriya» ichida.
+  - Eski `career` endi «Biznes».
+  - Bazani bir marta yangilash kerak: `python migrations.py 0015`. U ishlamaguncha ham eski yozuvlar yangi yo'nalishda ko'rinadi.
+  - Yo'nalish tanlansa, uchala daraja (haftalik, bosqich, hayotiy) shu yo'nalish bo'yicha saralanadi.
+    Haftalik maqsad o'zi bog'langan bosqichning yo'nalishini oladi.
+- **Guruhlar:** «Guruhlar» ochilganda avval guruhlar ro'yxati chiqadi, keyin tanlangan guruh.
+  - Vazifada «Kim bajaradi» uchta: **Birga** (har kim o'z ulushini), **Guruh uchun** (bittasi bajarsa yopiladi),
+    **Aniq odamga** (a'zo nomi bilan tanlanadi).
+  - Aniq odamga berilgan vazifa haqida o'sha odamga «📌 … sizga topshiriq berdi» xabari boradi.
+    Bu xabar «faqat menga tegishli» bildirishnoma darajasida ham keladi.
+  - «Ishlar» oynasidagi filtrlar: Hammasi · Menga · Men bergan · Birga.
+- **Qarzlar:** bir odamning hamma qarzi bitta kartada.
+  - Ism katta-kichik harf va bo'shliqdan qat'i nazar bir xil o'qiladi.
+  - Kartada jami summa ko'rinadi: qarama-qarshi tomondagi qarz undan ayiriladi.
+  - Karta ichida har bir qarz alohida turadi. U yerda «Yana qarz berdim / oldim» va «Hammasi qaytdi» tugmalari bor.
+- **Yaqinlarim** (Profil → Yaqinlarim) — Pro (50 kishigacha) va Max (cheklovsiz). Free uchun yopiq.
+  - Kartada: ism, familiya, kim bo'lishi, tug'ilgan kun, telefon, Telegram, Instagram, boshqa havola va eslatma.
+  - Har odam uchun «har N kunda bog'lanish» ritmi (7/14/30/90) tanlanadi. Muddati o'tganlar tepada turadi.
+    «Bog'landim» bosilsa, ritm qaytadan boshlanadi.
+  - Tug'ilgan kun umumiy tug'ilgan kunlar jadvalida saqlanadi, shu sababli ertalabki hisobot va taqvimda ko'rinadi.
+  - Ertalabki hisobotda «Bog'lanish vaqti» bo'limi chiqadi: ko'pi bilan 3 kishi.
+  - Odam o'chirilsa, tug'ilgan kuni ham o'chadi. Eksport va «barcha ma'lumotni o'chirish» Yaqinlarimni ham qamraydi.
+

@@ -1140,7 +1140,9 @@ def test_now_ai_picks_only_among_the_persons_own_open_tasks(person, monkeypatch)
     assert caller.get("/api/agent/now").status_code == 422
 
 
-def test_now_ai_is_pro_and_max_with_consent_and_a_daily_cap(person, monkeypatch):
+def test_now_ai_is_pro_and_max_on_without_a_consent_sheet_switchable_and_capped(person, monkeypatch):
+    """No consent sheet in front of the Hozir pick: Pro and Max get it, the
+    person's own switch in Settings turns it off, and the daily cap holds."""
     import now_ai
     import plans
     _now_reset()
@@ -1154,9 +1156,13 @@ def test_now_ai_is_pro_and_max_with_consent_and_a_daily_cap(person, monkeypatch)
 
     monkeypatch.setattr(plans, "tier_of", lambda s, u: "pro")
     core.consent(ws, False)
-    assert caller.get("/api/agent/now").status_code == 403
-    core.consent(ws, True)
+    assert caller.get("/api/me").json()["prefs"]["now_ai"] is True
+    assert caller.post("/api/prefs", {"now_ai": False}).json()["prefs"]["now_ai"] is False
+    r = caller.get("/api/agent/now")
+    assert r.status_code == 403 and r.json()["detail"] == "now_ai_off"
+    caller.post("/api/prefs", {"now_ai": True})
 
+    # Without the agent consent the pick still goes ahead — up to the cap.
     monkeypatch.setattr(now_ai, "DAILY_CAP", 0)
     assert caller.get("/api/agent/now").status_code == 429
 

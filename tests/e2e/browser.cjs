@@ -96,9 +96,13 @@ const step = async (name, fn) => {
     await settle();
     await page.evaluate(() => { state.moneyTab = 'debts'; render(); });
     await settle();
-    const html = await page.content();
-    assert.ok(html.includes('400') && html.includes('500'), 'remaining and original both shown');
-    await page.locator('[data-act="debt-open"]').first().click();
+    assert.ok((await page.content()).includes('400'), 'what is left is on the person card');
+    // One card per person; the loans are inside it.
+    await page.locator('[data-act="debt-person-open"]').first().click();
+    await settle();
+    const sheet = await page.locator('#sheet-body').innerHTML();
+    assert.ok(sheet.includes('400') && sheet.includes('500'), 'remaining and original both shown');
+    await page.locator('#sheet-body [data-act="debt-open"]').first().click();
     await settle();
     await shot('04-debt-sheet');
     await page.click('#sheet-body [data-act="debt-delete"]');

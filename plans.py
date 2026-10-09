@@ -81,6 +81,8 @@ LIMITS: dict[str, dict[str, int | None]] = {
     "money_subs":      {"free": 0,  "pro": 3,    "max": None},
     #: Teams an account owns. Joining somebody else's team is always free.
     "teams_owned":     {"free": 0,  "pro": 2,    "max": 10},
+    #: Yaqinlarim — close people with contacts, birthdays and a rhythm.
+    "close_people":    {"free": 0,  "pro": 50,   "max": None},
     #: Members of a team, set by its owner's plan.
     "team_members":    {"free": 8,  "pro": 10,   "max": 50},
     #: Voice and AI requests: per day on Pro and Max, per week on Free.

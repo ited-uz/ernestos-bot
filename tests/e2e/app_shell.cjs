@@ -242,7 +242,7 @@ const step = async (name, fn) => {
   await step('Plans: a month/year switch and two buy buttons, closed by the cross', async () => {
     await page.click('#sheet-body [data-act="set-plan"]');
     await page.waitForSelector('#sheet-body .ptable');
-    assert.equal(await page.locator('#sheet-body .ptable tbody tr').count(), 19, 'every limit has a row');
+    assert.equal(await page.locator('#sheet-body .ptable tbody tr').count(), 20, 'every limit has a row');
     assert.equal(await page.locator('#sheet-body [data-act="plan-buy"]').count(), 2);
     await page.click('#sheet-body [data-act="plan-period"][data-p="year"]');
     const keys = await page.locator('#sheet-body [data-act="plan-buy"]').evaluateAll(b => b.map(x => x.dataset.key));

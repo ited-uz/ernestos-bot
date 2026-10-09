@@ -38,7 +38,7 @@ import plans
 
 from db import (
     AgentAudit, AgentChatMessage, AgentDraft, AgentPreference,
-    Birthday, Countdown, DailyReportLog, DailyScore, Feedback, Habit, HabitLog,
+    Birthday, CloseOne, Countdown, DailyReportLog, DailyScore, Feedback, Habit, HabitLog,
     HabitPauseInterval, HabitScheduleVersion, IdempotencyKey, JobRun,
     Debt, DebtPayment, JournalEntry, LifeGoal, MoneyAccount, MoneyBudget, MoneySubscription, MoneyTransfer, ResetLog, Snooze, MoneyEntry, PrayerDay, PrayerLog, Project,
     Referral, ReferralCode, Task,
@@ -297,7 +297,10 @@ def get_or_create_user(s: Session, telegram_id: int, *, first_name: str = "",
     if user is not None:
         if user.plan_started_at is None and plans.ENABLED:
             plans.ensure_started(s, user, created=False)   # launch gift, once
-        # Keep Telegram profile fields fresh, but never overwrite with blanks.
+        # Keep Telegram profile fields fresh, but never overwrite with blanks,
+        # and never over what the person typed into "Edit profile" themselves.
+        if user.profile_edited_at is not None:
+            return user, False
         if first_name and not user.onboarded:
             user.first_name = first_name
         elif first_name and not user.first_name:
@@ -1976,8 +1979,17 @@ def delete_project(s: Session, ws: int, project_id: int) -> str:
 #: Tactical goals are the week's focus; these are the two levels above it.
 GOAL_LEVELS = ["milestone", "ultimate"]
 GOAL_STATUSES = ["dream", "active", "done"]
-GOAL_CATEGORIES = ["capital", "health", "islam", "family", "career",
-                   "learning", "charity", "other"]
+GOAL_CATEGORIES = ["business", "capital", "health", "islam", "family",
+                   "learning", "other"]
+#: Areas that were folded into others: "career" always read as "Business",
+#: and charity now sits with Islam ("Islom va xayriya"). Old rows and old
+#: clients are read through this map; migration 0015 rewrites the rows.
+GOAL_CATEGORY_ALIASES = {"career": "business", "charity": "islam"}
+
+
+def goal_category(value) -> str:
+    value = GOAL_CATEGORY_ALIASES.get(value, value)
+    return value if value in GOAL_CATEGORIES else "other"
 GOAL_UNITS = ["USD", "UZS", "EUR", "RUB"]
 _GOAL_AMOUNT_MAX = 10 ** 13
 
@@ -2005,7 +2017,7 @@ def _goal_fields(s: Session, ws: int, fields: dict, goal: LifeGoal | None) -> di
             raise ValueError("bad_goal_level")
         out["level"] = fields["level"]
     if "category" in fields:
-        out["category"] = fields["category"] if fields["category"] in GOAL_CATEGORIES else "other"
+        out["category"] = goal_category(fields["category"])
     if "status" in fields:
         if fields["status"] not in GOAL_STATUSES:
             raise ValueError("bad_goal_status")
@@ -2057,7 +2069,7 @@ def _goal_dict(g: LifeGoal, children: list[LifeGoal]) -> dict:
     else:
         progress = g.progress or 0
     return {
-        "id": g.id, "level": g.level, "title": g.title, "category": g.category,
+        "id": g.id, "level": g.level, "title": g.title, "category": goal_category(g.category),
         "horizon": g.horizon or "", "status": g.status,
         "amount": int(g.amount) if g.amount is not None else None,
         "unit": g.unit or "USD",
@@ -3304,6 +3316,200 @@ def delete_birthday(s: Session, ws: int, birthday_id: int) -> str:
         raise NotFound("birthday")
     name = row.person_name
     s.delete(row)
+    s.commit()
+    return name
+
+
+# ---------------------------------------------------------------------------
+# Yaqinlarim — close people
+# ---------------------------------------------------------------------------
+#
+# Name, how to reach them, the birthday, and a rhythm ("every 14 days"). The
+# point is the nudge: whom you have not spoken to for longer than you meant
+# to, and whose birthday is coming. Pro and Max (`close_people`).
+
+CLOSE_RELATIONS = ["family", "partner", "friend", "colleague", "mentor", "client", "other"]
+CLOSE_TOUCH_DAYS = (7, 14, 30, 90)
+_HANDLE_RE = re.compile(r"^[A-Za-z0-9_.]{2,64}$")
+
+
+def _clean_handle(value) -> str:
+    """"@aziz", "t.me/aziz", "https://instagram.com/aziz/" → "aziz"."""
+    text = str(value or "").strip()
+    text = re.sub(r"^https?://", "", text, flags=re.I)
+    text = re.sub(r"^(www\.)?(t\.me|telegram\.me|instagram\.com)/", "", text, flags=re.I)
+    text = text.strip("/").lstrip("@").split("?")[0]
+    if not text:
+        return ""
+    if not _HANDLE_RE.match(text):
+        raise ValueError("bad_handle")
+    return text
+
+
+def _clean_phone(value) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if not re.fullmatch(r"\+?[0-9 ()\-]{5,30}", text):
+        raise ValueError("bad_phone")
+    return text
+
+
+def _clean_link(value) -> str:
+    text = str(value or "").strip()[:300]
+    if not text:
+        return ""
+    if not re.match(r"^https?://", text, flags=re.I):
+        text = "https://" + text
+    if " " in text or "." not in text:
+        raise ValueError("bad_link")
+    return text
+
+
+def _close_fields(fields: dict) -> dict:
+    out: dict = {}
+    if "first_name" in fields:
+        name = " ".join(str(fields["first_name"] or "").split())[:80]
+        if not name:
+            raise ValueError("empty_name")
+        out["first_name"] = name
+    if "last_name" in fields:
+        out["last_name"] = " ".join(str(fields["last_name"] or "").split())[:80]
+    if "relation" in fields:
+        out["relation"] = fields["relation"] if fields["relation"] in CLOSE_RELATIONS else "other"
+    if "phone" in fields:
+        out["phone"] = _clean_phone(fields["phone"])
+    for key in ("telegram", "instagram"):
+        if key in fields:
+            out[key] = _clean_handle(fields[key])
+    if "link" in fields:
+        out["link"] = _clean_link(fields["link"])
+    if "note" in fields:
+        out["note"] = str(fields["note"] or "").strip()[:2000]
+    if "touch_days" in fields:
+        days = fields["touch_days"]
+        out["touch_days"] = int(days) if days and int(days) in CLOSE_TOUCH_DAYS else None
+    return out
+
+
+def _close_name(row: CloseOne) -> str:
+    return " ".join(x for x in (row.first_name, row.last_name) if x).strip()
+
+
+def _sync_close_birthday(s: Session, ws: int, row: CloseOne, birth) -> None:
+    """Keep the one linked `birthdays` row in step: set, moved, or removed."""
+    linked = s.get(Birthday, row.birthday_id) if row.birthday_id else None
+    if birth is None:
+        if linked is not None:
+            s.delete(linked)
+        row.birthday_id = None
+        return
+    if linked is None or linked.workspace_id != ws:
+        linked = Birthday(workspace_id=ws, person_name=_close_name(row), birth_date=birth)
+        s.add(linked)
+        s.flush()
+        row.birthday_id = linked.id
+    else:
+        linked.birth_date = birth
+        linked.person_name = _close_name(row)
+
+
+def _close_dict(row: CloseOne, bday: Birthday | None, today: date) -> dict:
+    since = (today - row.last_contact).days if row.last_contact else None
+    due = bool(row.touch_days) and (since is None or since >= row.touch_days)
+    birthday = None
+    if bday is not None:
+        nxt = _next_occurrence(bday.birth_date, today)
+        birthday = {"date": bday.birth_date.isoformat(), "next": nxt.isoformat(),
+                    "days_left": (nxt - today).days, "turning": nxt.year - bday.birth_date.year}
+    return {
+        "id": row.id, "name": _close_name(row), "first_name": row.first_name,
+        "last_name": row.last_name or "", "relation": row.relation or "other",
+        "phone": row.phone or "", "telegram": row.telegram or "",
+        "instagram": row.instagram or "", "link": row.link or "", "note": row.note or "",
+        "touch_days": row.touch_days,
+        "last_contact": row.last_contact.isoformat() if row.last_contact else None,
+        "days_since": since, "touch_due": due,
+        "touch_in": (row.touch_days - since) if row.touch_days and since is not None and not due else None,
+        "birthday": birthday,
+    }
+
+
+def list_close_people(s: Session, ws: int, *, tz: ZoneInfo | None = None) -> list[dict]:
+    """Everyone close, by name; who is due a call and whose birthday is near
+    are read off each row."""
+    today = today_local(tz)
+    rows = s.scalars(select(CloseOne).where(CloseOne.workspace_id == ws,
+                                            CloseOne.archived_at.is_(None))).all()
+    bdays = {b.id: b for b in s.scalars(select(Birthday).where(
+        Birthday.id.in_([r.birthday_id for r in rows if r.birthday_id]))).all()} if rows else {}
+    out = [_close_dict(r, bdays.get(r.birthday_id), today) for r in rows]
+    return sorted(out, key=lambda x: x["name"].lower())
+
+
+def close_touch_due(s: Session, ws: int, *, tz: ZoneInfo | None = None, limit: int = 3) -> list[dict]:
+    """Who has gone longest past their rhythm — for the morning report."""
+    due = [p for p in list_close_people(s, ws, tz=tz) if p["touch_due"]]
+    due.sort(key=lambda p: -(p["days_since"] if p["days_since"] is not None else 10 ** 6))
+    return due[:limit]
+
+
+def _close_row(s: Session, ws: int, person_id: int) -> CloseOne:
+    row = s.get(CloseOne, person_id)
+    if row is None or row.workspace_id != ws or row.archived_at is not None:
+        raise NotFound("person")
+    return row
+
+
+def add_close_one(s: Session, ws: int, *, birth_date=None, **fields) -> CloseOne:
+    used = int(s.scalar(select(func.count(CloseOne.id)).where(
+        CloseOne.workspace_id == ws, CloseOne.archived_at.is_(None))) or 0)
+    plans.require_in_workspace(s, ws, "close_people", used)
+    fields.setdefault("first_name", "")
+    values = _close_fields(fields)
+    row = CloseOne(workspace_id=ws, **values)
+    s.add(row)
+    s.flush()
+    if birth_date:
+        _sync_close_birthday(s, ws, row, birth_date)
+    s.commit()
+    return row
+
+
+def update_close_one(s: Session, ws: int, person_id: int, **fields) -> CloseOne:
+    row = _close_row(s, ws, person_id)
+    birth_given = "birth_date" in fields
+    birth = fields.pop("birth_date", None)
+    for key, value in _close_fields(fields).items():
+        setattr(row, key, value)
+    if birth_given:
+        _sync_close_birthday(s, ws, row, birth)
+    elif row.birthday_id:
+        linked = s.get(Birthday, row.birthday_id)
+        if linked is not None:
+            linked.person_name = _close_name(row)
+    s.commit()
+    return row
+
+
+def touched_close_one(s: Session, ws: int, person_id: int, *,
+                      tz: ZoneInfo | None = None, day: date | None = None) -> CloseOne:
+    """"I was in touch today" — resets the rhythm."""
+    row = _close_row(s, ws, person_id)
+    row.last_contact = day or today_local(tz)
+    s.commit()
+    return row
+
+
+def delete_close_one(s: Session, ws: int, person_id: int) -> str:
+    row = _close_row(s, ws, person_id)
+    name = _close_name(row)
+    if row.birthday_id:
+        linked = s.get(Birthday, row.birthday_id)
+        if linked is not None:
+            s.delete(linked)
+        row.birthday_id = None
+    row.archived_at = utcnow()
     s.commit()
     return name
 
@@ -5775,6 +5981,9 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
              "note": r.note}
             for r in s.scalars(select(Birthday)
                                .where(Birthday.workspace_id == ws)).all()],
+        "close_people": [
+            {k: v for k, v in p.items() if k not in ("id", "days_since", "touch_due", "touch_in")}
+            for p in list_close_people(s, ws)],
         "money": [
             {"id": r.id, "day": r.day.isoformat(), "kind": r.kind, "amount": int(r.amount),
              "category": r.category, "note": r.note, "source": r.source,
@@ -5816,7 +6025,7 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
 WORKSPACE_TABLES = [AgentAudit, AgentDraft, AgentPreference,
                     TimerRun, HabitLog, HabitScheduleVersion, HabitPauseInterval,
                     Habit, PrayerLog, PrayerDay, ResetLog, Task,
-                    Project, WeeklyFocus, WeeklyReview, JournalEntry, Birthday,
+                    Project, WeeklyFocus, WeeklyReview, JournalEntry, CloseOne, Birthday,
                     Countdown, Feedback, DailyReportLog, MoneyEntry, MoneyBudget,
                     DebtPayment, Debt, Snooze, LifeGoal,
                     MoneyTransfer, MoneySubscription, MoneyAccount, AgentChatMessage]
@@ -7215,6 +7424,7 @@ def morning_data(s: Session, ws: int, user: User) -> dict:
             "focus": focus,
             "focus_done": sum(1 for f in focus if f["done"]),
             "birthdays": [b for b in list_birthdays(s, ws, within_days=1, tz=tz)],
+            "touch": close_touch_due(s, ws, tz=tz),
             "countdowns": list_countdowns(s, ws, tz=tz, include_past=False),
             "habits": [h["name"] for h in today_habits if not h["done"]],
             "habits_done": sum(1 for h in today_habits if h["done"]),
@@ -7320,6 +7530,57 @@ REMINDER_JOB_MINUTES = 5
 HABIT_REMINDER_WINDOW = timedelta(minutes=30)
 
 
+#: An @handle as Telegram allows it: a letter first, then letters, digits
+#: and "_", 5–32 long. Telegram's own minimum is 5; ours matches so a handle
+#: copied from Telegram is always accepted.
+USERNAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{4,31}$")
+PROFILE_NAME_MAX = 60
+
+
+def _clean_person_name(value, *, required: bool) -> str:
+    text = " ".join(str(value or "").split())[:PROFILE_NAME_MAX]
+    if any(ord(c) < 32 for c in text):
+        raise ValueError("bad_name")
+    if required and not text:
+        raise ValueError("empty_name")
+    return text
+
+
+def save_profile(s: Session, user: User, **fields) -> dict:
+    """The person's own name, surname, @handle and gender, typed in the app.
+
+    Once edited here, Telegram's copy no longer overwrites them (see
+    `get_or_create_user`). A handle is unique regardless of case; an empty
+    one clears it.
+    """
+    changed = False
+    if fields.get("first_name") is not None:
+        user.first_name = _clean_person_name(fields["first_name"], required=True)
+        changed = True
+    if fields.get("last_name") is not None:
+        user.last_name = _clean_person_name(fields["last_name"], required=False)
+        changed = True
+    if fields.get("username") is not None:
+        handle = str(fields["username"]).strip().lstrip("@")
+        if handle:
+            if not USERNAME_RE.match(handle):
+                raise ValueError("bad_username")
+            taken = s.scalar(select(User.telegram_id).where(
+                func.lower(User.username) == handle.lower(),
+                User.telegram_id != user.telegram_id).limit(1))
+            if taken is not None:
+                raise ValueError("username_taken")
+        user.username = handle
+        changed = True
+    if fields.get("gender") in ("male", "female"):
+        user.gender = fields["gender"]
+    if changed:
+        user.profile_edited_at = utcnow()
+    s.commit()
+    return {"first_name": user.first_name, "last_name": user.last_name,
+            "username": user.username, "gender": user.gender}
+
+
 def prefs_for(user: User) -> dict:
     """The user's notification settings, with every NULL resolved."""
     return {
@@ -7333,6 +7594,7 @@ def prefs_for(user: User) -> dict:
         "quiet_from": user.quiet_from.strftime("%H:%M") if user.quiet_from else "",
         "quiet_to": user.quiet_to.strftime("%H:%M") if user.quiet_to else "",
         "day_capacity": user.day_capacity or 0,
+        "now_ai": not user.now_ai_off,
     }
 
 
@@ -7445,6 +7707,8 @@ def save_prefs(s: Session, user: User, **fields) -> dict:
                 "habit_reminders"):
         if key in fields and fields[key] is not None:
             setattr(user, key, bool(fields[key]))
+    if fields.get("now_ai") is not None:
+        user.now_ai_off = not bool(fields["now_ai"])
     for key in ("morning_time", "evening_time"):
         if key in fields and fields[key] is not None:
             setattr(user, key, fields[key])
@@ -8308,6 +8572,8 @@ _NOTIFY_HEARS = {
     "join": {"all"},
     "report": {"all", "important"},
     "reminder": {"all", "important"},
+    # A task given to you by name reaches you on every level but "off".
+    "assigned": {"all", "important", "assigned"},
 }
 
 

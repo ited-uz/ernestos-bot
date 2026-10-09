@@ -18,12 +18,17 @@ Server eski kodda qolsa, yangi bo'limlar ishlamaydi: AI «Hozir», internetsiz t
 3. Deploy'dan keyin **bir marta** Railway → servis → Shell oynasida ishga tushiring:
 
    ```
-   python migrations.py 0014
+   python migrations.py 0014 0015
    ```
 
-   Bu eski mavzu nomlarini yangilariga o'tkazadi. Ikkinchi marta ishga tushirsangiz ham zarar qilmaydi.
+   - `0014` eski mavzu nomlarini yangilariga o'tkazadi.
+   - `0015` maqsadlardagi «Xayriya»ni «Islom va xayriya»ga, eski `career`ni «Biznes»ga o'tkazadi.
 
-Yangi ustunlar (`weekly_focus.goal_id`, `money_entries.subscription_id`) server ishga tushganda o'zi qo'shiladi. Ular uchun alohida buyruq kerak emas.
+   Ikkinchi marta ishga tushirsangiz ham zarar qilmaydi.
+
+Server ishga tushganda quyidagilar o'zi qo'shiladi, ular uchun alohida buyruq kerak emas:
+- yangi ustunlar: `weekly_focus.goal_id`, `money_entries.subscription_id`, `users.now_ai_off`, `users.profile_edited_at`;
+- yangi jadval: `close_people` (Yaqinlarim).
 
 ## 2. Railway → Variables
 
@@ -71,7 +76,11 @@ Push bildirishnomalar uchun GitHub → Settings → Secrets'ga `GOOGLE_SERVICES_
 - [ ] **Internetsiz ishlash:** Wi-Fi va mobil internetni o'chiring. Vazifa yoki «Tushlik 45 ming» yozing, «N ta amal kutmoqda» chiqadi. Internetni yoqing — yozuvlar o'zi yuboriladi.
 - [ ] **Reja → Guruhlar:** "Yangi guruh" (Pro/Max'da). Taklif havolasi "⋯" ichida.
 - [ ] **Profil → Sozlamalar:** Ko'rinish → Tungi rejim yoqiladi (Free'da ham).
-- [ ] **AI «Hozir»** (Pro/Max va AI kaliti bilan): kartaning ostidagi «AI tavsiyasini yoqish» → rozilik → kartada «AI» belgisi va sabab chiqadi.
+- [ ] **AI «Hozir»** (Pro/Max va AI kaliti bilan): rozilik so'ralmaydi, kartada o'zi «AI» belgisi va sabab chiqadi. O'chirish: Sozlamalar → Kuzatiladigan bo'limlar.
+- [ ] **Profil → ⚙️ → Profilni tahrirlash:** ism, familiya va username o'zgaradi.
+- [ ] **Reja → Guruhlar:** avval guruhlar ro'yxati chiqadi, guruhni ochasiz. `+` → «Aniq odamga» → a'zoni tanlaysiz. Unga «📌 sizga topshiriq berdi» xabari boradi.
+- [ ] **Moliya → Qarzlar:** bir odamga ikkinchi qarzni yozing — ikkalasi bitta kartaga qo'shiladi.
+- [ ] **Profil → Yaqinlarim** (Pro/Max): odam qo'shing, «har 14 kunda» ritmini tanlang, «Bog'landim»ni bosing.
 - [ ] **Promokod** (o'zingizni sinash uchun): botda `/promo_new SINOV max 30` → ilovada Sozlamalar → Promokod kiritish.
 
 ## 7. Muammo bo'lsa

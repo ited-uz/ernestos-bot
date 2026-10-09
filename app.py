@@ -5511,6 +5511,13 @@ def render_morning(data: dict, lang: str) -> str:
             when = "🎉" if b["days_left"] == 0 \
                 else f"{b['days_left']} {t(lang, 'days_short')}"
             lines.append(f"🎂 {esc(b['person_name'])} — {when}")
+    if today.get("touch"):
+        lines.append("")
+        lines.append(f"🤝 <b>{t(lang, 'r_touch')}</b>")
+        for p in today["touch"]:
+            ago = (t(lang, "r_touch_never") if p["days_since"] is None
+                   else t(lang, "r_touch_days", n=p["days_since"]))
+            lines.append(f"• {esc(p['name'])} — {ago}")
 
     lines.append("")
     lines.append(t(lang, "r_start_now") if planned else t(lang, "r_nothing_planned"))
@@ -7962,6 +7969,27 @@ def api_settings(body: SettingsIn, init=Header(default=None, alias="X-Telegram-I
     return {"ok": True}
 
 
+class ProfileIn(BaseModel):
+    first_name: str | None = Field(default=None, max_length=svc.PROFILE_NAME_MAX)
+    last_name: str | None = Field(default=None, max_length=svc.PROFILE_NAME_MAX)
+    username: str | None = Field(default=None, max_length=33)
+    gender: str | None = Field(default=None, max_length=6)
+
+
+@app.post("/api/profile")
+def api_profile(body: ProfileIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Edit profile: the name, surname and @handle the person chooses."""
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        row = s.get(User, user.telegram_id)
+        try:
+            out = svc.save_profile(s, row, **body.model_dump(exclude_unset=True))
+        except ValueError as e:
+            code = 409 if str(e) == "username_taken" else 422
+            raise HTTPException(status_code=code, detail=str(e))
+    return {"ok": True, "profile": out}
+
+
 class PrefsIn(BaseModel):
     """Notification and timezone settings. Every field is optional, so the UI
     can save one switch without resending the rest."""
@@ -7977,6 +8005,8 @@ class PrefsIn(BaseModel):
     quiet_to: str | None = Field(default=None, max_length=5)
     #: Focused minutes on an ordinary day; 0 clears it.
     day_capacity: int | None = Field(default=None, ge=0, le=18 * 60)
+    #: The AI pick on the Hozir card, on or off.
+    now_ai: bool | None = None
 
 
 def _time(value: str | None) -> dtime | None:
@@ -8085,7 +8115,8 @@ class TeamHabitPatch(BaseModel):
 
 
 async def notify_teammates(team_id: int, actor_id: int, key: str,
-                           what: str, team_name: str) -> int:
+                           what: str, team_name: str,
+                           assigned: list[int] | None = None) -> int:
     """Tell the rest of the team what just changed. Returns how many heard.
 
     A shared list that changes silently is a shared list people stop
@@ -8107,6 +8138,16 @@ async def notify_teammates(team_id: int, actor_id: int, key: str,
             # Each member's own language, and only members whose notification
             # level for this team still hears changes.
             recipients = svc.team_recipients(s, team_id, actor_id, "change")
+            # Whoever the task was given to by name hears "gave you a task",
+            # on any level but "off"; the rest hear the ordinary change.
+            given = set(assigned or ())
+            if given:
+                recipients = [(u, lang, key) for u, lang in recipients if u not in given] + [
+                    (u, lang, "team_ev_task_assigned")
+                    for u, lang in svc.team_recipients(s, team_id, actor_id, "assigned")
+                    if u in given]
+            else:
+                recipients = [(u, lang, key) for u, lang in recipients]
             actor = s.get(User, actor_id)
             actor_name = (actor.first_name or "").strip() if actor else ""
     except Exception:
@@ -8114,12 +8155,12 @@ async def notify_teammates(team_id: int, actor_id: int, key: str,
         return 0
 
     bot = AccountFanOut(telegram_app.bot, "team")
-    for uid, lang in recipients:
+    for uid, lang, said in recipients:
         lang = lang or "uz"
         try:
             await bot.send_message(
                 uid,
-                t(lang, key, who=esc(actor_name or "?"), what=esc(what))
+                t(lang, said, who=esc(actor_name or "?"), what=esc(what))
                 + "\n" + t(lang, "team_ev_in", name=esc(team_name)),
                 parse_mode=ParseMode.HTML)
             told += 1
@@ -8728,7 +8769,9 @@ async def api_team_task_add(team_id: int, body: TeamTaskIn,
         team = svc.team_for(s, user.telegram_id, team_id)
         name = team.name if team else ""
     await notify_teammates(team_id, user.telegram_id, "team_ev_task_add",
-                           created["title"], name)
+                           created["title"], name,
+                           assigned=(created.get("assignees")
+                                     if created.get("completion") == "assignees" else None))
     return created
 
 
@@ -10363,6 +10406,88 @@ def api_birthday_delete(birthday_id: int, init=Header(default=None, alias="X-Tel
     _, ws = auth(init)
     with SessionLocal() as s:
         svc.delete_birthday(s, ws, birthday_id)
+    return {"ok": True}
+
+
+# --- Yaqinlarim: close people (Pro and Max) -----------------------------------
+
+class CloseIn(BaseModel):
+    first_name: str | None = Field(default=None, max_length=80)
+    last_name: str | None = Field(default=None, max_length=80)
+    relation: str | None = Field(default=None, max_length=16)
+    phone: str | None = Field(default=None, max_length=40)
+    telegram: str | None = Field(default=None, max_length=120)
+    instagram: str | None = Field(default=None, max_length=120)
+    link: str | None = Field(default=None, max_length=300)
+    note: str | None = Field(default=None, max_length=2000)
+    touch_days: int | None = Field(default=None, ge=0, le=365)
+    #: YYYY-MM-DD; "" clears it.
+    birth_date: str | None = Field(default=None, max_length=10)
+
+
+def _close_body(body: CloseIn) -> dict:
+    fields = body.model_dump(exclude_unset=True)
+    if "birth_date" in fields:
+        raw = fields["birth_date"]
+        fields["birth_date"] = _date(raw) if raw else None
+        if raw and fields["birth_date"] is None:
+            raise HTTPException(status_code=422, detail="bad_date")
+    return fields
+
+
+@app.get("/api/people")
+def api_people(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Yaqinlarim: everyone close, and whether this plan may add more."""
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        people = svc.list_close_people(s, ws, tz=svc.user_tz(user))
+        tier = plans.tier_of(s, user.telegram_id) if plans.ENABLED else "max"
+    limit = plans.LIMITS["close_people"].get(tier) if plans.ENABLED else None
+    return {"people": people, "relations": svc.CLOSE_RELATIONS,
+            "touch_days": list(svc.CLOSE_TOUCH_DAYS),
+            "access": {"tier": tier, "limit": limit,
+                       "allowed": limit is None or limit > 0}}
+
+
+@app.post("/api/people")
+def api_people_add(body: CloseIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    fields = _close_body(body)
+    with SessionLocal() as s:
+        try:
+            row = svc.add_close_one(s, ws, **fields)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        return {"ok": True, "id": row.id}
+
+
+@app.patch("/api/people/{person_id}")
+def api_people_edit(person_id: int, body: CloseIn,
+                    init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    fields = _close_body(body)
+    with SessionLocal() as s:
+        try:
+            svc.update_close_one(s, ws, person_id, **fields)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    return {"ok": True}
+
+
+@app.post("/api/people/{person_id}/touched")
+def api_people_touched(person_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """"I was in touch today": the rhythm starts again."""
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        row = svc.touched_close_one(s, ws, person_id, tz=svc.user_tz(user))
+        return {"ok": True, "last_contact": row.last_contact.isoformat()}
+
+
+@app.delete("/api/people/{person_id}")
+def api_people_delete(person_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        svc.delete_close_one(s, ws, person_id)
     return {"ok": True}
 
 

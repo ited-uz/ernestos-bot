@@ -137,6 +137,12 @@ class User(Base):
     #: Minutes of focused time the person has on an ordinary day; NULL — not
     #: given. Compared with today's planned minutes (audit #2).
     day_capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: The AI pick on the Hozir card (Pro and Max). NULL or False — on; True —
+    #: switched off in Settings. No consent sheet in front of it any more.
+    now_ai_off: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    #: Set the first time the person edits their name or @handle in the app.
+    #: From then on Telegram's own name and username no longer overwrite them.
+    profile_edited_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     #: How many real actions this account has taken — a task ticked, a habit
     #: logged, a prayer recorded. The channel is not asked for until this
@@ -635,6 +641,38 @@ class Birthday(Base):
     birth_date: Mapped[date] = mapped_column(Date)
     note: Mapped[str] = mapped_column(String(300), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class CloseOne(Base):
+    """Somebody close — family, a partner, a friend, a mentor — with how to
+    reach them and how often the person wants to be in touch.
+
+    The birthday is kept in `birthdays` (one linked row), so the morning
+    report and the calendar go on reading a single table. `touch_days` is
+    the rhythm ("every 14 days"); `last_contact` is the last time the person
+    said they were in touch. Pro and Max.
+    """
+
+    __tablename__ = "close_people"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    first_name: Mapped[str] = mapped_column(String(80))
+    last_name: Mapped[str] = mapped_column(String(80), default="")
+    #: family | partner | friend | colleague | mentor | client | other
+    relation: Mapped[str] = mapped_column(String(16), default="friend")
+    phone: Mapped[str] = mapped_column(String(40), default="")
+    telegram: Mapped[str] = mapped_column(String(64), default="")
+    instagram: Mapped[str] = mapped_column(String(64), default="")
+    link: Mapped[str] = mapped_column(String(300), default="")
+    note: Mapped[str] = mapped_column(Text, default="")
+    touch_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_contact: Mapped[date | None] = mapped_column(Date, nullable=True)
+    birthday_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("birthdays.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class LifeGoal(Base):

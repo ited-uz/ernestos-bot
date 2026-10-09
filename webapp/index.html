@@ -757,7 +757,7 @@ nav:empty{display:none}
 .goal-line .gt{font-size:16px;font-weight:650;margin-top:1px}
 .goal-line.done{opacity:.75}
 .more-link{padding:10px 4px;color:var(--primary);font-weight:650;cursor:pointer}
-.nohead > .head, .screen-money > .head .add{display:none}
+.nohead > .head, .screen-money > .head .add, .screen-team .head .add{display:none}
 /* Qadam card */
 .steps{background:var(--surface);border:var(--border-w) solid var(--border);border-radius:var(--radius);
        padding:16px;margin:4px 0 14px;box-shadow:var(--shadow-1)}
@@ -1112,7 +1112,14 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
 .coin-buy{white-space:nowrap;min-width:84px;font-variant-numeric:tabular-nums}
 /* Now: the label carries the card, the swap is a quiet icon. */
 .now-label{font-size:15px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--primary)}
-.now-swap{color:var(--primary);background:color-mix(in srgb, var(--primary) 10%, transparent)}
+/* "Another one": a small round button, thin arrows in the accent colour. */
+.hero .now-swap{width:36px;height:36px;min-width:36px;border-radius:50%;color:var(--primary);
+  background:var(--surface);border:var(--border-w) solid color-mix(in srgb, var(--primary) 22%, var(--border))}
+/* "@" in front of the handle, inside the same field. */
+.pf-handle{display:flex;align-items:center;border:1px solid var(--line);border-radius:var(--radius-sm, 12px);
+  background:var(--surface);padding-left:12px}
+.pf-handle span{color:var(--text-3);font-weight:600}
+.pf-handle input{border:0;background:none;box-shadow:none;padding-left:4px;margin:0;flex:1;min-width:0}
 /* The person's own line, under the Now card. */
 .quote-card{position:relative;margin-top:var(--s2);padding:10px 14px 10px 40px;border-radius:var(--radius);
   background:color-mix(in srgb, var(--primary) 5%, var(--surface));
@@ -1166,11 +1173,9 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
 .ptable .c-max{background:color-mix(in srgb, var(--warn) 6%, transparent)}
 .ptable .c-max.cur{background:color-mix(in srgb, var(--primary) 9%, transparent)}
 .ptable td b{font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
-.ptable td b.pt-low{color:var(--danger)}
 .ptable td small{color:var(--text-3);font-size:11px}
 .pt-yes{color:var(--ok);display:inline-flex}
 .pt-no{color:var(--danger);display:inline-flex;font-weight:800}
-.pt-low{color:var(--danger)}
 .pt-inf{font-size:17px;font-weight:700;color:var(--ok)}
 .psave{margin-top:8px;font-size:12.5px;font-weight:650;color:var(--ok)}
 .pbadge{font-size:10.5px;font-weight:750;padding:3px 8px;border-radius:9999px;
@@ -1185,9 +1190,9 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
 /* Settings: who you are, your plan, invite, then everything else. */
 .set-profile{display:flex;align-items:center;gap:14px;margin:4px 0 var(--s3)}
 .avatar.xl{width:68px;height:68px;font-size:26px;cursor:pointer}
-.avatar-edit{position:absolute;right:-2px;bottom:-2px;width:24px;height:24px;border-radius:50%;
-  display:grid;place-items:center;font-size:12px;background:var(--surface);
-  box-shadow:0 0 0 1.5px var(--border)}
+.avatar-edit{position:absolute;right:-2px;bottom:-2px;width:26px;height:26px;border-radius:50%;
+  display:grid;place-items:center;font-size:12px;background:var(--primary-fill);color:var(--on-primary);
+  box-shadow:0 0 0 2px var(--surface)}
 .avatar-input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;
   border-radius:50%;z-index:2;font-size:0}
 .avatar.busy img,.avatar.busy{opacity:.55}
@@ -1491,8 +1496,8 @@ h1.gname{font-size:26px;letter-spacing:-.4px;line-height:1.15;overflow-wrap:anyw
    Each area has a hue taken from the theme's own palette, so a goal reads
    the same in every theme and nothing here is a fixed colour. */
 .cat-capital{--gc:var(--c4)} .cat-health{--gc:var(--c5)} .cat-islam{--gc:var(--c2)}
-.cat-family{--gc:color-mix(in srgb, var(--danger) 70%, var(--c4))} .cat-career{--gc:var(--c1)}
-.cat-learning{--gc:var(--c3)} .cat-charity{--gc:color-mix(in srgb, var(--c5) 55%, var(--c2))}
+.cat-family{--gc:color-mix(in srgb, var(--danger) 70%, var(--c4))} .cat-business{--gc:var(--c1)}
+.cat-learning{--gc:var(--c3)} .cat-other{--gc:var(--text-3)}
 .cat-other{--gc:var(--text-3)}
 .glevels{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s1);margin:var(--s2) 0 var(--s1)}
 .glevel{display:flex;flex-direction:column;align-items:flex-start;gap:1px;position:relative;
@@ -1504,15 +1509,63 @@ h1.gname{font-size:26px;letter-spacing:-.4px;line-height:1.15;overflow-wrap:anyw
 .glevel.on{border-color:var(--primary);background:color-mix(in srgb, var(--primary) 8%, var(--surface))}
 .glevel-n{font-size:22px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}
 .glevel-name{font-size:13.5px;font-weight:700}
-.glevel-u{font-size:11.5px;font-weight:600;color:var(--text-3);letter-spacing:0}
+.glevel-u{display:block;font-size:11.5px;font-weight:600;color:var(--text-3);letter-spacing:0;margin-top:-2px}
 .gamount small{font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em}
 .pill-link{cursor:pointer;margin-top:4px;font-size:12px}
 .glevel-sub{font-size:11.5px;color:var(--text-3)}
 .glevel.on .glevel-name{color:var(--primary)}
-.galt{position:absolute;top:12px;right:12px;display:flex;align-items:flex-end;gap:2px}
-.galt i{display:block;width:4px;border-radius:2px;background:var(--border-2)}
-.galt i:nth-child(1){height:6px} .galt i:nth-child(2){height:10px} .galt i:nth-child(3){height:14px}
-.galt i.on{background:var(--text-3)} .glevel.on .galt i.on{background:var(--primary)}
+.pp-av{width:40px;height:40px;min-width:40px;border-radius:50%;display:grid;place-items:center;font-weight:800;
+  font-size:14px;background:color-mix(in srgb, var(--c2, var(--primary)) 14%, var(--surface));color:var(--text)}
+.pp-av.lg{width:56px;height:56px;min-width:56px;font-size:19px}
+.pp-head{display:flex;align-items:center;gap:12px}
+.pp-links{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.pp-link{display:inline-flex;align-items:center;gap:6px;padding:9px 12px;border-radius:999px;font-weight:650;font-size:14px;
+  text-decoration:none;color:var(--text);background:var(--surface-2);border:var(--border-w) solid var(--border)}
+.pp-touch{border-radius:50%;color:var(--ok);border:var(--border-w) solid color-mix(in srgb, var(--ok) 45%, var(--border));
+  background:color-mix(in srgb, var(--ok) 8%, var(--surface))}
+.pp-lock{text-align:center;padding:24px 18px}
+.pp-lock-ic{font-size:34px}
+.pp-points{text-align:left;margin:0 auto 14px;padding-left:18px;max-width:300px;color:var(--text-2);font-size:14px;line-height:1.6}
+.dp-av{width:38px;height:38px;min-width:38px;border-radius:50%;display:grid;place-items:center;font-weight:800;
+  font-size:14px;background:color-mix(in srgb, var(--primary) 12%, var(--surface));color:var(--primary)}
+/* Groups: a list of cards, then one group. */
+.tm-list{display:grid;gap:var(--s1)}
+.tm-card{display:flex;align-items:center;gap:12px;padding:14px;border-radius:var(--radius);
+  background:var(--surface);border:var(--border-w) solid var(--border)}
+.tm-new{border-style:dashed;background:none}
+.tm-av{width:44px;height:44px;min-width:44px;border-radius:14px;display:grid;place-items:center;
+  font-weight:800;font-size:15px;background:color-mix(in srgb, var(--primary) 12%, var(--surface));color:var(--primary)}
+.tm-av.add{background:none;border:var(--border-w) dashed var(--border-2, var(--border));color:var(--text-3)}
+.tm-name{font-weight:750;font-size:16.5px}
+.tm-pct{display:flex;flex-direction:column;align-items:flex-end;min-width:48px}
+.tm-pct b{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums}
+.tm-pct small{font-size:11px;color:var(--text-3)}
+.tm-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.tm-tag{display:inline-flex;align-items:center;gap:3px;font-size:11.5px;font-weight:650;padding:2px 8px;border-radius:999px;
+  background:color-mix(in srgb, var(--primary) 10%, transparent);color:var(--primary)}
+.tm-tag.you{background:var(--primary-fill);color:var(--on-primary)}
+.tm-tag.soft{background:var(--surface-2);color:var(--text-2)}
+.tm-tag.late{background:color-mix(in srgb, var(--danger) 12%, transparent);color:var(--danger)}
+.tm-head{align-items:center;gap:4px}
+.tm-back{margin-left:-10px}
+.tm-filters{margin:0 0 var(--s1)}
+/* Who does it: three choices, each saying what it means. */
+.who-opts{display:grid;gap:6px}
+.who-opt{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius-sm);
+  border:var(--border-w) solid var(--border);background:var(--surface);cursor:pointer}
+.who-opt b{display:block;font-size:14.5px}
+.who-opt small{display:block;font-size:12px;color:var(--text-3)}
+.who-ic{font-size:20px;line-height:1}
+.who-dot{width:18px;height:18px;border-radius:50%;border:2px solid var(--border-2, var(--border))}
+.who-opt.on{border-color:var(--primary);background:color-mix(in srgb, var(--primary) 7%, var(--surface))}
+.who-opt.on .who-dot{border:5px solid var(--primary)}
+/* An area with no goals yet. */
+.garea{margin:0 0 var(--s2);padding:12px 14px;border-radius:var(--radius);
+  border:var(--border-w) solid color-mix(in srgb, var(--gc, var(--primary)) 30%, var(--border));
+  background:color-mix(in srgb, var(--gc, var(--primary)) 7%, var(--surface))}
+.garea-h{display:flex;align-items:center;gap:10px}
+.garea-e{font-size:24px;line-height:1}
+.garea-t{font-weight:750;font-size:16px}
 .ghint{margin:var(--s1) 2px var(--s2);font-size:13px;line-height:1.45;color:var(--text-2)}
 .gcats{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 calc(-1 * var(--pad)) var(--s2);
   padding:0 var(--pad) 2px}
@@ -2027,8 +2080,10 @@ const DICT = {
   gl_empty_milestone:"Hali bosqich yo'q. Asosiy maqsadga olib boradigan 1–3 yillik qadamni yozing.",
   gl_empty_ultimate:"Hali asosiy maqsad yo'q. Umringiz davomida erishmoqchi bo'lgan eng katta narsani yozing.",
   gl_active_ms:"Faol bosqichlar", gl_reached:"Tabriklaymiz, maqsadga erishildi! 🎉",
-  gc_capital:"Kapital", gc_health:"Salomatlik", gc_islam:"Islom", gc_family:"Oila",
-  gc_career:"Biznes", gc_learning:"Ilm", gc_charity:"Xayriya", gc_other:"Boshqa",
+  gc_business:"Biznes", gc_capital:"Kapital", gc_health:"Salomatlik", gc_islam:"Islom va xayriya", gc_family:"Oila",
+  gc_learning:"Ilm", gc_other:"Boshqa",
+  gl_area_none:"Bu yo'nalishda hali maqsad yo'q. Avval hayotiy maqsadni yozing, keyin uni bosqichlarga bo'ling.",
+  gl_area_week_none:"Bu haftaning maqsadi boshqa yo'nalishda.",
   plan_limit_life_goals:"Ko'proq maqsad", pt_life_goals:"Maqsadlar (bosqich va asosiy)",
   money_tab_accounts:"Hisoblar", w_total:"Jami", w_accounts_n:"{n} ta hisob",
   w_empty:"Pul qayerda turishini qo'shing — naqd, karta, bank. Har birining qoldig'i alohida ko'rinadi.",
@@ -2082,6 +2137,11 @@ const DICT = {
   notify_morning_short:"Ertalab", notify_evening_short:"Kechqurun", notify_reminders_on:"eslatmalar yoqilgan",
   notify_reminders_off:"eslatmalar o'chiq", modules_none:"Hech biri yoqilmagan",
   account_privacy_moved:"Eksport, maxfiylik va akkauntni o'chirish — «Maxfiylik va ma'lumotlar»da.",
+  pf_first:"Ism", pf_last:"Familiya", pf_username:"Username", pf_photo_hint:"Rasmni o'zgartirish uchun ustiga bosing",
+  pf_username_hint:"5–32 belgi, lotin harfi bilan boshlanadi. Harf, raqam va _ mumkin. Bo'sh qoldirsangiz, username ko'rsatilmaydi.",
+  pf_tg_note:"Bu yerda yozganingiz Telegram'dagi ismingiz bilan almashtirilmaydi.",
+  pf_err_username_taken:"Bu username band. Boshqasini tanlang.", pf_err_bad_username:"Username 5–32 belgi bo'lsin, lotin harfi bilan boshlansin. Harf, raqam va _ mumkin.",
+  pf_err_empty_name:"Ismni yozing.", pf_err_bad_name:"Ismda ishlatib bo'lmaydigan belgi bor.",
   ref_offer:"{n} do'st taklif qiling — {reward} oling", ref_prize:"{n} oy {plan}",
   ref_progress:"{q} ta do'st ro'yxatdan o'tdi · Mukofot uchun yana {left} ta kerak",
   today_progress:"Bugungi progress", home_all_tasks:"Barchasini ko'rish ({n} ta vazifa)", quick_voice_btn:"Ovoz bilan kiritish",
@@ -2096,9 +2156,38 @@ const DICT = {
   steps_in_level:"Bu darajada {done}/{span} ({pct}%)", steps_xp_def:"Qadam — faollik ochkosi (XP): bajarilgan vazifa, odat, namoz va xulosa uchun beriladi.", rank_ahead:"Foydalanuvchilarning {n}% idan oldindasiz", streak_why_title:"Seriya va himoya", streak_why_body:"Seriya — kun bali {n}+ bo'lgan kunlar ketma-ketligi. Rejasiz kun hisobga kirmaydi va seriyani uzmaydi.", freeze_why_body:"Himoya kuni — bali past kunda seriyani saqlab qoladi. Har oy 2 ta beriladi, kuniga ko'pi bilan bittasi ishlatiladi; coin do'konidan yana sotib olish mumkin. Hozir qolgan {left} ta.",
   pt_now_ai:"AI «Hozir» tavsiyasi",
   plan_limit_now_ai:"AI «Hozir» tavsiyasi — Pro va Max'da",
+  nav_people:"Yaqinlarim", pp_title:"Yaqinlarim", pp_add:"Yaqin odam qo'shish",
+  pp_pitch:"Yaqinlaringiz bir joyda — kontakt, tug'ilgan kun va qachon gaplashganingiz. Ilova kim bilan bog'lanish vaqti kelganini eslatadi.",
+  pp_point1:"Qo'ng'iroq, Telegram, WhatsApp, Instagram — bir bosishda", pp_point2:"Tug'ilgan kunlar ertalabki hisobotda",
+  pp_point3:"«Har 2 haftada bir» — vaqti kelsa eslatadi", pp_unlock:"Pro bilan ochish",
+  pp_hint:"Kim bilan bog'lanish vaqti kelgani tepada. Gaplashgandan keyin «Bog'landim»ni bosing.",
+  pp_empty:"Hali hech kim yo'q. Oilangiz, do'stlaringiz va ustozlaringizni qo'shing.",
+  pp_due_title:"Bog'lanish vaqti", pp_bdays_title:"Yaqin tug'ilgan kunlar", pp_all:"Hammasi",
+  pp_never:"hali bog'lanish belgilanmagan", pp_since:"{n} kun oldin gaplashgansiz", pp_today:"bugun gaplashdingiz",
+  pp_bday_in:"{n} kundan keyin", pp_turning:"{n} yosh", pp_touched:"Bog'landim", pp_touched_long:"Bugun bog'landim",
+  pp_touched_ok:"Belgilandi", pp_last:"Oxirgi marta {d}", pp_call:"Qo'ng'iroq", pp_no_contacts:"Kontakt kiritilmagan. «Tahrirlash» orqali qo'shing.",
+  pp_birthday:"Tug'ilgan kun", pp_rhythm:"Qanchada bir bog'lanish", pp_every:"har {n} kun", pp_note:"Eslatma",
+  pp_relation:"Kim bo'ladi", pp_contacts:"Kontaktlar", pp_phone_ph:"Telefon, masalan +998 90 123 45 67",
+  pp_link_ph:"Boshqa havola (LinkedIn, sayt)", pp_note_ph:"Qiziqishlari, sovg'a g'oyalari…",
+  pp_delete_q:"Bu odamni ro'yxatdan o'chirasizmi? Tug'ilgan kuni ham o'chadi.",
+  pp_err_bad_phone:"Telefon raqami noto'g'ri.", pp_err_bad_handle:"Username noto'g'ri. Faqat harf, raqam, _ va nuqta.",
+  pp_err_bad_link:"Havola noto'g'ri.", pp_err_bad_date:"Sana noto'g'ri.", pp_err_empty_name:"Ismni yozing.",
+  rel_family:"Oila", rel_partner:"Juft", rel_friend:"Do'st", rel_colleague:"Hamkasb", rel_mentor:"Ustoz", rel_client:"Mijoz", rel_other:"Boshqa",
+  pt_close_people:"Yaqinlarim", plan_limit_close_people:"Yaqinlarim — Pro va Max'da",
   groups_tab:"Guruhlar", team_new_short:"Yangi guruh",
+  debt_n_loans:"{n} ta qarz", debt_more_lent:"Yana qarz berdim", debt_more_borrowed:"Yana qarz oldim",
+  debt_all_returned:"Hammasi qaytdi", debt_history:"Qarzlar", debt_none_open:"Ochiq qarz yo'q.",
+  debt_joins:"{name} profiliga qo'shiladi · hozir {n}",
+  tm_members:"{n} a'zo", tm_for_you:"Sizga {n} ta", tm_late:"{n} ta muddati o'tgan",
+  tm_list_hint:"Guruhni oching — uning bugungi ishlari, a'zolari va topshiriqlari o'sha yerda.",
+  tm_new_hint:"Oila, jamoa yoki do'stlar bilan", tm_new_body:"Nom bering, keyin taklif havolasini a'zolarga yuboring. Har biriga alohida topshiriq ham berish mumkin.",
+  tm_f_all:"Hammasi", tm_f_mine:"Menga", tm_f_given:"Men bergan", tm_f_shared:"Birga",
+  tm_tag_you:"Sizga", tm_tag_for:"{name} uchun", tm_tag_from:"{name} berdi", tm_none_filter:"Bu yerda hozircha hech narsa yo'q.",
+  who_all_t:"Birga", who_all_d:"Har kim o'z ulushini bajaradi", who_any_t:"Guruh uchun", who_any_d:"Bittangiz bajarsa — yopiladi",
+  who_assignees_t:"Aniq odamga", who_assignees_d:"Topshiriq faqat tanlangan a'zoga", who_pick:"Kimga?",
+  who_pick_hint:"Kamida bitta a'zoni tanlang.", when_label:"Qachon",
   group_settings:"Guruh sozlamalari va a'zolar",
-  now_ai_label:"AI «Hozir» tavsiyasi", now_ai_enable:"AI tavsiyasini yoqish", now_ai_consent:"Hozir nima qilishni AI tanlashi uchun bugungi ochiq vazifalaringiz nomlari AI xizmatiga (Groq yoki Google, AQSh) yuboriladi. Tanlov faqat sizning vazifalaringiz orasidan bo'ladi va hech narsa o'zgartirilmaydi.",
+  now_ai_label:"AI «Hozir» tavsiyasi", now_ai_hint:"AI bugungi ochiq vazifalaringizdan hozir eng to'g'ri keladiganini tanlaydi va nega ekanini bir gapda aytadi.",
   voice_queued:"Internet yo'q — ovoz telefonda saqlandi. Internet kelishi bilan yuboriladi va tasdiqlash uchun shu yerda chiqadi.", voice_synced_journal:"Kun xulosasi uchun ovozli yozuv tayyor — tekshirib, saqlang",
   team_work_closed:"Guruh ishlari {done}/{total} yopildi", team_checkins:"Shaxsiy belgilar {done}/{total}", my_group_tasks:"Guruhdagi ishlarim",
   team_responsible:"Mas'ullar", team_remove_note:"Bu guruhdan barcha a'zolar uchun olib tashlanadi.",
@@ -2141,7 +2230,7 @@ const DICT = {
   timezone_hint:"Hisobotlar shu mintaqa vaqtida yuboriladi",
   appearance_hint:"Til, rejim va tema",
   notify_hint:"Hisobot vaqtlari va eslatmalar",
-  account_hint:"Ism, profil rasmi, jins",
+  account_hint:"Ism, familiya, username, rasm, jins",
   profile:"Profil", member:"Foydalanuvchi", photo_hint:"Telegram rasmi ishlatiladi",
   data_privacy:"Ma'lumotlar va maxfiylik",
   plan_title:"Tarif", plan_now:"{plan} tarifi", plan_until:"{plan} · yana {n} kun",
@@ -2254,7 +2343,7 @@ const DICT = {
   wipe_warn:"Barcha vazifa, odat, namoz yozuvi, kundalik, loyiha va maqsadlar butunlay o'chiriladi. Buni qaytarib bo'lmaydi.",
   wipe_keeps:"Hisobingiz, tilingiz, temangiz va sozlamalaringiz saqlanadi. Standart odatlar qaytariladi.",
   wipe_continue:"Ha, hammasini o'chirish", wipe_done:"Ma'lumotlar o'chirildi",
-  privacy_body:"Har bir foydalanuvchining ma'lumoti alohida ish maydonida saqlanadi va boshqa foydalanuvchilarga ko'rinmaydi. Ma'lumotlar PostgreSQL bazasida saqlanadi; texnik xizmat uchun administrator bazaga kirish huquqiga ega. Kun xulosangiz tashqi xizmatga yuborilmaydi — faqat o'zingiz «AI bilan to'ldirish»ni bossangiz, o'sha matn tahlil uchun AI xizmatiga yuboriladi.",
+  privacy_body:"Har bir foydalanuvchining ma'lumoti alohida ish maydonida saqlanadi va boshqa foydalanuvchilarga ko'rinmaydi. Ma'lumotlar PostgreSQL bazasida saqlanadi; texnik xizmat uchun administrator bazaga kirish huquqiga ega. Kun xulosangiz tashqi xizmatga yuborilmaydi — faqat o'zingiz «AI bilan to'ldirish»ni bossangiz, o'sha matn tahlil uchun AI xizmatiga yuboriladi. Pro va Max'da AI «Hozir» tavsiyasi uchun bugungi ochiq vazifalar nomlari AI xizmatiga (Groq yoki Google) yuboriladi. Uni Sozlamalar → Kuzatiladigan bo'limlar ichida o'chirish mumkin.",
   delete_account:"Akkaunt va ma'lumotlarni o'chirish",
   delete_account_warn:"Barcha odatlar, vazifalar, namoz yozuvlari va kundalik butunlay o'chiriladi. Buni qaytarib bo'lmaydi.",
   delete_confirm_ph:"Tasdiqlash uchun DELETE deb yozing",
@@ -2552,8 +2641,10 @@ const DICT = {
   gl_empty_milestone:"No milestones yet. Write down a one-to-three-year step toward an ultimate goal.",
   gl_empty_ultimate:"No ultimate goals yet. Write down the biggest thing you want to reach in your life.",
   gl_active_ms:"Active milestones", gl_reached:"Goal achieved — congratulations! 🎉",
-  gc_capital:"Capital", gc_health:"Health", gc_islam:"Faith", gc_family:"Family",
-  gc_career:"Business", gc_learning:"Learning", gc_charity:"Charity", gc_other:"Other",
+  gc_business:"Business", gc_capital:"Capital", gc_health:"Health", gc_islam:"Faith & charity", gc_family:"Family",
+  gc_learning:"Learning", gc_other:"Other",
+  gl_area_none:"No goals in this area yet. Write the lifetime goal first, then split it into milestones.",
+  gl_area_week_none:"This week's goal is in another area.",
   plan_limit_life_goals:"More goals", pt_life_goals:"Goals (milestone and ultimate)",
   money_tab_accounts:"Accounts", w_total:"Total", w_accounts_n:"{n} accounts",
   w_empty:"Add where your money is — cash, a card, a bank. Each one shows its own balance.",
@@ -2607,6 +2698,11 @@ const DICT = {
   notify_morning_short:"Morning", notify_evening_short:"Evening", notify_reminders_on:"reminders on",
   notify_reminders_off:"reminders off", modules_none:"None switched on",
   account_privacy_moved:"Export, privacy and deleting the account are in «Privacy and data».",
+  pf_first:"First name", pf_last:"Last name", pf_username:"Username", pf_photo_hint:"Tap the picture to change it",
+  pf_username_hint:"5–32 characters, starting with a Latin letter. Letters, digits and _ only. Leave it empty to show no username.",
+  pf_tg_note:"What you type here is not replaced by your Telegram name.",
+  pf_err_username_taken:"This username is taken. Pick another one.", pf_err_bad_username:"A username is 5–32 characters and starts with a Latin letter. Letters, digits and _ only.",
+  pf_err_empty_name:"Type your first name.", pf_err_bad_name:"The name has a character that cannot be used.",
   ref_offer:"Invite {n} friends — get {reward}", ref_prize:"{n} month {plan}",
   ref_progress:"{q} friends signed up · {left} more for the reward",
   today_progress:"Today's progress", home_all_tasks:"See all ({n} tasks)", quick_voice_btn:"Add by voice",
@@ -2621,9 +2717,38 @@ const DICT = {
   steps_in_level:"In this level {done}/{span} ({pct}%)", steps_xp_def:"A step is an activity point (XP): earned for done tasks, habits, prayers and the day summary.", rank_ahead:"Ahead of {n}% of users", streak_why_title:"Streak and protection", streak_why_body:"Your streak counts days in a row scoring {n}+. A day with no plan does not count and does not break it.", freeze_why_body:"A protection day keeps the streak through a weak day. You get 2 a month, at most one is used per day, and more can be bought in the coin shop. Left now {left}.",
   pt_now_ai:"AI «Now» suggestion",
   plan_limit_now_ai:"AI «Now» suggestion — on Pro and Max",
+  nav_people:"People", pp_title:"Close people", pp_add:"Add a person",
+  pp_pitch:"The people who matter in one place — contacts, birthdays and when you last spoke. The app tells you when it is time to get in touch.",
+  pp_point1:"Call, Telegram, WhatsApp, Instagram — one tap", pp_point2:"Birthdays in the morning report",
+  pp_point3:"\u201cEvery 2 weeks\u201d — a nudge when it is time", pp_unlock:"Unlock with Pro",
+  pp_hint:"Whoever is due a call is on top. After you speak, tap \u201cIn touch\u201d.",
+  pp_empty:"Nobody yet. Add your family, friends and mentors.",
+  pp_due_title:"Time to get in touch", pp_bdays_title:"Upcoming birthdays", pp_all:"Everyone",
+  pp_never:"no contact marked yet", pp_since:"spoke {n} days ago", pp_today:"spoke today",
+  pp_bday_in:"in {n} days", pp_turning:"turns {n}", pp_touched:"In touch", pp_touched_long:"I was in touch today",
+  pp_touched_ok:"Marked", pp_last:"Last time {d}", pp_call:"Call", pp_no_contacts:"No contacts yet. Add them with Edit.",
+  pp_birthday:"Birthday", pp_rhythm:"How often to be in touch", pp_every:"every {n} days", pp_note:"Note",
+  pp_relation:"Who they are", pp_contacts:"Contacts", pp_phone_ph:"Phone, e.g. +998 90 123 45 67",
+  pp_link_ph:"Another link (LinkedIn, website)", pp_note_ph:"A note — interests, gift ideas…",
+  pp_delete_q:"Remove this person from the list? Their birthday goes too.",
+  pp_err_bad_phone:"The phone number is not valid.", pp_err_bad_handle:"The username is not valid. Letters, digits, _ and dots only.",
+  pp_err_bad_link:"The link is not valid.", pp_err_bad_date:"The date is not valid.", pp_err_empty_name:"Type the first name.",
+  rel_family:"Family", rel_partner:"Partner", rel_friend:"Friend", rel_colleague:"Colleague", rel_mentor:"Mentor", rel_client:"Client", rel_other:"Other",
+  pt_close_people:"Close people", plan_limit_close_people:"Close people — on Pro and Max",
   groups_tab:"Groups", team_new_short:"New group",
+  debt_n_loans:"{n} loans", debt_more_lent:"Lent more", debt_more_borrowed:"Borrowed more",
+  debt_all_returned:"All returned", debt_history:"Loans", debt_none_open:"No open debts.",
+  debt_joins:"Goes onto {name}'s card · now {n}",
+  tm_members:"{n} members", tm_for_you:"{n} for you", tm_late:"{n} overdue",
+  tm_list_hint:"Open a group — its work for today, its members and their tasks are inside.",
+  tm_new_hint:"With family, a team or friends", tm_new_body:"Give it a name, then send the invite link to the members. You can also give each of them their own tasks.",
+  tm_f_all:"All", tm_f_mine:"For me", tm_f_given:"Given by me", tm_f_shared:"Together",
+  tm_tag_you:"For you", tm_tag_for:"For {name}", tm_tag_from:"From {name}", tm_none_filter:"Nothing here yet.",
+  who_all_t:"Together", who_all_d:"Each of you does your own share", who_any_t:"For the group", who_any_d:"One of you is enough to close it",
+  who_assignees_t:"To a person", who_assignees_d:"Only the chosen member does it", who_pick:"For whom?",
+  who_pick_hint:"Choose at least one member.", when_label:"When",
   group_settings:"Group settings and members",
-  now_ai_label:"AI «Now» suggestion", now_ai_enable:"Turn on the AI suggestion", now_ai_consent:"To let AI choose what to do now, the names of today's open tasks are sent to an AI service (Groq or Google, USA). It only chooses among your own tasks and changes nothing.",
+  now_ai_label:"AI «Now» suggestion", now_ai_hint:"AI picks the best fit for right now from today's open tasks and says why in one sentence.",
   voice_queued:"No connection — the recording is kept on this phone. It is sent as soon as you are back online and shows up here to confirm.", voice_synced_journal:"Your voice note for the day summary is ready — check it and save",
   team_work_closed:"Group work {done}/{total} closed", team_checkins:"Personal check-ins {done}/{total}", my_group_tasks:"My group work",
   team_responsible:"Assigned to", team_remove_note:"This is removed from the group for every member.",
@@ -2663,7 +2788,7 @@ const DICT = {
   timezone_hint:"Reports are sent on this zone's clock",
   appearance_hint:"Language, mode and theme",
   notify_hint:"Report times and reminders",
-  account_hint:"Name, profile photo, gender",
+  account_hint:"Name, surname, username, photo, gender",
   profile:"Profile", member:"Member", photo_hint:"Your Telegram photo is used",
   data_privacy:"Data and privacy",
   plan_title:"Plan", plan_now:"{plan} plan", plan_until:"{plan} · {n} days left",
@@ -2774,7 +2899,7 @@ const DICT = {
   wipe_warn:"Every task, habit, prayer record, journal entry, project and week goal is erased for good. This cannot be undone.",
   wipe_keeps:"Your account, language, theme and settings stay. The default habits are put back.",
   wipe_continue:"Yes, erase everything", wipe_done:"Your data was erased",
-  privacy_body:"Each user's data lives in its own workspace and is not visible to other users. It is stored in a PostgreSQL database, which an administrator can access for maintenance. Your day summary is never sent to an external service — only if you tap «Fill with AI» is that text sent to the AI service for sorting.",
+  privacy_body:"Each user's data lives in its own workspace and is not visible to other users. It is stored in a PostgreSQL database, which an administrator can access for maintenance. Your day summary is never sent to an external service — only if you tap «Fill with AI» is that text sent to the AI service for sorting. On Pro and Max, the AI «Now» suggestion sends the names of today's open tasks to an AI service (Groq or Google). It can be switched off in Settings → Tracked sections.",
   delete_account:"Delete account and data",
   delete_account_warn:"Every habit, task, prayer record and journal entry will be permanently erased. This cannot be undone.",
   delete_confirm_ph:"Type DELETE to confirm",
@@ -3071,8 +3196,10 @@ const DICT = {
   gl_empty_milestone:"Этапов пока нет. Запишите шаг на один–три года к главной цели.",
   gl_empty_ultimate:"Главных целей пока нет. Запишите самое большое, чего хотите достичь в жизни.",
   gl_active_ms:"Активные этапы", gl_reached:"Цель достигнута — поздравляем! 🎉",
-  gc_capital:"Капитал", gc_health:"Здоровье", gc_islam:"Вера", gc_family:"Семья",
-  gc_career:"Бизнес", gc_learning:"Знания", gc_charity:"Благотворительность", gc_other:"Другое",
+  gc_business:"Бизнес", gc_capital:"Капитал", gc_health:"Здоровье", gc_islam:"Вера и благотворительность", gc_family:"Семья",
+  gc_learning:"Знания", gc_other:"Другое",
+  gl_area_none:"В этом направлении пока нет целей. Сначала запишите жизненную цель, потом разбейте её на этапы.",
+  gl_area_week_none:"Цель этой недели — в другом направлении.",
   plan_limit_life_goals:"Больше целей", pt_life_goals:"Цели (этапы и главные)",
   money_tab_accounts:"Счета", w_total:"Всего", w_accounts_n:"Счетов {n}",
   w_empty:"Добавьте, где лежат деньги — наличные, карта, банк. У каждого свой остаток.",
@@ -3126,6 +3253,11 @@ const DICT = {
   notify_morning_short:"Утром", notify_evening_short:"Вечером", notify_reminders_on:"напоминания включены",
   notify_reminders_off:"напоминания выключены", modules_none:"Ничего не включено",
   account_privacy_moved:"Экспорт, приватность и удаление аккаунта — в «Приватность и данные».",
+  pf_first:"Имя", pf_last:"Фамилия", pf_username:"Username", pf_photo_hint:"Нажмите на фото, чтобы сменить его",
+  pf_username_hint:"5–32 символа, начинается с латинской буквы. Буквы, цифры и _. Пустое поле — username не показывается.",
+  pf_tg_note:"То, что вы ввели здесь, не заменяется именем из Telegram.",
+  pf_err_username_taken:"Этот username занят. Выберите другой.", pf_err_bad_username:"Username — 5–32 символа, начинается с латинской буквы. Буквы, цифры и _.",
+  pf_err_empty_name:"Введите имя.", pf_err_bad_name:"В имени есть недопустимый символ.",
   ref_offer:"Пригласите {n} друзей — получите {reward}", ref_prize:"{n} мес. {plan}",
   ref_progress:"Зарегистрировались {q} друзей · для награды нужно ещё {left}",
   today_progress:"Прогресс за сегодня", home_all_tasks:"Показать все ({n} задач)", quick_voice_btn:"Добавить голосом",
@@ -3140,9 +3272,38 @@ const DICT = {
   steps_in_level:"На этом уровне {done}/{span} ({pct}%)", steps_xp_def:"Шаг — очко активности (XP): за выполненные задачи, привычки, намазы и итоги дня.", rank_ahead:"Вы впереди {n}% пользователей", streak_why_title:"Серия и защита", streak_why_body:"Серия — дни подряд с баллом {n}+. День без плана не считается и серию не обрывает.", freeze_why_body:"День защиты сохраняет серию в слабый день. Даётся 2 в месяц, тратится не больше одного в день, ещё можно купить в магазине монет. Осталось {left}.",
   pt_now_ai:"AI-совет «Сейчас»",
   plan_limit_now_ai:"AI-совет «Сейчас» — в Pro и Max",
+  nav_people:"Близкие", pp_title:"Близкие", pp_add:"Добавить человека",
+  pp_pitch:"Близкие люди в одном месте — контакты, дни рождения и когда вы последний раз общались. Приложение напомнит, когда пора связаться.",
+  pp_point1:"Звонок, Telegram, WhatsApp, Instagram — в одно касание", pp_point2:"Дни рождения в утреннем отчёте",
+  pp_point3:"«Раз в 2 недели» — напоминание, когда пора", pp_unlock:"Открыть с Pro",
+  pp_hint:"Сверху те, с кем пора связаться. После разговора нажмите «На связи».",
+  pp_empty:"Пока никого. Добавьте семью, друзей и наставников.",
+  pp_due_title:"Пора связаться", pp_bdays_title:"Скоро дни рождения", pp_all:"Все",
+  pp_never:"связь ещё не отмечена", pp_since:"общались {n} дн. назад", pp_today:"общались сегодня",
+  pp_bday_in:"через {n} дн.", pp_turning:"исполнится {n}", pp_touched:"На связи", pp_touched_long:"Сегодня был(а) на связи",
+  pp_touched_ok:"Отмечено", pp_last:"Последний раз {d}", pp_call:"Позвонить", pp_no_contacts:"Контактов нет. Добавьте через «Изменить».",
+  pp_birthday:"День рождения", pp_rhythm:"Как часто связываться", pp_every:"раз в {n} дн.", pp_note:"Заметка",
+  pp_relation:"Кто это", pp_contacts:"Контакты", pp_phone_ph:"Телефон, например +998 90 123 45 67",
+  pp_link_ph:"Другая ссылка (LinkedIn, сайт)", pp_note_ph:"Заметка — интересы, идеи подарков…",
+  pp_delete_q:"Убрать этого человека из списка? День рождения тоже удалится.",
+  pp_err_bad_phone:"Номер телефона неверный.", pp_err_bad_handle:"Неверный username. Только буквы, цифры, _ и точки.",
+  pp_err_bad_link:"Ссылка неверная.", pp_err_bad_date:"Дата неверная.", pp_err_empty_name:"Введите имя.",
+  rel_family:"Семья", rel_partner:"Партнёр", rel_friend:"Друг", rel_colleague:"Коллега", rel_mentor:"Наставник", rel_client:"Клиент", rel_other:"Другое",
+  pt_close_people:"Близкие", plan_limit_close_people:"Близкие — в Pro и Max",
   groups_tab:"Группы", team_new_short:"Новая группа",
+  debt_n_loans:"долгов {n}", debt_more_lent:"Дал ещё", debt_more_borrowed:"Взял ещё",
+  debt_all_returned:"Всё вернули", debt_history:"Долги", debt_none_open:"Открытых долгов нет.",
+  debt_joins:"Добавится в карточку {name} · сейчас {n}",
+  tm_members:"{n} участн.", tm_for_you:"{n} для вас", tm_late:"просрочено {n}",
+  tm_list_hint:"Откройте группу — внутри её дела на сегодня, участники и их задачи.",
+  tm_new_hint:"С семьёй, командой или друзьями", tm_new_body:"Дайте название, потом отправьте участникам ссылку-приглашение. Каждому можно дать и личные задачи.",
+  tm_f_all:"Все", tm_f_mine:"Мне", tm_f_given:"Я поручил", tm_f_shared:"Вместе",
+  tm_tag_you:"Вам", tm_tag_for:"Для {name}", tm_tag_from:"От {name}", tm_none_filter:"Здесь пока ничего нет.",
+  who_all_t:"Вместе", who_all_d:"Каждый делает свою часть", who_any_t:"Для группы", who_any_d:"Достаточно одного из вас",
+  who_assignees_t:"Конкретному человеку", who_assignees_d:"Делает только выбранный участник", who_pick:"Кому?",
+  who_pick_hint:"Выберите хотя бы одного участника.", when_label:"Когда",
   group_settings:"Настройки и участники группы",
-  now_ai_label:"AI-совет «Сейчас»", now_ai_enable:"Включить AI-совет", now_ai_consent:"Чтобы AI выбрал, чем заняться сейчас, названия сегодняшних открытых задач отправляются AI-сервису (Groq или Google, США). Он выбирает только из ваших задач и ничего не меняет.",
+  now_ai_label:"AI-совет «Сейчас»", now_ai_hint:"AI выбирает из сегодняшних открытых задач то, что лучше всего подходит сейчас, и объясняет почему одной фразой.",
   voice_queued:"Нет сети — запись сохранена на телефоне. Отправим, как только появится интернет, и покажем здесь для подтверждения.", voice_synced_journal:"Голосовая запись для итогов дня готова — проверьте и сохраните",
   team_work_closed:"Дела группы закрыто {done}/{total}", team_checkins:"Личные отметки {done}/{total}", my_group_tasks:"Мои дела в группах",
   team_responsible:"Ответственные", team_remove_note:"Это удалится из группы для всех участников.",
@@ -3182,7 +3343,7 @@ const DICT = {
   timezone_hint:"Отчёты приходят по времени этой зоны",
   appearance_hint:"Язык, режим и тема",
   notify_hint:"Время отчётов и напоминания",
-  account_hint:"Имя, фото профиля, пол",
+  account_hint:"Имя, фамилия, username, фото, пол",
   profile:"Профиль", member:"Участник", photo_hint:"Используется фото из Telegram",
   data_privacy:"Данные и приватность",
   plan_title:"Тариф", plan_now:"Тариф {plan}", plan_until:"{plan} · ещё {n} дн.",
@@ -3293,7 +3454,7 @@ const DICT = {
   wipe_warn:"Все задачи, привычки, записи намаза, дневник, проекты и цели будут стёрты навсегда. Отменить это нельзя.",
   wipe_keeps:"Аккаунт, язык, тема и настройки останутся. Привычки по умолчанию вернутся.",
   wipe_continue:"Да, стереть всё", wipe_done:"Данные удалены",
-  privacy_body:"Данные каждого пользователя лежат в отдельном рабочем пространстве и не видны другим пользователям. Они хранятся в базе PostgreSQL, к которой администратор имеет доступ для обслуживания. Итоги дня не передаются внешним сервисам — только если вы нажмёте «Заполнить с AI», этот текст отправится AI-сервису для разбора.",
+  privacy_body:"Данные каждого пользователя лежат в отдельном рабочем пространстве и не видны другим пользователям. Они хранятся в базе PostgreSQL, к которой администратор имеет доступ для обслуживания. Итоги дня не передаются внешним сервисам — только если вы нажмёте «Заполнить с AI», этот текст отправится AI-сервису для разбора. В Pro и Max для AI-совета «Сейчас» названия сегодняшних открытых задач отправляются AI-сервису (Groq или Google). Его можно выключить в Настройках → Отслеживаемые разделы.",
   delete_account:"Удалить аккаунт и данные",
   delete_account_warn:"Все привычки, задачи, записи намазов и дневник будут удалены безвозвратно. Это нельзя отменить.",
   delete_confirm_ph:"Введите DELETE для подтверждения",
@@ -3508,6 +3669,10 @@ const ICONS = {
   clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   bell:'<path d="M6 9a6 6 0 0 1 12 0c0 4 1.5 5.5 1.5 5.5h-15S6 13 6 9Z"/><path d="M10 18.5a2.2 2.2 0 0 0 4 0"/>',
   repeat:'<path d="M4 8h11a4 4 0 0 1 4 4M20 16H9a4 4 0 0 1-4-4"/><path d="M17 5l3 3-3 3M7 13l-3 3 3 3"/>',
+  /* "Another one": two light arrows passing each other, small heads. The
+     looped "repeat" read as heavy on the Hozir card. */
+  phone:'<path d="M5 4h3.2l1.6 4-2 1.3a10.5 10.5 0 0 0 6.9 6.9l1.3-2 4 1.6V19a1.6 1.6 0 0 1-1.7 1.6A16.4 16.4 0 0 1 3.4 5.7 1.6 1.6 0 0 1 5 4Z"/>',
+  swap:'<path d="M6.5 8.5h11"/><path d="m15 6 2.5 2.5L15 11"/><path d="M17.5 15.5h-11"/><path d="M9 13l-2.5 2.5L9 18"/>',
   sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M5 5l1.8 1.8M17.2 17.2 19 19M5 19l1.8-1.8M17.2 6.8 19 5"/>',
   moon:'<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/>',
   user:'<circle cx="12" cy="8" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/>',
@@ -4056,7 +4221,8 @@ const PLAN_MATRIX_FALLBACK = {
           life_goals:{free:2, pro:25, max:null},
           open_debts:{free:3, pro:null, max:null}, money_accounts:{free:1, pro:3, max:null},
           money_subs:{free:0, pro:3, max:null}, teams_owned:{free:0, pro:2, max:10},
-          team_members:{free:8, pro:10, max:50}, voice_day:{free:null, pro:30, max:100},
+          team_members:{free:8, pro:10, max:50}, close_people:{free:0, pro:50, max:null},
+          voice_day:{free:null, pro:30, max:100},
           voice_week:{free:3, pro:null, max:null}},
   features:{journal_ai:["pro","max"], timer_rhythm:["pro","max"], stats_history:["pro","max"], stats_csv:["max"],
             money_transfers:["pro","max"], money_year:["max"], themes:["pro","max"], now_ai:["pro","max"]},
@@ -4066,22 +4232,21 @@ function planTable(p, period, price){
   const m = state.planMatrix || {};
   const L = m.limits && Object.keys(m.limits).length ? m.limits : PLAN_MATRIX_FALLBACK.limits;
   const F = m.features && Object.keys(m.features).length ? m.features : PLAN_MATRIX_FALLBACK.features;
-  /* What a plan does not have is a red ✕, and a limit smaller than Max's
-     is a red number: the gap is meant to be seen. */
+  /* What a plan does not have is a red ✕ — the only red in the table.
+     Limits read as plain numbers. */
   const yes = `<span class="pt-yes" aria-label="✓">${icon("check", 15)}</span>`;
   const no = `<span class="pt-no" aria-label="✕">${icon("x", 14)}</span>`;
   const lim = key => tier => {
-    const v = L[key]?.[tier], top = L[key]?.max;
+    const v = L[key]?.[tier];
     if(v === null || v === undefined) return `<span class="pt-inf">∞</span>`;
     if(v === 0) return no;
-    const low = tier !== "max" && (top === null || top === undefined || v < top);
-    return `<b class="${low ? "pt-low" : ""}">${v}</b>`;
+    return `<b>${v}</b>`;
   };
   const num = v => v === null || v === undefined ? `<span class="pt-inf">∞</span>` : v === 0 ? no : `<b>${v}</b>`;
   const voice = tier => {
     const w = L.voice_week?.[tier], d = L.voice_day?.[tier];
-    if(w != null) return `<b class="pt-low">${w}</b><small>/${t("pt_week")}</small>`;
-    if(d != null) return `<b class="${tier !== "max" ? "pt-low" : ""}">${d}</b><small>/${t("pt_day")}</small>`;
+    if(w != null) return `<b>${w}</b><small>/${t("pt_week")}</small>`;
+    if(d != null) return `<b>${d}</b><small>/${t("pt_day")}</small>`;
     return num(null);
   };
   const rows = [
@@ -4097,6 +4262,7 @@ function planTable(p, period, price){
     ["money_year", tier => (F.money_year || []).includes(tier) ? yes : no],
     ["teams_owned", lim("teams_owned")],
     ["team_members", lim("team_members")],
+    ["close_people", lim("close_people")],
     ["voice", voice],
     ["now_ai", tier => (F.now_ai || []).includes(tier) ? yes : no],
     ["journal_ai", tier => (F.journal_ai || []).includes(tier) ? yes : no],
@@ -4459,9 +4625,10 @@ function headBlock(d){
    whenever the model is off, refused, slow or out of budget. */
 const nowAiPlan = () => !state.me?.plan?.enabled || ["pro", "max"].includes(state.me.plan.tier);
 let nowAiBusy = false;
+const nowAiOn = () => state.me?.prefs?.now_ai !== false;
 async function loadNowAi(){
   const agent = state.me?.agent;
-  if(!agent?.available || !agent.consent || !nowAiPlan() || nowAiBusy) return;
+  if(!agent?.available || !nowAiOn() || !nowAiPlan() || nowAiBusy) return;
   if(!navigator.onLine) return;
   nowAiBusy = true;
   try{
@@ -4474,18 +4641,17 @@ async function loadNowAi(){
 }
 function nowAiPick(n){
   const ai = state.nowAi;
-  if(!ai?.pick || ai.day !== todayISO() || !nowAiPlan()) return null;
+  if(!ai?.pick || ai.day !== todayISO() || !nowAiPlan() || !nowAiOn()) return null;
   if(n.kind !== "task" || n.reason === "pinned") return null;
   return ai.pick;
 }
-/* Under the card: the lock on Free, the switch-on when consent is missing. */
+/* Under the card: only the lock on Free. On Pro and Max the pick simply
+   arrives — no consent sheet in front of it; Settings → Modules turns it off. */
 function nowAiRow(){
   const agent = state.me?.agent;
   if(!agent?.available) return "";
   if(!nowAiPlan()) return `<div class="now-ai-row" data-act="w-locked" data-key="now_ai" data-needs="pro" role="button" tabindex="0">
       ${icon("star", 14)}<span class="grow">${t("now_ai_label")}</span><span class="wlock">${icon("shield", 11)} Pro</span></div>`;
-  if(!agent.consent) return `<div class="now-ai-row" data-act="now-ai-consent" role="button" tabindex="0">
-      ${icon("star", 14)}<span class="grow">${t("now_ai_enable")}</span>${icon("chevron", 14)}</div>`;
   return "";
 }
 
@@ -4521,7 +4687,7 @@ function nowBlock(d){
   const head = `<div class="row" style="gap:var(--s1);align-items:center">
       <div class="grow now-label">${t("now")}${aiPick ? ` <span class="now-ai-chip">${icon("star", 11)} AI</span>` : ""}</div>
       <button class="iconbtn sm now-swap" data-act="mission-pick" aria-label="${t("mission_change")}"
-              title="${t("mission_change")}">${icon("repeat", 18)}</button>
+              title="${t("mission_change")}">${icon("swap", 17)}</button>
     </div>`;
 
   // Nothing left. Not an empty state — a finished one, with the one useful
@@ -4772,6 +4938,47 @@ function memberLine(row, opts){
     </div>`;
 }
 
+/* The groups themselves: one card each — name, who is in it, today's
+   share, and what is waiting on you — and making another is the last card.
+   Free can join any group but owns none: that card is locked. */
+function teamListView(teams){
+  const me = state.me?.telegram_id;
+  const freeOwner = Boolean(state.me?.plan?.enabled && state.me.plan.tier === "free");
+  const cards = teams.map((tm, i) => {
+    const rows = tm.board?.periods?.day || [];
+    const done = rows.reduce((n, r) => n + r.done, 0), total = rows.reduce((n, r) => n + r.total, 0);
+    const pct = total ? Math.round(done / total * 100) : null;
+    const tasks = tm.tasks || [];
+    const mine = tasks.filter(x => !x.done && x.completion === "assignees"
+      && (x.assignees || []).map(Number).includes(me)).length;
+    const late = tasks.filter(x => x.overdue && !x.done && x.owed !== false).length;
+    const people = (tm.members || []).map(m => m.is_you ? t("you") : m.name);
+    return `<div class="tm-card pressable" data-act="team-enter" data-id="${tm.id}" role="button" tabindex="0">
+      <span class="tm-av tone-${i % 5 + 1}">${esc(initialsOf(tm.name))}</span>
+      <div class="grow" style="min-width:0">
+        <div class="tm-name ellipsis">${esc(tm.name)}</div>
+        <div class="t3 small ellipsis">${t("tm_members", {n: people.length})} · ${people.slice(0, 3).map(esc).join(", ")}</div>
+        ${mine || late ? `<div class="tm-tags">${mine ? `<span class="tm-tag you">${icon("user", 11)} ${t("tm_for_you", {n: mine})}</span>` : ""}${
+          late ? `<span class="tm-tag late">${t("tm_late", {n: late})}</span>` : ""}</div>` : ""}
+      </div>
+      <div class="tm-pct"><b class="band-${bandOf(pct)}">${pct === null ? "—" : pct + "%"}</b><small>${t("today")}</small></div>
+    </div>`;
+  }).join("");
+  return `<div class="head"><h1 class="grow">${t("groups_tab")}</h1>
+      <button class="iconbtn add" data-act="team-new" aria-label="${t("team_new_short")}">${icon("plus", 22)}</button></div>
+    <p class="ghint">${t("tm_list_hint")}</p>
+    <div class="tm-list">${cards}
+      <div class="tm-card tm-new pressable" data-act="team-new" role="button" tabindex="0">
+        <span class="tm-av add">${icon("plus", 18)}</span>
+        <div class="grow"><div class="tm-name">${t("team_new_short")}</div>
+          <div class="t3 small">${t("tm_new_hint")}</div></div>
+        ${freeOwner ? `<span class="wlock">${icon("shield", 11)} Pro</span>` : icon("chevron", 15)}
+      </div></div>
+    <div class="t3 tiny" style="margin-top:12px;text-align:center">${t("team_join_hint")}</div>`;
+}
+const initialsOf = name => String(name || "?").trim().split(/\s+/).slice(0, 2)
+  .map(w => w[0] || "").join("").toUpperCase() || "?";
+
 SCREENS.team = () => {
   const teams = state.team?.teams || [];
   if(!teams.length) return `
@@ -4784,30 +4991,25 @@ SCREENS.team = () => {
       <div class="t3 tiny" style="margin-top:12px">${t("team_join_hint")}</div>
     </div>`;
 
-  const team = teamCurrent();
+  /* v17: Guruhlar opens on the list of groups; a tap opens that one group,
+     and the arrow at its top goes back to the list. */
+  const team = state.teamView === "group" ? teams.find(x => x.id === state.teamId) : null;
+  if(!team) return teamListView(teams);
   const board = team.board || {};
   const tab = state.teamTab || "today";
-  /* v16: every group by its name, one tap apart, and making another is the
-     last chip. Free can join any group but owns none: its chip is locked. */
-  const freeOwner = Boolean(state.me?.plan?.enabled && state.me.plan.tier === "free");
-  const pick = `
-    <div class="tabs gtabs" role="tablist">${teams.map(x => `
-      <div class="tab ${x.id === team.id ? "on" : ""}" role="tab" tabindex="0"
-           aria-selected="${x.id === team.id}"
-           data-act="team-pick" data-id="${x.id}">${esc(x.name)}</div>`).join("")}
-      <div class="tab add" role="button" tabindex="0" data-act="team-new">${icon("plus", 15)} ${t("team_new_short")}${
-        freeOwner ? `<span class="wlock">${icon("shield", 11)} Pro</span>` : ""}</div>
-    </div>`;
 
   let h = `
-    <div class="head">
-      <div class="grow"><h1 class="gname">${esc(team.name)}</h1></div>
+    <div class="head tm-head">
+      <button class="iconbtn sm bare tm-back" data-act="team-list"
+              aria-label="${t("groups_tab")}" title="${t("groups_tab")}">${icon("back", 20)}</button>
+      <div class="grow" style="min-width:0"><h1 class="gname">${esc(team.name)}</h1>
+        <div class="t3 tiny">${t("tm_members", {n: (team.members || []).length})} · ${
+          (team.members || []).slice(0, 4).map(m => esc(m.is_you ? t("you") : m.name)).join(", ")}</div></div>
       <button class="ghost" data-act="team-menu" data-id="${team.id}"
               aria-label="${t("group_settings")}" title="${t("group_settings")}">⋯</button>
       <button class="iconbtn add" data-act="team-add" data-kind="task"
               aria-label="${t("team_add_task")}" title="${t("team_add_task")}">${icon("plus", 22)}</button>
-    </div>
-    ${pick}`;
+    </div>`;
 
   if(team.ownership_offer) h += `<div class="banner">
       <div class="grow">${t("owner_offer", {name: esc(team.name)})}</div>
@@ -4875,6 +5077,10 @@ function teamTodayTab(team, board){
   const open = (board.open || []).map(x => `<div class="row" style="padding:6px 0">
       ${teamBox({...full(x), mirrored: x.mirrored}, x.kind)}
       <div class="grow">${icon(x.kind === "task" ? "list" : "check", 15)} ${esc(x.title)}
+        ${x.kind === "task" && full(x).completion === "assignees" ? `<div class="tm-tags">${
+          (full(x).assignees || []).map(Number).includes(me)
+            ? `<span class="tm-tag you">${icon("user", 11)} ${t("tm_tag_you")}</span>`
+            : `<span class="tm-tag">${t("tm_tag_for", {name: (full(x).assignees || []).map(Number).map(nameOf).join(", ")})}</span>`}</div>` : ""}
         ${x.completion === "any" ? `<div class="muted sm">${t("completion_any")}</div>` : ""}
         ${full(x).done ? `<div class="muted sm">${t("team_you_done")} · ${t("team_in_group", {done: x.done_count ?? (x.done_by || []).length,
           total: x.owed ?? ((x.done_by || []).length + (x.missing || []).length)})}</div>` : ""}
@@ -4909,11 +5115,28 @@ function teamTodayTab(team, board){
   return head + work + countdowns;
 }
 
+/* Menga — given to me by name; Men bergan — given by me to someone else;
+   Birga — everybody's or the group's. */
+const TEAM_FILTER_KEY = {all:"tm_f_all", mine:"tm_f_mine", given:"tm_f_given", shared:"tm_f_shared"};
+const TEAM_FILTERS = {
+  all: () => true,
+  mine: (x, me) => x.completion === "assignees" && (x.assignees || []).map(Number).includes(me),
+  given: (x, me) => x.completion === "assignees" && x.created_by === me
+    && (x.assignees || []).map(Number).some(id => id !== me),
+  shared: x => x.completion !== "assignees",
+};
 function teamWorkTab(team, board){
-  return `<div class="card">
+  const me = state.me?.telegram_id;
+  const tasks = team.tasks || [];
+  const cur = TEAM_FILTERS[state.teamFilter] ? state.teamFilter : "all";
+  const list = tasks.filter(x => TEAM_FILTERS[cur](x, me));
+  const chips = `<div class="chips tm-filters">${Object.keys(TEAM_FILTERS).map(k => `
+      <div class="chip sm ${cur === k ? "on" : ""}" data-act="team-filter" data-value="${k}">${t(TEAM_FILTER_KEY[k])}<span class="gchip-n">${
+        tasks.filter(x => TEAM_FILTERS[k](x, me)).length}</span></div>`).join("")}</div>`;
+  return `${chips}<div class="card">
       <div class="card-t">${t("team_tasks")}</div>
-      ${(team.tasks || []).map(x => sharedRow(x, "task", x.title, board, team)).join("")
-        || `<div class="muted">${t("team_nothing")}</div>`}
+      ${list.map(x => sharedRow(x, "task", x.title, board, team)).join("")
+        || `<div class="muted">${t(cur === "all" ? "team_nothing" : "tm_none_filter")}</div>`}
       <button class="btn secondary" data-act="team-add" data-kind="task"
               style="margin-top:10px">+ ${t("team_add_task")}</button>
     </div>
@@ -5087,12 +5310,8 @@ function checkBox(on, attrs, label){
 function teamItemMeta(x, kind){
   const meta = [];
   if(kind === "task"){
-    if(x.completion && x.completion !== "all")
-      meta.push(t(`completion_${x.completion}`)
-        + (x.completion === "assignees" && (x.assignee_names || []).length
-            ? ` · ${x.assignee_names.map(esc).join(", ")}` : ""));
+    // Who it is for is the tag above the line now; the line keeps the date.
     if(x.deadline) meta.push(`<span class="num">${isoToLabel(x.deadline)}</span>`);
-    if(x.owed === false) meta.push(t("not_assigned"));
   }
   if(x.mirrored) meta.push(icon("shield", 12));
   if(x.timer_minutes) meta.push(timerMeta(x));
@@ -5106,13 +5325,22 @@ function sharedRow(x, kind, label, board, team){
      bare "○ Gulyora" read as either. */
   const members = board?.members || [];
   const nameOf = id => esc(members.find(m => m.user_id === id)?.name || "?");
+  const named = x.completion === "assignees" ? (x.assignees || []).map(Number) : [];
   const owed = Array.isArray(x.owed_by) && x.owed_by.length ? x.owed_by
-    : members.map(m => m.user_id);
+    : named.length ? named : members.map(m => m.user_id);
   const doneIds = (x.done_by || []).filter(id => owed.includes(id) || x.completion === "any");
   const waiting = x.completion === "any" && doneIds.length ? []
     : owed.filter(id => !doneIds.includes(id) && id !== me);
+  const given = x.completion === "assignees";
+  const assignees = (x.assignees || []).map(Number);
+  const tag = kind !== "task" ? ""
+    : given ? (assignees.includes(me) ? `<span class="tm-tag you">${icon("user", 11)} ${t("tm_tag_you")}</span>`
+                : `<span class="tm-tag">${t("tm_tag_for", {name: assignees.map(nameOf).join(", ")})}</span>`)
+      + (x.created_by && x.created_by !== me ? ` <span class="tm-tag soft">${t("tm_tag_from", {name: nameOf(x.created_by)})}</span>` : "")
+    : x.completion === "any" ? `<span class="tm-tag soft">🙋 ${t("who_any_t")}</span>`
+    : `<span class="tm-tag soft">👥 ${t("who_all_t")}</span>`;
   const marks = [
-    owed.length > 1 || x.completion === "assignees" ? `<span>${t("team_responsible")} · ${owed.map(nameOf).join(", ")}</span>` : "",
+    owed.length > 1 && !given ? `<span>${t("team_responsible")} · ${owed.map(nameOf).join(", ")}</span>` : "",
     doneIds.length ? `<span class="band-great">✓ ${doneIds.map(nameOf).join(", ")}</span>` : "",
     waiting.length ? `<span>${t("team_waiting_on")} · ${waiting.map(nameOf).join(", ")}</span>` : "",
   ].filter(Boolean).join("<br>");
@@ -5124,6 +5352,7 @@ function sharedRow(x, kind, label, board, team){
       <div class="grow" data-act="${kind === "task" ? "team-task-open" : "team-habit-open"}"
            data-id="${x.id}" role="button" tabindex="0">
         <div class="${x.done ? "done" : ""}">${esc(label)}</div>
+        ${tag ? `<div class="tm-tags">${tag}</div>` : ""}
         ${meta.length ? `<div class="muted sm">${meta.join(" · ")}</div>` : ""}
         ${marks ? `<div class="muted sm">${marks}</div>` : ""}
       </div>
@@ -6443,8 +6672,12 @@ function weekFocusBlock(){
    between them and the area chips filter the two upper levels.
    ================================================================== */
 const GOAL_LEVELS = ["tactical", "milestone", "ultimate"];
-const GOAL_CATS = {capital:"💰", health:"💪", islam:"🕌", family:"💍", career:"💼",
-                   learning:"📚", charity:"🤲", other:"🎯"};
+/* Business first: it is the area most people here plan in. Charity sits
+   with Islam; "career" was always shown as Business. Old rows arrive
+   through `goalCat` until migration 0015 has rewritten them. */
+const GOAL_CATS = {business:"💼", capital:"💰", health:"💪", islam:"🕌", family:"💍",
+                   learning:"📚", other:"🎯"};
+const goalCat = c => ({career:"business", charity:"islam"})[c] || (GOAL_CATS[c] ? c : "other");
 const GOAL_COVERS = ["🎯", "🚀", "💰", "🏆", "🕌", "💍", "🏊", "📚", "🤲", "🌍", "❤️", "⭐"];
 //: The tab and filter last drawn: cards animate in when this changes, not
 //: on every redraw of the same view.
@@ -6458,14 +6691,12 @@ function goalMoney(amount, unit){
   return {USD:"$" + n, EUR:"€" + n, RUB:n + " ₽", UZS:n + " so'm"}[unit] || `${n} ${unit || ""}`.trim();
 }
 const goalHorizon = h => h === "lifetime" ? t("gl_lifetime") : (h || "");
-const goalCover = g => esc(g.cover || GOAL_CATS[g.category] || "🎯");
+const goalCover = g => esc(g.cover || GOAL_CATS[goalCat(g.category)] || "🎯");
 const goalStatus = st => `<span class="gstatus st-${st}"><i></i>${t("gl_st_" + st)}</span>`;
 const goalBar = (p, thin) => `<div class="gbar ${thin ? "thin" : ""}" role="progressbar"
     aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p}"><i style="--p:${p}%"></i></div>`;
 
-function goalLevelTabs(goals, cur){
-  const focus = state.focus || {};
-  const week = [focus.primary, ...(focus.supporting || [])].filter(Boolean);
+function goalLevelTabs(goals, cur, week){
   const count = {
     tactical: week.length ? `${week.filter(x => x.done).length}/${week.length}` : "0",
     milestone: goals.filter(g => g.level === "milestone" && g.status !== "done").length,
@@ -6474,38 +6705,48 @@ function goalLevelTabs(goals, cur){
   /* Audit S23: a bare number on each tile meant three different things.
      Each says what it counts. */
   const unit = {tactical: t("gl_u_done"), milestone: t("gl_u_active"), ultimate: t("gl_u_goals")};
-  return `<div class="glevels" role="tablist">${GOAL_LEVELS.map((lv, i) => `
+  return `<div class="glevels" role="tablist">${GOAL_LEVELS.map(lv => `
     <button class="glevel lv-${lv} ${cur === lv ? "on" : ""}" role="tab"
         aria-selected="${cur === lv}" data-act="goal-tab" data-tab="${lv}">
-      <span class="galt" aria-hidden="true">${[0, 1, 2].map(k =>
-        `<i class="${k <= i ? "on" : ""}"></i>`).join("")}</span>
-      <span class="glevel-n">${count[lv]} <small class="glevel-u">${unit[lv]}</small></span>
+      <span class="glevel-n">${count[lv]}</span><small class="glevel-u">${unit[lv]}</small>
       <span class="glevel-name">${t("gl_" + lv)}</span>
       <span class="glevel-sub">${t("gl_" + lv + "_sub")}</span>
     </button>`).join("")}</div>`;
 }
 
-function goalCatChips(level, cur){
-  const used = Object.keys(GOAL_CATS).filter(c => level.some(g => g.category === c));
-  if(used.length < 2) return "";
-  return `<div class="chips gcats">${[["", t("gl_all"), level.length],
-      ...used.map(c => [c, `${GOAL_CATS[c]} ${t("gc_" + c)}`,
-                        level.filter(g => g.category === c).length])]
-    .map(([id, label, n]) => `<div class="chip sm ${cur === id ? "on" : ""}" role="button"
-        tabindex="0" data-act="goal-cat" data-cat="${id}">${label}<span class="gchip-n">${n}</span></div>`)
+/* The areas, all of them, on top of every level: pick Business and the
+   lifetime goals, milestones and this week's goals all narrow to it. */
+function goalCatChips(goals, week, cur){
+  const n = c => goals.filter(g => goalCat(g.category) === c).length
+    + week.filter(w => w._cat === c).length;
+  return `<div class="chips gcats">${[["", t("gl_all"), goals.length + week.length],
+      ...Object.keys(GOAL_CATS).map(c => [c, `${GOAL_CATS[c]} ${t("gc_" + c)}`, n(c)])]
+    .map(([id, label, k]) => `<div class="chip sm ${cur === id ? "on" : ""}" role="button"
+        tabindex="0" data-act="goal-cat" data-cat="${id}">${label}<span class="gchip-n">${k}</span></div>`)
     .join("")}</div>`;
+}
+
+/* An area with nothing in it yet says where to start, once. */
+function goalAreaEmpty(cat){
+  return `<div class="garea cat-${cat}">
+    <div class="garea-h"><span class="garea-e">${GOAL_CATS[cat]}</span>
+      <div class="grow"><div class="garea-t">${t("gc_" + cat)}</div>
+        <div class="t2 small">${t("gl_area_none")}</div></div></div>
+    <button class="btn sm" data-act="goal-add" data-level="ultimate" style="margin-top:10px">
+      ${icon("plus", 15)} ${t("gl_add_ultimate")}</button>
+  </div>`;
 }
 
 /* An ultimate goal: a card with a cover, the way the vision board in Notion
    draws it — status, area, horizon, value and how far along it is. */
 function goalCard(g, i){
   const money = goalMoney(g.amount, g.unit);
-  return `<article class="gcard cat-${g.category} ${g.status === "done" ? "is-done" : ""}"
+  return `<article class="gcard cat-${goalCat(g.category)} ${g.status === "done" ? "is-done" : ""}"
       style="--i:${i}" data-act="goal-open" data-id="${g.id}" role="button" tabindex="0">
     <div class="gcover"><span class="gemoji">${goalCover(g)}</span>${goalStatus(g.status)}</div>
     <div class="gbody">
       <div class="gtitle">${esc(g.title)}</div>
-      <div class="gmeta"><span class="gtag">${t("gc_" + g.category)}</span>${g.horizon
+      <div class="gmeta"><span class="gtag">${t("gc_" + goalCat(g.category))}</span>${g.horizon
         ? `<span class="gtag soft">${esc(goalHorizon(g.horizon))}</span>` : ""}</div>
       ${money ? `<div class="gamount"><small>${t("gl_target")}</small> ${esc(money)}</div>` : ""}
       <div class="gprog">${goalBar(g.progress)}<span>${g.progress}%</span></div>
@@ -6520,7 +6761,7 @@ function goalRow(g, i, byId){
     g.horizon ? `<span>${esc(goalHorizon(g.horizon))}</span>` : "",
     g.amount !== null && g.amount !== undefined ? `<span>${esc(goalMoney(g.amount, g.unit))}</span>` : ""]
     .filter(Boolean);
-  return `<div class="gitem cat-${g.category} ${g.status === "done" ? "is-done" : ""}" style="--i:${i}"
+  return `<div class="gitem cat-${goalCat(g.category)} ${g.status === "done" ? "is-done" : ""}" style="--i:${i}"
       data-act="goal-open" data-id="${g.id}" role="button" tabindex="0">
     <div class="gtile">${goalCover(g)}</div>
     <div class="grow">
@@ -6536,16 +6777,29 @@ function goalRow(g, i, byId){
 SCREENS.goals = () => {
   const d = state.goals;
   const tab = GOAL_LEVELS.includes(state.goalTab) ? state.goalTab : "ultimate";
-  const all = d?.goals || [];
-  const byId = Object.fromEntries(all.map(g => [g.id, g]));
-  let h = `<div class="head"><h1 class="grow">${t("goals_tab")}</h1></div>` + goalLevelTabs(all, tab);
+  const every = d?.goals || [];
+  const byId = Object.fromEntries(every.map(g => [g.id, g]));
+  /* This week's goals take the area of the goal they serve. */
+  const focus = state.focus || {};
+  const weekAll = [focus.primary, ...(focus.supporting || [])].filter(Boolean).map(w => {
+    const g = w.goal_id ? byId[w.goal_id] : null;
+    return {...w, _cat: g ? goalCat(g.category) : ""};
+  });
+  const cat = GOAL_CATS[state.goalCat] ? state.goalCat : "";
+  const all = cat ? every.filter(g => goalCat(g.category) === cat) : every;
+  const week = cat ? weekAll.filter(w => w._cat === cat) : weekAll;
+  let h = `<div class="head"><h1 class="grow">${t("goals_tab")}</h1></div>`
+    + goalCatChips(every, weekAll, cat) + goalLevelTabs(all, tab, week);
   if(!d) return h + `<div class="spin"></div>`;
-  const view = `${tab}|${state.goalCat || ""}`;
+  if(cat && !all.length && !week.length) return h + goalAreaEmpty(cat);
+  const view = `${tab}|${cat}`;
   const anim = view !== lastGoalView ? "ganim" : "";
   lastGoalView = view;
 
   if(tab === "tactical"){
-    h += `<p class="ghint">${t("gl_tactical_hint")}</p>` + weekFocusBlock();
+    h += `<p class="ghint">${t("gl_tactical_hint")}</p>`
+      + (cat && weekAll.length && !week.length ? `<p class="ghint t3">${t("gl_area_week_none")}</p>` : "")
+      + weekFocusBlock();
     const open = all.filter(g => g.level === "milestone" && g.status !== "done").slice(0, 5);
     if(open.length)
       h += sectionHead("tone-2", "target", t("gl_active_ms"))
@@ -6554,9 +6808,8 @@ SCREENS.goals = () => {
   }
 
   const level = all.filter(g => g.level === tab);
-  const cat = level.some(g => g.category === state.goalCat) ? state.goalCat : "";
-  const list = cat ? level.filter(g => g.category === cat) : level;
-  h += `<p class="ghint">${t("gl_" + tab + "_hint")}</p>` + goalCatChips(level, cat);
+  const list = level;
+  h += `<p class="ghint">${t("gl_" + tab + "_hint")}</p>`;
   if(!level.length)
     return h + `<div class="gempty"><div class="gempty-ic">${tab === "ultimate" ? "🏔️" : "🧭"}</div>
         <div class="t2">${t("gl_empty_" + tab)}</div>
@@ -6570,7 +6823,7 @@ SCREENS.goals = () => {
    matter are on top; value, icon and note fold under "More". */
 function goalSheet(g, level){
   const lv = g?.level || (level === "ultimate" ? "ultimate" : "milestone");
-  const cat = g?.category || state.goalCat || "other";
+  const cat = goalCat(g?.category || state.goalCat || "business");
   const status = g?.status || (lv === "ultimate" ? "dream" : "active");
   const year = new Date().getFullYear();
   const horizons = ["", String(year), String(year + 1), "2030", "2035", "2040", "lifetime"];
@@ -7265,11 +7518,14 @@ function debtsView(d){
   const month = todayISO().slice(0, 7);
   const dueNow = d.open.filter(x => x.overdue || (x.due && x.due.slice(0, 7) === month));
   const only = state.debtFilter === "month";
-  if(d.open.length) h += `<div class="chips" style="margin-bottom:8px">${[["", t("debt_all_open"), d.open.length],
-      ["month", t("debt_this_month"), dueNow.length]].map(([id, label, n]) =>
+  /* v17: one card per person — Aziz's 500 and then 200 are one Aziz with
+     700 and both loans inside, not two strangers with the same name. */
+  const people = debtPeople(only ? dueNow : d.open);
+  if(d.open.length) h += `<div class="chips" style="margin-bottom:8px">${[["", t("debt_all_open"), debtPeople(d.open).length],
+      ["month", t("debt_this_month"), debtPeople(dueNow).length]].map(([id, label, n]) =>
       `<div class="chip sm ${(state.debtFilter || "") === id ? "on" : ""}" role="button" tabindex="0"
         data-act="debt-filter" data-value="${id}">${label} <span class="t3 num">${n}</span></div>`).join("")}</div>`;
-  h += (only ? dueNow : d.open).map(debtRow).join("");
+  h += people.map(debtPersonRow).join("");
   if(d.settled.length) h += `<details style="margin-top:var(--s2)">
       <summary>${icon("chevron", 15)} ${t("debt_settled")} · ${d.settled.length}</summary>
       ${d.settled.map(debtRow).join("")}</details>`;
@@ -7277,6 +7533,61 @@ function debtsView(d){
       <summary>${icon("chevron", 15)} ${t("debt_archived")} · ${d.archived.length}</summary>
       ${d.archived.map(debtRow).join("")}</details>`;
   return h;
+}
+/* A person is the same person whatever the case or the spaces: "aziz " and
+   "Aziz" are one. */
+const personKey = p => String(p || "").trim().replace(/\s+/g, " ").toLowerCase();
+function debtPeople(list){
+  const by = new Map();
+  for(const x of list || []){
+    const k = personKey(x.person);
+    if(!by.has(k)) by.set(k, {key:k, person:String(x.person || "").trim(), rows:[], owes_me:0, i_owe:0, overdue:false, due:null});
+    const p = by.get(k);
+    p.rows.push(x);
+    if(x.direction === "lent") p.owes_me += x.amount || 0; else p.i_owe += x.amount || 0;
+    if(x.overdue) p.overdue = true;
+    if(x.due && (!p.due || x.due < p.due)) p.due = x.due;
+  }
+  return [...by.values()].map(p => ({...p, net: p.owes_me - p.i_owe}))
+    .sort((a, b) => (b.overdue - a.overdue) || Math.abs(b.net) - Math.abs(a.net));
+}
+function debtPersonRow(p){
+  const pos = p.net >= 0;
+  const meta = [p.rows.length > 1 ? t("debt_n_loans", {n: p.rows.length})
+                  : t(p.rows[0]?.direction === "lent" ? "debt_lent_meta" : "debt_borrowed_meta"),
+    p.due ? (p.overdue ? `<span class="neg">${t("debt_overdue")} · ${isoToLabel(p.due)}</span>`
+                       : t("debt_until", {d: isoToLabel(p.due)})) : ""].filter(Boolean).join(" · ");
+  return `<div class="item drow" data-act="debt-person-open" data-key="${esc(p.key)}" role="button" tabindex="0">
+      <span class="dp-av">${esc(initialsOf(p.person))}</span>
+      <div class="grow"><div class="ellipsis"><b>${esc(p.person)}</b></div><div class="meta">${meta}</div></div>
+      <div class="amount ${pos ? "pos" : "neg"}">${pos ? "+" : "−"}${moneyNum(Math.abs(p.net))}
+        ${p.owes_me && p.i_owe ? `<div class="meta">+${moneyNum(p.owes_me)} · −${moneyNum(p.i_owe)}</div>` : ""}</div>
+    </div>`;
+}
+/* One person's page: what they owe you and you owe them, more of either
+   in one tap, all of it settled at once, and every loan underneath. */
+function debtPersonSheet(key){
+  const d = state.money?.debts || {};
+  const open = (d.open || []).filter(x => personKey(x.person) === key);
+  const closed = (d.settled || []).filter(x => personKey(x.person) === key);
+  const name = (open[0] || closed[0])?.person || "";
+  const p = debtPeople(open)[0] || {owes_me:0, i_owe:0, rows:[]};
+  return `<h3>🤝 ${esc(name)}</h3>
+    <div class="mtiles">
+      <div class="mtile"><div class="k">↙ ${t("debt_owed_to_me")}</div><div class="v ${p.owes_me ? "pos" : "t3"}">${p.owes_me ? moneyFmt(p.owes_me) : "—"}</div></div>
+      <div class="mtile"><div class="k">↗ ${t("debt_i_owe")}</div><div class="v ${p.i_owe ? "neg" : "t3"}">${p.i_owe ? moneyFmt(p.i_owe) : "—"}</div></div>
+    </div>
+    <div class="btns" style="margin-top:10px">
+      <button class="btn secondary" data-act="debt-more" data-person="${esc(name)}" data-dir="lent">${icon("plus", 15)} ${t("debt_more_lent")}</button>
+      <button class="btn secondary" data-act="debt-more" data-person="${esc(name)}" data-dir="borrowed">${icon("plus", 15)} ${t("debt_more_borrowed")}</button>
+    </div>
+    ${open.length > 1 ? `<button class="btn" data-act="debt-settle-all" data-key="${esc(key)}" style="margin-top:8px">
+      ${icon("check", 16)} ${t("debt_all_returned")}</button>` : ""}
+    <label>${t("debt_history")}</label>
+    ${open.map(debtRow).join("") || `<div class="t3 small">${t("debt_none_open")}</div>`}
+    ${closed.length ? `<details style="margin-top:var(--s2)"><summary>${icon("chevron", 15)} ${t("debt_settled")} · ${closed.length}</summary>
+      ${closed.map(debtRow).join("")}</details>` : ""}
+    <button class="btn secondary" data-act="close" style="margin-top:12px">${t("close")}</button>`;
 }
 function debtRow(x){
   const lent = x.direction === "lent";
@@ -7297,8 +7608,10 @@ function debtRow(x){
 }
 function debtSheet(){
   const f = state.debtForm || (state.debtForm = {direction:"lent", due:""});
-  const people = [...new Set([...(state.money?.debts?.open || []), ...(state.money?.debts?.settled || [])]
-    .map(x => x.person))].slice(0, 8);
+  const seen = new Set();
+  const people = [...(state.money?.debts?.open || []), ...(state.money?.debts?.settled || [])]
+    .map(x => String(x.person || "").trim())
+    .filter(p => p && !seen.has(personKey(p)) && seen.add(personKey(p))).slice(0, 8);
   const today = todayISO();
   const dues = [["", t("none_short")], [shiftISO(today, 7), t("debt_due_week")],
                 [shiftISO(today, 30), t("debt_due_month")]];
@@ -7309,7 +7622,8 @@ function debtSheet(){
           data-value="${k}">${label}</div>`).join("")}</div>
     <input id="debt-person" placeholder="${t("debt_person")}" value="${esc(f.person || "")}" maxlength="80" />
     ${people.length ? `<div class="chips" style="margin-top:6px">${people.map(p =>
-      `<div class="chip sm" data-act="debt-person" data-value="${esc(p)}">${esc(p)}</div>`).join("")}</div>` : ""}
+      `<div class="chip sm ${personKey(p) === personKey(f.person) ? "on" : ""}" data-act="debt-person" data-value="${esc(p)}">${esc(p)}</div>`).join("")}</div>` : ""}
+    ${debtJoinsLine(f.person)}
     <input id="debt-amount" placeholder="${t("debt_amount")}" value="${esc(f.amount || "")}"
            inputmode="text" autocomplete="off" style="margin-top:10px" />
     <label>${t("debt_due")}</label>
@@ -7318,6 +7632,13 @@ function debtSheet(){
     <input id="debt-note" placeholder="${t("debt_note")}" value="${esc(f.note || "")}" maxlength="200"
            style="margin-top:10px" />
     <button class="btn" data-act="debt-save" style="margin-top:16px">${t("save")}</button>`;
+}
+/* "Goes onto Aziz's card · now +500 000" when the name is somebody with an
+   open debt already. */
+function debtJoinsLine(person){
+  const same = debtPeople((state.money?.debts?.open || []).filter(x => personKey(x.person) === personKey(person)))[0];
+  return same ? `<div class="t2 small" style="margin-top:6px">${t("debt_joins", {name: esc(same.person),
+    n: (same.net < 0 ? "−" : "+") + moneyFmt(Math.abs(same.net))})}</div>` : "";
 }
 function readDebtForm(){
   const f = state.debtForm || (state.debtForm = {direction:"lent", due:""});
@@ -8298,7 +8619,8 @@ function taskSheet(task, presetProject){
       : presetProject ? "" : destPicker()}
     ${shared ? teamTaskOptions(f, task, teamId) : ""}
 
-    <div class="chips" style="margin-top:10px">
+    <label>${t("when_label")}</label>
+    <div class="chips">
       ${chips.map(([id, label]) => `<div class="chip sm
         ${f.when === id ? "on" : ""}" data-act="task-when"
         data-value="${id}">${label}</div>`).join("")}
@@ -8422,21 +8744,31 @@ function blockPicker(task){
     </div>`;
 }
 
-/* Who does a shared task: everybody, any one of you, or the named people (#24). */
+/* Who does a shared task, in three plain choices: all of us (each does
+   their own share), for the group (one of us is enough), or a named
+   person — picked by name, "you" included (#24). */
 function teamTaskOptions(f, task, teamId){
   if(!teamId) return "";
+  const me = state.me?.telegram_id;
   const members = f.members || task?.members
     || (state.team?.teams || []).find(x => x.id === teamId)?.members || [];
   const policy = f.completion || task?.completion || "all";
   const chosen = new Set((f.assignees ?? task?.assignees ?? []).map(Number));
+  const WHO = {all:["who_all_t", "who_all_d"], any:["who_any_t", "who_any_d"],
+               assignees:["who_assignees_t", "who_assignees_d"]};
+  const opt = (p, ic) => `<div class="who-opt ${policy === p ? "on" : ""}" data-act="task-completion"
+      data-value="${p}" role="radio" tabindex="0" aria-checked="${policy === p}">
+      <span class="who-ic">${ic}</span><span class="grow"><b>${t(WHO[p][0])}</b>
+        <small>${t(WHO[p][1])}</small></span>
+      <span class="who-dot"></span></div>`;
   return `<label>${t("who_does")}</label>
-    <div class="chips">${["all", "any", "assignees"].map(p => `<div class="chip sm ${
-      policy === p ? "on" : ""}" data-act="task-completion" data-value="${p}" role="radio"
-      tabindex="0" aria-checked="${policy === p}">${t("completion_" + p)}</div>`).join("")}</div>
-    ${policy === "assignees" ? `<div class="chips" style="margin-top:6px">${members.map(m => `
-      <div class="chip sm ${chosen.has(m.user_id) ? "on" : ""}" data-act="task-assignee"
+    <div class="who-opts">${opt("all", "👥")}${opt("any", "🙋")}${opt("assignees", "👤")}</div>
+    ${policy === "assignees" ? `<label>${t("who_pick")}</label>
+      <div class="chips">${members.map(m => `
+      <div class="chip ${chosen.has(m.user_id) ? "on" : ""}" data-act="task-assignee"
            data-id="${m.user_id}" role="checkbox" tabindex="0"
-           aria-checked="${chosen.has(m.user_id)}">${esc(m.name)}</div>`).join("")}</div>` : ""}`;
+           aria-checked="${chosen.has(m.user_id)}">${esc(m.name)}${m.user_id === me ? ` (${t("you")})` : ""}</div>`).join("")}</div>
+      ${chosen.size ? "" : `<div class="t3 tiny" style="margin-top:4px">${t("who_pick_hint")}</div>`}` : ""}`;
 }
 
 /* What is already set, readable without opening the section:
@@ -9166,11 +9498,19 @@ function modulesSheet(){
       <div class="sw ${mods[key] ? "on" : ""}" data-act="mod-toggle" data-key="${key}"
            role="switch" tabindex="0" aria-checked="${mods[key] ? "true" : "false"}"></div>
     </div>`;
+  const ai = state.me?.agent?.available ? `<label>AI</label>
+    <div class="setrow"><div class="grow lbl">${t("now_ai_label")}
+        <div class="t3 tiny">${t(nowAiPlan() ? "now_ai_hint" : "plan_limit_now_ai")}</div></div>
+      ${nowAiPlan() ? `<div class="sw ${nowAiOn() ? "on" : ""}" data-act="now-ai-toggle"
+           role="switch" tabindex="0" aria-checked="${nowAiOn() ? "true" : "false"}"></div>`
+        : `<span class="wlock" data-act="w-locked" data-key="now_ai" data-needs="pro">${icon("shield", 11)} Pro</span>`}
+    </div>` : "";
   return `<h3>${icon("check", 18)} ${t("modules")}</h3>
     ${row("wake", t("mod_wake"))}
     ${row("prayer", t("mod_prayer"))}
     ${row("journal", t("mod_journal"))}
     <div class="t3 tiny" style="margin-top:8px">${t("modules_note")}</div>
+    ${ai}
     <button class="btn secondary" data-act="settings" style="margin-top:14px">
       ${t("back")}</button>`;
 }
@@ -9349,29 +9689,49 @@ function timezonePicker(zones, current){
 //: step with services.COMMON_TIMEZONES, and asserted by the test suite.
 const TZ_COMMON_COUNT = 12;
 
-/* The profile, the data, and the two ways out. Deleting stays last and stays
-   red, with a confirmation of its own. */
+/* Edit profile: the picture, the name, the surname, the @handle and the
+   gender — each one really editable here. What is typed here wins over
+   Telegram from then on; the server stops copying Telegram's name over it.
+   Export and deleting live one row down, in Privacy and data. */
 function accountSheet(){
   const me = state.me || {};
-  const row = (act, ic, tone, label) => `
-    <div class="item pressable" style="min-height:52px" data-act="${act}">
-      <span class="itile ${tone}">${icon(ic, 17)}</span>
-      <div class="grow">${label}</div>${icon("chevron", 15)}</div>`;
-
+  const g = me.gender;
   return `
-    <h3>${icon("user", 18)} ${t("account")}</h3>
+    <h3>${icon("user", 18)} ${t("profile_edit")}</h3>
 
-    <div class="t3 tiny" style="margin-top:var(--s2)">${t("photo_hint")}</div>
-    ${me.gender ? `<div class="setrow"><div class="grow lbl">${t("gender")}</div>
-      <div class="chips">
-        <div class="chip sm ${me.gender === "male" ? "on" : ""}"
-             data-act="set-gender" data-value="male">${t("male")}</div>
-        <div class="chip sm ${me.gender === "female" ? "on" : ""}"
-             data-act="set-gender" data-value="female">${t("female")}</div>
-      </div></div>` : ""}
+    <div class="set-profile" style="margin-top:var(--s2)">
+      <label class="avatar xl" aria-label="${t("avatar_change")}">
+        ${avatarHtml(me.first_name)}<span class="avatar-edit">${icon("camera", 14)}</span>
+        <input type="file" accept="image/jpeg,image/png,image/webp,image/*" data-act="avatar-pick"
+               class="avatar-input" aria-label="${t("avatar_change")}" /></label>
+      <div class="grow" style="min-width:0">
+        <div class="t2 small">${t("pf_photo_hint")}</div>
+        ${me.avatar_custom ? `<button class="btn text sm" data-act="avatar-remove"
+            style="padding-left:0">${t("avatar_remove")}</button>` : ""}
+      </div></div>
 
-    <div class="t3 tiny" style="margin-top:var(--s2)">${t("account_privacy_moved")}</div>
-    ${row("set-privacy", "shield", "tone-5", t("privacy_data"))}
+    <label for="pf-first">${t("pf_first")}</label>
+    <input id="pf-first" maxlength="60" autocomplete="given-name" value="${esc(me.first_name || "")}" />
+    <label for="pf-last">${t("pf_last")}</label>
+    <input id="pf-last" maxlength="60" autocomplete="family-name" value="${esc(me.last_name || "")}" />
+    <label for="pf-user">${t("pf_username")}</label>
+    <div class="pf-handle"><span>@</span><input id="pf-user" maxlength="32" autocapitalize="off"
+         autocomplete="username" spellcheck="false" value="${esc(me.username || "")}" /></div>
+    <div class="t3 tiny" style="margin-top:4px">${t("pf_username_hint")}</div>
+
+    <label>${t("gender")}</label>
+    <div class="chips">
+      <div class="chip ${g === "male" ? "on" : ""}" data-act="pf-gender" data-value="male">${t("male")}</div>
+      <div class="chip ${g === "female" ? "on" : ""}" data-act="pf-gender" data-value="female">${t("female")}</div>
+    </div>
+
+    <button class="btn" data-act="profile-save" style="margin-top:16px">${icon("check", 16)} ${t("save")}</button>
+    <div class="t3 tiny" style="margin-top:6px;text-align:center">${t("pf_tg_note")}</div>
+
+    <div class="t3 tiny" style="margin-top:var(--s3)">${t("account_privacy_moved")}</div>
+    <div class="item pressable" style="min-height:52px" data-act="set-privacy">
+      <span class="itile tone-5">${icon("shield", 17)}</span>
+      <div class="grow">${t("privacy_data")}</div>${icon("chevron", 15)}</div>
 
     <button class="btn secondary" data-act="settings" style="margin-top:14px">
       ${t("back")}</button>`;
@@ -9425,6 +9785,136 @@ function stepRing(pct){
 }
 //: The Qadam screen animates once per visit, when its data first draws.
 let stepsShown = false;
+/* ---------- Yaqinlarim ----------
+   The people who matter, how to reach them, their birthdays, and a rhythm.
+   Who is due a call is on top, then the birthdays of the next 30 days, then
+   everybody by name. Pro and Max; Free sees what it is and a way in. */
+const PEOPLE_REL = {family:"👨‍👩‍👧", partner:"💞", friend:"🤝", colleague:"💼", mentor:"🎓", client:"🧾", other:"👤"};
+const PEOPLE_TOUCH = [7, 14, 30, 90];
+
+function personLine(p){
+  const bits = [t("rel_" + p.relation)];
+  if(p.touch_due) bits.push(`<span class="neg">${p.days_since === null ? t("pp_never") : t("pp_since", {n: p.days_since})}</span>`);
+  else if(p.days_since !== null && p.days_since !== undefined) bits.push(p.days_since === 0 ? t("pp_today") : t("pp_since", {n: p.days_since}));
+  if(p.birthday && p.birthday.days_left <= 30)
+    bits.push(`🎂 ${p.birthday.days_left === 0 ? t("today") : t("pp_bday_in", {n: p.birthday.days_left})}`);
+  return bits.join(" · ");
+}
+function personRow(p){
+  return `<div class="item pressable pp-row" data-act="person-open" data-id="${p.id}" role="button" tabindex="0">
+      <span class="pp-av">${esc(initialsOf(p.name))}</span>
+      <div class="grow" style="min-width:0"><div class="ellipsis"><b>${esc(p.name)}</b></div>
+        <div class="meta">${personLine(p)}</div></div>
+      ${p.touch_due ? `<button class="iconbtn sm pp-touch" data-act="person-touched" data-id="${p.id}"
+          aria-label="${t("pp_touched")}" title="${t("pp_touched")}">${icon("check", 18)}</button>` : icon("chevron", 15)}
+    </div>`;
+}
+
+SCREENS.people = () => {
+  const d = state.people;
+  if(!d) return `<div class="spin"></div>`;
+  const list = d.people || [];
+  const acc = d.access || {};
+  if(!acc.allowed && !list.length) return `<div class="card pp-lock">
+      <div class="pp-lock-ic">🤝</div>
+      <h3 style="margin:6px 0">${t("pp_title")}</h3>
+      <p class="small t2" style="margin:0 0 12px">${t("pp_pitch")}</p>
+      <ul class="pp-points"><li>${t("pp_point1")}</li><li>${t("pp_point2")}</li><li>${t("pp_point3")}</li></ul>
+      <button class="btn" data-act="w-locked" data-key="close_people" data-needs="pro">${icon("star", 15)} ${t("pp_unlock")}</button>
+    </div>`;
+  const due = list.filter(p => p.touch_due);
+  const bdays = list.filter(p => p.birthday && p.birthday.days_left <= 30)
+    .sort((a, b) => a.birthday.days_left - b.birthday.days_left);
+  let h = `<p class="ghint">${t("pp_hint")}</p>`;
+  if(!acc.allowed) h += `<div class="banner" data-act="w-locked" data-key="close_people" data-needs="pro" role="button" tabindex="0">
+      ${icon("shield", 15)} <div class="grow">${t("plan_limit_close_people")}</div>${icon("chevron", 15)}</div>`;
+  if(!list.length) return h + `<div class="gempty"><div class="gempty-ic">🤝</div>
+      <div class="t2">${t("pp_empty")}</div>
+      <button class="btn" data-act="person-add">${icon("plus", 16)} ${t("pp_add")}</button></div>`;
+  if(due.length) h += sectionHead("tone-4", "bell", t("pp_due_title"), `<span class="t3 small">${due.length}</span>`)
+    + `<div class="card tight">${due.map(personRow).join("")}</div>`;
+  if(bdays.length) h += sectionHead("tone-2", "gift", t("pp_bdays_title"))
+    + `<div class="card tight">${bdays.map(p => `<div class="item pressable" data-act="person-open" data-id="${p.id}" role="button" tabindex="0">
+        <span class="pp-av">🎂</span><div class="grow"><b>${esc(p.name)}</b>
+          <div class="meta">${isoToLabel(p.birthday.next)} · ${t("pp_turning", {n: p.birthday.turning})}</div></div>
+        <span class="tag">${p.birthday.days_left === 0 ? t("today") : t("pp_bday_in", {n: p.birthday.days_left})}</span></div>`).join("")}</div>`;
+  h += sectionHead("tone-1", "users", t("pp_all"), `<span class="t3 small">${list.length}${
+      acc.limit ? ` / ${acc.limit}` : ""}</span>`)
+    + `<div class="card tight">${list.map(personRow).join("")}</div>`;
+  return h;
+};
+
+/* One person: how to reach them in one tap, their birthday, the rhythm, and
+   a note. "Bog'landim" restarts the rhythm. */
+function personSheet(p){
+  const tel = (p.phone || "").replace(/[^0-9+]/g, "");
+  const links = [
+    tel ? `<a class="pp-link" href="tel:${esc(tel)}">${icon("phone", 16)} ${t("pp_call")}</a>` : "",
+    tel ? `<a class="pp-link" href="sms:${esc(tel)}">${icon("message", 16)} SMS</a>` : "",
+    p.telegram ? `<a class="pp-link" data-act="open-url" data-url="https://t.me/${esc(p.telegram)}" href="https://t.me/${esc(p.telegram)}" target="_blank" rel="noopener">✈️ Telegram</a>` : "",
+    tel ? `<a class="pp-link" data-act="open-url" data-url="https://wa.me/${esc(tel.replace("+", ""))}" href="https://wa.me/${esc(tel.replace("+", ""))}" target="_blank" rel="noopener">🟢 WhatsApp</a>` : "",
+    p.instagram ? `<a class="pp-link" data-act="open-url" data-url="https://instagram.com/${esc(p.instagram)}" href="https://instagram.com/${esc(p.instagram)}" target="_blank" rel="noopener">📷 Instagram</a>` : "",
+    p.link ? `<a class="pp-link" data-act="open-url" data-url="${esc(p.link)}" href="${esc(p.link)}" target="_blank" rel="noopener">🔗 ${esc(p.link.replace(/^https?:\/\//, "").slice(0, 28))}</a>` : "",
+  ].filter(Boolean).join("");
+  const b = p.birthday;
+  return `<div class="pp-head"><span class="pp-av lg">${esc(initialsOf(p.name))}</span>
+      <div class="grow"><h3 style="margin:0">${esc(p.name)}</h3>
+        <div class="t3 small">${PEOPLE_REL[p.relation] || ""} ${t("rel_" + p.relation)}</div></div></div>
+    ${links ? `<div class="pp-links">${links}</div>` : `<div class="t3 small" style="margin-top:8px">${t("pp_no_contacts")}</div>`}
+    <button class="btn" data-act="person-touched" data-id="${p.id}" style="margin-top:12px">${icon("check", 16)} ${t("pp_touched_long")}</button>
+    <div class="t3 tiny" style="margin-top:4px;text-align:center">${p.last_contact
+      ? t("pp_last", {d: isoToLabel(p.last_contact)}) : t("pp_never")}</div>
+    ${b ? `<div class="setrow"><div class="grow lbl">🎂 ${t("pp_birthday")}</div>
+      <div class="small">${isoToLabel(b.date.replace(/^\d{4}/, String(new Date().getFullYear())))} · ${t("pp_turning", {n: b.turning})} · ${
+        b.days_left === 0 ? t("today") : t("pp_bday_in", {n: b.days_left})}</div></div>` : ""}
+    <label>${t("pp_rhythm")}</label>
+    <div class="chips">${[null, ...PEOPLE_TOUCH].map(n => `<div class="chip sm ${(p.touch_days || null) === n ? "on" : ""}"
+      data-act="person-rhythm" data-id="${p.id}" data-value="${n || ""}">${n ? t("pp_every", {n}) : t("none_short")}</div>`).join("")}</div>
+    ${p.note ? `<label>${t("pp_note")}</label><div class="hint">${esc(p.note)}</div>` : ""}
+    <div class="btns" style="margin-top:14px">
+      <button class="btn secondary" data-act="person-edit" data-id="${p.id}">${icon("edit", 15)} ${t("edit")}</button>
+      <button class="btn danger" data-act="person-delete" data-id="${p.id}">${icon("trash", 15)} ${t("delete")}</button>
+    </div>`;
+}
+
+function personForm(p){
+  const f = state.personForm || (state.personForm = {relation: p?.relation || "friend", touch_days: p?.touch_days ?? 30});
+  const v = k => esc(f[k] ?? p?.[k] ?? "");
+  return `<h3>🤝 ${p ? t("edit") : t("pp_add")}</h3>
+    <input id="pp-first" placeholder="${t("pf_first")}" maxlength="80" value="${v("first_name")}" />
+    <input id="pp-last" placeholder="${t("pf_last")}" maxlength="80" value="${v("last_name")}" style="margin-top:8px" />
+    <label>${t("pp_relation")}</label>
+    <div class="chips">${Object.keys(PEOPLE_REL).map(r => `<div class="chip sm ${f.relation === r ? "on" : ""}"
+      data-act="person-form" data-field="relation" data-value="${r}">${PEOPLE_REL[r]} ${t("rel_" + r)}</div>`).join("")}</div>
+    <label>🎂 ${t("pp_birthday")} <span class="t3">(${t("optional")})</span></label>
+    ${dateField("pp-bday", f.birth_date ?? p?.birthday?.date ?? "")}
+    <label>${t("pp_contacts")}</label>
+    <input id="pp-phone" type="tel" placeholder="${t("pp_phone_ph")}" maxlength="40" value="${v("phone")}" />
+    <input id="pp-tg" placeholder="Telegram @username" maxlength="120" value="${v("telegram")}" style="margin-top:8px" autocapitalize="off" />
+    <input id="pp-ig" placeholder="Instagram @username" maxlength="120" value="${v("instagram")}" style="margin-top:8px" autocapitalize="off" />
+    <input id="pp-link" placeholder="${t("pp_link_ph")}" maxlength="300" value="${v("link")}" style="margin-top:8px" autocapitalize="off" />
+    <label>${t("pp_rhythm")}</label>
+    <div class="chips">${[null, ...PEOPLE_TOUCH].map(n => `<div class="chip sm ${(f.touch_days || null) === n ? "on" : ""}"
+      data-act="person-form" data-field="touch_days" data-value="${n || ""}">${n ? t("pp_every", {n}) : t("none_short")}</div>`).join("")}</div>
+    <textarea id="pp-note" placeholder="${t("pp_note_ph")}" style="margin-top:10px">${v("note")}</textarea>
+    <button class="btn" data-act="person-save" ${p ? `data-id="${p.id}"` : ""} style="margin-top:14px">${t("save")}</button>
+    <button class="btn secondary" data-act="close" style="margin-top:8px">${t("cancel")}</button>`;
+}
+function readPersonForm(){
+  const f = state.personForm || (state.personForm = {});
+  for(const [id, k] of [["pp-first", "first_name"], ["pp-last", "last_name"], ["pp-bday", "birth_date"],
+                        ["pp-phone", "phone"], ["pp-tg", "telegram"], ["pp-ig", "instagram"],
+                        ["pp-link", "link"], ["pp-note", "note"]]){
+    const el = document.getElementById(id);
+    if(el) f[k] = el.value;
+  }
+  return f;
+}
+const personById = id => (state.people?.people || []).find(x => String(x.id) === String(id));
+async function reloadPeople(){
+  try{ state.people = await api("/api/people"); render(); }catch(e){ handleError(e); }
+}
+
 SCREENS.steps = () => {
   const p = state.progress, st = p?.steps;
   if(!p) return `<div class="spin"></div>`;
@@ -9927,7 +10417,7 @@ const NAV = [
 ];
 //: Which tab stays lit for each screen. A project opens from Tasks.
 const NAV_OF = {habits:"tracker", tasks:"tracker", goals:"tracker", project:"tracker",
-                team:"tracker", steps:"profile", stats:"profile", more:"profile"};
+                team:"tracker", steps:"profile", stats:"profile", people:"profile", more:"profile"};
 //: A tab opens where the person last was inside it.
 function navTarget(id){
   if(id === "tracker") return state.trackerLast || "habits";
@@ -9939,7 +10429,7 @@ function navTarget(id){
    there is one + on the screen, never two. */
 function screenClass(){
   const sc = state.screen;
-  const grouped = ["habits", "tasks", "goals", "steps", "stats", "team"].includes(sc);
+  const grouped = ["habits", "tasks", "goals", "steps", "stats", "people", "team"].includes(sc);
   const nohead = (sc === "habits" && state.tab === "habits") || (sc === "tasks" && state.taskTab !== "projects");
   return [grouped ? "grouped" : "", nohead ? "nohead" : "", "screen-" + sc].join(" ");
 }
@@ -9951,7 +10441,7 @@ function groupBar(screen){
      goals — not three levels down under Profile. */
   if(screen === "habits" || screen === "tasks" || screen === "goals" || screen === "team")
     return seg([["habits", "habits"], ["tasks", "tasks"], ["goals", "goals_tab"], ["team", "groups_tab"]], screen);
-  if(screen === "steps" || screen === "stats"){
+  if(screen === "steps" || screen === "stats" || screen === "people"){
     const me = state.me || {};
     const name = esc(me.first_name || me.name || "");
     const st = state.progress?.steps;
@@ -9961,7 +10451,7 @@ function groupBar(screen){
           <div class="t3 tiny">${st ? `${STEP_ICON[st.level_key] || ""} ${t("step_lvl_" + st.level_key)} · ${
             t("steps_level_n", {n: st.level})}` : t("nav_profile")}</div></div>
         <button class="iconbtn" data-act="settings" aria-label="${t("settings")}">${icon("settings", 22)}</button>
-      </div>` + seg([["steps", "nav_steps"], ["stats", "nav_stats"]], screen);
+      </div>` + seg([["steps", "nav_steps"], ["stats", "nav_stats"], ["people", "nav_people"]], screen);
   }
   return "";
 }
@@ -10004,6 +10494,11 @@ function fabAdd(){
     return `<button class="fab-add" ${attrs} aria-label="${t(tab === "tactical" ? "add_mission"
       : "gl_add_" + tab)}">${icon("plus", 30)}</button>`;
   }
+  if(sc === "people" && state.people?.access?.allowed)
+    return `<button class="fab-add" data-act="person-add" aria-label="${t("pp_add")}" title="${t("pp_add")}">${icon("plus", 30)}</button>`;
+  if(sc === "team" && (state.team?.teams || []).length && state.teamView !== "group")
+    return `<button class="fab-add" data-act="team-new" aria-label="${t("team_new_short")}"
+      title="${t("team_new_short")}">${icon("plus", 30)}</button>`;
   if(sc === "team" && (state.team?.teams || []).length) return `<button class="fab-add" data-act="team-add" data-kind="task"
       aria-label="${t("team_add_task")}" title="${t("team_add_task")}">${icon("plus", 30)}</button>`;
   return `<button class="fab-add" data-act="${sc !== "money" ? "quick-add"
@@ -10283,6 +10778,8 @@ async function loadScreen(screen){
       setState({progress, coins: coins || state.coins});
     } else if(screen === "stats"){
       await loadStats(state.statsPeriod);
+    } else if(screen === "people"){
+      setState({people: await api("/api/people")});
     } else if(screen === "project"){
       const p = state.project?.project;
       if(p) setState({project: await api(projectPath(p.id, p.source === "team"))});
@@ -10350,7 +10847,7 @@ function goto(screen, patch){
   if(screen !== "home") state.homeVeil = false;
   if(screen === "habits" || screen === "tasks" || screen === "goals" || screen === "team") state.trackerLast = screen;
   if(screen === "goals") lastGoalView = "";
-  if(["steps", "stats", "team"].includes(screen)) state.profileLast = screen;
+  if(["steps", "stats", "people"].includes(screen)) state.profileLast = screen;
   if(screen === "steps") stepsShown = false;
   setState({screen, error:null, screenError:null, reorderMode:false, ...(patch || {})});
   loadScreen(screen);
@@ -10705,7 +11202,11 @@ const A = {
     if(name && tg?.openTelegramLink) tg.openTelegramLink(`https://t.me/${name}?start=agent`);
     else tg?.close?.();
   },
-  nav: el => goto(navTarget(el.dataset.screen)),
+  nav: el => {
+    // Guruhlar from the switch always starts on the list of groups.
+    if(el.dataset.screen === "team") state.teamView = "list";
+    goto(navTarget(el.dataset.screen));
+  },
   reload: () => { setState({error:null, loading:true}); boot(); },
   tab: el => { haptic(); setState({tab:el.dataset.tab, reorderMode:false}); },
   "go-tab": el => goto("habits", {tab:el.dataset.tab}),
@@ -10754,6 +11255,30 @@ const A = {
       state.avatarBusy = false;
       host?.classList?.remove("busy");
       reopenSettings(); render();
+    }
+  },
+  "pf-gender": el => {
+    haptic();
+    state.me = {...state.me, gender: el.dataset.value};
+    document.querySelectorAll('[data-act="pf-gender"]').forEach(c =>
+      c.classList.toggle("on", c.dataset.value === el.dataset.value));
+  },
+  "profile-save": async () => {
+    const first = val("pf-first").trim();
+    if(!first){ toast(t("pf_err_empty_name")); return; }
+    const body = {first_name: first, last_name: val("pf-last").trim(),
+                  username: val("pf-user").trim().replace(/^@/, "")};
+    if(state.me?.gender) body.gender = state.me.gender;
+    try{
+      const r = await api("/api/profile", {method:"POST", body});
+      Object.assign(state.me, r.profile);
+      notify("success"); toast(t("saved"));
+      openSettings("root"); render();
+    }catch(e){
+      const known = ["username_taken", "bad_username", "empty_name", "bad_name"];
+      if(known.includes(e?.detail)) toast(t("pf_err_" + e.detail));
+      else if(e?.status === 404 || e?.status === 405) toast(t("avatar_server_old"));
+      else handleError(e);
     }
   },
   "avatar-remove": async () => {
@@ -11153,20 +11678,34 @@ const A = {
          false, t("saved"));
   },
 
-  "team-pick": el => setState({teamId: Number(el.dataset.id)}),
+  "team-pick": el => setState({teamId: Number(el.dataset.id), teamView: "group"}),
+  "team-enter": el => { haptic(); setState({teamId: Number(el.dataset.id), teamView: "group", teamTab: "today", teamFilter: "all"}); },
+  "team-list": () => { haptic(); setState({teamView: "list"}); },
+  "team-filter": el => { haptic(); setState({teamFilter: el.dataset.value}); },
 
   "team-new": () => openSheet(`
-    <h3>${t("team_new")}</h3>
+    <h3>${icon("users", 18)} ${t("team_new")}</h3>
+    <p class="small t2" style="margin-top:4px">${t("tm_new_body")}</p>
     <input id="team-name" placeholder="${t("team_name_ph")}" maxlength="60">
     <button class="btn" data-act="team-create" style="margin-top:12px">
       ${t("save")}</button>
     <button class="btn secondary" data-act="close" style="margin-top:8px">
       ${t("cancel")}</button>`),
 
+  /* A new group opens at once, with its invite link on top — a group of
+     one is only waiting for the second person. */
   "team-create": () => {
     const name = val("team-name");
     if(!name.trim()) return;
-    save(() => api("/api/teams", {method:"POST", body:{name}}), "team");
+    let made = null;
+    save(async () => { made = await api("/api/teams", {method:"POST", body:{name}}); }, "team")
+      .then(() => {
+        if(!made?.id) return;
+        state.teamId = made.id; state.teamView = "group"; state.teamTab = "today";
+        render();
+        const tm = teamCurrent();
+        if(tm) openSheet(teamMenuSheet(tm), "team-menu");
+      });
   },
 
   "team-toggle": el => {
@@ -11399,6 +11938,88 @@ const A = {
     state.moneyTab = "debts";
     save(() => api("/api/debts", {method:"POST", body}), "money", false, t("debt_saved"));
   },
+  "person-add": () => {
+    haptic();
+    if(state.people && !state.people.access?.allowed) return lockedSheet("close_people", "pro");
+    state.personForm = {relation:"friend", touch_days:30};
+    state.personEditId = null;
+    openSheet(personForm(null));
+    setTimeout(() => document.getElementById("pp-first")?.focus(), 60);
+  },
+  "person-open": el => { haptic(); const p = personById(el.dataset.id); if(p) openSheet(personSheet(p)); },
+  "person-edit": el => {
+    const p = personById(el.dataset.id); if(!p) return;
+    state.personForm = {relation: p.relation, touch_days: p.touch_days};
+    state.personEditId = p.id;
+    openSheet(personForm(p));
+  },
+  "person-form": el => {
+    haptic();
+    const f = readPersonForm();
+    f[el.dataset.field] = el.dataset.field === "touch_days" ? (Number(el.dataset.value) || null) : el.dataset.value;
+    openSheet(personForm(state.personEditId ? personById(state.personEditId) : null));
+  },
+  "person-save": async el => {
+    const f = readPersonForm();
+    if(!(f.first_name || "").trim()) return toast(t("pf_err_empty_name"));
+    const body = {first_name: f.first_name.trim(), last_name: (f.last_name || "").trim(),
+      relation: f.relation || "friend", phone: (f.phone || "").trim(), telegram: (f.telegram || "").trim(),
+      instagram: (f.instagram || "").trim(), link: (f.link || "").trim(), note: (f.note || "").trim(),
+      touch_days: f.touch_days || 0, birth_date: f.birth_date || ""};
+    const id = el.dataset.id;
+    try{
+      await api(id ? `/api/people/${id}` : "/api/people", {method: id ? "PATCH" : "POST", body});
+      notify("success"); closeSheet(); toast(t("saved")); state.personForm = null; reloadPeople();
+    }catch(e){
+      if(e.status === 422 && ["bad_phone", "bad_handle", "bad_link", "bad_date", "empty_name"].includes(e.detail))
+        return toast(t("pp_err_" + e.detail));
+      handleError(e);
+    }
+  },
+  "person-touched": async el => {
+    haptic("medium");
+    try{
+      await api(`/api/people/${el.dataset.id}/touched`, {method:"POST"});
+      notify("success"); toast(t("pp_touched_ok")); closeSheet(); reloadPeople();
+    }catch(e){ handleError(e); }
+  },
+  "person-rhythm": async el => {
+    haptic();
+    try{
+      await api(`/api/people/${el.dataset.id}`, {method:"PATCH", body:{touch_days: Number(el.dataset.value) || 0}});
+      state.people = await api("/api/people");
+      const p = personById(el.dataset.id); if(p) openSheet(personSheet(p));
+      render();
+    }catch(e){ handleError(e); }
+  },
+  "person-delete": el => confirmSheet("person-delete-go", el.dataset.id, t("pp_delete_q")),
+  "person-delete-go": async el => {
+    try{ await api(`/api/people/${el.dataset.id}`, {method:"DELETE"}); closeSheet(); reloadPeople(); }
+    catch(e){ handleError(e); }
+  },
+  "open-url": (el, ev) => {
+    const url = el.dataset.url;
+    if(!url) return;
+    ev?.preventDefault?.();
+    if(/^https:\/\/t\.me\//.test(url) && tg?.openTelegramLink) return tg.openTelegramLink(url);
+    if(tg?.openLink) return tg.openLink(url);
+    window.open(url, "_blank", "noopener");
+  },
+  "debt-person-open": el => { haptic(); state.debtPerson = el.dataset.key; openSheet(debtPersonSheet(el.dataset.key)); },
+  "debt-more": el => {
+    haptic();
+    state.debtForm = {direction: el.dataset.dir || "lent", due:"", person: el.dataset.person || ""};
+    openSheet(debtSheet());
+    setTimeout(() => document.getElementById("debt-amount")?.focus(), 60);
+  },
+  "debt-settle-all": async el => {
+    haptic("medium");
+    const rows = (state.money?.debts?.open || []).filter(x => personKey(x.person) === el.dataset.key);
+    try{
+      for(const x of rows) await api(`/api/debts/${x.id}/settle`, {method:"POST", body:{settled:true}});
+      notify("success"); closeSheet(); toast(t("debt_closed")); reloadDebts();
+    }catch(e){ handleError(e); reloadDebts(); }
+  },
   "debt-settle": async el => {
     haptic("medium");
     try{
@@ -11533,7 +12154,7 @@ const A = {
 
   "team-tab": el => { haptic(); setState({teamTab: el.dataset.tab}); },
   "team-graph-period": el => { haptic(); setState({teamGraphPeriod: el.dataset.value}); },
-  "team-open": el => goto("team", {teamId: Number(el.dataset.id), teamTab: "results"}),
+  "team-open": el => goto("team", {teamId: Number(el.dataset.id), teamView: "group", teamTab: "results"}),
   "mirrored-note": () => toast(t("habit_mirrored")),
   "team-share": () => {
     const team = teamCurrent();
@@ -12266,6 +12887,9 @@ const A = {
     const dest = destOf();
     if(dest.team){
       const f = state.form;
+      if(f.completion === "assignees" && !(f.assignees || []).length){
+        toast(t("who_pick_hint")); return;
+      }
       const teamBody = {
         title: body.title, deadline: body.deadline, priority: body.priority,
         description: body.description || "", due_time: body.due_time,
@@ -12708,20 +13332,13 @@ const A = {
     openMessages();
     if(!state.chat?.loaded) loadChat();
   },
-  "now-ai-consent": async () => {
+  "now-ai-toggle": async () => {
     haptic();
-    openSheet(`${sheetHead(t("now_ai_label"))}
-      <p class="small">${t("now_ai_consent")}</p>
-      <button class="btn" data-act="now-ai-agree">${t("voice_agree")}</button>
-      <button class="btn secondary" data-act="close" style="margin-top:8px">${t("cancel")}</button>`);
-  },
-  "now-ai-agree": async () => {
-    try{
-      await api("/api/agent/consent", {method:"POST"});
-      if(state.me?.agent) state.me.agent.consent = true;
-      closeSheet();
-      await loadNowAi();
-    }catch(e){ handleError(e); }
+    const on = !nowAiOn();
+    await prefSave({now_ai: on});
+    if(!on) state.nowAi = null;
+    else await loadNowAi();
+    if(state.screen === "home") render();
   },
   "chat-consent": async () => {
     try{

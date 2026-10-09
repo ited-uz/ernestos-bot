@@ -9,7 +9,7 @@ fifty times.
 
 The cache and the daily counter live in this process. With several workers
 each keeps its own, so the cap is per worker — a cost guard, not a security
-boundary; the plan check and the agent consent are the boundaries.
+boundary; the plan check and the person's own switch are the boundaries.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ import time
 
 from pydantic import ValidationError
 
+import config
 import db
 import plans
 import services as svc
@@ -91,10 +92,15 @@ async def pick(uid: int, ws: int) -> dict:
     with db.SessionLocal() as s:
         if plans.ENABLED and plans.tier_of(s, uid) not in plans.FEATURES["now_ai"]:
             raise AgentError("plan_limit", 402)
-        core.require_consent(s, ws)
+        # No consent sheet: the pick only reads task titles to choose among
+        # them, and the privacy policy says so. The person can switch it off.
+        if not config.AGENT_ENABLED:
+            raise AgentError("agent_disabled", 503)
         if not agent_provider.configured():
             raise AgentError("provider_not_configured", 503)
         user = s.get(db.User, uid)
+        if user.now_ai_off:
+            raise AgentError("now_ai_off", 403)
         tz = svc.user_tz(user)
         today = svc.today_local(tz)
         rows = candidates(s, ws, user, tz)

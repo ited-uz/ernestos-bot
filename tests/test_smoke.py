@@ -1101,7 +1101,7 @@ def test_the_mini_app_navigation_is_four_places():
         assert word in html, word
     group = html[html.index("function groupBar(screen){"):html.index("const offerKey")]
     assert '[["habits", "habits"], ["tasks", "tasks"], ["goals", "goals_tab"], ["team", "groups_tab"]]' in group
-    assert '[["steps", "nav_steps"], ["stats", "nav_stats"]]' in group
+    assert '[["steps", "nav_steps"], ["stats", "nav_stats"], ["people", "nav_people"]]' in group
     assert 'team:"tracker"' in html
     assert 'data-act="settings"' in group, "settings one tap from Profil"
     nav_of = html[html.index("const NAV_OF"):html.index("function navTarget(")]
@@ -12963,3 +12963,159 @@ def test_a_groups_work_and_its_members_check_ins_are_counted_apart(client):
     assert units["items"] == 2 and units["closed"] == 1, units
     html = (ROOT / "webapp" / "index.html").read_text()
     assert 't("team_work_closed", {done: units.closed, total: units.items})' in html
+
+
+def test_edit_profile_name_surname_and_a_unique_handle(client):
+    """Edit profile really edits: name, surname and @handle, unique regardless
+    of case, and Telegram's own copy no longer overwrites them afterwards."""
+    a, b = next(_next_id), next(_next_id)
+    _onboard(a); _onboard(b)
+    ha = {"X-Telegram-Init-Data": init_data({"id": a, "first_name": "Ernest"})}
+    hb = {"X-Telegram-Init-Data": init_data({"id": b, "first_name": "Bob"})}
+
+    class _C:
+        def __init__(self, h): self.h = h
+        def post(self, url, json): return client.post(url, headers=self.h, json=json)
+        def get(self, url): return client.get(url, headers=self.h)
+    ca, cb = _C(ha), _C(hb)
+    r = ca.post("/api/profile", json={"first_name": "  Ernest  ", "last_name": "Karimov",
+                                      "username": "@ErnestOS_1", "gender": "male"})
+    assert r.status_code == 200, r.text
+    me = ca.get("/api/me").json()
+    assert (me["first_name"], me["last_name"], me["username"], me["gender"]) == \
+        ("Ernest", "Karimov", "ErnestOS_1", "male")
+    taken = cb.post("/api/profile", json={"username": "ernestos_1"})
+    assert taken.status_code == 409 and taken.json()["detail"] == "username_taken"
+    for bad in ("ab", "1abcd", "ab cd e", "x" * 40):
+        assert cb.post("/api/profile", json={"username": bad}).status_code == 422, bad
+    assert cb.post("/api/profile", json={"first_name": "   "}).status_code == 422
+    # A message from Telegram later carries the old name and handle.
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, a, first_name="Old", last_name="Name", username="old_tg")
+        s.commit()
+        row = s.get(User, a)
+        assert (row.first_name, row.last_name, row.username) == ("Ernest", "Karimov", "ErnestOS_1")
+    # Clearing the handle is allowed.
+    assert ca.post("/api/profile", json={"username": ""}).status_code == 200
+    assert ca.get("/api/me").json()["username"] == ""
+
+
+def test_goal_areas_business_first_and_charity_with_islam():
+    """Business is its own area; charity sits with Islam. Old values from an
+    old client or an old row read as the new ones, and 0015 rewrites rows."""
+    import migrations
+    from db import LifeGoal
+
+    assert svc.GOAL_CATEGORIES[0] == "business"
+    assert "charity" not in svc.GOAL_CATEGORIES and "career" not in svc.GOAL_CATEGORIES
+    uid = next(_next_id)
+    _onboard(uid)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        a = svc.add_goal(s, ws, title="Kompaniya", level="ultimate", category="career")
+        b = svc.add_goal(s, ws, title="Jamg'arma", level="ultimate", category="charity")
+        assert (a.category, b.category) == ("business", "islam")
+        # A row written before this change still reads in the new area.
+        old = LifeGoal(workspace_id=ws, title="Eski", level="ultimate", category="charity",
+                       status="dream")
+        s.add(old); s.commit()
+        cats = {g["title"]: g["category"] for g in svc.list_goals(s, ws)}
+        assert cats["Eski"] == "islam"
+        old_id = old.id
+    out = migrations.m0015_goal_areas()
+    assert out["moved"].get("charity→islam", 0) >= 1
+    with SessionLocal() as s:
+        assert s.get(LifeGoal, old_id).category == "islam"
+    assert migrations.m0015_goal_areas()["total"] == 0
+
+
+def test_goal_area_strings_exist_in_every_language():
+    html = (ROOT / "webapp" / "index.html").read_text()
+    for key in ("gc_business", "gc_islam", "gl_area_none", "gl_area_week_none"):
+        assert html.count(f"  {key}:") + html.count(f" {key}:") >= 3, key
+    assert "gc_charity" not in html and "gc_career" not in html
+
+
+def test_a_task_given_by_name_tells_that_person_and_the_rest_the_usual(monkeypatch):
+    """"Bobur gave you a task" reaches the person it was given to — even on
+    the "assigned only" level — and the others hear the ordinary change."""
+    import asyncio
+
+    owner, aziz, bobur = next(_next_id), next(_next_id), next(_next_id)
+    for uid in (owner, aziz, bobur):
+        _onboard(uid)
+    with SessionLocal() as s:
+        team = svc.create_team(s, owner, "Savdo")
+        svc.join_team(s, aziz, team.code)
+        svc.join_team(s, bobur, team.code)
+        svc.set_team_notify(s, aziz, team.id, "assigned")
+        team_id = team.id
+    sent = []
+
+    class _Inner:
+        async def send_message(self, chat_id, text, **kw):
+            sent.append((chat_id, text))
+
+    class _App:
+        bot = _Inner()
+
+    monkeypatch.setattr(application, "telegram_app", _App())
+    told = asyncio.run(application.notify_teammates(
+        team_id, owner, "team_ev_task_add", "Shartnoma", "Savdo", assigned=[aziz]))
+    by = {chat: text for chat, text in sent}
+    assert told == 2
+    assert "Shartnoma" in by[aziz] and "📌" in by[aziz]
+    assert "📌" not in by[bobur] and "Shartnoma" in by[bobur]
+    assert owner not in by
+
+
+def test_close_people_pro_only_with_birthday_rhythm_and_links(client, monkeypatch):
+    """Yaqinlarim: Free is closed; on Pro a person carries contacts, a
+    birthday kept in the one birthdays table, and a rhythm that says who is
+    due a call. Deleting the person takes the birthday with it."""
+    import plans
+    from db import Birthday, CloseOne
+
+    uid = next(_next_id)
+    _onboard(uid)
+    h = {"X-Telegram-Init-Data": init_data({"id": uid, "first_name": "Ernest"})}
+    monkeypatch.setattr(plans, "ENABLED", True)
+    monkeypatch.setattr(plans, "tier_of", lambda s, u: "free")
+    assert client.get("/api/people", headers=h).json()["access"]["allowed"] is False
+    r = client.post("/api/people", headers=h, json={"first_name": "Aziz"})
+    assert r.status_code == 402
+
+    monkeypatch.setattr(plans, "tier_of", lambda s, u: "pro")
+    r = client.post("/api/people", headers=h, json={
+        "first_name": " Aziz ", "last_name": "Karimov", "relation": "friend",
+        "phone": "+998 90 123-45-67", "telegram": "https://t.me/aziz_k",
+        "instagram": "@aziz.k", "link": "linkedin.com/in/aziz", "touch_days": 14,
+        "birth_date": "1995-10-20"})
+    assert r.status_code == 200, r.text
+    pid = r.json()["id"]
+    people = client.get("/api/people", headers=h).json()["people"]
+    p = people[0]
+    assert (p["name"], p["telegram"], p["instagram"], p["link"]) == \
+        ("Aziz Karimov", "aziz_k", "aziz.k", "https://linkedin.com/in/aziz")
+    assert p["touch_due"] is True, "never in touch with a rhythm set is due"
+    assert p["birthday"]["date"] == "1995-10-20"
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        assert [b.person_name for b in s.scalars(select(Birthday).where(Birthday.workspace_id == ws))] == ["Aziz Karimov"]
+        assert svc.close_touch_due(s, ws)[0]["name"] == "Aziz Karimov"
+
+    assert client.post(f"/api/people/{pid}/touched", headers=h).status_code == 200
+    p = client.get("/api/people", headers=h).json()["people"][0]
+    assert p["touch_due"] is False and p["days_since"] == 0 and p["touch_in"] == 14
+
+    for bad in ({"phone": "abc"}, {"telegram": "bad handle!"}, {"first_name": "  "}):
+        assert client.patch(f"/api/people/{pid}", headers=h, json=bad).status_code == 422, bad
+    assert client.patch(f"/api/people/{pid}", headers=h, json={"birth_date": ""}).status_code == 200
+    with SessionLocal() as s:
+        assert s.scalar(select(func.count(Birthday.id)).where(Birthday.workspace_id == ws)) == 0
+    client.patch(f"/api/people/{pid}", headers=h, json={"birth_date": "1995-10-21"})
+    assert client.delete(f"/api/people/{pid}", headers=h).status_code == 200
+    assert client.get("/api/people", headers=h).json()["people"] == []
+    with SessionLocal() as s:
+        assert s.scalar(select(func.count(Birthday.id)).where(Birthday.workspace_id == ws)) == 0
+        assert s.scalar(select(func.count(CloseOne.id)).where(CloseOne.workspace_id == ws)) == 1  # archived

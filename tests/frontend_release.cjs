@@ -83,5 +83,20 @@ ctx.fetch = async (url,opts)=>{
     run(`state.screen='habits';state.tab='${tab}';`);
     assert.ok(!run('SCREENS.habits()').includes('undefined'),tab);
   }
+  // One card per person: Aziz 500 000 and then "aziz " 200 000 are one
+  // Aziz with 700 000; money the other way nets against it.
+  const people = run(`debtPeople([
+    {id:1, person:'Aziz', amount:500000, direction:'lent', due:'2026-10-14'},
+    {id:2, person:'aziz ', amount:200000, direction:'lent', due:'2026-10-02', overdue:true},
+    {id:3, person:'Bobur', amount:150000, direction:'borrowed'},
+    {id:4, person:'AZIZ', amount:100000, direction:'borrowed'}])`);
+  assert.equal(people.length, 2, 'two people, not four rows');
+  const aziz = people.find(p => p.key === 'aziz');
+  assert.equal(aziz.rows.length, 3);
+  assert.equal(aziz.owes_me, 700000);
+  assert.equal(aziz.i_owe, 100000);
+  assert.equal(aziz.net, 600000);
+  assert.equal(aziz.due, '2026-10-02', 'the nearest due date');
+  assert.equal(people[0].key, 'aziz', 'a late debt comes first');
   console.log(`Frontend release checks passed (TZ=${process.env.TZ || 'default'})`);
 })().catch(e=>{console.error(e);process.exitCode=1;});

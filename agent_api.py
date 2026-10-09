@@ -110,7 +110,7 @@ def install(app, auth):
 
     @router.get("/now")
     async def now(x_telegram_init_data: str | None = Header(None)):
-        """The AI pick for the Hozir card (Pro and Max, with the agent consent)."""
+        """The AI pick for the Hozir card (Pro and Max; the person can switch it off)."""
         import now_ai
         user, ws = auth(x_telegram_init_data)
         return await now_ai.pick(user.telegram_id, ws)

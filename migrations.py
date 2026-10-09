@@ -729,6 +729,25 @@ def m0014_curated_themes() -> dict:
             "total": sum(moved.values())}
 
 
+def m0015_goal_areas() -> dict:
+    """Goal areas: "career" becomes "business" (it was always shown as
+    Business) and "charity" joins "islam". Idempotent."""
+    from sqlalchemy import update
+
+    from db import LifeGoal
+
+    moved: dict[str, int] = {}
+    with SessionLocal() as s:
+        for old, new in (("career", "business"), ("charity", "islam")):
+            count = s.execute(update(LifeGoal).where(LifeGoal.category == old)
+                              .values(category=new)).rowcount
+            if count:
+                moved[f"{old}→{new}"] = count
+        s.commit()
+    return {"migration": "0015_goal_areas", "moved": moved,
+            "total": sum(moved.values())}
+
+
 MIGRATIONS = {
     "0001": m0001_retire_summary_habit,
     "0002": m0002_retire_goals,
@@ -744,6 +763,7 @@ MIGRATIONS = {
     "0012": m0012_close_past_days,
     "0013": m0013_localize_rituals,
     "0014": m0014_curated_themes,
+    "0015": m0015_goal_areas,
 }
 
 
