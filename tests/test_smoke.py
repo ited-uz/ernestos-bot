@@ -22,7 +22,7 @@ from pathlib import Path
 from urllib.parse import quote, urlencode
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -13119,3 +13119,192 @@ def test_close_people_pro_only_with_birthday_rhythm_and_links(client, monkeypatc
     with SessionLocal() as s:
         assert s.scalar(select(func.count(Birthday.id)).where(Birthday.workspace_id == ws)) == 0
         assert s.scalar(select(func.count(CloseOne.id)).where(CloseOne.workspace_id == ws)) == 1  # archived
+
+
+def _mailbox(monkeypatch, tmp_path):
+    """Email goes to files: the code is read back the way a person would."""
+    monkeypatch.setenv("EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("EMAIL_OUTBOX_DIR", str(tmp_path))
+
+    def last_code(to):
+        import json as _json
+        import re as _re
+        files = sorted(tmp_path.glob("*.json"))
+        for f in reversed(files):
+            msg = _json.loads(f.read_text())
+            if msg["to"] == to:
+                return _re.search(r"\b(\d{6})\b", msg["subject"]).group(1)
+        return None
+    return last_code
+
+
+def test_sign_up_with_email_then_setup_in_the_app(client, monkeypatch, tmp_path):
+    """No Telegram anywhere: an email, a mailed code, a new account with a
+    negative id, setup answered in the app, and then the app just works."""
+    import email_auth
+    from db import AccountEmail, EmailCode
+
+    last_code = _mailbox(monkeypatch, tmp_path)
+    assert client.get("/api/app/config").json()["email"] is True
+    r = client.post("/api/auth/email/start", json={"email": " Ernest@Example.COM ", "language": "uz"})
+    assert r.status_code == 200, r.text
+    code = last_code("ernest@example.com")
+    assert code and len(code) == 6
+    with SessionLocal() as s:
+        stored = s.scalar(select(EmailCode.code_hash).where(EmailCode.email == "ernest@example.com"))
+        assert stored and code not in stored, "only a digest is kept"
+    # Asking again within the minute is refused, and says when.
+    again = client.post("/api/auth/email/start", json={"email": "ernest@example.com"})
+    assert again.status_code == 429 and int(again.headers["Retry-After"]) > 0
+
+    bad = client.post("/api/auth/email/verify", json={"email": "ernest@example.com", "code": "000000"})
+    assert bad.status_code == 401
+    r = client.post("/api/auth/email/verify", json={"email": "ernest@example.com", "code": code,
+                                                    "device": "test", "language": "uz"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["new"] is True and body["token"].startswith("app:")
+    h = {"X-Telegram-Init-Data": body["token"]}
+    # The same code never works twice.
+    assert client.post("/api/auth/email/verify", json={"email": "ernest@example.com",
+                                                       "code": code}).status_code == 401
+
+    me = client.get("/api/me", headers=h).json()
+    assert me["telegram_id"] <= -email_auth.EMAIL_ID_BASE
+    assert me["has_telegram"] is False and me["email"] == "ernest@example.com"
+    assert me["onboarded"] is False
+    assert client.get("/api/home", headers=h).status_code == 409
+
+    r = client.post("/api/onboarding", headers=h, json={"first_name": "Ernest", "language": "en",
+                                                        "modules": ["wake", "journal"], "wake_time": "06:00"})
+    assert r.status_code == 200, r.text
+    me = client.get("/api/me", headers=h).json()
+    assert me["onboarded"] is True and me["first_name"] == "Ernest" and me["language"] == "en"
+    assert me["modules"]["wake"] is True and me["modules"]["prayer"] is False
+    assert client.get("/api/home", headers=h).status_code == 200
+    assert client.post("/api/tasks", headers=h, json={"title": "Birinchi vazifa"}).status_code == 200
+
+    # Signing in again on another phone lands in the same account.
+    import time as _t
+    with SessionLocal() as s:
+        s.execute(update(EmailCode).values(created_at=EmailCode.created_at - timedelta(minutes=2)))
+        s.commit()
+    assert client.post("/api/auth/email/start", json={"email": "ernest@example.com"}).status_code == 200
+    r = client.post("/api/auth/email/verify", json={"email": "ernest@example.com",
+                                                    "code": last_code("ernest@example.com")})
+    assert r.json()["new"] is False
+    me2 = client.get("/api/me", headers={"X-Telegram-Init-Data": r.json()["token"]}).json()
+    assert me2["telegram_id"] == me["telegram_id"]
+    with SessionLocal() as s:
+        assert s.get(AccountEmail, "ernest@example.com").account_id == me["telegram_id"]
+
+
+def test_a_wrong_code_five_times_kills_it(client, monkeypatch, tmp_path):
+    last_code = _mailbox(monkeypatch, tmp_path)
+    client.post("/api/auth/email/start", json={"email": "guess@example.com"})
+    code = last_code("guess@example.com")
+    for _ in range(5):
+        assert client.post("/api/auth/email/verify",
+                           json={"email": "guess@example.com", "code": "111111" if code != "111111" else "222222"}
+                           ).status_code == 401
+    assert client.post("/api/auth/email/verify",
+                       json={"email": "guess@example.com", "code": code}).status_code == 401
+
+
+def test_email_is_said_plainly_when_mail_is_not_set_up(client, monkeypatch):
+    for key in ("EMAIL_PROVIDER", "RESEND_API_KEY", "BREVO_API_KEY", "SMTP_HOST", "EMAIL_FROM"):
+        monkeypatch.delenv(key, raising=False)
+    assert client.get("/api/app/config").json()["email"] is False
+    r = client.post("/api/auth/email/start", json={"email": "a@example.com"})
+    assert r.status_code == 503 and r.json()["detail"] == "email_unavailable"
+    assert client.post("/api/auth/email/start", json={"email": "not-an-email"}).status_code == 422
+
+
+def test_a_telegram_account_attaches_an_email_and_signs_the_phone_in_with_it(client, monkeypatch, tmp_path):
+    """Ernest's own account, with everything in it, gets an email; the phone
+    then signs in with that email to the same account — no second account."""
+    last_code = _mailbox(monkeypatch, tmp_path)
+    uid = next(_next_id)
+    _onboard(uid)
+    h = {"X-Telegram-Init-Data": init_data({"id": uid, "first_name": "Ernest"})}
+    assert client.post("/api/account/email/start", headers=h,
+                       json={"email": "me@example.com"}).status_code == 200
+    assert client.post("/api/account/email/verify", headers=h,
+                       json={"email": "me@example.com", "code": "999999"}).status_code == 401
+    r = client.post("/api/account/email/verify", headers=h,
+                    json={"email": "me@example.com", "code": last_code("me@example.com")})
+    assert r.status_code == 200 and r.json()["email"] == "me@example.com"
+    assert client.get("/api/me", headers=h).json()["email"] == "me@example.com"
+
+    with SessionLocal() as s:
+        from db import EmailCode
+        s.execute(update(EmailCode).values(created_at=EmailCode.created_at - timedelta(minutes=2)))
+        s.commit()
+    client.post("/api/auth/email/start", json={"email": "me@example.com"})
+    r = client.post("/api/auth/email/verify", json={"email": "me@example.com",
+                                                    "code": last_code("me@example.com")})
+    assert r.json()["new"] is False
+    me = client.get("/api/me", headers={"X-Telegram-Init-Data": r.json()["token"]}).json()
+    assert me["telegram_id"] == uid and me["has_telegram"] is True
+
+    # Somebody else cannot take that address.
+    other = next(_next_id)
+    _onboard(other)
+    h2 = {"X-Telegram-Init-Data": init_data({"id": other, "first_name": "B"})}
+    r = client.post("/api/account/email/start", headers=h2, json={"email": "ME@example.com"})
+    assert r.status_code == 409 and r.json()["detail"] == "email_taken"
+
+
+def test_an_email_account_hears_its_messages_in_the_app_not_telegram(monkeypatch):
+    """No Telegram call is made for an account without Telegram; the message
+    lands in the app's inbox instead."""
+    import asyncio
+    import email_auth
+
+    with SessionLocal() as s:
+        account = email_auth.create_account(s, "inbox@example.com", language="uz")
+    sent, delivered = [], []
+
+    class _Bot:
+        async def send_message(self, *a, **kw):
+            sent.append(a)
+
+    async def _deliver(chat_id, text, markup=None, **kw):
+        delivered.append((chat_id, text))
+        return True
+
+    monkeypatch.setattr(application.app_push, "deliver", _deliver)
+    fan = application.AccountFanOut(_Bot(), "report")
+    asyncio.run(fan.send_message(account, "Salom"))
+    assert sent == [] and delivered == [(account, "Salom")]
+
+
+def test_deleting_an_email_account_frees_the_address(client, monkeypatch, tmp_path):
+    import email_auth
+    from db import AccountEmail
+
+    with SessionLocal() as s:
+        account = email_auth.create_account(s, "gone@example.com", language="uz")
+        svc.delete_account(s, account)
+        assert s.get(AccountEmail, "gone@example.com") is None
+
+
+def test_safe_migrations_run_themselves_once_on_start():
+    """A deploy needs no shell: 0014 and 0015 run on start-up, once each."""
+    import migrations
+    from db import AppliedMigration, LifeGoal
+
+    with SessionLocal() as s:
+        s.query(AppliedMigration).delete()
+        uid = next(_next_id)
+        s.commit()
+    _onboard(uid)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        s.add(LifeGoal(workspace_id=ws, title="Old", level="ultimate", category="career", status="dream"))
+        s.commit()
+    assert migrations.auto_apply() == ["0014", "0015"]
+    with SessionLocal() as s:
+        assert s.scalar(select(LifeGoal.category).where(LifeGoal.workspace_id == ws)) == "business"
+        assert {r.name for r in s.scalars(select(AppliedMigration))} == {"0014", "0015"}
+    assert migrations.auto_apply() == [], "never twice"

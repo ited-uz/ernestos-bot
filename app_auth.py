@@ -90,8 +90,14 @@ def redeem_code(s: Session, raw_code: str, device: str = "") -> str | None:
     if spent is None:
         s.rollback()
         return None
+    return issue_session(s, spent[0], device)
+
+
+def issue_session(s: Session, account_id: int, device: str = "") -> str:
+    """A new phone session for this account; the raw token, once."""
+    now = utcnow()
     token = secrets.token_urlsafe(32)
-    s.add(AppSession(telegram_id=spent[0], token_hash=_digest(token),
+    s.add(AppSession(telegram_id=account_id, token_hash=_digest(token),
                      device=str(device or "")[:80], last_used_at=now,
                      expires_at=now + timedelta(days=SESSION_DAYS)))
     s.commit()

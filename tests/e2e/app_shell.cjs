@@ -23,6 +23,18 @@ const notify = name => Number(execFileSync(PY, ['-c',
   + 'm = M([[B("15 daqiqa", callback_data=f"snz:h:{h.id}:15"), B("Bajarildi", callback_data=f"habit:toggle:{h.id}")]])\n'
   + 'asyncio.run(app_push.deliver(777001, "🔔 <b>Odat vaqti</b>\\n" + h.name, m, kind="reminder"))\n'
   + 'print(h.id)'], { encoding: 'utf8' }).trim());
+// Email goes to files in the browser checks; the code is read back from the
+// newest message to that address, the way a person reads their inbox.
+const fs = require('fs');
+const readCode = to => {
+  const dir = path.join(OUT, 'mail');
+  const files = fs.readdirSync(dir).filter(f => f.endsWith('.json')).sort().reverse();
+  for (const f of files) {
+    const m = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+    if (m.to === to) return m.subject.match(/\b(\d{6})\b/)[1];
+  }
+  throw new Error('no mail to ' + to);
+};
 const revokeAll = () => execFileSync(PY, ['-c',
   'import db\nfrom sqlalchemy import update\nwith db.SessionLocal() as s:\n'
   + ' s.execute(update(db.AppSession).values(revoked_at=db.utcnow())); s.commit()']);
@@ -69,11 +81,13 @@ const step = async (name, fn) => {
   // 401 (signed out) and 402 (plan limit) are answers the app handles.
   page.on('console', m => { if (m.type() === 'error' && !/401|402|ErnestOS:|ERR_INTERNET_DISCONNECTED/.test(m.text())) errors.push('console: ' + m.text()); });
   const shot = n => page.screenshot({ path: path.join(OUT, 'app-' + n + '.png') });
+  // The bot's code lives under "Sign in with Telegram", folded by default.
+  const openTg = () => page.evaluate(() => { const d = document.getElementById('tg-box'); if (d) d.open = true; });
 
   await step('No session: the app opens on the sign-in screen', async () => {
     await page.goto(SHELL + '/index.html');
     await page.waitForURL(/login\.html$/);
-    await page.waitForSelector('#code');
+    await page.waitForSelector('#email');
     await shot('01-login');
   });
 
@@ -81,22 +95,22 @@ const step = async (name, fn) => {
     await page.click('[data-lang="ru"]');
     assert.match(await page.textContent('#t-lead'), /Войдите/);
     await page.reload();
-    await page.waitForSelector('#code');
+    await page.waitForSelector('#email');
     assert.match(await page.textContent('#t-lead'), /Войдите/);
     await page.click('[data-lang="uz"]');
-    assert.match(await page.textContent('#t-lead'), /kirig|kod bilan/);
+    assert.match(await page.textContent('#t-lead'), /kiring/);
   });
 
   await step('A wrong code is refused in place', async () => {
     // A complete code is sent by itself — no button press needed.
-    await page.fill('#code', 'ZZZZZZZZ');
+    await openTg(); await page.fill('#code', 'ZZZZZZZZ');
     await page.waitForFunction(() => document.getElementById('msg').textContent.length > 0);
     assert.match(await page.textContent('#msg'), /noto'g'ri|wrong|неверный/);
     await shot('02-bad-code');
   });
 
   await step('The bot code signs in and the Mini App home renders', async () => {
-    await page.fill('#code', issue().toLowerCase());
+    await openTg(); await page.fill('#code', issue().toLowerCase());
     await page.waitForURL(/index\.html$/);
     await page.waitForFunction(() => typeof state !== 'undefined' && state.me && !state.loading, null, { timeout: 15000 });
     await page.waitForTimeout(500);
@@ -400,7 +414,7 @@ const step = async (name, fn) => {
   });
 
   await step('Sign out from settings ends the session on the server too', async () => {
-    await page.fill('#code', issue());
+    await openTg(); await page.fill('#code', issue());
     await page.waitForURL(/index\.html$/);
     await page.waitForFunction(() => typeof state !== 'undefined' && state.me && !state.loading, null, { timeout: 15000 });
     const token = await page.evaluate(() => localStorage.getItem('ernest.app.token'));
@@ -410,6 +424,32 @@ const step = async (name, fn) => {
     await page.waitForTimeout(300);
     const status = await page.evaluate(async t => (await fetch('/api/me', { headers: { 'X-Telegram-Init-Data': t } })).status, token);
     assert.equal(status, 401);
+  });
+
+  await step('Email: a new address signs up, setup runs in the app, the day opens', async () => {
+    await page.waitForSelector('#email');
+    await page.fill('#email', 'yangi@example.com');
+    await page.click('#send');
+    await page.waitForSelector('#otp-form:not([hidden])');
+    assert.match(await page.textContent('#t-sent'), /yangi@example\.com/);
+    await shot('20-email-code');
+    await page.fill('#otp', readCode('yangi@example.com'));   // sent as soon as it is whole
+    await page.waitForURL(/index\.html$/);
+    await page.waitForSelector('#su-name', { timeout: 15000 });
+    await shot('21-setup');
+    await page.fill('#su-name', 'Dilnoza');
+    await page.click('[data-act="su-mod"][data-value="prayer"]');
+    await page.fill('#su-name', 'Dilnoza');
+    await page.click('[data-act="su-finish"]');
+    await page.waitForFunction(() => typeof state !== 'undefined' && state.me && state.me.onboarded
+      && !state.loading && !state.needsSetup, null, { timeout: 15000 });
+    const me = await page.evaluate(() => state.me);
+    assert.equal(me.first_name, 'Dilnoza');
+    assert.equal(me.has_telegram, false);
+    assert.equal(me.email, 'yangi@example.com');
+    assert.equal(me.modules.prayer, false, 'what was switched off stays off');
+    await page.waitForTimeout(400);
+    await shot('22-email-home');
   });
 
   await step('No JavaScript errors', async () => { if(errors.length) console.log(JSON.stringify(errors)); assert.deepEqual(errors, []); });

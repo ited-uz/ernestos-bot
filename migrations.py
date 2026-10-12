@@ -767,6 +767,38 @@ MIGRATIONS = {
 }
 
 
+#: Migrations that are idempotent, quick and safe on a live database: the
+#: server runs each of these once by itself on start-up, so a deploy needs no
+#: shell. The older ones stay manual — they were one-off moves.
+AUTO = ("0014", "0015")
+
+
+def auto_apply() -> list[str]:
+    """Run every AUTO migration not yet recorded here. Never raises: a
+    migration that fails is logged and tried again on the next start."""
+    from sqlalchemy.exc import IntegrityError
+
+    from db import AppliedMigration
+    done: list[str] = []
+    for name in AUTO:
+        try:
+            with SessionLocal() as s:
+                if s.get(AppliedMigration, name) is not None:
+                    continue
+            result = MIGRATIONS[name]()
+            with SessionLocal() as s:
+                try:
+                    s.add(AppliedMigration(name=name))
+                    s.commit()
+                except IntegrityError:
+                    s.rollback()   # another worker recorded it first
+            log.info("auto migration %s: %s", name, result)
+            done.append(name)
+        except Exception:
+            log.exception("auto migration %s failed; will retry on next start", name)
+    return done
+
+
 def run(*names: str) -> list[dict]:
     """Apply the named migrations, or all of them in order."""
     db.init_db()

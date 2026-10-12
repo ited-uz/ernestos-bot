@@ -1299,6 +1299,51 @@ class AppSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class AccountEmail(Base):
+    """The email address that signs in to an account, once proven.
+
+    An account made in the phone app with an email has no Telegram: its id is
+    a large negative number (see `email_auth.EMAIL_ID_BASE`), never a real
+    Telegram id. A Telegram account can have an email attached too, and from
+    then on the same email signs the phone in to that same account.
+    """
+
+    __tablename__ = "account_emails"
+
+    #: Lower case, as typed otherwise.
+    email: Mapped[str] = mapped_column(String(254), primary_key=True)
+    account_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
+    verified_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class EmailCode(Base):
+    """A six-digit code mailed to an address. Only its digest is kept."""
+
+    __tablename__ = "email_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(254), index=True)
+    #: signin — the phone signs in (or signs up); attach — the signed-in
+    #: account claims this address.
+    purpose: Mapped[str] = mapped_column(String(10), default="signin")
+    account_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    code_hash: Mapped[str] = mapped_column(String(64))
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class AppliedMigration(Base):
+    """A data migration that ran here, so start-up runs each one once."""
+
+    __tablename__ = "applied_migrations"
+
+    name: Mapped[str] = mapped_column(String(40), primary_key=True)
+    applied_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class PlanGrant(Base):
     """A stretch of Pro or Max on an account: the sign-up trial, the channel
     bonus, a referral, a launch gift or a payment.

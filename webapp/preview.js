@@ -103,7 +103,7 @@
                         {key:"max_month", tier:"max", days:30, stars:350, uzs:79000},
                         {key:"max_year", tier:"max", days:365, stars:3000, uzs:690000}]},
         theme:Q.get("theme") || "clean-white", gender:"male",
-        modules:{wake:true, prayer:true, journal:true}, member_no:128, username:"ernest",
+        modules:{wake:true, prayer:true, journal:true}, member_no:128, username:"ernest", email:null, has_telegram:true,
         has_photo:false, avatar_token:"",
         prefs:{morning_report:true, morning_time:"05:30", evening_report:true,
                evening_time:"21:30", task_reminders:true, habit_reminders:true,
@@ -727,6 +727,14 @@
     editable:[{index:0, fields:{title:"Mijozga qo'ng'iroq qilish", deadline:tomorrow(), due_time:"10:00", priority:"medium"}}]});
 
   function mutate(method, path, body){
+    // Email in the demo: no mail is sent; any six digits confirm it.
+    if(path === "/api/account/email/start") return {ok:true, resend_in:60, ttl:600};
+    if(path === "/api/account/email/verify"){
+      if(!/^\d{6}$/.test(String(body?.code || ""))) return {__status:401, detail:"bad_code"};
+      DB.me.email = String(body.email || "").toLowerCase();
+      return {ok:true, email:DB.me.email};
+    }
+    if(path === "/api/onboarding") return {ok:true};
     if(path === "/api/people" && method === "POST"){
       if(!peoplePayload().access.allowed)
         return {__status:402, detail:"plan_limit", key:"close_people", limit:0, tier:DB.me.plan.tier, needs:"pro"};

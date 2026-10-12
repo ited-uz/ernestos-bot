@@ -50,6 +50,8 @@ h1{font-size:26px;line-height:1.2;margin:0 0 8px;text-align:center;font-weight:7
 input{width:100%;min-height:56px;border:1px solid var(--border-2);border-radius:12px;background:var(--surface);
       color:var(--text);font:inherit;font-size:24px;font-weight:650;letter-spacing:.18em;text-align:center;
       text-transform:uppercase;margin:4px 0 12px;outline:0}
+input.mail{font-size:17px;font-weight:500;letter-spacing:0;text-align:left;text-transform:none;padding:0 14px}
+input.otp{letter-spacing:.5em}
 input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 25%,transparent)}
 .msg{min-height:22px;font-size:14px;text-align:center;margin:0 0 12px;color:var(--danger)}
 .hint{color:var(--text-3);font-size:13px;text-align:center;margin:20px 0 0}
@@ -62,6 +64,18 @@ input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,v
 .row input{flex:1}
 .paste{flex:0 0 auto;min-height:56px;margin:4px 0 12px;padding:0 14px;border-radius:12px;font:inherit;
       font-size:14px;border:1px solid var(--border-2);background:var(--surface);color:var(--text);cursor:pointer}
+.label{font-size:14px;font-weight:600;color:var(--text-2);margin:0 0 2px}
+.sent{color:var(--text-2);font-size:15px;margin:0 0 8px}
+.sent b{color:var(--text);word-break:break-all}
+.link{background:none;border:0;color:var(--primary);font:inherit;font-size:14px;font-weight:600;cursor:pointer;padding:8px 0}
+.link[disabled]{color:var(--text-3);cursor:default}
+.links{display:flex;justify-content:space-between;gap:8px;margin-top:4px}
+details.tg{margin-top:16px}
+details.tg summary{cursor:pointer;color:var(--text-2);font-size:14px;font-weight:600;text-align:center;
+      list-style:none;padding:10px 0}
+details.tg summary::-webkit-details-marker{display:none}
+details.tg[open] summary{margin-bottom:8px}
+.note{font-size:13px;color:var(--text-3);text-align:center;margin:12px 0 0}
 </style>
 </head>
 <body>
@@ -74,31 +88,68 @@ input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,v
     <button type="button" data-lang="ru">Русский</button>
     <button type="button" data-lang="en">English</button>
   </div>
-  <div class="card">
-    <div class="step"><span class="num">1</span><p id="t-step1"></p></div>
-    <button class="btn secondary" id="get-code" type="button"></button>
-    <div class="gap"></div>
-    <div class="step"><span class="num">2</span><p id="t-step2"></p></div>
-    <form id="form" autocomplete="off">
-      <div class="row">
-        <input id="code" inputmode="text" autocapitalize="characters" spellcheck="false"
-               autocomplete="one-time-code" maxlength="9" placeholder="ABCD-2345" aria-label="code" />
-        <button class="paste" id="paste" type="button"></button>
-      </div>
-      <p class="msg" id="msg" role="alert"></p>
-      <button class="btn" id="submit" type="submit"></button>
+
+  <!-- Email: the way in for everybody. A new address makes an account. -->
+  <div class="card" id="email-card">
+    <form id="email-form" autocomplete="on">
+      <p class="label" id="t-email"></p>
+      <input id="email" class="mail" type="email" inputmode="email" autocomplete="email"
+             autocapitalize="off" spellcheck="false" maxlength="254" placeholder="you@example.com" />
+      <p class="msg" id="email-msg" role="alert"></p>
+      <button class="btn" id="send" type="submit"></button>
     </form>
+    <form id="otp-form" autocomplete="off" hidden>
+      <p class="sent" id="t-sent"></p>
+      <input id="otp" class="otp" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code"
+             maxlength="6" placeholder="••••••" aria-label="code" />
+      <p class="msg" id="otp-msg" role="alert"></p>
+      <button class="btn" id="verify" type="submit"></button>
+      <div class="links">
+        <button class="link" id="resend" type="button"></button>
+        <button class="link" id="change" type="button"></button>
+      </div>
+    </form>
+    <p class="note" id="t-note"></p>
   </div>
-  <p class="hint" id="t-hint"></p>
+
+  <!-- Telegram: the bot's code, for those who started there. -->
+  <details class="tg" id="tg-box">
+    <summary id="t-tg"></summary>
+    <div class="card">
+      <div class="step"><span class="num">1</span><p id="t-step1"></p></div>
+      <button class="btn secondary" id="get-code" type="button"></button>
+      <div class="gap"></div>
+      <div class="step"><span class="num">2</span><p id="t-step2"></p></div>
+      <form id="form" autocomplete="off">
+        <div class="row">
+          <input id="code" inputmode="text" autocapitalize="characters" spellcheck="false"
+                 autocomplete="one-time-code" maxlength="9" placeholder="ABCD-2345" aria-label="code" />
+          <button class="paste" id="paste" type="button"></button>
+        </div>
+        <p class="msg" id="msg" role="alert"></p>
+        <button class="btn" id="submit" type="submit"></button>
+      </form>
+      <p class="hint" id="t-hint"></p>
+    </div>
+  </details>
 </main>
 <script>
 (function(){
-  /* K09: the language can be picked here and is remembered; the bot's name is
-     remembered too, so "Get a code" works on a second launch with no signal;
-     each failure says what actually happened; a copied code can be pasted
-     with one tap and is sent as soon as it is complete. */
+  /* Email first: an address and the six digits mailed to it are the whole
+     sign-up — and the whole sign-in after that. The Telegram bot's code
+     stays below for accounts that began in Telegram (or attach the email in
+     Settings, and use it here from then on). */
   var L = {
-    uz:{lead:"Telegram botdagi kod bilan kiring. Ma'lumotlaringiz bot va ilovada bir xil.",
+    uz:{lead:"Email bilan kiring yoki ro'yxatdan o'ting. Parol kerak emas — emailingizga kod keladi.",
+        email:"Email manzilingiz", send:"Kod yuborish", sending:"Yuborilmoqda…",
+        sent:"6 xonali kod <b>{email}</b> manziliga yuborildi. Xat kelmasa, Spam papkasini ham ko'ring.",
+        verify:"Kirish", resend:"Kodni qayta yuborish", resend_in:"Qayta yuborish · {n}", change:"Boshqa email",
+        note:"Yangi email bo'lsa, akkaunt o'zi yaratiladi.",
+        bad_email:"Email manzili noto'g'ri.", bad_otp:"Kod noto'g'ri yoki eskirgan. Yangisini so'rang.",
+        otp_short:"Kod 6 ta raqam.", too_soon:"{n} soniyadan keyin qayta yuborish mumkin.",
+        no_mail:"Email orqali kirish hali yoqilmagan. Hozircha Telegram orqali kiring.",
+        mail_fail:"Xat yuborilmadi. Birozdan keyin qayta urining.",
+        tg:"Telegram orqali kirish",
         step1:"<b>Botdan kod oling.</b> Bot ochiladi va 8 belgili kod yuboradi.",
         step2:"<b>Kodni shu yerga yozing yoki joylang.</b>",
         get:"Telegram'da kod olish", submit:"Kirish", wait:"Tekshirilmoqda…", paste:"Joylash",
@@ -111,7 +162,16 @@ input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,v
         noclip:"Nusxa topilmadi. Kodni qo'lda yozing.",
         short:"Kod 8 ta belgidan iborat.",
         hint:"Botni topa olmasangiz, Telegram'da botga /app deb yozing."},
-    ru:{lead:"Войдите с кодом из Telegram-бота. Данные в боте и приложении общие.",
+    ru:{lead:"Войдите или зарегистрируйтесь по email. Пароль не нужен — на почту придёт код.",
+        email:"Ваш email", send:"Отправить код", sending:"Отправляем…",
+        sent:"Код из 6 цифр отправлен на <b>{email}</b>. Если письма нет, проверьте папку «Спам».",
+        verify:"Войти", resend:"Отправить ещё раз", resend_in:"Ещё раз · {n}", change:"Другой email",
+        note:"Если email новый, аккаунт создастся сам.",
+        bad_email:"Неверный email.", bad_otp:"Код неверный или устарел. Запросите новый.",
+        otp_short:"Код — 6 цифр.", too_soon:"Повторно можно через {n} сек.",
+        no_mail:"Вход по email ещё не включён. Пока войдите через Telegram.",
+        mail_fail:"Письмо не отправлено. Попробуйте чуть позже.",
+        tg:"Войти через Telegram",
         step1:"<b>Получите код в боте.</b> Бот откроется и пришлёт код из 8 символов.",
         step2:"<b>Введите или вставьте код здесь.</b>",
         get:"Получить код в Telegram", submit:"Войти", wait:"Проверяем…", paste:"Вставить",
@@ -124,7 +184,16 @@ input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,v
         noclip:"В буфере ничего нет. Введите код вручную.",
         short:"Код состоит из 8 символов.",
         hint:"Если бот не открылся, напишите ему в Telegram /app."},
-    en:{lead:"Sign in with a code from the Telegram bot. Your data is the same in the bot and the app.",
+    en:{lead:"Sign in or sign up with your email. No password — a code comes to your inbox.",
+        email:"Your email", send:"Send code", sending:"Sending…",
+        sent:"A 6-digit code went to <b>{email}</b>. If it is not there, check Spam too.",
+        verify:"Sign in", resend:"Send again", resend_in:"Send again · {n}", change:"Another email",
+        note:"A new email creates an account by itself.",
+        bad_email:"That email does not look right.", bad_otp:"The code is wrong or expired. Ask for a new one.",
+        otp_short:"The code is 6 digits.", too_soon:"You can send again in {n} seconds.",
+        no_mail:"Email sign-in is not switched on yet. Use Telegram for now.",
+        mail_fail:"The email was not sent. Try again shortly.",
+        tg:"Sign in with Telegram",
         step1:"<b>Get a code from the bot.</b> The bot opens and sends an 8-character code.",
         step2:"<b>Type or paste the code here.</b>",
         get:"Get a code in Telegram", submit:"Sign in", wait:"Checking…", paste:"Paste",
@@ -146,11 +215,18 @@ input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,v
   var lang = keep.get("ernest.app.lang") || (navigator.language || "uz").slice(0,2);
   if(!L[lang]) lang = "uz";
   var T = L[lang];
+  var mail = {email: keep.get("ernest.app.email") || "", stage: "email", wait: 0, timer: null};
 
   function paint(){
     T = L[lang];
     document.documentElement.lang = lang;
     $("t-lead").textContent = T.lead;
+    $("t-email").textContent = T.email;
+    $("send").textContent = T.send;
+    $("verify").textContent = T.verify;
+    $("change").textContent = T.change;
+    $("t-note").textContent = T.note;
+    $("t-tg").textContent = T.tg;
     $("t-step1").innerHTML = T.step1;
     $("t-step2").innerHTML = T.step2;
     $("get-code").textContent = T.get;
@@ -158,9 +234,18 @@ input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,v
     $("paste").textContent = T.paste;
     $("t-hint").textContent = T.hint;
     $("msg").textContent = "";
+    paintMail();
     Array.prototype.forEach.call(document.querySelectorAll("[data-lang]"), function(b){
       b.setAttribute("aria-pressed", b.getAttribute("data-lang") === lang ? "true" : "false");
     });
+  }
+  function paintMail(){
+    $("email-form").hidden = mail.stage !== "email";
+    $("otp-form").hidden = mail.stage !== "code";
+    $("t-sent").innerHTML = T.sent.replace("{email}", mail.email.replace(/[<>&"]/g, ""));
+    $("resend").disabled = mail.wait > 0;
+    $("resend").textContent = mail.wait > 0 ? T.resend_in.replace("{n}", mail.wait) : T.resend;
+    if(mail.stage === "email" && !$("email").value) $("email").value = mail.email;
   }
   Array.prototype.forEach.call(document.querySelectorAll("[data-lang]"), function(b){
     b.onclick = function(){ lang = b.getAttribute("data-lang"); keep.set("ernest.app.lang", lang); paint(); };
@@ -169,14 +254,99 @@ input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,v
 
   var bot = keep.get("ernest.app.bot") || "";
   fetch("/api/app/config").then(function(r){ return r.json(); })
-    .then(function(c){ if(c.bot_username){ bot = c.bot_username; keep.set("ernest.app.bot", bot); } })
+    .then(function(c){
+      if(c.bot_username){ bot = c.bot_username; keep.set("ernest.app.bot", bot); }
+      // No mail service on the server: say so, and open the Telegram way.
+      if(c.email === false){ $("email-msg").textContent = T.no_mail; $("tg-box").open = true; }
+    })
     .catch(function(){});
 
+  function device(){
+    return ((window.Telegram && Telegram.WebApp.platform) || "app") + " · " +
+           (navigator.userAgent.match(/\(([^;)]+;[^;)]+)/) || ["", ""])[1].slice(0, 60);
+  }
+  function post(path, body){
+    var ctl = window.AbortController ? new AbortController() : null;
+    var timer = setTimeout(function(){ if(ctl) ctl.abort(); }, 20000);
+    return fetch(path, {method:"POST", headers:{"Content-Type":"application/json"},
+                        body: JSON.stringify(body), signal: ctl ? ctl.signal : undefined})
+      .then(function(r){ clearTimeout(timer); return r; },
+            function(e){ clearTimeout(timer); throw e; });
+  }
+  function tick(){
+    clearInterval(mail.timer);
+    mail.timer = setInterval(function(){
+      mail.wait = Math.max(0, mail.wait - 1);
+      paintMail();
+      if(!mail.wait) clearInterval(mail.timer);
+    }, 1000);
+  }
+  function failText(e){ return e && e.name === "AbortError" ? T.slow : T.offline; }
+
+  var sending = false;
+  function sendCode(msgEl){
+    var email = ($("email").value || mail.email).trim();
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email)){ msgEl.textContent = T.bad_email; return; }
+    if(sending) return;
+    sending = true;
+    var btn = $("send"); btn.disabled = true; btn.textContent = T.sending;
+    msgEl.textContent = "";
+    post("/api/auth/email/start", {email: email, language: lang})
+      .then(function(r){
+        if(r.ok) return r.json().then(function(b){
+          mail.email = email.toLowerCase(); keep.set("ernest.app.email", mail.email);
+          mail.stage = "code"; mail.wait = b.resend_in || 60; tick(); paintMail();
+          $("otp").value = ""; $("otp").focus();
+        });
+        var n = parseInt(r.headers.get("Retry-After") || "60", 10) || 60;
+        if(r.status === 422) msgEl.textContent = T.bad_email;
+        else if(r.status === 429){
+          msgEl.textContent = T.too_soon.replace("{n}", n);
+          if(mail.stage === "code"){ mail.wait = n; tick(); paintMail(); }
+        }
+        else if(r.status === 503){ msgEl.textContent = T.no_mail; $("tg-box").open = true; }
+        else if(r.status === 502) msgEl.textContent = T.mail_fail;
+        else msgEl.textContent = T.server;
+      })
+      .catch(function(e){ msgEl.textContent = failText(e); })
+      .then(function(){ sending = false; btn.disabled = false; btn.textContent = T.send; });
+  }
+  $("email-form").addEventListener("submit", function(e){ e.preventDefault(); sendCode($("email-msg")); });
+  $("resend").onclick = function(){ if(!mail.wait) sendCode($("otp-msg")); };
+  $("change").onclick = function(){ mail.stage = "email"; $("email").value = mail.email; paintMail(); $("email").focus(); };
+
+  var checking = false;
+  function verify(){
+    var code = $("otp").value.replace(/\D/g, "");
+    if(code.length !== 6){ $("otp-msg").textContent = T.otp_short; return; }
+    if(checking) return;
+    checking = true;
+    var btn = $("verify"); btn.disabled = true; btn.textContent = T.wait;
+    post("/api/auth/email/verify", {email: mail.email, code: code, device: device(), language: lang})
+      .then(function(r){
+        if(r.ok) return r.json().then(function(b){ window.ErnestApp.signIn(b.token); });
+        if(r.status === 429){
+          var n = parseInt(r.headers.get("Retry-After") || "60", 10) || 60;
+          $("otp-msg").textContent = T.many.replace("{n}", n);
+        } else if(r.status >= 500) $("otp-msg").textContent = T.server;
+        else $("otp-msg").textContent = T.bad_otp;
+      })
+      .catch(function(e){ $("otp-msg").textContent = failText(e); })
+      .then(function(){ checking = false; btn.disabled = false; btn.textContent = T.verify; });
+  }
+  $("otp").addEventListener("input", function(){
+    $("otp-msg").textContent = "";
+    var v = $("otp").value.replace(/\D/g, "").slice(0, 6);
+    $("otp").value = v;
+    if(v.length === 6 && !checking) verify();
+  });
+  $("otp-form").addEventListener("submit", function(e){ e.preventDefault(); verify(); });
+
+  /* ---- Telegram: the bot's 8-character code ---- */
   $("get-code").onclick = function(){
     if(!bot){ $("msg").textContent = T.nobot; window.ErnestApp.open("https://t.me/"); return; }
     window.ErnestApp.open("https://t.me/" + bot + "?start=app");
   };
-
   var input = $("code");
   function tidy(){
     var raw = input.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
@@ -185,7 +355,6 @@ input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,v
   }
   input.addEventListener("input", function(){
     $("msg").textContent = "";
-    // A pasted or autofilled whole code goes at once.
     if(tidy().length === 8 && !busy) submit();
   });
   $("paste").onclick = function(){
@@ -198,20 +367,13 @@ input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,v
       if(tidy().length === 8) submit();
     }).catch(function(){ $("msg").textContent = T.noclip; input.focus(); });
   };
-
   var busy = false;
   function submit(){
     var code = input.value.replace(/[^A-Z0-9]/gi, "");
     if(code.length !== 8){ $("msg").textContent = T.short; return; }
     var btn = $("submit");
     busy = true; btn.disabled = true; btn.textContent = T.wait;
-    var device = ((window.Telegram && Telegram.WebApp.platform) || "app") + " · " +
-                 (navigator.userAgent.match(/\(([^;)]+;[^;)]+)/) || ["", ""])[1].slice(0, 60);
-    var ctl = window.AbortController ? new AbortController() : null;
-    var timer = setTimeout(function(){ if(ctl) ctl.abort(); }, 15000);
-    fetch("/api/app/login", {method:"POST", headers:{"Content-Type":"application/json"},
-                             body: JSON.stringify({code: code, device: device}),
-                             signal: ctl ? ctl.signal : undefined})
+    post("/api/app/login", {code: code, device: device()})
       .then(function(r){
         if(r.ok) return r.json().then(function(b){ window.ErnestApp.signIn(b.token); });
         if(r.status === 429){
@@ -223,10 +385,8 @@ input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,v
           $("msg").textContent = T.bad;
         }
       })
-      .catch(function(e){
-        $("msg").textContent = e && e.name === "AbortError" ? T.slow : T.offline;
-      })
-      .then(function(){ clearTimeout(timer); busy = false; btn.disabled = false; btn.textContent = T.submit; });
+      .catch(function(e){ $("msg").textContent = failText(e); })
+      .then(function(){ busy = false; btn.disabled = false; btn.textContent = T.submit; });
   }
   $("form").addEventListener("submit", function(e){ e.preventDefault(); if(!busy) submit(); });
 })();

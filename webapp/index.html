@@ -1528,6 +1528,9 @@ h1.gname{font-size:26px;letter-spacing:-.4px;line-height:1.15;overflow-wrap:anyw
 .pp-points{text-align:left;margin:0 auto 14px;padding-left:18px;max-width:300px;color:var(--text-2);font-size:14px;line-height:1.6}
 .dp-av{width:38px;height:38px;min-width:38px;border-radius:50%;display:grid;place-items:center;font-weight:800;
   font-size:14px;background:color-mix(in srgb, var(--primary) 12%, var(--surface));color:var(--primary)}
+.setup{max-width:440px;margin:0 auto;padding:28px 0 40px}
+.setup h1{margin:12px 0 6px}
+.setup-mark{border-radius:14px}
 /* Groups: a list of cards, then one group. */
 .tm-list{display:grid;gap:var(--s1)}
 .tm-card{display:flex;align-items:center;gap:12px;padding:14px;border-radius:var(--radius);
@@ -2137,6 +2140,13 @@ const DICT = {
   notify_morning_short:"Ertalab", notify_evening_short:"Kechqurun", notify_reminders_on:"eslatmalar yoqilgan",
   notify_reminders_off:"eslatmalar o'chiq", modules_none:"Hech biri yoqilmagan",
   account_privacy_moved:"Eksport, maxfiylik va akkauntni o'chirish — «Maxfiylik va ma'lumotlar»da.",
+  em_attach:"Email ulash", em_attach_hint:"Ilovaga email bilan kirish uchun", em_verified:"Tasdiqlangan · ilovaga shu email bilan kirasiz",
+  em_why:"Emailingizga 6 xonali kod yuboramiz. Tasdiqlagach, ilovaga Telegram'siz — shu email bilan kira olasiz. Ma'lumotlaringiz o'sha akkauntda qoladi.",
+  em_send:"Kod yuborish", em_sent:"Kod {email} manziliga yuborildi. Xat kelmasa, Spam papkasini ko'ring.",
+  em_confirm:"Tasdiqlash", em_resend:"Kodni qayta yuborish", em_done:"Email ulandi",
+  em_err_bad_email:"Email manzili noto'g'ri.", em_err_taken:"Bu email boshqa akkauntga ulangan.",
+  em_err_unavailable:"Email xizmati hali sozlanmagan.", em_err_send:"Xat yuborilmadi. Birozdan keyin urining.",
+  em_err_too_soon:"Biroz kuting va qayta yuboring.", em_err_code:"Kod noto'g'ri yoki eskirgan.",
   pf_first:"Ism", pf_last:"Familiya", pf_username:"Username", pf_photo_hint:"Rasmni o'zgartirish uchun ustiga bosing",
   pf_username_hint:"5–32 belgi, lotin harfi bilan boshlanadi. Harf, raqam va _ mumkin. Bo'sh qoldirsangiz, username ko'rsatilmaydi.",
   pf_tg_note:"Bu yerda yozganingiz Telegram'dagi ismingiz bilan almashtirilmaydi.",
@@ -2178,6 +2188,11 @@ const DICT = {
   debt_n_loans:"{n} ta qarz", debt_more_lent:"Yana qarz berdim", debt_more_borrowed:"Yana qarz oldim",
   debt_all_returned:"Hammasi qaytdi", debt_history:"Qarzlar", debt_none_open:"Ochiq qarz yo'q.",
   debt_joins:"{name} profiliga qo'shiladi · hozir {n}",
+  tm_join:"Kod bilan qo'shilish", tm_join_hint:"Taklif kodi yoki havolasi bo'lsa", tm_join_go:"Qo'shilish",
+  tm_join_body:"Guruh egasidan taklif havolasini yoki kodini oling va shu yerga joylang.", tm_code_ph:"Kod yoki havola",
+  tm_code_line:"Ilovadan qo'shilish kodi", tm_join_ok:"Guruhga qo'shildingiz", tm_join_already:"Siz allaqachon shu guruhdasiz",
+  tm_join_requested:"So'rov yuborildi — egasi tasdiqlashi kerak", tm_join_full:"Guruh to'lgan",
+  tm_join_expired:"Taklifning muddati o'tgan. Egasidan yangisini so'rang.", tm_join_unknown:"Bunday kod topilmadi",
   tm_members:"{n} a'zo", tm_for_you:"Sizga {n} ta", tm_late:"{n} ta muddati o'tgan",
   tm_list_hint:"Guruhni oching — uning bugungi ishlari, a'zolari va topshiriqlari o'sha yerda.",
   tm_new_hint:"Oila, jamoa yoki do'stlar bilan", tm_new_body:"Nom bering, keyin taklif havolasini a'zolarga yuboring. Har biriga alohida topshiriq ham berish mumkin.",
@@ -2429,6 +2444,9 @@ const DICT = {
   act_project_remove:"loyihani olib tashladi",
   forbidden:"Buni faqat yaratgan kishi, admin yoki jamoa egasi qila oladi",
   read_only:"Bajarganlaringizni belgilash ochiq. Yangi qo'shish va tahrirlash uchun kanalga qo'shiling",
+  su_hello:"Xush kelibsiz!", su_lead:"Uchta savol — va kuningiz tayyor. Keyin hammasini Sozlamalarda o'zgartirish mumkin.",
+  su_name:"Ismingiz", su_name_ph:"Masalan, Ernest", su_track:"Nimalarni kuzatasiz", su_wake:"Odatda soat nechada turasiz",
+  su_start:"Boshlash", su_err_name:"Ismingizni yozing.",
   setup_title:"Sozlash botda yakunlanadi",
   setup_body:"ErnestOS botiga qayting va bir necha savolga javob bering — keyin hammasi shu yerda ochiladi.",
   back_to_bot:"Botga qaytish",
@@ -2698,6 +2716,13 @@ const DICT = {
   notify_morning_short:"Morning", notify_evening_short:"Evening", notify_reminders_on:"reminders on",
   notify_reminders_off:"reminders off", modules_none:"None switched on",
   account_privacy_moved:"Export, privacy and deleting the account are in «Privacy and data».",
+  em_attach:"Add an email", em_attach_hint:"To sign in to the app with it", em_verified:"Verified · you sign in to the app with it",
+  em_why:"We send a 6-digit code to your email. Once confirmed, you can sign in to the app with this email — no Telegram needed. Your data stays in this account.",
+  em_send:"Send code", em_sent:"A code went to {email}. If it is not there, check Spam.",
+  em_confirm:"Confirm", em_resend:"Send the code again", em_done:"Email added",
+  em_err_bad_email:"That email does not look right.", em_err_taken:"This email belongs to another account.",
+  em_err_unavailable:"Email is not set up on the server yet.", em_err_send:"The email was not sent. Try again shortly.",
+  em_err_too_soon:"Wait a moment, then send again.", em_err_code:"The code is wrong or expired.",
   pf_first:"First name", pf_last:"Last name", pf_username:"Username", pf_photo_hint:"Tap the picture to change it",
   pf_username_hint:"5–32 characters, starting with a Latin letter. Letters, digits and _ only. Leave it empty to show no username.",
   pf_tg_note:"What you type here is not replaced by your Telegram name.",
@@ -2739,6 +2764,11 @@ const DICT = {
   debt_n_loans:"{n} loans", debt_more_lent:"Lent more", debt_more_borrowed:"Borrowed more",
   debt_all_returned:"All returned", debt_history:"Loans", debt_none_open:"No open debts.",
   debt_joins:"Goes onto {name}'s card · now {n}",
+  tm_join:"Join with a code", tm_join_hint:"If you have an invite code or link", tm_join_go:"Join",
+  tm_join_body:"Get the invite link or code from the group's owner and paste it here.", tm_code_ph:"Code or link",
+  tm_code_line:"Code to join from the app", tm_join_ok:"You joined the group", tm_join_already:"You are already in this group",
+  tm_join_requested:"Request sent — the owner has to approve it", tm_join_full:"The group is full",
+  tm_join_expired:"The invite has expired. Ask the owner for a new one.", tm_join_unknown:"No group has this code",
   tm_members:"{n} members", tm_for_you:"{n} for you", tm_late:"{n} overdue",
   tm_list_hint:"Open a group — its work for today, its members and their tasks are inside.",
   tm_new_hint:"With family, a team or friends", tm_new_body:"Give it a name, then send the invite link to the members. You can also give each of them their own tasks.",
@@ -2984,6 +3014,9 @@ const DICT = {
   act_project_remove:"removed a project",
   forbidden:"Only its creator, an admin or the team owner can do this",
   read_only:"Ticking off what you did stays open. Join the channel to add or edit",
+  su_hello:"Welcome!", su_lead:"Three questions and your day is ready. You can change all of it later in Settings.",
+  su_name:"Your name", su_name_ph:"e.g. Ernest", su_track:"What you keep track of", su_wake:"When do you usually get up",
+  su_start:"Start", su_err_name:"Type your name.",
   setup_title:"Setup finishes in the bot",
   setup_body:"Go back to the ErnestOS bot and answer a few questions — then everything opens here.",
   back_to_bot:"Back to the bot",
@@ -3253,6 +3286,13 @@ const DICT = {
   notify_morning_short:"Утром", notify_evening_short:"Вечером", notify_reminders_on:"напоминания включены",
   notify_reminders_off:"напоминания выключены", modules_none:"Ничего не включено",
   account_privacy_moved:"Экспорт, приватность и удаление аккаунта — в «Приватность и данные».",
+  em_attach:"Привязать email", em_attach_hint:"Чтобы входить в приложение по email", em_verified:"Подтверждён · вход в приложение по этому email",
+  em_why:"Мы отправим на email код из 6 цифр. После подтверждения можно входить в приложение по этому email — без Telegram. Данные останутся в этом аккаунте.",
+  em_send:"Отправить код", em_sent:"Код отправлен на {email}. Если письма нет, проверьте «Спам».",
+  em_confirm:"Подтвердить", em_resend:"Отправить код ещё раз", em_done:"Email привязан",
+  em_err_bad_email:"Неверный email.", em_err_taken:"Этот email привязан к другому аккаунту.",
+  em_err_unavailable:"Email на сервере ещё не настроен.", em_err_send:"Письмо не отправлено. Попробуйте позже.",
+  em_err_too_soon:"Подождите немного и отправьте снова.", em_err_code:"Код неверный или устарел.",
   pf_first:"Имя", pf_last:"Фамилия", pf_username:"Username", pf_photo_hint:"Нажмите на фото, чтобы сменить его",
   pf_username_hint:"5–32 символа, начинается с латинской буквы. Буквы, цифры и _. Пустое поле — username не показывается.",
   pf_tg_note:"То, что вы ввели здесь, не заменяется именем из Telegram.",
@@ -3294,6 +3334,11 @@ const DICT = {
   debt_n_loans:"долгов {n}", debt_more_lent:"Дал ещё", debt_more_borrowed:"Взял ещё",
   debt_all_returned:"Всё вернули", debt_history:"Долги", debt_none_open:"Открытых долгов нет.",
   debt_joins:"Добавится в карточку {name} · сейчас {n}",
+  tm_join:"Вступить по коду", tm_join_hint:"Если есть код или ссылка-приглашение", tm_join_go:"Вступить",
+  tm_join_body:"Возьмите у владельца группы ссылку-приглашение или код и вставьте сюда.", tm_code_ph:"Код или ссылка",
+  tm_code_line:"Код для входа из приложения", tm_join_ok:"Вы вступили в группу", tm_join_already:"Вы уже в этой группе",
+  tm_join_requested:"Запрос отправлен — владелец должен одобрить", tm_join_full:"Группа заполнена",
+  tm_join_expired:"Срок приглашения истёк. Попросите у владельца новое.", tm_join_unknown:"Группа с таким кодом не найдена",
   tm_members:"{n} участн.", tm_for_you:"{n} для вас", tm_late:"просрочено {n}",
   tm_list_hint:"Откройте группу — внутри её дела на сегодня, участники и их задачи.",
   tm_new_hint:"С семьёй, командой или друзьями", tm_new_body:"Дайте название, потом отправьте участникам ссылку-приглашение. Каждому можно дать и личные задачи.",
@@ -3539,6 +3584,9 @@ const DICT = {
   act_project_remove:"убрал проект",
   forbidden:"Это может только автор, админ или владелец команды",
   read_only:"Отмечать сделанное можно. Чтобы добавлять и редактировать — вступите в канал",
+  su_hello:"Добро пожаловать!", su_lead:"Три вопроса — и ваш день готов. Всё это потом можно поменять в Настройках.",
+  su_name:"Ваше имя", su_name_ph:"Например, Эрнест", su_track:"Что вы отслеживаете", su_wake:"Во сколько вы обычно встаёте",
+  su_start:"Начать", su_err_name:"Введите имя.",
   setup_title:"Настройка завершается в боте",
   setup_body:"Вернитесь в бот ErnestOS и ответьте на несколько вопросов — затем здесь откроется всё.",
   back_to_bot:"Вернуться в бот",
@@ -4973,8 +5021,12 @@ function teamListView(teams){
         <div class="grow"><div class="tm-name">${t("team_new_short")}</div>
           <div class="t3 small">${t("tm_new_hint")}</div></div>
         ${freeOwner ? `<span class="wlock">${icon("shield", 11)} Pro</span>` : icon("chevron", 15)}
-      </div></div>
-    <div class="t3 tiny" style="margin-top:12px;text-align:center">${t("team_join_hint")}</div>`;
+      </div>
+      <div class="tm-card tm-new pressable" data-act="team-join-open" role="button" tabindex="0">
+        <span class="tm-av add">${icon("users", 18)}</span>
+        <div class="grow"><div class="tm-name">${t("tm_join")}</div>
+          <div class="t3 small">${t("tm_join_hint")}</div></div>${icon("chevron", 15)}
+      </div></div>`;
 }
 const initialsOf = name => String(name || "?").trim().split(/\s+/).slice(0, 2)
   .map(w => w[0] || "").join("").toUpperCase() || "?";
@@ -4988,7 +5040,8 @@ SCREENS.team = () => {
       <h3 style="margin:8px 0 6px">${t("team_empty_title")}</h3>
       <p class="muted" style="margin:0 0 16px">${t("team_empty")}</p>
       <button class="btn" data-act="team-new">${t("team_new")}</button>
-      <div class="t3 tiny" style="margin-top:12px">${t("team_join_hint")}</div>
+      <button class="btn secondary" data-act="team-join-open" style="margin-top:8px">${t("tm_join")}</button>
+      <div class="t3 tiny" style="margin-top:12px">${t("tm_join_hint")}</div>
     </div>`;
 
   /* v17: Guruhlar opens on the list of groups; a tap opens that one group,
@@ -9719,6 +9772,14 @@ function accountSheet(){
          autocomplete="username" spellcheck="false" value="${esc(me.username || "")}" /></div>
     <div class="t3 tiny" style="margin-top:4px">${t("pf_username_hint")}</div>
 
+    <label>Email</label>
+    <div class="item pressable" data-act="email-open" role="button" tabindex="0" style="min-height:52px">
+      <span class="itile tone-1">${icon("message", 17)}</span>
+      <div class="grow" style="min-width:0">${me.email
+        ? `<div class="ellipsis"><b>${esc(me.email)}</b></div><div class="t3 tiny">${t("em_verified")}</div>`
+        : `<div><b>${t("em_attach")}</b></div><div class="t3 tiny">${t("em_attach_hint")}</div>`}</div>
+      <span class="t2 small">${me.email ? t("edit") : ""}</span>${icon("chevron", 15)}</div>
+
     <label>${t("gender")}</label>
     <div class="chips">
       <div class="chip ${g === "male" ? "on" : ""}" data-act="pf-gender" data-value="male">${t("male")}</div>
@@ -10543,17 +10604,59 @@ function blockedSheet(){
 
 /* Setup is finished in the chat. A spinner that never ended was the answer
    to a 409 here before. */
+/* Setup in the app: the name, the language, what to track and when the day
+   starts — the bot's questions, answered here. An account made with an email
+   has no bot to go back to; a Telegram one may finish here too. */
+const SETUP_MODS = [["wake", "mod_wake"], ["prayer", "mod_prayer"], ["journal", "mod_journal"]];
+const SETUP_WAKE = ["05:00", "06:00", "07:00", "08:00", "09:00"];
+function setupForm(){
+  const me = state.me || {};
+  return state.setupForm || (state.setupForm = {first_name: me.first_name || "",
+    language: me.language || state.lang || "uz", modules: ["wake", "prayer", "journal"], wake_time: "06:00"});
+}
 function setupScreen(){
-  return `<div style="padding:40px 0 0;text-align:center">
-      <div class="state-ico">${icon("user", 26)}</div>
-      <h1 style="margin-top:12px">${t("setup_title")}</h1>
-      <div class="t2 small" style="margin-top:8px;max-width:340px;margin-left:auto;
-           margin-right:auto">${t("setup_body")}</div>
-      <div style="margin-top:22px;text-align:left">
-        <button class="btn" data-act="back-to-bot">${t("back_to_bot")}</button>
-        <button class="btn secondary" data-act="reload" style="margin-top:8px">
-          ${t("retry")}</button>
-      </div></div>`;
+  const f = setupForm();
+  const on = m => f.modules.includes(m);
+  return `<div class="setup">
+      <img class="setup-mark" src="${BRAND_MARK}" alt="" width="56" height="56" />
+      <h1>${t("su_hello")}</h1>
+      <p class="t2 small">${t("su_lead")}</p>
+      <label for="su-name">${t("su_name")}</label>
+      <input id="su-name" maxlength="60" autocomplete="given-name" value="${esc(f.first_name)}"
+             placeholder="${t("su_name_ph")}" />
+      <label>${t("language")}</label>
+      <div class="chips">${[["uz", "🇺🇿 O'zbekcha"], ["en", "🇬🇧 English"], ["ru", "🇷🇺 Русский"]].map(([c, l]) =>
+        `<div class="chip ${f.language === c ? "on" : ""}" data-act="su-lang" data-value="${c}">${l}</div>`).join("")}</div>
+      <label>${t("su_track")}</label>
+      <div class="card tight">${SETUP_MODS.map(([m, key]) => `<div class="setrow">
+        <div class="grow lbl">${t(key)}</div>
+        <div class="sw ${on(m) ? "on" : ""}" data-act="su-mod" data-value="${m}" role="switch" tabindex="0"
+             aria-checked="${on(m)}"></div></div>`).join("")}</div>
+      ${on("wake") ? `<label>${t("su_wake")}</label>
+        <div class="chips">${SETUP_WAKE.map(v => `<div class="chip ${f.wake_time === v ? "on" : ""}"
+          data-act="su-wake" data-value="${v}">${v}</div>`).join("")}</div>` : ""}
+      <button class="btn" data-act="su-finish" style="margin-top:20px">${t("su_start")}</button>
+      ${!IS_APP && tg?.initData ? `<button class="btn text" data-act="back-to-bot" style="margin-top:6px">${t("back_to_bot")}</button>` : ""}
+    </div>`;
+}
+
+/* Email in Settings: attach one (or change it). A code to the address proves
+   it; from then on the phone app signs in with it to this same account. */
+function emailSheet(){
+  const f = state.emailForm || (state.emailForm = {stage:"email", email:"", wait:0});
+  if(f.stage === "code") return `${sheetHead(`${icon("message", 18)} Email`)}
+    <p class="small t2">${t("em_sent", {email: esc(f.email)})}</p>
+    <input id="em-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="••••••"
+           style="letter-spacing:.4em;text-align:center;font-size:22px" />
+    <button class="btn" data-act="email-verify" style="margin-top:12px">${t("em_confirm")}</button>
+    <button class="btn text" data-act="email-send" style="margin-top:4px">${t("em_resend")}</button>
+    <button class="btn secondary" data-act="set-account" style="margin-top:8px">${t("back")}</button>`;
+  return `${sheetHead(`${icon("message", 18)} Email`)}
+    <p class="small t2">${t("em_why")}</p>
+    <input id="em-email" type="email" inputmode="email" autocomplete="email" autocapitalize="off"
+           maxlength="254" placeholder="you@example.com" value="${esc(f.email || state.me?.email || "")}" />
+    <button class="btn" data-act="email-send" style="margin-top:12px">${t("em_send")}</button>
+    <button class="btn secondary" data-act="set-account" style="margin-top:8px">${t("back")}</button>`;
 }
 
 function readOnlyBanner(){
@@ -11257,6 +11360,39 @@ const A = {
       reopenSettings(); render();
     }
   },
+  "email-open": () => { haptic(); state.emailForm = {stage:"email", email: state.me?.email || ""}; openSheet(emailSheet()); },
+  "email-send": async () => {
+    const f = state.emailForm || (state.emailForm = {stage:"email"});
+    const email = (document.getElementById("em-email")?.value ?? f.email ?? "").trim();
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email)) return toast(t("em_err_bad_email"));
+    try{
+      await api("/api/account/email/start", {method:"POST", body:{email}});
+      f.email = email.toLowerCase(); f.stage = "code";
+      openSheet(emailSheet());
+      setTimeout(() => document.getElementById("em-code")?.focus(), 60);
+    }catch(e){
+      const known = {email_taken:"em_err_taken", bad_email:"em_err_bad_email", email_unavailable:"em_err_unavailable",
+                     email_send_failed:"em_err_send", email_too_soon:"em_err_too_soon"};
+      if(known[e?.detail]) return toast(t(known[e.detail]));
+      handleError(e);
+    }
+  },
+  "email-verify": async () => {
+    const f = state.emailForm || {};
+    const code = (document.getElementById("em-code")?.value || "").replace(/\D/g, "");
+    if(code.length !== 6) return toast(t("em_err_code"));
+    try{
+      const r = await api("/api/account/email/verify", {method:"POST", body:{email: f.email, code}});
+      state.me = {...state.me, email: r.email};
+      notify("success"); toast(t("em_done"));
+      state.emailForm = null;
+      openSettings("account");
+    }catch(e){
+      if(e?.status === 401) return toast(t("em_err_code"));
+      if(e?.detail === "email_taken") return toast(t("em_err_taken"));
+      handleError(e);
+    }
+  },
   "pf-gender": el => {
     haptic();
     state.me = {...state.me, gender: el.dataset.value};
@@ -11679,6 +11815,34 @@ const A = {
   },
 
   "team-pick": el => setState({teamId: Number(el.dataset.id), teamView: "group"}),
+  /* Joining from the app, without Telegram: the code from the invite (or
+     the whole link) typed or pasted here. */
+  "team-join-open": () => {
+    haptic();
+    openSheet(`${sheetHead(`${icon("users", 18)} ${t("tm_join")}`)}
+      <p class="small t2">${t("tm_join_body")}</p>
+      <input id="tm-code" autocapitalize="off" spellcheck="false" maxlength="200" placeholder="${t("tm_code_ph")}" />
+      <button class="btn" data-act="team-join" style="margin-top:12px">${t("tm_join_go")}</button>
+      <button class="btn secondary" data-act="close" style="margin-top:8px">${t("cancel")}</button>`);
+    setTimeout(() => document.getElementById("tm-code")?.focus(), 60);
+  },
+  "team-join": async () => {
+    const raw = val("tm-code").trim();
+    const code = (raw.includes("team_") ? raw.split("team_").pop() : raw).replace(/[^A-Za-z0-9_-]/g, "");
+    if(!code) return toast(t("tm_code_ph"));
+    try{
+      const r = await api("/api/teams/join", {method:"POST", body:{code}});
+      const key = {joined:"tm_join_ok", already:"tm_join_already", requested:"tm_join_requested",
+                   full:"tm_join_full", expired:"tm_join_expired"}[r.outcome] || "tm_join_unknown";
+      toast(t(key));
+      if(r.outcome === "joined" || r.outcome === "already"){
+        closeSheet();
+        state.team = await api("/api/teams");
+        setState({teamId: r.team_id, teamView: "group", teamTab: "today"});
+        if(state.screen !== "team") goto("team", {teamId: r.team_id, teamView: "group"});
+      }
+    }catch(e){ handleError(e); }
+  },
   "team-enter": el => { haptic(); setState({teamId: Number(el.dataset.id), teamView: "group", teamTab: "today", teamFilter: "all"}); },
   "team-list": () => { haptic(); setState({teamView: "list"}); },
   "team-filter": el => { haptic(); setState({teamFilter: el.dataset.value}); },
@@ -12004,6 +12168,35 @@ const A = {
     if(/^https:\/\/t\.me\//.test(url) && tg?.openTelegramLink) return tg.openTelegramLink(url);
     if(tg?.openLink) return tg.openLink(url);
     window.open(url, "_blank", "noopener");
+  },
+  "su-lang": el => {
+    haptic();
+    const f = setupForm();
+    f.first_name = val("su-name");
+    f.language = el.dataset.value; state.lang = f.language;
+    render();
+  },
+  "su-mod": el => {
+    haptic();
+    const f = setupForm();
+    f.first_name = val("su-name");
+    const m = el.dataset.value;
+    f.modules = f.modules.includes(m) ? f.modules.filter(x => x !== m) : [...f.modules, m];
+    render();
+  },
+  "su-wake": el => { haptic(); const f = setupForm(); f.first_name = val("su-name"); f.wake_time = el.dataset.value; render(); },
+  "su-finish": async () => {
+    const f = setupForm();
+    f.first_name = val("su-name").trim();
+    if(!f.first_name){ toast(t("su_err_name")); document.getElementById("su-name")?.focus(); return; }
+    try{
+      await api("/api/onboarding", {method:"POST", body:{first_name: f.first_name, language: f.language,
+        modules: f.modules, wake_time: f.modules.includes("wake") ? f.wake_time : null}});
+      notify("success");
+      state.setupForm = null;
+      setState({needsSetup:false, loading:true});
+      boot();
+    }catch(e){ handleError(e); }
   },
   "debt-person-open": el => { haptic(); state.debtPerson = el.dataset.key; openSheet(debtPersonSheet(el.dataset.key)); },
   "debt-more": el => {
@@ -13595,6 +13788,8 @@ function teamMenuSheet(team){
     h += `<label>${t("team_invite")}</label>
       ${team.invite_link && !inv.expired ? `
         <input id="team-link" readonly value="${esc(team.invite_link)}">
+        <div class="t2 small" style="margin:6px 0">${t("tm_code_line")} <b class="num" style="letter-spacing:.06em">${
+          esc(team.invite_link.split("team_")[1] || "")}</b></div>
         <div class="btns">
           <button class="btn" data-act="team-copy">${t("team_copy")}</button>
           <button class="btn secondary" data-act="team-share">${t("share")}</button>

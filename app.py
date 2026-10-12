@@ -44,6 +44,8 @@ from telegram.ext import (
 
 import accounts
 import app_auth
+import email_auth
+import mailer
 import app_push
 import coins
 import promo
@@ -460,7 +462,7 @@ async def notify_level_up(bot, telegram_id: int, level: dict, lang: str) -> None
     the transaction that awarded the level in the first place.
     """
     try:
-        await bot.send_message(
+        await AccountFanOut(bot, "progress").send_message(
             telegram_id,
             t(lang, "level_up", numeral=level["numeral"],
               name=t(lang, f"plevel_{level['key']}"),
@@ -5907,6 +5909,15 @@ class AccountFanOut:
     async def send_message(self, *args, **kwargs):
         chat_id = kwargs.get("chat_id", args[0] if args else None)
         try:
+            no_telegram = email_auth.is_email_account(int(chat_id))
+        except (TypeError, ValueError):
+            no_telegram = False
+        if no_telegram:
+            # An account made with an email has no Telegram chat: the app's
+            # inbox and the phone's push are where its messages go.
+            await self._to_app(chat_id, args, kwargs)
+            return None
+        try:
             result = await self._bot.send_message(*args, **kwargs)
         except TelegramError:
             # The phone app is a channel of its own: when the message reached
@@ -7134,6 +7145,9 @@ async def lifespan(_: FastAPI):
     global telegram_app, scheduler, BOT_USERNAME
 
     db.init_db()
+    # Data migrations that are safe on every start run themselves, once.
+    import migrations
+    migrations.auto_apply()
     log.info("database ready: %s", db.engine.url.render_as_string(hide_password=True))
 
     # Advisory locks are held by a *connection*, and a process that is killed
@@ -7286,7 +7300,8 @@ def _rate_class(request: Request) -> str:
     # "heavy" class) the second screen already got a 429 and an empty circle,
     # and the upload after it failed the same way. It is an ordinary read, and
     # setting or removing it an ordinary write.
-    if path in ("/api/app/login", "/api/promocode/redeem"):
+    if path in ("/api/app/login", "/api/promocode/redeem") or path.startswith(
+            ("/api/auth/email/", "/api/account/email/")):
         return "auth"
     return "read" if request.method == "GET" else "write"
 
@@ -7866,6 +7881,9 @@ def api_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
             "version": version.VERSION, "build": version.BUILD,
             "first_name": user.first_name, "last_name": user.last_name,
             "username": user.username,
+            "email": _email_of(user.telegram_id),
+            #: An account made with an email in the app has no Telegram.
+            "has_telegram": not email_auth.is_email_account(user.telegram_id),
             "language": user.language, "gender": user.gender,
             "theme": theme_of(user.theme), "quote": user.quote,
             "has_photo": has_photo,
@@ -7915,6 +7933,11 @@ def _team_names_of(uid: int) -> list[dict]:
     with SessionLocal() as s:
         return [{"id": team.id, "name": team.name}
                 for team in svc.teams_for(s, uid)]
+
+
+def _email_of(uid: int) -> str | None:
+    with SessionLocal() as s:
+        return email_auth.email_of(s, uid)
 
 
 def _login_of(uid: int) -> str | None:
@@ -8266,7 +8289,7 @@ async def api_team_join(body: JoinIn,
     if telegram_app is not None:
         for member_id, member_lang in recipients:
             try:
-                await telegram_app.bot.send_message(
+                await AccountFanOut(telegram_app.bot, "team").send_message(
                     member_id, t(member_lang, "team_member_joined", who=joiner,
                                  name=esc(name)), parse_mode=ParseMode.HTML)
             except TelegramError as e:
@@ -8323,7 +8346,7 @@ async def api_team_transfer(team_id: int, body: TransferIn,
         name = team.name
     if telegram_app is not None:
         try:
-            await telegram_app.bot.send_message(
+            await AccountFanOut(telegram_app.bot, "team").send_message(
                 body.user_id, t(target_lang, "team_owner_offer", name=esc(name)),
                 parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup([[
@@ -8401,7 +8424,7 @@ async def api_team_request_answer(request_id: int, body: AnswerIn,
         key = {"approved": "team_joined", "declined": "team_request_declined",
                "full": "team_full"}.get(outcome, "team_already")
         try:
-            await telegram_app.bot.send_message(
+            await AccountFanOut(telegram_app.bot, "team").send_message(
                 joiner_id, t(joiner_lang, key, name=esc(name)), parse_mode=ParseMode.HTML)
         except TelegramError as e:
             log.info("could not answer join request %s: %s", request_id, e)
@@ -11185,7 +11208,8 @@ class AppLoginIn(BaseModel):
 @app.get("/api/app/config")
 def api_app_config():
     """What the phone app needs before anybody is signed in. Public."""
-    return {"bot_username": BOT_USERNAME, "version": version.VERSION}
+    return {"bot_username": BOT_USERNAME, "version": version.VERSION,
+            "email": mailer.configured()}
 
 
 @app.post("/api/app/login")
@@ -11198,6 +11222,156 @@ def api_app_login(body: AppLoginIn):
     if token is None:
         raise HTTPException(status_code=401, detail="bad_code")
     return {"token": app_auth.TOKEN_PREFIX + token}
+
+
+# --- Email: sign up and sign in without Telegram -----------------------------
+
+class EmailStartIn(BaseModel):
+    email: str = Field(max_length=254)
+    language: str = Field(default="uz", max_length=2)
+
+
+class EmailVerifyIn(BaseModel):
+    email: str = Field(max_length=254)
+    code: str = Field(max_length=12)
+    device: str = Field(default="", max_length=80)
+    language: str = Field(default="uz", max_length=2)
+
+
+async def _mail_code(email: str, purpose: str, language: str,
+                     account_id: int | None = None) -> dict:
+    """Issue a code and mail it. Says plainly when mail is not set up or a
+    code was asked for too soon; a code whose mail failed never works."""
+    if not mailer.configured():
+        raise HTTPException(status_code=503, detail="email_unavailable")
+    with SessionLocal() as s:
+        try:
+            code = email_auth.issue_code(s, email, purpose, account_id)
+        except email_auth.TooSoon as e:
+            raise HTTPException(status_code=429, detail="email_too_soon",
+                                headers={"Retry-After": str(e.seconds)})
+    subject, text, html = mailer.code_message(language, code)
+    try:
+        await mailer.send(email, subject, text, html)
+    except mailer.MailError:
+        with SessionLocal() as s:
+            email_auth.burn_codes(s, email)
+        raise HTTPException(status_code=502, detail="email_send_failed")
+    return {"ok": True, "resend_in": int(email_auth.RESEND_AFTER.total_seconds()),
+            "ttl": int(email_auth.CODE_TTL.total_seconds())}
+
+
+@app.post("/api/auth/email/start")
+async def api_email_start(body: EmailStartIn):
+    """Send a sign-in code. The same answer whether or not the address has
+    an account — the next step creates one if it has not."""
+    try:
+        email = email_auth.normalize_email(body.email)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="bad_email")
+    return await _mail_code(email, "signin", body.language)
+
+
+@app.post("/api/auth/email/verify")
+def api_email_verify(body: EmailVerifyIn):
+    """Trade the mailed code for a phone session: the address's account, or
+    a new one (`new: true`, setup then runs in the app)."""
+    try:
+        email = email_auth.normalize_email(body.email)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="bad_email")
+    with SessionLocal() as s:
+        if not email_auth.check_code(s, email, body.code, "signin"):
+            raise HTTPException(status_code=401, detail="bad_code")
+        account = email_auth.account_for(s, email)
+        new = account is None
+        if new:
+            account = email_auth.create_account(s, email, language=body.language)
+        token = app_auth.issue_session(s, account, body.device)
+    return {"token": app_auth.TOKEN_PREFIX + token, "new": new}
+
+
+class EmailAttachIn(BaseModel):
+    email: str = Field(max_length=254)
+
+
+class EmailAttachVerifyIn(BaseModel):
+    email: str = Field(max_length=254)
+    code: str = Field(max_length=12)
+
+
+@app.post("/api/account/email/start")
+async def api_account_email_start(body: EmailAttachIn,
+                                  init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Attach an email to this account (or change it): a code to the new
+    address proves it is theirs."""
+    user, _ = auth(init, require_onboarded=False)
+    try:
+        email = email_auth.normalize_email(body.email)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="bad_email")
+    with SessionLocal() as s:
+        owner = email_auth.account_for(s, email)
+    if owner is not None and owner != user.telegram_id:
+        raise HTTPException(status_code=409, detail="email_taken")
+    return await _mail_code(email, "attach", user.language or "uz", user.telegram_id)
+
+
+@app.post("/api/account/email/verify")
+def api_account_email_verify(body: EmailAttachVerifyIn,
+                             init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init, require_onboarded=False)
+    try:
+        email = email_auth.normalize_email(body.email)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="bad_email")
+    with SessionLocal() as s:
+        if not email_auth.check_code(s, email, body.code, "attach", user.telegram_id):
+            raise HTTPException(status_code=401, detail="bad_code")
+        try:
+            email_auth.attach(s, user.telegram_id, email)
+        except ValueError:
+            raise HTTPException(status_code=409, detail="email_taken")
+    return {"ok": True, "email": email}
+
+
+# --- Setup in the app, for accounts that never saw the bot ------------------
+
+class OnboardingIn(BaseModel):
+    first_name: str = Field(min_length=1, max_length=60)
+    language: str = Field(default="uz", max_length=2)
+    modules: list[str] = Field(default_factory=list, max_length=4)
+    wake_time: str | None = Field(default=None, max_length=5)
+
+
+@app.post("/api/onboarding")
+def api_onboarding(body: OnboardingIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Name, language, what to track and when the day starts — the bot's
+    setup questions, answered in the app. Finishes the account."""
+    user, ws = auth(init, require_onboarded=False)
+    name = " ".join(body.first_name.split())[:60]
+    if not name:
+        raise HTTPException(status_code=422, detail="empty_name")
+    wake = _time(body.wake_time) if body.wake_time else None
+    with SessionLocal() as s:
+        row = s.get(User, user.telegram_id)
+        row.first_name = name
+        if body.language in ("uz", "en", "ru"):
+            row.language = body.language
+            svc.localize_system_habits(s, ws, body.language)
+        chosen = {m for m in body.modules if m in ("wake", "prayer", "journal")}
+        svc.set_modules(s, ws, chosen, user=row)
+        if wake is not None:
+            row.morning_time = wake
+            s.commit()
+            if svc.wake_habit(s, ws) is not None:
+                svc.set_wake_time(s, ws, wake)
+        row = s.get(User, user.telegram_id)
+        row.onboarding_step = "done"
+        row.onboarded = True
+        s.commit()
+        svc.maybe_qualify_referral(s, user.telegram_id)
+    return {"ok": True}
 
 
 class PushTokenIn(BaseModel):

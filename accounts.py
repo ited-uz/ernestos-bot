@@ -293,8 +293,10 @@ def forget_account(s: Session, account_id: int) -> None:
     # Phones signed in through this account's Telegrams stop working too.
     import app_auth
     import plans
+    import email_auth
     app_auth.forget(s, [account_id, *linked_ids(s, account_id)])
     plans.forget(s, [account_id])
+    email_auth.forget(s, [account_id])
     s.execute(sql_delete(LinkedTelegram).where(
         (LinkedTelegram.account_id == account_id)
         | (LinkedTelegram.telegram_id == account_id)))
