@@ -1,6 +1,6 @@
 # ErnestOS — ishga tushirish yo'riqnomasi (server, email, APK)
 
-Ilova to'liq ishlashi uchun uchta narsa kerak:
+Ilova to'liq ishlashi uchun uchta narsa kerak (Google/Apple bilan kirish va doimiy imzo kaliti — 3 va 4-bo'limlar):
 
 1. **Server** — Railway'dagi bot va API, shu branchdagi yangi kodda.
 2. **Email xizmati** — ro'yxatdan o'tish kodlarini yuboradi (Resend yoki Brevo).
@@ -66,7 +66,86 @@ Railway'ning ba'zi tariflarida chiquvchi SMTP portlari yopiq bo'lishi mumkin. Sh
 
 Deploy'dan keyin brauzerda `https://<server>/api/app/config` ni oching. Javobda `"email": true` bo'lishi kerak.
 
-## 3. Railway → Variables (to'liq ro'yxat)
+## 3. Google va Apple bilan kirish (ixtiyoriy)
+
+Kirish sahifasida, email ostida, «Google orqali kirish» va «Apple orqali kirish» tugmalari bor. Ular serverda sozlangandagina ko'rinadi. Sozlanmagan bo'lsa yashirin turadi — email bilan kirish baribir ishlaydi.
+
+### Google (bepul, ~15 daqiqa)
+
+Avval **4-bo'limdagi imzo kalitini** yarating — Android uchun uning SHA-1 kerak.
+
+1. https://console.cloud.google.com → yangi loyiha (masalan «ErnestOS»).
+2. **APIs & Services → OAuth consent screen**:
+   - User type: **External**;
+   - ilova nomi, email;
+   - **Publish app** (aks holda faqat test foydalanuvchilar kira oladi).
+3. **Credentials → Create credentials → OAuth client ID → Web application**:
+   - Authorized redirect URI: `https://<server>/api/auth/oauth/google/callback`;
+   - **Client ID** va **Client secret** ni nusxalang.
+4. Yana **Create credentials → OAuth client ID → Android**:
+   - Package name: `uz.ernestos.app`;
+   - SHA-1: imzo kalitingiznikini yozing (`make_android_key.py` chiqargan yoki GitHub Actions → android → Summary'dagi).
+   - Bu clientning ID'si hech qayerga yozilmaydi. Google telefondagi ilovani shu orqali taniydi.
+5. Railway → Variables:
+   - `GOOGLE_CLIENT_ID` = Web client ID (`…apps.googleusercontent.com`)
+   - `GOOGLE_CLIENT_SECRET` = Web client secret
+   - `PUBLIC_URL` = `https://<server>` (oxirida `/` yo'q)
+
+Natija:
+- **Telefonda** «Google orqali kirish» bosilganda Android'ning o'z oynasi chiqadi, telefondagi Google akkauntlar ro'yxati bilan. Bitta bosish — kirdingiz.
+- Agar bu oyna ishlamasa (SHA-1 noto'g'ri yoki eski Play xizmatlari), ilova Google sahifasini brauzerda ochadi. Kirgach, o'zi ilovaga qaytadi.
+
+### Apple (Apple Developer akkaunti kerak — yiliga $99)
+
+Android'da Apple bilan kirish faqat brauzer orqali bo'ladi (Apple Android uchun boshqa yo'l bermaydi).
+
+1. https://developer.apple.com/account → **Certificates, Identifiers & Profiles**.
+2. **Identifiers → App ID** yarating va unda **Sign in with Apple** ni yoqing.
+3. **Identifiers → Services ID** yarating (masalan `uz.ernestos.signin`) → **Sign in with Apple → Configure**:
+   - Domain: serveringiz domeni (`ernestos-bot-production.up.railway.app`);
+   - Return URL: `https://<server>/api/auth/oauth/apple/callback`.
+4. Railway → Variables:
+   - `APPLE_CLIENT_ID` = Services ID (`uz.ernestos.signin`)
+   - `PUBLIC_URL` = `https://<server>`
+
+Apple kaliti (.p8) kerak emas: server Apple qaytargan `id_token` imzosini Apple'ning ochiq kalitlari bilan tekshiradi.
+
+### Bir odam — bitta akkaunt
+
+- Google yoki Apple bergan email allaqachon ErnestOS akkauntiga ulangan bo'lsa (email kodi orqali), o'sha akkauntga kirasiz. Yangi akkaunt ochilmaydi.
+- Apple «emailni yashirish»ni tanlasangiz, `…@privaterelay.appleid.com` manzil keladi. Bu alohida akkaunt bo'ladi.
+
+### Tekshirish
+
+`https://<server>/api/app/config` javobida `"google": {"client_id": …, "browser": true}` va `"apple": {"browser": true}` chiqishi kerak.
+
+## 4. APK imzo kaliti (bir marta, shart)
+
+Hozircha har bir APK tasodifiy kalit bilan imzolanadi. Buning ikki zarari bor:
+- yangi versiya eskisining ustiga o'rnatilmaydi — avval eskisini o'chirish kerak (ma'lumotlar serverda, ular yo'qolmaydi);
+- Google telefondagi ilovani taniy olmaydi.
+
+Bir marta doimiy kalit yarating:
+
+1. O'z kompyuteringizda (yoki Railway → servis → **Shell**):
+   ```
+   python scripts/make_android_key.py
+   ```
+2. U uchta narsa chiqaradi:
+   - `ANDROID_KEYSTORE_B64` — uzun qator;
+   - `ANDROID_KEYSTORE_PASSWORD`;
+   - `SHA-1`.
+3. GitHub → repo → **Settings → Secrets and variables → Actions → New repository secret**:
+   - `ANDROID_KEYSTORE_B64` = uzun qator;
+   - `ANDROID_KEYSTORE_PASSWORD` = parol.
+4. SHA-1 ni Google Cloud'dagi Android client'ga yozing (3-bo'lim).
+5. Terminalni yoping. Kalitni hech qayerga (chat, skrinshot, repo) qo'ymang.
+
+Shundan keyingi har bir APK shu kalit bilan imzolanadi. Actions → android → run sahifasidagi **Summary**'da SHA-1 ko'rinadi.
+
+**Bir marta:** kalit almashgani uchun telefondagi eski ErnestOS'ni o'chirib, yangisini o'rnating. Keyingi yangilanishlar ustiga o'rnatiladi.
+
+## 5. Railway → Variables (to'liq ro'yxat)
 
 | O'zgaruvchi | Shartmi | Nima uchun |
 |---|---|---|
@@ -78,11 +157,14 @@ Deploy'dan keyin brauzerda `https://<server>/api/app/config` ni oching. Javobda 
 | `BOT_USERNAME` | Tavsiya | Taklif havolalari uchun |
 | `ADMIN_IDS` | Promokod uchun | Telegram ID'ingiz — `/promo_new` faqat shu ID'larga ishlaydi |
 | `AGENT_ENABLED=true` va `GROQ_API_KEY` (yoki `GEMINI_API_KEY`) | AI uchun | AI «Hozir», AI suhbat, ovozli buyruq, AI kun xulosasi |
+| `PUBLIC_URL` | Google/Apple uchun | Serverning tashqi manzili, `https://…` (callback manzillari shundan yasaladi) |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google bilan kirish uchun | 3-bo'lim |
+| `APPLE_CLIENT_ID` | Apple bilan kirish uchun | 3-bo'lim (Services ID) |
 | `ELEVENLABS_API_KEY` | Ixtiyoriy | O'zbekcha ovozni yaxshiroq taniydi |
 | `FCM_SERVICE_ACCOUNT` | Push uchun | Telefonga bildirishnoma (Firebase xizmat hisobi JSON) |
 | `PLANS_ENABLED` | Ixtiyoriy | Standart holatda yoqilgan (Free/Pro/Max). `0` — hamma narsa ochiq |
 
-## 4. APK'ni olish
+## 6. APK'ni olish
 
 1. GitHub → repo → **Actions** → **android** → eng oxirgi yashil (✓) ishga tushirish.
 2. Sahifa pastidagi **Artifacts**'dan `ErnestOS-android-NN` ni yuklab oling (zip).
@@ -92,7 +174,7 @@ APK `https://ernestos-bot-production.up.railway.app` ga ulanadi. Manzil boshqa b
 
 Push uchun GitHub → Settings → Secrets'ga `GOOGLE_SERVICES_JSON` qo'shib, APK'ni qayta yig'ing. Usiz ham eslatmalar ilova ichidagi «Xabarlar»ga va telefonning o'z eslatmalariga keladi.
 
-## 5. Telefonga o'rnatish va kirish
+## 7. Telefonga o'rnatish va kirish
 
 1. APK'ni oching. «Noma'lum manbadan o'rnatish»ga ruxsat bering.
 2. Ilovani oching va tilni tanlang.
@@ -104,9 +186,11 @@ Push uchun GitHub → Settings → Secrets'ga `GOOGLE_SERVICES_JSON` qo'shib, AP
    - **Profil → ⚙️ → Profilni tahrirlash → Email → Email ulash**;
    - shundan keyin shu email bilan kirasiz va o'sha akkauntga tushasiz.
 
-Ilova «debug» imzoli — shaxsiy foydalanish va sinov uchun yetarli. Play Market uchun release imzo kaliti kerak bo'ladi.
+5. **Google yoki Apple bilan** (3-bo'lim sozlangan bo'lsa): email ostidagi tugmani bosing.
 
-## 6. Birinchi kun tekshiruvi (10 daqiqa)
+Ilova «debug» turida yig'iladi, lekin 4-bo'limdagi doimiy kalit bilan imzolanadi. Shaxsiy foydalanish va sinov uchun bu yetarli. Play Market uchun `assembleRelease` va AAB kerak bo'ladi — bu alohida qadam.
+
+## 8. Birinchi kun tekshiruvi (10 daqiqa)
 
 - [ ] **Ro'yxatdan o'tish:** yangi email bilan kiring, kod keladi, 3 savoldan keyin «Bugun» ochiladi.
 - [ ] **Email ulash:** Telegram akkauntingizga email ulang, chiqib, email bilan qayta kiring — ma'lumotlar o'sha.
@@ -115,10 +199,13 @@ Ilova «debug» imzoli — shaxsiy foydalanish va sinov uchun yetarli. Play Mark
 - [ ] **Reja → Guruhlar:** ro'yxat → guruh. `+` → «Aniq odamga». Telegram'siz a'zo «Kod bilan qo'shilish» orqali kiradi (kod «⋯» ichida).
 - [ ] **Moliya → Qarzlar:** bir odamga ikkinchi qarz — bitta kartaga qo'shiladi.
 - [ ] **Profil → Yaqinlarim** (Pro/Max): odam, ritm, «Bog'landim».
+- [ ] **Google bilan kirish:** chiqib, «Google orqali kirish» → telefondagi akkauntni tanlang → «Bugun» ochiladi.
+- [ ] **Ovozli buyruq:** «Bugun»dagi `+` ustidagi 🎤 → «Ertaga soat 10 da Aziz bilan uchrashuv» → kartada «Tasdiqlash» → vazifa paydo bo'ladi.
+- [ ] **AI yordamchida ovoz:** 🔔 → AI yordamchi → 🎤 → savol yoki buyruq ayting.
 - [ ] **AI «Hozir»** (Pro/Max, AI kaliti bilan): kartada «AI» belgisi va sabab.
 - [ ] **Promokod:** botda `/promo_new SINOV max 30` → ilovada Sozlamalar → Promokod.
 
-## 7. Muammo bo'lsa
+## 9. Muammo bo'lsa
 
 | Belgi | Sabab | Yechim |
 |---|---|---|
@@ -128,4 +215,10 @@ Ilova «debug» imzoli — shaxsiy foydalanish va sinov uchun yetarli. Play Mark
 | «Sessiya tugadi» | Hisobdan chiqilgan yoki 90 kun ishlatilmagan | Qayta email bilan kiring |
 | Ilova serverga ulanmaydi | APK boshqa manzilga yig'ilgan yoki server o'chiq | Railway'da servis ishlayaptimi, APK `api_url` to'g'rimi |
 | AI qatori yo'q | AI kaliti yo'q yoki tarif Free | `AGENT_ENABLED`, `GROQ_API_KEY`; Pro/Max |
+| Google/Apple tugmasi yo'q | Serverda `GOOGLE_CLIENT_ID` / `APPLE_CLIENT_ID` yo'q | 3-bo'lim |
+| Google oynasi chiqmay, brauzer ochiladi | Android client SHA-1 noto'g'ri yoki kalit hali sozlanmagan | 4-bo'lim; SHA-1 ni Summary'dagisi bilan solishtiring |
+| «Kirib bo'lmadi» (brauzerda) | Redirect URI / Return URL mos emas yoki `PUBLIC_URL` yo'q | Google/Apple panelida manzil `PUBLIC_URL` bilan bir xil bo'lsin |
+| APK o'rnatilmaydi («ilova o'rnatilmadi») | Eski versiya boshqa kalit bilan | Eskisini o'chirib o'rnating (bir marta, 4-bo'lim) |
+| 🎤 bosilsa «Hozir yoqilmagan» | AI kaliti yo'q | `AGENT_ENABLED=true` va `GROQ_API_KEY` |
+| 🎤 ruxsat so'ramaydi / «mikrofonga ruxsat yo'q» | Telefonda ruxsat o'chirilgan | Sozlamalar → Ilovalar → ErnestOS → Ruxsatlar → Mikrofon |
 | Push kelmaydi | Firebase sozlanmagan | `GOOGLE_SERVICES_JSON` (APK) va `FCM_SERVICE_ACCOUNT` (server) |

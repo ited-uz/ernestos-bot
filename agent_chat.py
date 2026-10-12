@@ -116,6 +116,44 @@ def history(ws) -> list[dict]:
         return [_message(r, drafts) for r in rows]
 
 
+def answered(ws, key) -> bool:
+    """A turn with this request key is already stored (a resend)."""
+    with db.SessionLocal() as s:
+        return bool(s.scalar(select(db.AgentChatMessage.id).where(
+            db.AgentChatMessage.workspace_id == ws, db.AgentChatMessage.request_key == key)))
+
+
+async def ask_by_voice(uid, ws, key, audio, mime) -> dict:
+    """The same turn as `ask`, spoken: the words are written out first. The
+    budget is checked (not spent) before the audio goes to the provider, so
+    a used-up plan costs no transcription; `ask` spends it as for text."""
+    import agent_provider
+    if not KEY.fullmatch(key or ""):
+        raise AgentError("invalid_request_key", 422)
+    if answered(ws, key):
+        return {"messages": history(ws), "draft": None, "repeat": True}
+    with db.SessionLocal() as s:
+        actor(s, uid, ws)
+        core._budget(s, uid, ws)
+        s.rollback()
+        hints = core.catalog(s, uid, ws)
+    try:
+        async with asyncio.timeout(120):
+            words = await agent_provider.transcribe(audio, mime, hints)
+    except AgentError:
+        raise
+    except (TimeoutError, asyncio.CancelledError):
+        raise AgentError("processing_interrupted", 503) from None
+    except Exception as e:
+        log.warning("agent chat voice failed: %s", type(e).__name__)
+        raise AgentError("provider_unavailable", 503) from None
+    words = (words or "").strip()
+    if not words:
+        raise AgentError("empty_audio", 422)
+    result = await ask(uid, ws, key, words[:MAX_TEXT])
+    return {**result, "transcript": words[:MAX_TEXT]}
+
+
 def clear(ws) -> None:
     with db.SessionLocal() as s:
         s.execute(delete(db.AgentChatMessage).where(db.AgentChatMessage.workspace_id == ws))

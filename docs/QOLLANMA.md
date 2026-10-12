@@ -13,6 +13,10 @@ Ilovada pastda 4 ta bo'lim bor: **Bugun · Reja · Moliya · Profil**. Har bir e
     - nimalarni kuzatasiz: erta turish, namoz, kun xulosasi — va soat nechada turasiz.
   - Kod 10 daqiqa amal qiladi. Bitta manzilga daqiqada bitta, soatiga 5 tagacha kod yuboriladi. Noto'g'ri kod 5 marta kiritilsa, o'sha kod bekor bo'ladi.
 - **Telegram orqali:** pastdagi «Telegram orqali kirish» → botdagi `/app` kodi. Telegram'dagi akkauntingizga **Profil → ⚙️ → Profilni tahrirlash → Email** orqali email ulasangiz, keyin shu email bilan aynan o'sha akkauntga kirasiz.
+- **Google yoki Apple bilan** (email ostida, server sozlangan bo'lsa):
+  - **Google** — telefondagi Google akkauntlaringiz ro'yxati chiqadi, bittasini bosasiz, kirdingiz;
+  - **Apple** — Apple sahifasi brauzerda ochiladi, kirgach ilova o'zi davom etadi;
+  - shu email bilan akkaunt bo'lsa, o'sha akkauntga kirasiz; bo'lmasa yangisi ochiladi.
 - Sessiya 90 kun yashaydi. Chiqish: Sozlamalar → «Chiqish».
 
 ## 2. Bugun
@@ -30,6 +34,12 @@ Ilovada pastda 4 ta bo'lim bor: **Bugun · Reja · Moliya · Profil**. Har bir e
 - **Iqtibos** — o'zingizning shioringiz. Sozlamalar → «Iqtibosni tahrirlash».
 - **Bugungi progress** — vazifa, odat, jamoa va namoz bo'yicha bugungi holat. Seriya (🔥) shu yerda.
 - **Keyingi** — navbatdagi ishlar. «Kunning qolgan qismini ko'rish» to'liq kunni ochadi.
+- **🎤 Ovozli buyruq** (`+` ustidagi tugma; Bugun, Vazifalar, Odatlar va Moliya ekranlarida):
+  - bosing va ayting: «Ertaga 10 da Aziz bilan uchrashuv», «Tushlik 45 ming», «Azizga 200 ming qarz berdim», «Har kuni kitob o'qish odati»;
+  - «To'xtatish» → AI tushunganini karta qilib ko'rsatadi. Sana, soat yoki nomni kartaning o'zida tuzatish mumkin;
+  - **«Tasdiqlash»** bosilgandagina bajariladi. Bosmasangiz, hech narsa o'zgarmaydi;
+  - birinchi marta bir martalik ruxsat so'raladi (ovoz AI xizmatiga yuboriladi). Telefon mikrofonga ruxsat so'raydi;
+  - AI kaliti serverda bo'lishi kerak. Limit: Free'da haftasiga 3 ta, Pro'da kuniga 30 ta, Max'da kuniga 100 ta.
 - **`+` (tezkor qo'shish):** matn yoki ovoz.
   - «Ertaga 10:00 da Aziz bilan uchrashuv» → vazifa.
   - «Tushlik 45 ming» → xarajat.
@@ -142,6 +152,7 @@ Tepada to'rtta bo'lim bor.
 - Eslatmalar, hisobotlar va guruh yangiliklari shu yerga keladi. Push sozlangan bo'lsa, telefonga ham keladi.
   - Eslatma ichidagi tugmalar ishlaydi: «Bajarildi», «15 daqiqadan keyin».
 - **AI yordamchi** oynasi — savol bering yoki vazifani gap bilan yozing. AI kaliti va tarif kerak.
+  - **🎤** (yozish maydoni yonida) — yozish o'rniga gapiring. Savolga javob beradi, buyruqni tasdiqlash kartasi qilib qaytaradi.
 
 ## 8. Tariflar qisqacha
 

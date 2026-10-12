@@ -1069,6 +1069,51 @@ def test_chat_needs_consent_counts_against_the_budget_and_keeps_failures_retryab
         assert s.get(db.AgentPreference, ws).usage_count == 2
 
 
+def test_chat_by_voice_writes_the_words_out_and_answers_like_text(person, client, monkeypatch):
+    """The mic in the chat: speech → the same turn as typing. A request comes
+    back as a card and changes nothing until Confirm; a resend does not hear
+    the audio twice; a used-up plan is refused before any transcription."""
+    caller, uid, ws = person
+    import agent_chat
+    heard = AsyncMock(return_value="Ertaga soat 10 da Aziz bilan uchrashuv qo'sh")
+    monkeypatch.setattr(provider, "transcribe", heard)
+    monkeypatch.setattr(provider, "chat", AsyncMock(return_value=provider.ChatReply(
+        reply="Tayyorladim — tasdiqlang.", command="Ertaga 10:00 Aziz bilan uchrashuv")))
+    monkeypatch.setattr(provider, "plan", AsyncMock(return_value=plan(action(title="Aziz bilan uchrashuv"))))
+    n = count(db.Task, ws)
+    headers = {**caller.h, "Content-Type": "audio/webm", "X-Agent-Request-Key": "voice-chat-0001"}
+    r = client.post("/api/agent/chat/audio", headers=headers, content=b"\x1aE\xdf\xa3voice")
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["transcript"].startswith("Ertaga soat 10")
+    assert out["messages"][0] == {**out["messages"][0], "role": "user", "text": out["transcript"]}
+    assert out["draft"]["status"] == "ready" and count(db.Task, ws) == n
+    core.confirm(uid, ws, out["draft"]["id"], out["draft"]["revision"])
+    assert count(db.Task, ws) == n + 1
+    # The same recording sent again: the stored turn, no second transcription.
+    again = client.post("/api/agent/chat/audio", headers=headers, content=b"\x1aE\xdf\xa3voice").json()
+    assert again["repeat"] is True and heard.await_count == 1
+    # Nothing heard: said so, nothing stored.
+    monkeypatch.setattr(provider, "transcribe", AsyncMock(return_value="  "))
+    r = client.post("/api/agent/chat/audio", content=b"\x1aE\xdf\xa3voice",
+                    headers={**headers, "X-Agent-Request-Key": "voice-chat-0002"})
+    assert r.status_code == 422 and r.json()["detail"] == "empty_audio"
+    # Out of budget: refused before the audio goes anywhere.
+    with db.SessionLocal() as s:
+        p = s.get(db.AgentPreference, ws)
+        p.usage_day, p.usage_count = svc.today_local(svc.user_tz(s.get(db.User, uid))), 10_000
+        s.commit()
+    monkeypatch.setattr(provider, "transcribe", AsyncMock(side_effect=AssertionError("transcribed over budget")))
+    r = client.post("/api/agent/chat/audio", content=b"\x1aE\xdf\xa3voice",
+                    headers={**headers, "X-Agent-Request-Key": "voice-chat-0003"})
+    assert r.status_code in (402, 429), r.text
+    # Without consent the audio is not read at all.
+    core.consent(ws, False)
+    r = client.post("/api/agent/chat/audio", content=b"x",
+                    headers={**headers, "X-Agent-Request-Key": "voice-chat-0004"})
+    assert r.status_code == 403
+
+
 def test_chat_keeps_only_the_latest_messages_and_can_be_cleared(person, monkeypatch):
     _, uid, ws = person
     import agent_chat

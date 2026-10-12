@@ -281,3 +281,25 @@ navbatga tushadi va ulanganda bir marta yuboriladi.
   - Sozlanmagan bo'lsa, ilova buni ochiq aytadi va Telegram orqali kirishni taklif qiladi.
   - Xat ketmagan bo'lsa, undagi kod ham ishlamaydi.
 - **Migratsiyalar:** server ishga tushganda `0014` va `0015` bir martadan avtomatik bajariladi va `applied_migrations` jadvaliga yoziladi.
+
+
+## Google va Apple bilan kirish, ovozli buyruq (v19)
+
+- **Google** (`GOOGLE_CLIENT_ID`; brauzer yo'li uchun `GOOGLE_CLIENT_SECRET` va `PUBLIC_URL` ham):
+  - telefonda Android'ning o'z akkaunt oynasi (Credential Manager) ochiladi, u `id_token` qaytaradi;
+  - server tokenni Google'ning ochiq kalitlari (JWKS) bilan tekshiradi: RS256 imzo, `iss`, `aud`, `exp`;
+  - oyna ishlamasa — Google sahifasi brauzerda ochiladi (code flow + nonce).
+- **Apple** (`APPLE_CLIENT_ID` = Services ID, `PUBLIC_URL`): faqat brauzer orqali, `form_post`, `id_token` nonce bilan tekshiriladi.
+- **Brauzer yo'lining himoyasi:**
+  - ilova maxfiy `verifier` yaratadi va brauzer manziliga faqat uning SHA-256 hashini (`state`) qo'yadi;
+  - sessiyani faqat `verifier` egasi bir marta oladi;
+  - manzil logga yoki tarixga tushsa ham, undan sessiya olib bo'lmaydi;
+  - urinish 10 daqiqa yashaydi.
+- **Bir odam — bitta akkaunt:** avval shu provayder identifikatori qidiriladi, keyin tasdiqlangan email bo'yicha mavjud akkaunt, topilmasa yangi akkaunt ochiladi.
+- **APK imzosi:** CI `ANDROID_KEYSTORE_B64` + `ANDROID_KEYSTORE_PASSWORD` bilan imzolaydi va SHA-1 ni Summary'ga yozadi. Kalit `scripts/make_android_key.py` bilan bir marta yaratiladi; repo va artefaktlarda saqlanmaydi.
+- **Ovozli buyruq:**
+  - 🎤 tugmasi `+` ustida turadi: Bugun, Vazifalar, Odatlar va Moliya ekranlarida;
+  - yozuv → AI matnga aylantiradi va karta tuzadi → **faqat «Tasdiqlash»dan keyin** bajariladi;
+  - AI yordamchida ham 🎤 bor (`/api/agent/chat/audio`): ovoz matnga aylanadi, so'ng oddiy suhbat navbati bo'ladi — savolga javob yoki tasdiqlash kartasi;
+  - limit matn bilan bir xil (Free haftasiga 3, Pro kuniga 30, Max kuniga 100). Limit tugagan bo'lsa, ovoz AI xizmatiga yuborilmaydi;
+  - ruxsat (consent) bo'lmasa, audio o'qilmaydi.

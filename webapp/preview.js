@@ -824,6 +824,14 @@
       return {...CHAT_DRAFT(), status:"cancelled"};
     }
     if(path === "/api/agent/audio") return VOICE_DRAFT();
+    // The chat's mic: a fixed sentence stands in for what was said.
+    if(path === "/api/agent/chat/audio"){
+      const said = "Ertaga soat 10 da mijozga qo'ng'iroq qilishni eslat";
+      const a = chatAnswer(said);
+      CHAT.push({id:++chatSeq, role:"user", text:said, draft:null});
+      CHAT.push({id:++chatSeq, role:"assistant", text:a.text, draft:a.draft || null});
+      return {messages:CHAT, draft:a.draft || null, transcript:said};
+    }
     if(path === "/api/agent/journal/audio") return {answers:{wins:"Onboarding dizaynini tugatdim.",
       gratitude:"Jamoamga yordami uchun rahmat.", tomorrow:"Mijozga taklifni yuboraman."}};
     let vm;

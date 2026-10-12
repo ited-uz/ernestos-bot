@@ -4756,11 +4756,11 @@ def test_the_brand_surface_control_is_visible_on_it():
 
 
 def test_the_floating_add_never_covers_the_page():
-    """v15 (audit D03): one + bottom right; speaking moved inside the quick
-    sheet it opens, so two round buttons no longer stack over the last row.
-    The v9.1 problems stay solved: nothing floats over a blank page while
-    loading, the page is padded so the last row stays reachable, and the
-    button steps aside for a sheet or the keyboard."""
+    """v19: the microphone is back above the + (asked for by name: inside
+    the quick sheet nobody found it), on the screens whose + adds what voice
+    understands. The v9.1 / D03 problems stay solved: nothing floats over a
+    blank page while loading, the page is padded for both buttons so the last
+    row stays reachable, and they step aside for a sheet or the keyboard."""
     html = (ROOT / "webapp" / "index.html").read_text()
     assert 'id="fab"' in html and "#fab:empty{display:none}" in html
     render = html[html.index('document.getElementById("fab").innerHTML'):]
@@ -4768,14 +4768,17 @@ def test_the_floating_add_never_covers_the_page():
     assert "chromeOff" in first and first.endswith('? "" : `'), "fab drawn while loading"
     # Not over prayer or the journal, which are filled in place.
     assert 'state.tab === "prayer" || state.tab === "journal"' in html
-    assert "fabAdd()" in render[:700] and 'data-act="voice-start"' not in render[:700]
+    assert "${fabMic()}${fabAdd()}" in render[:700]
+    mic = html[html.index("function fabMic(){"):]
+    mic = mic[:mic.index("\n}\n")]
+    assert 'data-act="voice-start"' in mic and '["home", "tasks", "habits", "money"]' in mic
     quick = html[html.index("function quickSheet("):]
     assert 'data-act="voice-start"' in quick[:quick.index("\n}\n")], "voice lost"
     fab = html[html.index("function fabAdd(){"):]
     fab = fab[:fab.index("\n}\n")]
     assert '"quick-add"' in fab and '"money-add"' in fab, "on Money the + adds money"
     assert 'data-act="goal-add"' in fab, "on Goals the + adds a goal at the level shown"
-    assert "fab && fab.innerHTML.trim() ? 84 : 0" in html, "page not padded for the fab"
+    assert 'fab.innerHTML.includes("fab-mic") ? 146 : 84' in html, "page not padded for the fab"
     assert "body:has(#sheet.show) #fab" in html
     for screen in ("SCREENS.habits", "SCREENS.tasks",
                    "SCREENS.team", "SCREENS.money", "SCREENS.project"):

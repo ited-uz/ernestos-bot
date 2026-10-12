@@ -897,6 +897,8 @@ nav:empty{display:none}
 #fab button{border:0;border-radius:50%;display:grid;place-items:center;cursor:pointer;
             box-shadow:0 8px 20px -6px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.15)}
 #fab .fab-add{width:62px;height:62px;background:var(--primary-fill);color:var(--on-primary)}
+#fab .fab-mic{width:50px;height:50px;background:var(--surface);color:var(--primary);
+              border:1px solid var(--border)}
 #fab button:active{transform:scale(.94)}
 #fab .fab-add{background:linear-gradient(145deg, color-mix(in srgb, var(--primary-fill) 82%, var(--surface) 18%), var(--primary-fill))}
 .voice-box{display:grid;justify-items:center;gap:10px;padding:8px 0 4px;text-align:center}
@@ -1439,6 +1441,14 @@ h1.gname{font-size:26px;letter-spacing:-.4px;line-height:1.15;overflow-wrap:anyw
   line-height:1.35}
 .chat-send{flex:none;width:44px;height:44px;border-radius:50%;background:var(--primary-fill);color:var(--on-primary)}
 .chat-send[disabled]{opacity:.5}
+.chat-mic{flex:none;width:44px;height:44px;border-radius:50%;background:var(--surface-2);color:var(--primary)}
+.chat-mic[disabled]{opacity:.5}
+.chat-rec{align-items:center;padding-top:8px;padding-bottom:8px}
+.chat-rec .num{font-weight:700;min-width:38px}
+.chat-rec-x{flex:none;width:44px;height:44px;border-radius:50%;background:var(--surface-2);color:var(--text-2)}
+.chat-rec-dot{flex:none;width:12px;height:12px;border-radius:50%;background:var(--danger);
+              animation:vpulse 1.4s ease-in-out infinite}
+@media (prefers-reduced-motion: reduce){ .chat-rec-dot{animation:none} }
 @media (prefers-reduced-motion:no-preference){
   .chat-list > .chat-msg:last-child{animation:rise 260ms var(--ease-out) backwards}
 }
@@ -2110,6 +2120,8 @@ const DICT = {
   plan_limit_money_transfers:"Hisoblar orasida o'tkazma", plan_limit_money_year:"Yillik moliya",
   pt_money_accounts:"Moliya hisoblari", pt_money_subs:"Doimiy to'lovlar",
   pt_money_transfers:"Hisoblar orasida o'tkazma", pt_money_year:"Yillik moliya",
+  voice_cmd:"Ovozli buyruq — gapiring, AI bajaradi", chat_mic:"Gapirib yuborish",
+  chat_rec:"Gapiring… To'xtatsangiz, yuboriladi.", chat_rec_send:"Yuborish", chat_voice_msg:"🎤 Ovozli xabar", voice_empty:"Ovozdan matn olinmadi. Qaytadan gapiring.",
   chat_title:"AI yordamchi", chat_off:"AI yordamchi hali ulanmagan.",
   chat_hello:"Assalomu alaykum, {name}!",
   chat_intro:"Vazifa, odat, maqsad va moliyangizni ko'rib turaman. Xulosa so'rang, maslahat oling yoki «ertaga 10 da uchrashuv qo'sh» deb yozing — tasdiqlaganingizdan keyin bajaraman.",
@@ -2119,7 +2131,7 @@ const DICT = {
   chat_s_money:"💰 Moliyam", chat_s_money_q:"Shu oy moliyam qanday? Qayerga ko'p ketyapti va nimani o'zgartirishim kerak?",
   chat_s_goals:"🎯 Maqsadlarim", chat_s_goals_q:"Maqsadlarimga qarab, bu hafta qaysi sohada nima qilishim kerakligini aniq ayt.",
   chat_s_start:"⚡ Nimadan boshlay?", chat_s_start_q:"Hozir nimadan boshlashim kerak? Eng muhim 3 ta ishni tartib bilan ayt.",
-  chat_err_plan_limit:"Bepul tarifda AI so'rovlari haftasiga 5 ta. Pro'da kuniga 30 ta.",
+  chat_err_plan_limit:"Bepul tarifda AI so'rovlari haftasiga 3 ta. Pro'da kuniga 30 ta.",
   chat_err_daily_limit:"Bugungi AI limiti tugadi. Ertaga davom etamiz.",
   chat_err_provider_limit:"AI xizmati hozir band. Bir daqiqadan keyin qayta yuboring.",
   chat_err_provider_unavailable:"AI javob bermadi. Qayta yuboring.",
@@ -2686,6 +2698,8 @@ const DICT = {
   plan_limit_money_transfers:"Transfers between accounts", plan_limit_money_year:"The year of money",
   pt_money_accounts:"Money accounts", pt_money_subs:"Repeating payments",
   pt_money_transfers:"Transfers between accounts", pt_money_year:"The year of money",
+  voice_cmd:"Voice command — speak, the AI does it", chat_mic:"Speak a message",
+  chat_rec:"Speak… Stop and it is sent.", chat_rec_send:"Send", chat_voice_msg:"🎤 Voice message", voice_empty:"No speech was heard. Try again.",
   chat_title:"AI assistant", chat_off:"The AI assistant is not connected yet.",
   chat_hello:"Hello, {name}!",
   chat_intro:"I see your tasks, habits, goals and money. Ask for a summary, get advice, or write «add a meeting tomorrow at 10» — I do it after you confirm.",
@@ -2695,7 +2709,7 @@ const DICT = {
   chat_s_money:"💰 My money", chat_s_money_q:"How is my money this month? Where does most of it go and what should I change?",
   chat_s_goals:"🎯 My goals", chat_s_goals_q:"Looking at my goals, tell me exactly what to do this week and in which area.",
   chat_s_start:"⚡ Where to start?", chat_s_start_q:"What should I start with now? Give me the three most important things in order.",
-  chat_err_plan_limit:"On Free, AI requests are 5 a week. Pro has 30 a day.",
+  chat_err_plan_limit:"On Free, AI requests are 3 a week. Pro has 30 a day.",
   chat_err_daily_limit:"Today's AI limit is used up. Back tomorrow.",
   chat_err_provider_limit:"The AI service is busy. Send again in a minute.",
   chat_err_provider_unavailable:"The AI did not answer. Send again.",
@@ -3256,6 +3270,8 @@ const DICT = {
   plan_limit_money_transfers:"Переводы между счетами", plan_limit_money_year:"Финансы за год",
   pt_money_accounts:"Счета", pt_money_subs:"Регулярные платежи",
   pt_money_transfers:"Переводы между счетами", pt_money_year:"Финансы за год",
+  voice_cmd:"Голосовая команда — скажите, AI сделает", chat_mic:"Сказать голосом",
+  chat_rec:"Говорите… Остановите — и сообщение уйдёт.", chat_rec_send:"Отправить", chat_voice_msg:"🎤 Голосовое сообщение", voice_empty:"Речь не распознана. Скажите ещё раз.",
   chat_title:"AI-помощник", chat_off:"AI-помощник ещё не подключён.",
   chat_hello:"Здравствуйте, {name}!",
   chat_intro:"Я вижу ваши задачи, привычки, цели и финансы. Попросите итог, совет или напишите «добавь встречу завтра в 10» — выполню после вашего подтверждения.",
@@ -3265,7 +3281,7 @@ const DICT = {
   chat_s_money:"💰 Мои финансы", chat_s_money_q:"Как мои финансы в этом месяце? Куда уходит больше всего и что изменить?",
   chat_s_goals:"🎯 Мои цели", chat_s_goals_q:"Исходя из моих целей, скажи точно, что делать на этой неделе и в какой сфере.",
   chat_s_start:"⚡ С чего начать?", chat_s_start_q:"С чего мне начать сейчас? Три самых важных дела по порядку.",
-  chat_err_plan_limit:"На Free — 5 AI-запросов в неделю. В Pro — 30 в день.",
+  chat_err_plan_limit:"На Free — 3 AI-запроса в неделю. В Pro — 30 в день.",
   chat_err_daily_limit:"Дневной лимит AI исчерпан. Продолжим завтра.",
   chat_err_provider_limit:"AI-сервис занят. Отправьте снова через минуту.",
   chat_err_provider_unavailable:"AI не ответил. Отправьте снова.",
@@ -4463,7 +4479,14 @@ function chatView(){
   h += `</div>`;
   if(!c.busy) h += `<div class="chips chat-suggest">${CHAT_SUGGEST.map(k =>
     `<div class="chip sm" role="button" tabindex="0" data-act="chat-suggest" data-key="${k}">${t(k)}</div>`).join("")}</div>`;
-  h += `<div class="chat-input">
+  h += c.recording ? `<div class="chat-input chat-rec">
+      <span class="chat-rec-dot"></span><span class="num" id="chat-rec-time">0:00</span>
+      <span class="grow t2 small">${t("chat_rec")}</span>
+      <button class="iconbtn chat-rec-x" data-act="chat-voice-cancel" aria-label="${t("cancel")}">${icon("x", 18)}</button>
+      <button class="iconbtn chat-send" data-act="chat-voice-stop" aria-label="${t("chat_rec_send")}">${icon("up", 20)}</button></div>`
+    : `<div class="chat-input">
+      <button class="iconbtn chat-mic" data-act="chat-voice" aria-label="${t("chat_mic")}" title="${t("chat_mic")}"
+        ${c.busy ? "disabled" : ""}>${icon("mic", 20)}</button>
       <textarea id="chat-text" rows="1" maxlength="2000" placeholder="${t("chat_ph")}"
         ${c.busy ? "disabled" : ""}>${esc(state.chatDraft || "")}</textarea>
       <button class="iconbtn chat-send" data-act="chat-send" aria-label="${t("voice_send")}"
@@ -4525,6 +4548,86 @@ async function chatSend(text){
     c.messages = c.messages.filter(m => m.id !== "local");
     state.chatDraft = text;
     c.error = chatError(e);
+    if(e?.detail === "plan_limit") lockedChat();
+  }finally{
+    c.busy = false;
+    if(state.sheetView === "chat") openMessages();
+  }
+}
+/* The mic in the chat: say it instead of typing. A question gets an
+   answer, a request comes back as the usual card — nothing changes until
+   its Confirm. The recording lives in memory only and is gone once sent. */
+const chatRec = {rec:null, stream:null, chunks:[], mime:"", timer:null, started:0, cancelled:false};
+function chatRecStop(cancel){
+  chatRec.cancelled = !!cancel;
+  try{ if(chatRec.rec && chatRec.rec.state !== "inactive") chatRec.rec.stop(); }catch(_){}
+  if(cancel){
+    try{ chatRec.stream?.getTracks().forEach(tr => tr.stop()); }catch(_){}
+    clearInterval(chatRec.timer);
+    chatRec.rec = null; chatRec.chunks = [];
+    if(state.chat) state.chat.recording = false;
+  }
+}
+async function chatVoice(){
+  const c = state.chat || (state.chat = {});
+  if(c.busy || c.recording) return;
+  haptic("medium");
+  if(!voiceSupported()) return toast(t(IS_APP ? "voice_denied_app" : "voice_denied"));
+  try{ chatRec.stream = await navigator.mediaDevices.getUserMedia({audio:true}); }
+  catch(_){ return toast(t(IS_APP ? "voice_denied_app" : "voice_denied")); }
+  const mime = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4", "audio/webm"]
+    .find(m => MediaRecorder.isTypeSupported?.(m)) || "";
+  try{ chatRec.rec = new MediaRecorder(chatRec.stream, mime ? {mimeType: mime} : undefined); }
+  catch(_){ chatRec.stream.getTracks().forEach(tr => tr.stop()); return toast(t("voice_failed")); }
+  chatRec.mime = chatRec.rec.mimeType || mime || "audio/webm";
+  chatRec.chunks = []; chatRec.cancelled = false;
+  const rec = chatRec.rec;
+  rec.ondataavailable = e => { if(e.data?.size && rec === chatRec.rec) chatRec.chunks.push(e.data); };
+  rec.onstop = () => {
+    if(rec !== chatRec.rec) return;
+    try{ chatRec.stream?.getTracks().forEach(tr => tr.stop()); }catch(_){}
+    clearInterval(chatRec.timer);
+    c.recording = false;
+    const blob = chatRec.chunks.length ? new Blob(chatRec.chunks, {type: chatRec.mime}) : null;
+    chatRec.rec = null; chatRec.chunks = [];
+    if(!chatRec.cancelled && blob) chatSendAudio(blob, chatRec.mime);
+    else if(state.sheetView === "chat") openMessages();
+  };
+  rec.start(250);
+  chatRec.started = Date.now();
+  c.recording = true; c.error = null;
+  openMessages();
+  chatRec.timer = setInterval(() => {
+    // Closing the chat while it listens throws the recording away.
+    if(state.sheetView !== "chat") return chatRecStop(true);
+    const s = Math.floor((Date.now() - chatRec.started) / 1000);
+    const el = document.getElementById("chat-rec-time");
+    if(el) el.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    if(s >= VOICE_MAX_S) chatRecStop(false);
+  }, 250);
+}
+async function chatSendAudio(blob, mime){
+  const c = state.chat || (state.chat = {});
+  const key = newKey();
+  c.messages = [...(c.messages || []), {role:"user", text: t("chat_voice_msg"), id:"local"}];
+  c.busy = true; c.error = null;
+  if(state.sheetView === "chat") openMessages();
+  try{
+    const res = await fetch("/api/agent/chat/audio", {method:"POST", body: blob, signal: requestTimeout(150000),
+      headers:{"Content-Type": String(mime).split(";")[0] || "audio/webm",
+               "X-Telegram-Init-Data": tg?.initData || "", "X-Agent-Request-Key": key}});
+    if(!res.ok){
+      const err = new Error("http_" + res.status); err.status = res.status;
+      try{ err.detail = (await res.json())?.detail; }catch(_){}
+      throw err;
+    }
+    const r = await res.json();
+    c.messages = r.messages;
+    if(r.draft?.status === "ready") notify("success");
+  }catch(e){
+    c.messages = (c.messages || []).filter(m => m.id !== "local");
+    c.error = e?.detail === "empty_audio" ? t("voice_empty") : e?.status === 413 ? t("voice_too_long")
+      : e?.detail === "consent_required" ? t("voice_consent_needed") : chatError(e);
     if(e?.detail === "plan_limit") lockedChat();
   }finally{
     c.busy = false;
@@ -8143,7 +8246,11 @@ async function voiceSend(resend){
     // A refusal the same audio cannot fix (too long, no consent) drops it.
     if(e.status === 413 || e.detail === "consent_required") voice.kept = null;
     openSheet(voiceCardSheet({status:"failed", message: e.detail === "consent_required"
-      ? t("voice_consent_needed") : e.status === 413 ? t("voice_too_long") : t("voice_failed")}), "voice");
+      ? t("voice_consent_needed") : e.status === 413 ? t("voice_too_long")
+      : e.detail === "empty_audio" ? t("voice_empty")
+      : ["plan_limit", "daily_limit", "provider_not_configured", "agent_disabled"].includes(e.detail)
+        ? chatError(e) : t("voice_failed")}), "voice");
+    if(e.detail === "plan_limit"){ voice.kept = null; lockedChat(); }
   }
 }
 /* v16: a recording made with no signal is kept on the phone — IndexedDB,
@@ -10543,6 +10650,14 @@ SCREENS.more = () => `<h1>${t("more")}</h1>` + [
     <h2>${t("agent_title")}</h2><div class="hint">${t(state.me?.agent?.available ? "agent_ready" : "agent_off")}</div>
     ${state.me?.agent?.available ? `<button class="btn secondary" data-act="agent-open">${t("agent_open")}</button>` : ""}`;
 
+/* The microphone above the +: say it, the AI turns it into a card, and
+   Confirm does it — a task, a habit tick, money, a debt. On the screens
+   whose + adds those; Goals, Groups and People keep their own +. */
+function fabMic(){
+  if(!["home", "tasks", "habits", "money"].includes(state.screen)) return "";
+  return `<button class="fab-mic" data-act="voice-start" aria-label="${t("voice_cmd")}"
+    title="${t("voice_cmd")}">${icon("mic", 24)}</button>`;
+}
 /* The floating +: what it adds depends on where it is. On Goals it adds at
    the level being looked at — the week's focus on the tactical tab. */
 function fabAdd(){
@@ -10778,10 +10893,11 @@ function render(){
   /* Prayer and the journal are filled in place; a + over them only covered
      their last row and the Save/History buttons. */
   const noFab = state.screen === "habits" && (state.tab === "prayer" || state.tab === "journal");
-  /* One button (D04): + opens the quick sheet, where typing and speaking
-     sit side by side; the separate microphone covered list rows. */
+  /* + types it, the microphone above it says it (v19: asked for back; D04
+     had folded it into the + sheet, where nobody found it). Both step out
+     of the way while the page scrolls down, and the page ends below them. */
   document.getElementById("fab").innerHTML = chromeOff || noFab ? "" : `
-    ${fabAdd()}`;
+    ${fabMic()}${fabAdd()}`;
 
   syncShell();
   syncBackButton();
@@ -10800,7 +10916,8 @@ function syncShell(){
   root.style.setProperty("--nav-h", navH + "px");
   // Room under the last row for the + and microphone buttons.
   const fab = document.getElementById("fab");
-  root.style.setProperty("--shell-b", navH + (fab && fab.innerHTML.trim() ? 84 : 0) + "px");
+  root.style.setProperty("--shell-b", navH + (!fab || !fab.innerHTML.trim() ? 0
+    : fab.innerHTML.includes("fab-mic") ? 146 : 84) + "px");
 }
 
 /* ==================================================================
@@ -13542,6 +13659,9 @@ const A = {
     }catch(e){ handleError(e); }
   },
   "chat-send": () => chatSend(val("chat-text")),
+  "chat-voice": () => chatVoice(),
+  "chat-voice-stop": () => { haptic(); chatRecStop(false); },
+  "chat-voice-cancel": () => { chatRecStop(true); openMessages(); },
   "chat-suggest": el => chatSend(t(el.dataset.key + "_q")),
   "chat-confirm": async el => {
     haptic("medium");

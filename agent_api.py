@@ -161,6 +161,24 @@ def install(app, auth):
             result["draft"] = card(result["draft"], user.language)
         return result
 
+    @router.post("/chat/audio")
+    async def chat_audio(request: Request, x_telegram_init_data: str | None = Header(None),
+                         x_agent_request_key: str | None = Header(None)):
+        """Speak to the assistant instead of typing: a question gets an
+        answer, a request comes back as a card — executed only on Confirm."""
+        user, ws = auth(x_telegram_init_data)
+        prefs = core.preferences(ws)
+        if not prefs["enabled"]:
+            raise AgentError("agent_disabled", 503)
+        if not prefs["consent"]:
+            raise AgentError("consent_required", 403)
+        data = await read_audio(request)
+        result = await agent_chat.ask_by_voice(user.telegram_id, ws, x_agent_request_key or "", data,
+                                               request.headers.get("content-type"))
+        if result.get("draft"):
+            result["draft"] = card(result["draft"], user.language)
+        return result
+
     @router.delete("/chat")
     def chat_clear(x_telegram_init_data: str | None = Header(None)):
         _, ws = auth(x_telegram_init_data)
