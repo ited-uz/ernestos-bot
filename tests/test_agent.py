@@ -863,6 +863,60 @@ def test_journal_ai_wire_is_strict_json_with_the_five_questions(monkeypatch):
     assert json.loads(sent["messages"][1]["content"]) == {"language": "uz", "text": "salom"}
 
 
+def test_voice_closes_a_debt_in_full_or_in_part(person, monkeypatch):
+    """"Akmal qarzini berdi" closes the open debt; "Akmal 200 mingini
+    qaytardi" records a part. The card says how much and what is left, and
+    nothing changes until Confirm. More than is owed, or a closed debt, is
+    refused rather than guessed."""
+    caller, uid, ws = person
+    with db.SessionLocal() as s:
+        akmal = svc.add_debt(s, ws, "Akmal", 500000, "lent")["id"]
+        aka = svc.add_debt(s, ws, "Akam", 1500000, "borrowed")["id"]
+        old = svc.add_debt(s, ws, "Vali", 100000, "lent")["id"]
+        svc.settle_debt(s, ws, old)
+    with db.SessionLocal() as s:
+        items = core.catalog(s, uid, ws)["items"]
+    debts = {i["id"]: i for i in items if i["entity"] == "debt"}
+    assert set(debts) == {akmal, aka}, "only open debts are offered"
+    assert debts[akmal]["name"] == "Akmal" and debts[akmal]["owed"] == 500000
+    assert debts[akmal]["direction"] == "lent"
+
+    part = capture(person, monkeypatch, plan(action("debt", "update", akmal, paid=200000)),
+                   text="Akmal 200 mingini qaytardi")
+    assert part["status"] == "ready", part
+    assert "💵 Qarzning bir qismi qaytdi" in part["preview"]
+    assert "<b>Akmal</b> — 200 000 so‘m" in part["preview"] and "Qoladi: 300 000 so‘m" in part["preview"]
+    assert caller.get("/api/debts").json()["owed_to_me"] == 500000, "nothing before Confirm"
+    assert any("paid" in e["fields"] for e in part["editable"]), "the amount can be fixed by hand"
+    core.confirm(uid, ws, part["id"], part["revision"])
+    assert caller.get("/api/debts").json()["owed_to_me"] == 300000
+
+    whole = capture(person, monkeypatch, plan(action("debt", "update", akmal, status="done")),
+                    text="Akmal qarzini berdi")
+    assert "✅ Qarz to‘liq qaytdi" in whole["preview"] and "300 000 so‘m" in whole["preview"]
+    assert "Qoladi" not in whole["preview"]
+    core.confirm(uid, ws, whole["id"], whole["revision"])
+    d = caller.get("/api/debts").json()
+    assert d["owed_to_me"] == 0 and not [x for x in d["open"] if x["person"] == "Akmal"]
+
+    mine = capture(person, monkeypatch, plan(action("debt", "update", aka, status="done")),
+                   text="Akamga qarzimni qaytardim")
+    assert "✅ Qarzni to‘liq qaytardingiz" in mine["preview"] and "1 500 000" in mine["preview"]
+
+    too_much = capture(person, monkeypatch, plan(action("debt", "update", aka, paid=2000000)),
+                       text="Akamga 2 million qaytardim")
+    assert too_much["status"] == "failed" and too_much["error"] == "paid_exceeds_remaining"
+    closed = capture(person, monkeypatch, plan(action("debt", "update", old, status="done")),
+                     text="Vali qarzini berdi")
+    assert closed["status"] == "failed"
+    # A return never edits who or how much was lent, and is never deleted by voice.
+    for bad in (action("debt", "update", aka, amount=1), action("debt", "delete", aka)):
+        assert capture(person, monkeypatch, plan(bad), text="x")["status"] == "failed"
+    # The model is told: a report of what happened closes, never creates.
+    assert "DEBT RETURNED" in provider.SYSTEM and "borib keldim" in provider.SYSTEM
+    assert "Akmal qarzini berdi" in provider.CHAT_SYSTEM
+
+
 def test_agent_records_a_debt_not_an_expense(person, monkeypatch):
     caller, uid, ws = person
     debt = action("debt", person="Aziz", amount=200000, direction="lent", deadline="2026-10-09")

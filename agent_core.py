@@ -58,7 +58,7 @@ def public(row):
 #: Fields the app can change by hand on a proposal, without asking the model
 #: again — fixing the hour must not re-guess the rest (audit #29).
 EDITABLE_FIELDS = ("title", "name", "deadline", "due_time", "remind_at", "priority",
-                   "amount", "note", "person", "day")
+                   "amount", "note", "person", "day", "paid")
 
 
 def _editable(row):

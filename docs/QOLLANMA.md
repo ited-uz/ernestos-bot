@@ -35,7 +35,13 @@ Ilovada pastda 4 ta bo'lim bor: **Bugun · Reja · Moliya · Profil**. Har bir e
 - **Bugungi progress** — vazifa, odat, jamoa va namoz bo'yicha bugungi holat. Seriya (🔥) shu yerda.
 - **Keyingi** — navbatdagi ishlar. «Kunning qolgan qismini ko'rish» to'liq kunni ochadi.
 - **🎤 Ovozli buyruq** (`+` ustidagi tugma; Bugun, Vazifalar, Odatlar va Moliya ekranlarida):
-  - bosing va ayting: «Ertaga 10 da Aziz bilan uchrashuv», «Tushlik 45 ming», «Azizga 200 ming qarz berdim», «Har kuni kitob o'qish odati»;
+  - **yangi narsa qo'shish:** «Ertaga 10 da Aziz bilan uchrashuv», «Tushlik 45 ming», «Azizga 200 ming qarz berdim», «Har kuni kitob o'qish odati»;
+  - **bo'lgan ishni aytish** (bor narsani yopadi, yangisini ochmaydi):
+    - «Meetingga borib keldim», «Hisobotni tugatdim» → o'sha vazifa bajarildi;
+    - «Kitob o'qidim» → bugungi odat belgilanadi;
+    - «Akmal qarzini berdi» → Akmalning ochiq qarzi to'liq yopiladi;
+    - «Akmal 200 mingini qaytardi» → qisman qaytish yoziladi, kartada «Qoladi: …» ko'rinadi;
+    - «Akamga qarzimni qaytardim» → siz olgan qarz yopiladi;
   - «To'xtatish» → AI tushunganini karta qilib ko'rsatadi. Sana, soat yoki nomni kartaning o'zida tuzatish mumkin;
   - **«Tasdiqlash»** bosilgandagina bajariladi. Bosmasangiz, hech narsa o'zgarmaydi;
   - birinchi marta bir martalik ruxsat so'raladi (ovoz AI xizmatiga yuboriladi). Telefon mikrofonga ruxsat so'raydi;

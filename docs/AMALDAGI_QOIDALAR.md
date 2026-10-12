@@ -303,3 +303,9 @@ navbatga tushadi va ulanganda bir marta yuboriladi.
   - AI yordamchida ham 🎤 bor (`/api/agent/chat/audio`): ovoz matnga aylanadi, so'ng oddiy suhbat navbati bo'ladi — savolga javob yoki tasdiqlash kartasi;
   - limit matn bilan bir xil (Free haftasiga 3, Pro kuniga 30, Max kuniga 100). Limit tugagan bo'lsa, ovoz AI xizmatiga yuborilmaydi;
   - ruxsat (consent) bo'lmasa, audio o'qilmaydi.
+- **Ovoz bilan yopish (bo'lgan ishni aytish):**
+  - «meetingga borib keldim», «tugatdim», «to'ladim» — mos vazifa `status=done`, odat `done=yes`. Yangi narsa yaratilmaydi; mos narsa topilmasa yoki bir nechtasi mos kelsa, AI bitta savol beradi;
+  - «Akmal qarzini berdi» — Akmalning ochiq qarzi to'liq yopiladi (`status=done`); «200 mingini qaytardi» — qisman qaytish (`paid`);
+  - qarzning kimi, summasi va yo'nalishi ovoz bilan o'zgarmaydi; qarz ovoz bilan o'chirilmaydi;
+  - qoldiqdan katta summa rad etiladi (`paid_exceeds_remaining`), yopilgan qarzga qayta yozilmaydi;
+  - AI ko'radigan ro'yxatda faqat ochiq qarzlar bor, har biri bilan qolgan summa (`owed`) va yo'nalishi.
