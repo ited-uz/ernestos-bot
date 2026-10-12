@@ -21,7 +21,27 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // One signing key for every build, from CI secrets (see
+    // docs/ISHGA_TUSHIRISH.md): updates install over the last build, and
+    // Google sign-in knows the app by this key's SHA-1. Without the
+    // variables the build falls back to a throwaway debug key.
+    def keystorePath = System.getenv("ERNEST_KEYSTORE")
+    def signedBuild = keystorePath && file(keystorePath).exists()
+    signingConfigs {
+        if (signedBuild) {
+            ernest {
+                storeFile file(keystorePath)
+                storeType "pkcs12"
+                storePassword System.getenv("ERNEST_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("ERNEST_KEY_ALIAS") ?: "ernestos"
+                keyPassword System.getenv("ERNEST_KEYSTORE_PASSWORD")
+            }
+        }
+    }
     buildTypes {
+        debug {
+            if (signedBuild) signingConfig signingConfigs.ernest
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'

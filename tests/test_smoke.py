@@ -13409,13 +13409,14 @@ def test_apple_in_the_browser_hands_the_session_to_the_app_once(client, monkeypa
     monkeypatch.setenv("APPLE_CLIENT_ID", "uz.ernestos.signin")
     monkeypatch.setenv("PUBLIC_URL", "https://ernestos.example")
     assert client.get("/api/app/config").json()["apple"] == {"browser": True}
-    state = "a" * 48
+    verifier = "a" * 48
+    state = social_auth.state_for(verifier)
     r = client.get(f"/api/auth/oauth/apple/start?state={state}&lang=uz", follow_redirects=False)
     assert r.status_code == 302 and r.headers["location"].startswith("https://appleid.apple.com/auth/authorize?")
     assert "redirect_uri=https%3A%2F%2Fernestos.example%2Fapi%2Fauth%2Foauth%2Fapple%2Fcallback" in r.headers["location"]
     with SessionLocal() as s:
         nonce = s.get(OAuthPending, social_auth._digest(state)).nonce
-    assert client.post("/api/auth/oauth/poll", json={"state": state}).json()["status"] == "pending"
+    assert client.post("/api/auth/oauth/poll", json={"verifier": verifier}).json()["status"] == "pending"
 
     # A token with another attempt's nonce is refused.
     wrong = sign({"iss": "https://appleid.apple.com", "aud": "uz.ernestos.signin", "sub": "apple-1",
@@ -13423,9 +13424,10 @@ def test_apple_in_the_browser_hands_the_session_to_the_app_once(client, monkeypa
     page = client.post("/api/auth/oauth/apple/callback", content=f"state={state}&id_token={wrong}",
                        headers={"Content-Type": "application/x-www-form-urlencoded"})
     assert page.status_code == 200
-    assert client.post("/api/auth/oauth/poll", json={"state": state}).json()["status"] == "error"
+    assert client.post("/api/auth/oauth/poll", json={"verifier": verifier}).json()["status"] == "error"
 
-    state = "b" * 48
+    verifier = "b" * 48
+    state = social_auth.state_for(verifier)
     client.get(f"/api/auth/oauth/apple/start?state={state}", follow_redirects=False)
     with SessionLocal() as s:
         nonce = s.get(OAuthPending, social_auth._digest(state)).nonce
@@ -13434,10 +13436,12 @@ def test_apple_in_the_browser_hands_the_session_to_the_app_once(client, monkeypa
     page = client.post("/api/auth/oauth/apple/callback", content=f"state={state}&id_token={token}",
                        headers={"Content-Type": "application/x-www-form-urlencoded"})
     assert "uz.ernestos.app://auth/done" in page.text
-    got = client.post("/api/auth/oauth/poll", json={"state": state}).json()
+    leaked = client.post("/api/auth/oauth/poll", json={"verifier": state}).json()
+    assert leaked["status"] == "unknown", "the state from the URL is not the key"
+    got = client.post("/api/auth/oauth/poll", json={"verifier": verifier}).json()
     assert got["status"] == "done" and got["new"] is True and got["token"].startswith("app:")
     assert client.get("/api/me", headers={"X-Telegram-Init-Data": got["token"]}).status_code == 200
-    assert client.post("/api/auth/oauth/poll", json={"state": state}).json()["status"] == "unknown", "once"
+    assert client.post("/api/auth/oauth/poll", json={"verifier": verifier}).json()["status"] == "unknown", "once"
 
 
 def test_google_in_the_browser_trades_the_code_and_checks_the_nonce(client, monkeypatch):
@@ -13449,7 +13453,8 @@ def test_google_in_the_browser_trades_the_code_and_checks_the_nonce(client, monk
     monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "s")
     monkeypatch.setenv("PUBLIC_URL", "https://ernestos.example")
     assert client.get("/api/app/config").json()["google"]["browser"] is True
-    state = "c" * 48
+    verifier = "c" * 48
+    state = social_auth.state_for(verifier)
     r = client.get(f"/api/auth/oauth/google/start?state={state}", follow_redirects=False)
     assert r.headers["location"].startswith("https://accounts.google.com/o/oauth2/v2/auth?")
     with SessionLocal() as s:
@@ -13459,9 +13464,9 @@ def test_google_in_the_browser_trades_the_code_and_checks_the_nonce(client, monk
         "sub": "g-browser", "email": "b@gmail.com", "email_verified": True, "nonce": nonce}))
     page = client.get(f"/api/auth/oauth/google/callback?state={state}&code=abc")
     assert page.status_code == 200 and "auth/done" in page.text
-    got = client.post("/api/auth/oauth/poll", json={"state": state}).json()
+    got = client.post("/api/auth/oauth/poll", json={"verifier": verifier}).json()
     assert got["status"] == "done"
     # A state nobody started is not a door.
     assert client.get(f"/api/auth/oauth/google/callback?state={'d' * 48}&code=abc").status_code == 200
-    assert client.post("/api/auth/oauth/poll", json={"state": "d" * 48}).json()["status"] == "unknown"
-    assert client.post("/api/auth/oauth/poll", json={"state": "short"}).status_code == 422
+    assert client.post("/api/auth/oauth/poll", json={"verifier": "d" * 48}).json()["status"] == "unknown"
+    assert client.post("/api/auth/oauth/poll", json={"verifier": "short"}).status_code == 422

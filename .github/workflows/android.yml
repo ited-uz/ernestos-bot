@@ -71,6 +71,28 @@ jobs:
           fi
           npx cap sync android
 
+      # A fixed signing key (secret ANDROID_KEYSTORE_B64 + ANDROID_KEYSTORE_PASSWORD,
+      # made once with scripts/make_android_key.py): updates install over the
+      # last build, and Google sign-in recognises the app by its SHA-1.
+      # Without them the APK gets a throwaway key each run.
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$KEYSTORE_PASSWORD" ]; then
+            printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/ernestos.p12"
+            echo "ERNEST_KEYSTORE=$RUNNER_TEMP/ernestos.p12" >> "$GITHUB_ENV"
+            echo "ERNEST_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            # The certificate's SHA-1 is public (Google Cloud asks for it); the key stays secret.
+            SHA1=$(keytool -list -v -storetype pkcs12 -keystore "$RUNNER_TEMP/ernestos.p12" \
+                     -storepass:env KEYSTORE_PASSWORD 2>/dev/null | awk '/SHA1:/{print $2; exit}')
+            echo "Signing key SHA-1: $SHA1"
+            echo "### Signing key SHA-1 (Google Cloud → Android client): \`$SHA1\`" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::notice::ANDROID_KEYSTORE_B64 not set — APK signed with a throwaway debug key (no in-place updates, no native Google sign-in)."
+          fi
+
       - name: Build the APK
         working-directory: mobile/android
         run: ./gradlew --no-daemon assembleDebug -PversionCode=${{ github.run_number }} -PversionName=13.1.${{ github.run_number }}

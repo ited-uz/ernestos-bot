@@ -453,6 +453,60 @@ const step = async (name, fn) => {
     await shot('22-email-home');
   });
 
+  // Google/Apple through the browser. The provider's page itself is outside
+  // the test (no real Google/Apple account here): its verified return is
+  // stood in for by the server's own sign-in step for that attempt. What is
+  // real: the buttons from /api/app/config, the hash the page sends, the
+  // redirect the server builds, and the page collecting the session.
+  await step('Google and Apple: buttons under email; Apple signs in through the browser', async () => {
+    await page.evaluate(() => localStorage.removeItem('ernest.app.token'));
+    await page.goto(SHELL + '/login.html');
+    await page.click('[data-lang="uz"]');
+    await page.waitForSelector('#google:not([hidden])');
+    await page.waitForSelector('#apple:not([hidden])');
+    assert.match(await page.textContent('#google'), /Google orqali kirish/);
+    await shot('23-social-buttons');
+    await page.evaluate(() => { window.__opened = []; window.ErnestApp.open = u => window.__opened.push(u); });
+
+    // Google without the phone's picker goes to the browser; Cancel undoes it.
+    await page.click('#google');
+    await page.waitForFunction(() => window.__opened.length === 1);
+    assert.match(await page.evaluate(() => window.__opened[0]), /\/api\/auth\/oauth\/google\/start\?state=[0-9a-f]{64}&lang=uz$/);
+    await page.waitForSelector('#social-wait:not([hidden])');
+    await page.click('#social-cancel');
+    await page.waitForSelector('#social-wait', { state: 'hidden' });
+    assert.equal(await page.isDisabled('#apple'), false);
+
+    await page.click('#apple');
+    await page.waitForFunction(() => window.__opened.length === 2);
+    const url = await page.evaluate(() => window.__opened[1]);
+    const state = url.match(/state=([0-9a-f]{64})/)[1];
+    await shot('24-social-waiting');
+    const r = await fetch(url, { redirect: 'manual' });
+    assert.equal(r.status, 302);
+    const to = new URL(r.headers.get('location'));
+    assert.equal(to.origin + to.pathname, 'https://appleid.apple.com/auth/authorize');
+    assert.equal(to.searchParams.get('state'), state);
+    assert.equal(to.searchParams.get('response_mode'), 'form_post');
+    // A state read from the address bar or a log is not enough to collect.
+    const leaked = await (await fetch(url.split('/api/')[0] + '/api/auth/oauth/poll', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ verifier: state }) })).json();
+    assert.equal(leaked.status, 'unknown');
+    py('import db, social_auth, app_auth\nwith db.SessionLocal() as s:\n'
+       + ` row = social_auth.pending(s, ${JSON.stringify(state)})\n assert row and row.provider == "apple"\n`
+       + ' acc, new = social_auth.sign_in(s, "apple", {"sub": "e2e-apple-1", "email": "e2e@privaterelay.appleid.com", "email_verified": "true"}, language=row.language)\n'
+       + ' tok = app_auth.TOKEN_PREFIX + app_auth.issue_session(s, acc, "apple · browser")\n'
+       + ` social_auth.finish(s, social_auth.pending(s, ${JSON.stringify(state)}), token=tok, new=new)`);
+    // The deep link back into the app; the page collects at once.
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('ernest:return', { detail: { url: 'uz.ernestos.app://auth/done' } })));
+    await page.waitForURL(/index\.html$/, { timeout: 8000 });
+    await page.waitForSelector('#su-name', { timeout: 15000 });
+    const me = await page.evaluate(async () => (await fetch('/api/me', { headers: {
+      'X-Telegram-Init-Data': localStorage.getItem('ernest.app.token') } })).json());
+    assert.equal(me.has_telegram, false);
+    assert.equal(me.email, 'e2e@privaterelay.appleid.com');
+  });
+
   await step('No JavaScript errors', async () => { if(errors.length) console.log(JSON.stringify(errors)); assert.deepEqual(errors, []); });
 
   await browser.close();

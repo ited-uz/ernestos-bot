@@ -76,6 +76,19 @@ details.tg summary{cursor:pointer;color:var(--text-2);font-size:14px;font-weight
 details.tg summary::-webkit-details-marker{display:none}
 details.tg[open] summary{margin-bottom:8px}
 .note{font-size:13px;color:var(--text-3);text-align:center;margin:12px 0 0}
+.or{display:flex;align-items:center;gap:12px;color:var(--text-3);font-size:13px;margin:18px 0 12px}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--border-2)}
+.sbtn{width:100%;min-height:50px;border-radius:12px;font:inherit;font-size:16px;font-weight:600;cursor:pointer;
+      display:flex;align-items:center;justify-content:center;gap:10px;margin:0 0 10px;padding:0 16px}
+.sbtn svg{flex:0 0 20px;width:20px;height:20px}
+.sbtn.google{background:#FFFFFF;color:#1F1F1F;border:1px solid #747775}
+.sbtn.apple{background:#000000;color:#FFFFFF;border:1px solid #000000}
+@media (prefers-color-scheme: dark){
+  .sbtn.google{background:#131314;color:#E3E3E3;border-color:#8E918F}
+  .sbtn.apple{background:#FFFFFF;color:#000000;border-color:#FFFFFF}
+}
+.sbtn[disabled]{opacity:.5}
+.waiting{color:var(--text-2);font-size:14px;text-align:center;margin:4px 0 0}
 </style>
 </head>
 <body>
@@ -112,6 +125,25 @@ details.tg[open] summary{margin-bottom:8px}
     <p class="note" id="t-note"></p>
   </div>
 
+  <!-- Google / Apple: the account already on the phone. Shown only when the
+       server has the provider set up (see /api/app/config). -->
+  <div id="social" hidden>
+    <div class="or" id="t-or"></div>
+    <button class="sbtn google" id="google" type="button" hidden>
+      <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+      <span id="t-google"></span>
+    </button>
+    <button class="sbtn apple" id="apple" type="button" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.37 12.6c-.02-2.3 1.88-3.4 1.96-3.46-1.07-1.56-2.73-1.78-3.32-1.8-1.41-.14-2.76.83-3.48.83-.72 0-1.83-.81-3-.79-1.55.02-2.97.9-3.77 2.28-1.6 2.79-.41 6.91 1.16 9.17.76 1.1 1.67 2.35 2.87 2.3 1.15-.05 1.59-.75 2.98-.75 1.39 0 1.78.75 3 .72 1.24-.02 2.03-1.12 2.78-2.23.88-1.28 1.24-2.52 1.26-2.58-.03-.01-2.42-.93-2.44-3.69zM14.1 5.86c.63-.77 1.06-1.83.94-2.89-.91.04-2.02.61-2.67 1.37-.58.67-1.09 1.76-.96 2.8 1.02.08 2.06-.52 2.69-1.28z"/></svg>
+      <span id="t-apple"></span>
+    </button>
+    <p class="msg" id="social-msg" role="alert"></p>
+    <div id="social-wait" hidden>
+      <p class="waiting" id="t-waiting"></p>
+      <div class="links" style="justify-content:center"><button class="link" id="social-cancel" type="button"></button></div>
+    </div>
+  </div>
+
   <!-- Telegram: the bot's code, for those who started there. -->
   <details class="tg" id="tg-box">
     <summary id="t-tg"></summary>
@@ -140,7 +172,12 @@ details.tg[open] summary{margin-bottom:8px}
      stays below for accounts that began in Telegram (or attach the email in
      Settings, and use it here from then on). */
   var L = {
-    uz:{lead:"Email bilan kiring yoki ro'yxatdan o'ting. Parol kerak emas — emailingizga kod keladi.",
+    uz:{or:"yoki", google:"Google orqali kirish", apple:"Apple orqali kirish",
+        waiting:"Brauzerda kirishni yakunlang — ilova o'zi davom etadi.", cancel:"Bekor qilish",
+        social_fail:"Kirib bo'lmadi. Qayta urinib ko'ring yoki email bilan kiring.",
+        social_off:"Bu usul hali sozlanmagan. Email bilan kiring.",
+        social_expired:"Vaqt tugadi. Qayta bosing.",
+        lead:"Email bilan kiring yoki ro'yxatdan o'ting. Parol kerak emas — emailingizga kod keladi.",
         email:"Email manzilingiz", send:"Kod yuborish", sending:"Yuborilmoqda…",
         sent:"6 xonali kod <b>{email}</b> manziliga yuborildi. Xat kelmasa, Spam papkasini ham ko'ring.",
         verify:"Kirish", resend:"Kodni qayta yuborish", resend_in:"Qayta yuborish · {n}", change:"Boshqa email",
@@ -162,7 +199,12 @@ details.tg[open] summary{margin-bottom:8px}
         noclip:"Nusxa topilmadi. Kodni qo'lda yozing.",
         short:"Kod 8 ta belgidan iborat.",
         hint:"Botni topa olmasangiz, Telegram'da botga /app deb yozing."},
-    ru:{lead:"Войдите или зарегистрируйтесь по email. Пароль не нужен — на почту придёт код.",
+    ru:{or:"или", google:"Войти через Google", apple:"Войти через Apple",
+        waiting:"Завершите вход в браузере — приложение продолжит само.", cancel:"Отмена",
+        social_fail:"Не удалось войти. Попробуйте снова или войдите по email.",
+        social_off:"Этот способ ещё не настроен. Войдите по email.",
+        social_expired:"Время вышло. Нажмите ещё раз.",
+        lead:"Войдите или зарегистрируйтесь по email. Пароль не нужен — на почту придёт код.",
         email:"Ваш email", send:"Отправить код", sending:"Отправляем…",
         sent:"Код из 6 цифр отправлен на <b>{email}</b>. Если письма нет, проверьте папку «Спам».",
         verify:"Войти", resend:"Отправить ещё раз", resend_in:"Ещё раз · {n}", change:"Другой email",
@@ -184,7 +226,12 @@ details.tg[open] summary{margin-bottom:8px}
         noclip:"В буфере ничего нет. Введите код вручную.",
         short:"Код состоит из 8 символов.",
         hint:"Если бот не открылся, напишите ему в Telegram /app."},
-    en:{lead:"Sign in or sign up with your email. No password — a code comes to your inbox.",
+    en:{or:"or", google:"Sign in with Google", apple:"Sign in with Apple",
+        waiting:"Finish signing in in the browser — the app carries on by itself.", cancel:"Cancel",
+        social_fail:"Could not sign in. Try again or use your email.",
+        social_off:"This way is not set up yet. Use your email.",
+        social_expired:"That took too long. Tap again.",
+        lead:"Sign in or sign up with your email. No password — a code comes to your inbox.",
         email:"Your email", send:"Send code", sending:"Sending…",
         sent:"A 6-digit code went to <b>{email}</b>. If it is not there, check Spam too.",
         verify:"Sign in", resend:"Send again", resend_in:"Send again · {n}", change:"Another email",
@@ -233,6 +280,11 @@ details.tg[open] summary{margin-bottom:8px}
     $("submit").textContent = T.submit;
     $("paste").textContent = T.paste;
     $("t-hint").textContent = T.hint;
+    $("t-or").textContent = T.or;
+    $("t-google").textContent = T.google;
+    $("t-apple").textContent = T.apple;
+    $("t-waiting").textContent = T.waiting;
+    $("social-cancel").textContent = T.cancel;
     $("msg").textContent = "";
     paintMail();
     Array.prototype.forEach.call(document.querySelectorAll("[data-lang]"), function(b){
@@ -258,6 +310,7 @@ details.tg[open] summary{margin-bottom:8px}
       if(c.bot_username){ bot = c.bot_username; keep.set("ernest.app.bot", bot); }
       // No mail service on the server: say so, and open the Telegram way.
       if(c.email === false){ $("email-msg").textContent = T.no_mail; $("tg-box").open = true; }
+      showSocial(c);
     })
     .catch(function(){});
 
@@ -341,6 +394,104 @@ details.tg[open] summary{margin-bottom:8px}
     if(v.length === 6 && !checking) verify();
   });
   $("otp-form").addEventListener("submit", function(e){ e.preventDefault(); verify(); });
+
+  /* ---- Google / Apple ----
+     Google: the phone's own account sheet (one tap) when the app has it;
+     otherwise, and for Apple, the provider's page in the in-app browser.
+     The browser way: the app makes a secret verifier, sends only its hash
+     (the state) through the browser, and collects the session from the
+     server with the verifier once the provider sends the person back. */
+  var social = {cfg: {}, busy: false, verifier: "", timer: null, until: 0};
+  function showSocial(c){
+    social.cfg = {google: c.google || null, apple: c.apple || null};
+    var g = !!(c.google && (window.ErnestApp.nativeGoogle || c.google.browser));
+    var a = !!c.apple;
+    $("google").hidden = !g;
+    $("apple").hidden = !a;
+    $("social").hidden = !(g || a);
+  }
+  function socialBusy(on){
+    social.busy = on;
+    $("google").disabled = on; $("apple").disabled = on;
+  }
+  function socialFail(text){
+    stopWaiting();
+    socialBusy(false);
+    $("social-msg").textContent = text || T.social_fail;
+  }
+  function hex(bytes){
+    return Array.prototype.map.call(bytes, function(b){ return ("0" + b.toString(16)).slice(-2); }).join("");
+  }
+  function viaBrowser(provider){
+    var c = window.crypto;
+    if(!c || !c.getRandomValues || !c.subtle){ socialFail(); return; }
+    var v = new Uint8Array(32); c.getRandomValues(v);
+    var verifier = hex(v);
+    c.subtle.digest("SHA-256", new TextEncoder().encode(verifier)).then(function(d){
+      social.verifier = verifier;
+      social.until = Date.now() + 10 * 60 * 1000;
+      $("social-wait").hidden = false;
+      window.ErnestApp.open(window.ErnestApp.api + "/api/auth/oauth/" + provider + "/start?state=" +
+                            hex(new Uint8Array(d)) + "&lang=" + lang);
+      clearInterval(social.timer);
+      social.timer = setInterval(poll, 2000);
+    }).catch(function(){ socialFail(); });
+  }
+  function stopWaiting(){
+    clearInterval(social.timer);
+    social.verifier = "";
+    $("social-wait").hidden = true;
+  }
+  var polling = false;
+  function poll(){
+    if(!social.verifier || polling) return;
+    if(Date.now() > social.until){ socialFail(T.social_expired); return; }
+    polling = true;
+    var mine = social.verifier;
+    post("/api/auth/oauth/poll", {verifier: mine})
+      .then(function(r){ return r.ok ? r.json() : {status: "error"}; })
+      .then(function(b){
+        if(mine !== social.verifier) return;          // cancelled meanwhile
+        if(b.status === "done"){ stopWaiting(); window.ErnestApp.signIn(b.token); }
+        else if(b.status === "error") socialFail();
+        // "pending" waits; "unknown" means the browser has not reached us yet.
+      })
+      .catch(function(){ /* offline for a moment: the next tick tries again */ })
+      .then(function(){ polling = false; });
+  }
+  window.addEventListener("ernest:return", function(){ poll(); });
+  document.addEventListener("visibilitychange", function(){ if(!document.hidden) poll(); });
+  $("social-cancel").onclick = function(){ stopWaiting(); socialBusy(false); };
+
+  $("google").onclick = function(){
+    var g = social.cfg.google;
+    if(!g || social.busy) return;
+    $("social-msg").textContent = "";
+    socialBusy(true);
+    if(!window.ErnestApp.nativeGoogle){ viaBrowser("google"); return; }
+    window.ErnestApp.googleSignIn(g.client_id)
+      .then(function(idToken){
+        return post("/api/auth/social/google", {id_token: idToken, device: device(), language: lang})
+          .then(function(r){
+            if(r.ok) return r.json().then(function(b){ window.ErnestApp.signIn(b.token); });
+            if(r.status === 503) socialFail(T.social_off);
+            else if(r.status === 429) socialFail(T.many.replace("{n}", r.headers.get("Retry-After") || "60"));
+            else socialFail();
+          }, function(e){ socialFail(failText(e)); });
+      }, function(e){
+        var m = String(e && (e.message || e.code) || "");
+        if(/cancel/i.test(m)){ socialBusy(false); return; }   // closed the sheet
+        // No picker on this phone (old Play services, unregistered build):
+        // the browser way still works when the server has it.
+        if(g.browser) viaBrowser("google"); else socialFail();
+      });
+  };
+  $("apple").onclick = function(){
+    if(!social.cfg.apple || social.busy) return;
+    $("social-msg").textContent = "";
+    socialBusy(true);
+    viaBrowser("apple");
+  };
 
   /* ---- Telegram: the bot's 8-character code ---- */
   $("get-code").onclick = function(){

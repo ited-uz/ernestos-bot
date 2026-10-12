@@ -11452,17 +11452,18 @@ async def api_oauth_apple_callback(request: Request):
 
 
 class OAuthPollIn(BaseModel):
-    state: str = Field(max_length=128)
+    verifier: str = Field(max_length=128)
 
 
 @app.post("/api/auth/oauth/poll")
 def api_oauth_poll(body: OAuthPollIn):
-    """The app asks for the sign-in it started. The session is handed over
-    once, to whoever holds the state — which only that app made."""
-    if not social_auth.valid_state(body.state):
+    """The app asks for the sign-in it started. The state in the browser's
+    URL is only a hash of the app's secret verifier, so a state read from a
+    log or a history cannot collect the session; the verifier can, once."""
+    if not social_auth.valid_state(body.verifier):
         raise HTTPException(status_code=422, detail="bad_state")
     with SessionLocal() as s:
-        return social_auth.collect(s, body.state)
+        return social_auth.collect(s, social_auth.state_for(body.verifier))
 
 
 # --- Setup in the app, for accounts that never saw the bot ------------------

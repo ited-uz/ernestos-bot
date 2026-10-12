@@ -48,6 +48,28 @@
     open: function (url) { openExternal(url); },
     pushStatus: function () { return pushStatus(); },
     requestPush: function () { return requestPush(); },
+    /* Google's own account picker (Credential Manager): the phone's signed-in
+       Google accounts, one tap, an ID token for the server to check. Rejects
+       with "no_plugin" off-device; a closed picker rejects with a message
+       that says "cancel". */
+    nativeGoogle: !!(cap && cap.isNativePlatform && cap.isNativePlatform()),
+    googleSignIn: function (webClientId) {
+      var social = plugin("SocialLogin");
+      if (!social || !this.nativeGoogle) return Promise.reject(new Error("no_plugin"));
+      return social.initialize({ google: { webClientId: webClientId } })
+        .then(function () { return social.login({ provider: "google", options: {} }); })
+        .then(function (res) {
+          var token = res && res.result && res.result.idToken;
+          if (!token) throw new Error("no_id_token");
+          return token;
+        });
+    },
+    /* The browser sign-in (Apple, or Google without the picker) ends on
+       uz.ernestos.app://auth/done; the login page listens for this. */
+    closeBrowser: function () {
+      var browser = plugin("Browser");
+      if (browser && browser.close) browser.close().catch(function () {});
+    },
     /* A tapped push asked for the inbox; the Mini App takes the request once. */
     takePendingInbox: function () {
       var wanted = pendingInbox;
@@ -202,6 +224,20 @@
         WebApp.close();
       }
     });
+  }
+
+  /* Back from the browser: the sign-in page's deep link, or just the app
+     coming to the front. Either way the login page asks the server. */
+  if (app && app.addListener) {
+    var back = function (url) {
+      try { window.dispatchEvent(new CustomEvent("ernest:return", { detail: { url: url || "" } })); } catch (e) {}
+    };
+    app.addListener("appUrlOpen", function (ev) {
+      var url = (ev && ev.url) || "";
+      if (url.indexOf("uz.ernestos.app://auth") === 0) window.ErnestApp.closeBrowser();
+      back(url);
+    });
+    app.addListener("resume", function () { back(""); });
   }
 
   /* ---- push: register this phone with Firebase and the server ----

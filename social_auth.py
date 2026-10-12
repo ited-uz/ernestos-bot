@@ -140,6 +140,12 @@ def valid_state(state: str) -> bool:
     return 32 <= len(state or "") <= 128 and all(c in "0123456789abcdefABCDEF-_" for c in state)
 
 
+def state_for(verifier: str) -> str:
+    """The public state for a secret verifier (as in PKCE): what the browser
+    carries is a hash, what collects the session is the original."""
+    return hashlib.sha256(verifier.encode()).hexdigest()
+
+
 def start(s: Session, provider: str, state: str, language: str = "uz") -> str:
     """Remember the attempt and return the provider's page to open."""
     s.execute(sql_delete(OAuthPending).where(OAuthPending.created_at < utcnow() - PENDING_TTL))
