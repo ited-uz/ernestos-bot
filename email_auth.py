@@ -125,9 +125,10 @@ def check_code(s: Session, email: str, raw_code, purpose: str = "signin",
     return False
 
 
-def create_account(s: Session, email: str, *, language: str = "uz",
+def create_account(s: Session, email: str | None, *, language: str = "uz",
                    first_name: str = "") -> int:
-    """A new account for this address, with no Telegram behind it."""
+    """A new account with no Telegram behind it — for this address, or for
+    a Google/Apple account that gave none."""
     import services as svc
     # Ids count down from -EMAIL_ID_BASE; two sign-ups in the same instant
     # collide on the primary key and the loser simply takes the next one.
@@ -142,7 +143,8 @@ def create_account(s: Session, email: str, *, language: str = "uz",
             s.rollback()
     else:
         raise RuntimeError("could not allocate an account id")
-    s.add(AccountEmail(email=email, account_id=new_id))
+    if email and account_for(s, email) is None:
+        s.add(AccountEmail(email=email, account_id=new_id))
     user = s.get(User, new_id)
     user.language = language if language in ("uz", "en", "ru") else "uz"
     user.onboarded = False

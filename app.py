@@ -27,7 +27,7 @@ from urllib.parse import quote
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select, text as sql_text
 from sqlalchemy.exc import DBAPIError, OperationalError
@@ -46,6 +46,8 @@ import accounts
 import app_auth
 import email_auth
 import mailer
+import oidc
+import social_auth
 import app_push
 import coins
 import promo
@@ -7300,7 +7302,7 @@ def _rate_class(request: Request) -> str:
     # "heavy" class) the second screen already got a 429 and an empty circle,
     # and the upload after it failed the same way. It is an ordinary read, and
     # setting or removing it an ordinary write.
-    if path in ("/api/app/login", "/api/promocode/redeem") or path.startswith(
+    if path in ("/api/app/login", "/api/promocode/redeem", "/api/auth/social/google") or path.startswith(
             ("/api/auth/email/", "/api/account/email/")):
         return "auth"
     return "read" if request.method == "GET" else "write"
@@ -11209,7 +11211,7 @@ class AppLoginIn(BaseModel):
 def api_app_config():
     """What the phone app needs before anybody is signed in. Public."""
     return {"bot_username": BOT_USERNAME, "version": version.VERSION,
-            "email": mailer.configured()}
+            "email": mailer.configured(), **social_auth.public_config()}
 
 
 @app.post("/api/app/login")
@@ -11333,6 +11335,134 @@ def api_account_email_verify(body: EmailAttachVerifyIn,
         except ValueError:
             raise HTTPException(status_code=409, detail="email_taken")
     return {"ok": True, "email": email}
+
+
+# --- Google and Apple -----------------------------------------------------------
+
+class SocialTokenIn(BaseModel):
+    id_token: str = Field(min_length=20, max_length=8192)
+    device: str = Field(default="", max_length=80)
+    language: str = Field(default="uz", max_length=2)
+
+
+@app.post("/api/auth/social/google")
+def api_social_google(body: SocialTokenIn):
+    """The Google account on the phone (Android's own account sheet): its ID
+    token, checked here, becomes a phone session."""
+    audiences = social_auth.google_audiences()
+    if not audiences:
+        raise HTTPException(status_code=503, detail="google_unavailable")
+    try:
+        claims = oidc.verify("google", body.id_token, audiences)
+    except oidc.TokenError as e:
+        log.info("google token refused: %s", e)
+        raise HTTPException(status_code=401, detail="bad_token")
+    with SessionLocal() as s:
+        account, new = social_auth.sign_in(s, "google", claims, language=body.language)
+        token = app_auth.issue_session(s, account, body.device)
+    return {"token": app_auth.TOKEN_PREFIX + token, "new": new}
+
+
+_OAUTH_PAGE = {
+    "uz": ("Kirdingiz", "ErnestOS ilovasiga qayting — u o'zi davom etadi.", "Ilovaga qaytish",
+           "Kirib bo'lmadi", "Ilovaga qayting va qayta urinib ko'ring."),
+    "en": ("You are signed in", "Go back to the ErnestOS app — it carries on by itself.", "Back to the app",
+           "Could not sign in", "Go back to the app and try again."),
+    "ru": ("Вход выполнен", "Вернитесь в приложение ErnestOS — оно продолжит само.", "Вернуться в приложение",
+           "Не удалось войти", "Вернитесь в приложение и попробуйте снова."),
+}
+#: The phone app listens for this address and comes to the front on it.
+APP_RETURN_URL = "uz.ernestos.app://auth/done"
+
+
+def _oauth_page(lang: str, ok: bool):
+    title, body, button, bad_title, bad_body = _OAUTH_PAGE.get(lang, _OAUTH_PAGE["uz"])
+    head, text = (title, body) if ok else (bad_title, bad_body)
+    return HTMLResponse(
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        f"<title>ErnestOS</title></head><body style=\"font-family:-apple-system,Roboto,Arial,sans-serif;"
+        "text-align:center;padding:64px 24px;color:#15171C\">"
+        f"<div style='font-size:44px'>{'✅' if ok else '⚠️'}</div><h1 style='font-size:22px'>{head}</h1>"
+        f"<p style='color:#4F5561'>{text}</p>"
+        f"<p><a href='{APP_RETURN_URL}' style='display:inline-block;margin-top:12px;padding:14px 22px;"
+        "border-radius:12px;background:#2B66D6;color:#fff;text-decoration:none;font-weight:600'>"
+        f"{button}</a></p>"
+        f"<script>setTimeout(function(){{location.href='{APP_RETURN_URL}'}},400)</script>"
+        "</body></html>",
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+
+
+@app.get("/api/auth/oauth/{provider}/start")
+def api_oauth_start(provider: str, state: str = "", lang: str = "uz"):
+    """Open the provider's page for a sign-in the app started with `state`."""
+    if provider not in social_auth.PROVIDERS or not social_auth.browser_ready(provider):
+        return _oauth_page(lang, False)
+    if not social_auth.valid_state(state):
+        return _oauth_page(lang, False)
+    with SessionLocal() as s:
+        url = social_auth.start(s, provider, state, lang)
+    return RedirectResponse(url, status_code=302, headers={"Cache-Control": "no-store"})
+
+
+def _oauth_finish(provider: str, state: str, id_token: str | None, error: str | None):
+    """Check the token against the attempt's nonce, sign in, and leave the
+    session for the app to collect."""
+    with SessionLocal() as s:
+        row = social_auth.pending(s, state) if social_auth.valid_state(state) else None
+        if row is None or row.provider != provider:
+            return _oauth_page("uz", False)
+        lang = row.language
+        if error or not id_token:
+            social_auth.finish(s, row, error="cancelled" if error else "no_token")
+            return _oauth_page(lang, False)
+        audiences = (social_auth.google_audiences() if provider == "google"
+                     else social_auth.apple_audiences())
+        try:
+            claims = oidc.verify(provider, id_token, audiences, nonce=row.nonce)
+        except oidc.TokenError as e:
+            log.info("%s token refused: %s", provider, e)
+            social_auth.finish(s, row, error="bad_token")
+            return _oauth_page(lang, False)
+        account, new = social_auth.sign_in(s, provider, claims, language=lang)
+        token = app_auth.TOKEN_PREFIX + app_auth.issue_session(s, account, provider + " · browser")
+        row = social_auth.pending(s, state)
+        social_auth.finish(s, row, token=token, new=new)
+    return _oauth_page(lang, True)
+
+
+@app.get("/api/auth/oauth/google/callback")
+def api_oauth_google_callback(state: str = "", code: str = "", error: str = ""):
+    id_token = None
+    if code and not error:
+        try:
+            id_token = social_auth.google_code_to_token(code)
+        except Exception as e:
+            log.info("google code exchange failed: %s", type(e).__name__)
+            error = "exchange"
+    return _oauth_finish("google", state, id_token, error or None)
+
+
+@app.post("/api/auth/oauth/apple/callback")
+async def api_oauth_apple_callback(request: Request):
+    """Apple posts the result here (form_post): the ID token and our state."""
+    from urllib.parse import parse_qs
+    form = {k: v[0] for k, v in parse_qs((await request.body()).decode("utf-8", "replace")).items()}
+    return _oauth_finish("apple", form.get("state", ""), form.get("id_token"), form.get("error"))
+
+
+class OAuthPollIn(BaseModel):
+    state: str = Field(max_length=128)
+
+
+@app.post("/api/auth/oauth/poll")
+def api_oauth_poll(body: OAuthPollIn):
+    """The app asks for the sign-in it started. The session is handed over
+    once, to whoever holds the state — which only that app made."""
+    if not social_auth.valid_state(body.state):
+        raise HTTPException(status_code=422, detail="bad_state")
+    with SessionLocal() as s:
+        return social_auth.collect(s, body.state)
 
 
 # --- Setup in the app, for accounts that never saw the bot ------------------

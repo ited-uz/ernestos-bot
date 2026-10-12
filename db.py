@@ -1335,6 +1335,43 @@ class EmailCode(Base):
     used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class SocialIdentity(Base):
+    """A Google or Apple account that signs in to one ErnestOS account.
+
+    Keyed by the provider's own stable subject id (`sub`), never by the
+    email: an address can change at Google, the subject cannot.
+    """
+
+    __tablename__ = "social_identities"
+
+    provider: Mapped[str] = mapped_column(String(10), primary_key=True)
+    subject: Mapped[str] = mapped_column(String(255), primary_key=True)
+    account_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    email: Mapped[str] = mapped_column(String(254), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class OAuthPending(Base):
+    """A sign-in started in the phone's browser, waiting to be collected.
+
+    The app makes a random `state`, opens the provider's page with it, and
+    asks the server with that same state until the session is ready. Only a
+    digest of the state is stored; the row lives minutes and is read once.
+    """
+
+    __tablename__ = "oauth_pending"
+
+    state_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(10))
+    nonce: Mapped[str] = mapped_column(String(64))
+    language: Mapped[str] = mapped_column(String(2), default="uz")
+    #: The finished session ("app:…"), until the app collects it.
+    token: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    new_account: Mapped[bool] = mapped_column(Boolean, default=False)
+    error: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class AppliedMigration(Base):
     """A data migration that ran here, so start-up runs each one once."""
 

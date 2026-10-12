@@ -22,6 +22,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Back from a sign-in in the browser (Google/Apple): the server's
+                 "you are signed in" page opens uz.ernestos.app://auth/done,
+                 which brings the app to the front to collect the session. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="uz.ernestos.app" android:host="auth" />
+            </intent-filter>
+
         </activity>
 
         <!-- Push notifications (Firebase): the status-bar icon, its colour,

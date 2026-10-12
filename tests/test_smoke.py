@@ -13308,3 +13308,160 @@ def test_safe_migrations_run_themselves_once_on_start():
         assert s.scalar(select(LifeGoal.category).where(LifeGoal.workspace_id == ws)) == "business"
         assert {r.name for r in s.scalars(select(AppliedMigration))} == {"0014", "0015"}
     assert migrations.auto_apply() == [], "never twice"
+
+
+# --- Google and Apple ---------------------------------------------------------
+
+def _oidc_keys(monkeypatch):
+    """A real RSA key standing in for Google's and Apple's: tokens are signed
+    with it and its public half is the key set the server fetches."""
+    import base64 as _b64
+    import json as _json
+    import time as _time
+    import oidc
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import padding, rsa
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    nums = key.public_key().public_numbers()
+    enc = lambda b: _b64.urlsafe_b64encode(b).rstrip(b"=").decode()
+    as_bytes = lambda n: n.to_bytes((n.bit_length() + 7) // 8, "big")
+    jwk = {"kty": "RSA", "kid": "k1", "n": enc(as_bytes(nums.n)), "e": enc(as_bytes(nums.e))}
+    monkeypatch.setattr(oidc, "_fetch_keys", lambda provider: {"k1": jwk})
+    oidc._cache.clear()
+
+    def sign(claims, kid="k1", alg="RS256"):
+        head = enc(_json.dumps({"alg": alg, "kid": kid}).encode())
+        now = int(_time.time())
+        body = enc(_json.dumps({"iat": now, "exp": now + 3600, **claims}).encode())
+        sig = key.sign(f"{head}.{body}".encode(), padding.PKCS1v15(), hashes.SHA256())
+        return f"{head}.{body}.{enc(sig)}"
+    return sign
+
+
+def test_google_on_the_phone_signs_in_and_finds_the_same_person_again(client, monkeypatch):
+    sign = _oidc_keys(monkeypatch)
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "web.apps.googleusercontent.com")
+    cfg = client.get("/api/app/config").json()
+    assert cfg["google"]["client_id"] == "web.apps.googleusercontent.com"
+    claims = {"iss": "https://accounts.google.com", "aud": "web.apps.googleusercontent.com",
+              "sub": "g-123", "email": "Ali@Gmail.com", "email_verified": True, "given_name": "Ali"}
+    r = client.post("/api/auth/social/google", json={"id_token": sign(claims), "language": "en"})
+    assert r.status_code == 200, r.text
+    assert r.json()["new"] is True
+    me = client.get("/api/me", headers={"X-Telegram-Init-Data": r.json()["token"]}).json()
+    assert me["email"] == "ali@gmail.com" and me["has_telegram"] is False and me["onboarded"] is False
+    again = client.post("/api/auth/social/google", json={"id_token": sign(claims)}).json()
+    assert again["new"] is False
+    me2 = client.get("/api/me", headers={"X-Telegram-Init-Data": again["token"]}).json()
+    assert me2["telegram_id"] == me["telegram_id"]
+
+
+def test_a_google_token_is_refused_unless_every_check_holds(client, monkeypatch):
+    sign = _oidc_keys(monkeypatch)
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "web.apps.googleusercontent.com")
+    good = {"iss": "accounts.google.com", "aud": "web.apps.googleusercontent.com", "sub": "g-9",
+            "email": "x@gmail.com", "email_verified": True}
+    import time as _time
+    for bad in ({**good, "aud": "someone-else"}, {**good, "iss": "https://evil.example"},
+                {**good, "exp": int(_time.time()) - 3600}):
+        assert client.post("/api/auth/social/google", json={"id_token": sign(bad)}).status_code == 401
+    token = sign(good)
+    head, body, sig = token.split(".")
+    tampered = f"{head}.{body[:-4]}AAAA.{sig}"
+    assert client.post("/api/auth/social/google", json={"id_token": tampered}).status_code == 401
+    assert client.post("/api/auth/social/google", json={"id_token": sign(good, alg="none")}).status_code == 401
+    monkeypatch.delenv("GOOGLE_CLIENT_ID")
+    assert client.post("/api/auth/social/google", json={"id_token": token}).status_code == 503
+
+
+def test_google_lands_in_the_telegram_account_that_has_the_same_email(client, monkeypatch, tmp_path):
+    """Ernest attaches his Gmail in Settings once; "Sign in with Google" then
+    opens that same account with all its data — no second account."""
+    sign = _oidc_keys(monkeypatch)
+    last_code = _mailbox(monkeypatch, tmp_path)
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "web.apps.googleusercontent.com")
+    uid = next(_next_id)
+    _onboard(uid)
+    h = {"X-Telegram-Init-Data": init_data({"id": uid, "first_name": "Ernest"})}
+    client.post("/api/account/email/start", headers=h, json={"email": "ernest@gmail.com"})
+    client.post("/api/account/email/verify", headers=h,
+                json={"email": "ernest@gmail.com", "code": last_code("ernest@gmail.com")})
+    r = client.post("/api/auth/social/google", json={"id_token": sign({
+        "iss": "accounts.google.com", "aud": "web.apps.googleusercontent.com", "sub": "g-ernest",
+        "email": "ernest@gmail.com", "email_verified": True})}).json()
+    assert r["new"] is False
+    assert client.get("/api/me", headers={"X-Telegram-Init-Data": r["token"]}).json()["telegram_id"] == uid
+    # An unverified address is never used to find an account.
+    r = client.post("/api/auth/social/google", json={"id_token": sign({
+        "iss": "accounts.google.com", "aud": "web.apps.googleusercontent.com", "sub": "g-other",
+        "email": "ernest@gmail.com", "email_verified": False})}).json()
+    assert r["new"] is True
+
+
+def test_apple_in_the_browser_hands_the_session_to_the_app_once(client, monkeypatch):
+    """Apple on Android: the app opens Apple's page with its own state, Apple
+    posts back here, and the app collects the session with that state."""
+    import social_auth
+    from db import OAuthPending
+
+    sign = _oidc_keys(monkeypatch)
+    monkeypatch.setenv("APPLE_CLIENT_ID", "uz.ernestos.signin")
+    monkeypatch.setenv("PUBLIC_URL", "https://ernestos.example")
+    assert client.get("/api/app/config").json()["apple"] == {"browser": True}
+    state = "a" * 48
+    r = client.get(f"/api/auth/oauth/apple/start?state={state}&lang=uz", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"].startswith("https://appleid.apple.com/auth/authorize?")
+    assert "redirect_uri=https%3A%2F%2Fernestos.example%2Fapi%2Fauth%2Foauth%2Fapple%2Fcallback" in r.headers["location"]
+    with SessionLocal() as s:
+        nonce = s.get(OAuthPending, social_auth._digest(state)).nonce
+    assert client.post("/api/auth/oauth/poll", json={"state": state}).json()["status"] == "pending"
+
+    # A token with another attempt's nonce is refused.
+    wrong = sign({"iss": "https://appleid.apple.com", "aud": "uz.ernestos.signin", "sub": "apple-1",
+                  "email": "relay@privaterelay.appleid.com", "email_verified": "true", "nonce": "x"})
+    page = client.post("/api/auth/oauth/apple/callback", content=f"state={state}&id_token={wrong}",
+                       headers={"Content-Type": "application/x-www-form-urlencoded"})
+    assert page.status_code == 200
+    assert client.post("/api/auth/oauth/poll", json={"state": state}).json()["status"] == "error"
+
+    state = "b" * 48
+    client.get(f"/api/auth/oauth/apple/start?state={state}", follow_redirects=False)
+    with SessionLocal() as s:
+        nonce = s.get(OAuthPending, social_auth._digest(state)).nonce
+    token = sign({"iss": "https://appleid.apple.com", "aud": "uz.ernestos.signin", "sub": "apple-2",
+                  "email": "relay2@privaterelay.appleid.com", "email_verified": "true", "nonce": nonce})
+    page = client.post("/api/auth/oauth/apple/callback", content=f"state={state}&id_token={token}",
+                       headers={"Content-Type": "application/x-www-form-urlencoded"})
+    assert "uz.ernestos.app://auth/done" in page.text
+    got = client.post("/api/auth/oauth/poll", json={"state": state}).json()
+    assert got["status"] == "done" and got["new"] is True and got["token"].startswith("app:")
+    assert client.get("/api/me", headers={"X-Telegram-Init-Data": got["token"]}).status_code == 200
+    assert client.post("/api/auth/oauth/poll", json={"state": state}).json()["status"] == "unknown", "once"
+
+
+def test_google_in_the_browser_trades_the_code_and_checks_the_nonce(client, monkeypatch):
+    import social_auth
+    from db import OAuthPending
+
+    sign = _oidc_keys(monkeypatch)
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "web.apps.googleusercontent.com")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "s")
+    monkeypatch.setenv("PUBLIC_URL", "https://ernestos.example")
+    assert client.get("/api/app/config").json()["google"]["browser"] is True
+    state = "c" * 48
+    r = client.get(f"/api/auth/oauth/google/start?state={state}", follow_redirects=False)
+    assert r.headers["location"].startswith("https://accounts.google.com/o/oauth2/v2/auth?")
+    with SessionLocal() as s:
+        nonce = s.get(OAuthPending, social_auth._digest(state)).nonce
+    monkeypatch.setattr(social_auth, "google_code_to_token", lambda code: sign({
+        "iss": "https://accounts.google.com", "aud": "web.apps.googleusercontent.com",
+        "sub": "g-browser", "email": "b@gmail.com", "email_verified": True, "nonce": nonce}))
+    page = client.get(f"/api/auth/oauth/google/callback?state={state}&code=abc")
+    assert page.status_code == 200 and "auth/done" in page.text
+    got = client.post("/api/auth/oauth/poll", json={"state": state}).json()
+    assert got["status"] == "done"
+    # A state nobody started is not a door.
+    assert client.get(f"/api/auth/oauth/google/callback?state={'d' * 48}&code=abc").status_code == 200
+    assert client.post("/api/auth/oauth/poll", json={"state": "d" * 48}).json()["status"] == "unknown"
+    assert client.post("/api/auth/oauth/poll", json={"state": "short"}).status_code == 422

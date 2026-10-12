@@ -261,3 +261,23 @@ navbatga tushadi va ulanganda bir marta yuboriladi.
   - Ertalabki hisobotda «Bog'lanish vaqti» bo'limi chiqadi: ko'pi bilan 3 kishi.
   - Odam o'chirilsa, tug'ilgan kuni ham o'chadi. Eksport va «barcha ma'lumotni o'chirish» Yaqinlarimni ham qamraydi.
 
+
+## Email bilan ro'yxatdan o'tish (v18)
+
+- Ilovaga email va 6 xonali kod bilan kiriladi, parol yo'q.
+  - Kod 10 daqiqa amal qiladi. 5 marta noto'g'ri kiritilsa, kod bekor bo'ladi.
+  - Bitta manzilga daqiqada 1 ta, soatiga 5 tagacha kod yuboriladi.
+  - Serverda faqat kodning SHA-256 digesti saqlanadi.
+- **Yangi email** — yangi akkaunt, Telegram'siz.
+  - Bunday akkauntning ID'si katta manfiy son: −10¹² dan pastga.
+  - Sozlash (ism, til, kuzatiladigan bo'limlar, uyg'onish vaqti) ilovaning o'zida bo'ladi.
+- **Ulangan email** — o'sha akkaunt. Telegram akkauntiga email Profilni tahrirlash → Email orqali ulanadi.
+  - Bir email faqat bitta akkauntga ulanadi. Bir akkauntda bitta email bo'ladi.
+- **Telegram'siz akkaunt:** hisobot, eslatma, guruh va daraja xabarlari ilova ichidagi Xabarlarga va push'ga keladi; Telegram'ga yuborilmaydi.
+  - Guruhga «Kod bilan qo'shilish» orqali kiriladi.
+  - To'lov Telegram Stars bilan: hisob-faktura shu akkauntga yoziladi, to'lovni istalgan Telegram'dan qilish mumkin.
+- **Email xizmati:**
+  - Resend (`RESEND_API_KEY`), Brevo (`BREVO_API_KEY`) yoki SMTP; yuboruvchi manzil `EMAIL_FROM`.
+  - Sozlanmagan bo'lsa, ilova buni ochiq aytadi va Telegram orqali kirishni taklif qiladi.
+  - Xat ketmagan bo'lsa, undagi kod ham ishlamaydi.
+- **Migratsiyalar:** server ishga tushganda `0014` va `0015` bir martadan avtomatik bajariladi va `applied_migrations` jadvaliga yoziladi.

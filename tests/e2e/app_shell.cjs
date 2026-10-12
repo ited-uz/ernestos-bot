@@ -78,8 +78,9 @@ const step = async (name, fn) => {
   failPage = page;
   const errors = [];
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
-  // 401 (signed out) and 402 (plan limit) are answers the app handles.
-  page.on('console', m => { if (m.type() === 'error' && !/401|402|ErnestOS:|ERR_INTERNET_DISCONNECTED/.test(m.text())) errors.push('console: ' + m.text()); });
+  // 401 (signed out), 402 (plan limit) and 409 (setup not finished — the app
+  // shows its setup screen) are answers the app handles.
+  page.on('console', m => { if (m.type() === 'error' && !/401|402|409|ErnestOS:|ERR_INTERNET_DISCONNECTED/.test(m.text())) errors.push('console: ' + m.text()); });
   const shot = n => page.screenshot({ path: path.join(OUT, 'app-' + n + '.png') });
   // The bot's code lives under "Sign in with Telegram", folded by default.
   const openTg = () => page.evaluate(() => { const d = document.getElementById('tg-box'); if (d) d.open = true; });

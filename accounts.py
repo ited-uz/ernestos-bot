@@ -297,6 +297,8 @@ def forget_account(s: Session, account_id: int) -> None:
     app_auth.forget(s, [account_id, *linked_ids(s, account_id)])
     plans.forget(s, [account_id])
     email_auth.forget(s, [account_id])
+    import social_auth
+    social_auth.forget(s, [account_id])
     s.execute(sql_delete(LinkedTelegram).where(
         (LinkedTelegram.account_id == account_id)
         | (LinkedTelegram.telegram_id == account_id)))
