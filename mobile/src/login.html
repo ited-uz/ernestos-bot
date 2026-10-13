@@ -89,6 +89,17 @@ details.tg[open] summary{margin-bottom:8px}
 }
 .sbtn[disabled]{opacity:.5}
 .waiting{color:var(--text-2);font-size:14px;text-align:center;margin:4px 0 0}
+/* Why ErnestOS: five things no other app does together. */
+.usp{margin:28px 0 0}
+.usp h2{font-size:18px;margin:0 0 12px;text-align:center}
+.usp ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.usp li{display:flex;gap:12px;align-items:flex-start;background:var(--surface);border:1px solid var(--border);
+        border-radius:16px;padding:12px 14px}
+.usp .ic{flex:0 0 36px;height:36px;border-radius:10px;background:var(--surface-2);display:grid;place-items:center;font-size:19px}
+.usp b{display:block;color:var(--text);font-size:15px;line-height:1.3}
+.usp span{color:var(--text-2);font-size:14px;line-height:1.4}
+.legal{font-size:13px;color:var(--text-2);text-align:center;margin:22px 0 0;line-height:1.5}
+.legal a{color:var(--primary);font-weight:600}
 </style>
 </head>
 <body>
@@ -164,6 +175,14 @@ details.tg[open] summary{margin-bottom:8px}
       <p class="hint" id="t-hint"></p>
     </div>
   </details>
+
+  <!-- Why ErnestOS: the five things it does that other planners do not. -->
+  <section class="usp" aria-labelledby="t-usp">
+    <h2 id="t-usp"></h2>
+    <ul id="usp-list"></ul>
+  </section>
+
+  <p class="legal" id="legal"></p>
 </main>
 <script>
 (function(){
@@ -172,7 +191,15 @@ details.tg[open] summary{margin-bottom:8px}
      stays below for accounts that began in Telegram (or attach the email in
      Settings, and use it here from then on). */
   var L = {
-    uz:{or:"yoki", google:"Google orqali kirish", apple:"Apple orqali kirish",
+    uz:{usp:"Nega ErnestOS?",
+        usps:[["🎙","O'zbekcha gapiring — u bajaradi","«Ertaga 10 da Aziz bilan uchrashuv», «Tushlik 45 ming», «Akmal qarzini berdi». Sheva, rus-o'zbek aralash ham tushunadi. Siz tasdiqlaysiz, keyin bajariladi."],
+              ["🧭","Butun hayot — bitta ilovada","Vazifa, odat, namoz, moliya, qarz, maqsad va yaqinlar. 5–6 ta ilova o'rniga bittasi, bitta «Bugun» va bitta statistika."],
+              ["🕌","Musulmon kun tartibiga mos","5 vaqt namoz (jamoat bilan, vaqtida, qazo) kunlik natijangizga kiradi; «Islom va xayriya» maqsadlari alohida yo'nalish."],
+              ["🎯","«Hozir» — bitta ish, ro'yxat emas","Ochganingizda ro'yxat emas, aynan hozir qilinadigan bitta ish turadi. Pro/Max'da uni AI tanlaydi va sababini bir gapda aytadi."],
+              ["👥","Telegram'da ham, telefonda ham, jamoa bilan","Bot va Mini App, Android ilova — bitta akkaunt. Oila yoki jamoaga topshiriq bering, kim nima qilganini ko'ring."]],
+        legal:"Davom etsangiz, {privacy} bilan rozilik bildirasiz. {delete}",
+        privacy:"Maxfiylik siyosati", delete_acc:"Akkauntni o'chirish",
+        or:"yoki", google:"Google orqali kirish", apple:"Apple orqali kirish",
         waiting:"Brauzerda kirishni yakunlang — ilova o'zi davom etadi.", cancel:"Bekor qilish",
         social_fail:"Kirib bo'lmadi. Qayta urinib ko'ring yoki email bilan kiring.",
         social_off:"Bu usul hali sozlanmagan. Email bilan kiring.",
@@ -199,7 +226,15 @@ details.tg[open] summary{margin-bottom:8px}
         noclip:"Nusxa topilmadi. Kodni qo'lda yozing.",
         short:"Kod 8 ta belgidan iborat.",
         hint:"Botni topa olmasangiz, Telegram'da botga /app deb yozing."},
-    ru:{or:"или", google:"Войти через Google", apple:"Войти через Apple",
+    ru:{usp:"Почему ErnestOS?",
+        usps:[["🎙","Скажите по-узбекски — оно сделает","«Завтра в 10 встреча с Азизом», «Обед 45 тысяч», «Акмал вернул долг». Понимает диалекты и смесь русского с узбекским. Вы подтверждаете — затем выполняется."],
+              ["🧭","Вся жизнь — в одном приложении","Задачи, привычки, намаз, финансы, долги, цели и близкие. Одно вместо 5–6 приложений, один «Сегодня» и одна статистика."],
+              ["🕌","Под распорядок мусульманина","5 намазов (с джамаатом, вовремя, када) входят в итог дня; цели «Ислам и благотворительность» — отдельное направление."],
+              ["🎯","«Сейчас» — одно дело, а не список","При открытии — не список, а одно дело, которое нужно сделать сейчас. В Pro/Max его выбирает AI и объясняет причину одной фразой."],
+              ["👥","В Telegram и на телефоне, вместе с командой","Бот и Mini App, Android-приложение — один аккаунт. Давайте задачи семье или команде и видите, кто что сделал."]],
+        legal:"Продолжая, вы принимаете {privacy}. {delete}",
+        privacy:"Политику конфиденциальности", delete_acc:"Удаление аккаунта",
+        or:"или", google:"Войти через Google", apple:"Войти через Apple",
         waiting:"Завершите вход в браузере — приложение продолжит само.", cancel:"Отмена",
         social_fail:"Не удалось войти. Попробуйте снова или войдите по email.",
         social_off:"Этот способ ещё не настроен. Войдите по email.",
@@ -226,7 +261,15 @@ details.tg[open] summary{margin-bottom:8px}
         noclip:"В буфере ничего нет. Введите код вручную.",
         short:"Код состоит из 8 символов.",
         hint:"Если бот не открылся, напишите ему в Telegram /app."},
-    en:{or:"or", google:"Sign in with Google", apple:"Sign in with Apple",
+    en:{usp:"Why ErnestOS?",
+        usps:[["🎙","Speak Uzbek — it gets done","“Meeting with Aziz tomorrow at 10”, “Lunch 45 thousand”, “Akmal paid back his debt”. Understands dialects and Uzbek mixed with Russian. You confirm, then it happens."],
+              ["🧭","Your whole life in one app","Tasks, habits, prayer, money, debts, goals and close people. One app instead of five or six, one Today and one set of stats."],
+              ["🕌","Built around a Muslim day","The five daily prayers (in congregation, on time, qada) count in your day's result; Islam & charity is a goal area of its own."],
+              ["🎯","“Now” — one thing, not a list","You open the app to the one thing to do right now, not a list. On Pro/Max the AI picks it and says why in one sentence."],
+              ["👥","In Telegram and on your phone, with your team","Bot and Mini App, Android app — one account. Assign tasks to family or a team and see who did what."]],
+        legal:"By continuing you accept the {privacy}. {delete}",
+        privacy:"Privacy policy", delete_acc:"Delete account",
+        or:"or", google:"Sign in with Google", apple:"Sign in with Apple",
         waiting:"Finish signing in in the browser — the app carries on by itself.", cancel:"Cancel",
         social_fail:"Could not sign in. Try again or use your email.",
         social_off:"This way is not set up yet. Use your email.",
@@ -281,6 +324,15 @@ details.tg[open] summary{margin-bottom:8px}
     $("paste").textContent = T.paste;
     $("t-hint").textContent = T.hint;
     $("t-or").textContent = T.or;
+    $("t-usp").textContent = T.usp;
+    $("usp-list").innerHTML = T.usps.map(function(u){
+      return '<li><span class="ic" aria-hidden="true">' + u[0] + '</span><div><b>' + u[1] + '</b><span>' + u[2] + '</span></div></li>';
+    }).join("");
+    var base = (window.ErnestApp && window.ErnestApp.api) || "";
+    var link = function(path, text){
+      return '<a href="' + base + path + '?lang=' + lang + '" data-ext="1">' + text + '</a>'; };
+    $("legal").innerHTML = T.legal.replace("{privacy}", link("/privacy", T.privacy))
+                                  .replace("{delete}", link("/account/delete", T.delete_acc));
     $("t-google").textContent = T.google;
     $("t-apple").textContent = T.apple;
     $("t-waiting").textContent = T.waiting;
@@ -492,6 +544,14 @@ details.tg[open] summary{margin-bottom:8px}
     socialBusy(true);
     viaBrowser("apple");
   };
+
+  /* The policy and deletion pages open in the phone's browser. */
+  document.addEventListener("click", function(e){
+    var a = e.target.closest && e.target.closest("a[data-ext]");
+    if(!a) return;
+    e.preventDefault();
+    window.ErnestApp.open(a.href);
+  });
 
   /* ---- Telegram: the bot's 8-character code ---- */
   $("get-code").onclick = function(){

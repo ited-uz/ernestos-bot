@@ -91,13 +91,13 @@ if(/[?&]preview(=|&|$)/.test(location.search))
 
 :root[data-theme="clean-white"][data-mode="light"]{
   --bg:#FFFFFF; --surface:#F8F9FA; --surface-2:#F1F3F5;
-  --text:#111827; --text-2:#4B5563; --text-3:#6B7280;
+  --text:#111827; --text-2:#4B5563; --text-3:#5F6672;
   --border:#E5E7EB; --border-2:#D1D5DB;
   --c1:#007AFF; --c2:#30B0C7; --c3:#5856D6; --c4:#FF9500; --c5:#34C759;
-  --primary:#0062CC; --primary-2:#004FA3; --primary-fill:#007AFF;
+  --primary:#0062CC; --primary-2:#004FA3; --primary-fill:#0070E0;
   --on-primary:#FFFFFF;
   --accent:var(--c2); --accent-2:var(--c3);
-  --ok:#248A3D; --warn:#B25000; --danger:#D70015;
+  --ok:#1F7A36; --warn:#9A4500; --danger:#D70015;
   --shadow-rgb:17,24,39; --shadow-k:.8;
 }
 
@@ -105,10 +105,10 @@ if(/[?&]preview(=|&|$)/.test(location.search))
   /* v17 calm night: iOS's own dark grey (not pure black) with its system
      colours, which Apple tuned for dark screens; off-white text. */
   --bg:#1C1C1E; --surface:#242426; --surface-2:#2C2C2E;
-  --text:#EBEBF0; --text-2:#AEAEB2; --text-3:#8E8E93;
+  --text:#EBEBF0; --text-2:#AEAEB2; --text-3:#9C9CA1;
   --border:#38383A; --border-2:#48484A;
   --c1:#0A84FF; --c2:#64D2FF; --c3:#5E5CE6; --c4:#FF9F0A; --c5:#30D158;
-  --primary:#4DA3FF; --primary-2:#7BBBFF; --primary-fill:#0A84FF;
+  --primary:#4DA3FF; --primary-2:#7BBBFF; --primary-fill:#0070E0;
   --on-primary:#FFFFFF;
   --accent:var(--c2); --accent-2:var(--c3);
   --ok:#30D158; --warn:#FF9F0A; --danger:#FF453A;
@@ -146,7 +146,7 @@ if(/[?&]preview(=|&|$)/.test(location.search))
 
 :root[data-theme="obsidian"][data-mode="light"]{
   --bg:#F8FAFC; --surface:#FFFFFF; --surface-2:#F1F5F9;
-  --text:#0F172A; --text-2:#475569; --text-3:#64748B;
+  --text:#0F172A; --text-2:#475569; --text-3:#5A697D;
   --border:#E2E8F0; --border-2:#CBD5E1;
   --c1:#0EA5E9; --c2:#6366F1; --c3:#64748B; --c4:#F59E0B; --c5:#10B981;
   --primary:#0369A1; --primary-2:#075985; --primary-fill:#0F172A;
@@ -173,7 +173,7 @@ if(/[?&]preview(=|&|$)/.test(location.search))
 
 :root[data-theme="emerald"][data-mode="light"]{
   --bg:#F7F7F2; --surface:#FFFFFF; --surface-2:#EEF3EE;
-  --text:#0B1F17; --text-2:#3F5A4E; --text-3:#5B7568;
+  --text:#0B1F17; --text-2:#3F5A4E; --text-3:#526A5E;
   --border:#DCE6DF; --border-2:#C3D3C8;
   --c1:#059669; --c2:#064E3B; --c3:#B08D57; --c4:#D97706; --c5:#0EA5E9;
   --primary:#047857; --primary-2:#065F46; --primary-fill:#064E3B;
@@ -866,7 +866,7 @@ nav:empty{display:none}
 .qnode.past .qnode-dot{background:var(--ok);border-color:var(--ok);color:var(--on-primary)}
 .qnode.now .qnode-dot{color:var(--primary);border-color:var(--primary);background:var(--surface);
   box-shadow:0 0 0 5px color-mix(in srgb, var(--primary) 14%, transparent)}
-.qnode.lock{opacity:.6}
+.qnode.lock .qnode-dot{border-style:dashed}
 .qhere{font-size:11px;font-weight:750;padding:3px 9px;border-radius:var(--radius-pill);color:var(--on-primary);
   background:var(--primary-fill)}
 @media (prefers-reduced-motion:no-preference){
@@ -2155,6 +2155,8 @@ const DICT = {
   voice_cmd:"Ovozli buyruq — gapiring, AI bajaradi", chat_mic:"Gapirib yuborish",
   chat_rec:"Gapiring… To'xtatsangiz, yuboriladi.", chat_rec_send:"Yuborish", chat_voice_msg:"🎤 Ovozli xabar", voice_empty:"Ovozdan matn olinmadi. Qaytadan gapiring.",
   exact_title:"Aniq vaqtda eslatish", exact_denied:"O'chiq — eslatma bir necha daqiqa kechikib kelishi mumkin.", exact_allow:"Yoqish",
+  a11y_progress:"Bajarilish", a11y_chart:"Kunlik bajarilish grafigi",
+  privacy_full:"To'liq maxfiylik siyosati", privacy_delete_web:"Akkauntni ilovasiz o'chirish (veb)",
   chat_title:"AI yordamchi", chat_off:"AI yordamchi hali ulanmagan.",
   chat_hello:"Assalomu alaykum, {name}!",
   chat_intro:"Vazifa, odat, maqsad va moliyangizni ko'rib turaman. Xulosa so'rang, maslahat oling yoki «ertaga 10 da uchrashuv qo'sh» deb yozing — tasdiqlaganingizdan keyin bajaraman.",
@@ -2734,6 +2736,8 @@ const DICT = {
   voice_cmd:"Voice command — speak, the AI does it", chat_mic:"Speak a message",
   chat_rec:"Speak… Stop and it is sent.", chat_rec_send:"Send", chat_voice_msg:"🎤 Voice message", voice_empty:"No speech was heard. Try again.",
   exact_title:"Remind at the exact time", exact_denied:"Off — a reminder may come a few minutes late.", exact_allow:"Turn on",
+  a11y_progress:"Progress", a11y_chart:"Daily completion chart",
+  privacy_full:"Full privacy policy", privacy_delete_web:"Delete the account without the app (web)",
   chat_title:"AI assistant", chat_off:"The AI assistant is not connected yet.",
   chat_hello:"Hello, {name}!",
   chat_intro:"I see your tasks, habits, goals and money. Ask for a summary, get advice, or write «add a meeting tomorrow at 10» — I do it after you confirm.",
@@ -3307,6 +3311,8 @@ const DICT = {
   voice_cmd:"Голосовая команда — скажите, AI сделает", chat_mic:"Сказать голосом",
   chat_rec:"Говорите… Остановите — и сообщение уйдёт.", chat_rec_send:"Отправить", chat_voice_msg:"🎤 Голосовое сообщение", voice_empty:"Речь не распознана. Скажите ещё раз.",
   exact_title:"Напоминать точно вовремя", exact_denied:"Выключено — напоминание может прийти на несколько минут позже.", exact_allow:"Включить",
+  a11y_progress:"Выполнение", a11y_chart:"График выполнения по дням",
+  privacy_full:"Полная политика конфиденциальности", privacy_delete_web:"Удалить аккаунт без приложения (веб)",
   chat_title:"AI-помощник", chat_off:"AI-помощник ещё не подключён.",
   chat_hello:"Здравствуйте, {name}!",
   chat_intro:"Я вижу ваши задачи, привычки, цели и финансы. Попросите итог, совет или напишите «добавь встречу завтра в 10» — выполню после вашего подтверждения.",
@@ -4158,7 +4164,10 @@ function lineChart(series, keys){
               text-anchor="${anchor}">${p.label}</text>`;
   }).join("");
 
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img">${grid}${paths}${labels}</svg>`;
+  // 1.1.1: the chart is named, and says its last value, for a screen reader.
+  const lastVal = series[last]?.[keys[0]?.field];
+  const said = `${t("a11y_chart")}${lastVal !== null && lastVal !== undefined ? ` · ${series[last].label}: ${lastVal}%` : ""}`;
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(said)}"><title>${esc(said)}</title>${grid}${paths}${labels}</svg>`;
 }
 
 /* ==================================================================
@@ -6903,7 +6912,7 @@ const goalHorizon = h => h === "lifetime" ? t("gl_lifetime") : (h || "");
 const goalCover = g => esc(g.cover || GOAL_CATS[goalCat(g.category)] || "🎯");
 const goalStatus = st => `<span class="gstatus st-${st}"><i></i>${t("gl_st_" + st)}</span>`;
 const goalBar = (p, thin) => `<div class="gbar ${thin ? "thin" : ""}" role="progressbar"
-    aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p}"><i style="--p:${p}%"></i></div>`;
+    aria-label="${t("a11y_progress")}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p}"><i style="--p:${p}%"></i></div>`;
 
 function goalLevelTabs(goals, cur, week){
   const count = {
@@ -7271,7 +7280,7 @@ function taskRow(task, opts){
         : `<div class="check ${timed ? "timed" : ""}"
            ${timed ? `data-act="timer-open" data-kind="task"` : `data-act="task-done"`}
            data-id="${task.id}" role="${timed ? "button" : "checkbox"}" tabindex="0"
-           aria-checked="false"
+           ${timed ? "" : `aria-checked="false"`}
            aria-label="${t(timed ? "timer" : "now_done")} · ${esc(task.title)}">${
              icon(timed ? "clock" : "check", 14)}</div>`}
       <div class="grow">
@@ -10027,9 +10036,11 @@ function personLine(p){
   return bits.join(" · ");
 }
 function personRow(p){
-  return `<div class="item pressable pp-row" data-act="person-open" data-id="${p.id}" role="button" tabindex="0">
-      <span class="pp-av">${esc(initialsOf(p.name))}</span>
-      <div class="grow" style="min-width:0"><div class="ellipsis"><b>${esc(p.name)}</b></div>
+  // The row opens the person by touch; the name is the keyboard/reader
+  // button, so the "Bog'landim" button beside it is not nested in another.
+  return `<div class="item pressable pp-row" data-act="person-open" data-id="${p.id}">
+      <span class="pp-av" aria-hidden="true">${esc(initialsOf(p.name))}</span>
+      <div class="grow" style="min-width:0" data-act="person-open" data-id="${p.id}" role="button" tabindex="0"><div class="ellipsis"><b>${esc(p.name)}</b></div>
         <div class="meta">${personLine(p)}</div></div>
       ${p.touch_due ? `<button class="iconbtn sm pp-touch" data-act="person-touched" data-id="${p.id}"
           aria-label="${t("pp_touched")}" title="${t("pp_touched")}">${icon("check", 18)}</button>` : icon("chevron", 15)}
@@ -10170,11 +10181,11 @@ SCREENS.steps = () => {
         <div class="qpct num">${nextLvl ? t("steps_in_level", {done: st.total - lvl.min, span, pct}) : pct + "%"}</div>
       </div></div>
     <div class="t3 tiny qxp">${t("steps_xp_def")}</div>
-    <div class="qstats" data-act="progress-open" role="button" tabindex="0">
+    <div class="qstats">
       <div data-act="streak-why" role="button" tabindex="0">${stat("flame", "warm", streak, t("streak_days"))}</div>
       <div data-act="streak-why" role="button" tabindex="0">${stat("shield", "cool", st.freeze || 0, t("steps_freeze_short"))}</div>
-      ${stat("star", "gold", rank.eligible ? "#" + rank.global : "—",
-             rank.eligible ? t("rank_global") : t("steps_rank_in", {n: rank.days_remaining ?? 0}))}
+      <div data-act="progress-open" role="button" tabindex="0">${stat("star", "gold", rank.eligible ? "#" + rank.global : "—",
+             rank.eligible ? t("rank_global") : t("steps_rank_in", {n: rank.days_remaining ?? 0}))}</div>
     </div>`;
 
   /* Today: one row per part, each with its own small bar. A full tick only
@@ -10552,10 +10563,20 @@ function privacyDataSheet(){
       ${t("back")}</button>`;
 }
 
+/* The policy and the account deletion page live on the server, at public
+   addresses the stores ask for; the sheet links both. */
+function legalUrl(path){
+  const base = (window.ErnestApp?.api || location.origin).replace(/\/+$/, "");
+  return `${base}${path}?lang=${encodeURIComponent(state.me?.language || "uz")}`;
+}
 function privacySheet(){
   return `<h3>${icon("book", 18)} ${t("privacy_policy")}</h3>
     <div class="hint" style="margin-top:8px">${t("privacy_body")}</div>
     <div class="hint" style="margin-top:var(--s2)">${t("data_yours_body")}</div>
+    <button class="btn secondary" data-act="open-url" data-url="${esc(legalUrl("/privacy"))}" style="margin-top:16px">
+      ${icon("book", 16)} ${t("privacy_full")}</button>
+    <button class="btn text" data-act="open-url" data-url="${esc(legalUrl("/account/delete"))}" style="margin-top:6px">
+      ${t("privacy_delete_web")}</button>
     <button class="btn secondary" data-act="set-privacy" style="margin-top:16px">
       ${t("close")}</button>`;
 }

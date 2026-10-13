@@ -101,16 +101,20 @@ jobs:
       - name: Build the APK
         working-directory: mobile/android
         run: |
-          if [ -n "${ERNEST_KEYSTORE:-}" ]; then TASK=assembleRelease; KIND=release; else TASK=assembleDebug; KIND=debug; fi
-          ./gradlew --no-daemon "$TASK" -PversionCode=${{ github.run_number }} -PversionName=13.1.${{ github.run_number }}
+          # Signed: the release APK to install, and the .aab Google Play takes.
+          if [ -n "${ERNEST_KEYSTORE:-}" ]; then TASKS="assembleRelease bundleRelease"; KIND=release; else TASKS=assembleDebug; KIND=debug; fi
+          ./gradlew --no-daemon $TASKS -PversionCode=${{ github.run_number }} -PversionName=13.1.${{ github.run_number }}
           mkdir -p "$RUNNER_TEMP/apk"
           cp "app/build/outputs/apk/$KIND/app-$KIND.apk" "$RUNNER_TEMP/apk/ErnestOS-${{ github.run_number }}.apk"
-          echo "### APK: $KIND build" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$KIND" = release ]; then
+            cp app/build/outputs/bundle/release/app-release.aab "$RUNNER_TEMP/apk/ErnestOS-${{ github.run_number }}.aab"
+          fi
+          echo "### APK: $KIND build$( [ "$KIND" = release ] && echo ' + Play bundle (.aab)')" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish the APK
         if: env.API_URL != ''
         uses: actions/upload-artifact@v4
         with:
           name: ErnestOS-android-${{ github.run_number }}
-          path: ${{ runner.temp }}/apk/ErnestOS-${{ github.run_number }}.apk
+          path: ${{ runner.temp }}/apk/
           retention-days: 30

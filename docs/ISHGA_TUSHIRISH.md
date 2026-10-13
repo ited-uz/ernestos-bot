@@ -157,6 +157,7 @@ Shundan keyingi har bir APK shu kalit bilan imzolanadi. Actions → android → 
 | `BOT_USERNAME` | Tavsiya | Taklif havolalari uchun |
 | `ADMIN_IDS` | Promokod uchun | Telegram ID'ingiz — `/promo_new` faqat shu ID'larga ishlaydi |
 | `AGENT_ENABLED=true` va `GROQ_API_KEY` (yoki `GEMINI_API_KEY`) | AI uchun | AI «Hozir», AI suhbat, ovozli buyruq, AI kun xulosasi |
+| `SUPPORT_EMAIL` | Play uchun tavsiya | `/privacy` va `/account/delete` sahifalaridagi aloqa manzili |
 | `PUBLIC_URL` | Google/Apple uchun | Serverning tashqi manzili, `https://…` (callback manzillari shundan yasaladi) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google bilan kirish uchun | 3-bo'lim |
 | `APPLE_CLIENT_ID` | Apple bilan kirish uchun | 3-bo'lim (Services ID) |
@@ -190,6 +191,20 @@ Ikkala JSON ham maxfiy — repo, chat yoki skrinshotga qo'ymang.
 ### Aniq vaqtda eslatish (Android 12+)
 
 Android 14 dan boshlab «Signal va eslatmalar» ruxsati standart holatda o'chiq. Ilova endi bu oynani o'zi ochmaydi. Ruxsat bo'lmasa, eslatma bir necha daqiqa kechikishi mumkin. Yoqish: **Profil → ⚙️ → Eslatmalar va hisobotlar → Aniq vaqtda eslatish → Yoqish**.
+
+### Google Play'ga chiqarish
+
+1. Imzo kaliti (4-bo'lim) sozlangan bo'lsin — CI `ErnestOS-NN.aab` ham yig'adi (Artifacts ichida).
+2. https://play.google.com/console → Developer akkaunt (bir martalik $25) → **Create app**.
+3. **Store listing:** matnlar tayyor — `docs/STORE_LISTING.md` (uz/ru/en, belgilar limiti tekshirilgan).
+4. **App content:**
+   - Privacy policy: `https://<server>/privacy`
+   - Data safety: javoblar `docs/GLOBAL_STANDARTLAR.md` 3-bo'limida
+   - Account deletion URL: `https://<server>/account/delete`
+   - Ads: yo'q · Content rating: Everyone · Target audience: 13+
+5. **Production → Create release** → `.aab` faylni yuklang.
+
+Imzo kalitini Play App Signing'ga topshirish so'ralsa, «Use Google-generated key» tanlang. Sizning kalitingiz upload key bo'lib qoladi.
 
 ## 7. Telefonga o'rnatish va kirish
 

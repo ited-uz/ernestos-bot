@@ -179,9 +179,24 @@ _TEXT = {
 }
 
 
-def code_message(lang: str, code: str) -> tuple[str, str, str]:
-    """(subject, text, html) for a sign-in code, in the person's language."""
-    subject, body = _TEXT.get(lang, _TEXT["uz"])
+#: The account-deletion code: says plainly what the code will do.
+_DELETE_TEXT = {
+    "uz": ("{code} — ErnestOS akkauntini o'chirish kodi",
+           "Akkauntni o'chirish kodi: {code}\n\nBu kod akkauntingiz va undagi BARCHA ma'lumotlarni o'chiradi. "
+           "Kod 10 daqiqa amal qiladi.\nAgar o'chirishni siz so'ramagan bo'lsangiz, xatni e'tiborsiz qoldiring — hech narsa o'chmaydi."),
+    "en": ("{code} — ErnestOS account deletion code",
+           "Your account deletion code is {code}\n\nThis code deletes your account and ALL of its data. "
+           "It works for 10 minutes.\nIf you did not ask to delete it, ignore this email — nothing is deleted."),
+    "ru": ("{code} — код удаления аккаунта ErnestOS",
+           "Код удаления аккаунта: {code}\n\nЭтот код удаляет аккаунт и ВСЕ его данные. Код действует 10 минут.\n"
+           "Если вы не просили удаление, просто проигнорируйте письмо — ничего не удалится."),
+}
+
+
+def code_message(lang: str, code: str, kind: str = "signin") -> tuple[str, str, str]:
+    """(subject, text, html) for a sign-in (or deletion) code, in the person's language."""
+    table = _DELETE_TEXT if kind == "delete" else _TEXT
+    subject, body = table.get(lang, table["uz"])
     subject, text = subject.format(code=code), body.format(code=code)
     lines = text.split("\n")
     html = (

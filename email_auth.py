@@ -110,7 +110,7 @@ def check_code(s: Session, email: str, raw_code, purpose: str = "signin",
         EmailCode.email == email, EmailCode.purpose == purpose,
         EmailCode.used_at.is_(None), EmailCode.expires_at > now)
         .order_by(EmailCode.id.desc()).limit(1))
-    if row is None or (purpose == "attach" and row.account_id != account_id):
+    if row is None or (purpose in ("attach", "delete") and row.account_id != account_id):
         return False
     if len(code) == CODE_LENGTH and secrets.compare_digest(row.code_hash, _digest(code)):
         spent = s.execute(update(EmailCode).where(EmailCode.id == row.id,

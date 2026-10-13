@@ -16,6 +16,7 @@ import binascii
 import hashlib
 import hmac
 import json
+import legal
 import logging
 import os
 import re
@@ -7309,7 +7310,7 @@ def _rate_class(request: Request) -> str:
     if path == "/api/app/client-error":
         return "report"
     if path in ("/api/app/login", "/api/promocode/redeem", "/api/auth/social/google") or path.startswith(
-            ("/api/auth/email/", "/api/account/email/")):
+            ("/api/auth/email/", "/api/account/email/", "/api/account/delete/")):
         return "auth"
     return "read" if request.method == "GET" else "write"
 
@@ -11247,7 +11248,7 @@ class EmailVerifyIn(BaseModel):
 
 
 async def _mail_code(email: str, purpose: str, language: str,
-                     account_id: int | None = None) -> dict:
+                     account_id: int | None = None, kind: str = "signin") -> dict:
     """Issue a code and mail it. Says plainly when mail is not set up or a
     code was asked for too soon; a code whose mail failed never works."""
     if not mailer.configured():
@@ -11258,7 +11259,7 @@ async def _mail_code(email: str, purpose: str, language: str,
         except email_auth.TooSoon as e:
             raise HTTPException(status_code=429, detail="email_too_soon",
                                 headers={"Retry-After": str(e.seconds)})
-    subject, text, html = mailer.code_message(language, code)
+    subject, text, html = mailer.code_message(language, code, kind)
     try:
         await mailer.send(email, subject, text, html)
     except mailer.MailError:
@@ -11267,6 +11268,69 @@ async def _mail_code(email: str, purpose: str, language: str,
         raise HTTPException(status_code=502, detail="email_send_failed")
     return {"ok": True, "resend_in": int(email_auth.RESEND_AFTER.total_seconds()),
             "ttl": int(email_auth.CODE_TTL.total_seconds())}
+
+
+# --- Public pages the stores ask for: privacy policy, delete without the app ---
+
+@app.get("/privacy", response_class=HTMLResponse)
+def page_privacy(lang: str = "uz"):
+    return HTMLResponse(legal.privacy_page(lang), headers={"Cache-Control": "public, max-age=3600"})
+
+
+@app.get("/account/delete", response_class=HTMLResponse)
+def page_account_delete(lang: str = "uz"):
+    return HTMLResponse(legal.delete_page(lang),
+                        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+
+
+class DeleteStartIn(BaseModel):
+    email: str = Field(max_length=254)
+    language: str = Field(default="uz", max_length=2)
+
+
+class DeleteConfirmIn(BaseModel):
+    email: str = Field(max_length=254)
+    code: str = Field(max_length=12)
+
+
+@app.post("/api/account/delete/start")
+async def api_account_delete_start(body: DeleteStartIn):
+    """A deletion code to the address — only when an account has it, but the
+    same answer either way, so the page cannot be used to test addresses."""
+    try:
+        email = email_auth.normalize_email(body.email)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="bad_email")
+    if not mailer.configured():
+        raise HTTPException(status_code=503, detail="email_unavailable")
+    with SessionLocal() as s:
+        account = email_auth.account_for(s, email)
+    if account is None:
+        return {"ok": True}
+    return await _mail_code(email, "delete", body.language, account, kind="delete")
+
+
+@app.post("/api/account/delete/confirm")
+def api_account_delete_confirm(body: DeleteConfirmIn):
+    """The code proves the address; the account behind it is erased — the
+    same erase as the in-app button, team handover rule included."""
+    try:
+        email = email_auth.normalize_email(body.email)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="bad_email")
+    with SessionLocal() as s:
+        account = email_auth.account_for(s, email)
+        if account is None:
+            raise HTTPException(status_code=404, detail="no_account")
+        if not email_auth.check_code(s, email, body.code, "delete", account_id=account):
+            raise HTTPException(status_code=401, detail="bad_code")
+        try:
+            svc.delete_account(s, account)
+        except ValueError as e:
+            s.rollback()
+            raise HTTPException(status_code=409, detail=str(e))
+    log.info("account deleted from the web page")
+    return {"ok": True, "deleted": True}
 
 
 @app.post("/api/auth/email/start")

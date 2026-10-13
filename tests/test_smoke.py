@@ -5318,6 +5318,9 @@ APPLE_SYSTEM_COLOURS = {
     "#8E8E93", "#98989D",   # gray
     # Accessible variants, for a hue used as text on a light ground.
     "#248A3D", "#B25000", "#D70015",
+    # WCAG 2.2 AA (v21): green and orange as text on the light surfaces need
+    # 4.5:1, which Apple's own accessible variants miss by a hair (4.17).
+    "#1F7A36", "#9A4500",
     # The ink both light-on-dark and dark-on-light themes lead with.
     "#1C1C1A", "#F2F2ED",
 }
@@ -5340,6 +5343,34 @@ def test_every_brand_colour_is_an_apple_system_colour(name, mode):
         colour = found.group(1).upper()
         assert colour in APPLE_SYSTEM_COLOURS, \
             f"{name}/{mode} {token} is {colour}, which is not a system colour"
+
+
+@pytest.mark.parametrize("name", ["clean-white", "blossom", "obsidian", "emerald"])
+@pytest.mark.parametrize("mode", ["light", "dark"])
+def test_every_theme_meets_wcag_aa_text_contrast(name, mode):
+    """WCAG 2.2 AA 1.4.3: 4.5:1 for text. The label on a filled button, the
+    quietest text on the quietest surface, and green/orange/red as text — in
+    every theme and mode. axe-core found the old system blue at 4.0."""
+    import re
+    block = _theme_block((ROOT / "webapp" / "index.html").read_text(), name, mode)
+    get = lambda token: re.search(r"%s:\s*(#[0-9A-Fa-f]{6})" % re.escape(token), block).group(1)
+
+    def lum(h):
+        def f(c):
+            c /= 255
+            return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+        r, g, b = (int(h[i:i + 2], 16) for i in (1, 3, 5))
+        return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+
+    def ratio(a, b):
+        hi, lo = sorted((lum(a), lum(b)), reverse=True)
+        return (hi + 0.05) / (lo + 0.05)
+
+    pairs = [("--on-primary", "--primary-fill"), ("--text-3", "--surface-2"), ("--text-3", "--surface"),
+             ("--text-2", "--surface"), ("--ok", "--surface"), ("--warn", "--surface"),
+             ("--danger", "--surface")]
+    low = [f"{a} on {b}: {ratio(get(a), get(b)):.2f}" for a, b in pairs if ratio(get(a), get(b)) < 4.5]
+    assert not low, f"{name}/{mode} below 4.5:1 — " + "; ".join(low)
 
 
 def test_a_light_lead_colour_carries_a_dark_label():
@@ -13502,3 +13533,57 @@ def test_an_error_on_a_phone_reaches_the_log_without_secrets(client, caplog):
     assert application.rate_limit_check(999101, "report") is not None
     assert application.rate_limit_check(999101, "auth") is None
     application._buckets.clear()
+
+
+def test_privacy_policy_is_a_public_page_in_three_languages(client):
+    """Google Play and the law want a policy at a public address: what is
+    collected, who processes it, how long it is kept, how to delete it."""
+    for lang, word in (("uz", "Maxfiylik siyosati"), ("ru", "Политика конфиденциальности"),
+                       ("en", "Privacy policy")):
+        r = client.get(f"/privacy?lang={lang}")
+        assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
+        assert f'<html lang="{lang}">' in r.text and word in r.text
+        assert f"/account/delete?lang={lang}" in r.text, "the policy links to deletion"
+        for processor in ("Railway", "Groq", "Firebase"):
+            assert processor in r.text
+    assert '<html lang="uz">' in client.get("/privacy?lang=xx").text
+
+
+def test_an_account_is_deleted_from_the_web_page_with_an_emailed_code(client, monkeypatch, tmp_path):
+    """Play's rule: delete without the app. The page mails a deletion code to
+    an address that has an account; the code erases that account. An address
+    without one gets the same answer and no mail."""
+    import email_auth
+    from db import AccountEmail
+    last_code = _mailbox(monkeypatch, tmp_path)
+    page = client.get("/account/delete?lang=uz")
+    assert page.status_code == 200 and "Akkauntni o'chirish" in page.text
+    assert page.headers["cache-control"] == "no-store"
+    with SessionLocal() as s:
+        account = email_auth.create_account(s, "gone@example.com", first_name="Gone")
+    import app_auth
+    with SessionLocal() as s:
+        h = {"X-Telegram-Init-Data": app_auth.TOKEN_PREFIX + app_auth.issue_session(s, account, "test")}
+    assert client.post("/api/onboarding", headers=h, json={"first_name": "Gone", "language": "uz"}).status_code == 200
+    assert client.post("/api/tasks", headers=h, json={"title": "Bir ish"}).status_code in (200, 201)
+
+    # Nobody at this address: same answer, no mail.
+    r = client.post("/api/account/delete/start", json={"email": "nobody@example.com"})
+    assert r.status_code == 200 and last_code("nobody@example.com") is None
+    assert client.post("/api/account/delete/confirm",
+                       json={"email": "nobody@example.com", "code": "123456"}).status_code == 404
+
+    r = client.post("/api/account/delete/start", json={"email": "Gone@Example.com", "language": "uz"})
+    assert r.status_code == 200, r.text
+    code = last_code("gone@example.com")
+    subject = sorted(tmp_path.glob("*.json"))[-1].read_text()
+    assert "o'chirish" in subject, "the mail says what the code does"
+    # A sign-in code is not a deletion code, and a wrong one is refused.
+    assert client.post("/api/account/delete/confirm",
+                       json={"email": "gone@example.com", "code": "000000"}).status_code == 401
+    assert client.get("/api/me", headers=h).status_code == 200, "still there after a wrong code"
+    r = client.post("/api/account/delete/confirm", json={"email": "gone@example.com", "code": code})
+    assert r.status_code == 200 and r.json()["deleted"] is True
+    with SessionLocal() as s:
+        assert s.get(AccountEmail, "gone@example.com") is None
+    assert client.get("/api/me", headers=h).status_code == 401, "its sessions end too"
