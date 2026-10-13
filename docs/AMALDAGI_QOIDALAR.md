@@ -309,3 +309,15 @@ navbatga tushadi va ulanganda bir marta yuboriladi.
   - qarzning kimi, summasi va yo'nalishi ovoz bilan o'zgarmaydi; qarz ovoz bilan o'chirilmaydi;
   - qoldiqdan katta summa rad etiladi (`paid_exceeds_remaining`), yopilgan qarzga qayta yozilmaydi;
   - AI ko'radigan ro'yxatda faqat ochiq qarzlar bor, har biri bilan qolgan summa (`owed`) va yo'nalishi.
+
+
+## Android ilova sifati (v20)
+
+- **Orqaga tugmasi:** bir daraja orqaga — oyna (sheet) → guruh → loyiha → «Bugun». Faqat «Bugun»dan ilova fonga ketadi.
+- **Status bar:** soat va batareya ikonkalari ilovaning o'z rejimiga (yorug'/tungi) moslashadi, telefon rejimiga emas.
+- **Eslatmalar:** «Aniq vaqt» ruxsati bo'lsa — aniq vaqtda, bo'lmasa — bir necha daqiqa kechikish bilan. Android sozlamalar oynasi faqat foydalanuvchi «Yoqish»ni bosganda ochiladi.
+- **Shrift o'lchami:** telefonning shrift o'lchami 85%–115% oralig'ida qo'llanadi; undan kattasi 115% da to'xtaydi (tor ekranda tablar sig'ishi uchun).
+- **Zaxira nusxa:** ilova ma'lumotlari Google/adb zaxirasiga va boshqa telefonga ko'chirishga tushmaydi (sessiya tokeni telefonda qoladi). Yangi telefonda qayta kiriladi, ma'lumotlar serverdan keladi.
+- **Release APK:** imzo kaliti bo'lsa CI release APK yig'adi (debuggable emas, WebView'ni USB orqali ko'rib bo'lmaydi).
+- **Xatolar haqida xabar:** telefondagi JS xatosi serverga `/api/app/client-error` orqali boradi. Logga xabar matni, ekran va build yoziladi; token, email va initData kesiladi; akkaunt faqat qisqa hash bilan. Bir seansda ko'pi bilan 20 ta, serverda 10 daqiqada 10 ta (alohida limit, kirish limitiga ta'sir qilmaydi).
+- **Moliya:** mikrofon faqat kiritish maydoni yonida (FAB mikrofoni yo'q). **Profil** (Qadam, Statistika) ekranlarida `+` yo'q.

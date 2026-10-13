@@ -42,7 +42,11 @@ android {
         debug {
             if (signedBuild) signingConfig signingConfigs.ernest
         }
+        // What phones get once the key is set (CI builds it then): not
+        // debuggable, so no USB access to the app's data and no WebView
+        // inspection of the session.
         release {
+            if (signedBuild) signingConfig signingConfigs.ernest
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

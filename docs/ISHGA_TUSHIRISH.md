@@ -168,11 +168,28 @@ Shundan keyingi har bir APK shu kalit bilan imzolanadi. Actions → android → 
 
 1. GitHub → repo → **Actions** → **android** → eng oxirgi yashil (✓) ishga tushirish.
 2. Sahifa pastidagi **Artifacts**'dan `ErnestOS-android-NN` ni yuklab oling (zip).
-3. Zip ichidagi `app-debug.apk` ni telefonga o'tkazing.
+3. Zip ichidagi `ErnestOS-NN.apk` ni telefonga o'tkazing.
+   - Imzo kaliti (4-bo'lim) sozlangan bo'lsa, bu **release** APK: telefonda debug rejimi yo'q, ilova ma'lumotlariga USB orqali kirib bo'lmaydi. Run sahifasidagi Summary'da «APK: release build» deb yoziladi.
+   - Kalit bo'lmasa — **debug** APK (faqat sinov uchun).
 
 APK `https://ernestos-bot-production.up.railway.app` ga ulanadi. Manzil boshqa bo'lsa, Actions → android → **Run workflow** → `api_url` ga yozing.
 
-Push uchun GitHub → Settings → Secrets'ga `GOOGLE_SERVICES_JSON` qo'shib, APK'ni qayta yig'ing. Usiz ham eslatmalar ilova ichidagi «Xabarlar»ga va telefonning o'z eslatmalariga keladi.
+### Push (ilova yopiq bo'lganda ham xabar kelishi uchun)
+
+Pushsiz ham ilova o'zi rejalashtirgan eslatmalar (vazifa, odat, hisobot vaqti) telefonda chiqadi. Lekin **serverdan keladigan xabarlar** — guruhda sizga topshiriq berilgani, yangi hisobot, to'lov — ilova ochilgandagina «Xabarlar»da ko'rinadi. Ular darhol kelishi uchun Firebase kerak (bepul):
+
+1. https://console.firebase.google.com → **Add project** (masalan «ErnestOS»).
+2. **Project settings → General → Add app → Android**. Package name: `uz.ernestos.app`. `google-services.json` faylini yuklab oling.
+3. GitHub → Settings → Secrets → **New repository secret**: `GOOGLE_SERVICES_JSON` = faylning to'liq matni.
+4. **Project settings → Service accounts → Generate new private key** → JSON fayl.
+5. Railway → Variables: `FCM_SERVICE_ACCOUNT` = shu JSON'ning to'liq matni.
+6. APK'ni qayta yig'ing (Actions → android → Run workflow) va o'rnating.
+
+Ikkala JSON ham maxfiy — repo, chat yoki skrinshotga qo'ymang.
+
+### Aniq vaqtda eslatish (Android 12+)
+
+Android 14 dan boshlab «Signal va eslatmalar» ruxsati standart holatda o'chiq. Ilova endi bu oynani o'zi ochmaydi. Ruxsat bo'lmasa, eslatma bir necha daqiqa kechikishi mumkin. Yoqish: **Profil → ⚙️ → Eslatmalar va hisobotlar → Aniq vaqtda eslatish → Yoqish**.
 
 ## 7. Telefonga o'rnatish va kirish
 
@@ -221,4 +238,6 @@ Ilova «debug» turida yig'iladi, lekin 4-bo'limdagi doimiy kalit bilan imzolana
 | APK o'rnatilmaydi («ilova o'rnatilmadi») | Eski versiya boshqa kalit bilan | Eskisini o'chirib o'rnating (bir marta, 4-bo'lim) |
 | 🎤 bosilsa «Hozir yoqilmagan» | AI kaliti yo'q | `AGENT_ENABLED=true` va `GROQ_API_KEY` |
 | 🎤 ruxsat so'ramaydi / «mikrofonga ruxsat yo'q» | Telefonda ruxsat o'chirilgan | Sozlamalar → Ilovalar → ErnestOS → Ruxsatlar → Mikrofon |
+| Eslatma bir necha daqiqa kech keladi | Android 14+: «Aniq vaqt» ruxsati o'chiq | Sozlamalar → Eslatmalar va hisobotlar → Aniq vaqtda eslatish → Yoqish |
+| Telefon soati/batareya ko'rinmaydi (yuqorida) | Eski APK | Yangi APK'da status bar ilova rejimiga (yorug'/tungi) moslashadi |
 | Push kelmaydi | Firebase sozlanmagan | `GOOGLE_SERVICES_JSON` (APK) va `FCM_SERVICE_ACCOUNT` (server) |

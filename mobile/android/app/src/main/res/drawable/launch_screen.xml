@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launch screen: the logo at its own size in the middle, black around
+     it. A bare bitmap as the window background was stretched to the screen,
+     and on a 20:9 phone the 3:5 artwork came out a third too tall. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@android:color/black" />
+    <item>
+        <bitmap android:gravity="center" android:src="@drawable/splash" />
+    </item>
+</layer-list>

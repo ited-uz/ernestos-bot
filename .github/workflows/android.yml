@@ -62,6 +62,8 @@ jobs:
 
       - name: Build the web layer
         working-directory: mobile
+        env:
+          ERNEST_BUILD: android-${{ github.run_number }}
         run: |
           if [ -z "$API_URL" ]; then
             echo "::warning::ERNEST_API_URL is not set — compiling only, no APK will be published."
@@ -93,14 +95,22 @@ jobs:
             echo "::notice::ANDROID_KEYSTORE_B64 not set — APK signed with a throwaway debug key (no in-place updates, no native Google sign-in)."
           fi
 
+      # With the signing key: a release APK (not debuggable — no USB access to
+      # the app's data, no WebView inspection of the session). Without it: a
+      # debug APK, as before, so the build still proves the project compiles.
       - name: Build the APK
         working-directory: mobile/android
-        run: ./gradlew --no-daemon assembleDebug -PversionCode=${{ github.run_number }} -PversionName=13.1.${{ github.run_number }}
+        run: |
+          if [ -n "${ERNEST_KEYSTORE:-}" ]; then TASK=assembleRelease; KIND=release; else TASK=assembleDebug; KIND=debug; fi
+          ./gradlew --no-daemon "$TASK" -PversionCode=${{ github.run_number }} -PversionName=13.1.${{ github.run_number }}
+          mkdir -p "$RUNNER_TEMP/apk"
+          cp "app/build/outputs/apk/$KIND/app-$KIND.apk" "$RUNNER_TEMP/apk/ErnestOS-${{ github.run_number }}.apk"
+          echo "### APK: $KIND build" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish the APK
         if: env.API_URL != ''
         uses: actions/upload-artifact@v4
         with:
           name: ErnestOS-android-${{ github.run_number }}
-          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ runner.temp }}/apk/ErnestOS-${{ github.run_number }}.apk
           retention-days: 30

@@ -47,6 +47,22 @@
     },
     open: function (url) { openExternal(url); },
     pushStatus: function () { return pushStatus(); },
+    /* "granted", "denied" or "n/a" (no such setting: older Android, no plugin). */
+    exactAlarms: function () {
+      var local = plugin("LocalNotifications");
+      if (!local || !local.checkExactNotificationSetting) return Promise.resolve("n/a");
+      return local.checkExactNotificationSetting()
+        .then(function (r) { return (r && r.exact_alarm) || "n/a"; })
+        .catch(function () { return "n/a"; });
+    },
+    /* Opens Android's "Alarms & reminders" for this app — only when asked. */
+    allowExactAlarms: function () {
+      var local = plugin("LocalNotifications");
+      if (!local || !local.changeExactNotificationSetting) return Promise.resolve("n/a");
+      return local.changeExactNotificationSetting()
+        .then(function (r) { syncLocal(); return (r && r.exact_alarm) || "n/a"; })
+        .catch(function () { return "n/a"; });
+    },
     requestPush: function () { return requestPush(); },
     /* Google's own account picker (Credential Manager): the phone's signed-in
        Google accounts, one tap, an ID token for the server to check. Rejects
@@ -226,6 +242,26 @@
     });
   }
 
+  /* The status bar follows the APP's light/dark, not the phone's: with the
+     phone in light mode and the app set to dark, Android drew dark clock and
+     battery icons on the app's dark top — invisible. The Mini App writes its
+     mode to <html data-mode>; mirror every change into SystemBars. */
+  var bars = plugin("SystemBars");
+  if (bars && bars.setStyle && !onLoginPage) {
+    var lastBars = "";
+    var paintBars = function () {
+      var mode = document.documentElement.getAttribute("data-mode");
+      if (!mode) return;
+      var style = mode === "dark" ? "DARK" : "LIGHT";
+      if (style === lastBars) return;
+      lastBars = style;
+      bars.setStyle({ style: style }).catch(function () { lastBars = ""; });
+    };
+    new MutationObserver(paintBars).observe(document.documentElement,
+      { attributes: true, attributeFilter: ["data-mode"] });
+    paintBars();
+  }
+
   /* Back from the browser: the sign-in page's deep link, or just the app
      coming to the front. Either way the login page asks the server. */
   if (app && app.addListener) {
@@ -305,6 +341,18 @@
     for (var i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0;
     return LOCAL_BASE + (Math.abs(h) % 1000000000);
   }
+  /* Android 12+: exact alarms need "Alarms & reminders", off by default
+     from Android 14. Without it the plugin opens that settings screen on
+     every schedule() — and coming back to the app schedules again, so the
+     person is thrown into Settings in a loop. Exact only when it is already
+     allowed; otherwise inexact (a few minutes of slack), and the switch is
+     offered once, by name, in Settings → Eslatmalar. */
+  function exactAllowed(local) {
+    if (!local.checkExactNotificationSetting) return Promise.resolve(true);
+    return local.checkExactNotificationSetting()
+      .then(function (r) { return !r || r.exact_alarm !== "denied"; })
+      .catch(function () { return false; });
+  }
   var syncing = null;
   function syncLocal() {
     var local = plugin("LocalNotifications");
@@ -326,9 +374,12 @@
             return ours.length ? local.cancel({ notifications: ours.map(function (n) {
               return { id: n.id }; }) }) : null;
           }).then(function () {
+            return exactAllowed(local);
+          }).then(function (exact) {
             var list = data.items.map(function (x) {
               return { id: localId(x.key), title: x.title, body: x.body,
                        schedule: { at: new Date(x.at), allowWhileIdle: true },
+                       isExactNotification: exact,
                        channelId: x.silent ? "quiet" : "reminders",
                        extra: { ernest: 1, open: x.open || "inbox" } };
             });

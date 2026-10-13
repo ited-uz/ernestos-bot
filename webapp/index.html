@@ -425,7 +425,7 @@ label{display:block;font-size:14px;color:var(--text-2);margin:var(--s3) 0 6px;
 .seg{display:flex;background:var(--surface-2);
      border-radius:var(--radius-sm);padding:3px;gap:2px}
 .seg > *{flex:1;text-align:center;padding:var(--s1) 6px;min-height:44px;
-         display:flex;align-items:center;justify-content:center;gap:6px;
+         display:flex;align-items:center;justify-content:safe center;gap:6px;
          border-radius:calc(var(--radius-sm) - 3px);font-size:14.5px;font-weight:580;
          cursor:pointer;color:var(--text-2);white-space:nowrap;overflow:hidden;
          text-overflow:ellipsis;min-width:0;transition:background var(--motion),
@@ -1277,6 +1277,13 @@ textarea[data-journal]{field-sizing:content;min-height:72px;max-height:60vh;resi
 .gtabs .tab.add{border-style:dashed;color:var(--primary);gap:4px}
 h1.gname{font-size:26px;letter-spacing:-.4px;line-height:1.15;overflow-wrap:anywhere}
 .groupseg.four > *{font-size:14.5px;padding-left:2px;padding-right:2px}
+/* A 360px Android phone with its text size turned up (the app honours up to
+   115%): four tabs in a row cut "Maqsadlar" mid-word, and the money tabs
+   "Qarzlar · 2". Narrow screens give the words the room instead. */
+@media (max-width: 380px){
+  .groupseg.four > *{font-size:13px;letter-spacing:-.1px}
+  .seg:not(.sub):not(.groupseg) > *{padding-left:2px;padding-right:2px;font-size:13px;letter-spacing:-.1px}
+}
 .banner{display:flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s3);
   border-radius:var(--radius);background:var(--surface);
   border:var(--border-w) solid var(--border);margin:var(--s2) 0;font-size:14.5px;
@@ -1896,6 +1903,31 @@ tg?.ready();
 tg?.expand();
 tg?.disableVerticalSwipes?.();
 
+/* An error on someone's phone reaches the server log, so it is seen at all:
+   the message, the screen and the build — never data or tokens (the server
+   cuts anything token-shaped too). Each distinct error once, at most 20 a
+   session; an API refusal is an answer, not a bug, and is not sent. */
+const reportedErrors = new Set();
+function reportClientError(kind, message, stack){
+  try{
+    const msg = String(message || "").slice(0, 300);
+    const key = kind + "|" + msg;
+    if(!msg || reportedErrors.has(key) || reportedErrors.size >= 20) return;
+    reportedErrors.add(key);
+    fetch("/api/app/client-error", {method:"POST", keepalive:true,
+      headers:{"Content-Type":"application/json", "X-Telegram-Init-Data": tg?.initData || ""},
+      body: JSON.stringify({kind, message: msg, stack: String(stack || "").slice(0, 1500),
+        screen: (typeof state !== "undefined" && state?.screen) || "", app: IS_APP,
+        build: String(window.ERNEST_CONFIG?.build || "")})}).catch(() => {});
+  }catch(_){ /* reporting must never be the next error */ }
+}
+window.addEventListener("error", e => reportClientError("error", e.message, e.error?.stack));
+window.addEventListener("unhandledrejection", e => {
+  const r = e.reason;
+  if(r && (r.status || r.name === "AbortError")) return;
+  reportClientError("promise", r?.message || String(r), r?.stack);
+});
+
 /* Telegram's in-app browser reports a usable height that 100vh gets
    wrong, and the value changes as the keyboard opens. Mirror it, plus
    both safe-area insets, into custom properties. */
@@ -2122,6 +2154,7 @@ const DICT = {
   pt_money_transfers:"Hisoblar orasida o'tkazma", pt_money_year:"Yillik moliya",
   voice_cmd:"Ovozli buyruq — gapiring, AI bajaradi", chat_mic:"Gapirib yuborish",
   chat_rec:"Gapiring… To'xtatsangiz, yuboriladi.", chat_rec_send:"Yuborish", chat_voice_msg:"🎤 Ovozli xabar", voice_empty:"Ovozdan matn olinmadi. Qaytadan gapiring.",
+  exact_title:"Aniq vaqtda eslatish", exact_denied:"O'chiq — eslatma bir necha daqiqa kechikib kelishi mumkin.", exact_allow:"Yoqish",
   chat_title:"AI yordamchi", chat_off:"AI yordamchi hali ulanmagan.",
   chat_hello:"Assalomu alaykum, {name}!",
   chat_intro:"Vazifa, odat, maqsad va moliyangizni ko'rib turaman. Xulosa so'rang, maslahat oling yoki «ertaga 10 da uchrashuv qo'sh» deb yozing — tasdiqlaganingizdan keyin bajaraman.",
@@ -2700,6 +2733,7 @@ const DICT = {
   pt_money_transfers:"Transfers between accounts", pt_money_year:"The year of money",
   voice_cmd:"Voice command — speak, the AI does it", chat_mic:"Speak a message",
   chat_rec:"Speak… Stop and it is sent.", chat_rec_send:"Send", chat_voice_msg:"🎤 Voice message", voice_empty:"No speech was heard. Try again.",
+  exact_title:"Remind at the exact time", exact_denied:"Off — a reminder may come a few minutes late.", exact_allow:"Turn on",
   chat_title:"AI assistant", chat_off:"The AI assistant is not connected yet.",
   chat_hello:"Hello, {name}!",
   chat_intro:"I see your tasks, habits, goals and money. Ask for a summary, get advice, or write «add a meeting tomorrow at 10» — I do it after you confirm.",
@@ -3272,6 +3306,7 @@ const DICT = {
   pt_money_transfers:"Переводы между счетами", pt_money_year:"Финансы за год",
   voice_cmd:"Голосовая команда — скажите, AI сделает", chat_mic:"Сказать голосом",
   chat_rec:"Говорите… Остановите — и сообщение уйдёт.", chat_rec_send:"Отправить", chat_voice_msg:"🎤 Голосовое сообщение", voice_empty:"Речь не распознана. Скажите ещё раз.",
+  exact_title:"Напоминать точно вовремя", exact_denied:"Выключено — напоминание может прийти на несколько минут позже.", exact_allow:"Включить",
   chat_title:"AI-помощник", chat_off:"AI-помощник ещё не подключён.",
   chat_hello:"Здравствуйте, {name}!",
   chat_intro:"Я вижу ваши задачи, привычки, цели и финансы. Попросите итог, совет или напишите «добавь встречу завтра в 10» — выполню после вашего подтверждения.",
@@ -3953,15 +3988,30 @@ document.getElementById("sheet").addEventListener("click", e => {
    the open sheet first, then a sub-screen, then nothing. Without this,
    the hardware back gesture closes the whole Mini App from a detail
    view, which loses whatever the user was doing. */
+/* Where "back" goes from here, or null when it should leave the app. In
+   the phone app Android's back button follows the screens one level at a
+   time — a sheet, a group, a project, then Bugun — and only Bugun sends the
+   app to the background; it used to minimise the app from every tab. In
+   Telegram the header arrow keeps to sheets and projects, as before. */
+function backTarget(){
+  if(sheetOpen()) return "sheet";
+  if(state.screen === "project") return "project";
+  if(IS_APP && state.screen === "team" && state.teamView === "group") return "group";
+  if(IS_APP && state.screen !== "home") return "home";
+  return null;
+}
 function syncBackButton(){
   const bb = tg?.BackButton;
   if(!bb) return;
-  if(sheetOpen() || state.screen === "project") bb.show?.();
+  if(backTarget()) bb.show?.();
   else bb.hide?.();
 }
 tg?.BackButton?.onClick?.(() => {
-  if(sheetOpen()) return closeSheet();
-  if(state.screen === "project") return goto("tasks");
+  const to = backTarget();
+  if(to === "sheet") return closeSheet();
+  if(to === "project") return goto("tasks");
+  if(to === "group") return setState({teamView: "list"});
+  if(to === "home") return goto("home");
   setState({screen:"home"});
 });
 
@@ -4068,7 +4118,9 @@ function syncDateField(box){
 /* ---------- line chart (inline SVG, no libraries) ---------- */
 function lineChart(series, keys){
   if(!series.length) return `<div class="empty">${t("no_data")}</div>`;
-  const W = 320, H = 148, L = 18, R = 8, TOP = 12, BOT = 24;
+  // Labels at 11 units: on a 360px phone the chart is ~300px wide, and the
+  // old 8-unit labels came out at under 8px — unreadable.
+  const W = 320, H = 152, L = 24, R = 8, TOP = 12, BOT = 26;
   const stepX = series.length > 1 ? (W - L - R) / (series.length - 1) : 0;
   const y = v => H - BOT - (v / 100) * (H - TOP - BOT);
   const x = i => L + i * stepX;
@@ -4076,7 +4128,7 @@ function lineChart(series, keys){
   const grid = [0, 50, 100].map(v =>
     `<line x1="${L}" y1="${y(v)}" x2="${W-R}" y2="${y(v)}" stroke="var(--line)"
        stroke-width="1" stroke-dasharray="2 5"/>
-     <text x="0" y="${y(v)+3}" font-size="8" fill="var(--text-3)">${v}</text>`).join("");
+     <text x="0" y="${y(v)+4}" font-size="11" fill="var(--text-3)">${v}</text>`).join("");
 
   /* A key may skip the days it has no value (`gaps`) instead of drawing
      them as zero, set its own `width`, and leave out the area (`area:false`). */
@@ -4097,12 +4149,12 @@ function lineChart(series, keys){
 
   // Anchor the first and last labels inward so they are not clipped by
   // the SVG edge; everything between stays centred on its point.
-  const every = Math.ceil(series.length / 6);
+  const every = Math.ceil(series.length / 5);
   const last = series.length - 1;
   const labels = series.map((p, i) => {
     if(i % every !== 0 && i !== last) return "";
     const anchor = i === 0 ? "start" : i === last ? "end" : "middle";
-    return `<text x="${x(i)}" y="${H-6}" font-size="8.5" fill="var(--text-3)"
+    return `<text x="${x(i)}" y="${H-6}" font-size="11" fill="var(--text-3)"
               text-anchor="${anchor}">${p.label}</text>`;
   }).join("");
 
@@ -4268,7 +4320,8 @@ function planBadge(p){
   p = p || state.me?.plan || {};
   if(!p.enabled || p.tier === "free") return {badge:"Free", line:t("plan_free_line"), active:false};
   return {badge:t("plan_badge_active", {plan:PLAN_NAME[p.tier] || "Pro"}),
-          line: p.until ? t("plan_until_line", {d:p.until.slice(0, 10)}) : t("plan_lifetime"), active:true};
+          line: p.until ? t("plan_until_line", {d:`${isoToLabel(p.until.slice(0, 10))} ${p.until.slice(0, 4)}`})
+            : t("plan_lifetime"), active:true};
 }
 function planLine(){
   const p = state.me?.plan;
@@ -7552,8 +7605,8 @@ SCREENS.money = () => {
         <span class="neg">↓ −${moneyNum(m.expense)}</span>
         <span class="t3">${m.is_current ? t("money_this_month") : `${D().months[m.month_no - 1]} ${m.year}`}</span></div>
       ${debts.open.length ? `<div class="mdebt" data-act="money-tab" data-value="debts" role="button" tabindex="0">
-        🤝 ${t("debt_all_open")} · <span class="pos num">+${moneyNum(debts.owed_to_me)}</span>
-        · <span class="neg num">−${moneyNum(debts.i_owe)}</span>
+        🤝 ${t("debt_all_open")}${debts.owed_to_me ? ` · <span class="pos num">+${moneyNum(debts.owed_to_me)}</span>` : ""}${
+          debts.i_owe ? ` · <span class="neg num">−${moneyNum(debts.i_owe)}</span>` : ""}
         ${debts.overdue ? `<span class="neg"> · ${t("debt_overdue_n", {n: debts.overdue})}</span>` : ""}</div>` : ""}
     </div>`;
 
@@ -9771,7 +9824,12 @@ function notifySheet(){
         <div class="grow"><b>${t("push_title")}</b>
           <div class="t2 small">${ps ? t("push_" + ps) : "…"}</div></div>
         ${ps === "ask" ? `<button class="btn sm" data-act="push-allow">${t("push_allow")}</button>` : ""}
-      </div></div>`;
+      </div>
+      ${state.exactAlarm === "denied" && ps === "on" ? `<div class="row" style="gap:8px;align-items:center;margin-top:var(--s2)">
+        <div class="grow"><b>${t("exact_title")}</b>
+          <div class="t2 small">${t("exact_denied")}</div></div>
+        <button class="btn sm" data-act="exact-allow">${t("exact_allow")}</button></div>` : ""}
+    </div>`;
 
   return `
     <h3>${icon("bell", 18)} ${t("notifications")}</h3>
@@ -10651,10 +10709,12 @@ SCREENS.more = () => `<h1>${t("more")}</h1>` + [
     ${state.me?.agent?.available ? `<button class="btn secondary" data-act="agent-open">${t("agent_open")}</button>` : ""}`;
 
 /* The microphone above the +: say it, the AI turns it into a card, and
-   Confirm does it — a task, a habit tick, money, a debt. On the screens
-   whose + adds those; Goals, Groups and People keep their own +. */
+   Confirm does it — a task, a habit tick, money, a debt. On Bugun, Vazifalar
+   and Odatlar; Moliya has its own mic beside its input (two mics there,
+   and the pair covered the category chips), and Goals, Groups and People
+   keep their own +. */
 function fabMic(){
-  if(!["home", "tasks", "habits", "money"].includes(state.screen)) return "";
+  if(!["home", "tasks", "habits"].includes(state.screen)) return "";
   return `<button class="fab-mic" data-act="voice-start" aria-label="${t("voice_cmd")}"
     title="${t("voice_cmd")}">${icon("mic", 24)}</button>`;
 }
@@ -10662,6 +10722,8 @@ function fabMic(){
    the level being looked at — the week's focus on the tactical tab. */
 function fabAdd(){
   const sc = state.screen;
+  // Qadam and Statistika add nothing: a + there only covered their counters.
+  if(sc === "steps" || sc === "stats" || sc === "profile") return "";
   if(sc === "goals"){
     const tab = GOAL_LEVELS.includes(state.goalTab) ? state.goalTab : "ultimate";
     const attrs = tab === "tactical"
@@ -10896,8 +10958,7 @@ function render(){
   /* + types it, the microphone above it says it (v19: asked for back; D04
      had folded it into the + sheet, where nobody found it). Both step out
      of the way while the page scrolls down, and the page ends below them. */
-  document.getElementById("fab").innerHTML = chromeOff || noFab ? "" : `
-    ${fabMic()}${fabAdd()}`;
+  document.getElementById("fab").innerHTML = chromeOff || noFab ? "" : `${fabMic()}${fabAdd()}`;
 
   syncShell();
   syncBackButton();
@@ -11572,6 +11633,15 @@ const A = {
       .catch(() => "no_build")
       .then(v => { state.pushStatus = v || "no_build";
         if(state.settingsView === "notify") reopenSettings(); });
+    window.ErnestApp?.exactAlarms?.().then(v => {
+      state.exactAlarm = v;
+      if(state.settingsView === "notify") reopenSettings();
+    }).catch(() => {});
+  },
+  "exact-allow": async () => {
+    haptic();
+    try{ state.exactAlarm = await window.ErnestApp.allowExactAlarms(); }catch(_){}
+    if(state.settingsView === "notify") reopenSettings();
   },
   "push-allow": async () => {
     haptic();
@@ -14313,6 +14383,7 @@ async function boot(){
     if(Object.keys(loadDraft()).length) toast(t("draft_restored"));
   }catch(e){
     console.error("ErnestOS boot failed:", e);
+    if(!e?.status) reportClientError("boot", e?.message || String(e), e?.stack);
     if(e.status === 403){ setState({loading:false}); await checkSubscription(true); return; }
     // No signal: the last Home that loaded, marked as such (K08).
     const snap = isOffline(e) ? loadLastGood() : null;

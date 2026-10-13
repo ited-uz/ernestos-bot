@@ -16,7 +16,10 @@
     </style>
 
 
+    <!-- Android 12+ draws its own splash first: black like ours, so the
+         launch is black → logo → app, with no white flash in between. -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
-        <item name="android:background">@drawable/splash</item>
+        <item name="android:background">@drawable/launch_screen</item>
+        <item name="windowSplashScreenBackground">@android:color/black</item>
     </style>
 </resources>

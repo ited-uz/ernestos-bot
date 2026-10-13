@@ -4765,13 +4765,13 @@ def test_the_floating_add_never_covers_the_page():
     assert 'id="fab"' in html and "#fab:empty{display:none}" in html
     render = html[html.index('document.getElementById("fab").innerHTML'):]
     first = render.split("\n")[0].strip()
-    assert "chromeOff" in first and first.endswith('? "" : `'), "fab drawn while loading"
+    assert "chromeOff" in first and '? "" : `${fabMic()}${fabAdd()}`' in first, "fab drawn while loading"
     # Not over prayer or the journal, which are filled in place.
     assert 'state.tab === "prayer" || state.tab === "journal"' in html
     assert "${fabMic()}${fabAdd()}" in render[:700]
     mic = html[html.index("function fabMic(){"):]
     mic = mic[:mic.index("\n}\n")]
-    assert 'data-act="voice-start"' in mic and '["home", "tasks", "habits", "money"]' in mic
+    assert 'data-act="voice-start"' in mic and '["home", "tasks", "habits"]' in mic, "Moliya has its own mic"
     quick = html[html.index("function quickSheet("):]
     assert 'data-act="voice-start"' in quick[:quick.index("\n}\n")], "voice lost"
     fab = html[html.index("function fabAdd(){"):]
@@ -13473,3 +13473,32 @@ def test_google_in_the_browser_trades_the_code_and_checks_the_nonce(client, monk
     assert client.get(f"/api/auth/oauth/google/callback?state={'d' * 48}&code=abc").status_code == 200
     assert client.post("/api/auth/oauth/poll", json={"verifier": "d" * 48}).json()["status"] == "unknown"
     assert client.post("/api/auth/oauth/poll", json={"verifier": "short"}).status_code == 422
+
+
+def test_an_error_on_a_phone_reaches_the_log_without_secrets(client, caplog):
+    """window.onerror on the phone → one log line: what broke and where, with
+    tokens, init data and emails cut out, the account as a short hash; and
+    the reports have a budget of their own, apart from sign-in tries."""
+    import logging
+    application._buckets.clear()
+    caplog.set_level(logging.WARNING, logger="ernestos")
+    leaked = "app:" + "x" * 40
+    r = client.post("/api/app/client-error", headers={"X-Telegram-Init-Data": init_data(ALICE)}, json={
+        "kind": "error", "screen": "money", "app": True, "build": "android-61",
+        "message": f"TypeError: cannot read 'amount' ({leaked}) for ali@example.com",
+        "stack": "at render (index.html:7570:3) hash=abcdef0123"})
+    assert r.status_code == 200 and r.json() == {"ok": True}
+    line = next(rec.getMessage() for rec in caplog.records if rec.getMessage().startswith("client "))
+    assert "TypeError: cannot read 'amount'" in line and "on money" in line and "android-61" in line
+    assert leaked not in line and "x" * 24 not in line, "no token in the log"
+    assert "ali@example.com" not in line and "abcdef0123" not in line
+    assert "anon" not in line, "a signed-in report names the account by hash"
+    assert str(ALICE["id"]) not in line, "and never by its id"
+    # Its own budget: ten reports, then 429 — the sign-in budget untouched.
+    req = type("R", (), {"url": type("U", (), {"path": "/api/app/client-error"})(), "method": "POST"})()
+    assert application._rate_class(req) == "report"
+    for _ in range(application.RATE_LIMITS["report"][0]):
+        assert application.rate_limit_check(999101, "report") is None
+    assert application.rate_limit_check(999101, "report") is not None
+    assert application.rate_limit_check(999101, "auth") is None
+    application._buckets.clear()

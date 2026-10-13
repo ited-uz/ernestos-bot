@@ -71,7 +71,18 @@ const step = async (name, fn) => {
                                      this.scheduled = this.scheduled.filter(n => !ids.includes(n.id)); },
         schedule: async function (o) { this.scheduled = this.scheduled.concat(o.notifications); },
         createChannel: async () => {}, addListener: () => {},
+        // Android 14+: "Alarms & reminders" is off until the person turns it on.
+        exact: 'denied', settingsOpened: 0,
+        checkExactNotificationSetting: async function () { return { exact_alarm: this.exact }; },
+        changeExactNotificationSetting: async function () {
+          this.settingsOpened++; this.exact = 'granted'; return { exact_alarm: 'granted' }; },
       },
+      // The status bar's icon colour, as Android would be told it.
+      SystemBars: { styles: [], setStyle: async function (o) { this.styles.push(o.style); } },
+      // Android's back button and the app's place in the background.
+      App: { listeners: {}, minimized: 0,
+             addListener: function (name, fn) { this.listeners[name] = fn; return { remove: () => {} }; },
+             minimizeApp: async function () { this.minimized++; } },
     } };
   });
   const page = await context.newPage();
@@ -136,6 +147,12 @@ const step = async (name, fn) => {
     const again = await local();
     assert.equal(again.items.length, first.items.length, 'rescheduling replaces');
     assert.deepEqual(again.items.map(x => x.id).sort(), first.items.map(x => x.id).sort());
+    // Exact alarms not allowed (Android 14+ default): scheduled inexact, and
+    // Android's settings screen is NOT opened — it used to open on every sync.
+    const exact = await page.evaluate(() => { const n = window.Capacitor.Plugins.LocalNotifications;
+      return { opened: n.settingsOpened, flags: [...new Set(n.scheduled.map(x => x.isExactNotification))] }; });
+    assert.equal(exact.opened, 0, 'no settings screen thrown at the person');
+    assert.deepEqual(exact.flags, [false]);
   });
 
   await step('Opening the app shows Now in focus; the rest waits until a tap', async () => {
@@ -233,6 +250,43 @@ const step = async (name, fn) => {
     await page.click('.fab-add');
     await page.waitForTimeout(300);
     assert.ok(await page.evaluate(() => Telegram.WebApp.BackButton.isVisible), 'back shown with a sheet');
+  });
+
+  await step('Android back walks back one screen; only Bugun leaves the app', async () => {
+    const back = () => page.evaluate(() => window.Capacitor.Plugins.App.listeners.backButton());
+    await page.evaluate(() => { closeSheet(); goto('money'); });
+    await page.waitForTimeout(300);
+    await back();
+    await page.waitForFunction(() => state.screen === 'home');
+    assert.equal(await page.evaluate(() => window.Capacitor.Plugins.App.minimized), 0, 'Moliya → Bugun, app stays');
+    await back();
+    await page.waitForTimeout(200);
+    assert.equal(await page.evaluate(() => window.Capacitor.Plugins.App.minimized), 1, 'from Bugun the app goes to the background');
+  });
+
+  await step("The status bar follows the app's light or dark, not the phone's", async () => {
+    const styles = () => page.evaluate(() => window.Capacitor.Plugins.SystemBars.styles);
+    assert.equal((await styles()).at(-1), 'LIGHT');
+    await page.evaluate(() => { document.documentElement.dataset.mode = 'dark'; });
+    await page.waitForTimeout(100);
+    assert.equal((await styles()).at(-1), 'DARK');
+    await page.evaluate(() => { document.documentElement.dataset.mode = 'light'; });
+    await page.waitForTimeout(100);
+    assert.equal((await styles()).at(-1), 'LIGHT');
+  });
+
+  await step('Reminders at the exact time: offered by name in Settings, turned on only when tapped', async () => {
+    await page.evaluate(() => { closeSheet(); A.settings(); });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => A['set-notify']());
+    await page.waitForSelector('[data-act="exact-allow"]', { timeout: 5000 });
+    await shot('25-exact-alarm');
+    await page.click('[data-act="exact-allow"]');
+    await page.waitForFunction(() => window.Capacitor.Plugins.LocalNotifications.settingsOpened === 1);
+    await page.waitForFunction(() => window.Capacitor.Plugins.LocalNotifications.scheduled.length
+      && window.Capacitor.Plugins.LocalNotifications.scheduled.every(x => x.isExactNotification === true), null, { timeout: 5000 });
+    await page.waitForSelector('[data-act="exact-allow"]', { state: 'detached', timeout: 5000 });
+    await page.evaluate(() => closeSheet());
   });
 
   await step('Settings: profile on top, a chosen photo is saved and served', async () => {

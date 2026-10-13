@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import hashlib
 import hmac
 import json
 import logging
@@ -7280,7 +7281,10 @@ app = FastAPI(title="ErnestOS", lifespan=lifespan,
 #: Telegram, so each class gets its own budget (audit 012).
 RATE_LIMITS = {"read": (60, 60), "write": (30, 60), "heavy": (5, 60),
                # Sign-in codes: ten tries per ten minutes per address.
-               "auth": (10, 600)}
+               "auth": (10, 600),
+               # Error reports from phones: their own budget, so a broken
+               # screen never spends a person's sign-in or promocode tries.
+               "report": (10, 600)}
 #: The suite drives hundreds of writes as one user in a few seconds, which is
 #: not the traffic this limit describes. Tests exercise it explicitly instead.
 RATE_LIMIT_ENABLED = ENVIRONMENT != "test"
@@ -7302,6 +7306,8 @@ def _rate_class(request: Request) -> str:
     # "heavy" class) the second screen already got a 429 and an empty circle,
     # and the upload after it failed the same way. It is an ordinary read, and
     # setting or removing it an ordinary write.
+    if path == "/api/app/client-error":
+        return "report"
     if path in ("/api/app/login", "/api/promocode/redeem", "/api/auth/social/google") or path.startswith(
             ("/api/auth/email/", "/api/account/email/")):
         return "auth"
@@ -11613,6 +11619,38 @@ def api_app_notification_action(notification_id: int, body: NotificationActionIn
             raise HTTPException(status_code=409, detail=str(e) or "conflict")
         app_push.mark_read(s, user.telegram_id, [notification_id])
     return result
+
+
+class ClientErrorIn(BaseModel):
+    kind: str = Field(default="error", max_length=16)
+    message: str = Field(default="", max_length=400)
+    stack: str = Field(default="", max_length=2000)
+    screen: str = Field(default="", max_length=24)
+    app: bool = False
+    build: str = Field(default="", max_length=40)
+
+
+#: Anything token-shaped is cut before a client error reaches the log.
+_SECRETISH = re.compile(r"(app:)?[A-Za-z0-9_\-]{24,}|hash=[0-9a-f]+|[\w.+-]+@[\w-]+\.[\w.]+")
+
+
+@app.post("/api/app/client-error")
+def api_client_error(body: ClientErrorIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """An error on someone's phone, so it is seen at all: the message, where,
+    and which build — no data, no token, no email (cut out here as well), and
+    the account only as a short hash. The report rate class caps a flood."""
+    who = "anon"
+    if init:
+        try:
+            uid = int(verify_init_data(init)["id"])
+            who = hashlib.sha256(str(accounts.resolve_id(uid)).encode()).hexdigest()[:8]
+        except (HTTPException, ValueError, KeyError, TypeError):
+            pass
+    clean = lambda s, n: _SECRETISH.sub("…", " ".join(str(s or "").split()))[:n]
+    log.warning("client %s [%s%s] %s on %s · %s", clean(body.kind, 16), "app" if body.app else "tg",
+                f" {clean(body.build, 40)}" if body.build else "", who, clean(body.screen, 24) or "-",
+                clean(body.message, 300) + (f" | {clean(body.stack, 900)}" if body.stack else ""))
+    return {"ok": True}
 
 
 @app.post("/api/app/logout")
