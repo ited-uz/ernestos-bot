@@ -2,19 +2,32 @@
 // interface without a phone or a server: the same webapp/index.html, the
 // phone-app bridge reduced to what a browser can do, and webapp/preview.js
 // answering /api/* in the page. Nothing is sent anywhere.
-//   node mobile/scripts/build-demo.mjs <out.html> [lang]
+//   node mobile/scripts/build-demo.mjs <out.html> [lang] [--offline]
+//
+// --offline builds the personal offline copy instead: no sample data, the
+// user's own entries kept in the browser (webapp/offline-store.js), and the
+// backup file really downloaded.
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const webapp = join(here, "..", "..", "webapp");
-const out = process.argv[2];
-const lang = process.argv[3] || "uz";
-if (!out) { console.error("usage: build-demo.mjs <out.html> [lang]"); process.exit(1); }
+const args = process.argv.slice(2).filter(a => !a.startsWith("--"));
+const offline = process.argv.includes("--offline");
+const out = args[0];
+const lang = args[1] || "uz";
+if (!out) { console.error("usage: build-demo.mjs <out.html> [lang] [--offline]"); process.exit(1); }
 
 let html = readFileSync(join(webapp, "index.html"), "utf8");
 const preview = readFileSync(join(webapp, "preview.js"), "utf8");
+const store = offline ? readFileSync(join(webapp, "offline-store.js"), "utf8") : "";
+// On the phone these hand the file to Android's share sheet. The offline copy
+// downloads it and also shows it as text to copy, with a way to restore it
+// (offline-store.js): the backup is the only copy of the data off this browser.
+const saveFile = offline
+  ? `function(name, text){ window.ErnestOffline.showBackup(name, text); return Promise.resolve(); }`
+  : `function(){ return Promise.resolve(); }`;
 
 const shim = `<script>
 window.ERNEST_PREVIEW_QS = ${JSON.stringify(`lang=${lang}&app=1`)};
@@ -37,15 +50,14 @@ window.ERNEST_PREVIEW_QS = ${JSON.stringify(`lang=${lang}&app=1`)};
     MainButton: {show:noop, hide:noop, setText:noop, onClick:noop, offClick:noop, setParams:noop}
   };
   window.Telegram = {WebApp: WebApp};
-  // On the phone these hand the file to Android's share sheet; here they only confirm.
   window.ErnestApp = {
-    saveFile: function(){ return Promise.resolve(); },
+    saveFile: ${saveFile},
     signOut: noop, open: function(u){ window.open(u, "_blank"); },
     takePendingInbox: function(){ return false; }
   };
 })();
 </script>
-<script>
+${offline ? `<script>\n${store}\n</script>\n` : ""}<script>
 ${preview}
 </script>`;
 
@@ -57,8 +69,8 @@ html = html.replace(/<script>\s*\/\* Design preview only\.[\s\S]*?<\/script>/, "
 // The publish skeleton supplies the document; keep the page's own head contents.
 html = html.replace(/<!DOCTYPE html>\s*/i, "").replace(/<html[^>]*>\s*/i, "").replace(/<\/html>\s*$/i, "")
            .replace(/<head>\s*/i, "").replace(/<\/head>\s*/i, "").replace(/<body([^>]*)>/i, "").replace(/<\/body>\s*/i, "");
-html = html.replace("<title>ErnestOS</title>", "<title>ErnestOS ilova sinovi</title>");
+html = html.replace("<title>ErnestOS</title>", offline ? "<title>ErnestOS oflayn</title>" : "<title>ErnestOS ilova sinovi</title>");
 // The app's confirm() dialogs do not show inside an artifact viewer; say yes.
 html = html.replace("<script>\nwindow.ERNEST_PREVIEW_QS", "<script>\nwindow.confirm = function(){ return true; };\nwindow.ERNEST_PREVIEW_QS");
 writeFileSync(out, html);
-console.log(`demo written: ${out} (${(html.length / 1024).toFixed(0)} KB, ${lang})`);
+console.log(`${offline ? "offline copy" : "demo"} written: ${out} (${(html.length / 1024).toFixed(0)} KB, ${lang})`);

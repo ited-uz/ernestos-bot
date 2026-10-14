@@ -103,6 +103,9 @@ jobs:
         env:
           PYTHON: python
         run: NODE_PATH="$(npm root -g)" scripts/e2e_app.sh
+      # The offline copy: setup, a day of entries, reload, the next day — no server.
+      - name: Offline copy checks
+        run: E2E_OUT=tests/e2e/out NODE_PATH="$(npm root -g)" node tests/e2e/offline_copy.cjs
       - name: Screenshots
         if: always()
         uses: actions/upload-artifact@v4

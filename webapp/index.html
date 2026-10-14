@@ -2405,6 +2405,7 @@ const DICT = {
   wipe_warn:"Barcha vazifa, odat, namoz yozuvi, kundalik, loyiha va maqsadlar butunlay o'chiriladi. Buni qaytarib bo'lmaydi.",
   wipe_keeps:"Hisobingiz, tilingiz, temangiz va sozlamalaringiz saqlanadi. Standart odatlar qaytariladi.",
   wipe_continue:"Ha, hammasini o'chirish", wipe_done:"Ma'lumotlar o'chirildi",
+  privacy_offline:"Bu oflayn nusxa. Hamma yozuvlaringiz faqat shu brauzerning xotirasida turadi va hech qayerga yuborilmaydi. Brauzer ma'lumotlari tozalansa, ular ham o'chadi — Zaxira orqali nusxa olib turing.",
   privacy_body:"Har bir foydalanuvchining ma'lumoti alohida ish maydonida saqlanadi va boshqa foydalanuvchilarga ko'rinmaydi. Ma'lumotlar PostgreSQL bazasida saqlanadi; texnik xizmat uchun administrator bazaga kirish huquqiga ega. Kun xulosangiz tashqi xizmatga yuborilmaydi — faqat o'zingiz «AI bilan to'ldirish»ni bossangiz, o'sha matn tahlil uchun AI xizmatiga yuboriladi. Pro va Max'da AI «Hozir» tavsiyasi uchun bugungi ochiq vazifalar nomlari AI xizmatiga (Groq yoki Google) yuboriladi. Uni Sozlamalar → Kuzatiladigan bo'limlar ichida o'chirish mumkin.",
   delete_account:"Akkaunt va ma'lumotlarni o'chirish",
   delete_account_warn:"Barcha odatlar, vazifalar, namoz yozuvlari va kundalik butunlay o'chiriladi. Buni qaytarib bo'lmaydi.",
@@ -2981,6 +2982,7 @@ const DICT = {
   wipe_warn:"Every task, habit, prayer record, journal entry, project and week goal is erased for good. This cannot be undone.",
   wipe_keeps:"Your account, language, theme and settings stay. The default habits are put back.",
   wipe_continue:"Yes, erase everything", wipe_done:"Your data was erased",
+  privacy_offline:"This is the offline copy. Everything you enter stays in this browser's storage and is sent nowhere. Clearing the browser's data deletes it too, so take a backup now and then.",
   privacy_body:"Each user's data lives in its own workspace and is not visible to other users. It is stored in a PostgreSQL database, which an administrator can access for maintenance. Your day summary is never sent to an external service — only if you tap «Fill with AI» is that text sent to the AI service for sorting. On Pro and Max, the AI «Now» suggestion sends the names of today's open tasks to an AI service (Groq or Google). It can be switched off in Settings → Tracked sections.",
   delete_account:"Delete account and data",
   delete_account_warn:"Every habit, task, prayer record and journal entry will be permanently erased. This cannot be undone.",
@@ -3556,6 +3558,7 @@ const DICT = {
   wipe_warn:"Все задачи, привычки, записи намаза, дневник, проекты и цели будут стёрты навсегда. Отменить это нельзя.",
   wipe_keeps:"Аккаунт, язык, тема и настройки останутся. Привычки по умолчанию вернутся.",
   wipe_continue:"Да, стереть всё", wipe_done:"Данные удалены",
+  privacy_offline:"Это офлайн-копия. Всё, что вы вводите, хранится только в памяти этого браузера и никуда не отправляется. Очистка данных браузера удалит и их — делайте резервную копию.",
   privacy_body:"Данные каждого пользователя лежат в отдельном рабочем пространстве и не видны другим пользователям. Они хранятся в базе PostgreSQL, к которой администратор имеет доступ для обслуживания. Итоги дня не передаются внешним сервисам — только если вы нажмёте «Заполнить с AI», этот текст отправится AI-сервису для разбора. В Pro и Max для AI-совета «Сейчас» названия сегодняшних открытых задач отправляются AI-сервису (Groq или Google). Его можно выключить в Настройках → Отслеживаемые разделы.",
   delete_account:"Удалить аккаунт и данные",
   delete_account_warn:"Все привычки, задачи, записи намазов и дневник будут удалены безвозвратно. Это нельзя отменить.",
@@ -9673,8 +9676,8 @@ function settingsSheet(){
     ${row("fresh-start", "repeat", "tone-4", t("fresh_start"), t("fresh_start_hint"))}
     ${row("feedback", "message", "tone-3", t("feedback"), t("feedback_hint"))}
 
-    <div class="item pressable set-signout" data-act="sign-out">
-      <span class="itile">${icon("back", 17)}</span><div class="grow">${t("sign_out")}</div></div>
+    ${me.offline_copy ? "" : `<div class="item pressable set-signout" data-act="sign-out">
+      <span class="itile">${icon("back", 17)}</span><div class="grow">${t("sign_out")}</div></div>`}
     ${IS_APP ? "" : `<div class="t3 tiny" style="text-align:center;margin-top:6px">${t("sign_out_tg_hint")}</div>`}
     <div class="brandline"><img src="${BRAND_MARK}" alt="" width="22" height="22" />
       <span>ErnestOS${me.version ? ` v${esc(me.version)} · ${esc(me.build || "")}` : ""}</span></div>`;
@@ -9685,6 +9688,8 @@ function settingsSheet(){
    finger and lost the picture they had just chosen. */
 function settingsInvite(row){
   const r = state.referral, steps = r?.steps || [];
+  // Invites switched off on the server (no bot username): nothing to offer.
+  if(r && r.configured === false) return "";
   const q = r?.counts?.qualified ?? 0;
   const next = steps.find(x => !x.reached);
   return steps.length ? `<div class="tinted block tone-2 pressable set-card" id="set-invite" data-act="set-referral">
@@ -10571,12 +10576,12 @@ function legalUrl(path){
 }
 function privacySheet(){
   return `<h3>${icon("book", 18)} ${t("privacy_policy")}</h3>
-    <div class="hint" style="margin-top:8px">${t("privacy_body")}</div>
+    <div class="hint" style="margin-top:8px">${t(state.me?.offline_copy ? "privacy_offline" : "privacy_body")}</div>
     <div class="hint" style="margin-top:var(--s2)">${t("data_yours_body")}</div>
-    <button class="btn secondary" data-act="open-url" data-url="${esc(legalUrl("/privacy"))}" style="margin-top:16px">
+    ${state.me?.offline_copy ? "" : `<button class="btn secondary" data-act="open-url" data-url="${esc(legalUrl("/privacy"))}" style="margin-top:16px">
       ${icon("book", 16)} ${t("privacy_full")}</button>
     <button class="btn text" data-act="open-url" data-url="${esc(legalUrl("/account/delete"))}" style="margin-top:6px">
-      ${t("privacy_delete_web")}</button>
+      ${t("privacy_delete_web")}</button>`}
     <button class="btn secondary" data-act="set-privacy" style="margin-top:16px">
       ${t("close")}</button>`;
 }
@@ -10736,6 +10741,8 @@ SCREENS.more = () => `<h1>${t("more")}</h1>` + [
    keep their own +. */
 function fabMic(){
   if(!["home", "tasks", "habits"].includes(state.screen)) return "";
+  // A mic that can only answer "AI is off" is not offered (server without AI, offline copy).
+  if(!state.me?.agent?.available) return "";
   return `<button class="fab-mic" data-act="voice-start" aria-label="${t("voice_cmd")}"
     title="${t("voice_cmd")}">${icon("mic", 24)}</button>`;
 }

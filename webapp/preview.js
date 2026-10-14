@@ -21,7 +21,10 @@
   const APP = Q.get("app") === "1";
   const LANG = Q.get("lang") || "en";
   const SCEN = Q.get("scenario") || "normal";
-  const EMPTY = SCEN === "empty";
+  /* The offline copy (mobile/scripts/build-offline.mjs) hands in a store that
+     keeps the user's own data in this browser. It starts with nothing in it. */
+  const LOCAL = typeof window.ERNEST_LOCAL_STORE === "function" ? window.ERNEST_LOCAL_STORE : null;
+  const EMPTY = SCEN === "empty" || Boolean(LOCAL);
 
   const pad = n => String(n).padStart(2, "0");
   const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -1020,6 +1023,22 @@
     return {ok:true, done:true, at:"05:52", answered:1, complete:false, id:999};
   }
 
+  /* Writes go through `handle`, so the offline store can answer the routes it
+     keeps for real and save after each change. */
+  let handle = mutate, writeDelay = 650, readDelay = 180, label = null;
+  if(LOCAL){
+    const ext = LOCAL({DB, W, TEAMS, goalRows, PEOPLE, DEBTS, CHAT, ROUTES, PRESETS, figures, task, G, parseLine,
+      TODAY, day, iso, LANG, now,
+      seq:{get:() => ({nextId, teamSeq, teamTaskSeq, wSeq, goalSeq, personSeq, debtSeq}),
+           set:o => { nextId = o.nextId ?? nextId; teamSeq = o.teamSeq ?? teamSeq; teamTaskSeq = o.teamTaskSeq ?? teamTaskSeq;
+                      wSeq = o.wSeq ?? wSeq; goalSeq = o.goalSeq ?? goalSeq; personSeq = o.personSeq ?? personSeq;
+                      debtSeq = o.debtSeq ?? debtSeq; }},
+      mutate}) || {};
+    if(ext.mutate) handle = ext.mutate;
+    if(ext.label) label = ext.label;
+    writeDelay = 90; readDelay = 30;
+  }
+
   const reply = (data, status = 200) => new Response(
     status === 204 ? null : JSON.stringify(data ?? {}),
     {status, headers:{"Content-Type":"application/json"}});
@@ -1035,13 +1054,13 @@
     // The recorded audio, kept so it can be checked against the server's decoder.
     if(/\/audio$/.test(url.pathname) && opts.body instanceof Blob) window.__voiceBlob = opts.body;
     if(method !== "GET"){
-      await wait(650);   // long enough to see the saving state
+      await wait(writeDelay);   // long enough to see the saving state
       let body = null; try{ body = JSON.parse(opts.body || "null"); }catch(_){}
-      const out = mutate(method, url.pathname, body);
+      const out = handle(method, url.pathname, body, url.searchParams);
       if(out && out.__status){ const {__status, ...rest} = out; return reply(rest, __status); }
       return reply(out);
     }
-    await wait(180);
+    await wait(readDelay);
     for(const [re, fn] of ROUTES){
       const m = url.pathname.match(re);
       if(m){
@@ -1062,7 +1081,7 @@
     el.setAttribute("role", "note");
     // Audit S35: edits do show until the page is reloaded, so "nothing is
     // saved" was not quite true — they live in this tab and nowhere else.
-    el.textContent = {uz:"Demo rejim · namuna ma'lumotlar · o'zgarishlar faqat shu sessiyada saqlanadi",
+    el.textContent = label || {uz:"Demo rejim · namuna ma'lumotlar · o'zgarishlar faqat shu sessiyada saqlanadi",
                       ru:"Демо-режим · пример данных · изменения хранятся только в этой сессии"}[LANG]
                      || "Demo mode · sample data · changes are kept only in this session";
     el.style.cssText = "font:600 12px/1.2 -apple-system,system-ui,sans-serif;" +

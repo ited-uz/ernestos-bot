@@ -237,6 +237,23 @@ Ilova «debug» turida yig'iladi, lekin 4-bo'limdagi doimiy kalit bilan imzolana
 - [ ] **AI «Hozir»** (Pro/Max, AI kaliti bilan): kartada «AI» belgisi va sabab.
 - [ ] **Promokod:** botda `/promo_new SINOV max 30` → ilovada Sozlamalar → Promokod.
 
+## 8a. Serversiz oflayn nusxa (brauzerda)
+
+Server sozlanmaguncha yoki email kaliti yo'q paytda ilovani shaxsiy ishlatish uchun:
+
+```
+node mobile/scripts/build-demo.mjs ernestos-oflayn.html uz --offline
+```
+
+- Bo'sh boshlanadi: ism, til, nimalarni kuzatasiz — ilovaning o'z sozlash oynasi.
+- Hamma yozuv **shu brauzerning xotirasida** (localStorage) saqlanadi va qayta ochilganda joyida turadi.
+- Har yangi kun odat va namoz toza boshlanadi; o'tgan kunlar saqlanadi. Kun natijasi, seriya, Qadam, statistika server qoidalari bilan haqiqiy yozuvlardan hisoblanadi.
+- **Zaxira:** Profil → ⚙️ → Zaxira. Fayl yuklanmasa, matn ko'rsatiladi — nusxalab saqlang. Shu oynada matnni qo'yib tiklash mumkin.
+- **Ishlamaydi:** AI va ovoz, email/Google kirish, qurilmalar orasida sinxron, eslatma/push, Telegram, to'lov, guruhga odam taklif qilish, umumiy reyting.
+- Brauzer ma'lumotlari tozalansa, yozuvlar o'chadi — zaxirani muntazam oling.
+
+Tekshiruv: `node tests/e2e/offline_copy.cjs` (sozlash → bir kun → qayta ochish → ertasi kun → zaxira va tiklash).
+
 ## 9. Muammo bo'lsa
 
 | Belgi | Sabab | Yechim |
@@ -251,7 +268,7 @@ Ilova «debug» turida yig'iladi, lekin 4-bo'limdagi doimiy kalit bilan imzolana
 | Google oynasi chiqmay, brauzer ochiladi | Android client SHA-1 noto'g'ri yoki kalit hali sozlanmagan | 4-bo'lim; SHA-1 ni Summary'dagisi bilan solishtiring |
 | «Kirib bo'lmadi» (brauzerda) | Redirect URI / Return URL mos emas yoki `PUBLIC_URL` yo'q | Google/Apple panelida manzil `PUBLIC_URL` bilan bir xil bo'lsin |
 | APK o'rnatilmaydi («ilova o'rnatilmadi») | Eski versiya boshqa kalit bilan | Eskisini o'chirib o'rnating (bir marta, 4-bo'lim) |
-| 🎤 bosilsa «Hozir yoqilmagan» | AI kaliti yo'q | `AGENT_ENABLED=true` va `GROQ_API_KEY` |
+| 🎤 tugmasi ko'rinmaydi | AI kaliti yo'q — AI'siz mikrofon ko'rsatilmaydi | `AGENT_ENABLED=true` va `GROQ_API_KEY` |
 | 🎤 ruxsat so'ramaydi / «mikrofonga ruxsat yo'q» | Telefonda ruxsat o'chirilgan | Sozlamalar → Ilovalar → ErnestOS → Ruxsatlar → Mikrofon |
 | Eslatma bir necha daqiqa kech keladi | Android 14+: «Aniq vaqt» ruxsati o'chiq | Sozlamalar → Eslatmalar va hisobotlar → Aniq vaqtda eslatish → Yoqish |
 | Telefon soati/batareya ko'rinmaydi (yuqorida) | Eski APK | Yangi APK'da status bar ilova rejimiga (yorug'/tungi) moslashadi |

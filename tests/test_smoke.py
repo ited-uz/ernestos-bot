@@ -4772,6 +4772,7 @@ def test_the_floating_add_never_covers_the_page():
     mic = html[html.index("function fabMic(){"):]
     mic = mic[:mic.index("\n}\n")]
     assert 'data-act="voice-start"' in mic and '["home", "tasks", "habits"]' in mic, "Moliya has its own mic"
+    assert "if(!state.me?.agent?.available) return \"\";" in mic, "a mic shown where there is no AI"
     quick = html[html.index("function quickSheet("):]
     assert 'data-act="voice-start"' in quick[:quick.index("\n}\n")], "voice lost"
     fab = html[html.index("function fabAdd(){"):]
