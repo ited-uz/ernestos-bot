@@ -943,25 +943,39 @@
      backup pasted back here restores everything. */
   const COPY = {
     uz:{title:"Zaxira nusxa", hint:"Fayl yuklanmagan bo'lsa, matnni nusxalab xavfsiz joyda saqlang (Telegram «Saqlangan xabarlar», eslatmalar).",
-        copy:"Nusxa olish", copied:"Nusxalandi", restore:"Zaxiradan tiklash",
+        copy:"Nusxa olish", copied:"Nusxalandi", file:"Faylga saqlash", saved:"Saqlandi", nofile:"Fayl saqlanmadi — matnni nusxalang", restore:"Zaxiradan tiklash",
         rhint:"Avval saqlagan matningizni shu yerga qo'ying. Hozirgi ma'lumotlar uning o'rniga yoziladi.",
         go:"Tiklash", sure:"Ha, almashtirish", bad:"Bu ErnestOS oflayn zaxirasi emas", close:"Yopish"},
     ru:{title:"Резервная копия", hint:"Если файл не скачался, скопируйте текст и сохраните его (Избранное в Telegram, заметки).",
-        copy:"Скопировать", copied:"Скопировано", restore:"Восстановить из копии",
+        copy:"Скопировать", copied:"Скопировано", file:"Сохранить файл", saved:"Сохранено", nofile:"Файл не сохранён — скопируйте текст", restore:"Восстановить из копии",
         rhint:"Вставьте сохранённый текст. Текущие данные будут заменены.",
         go:"Восстановить", sure:"Да, заменить", bad:"Это не офлайн-копия ErnestOS", close:"Закрыть"},
     en:{title:"Backup", hint:"If no file was downloaded, copy the text and keep it somewhere safe (Telegram Saved Messages, notes).",
-        copy:"Copy", copied:"Copied", restore:"Restore from a backup",
+        copy:"Copy", copied:"Copied", file:"Save as file", saved:"Saved", nofile:"Not saved — copy the text instead", restore:"Restore from a backup",
         rhint:"Paste a backup you saved. It replaces what is here now.",
         go:"Restore", sure:"Yes, replace", bad:"This is not an ErnestOS offline backup", close:"Close"}};
+  /* Inside the claude.ai viewer a file is offered through its `downloads`
+     capability (the viewer confirms); anywhere else, an ordinary download. */
+  const viewer = () => Boolean(window.claude && typeof window.claude.use === "function");
+  let saver = null;
+  const getSaver = () => saver || (saver = viewer()
+    ? Promise.resolve(window.claude.use("downloads")).catch(() => null) : Promise.resolve("anchor"));
+  function saveFile(name, text){
+    return getSaver().then(d => {
+      if(d === "anchor"){
+        const url = URL.createObjectURL(new Blob([text], {type:"application/json"}));
+        const a = document.createElement("a"); a.href = url; a.download = name;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        return "saved";
+      }
+      if(!d) throw {code:"unavailable"};
+      return d.save({filename:name, data:text}).then(r => r.status);
+    });
+  }
   function showBackup(name, text, lang){
     const c = COPY[lang] || COPY.en;
-    try{
-      const url = URL.createObjectURL(new Blob([text], {type:"application/json"}));
-      const a = document.createElement("a"); a.href = url; a.download = name || "ernestos.json";
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 4000);
-    }catch(_){}
+    name = name || "ernestos.json";
     document.getElementById("ernest-backup")?.remove();
     const box = document.createElement("div");
     box.id = "ernest-backup";
@@ -977,7 +991,9 @@
       <h3 style="margin:0;font-size:18px">${c.title}</h3>
       <div style="color:var(--text-2);font-size:14px">${c.hint}</div>
       <textarea id="eb-out" readonly style="${field}"></textarea>
-      <div style="display:flex;gap:8px"><button id="eb-copy" style="${btn}border:0;background:var(--primary-fill);color:var(--on-primary)">${c.copy}</button></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button id="eb-file" hidden style="${btn}border:0;background:var(--primary-fill);color:var(--on-primary)">${c.file}</button>
+        <button id="eb-copy" style="${btn}border:1px solid var(--border);background:var(--surface-2);color:var(--text)">${c.copy}</button></div>
       <h3 style="margin:8px 0 0;font-size:16px">${c.restore}</h3>
       <div style="color:var(--text-2);font-size:14px">${c.rhint}</div>
       <textarea id="eb-in" style="${field}"></textarea>
@@ -993,6 +1009,12 @@
       const done = () => { ev.target.textContent = c.copied; };
       const pick = () => { out.focus(); out.select(); try{ document.execCommand("copy"); done(); }catch(_){} };
       try{ navigator.clipboard.writeText(text).then(done, pick); }catch(_){ pick(); }
+    };
+    const file = box.querySelector("#eb-file");
+    getSaver().then(d => { if(d) file.hidden = false; });
+    file.onclick = () => {
+      saveFile(name, text).then(() => { file.textContent = c.saved; msg.textContent = ""; },
+        e => { if(e?.code !== "declined") msg.textContent = c.nofile; });
     };
     box.querySelector("#eb-close").onclick = () => box.remove();
     box.addEventListener("click", ev => { if(ev.target === box) box.remove(); });
