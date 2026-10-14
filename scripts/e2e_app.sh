@@ -10,8 +10,13 @@ PORT="${E2E_PORT:-8765}"; SHELL_PORT="${E2E_SHELL_PORT:-8766}"
 export BOT_TOKEN="123456:E2E-TOKEN" ENVIRONMENT=test REQUIRED_CHANNEL_ID= ADMIN_LOG_CHANNEL_ID=
 export DATABASE_URL="sqlite:///$OUT/e2e-app.db" E2E_OUT="$OUT" PY
 export APP_ORIGINS="http://localhost:$SHELL_PORT"
+export EMAIL_PROVIDER=file EMAIL_OUTBOX_DIR="$OUT/mail"
+# Google/Apple configured with test IDs: the buttons show and the browser
+# way can start (no real provider is reached).
+export GOOGLE_CLIENT_ID=e2e-web.apps.googleusercontent.com GOOGLE_CLIENT_SECRET=e2e-not-a-secret
+export APPLE_CLIENT_ID=uz.ernestos.e2e PUBLIC_URL="http://127.0.0.1:$PORT"
 export APP_SHELL_BASE="http://localhost:$SHELL_PORT"
-rm -f "$OUT/e2e-app.db"
+rm -rf "$OUT/e2e-app.db" "$OUT/mail"
 "$PY" tests/e2e/seed.py "$OUT/initdata.txt"
 ERNEST_ALLOW_HTTP=1 ERNEST_API_URL="http://127.0.0.1:$PORT" node mobile/scripts/build-www.mjs
 "$PY" -m uvicorn app:app --port "$PORT" > "$OUT/server-app.log" 2>&1 &

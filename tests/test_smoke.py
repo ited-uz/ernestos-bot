@@ -22,7 +22,7 @@ from pathlib import Path
 from urllib.parse import quote, urlencode
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -328,8 +328,8 @@ def test_unknown_category_falls_back_to_target(alice):
     assert "Stretching" in [h["name"] for h in grouped["target"]]
 
 
-def test_default_theme_is_ocean(alice):
-    assert alice.get("/api/me").json()["theme"] == "ocean"
+def test_default_theme_is_clean_white(alice):
+    assert alice.get("/api/me").json()["theme"] == "clean-white"
 
 
 def test_protected_habit_cannot_be_toggled(alice):
@@ -1070,19 +1070,26 @@ def test_a_late_wake_up_is_answered_with_a_joke_not_a_verdict():
     assert "04:53" in on_time
 
 
-def test_goals_are_unreachable_from_either_surface():
+def test_the_old_goals_stay_retired_and_new_goals_have_their_own_table():
+    """Migration 0002 parked the first Goals table as `goals_archived_v1`.
+    Goals came back as milestone/ultimate goals in Reja; they live in
+    `life_goals`, so `create_all` never recreates a `goals` table that a
+    rollback of 0002 would then collide with, and the old bot menu and
+    vision screen stay gone."""
     app_source = (ROOT / "app.py").read_text()
     html = (ROOT / "webapp" / "index.html").read_text()
-    for term in ('"/api/goals', "show_goals", "menu_goals", "list_goals"):
+    for term in ("show_goals", "menu_goals"):
         assert term not in app_source, f"app.py still exposes {term!r}"
-    for term in ("/api/goals", "SCREENS.vision", "goal-add", "Maqsadlar", "Цели"):
-        assert term not in html, f"index.html still exposes {term!r}"
+    assert "SCREENS.vision" not in html
+    assert db.LifeGoal.__tablename__ == "life_goals"
+    assert "goals" not in db.Base.metadata.tables
 
 
 def test_the_mini_app_navigation_is_four_places():
-    """Bugun · Reja · Moliya · Profil (K13). Reja switches Habits ↔ Tasks and
-    Profil switches Steps ↔ Statistics ↔ Team at the top, while the bar stays,
-    so leaving is always one tap."""
+    """Bugun · Reja · Moliya · Profil (K13). Reja switches Habits ↔ Tasks ↔
+    Goals ↔ Groups and Profil switches Steps ↔ Statistics at the top, while the
+    bar stays, so leaving is always one tap. v16: groups moved from Profil to
+    Reja — they are planning, and were three levels deep."""
     html = (ROOT / "webapp" / "index.html").read_text()
     nav = html[html.index("const NAV = ["):html.index("const NAV_OF")]
     assert [line.split('id:"')[1].split('"')[0]
@@ -1093,11 +1100,12 @@ def test_the_mini_app_navigation_is_four_places():
     for word in ('nav_home:"Bugun"', 'nav_tracker:"Reja"', 'nav_money:"Moliya"', 'nav_profile:"Profil"'):
         assert word in html, word
     group = html[html.index("function groupBar(screen){"):html.index("const offerKey")]
-    assert '[["habits", "habits"], ["tasks", "tasks"]]' in group
-    assert '[["steps", "nav_steps"], ["stats", "nav_stats"], ["team", "team"]]' in group
+    assert '[["habits", "habits"], ["tasks", "tasks"], ["goals", "goals_tab"], ["team", "groups_tab"]]' in group
+    assert '[["steps", "nav_steps"], ["stats", "nav_stats"], ["people", "nav_people"]]' in group
+    assert 'team:"tracker"' in html
     assert 'data-act="settings"' in group, "settings one tap from Profil"
     nav_of = html[html.index("const NAV_OF"):html.index("function navTarget(")]
-    for screen in ("habits", "tasks", "project", "steps", "stats", "team"):
+    for screen in ("habits", "tasks", "goals", "project", "steps", "stats", "team"):
         assert screen + ":" in nav_of
 
 
@@ -1114,16 +1122,17 @@ def test_the_privacy_line_is_said_once_on_home():
     assert html.count('class="privacy-strip"') == 1
     assert html.count("privacyNote()") == 2, \
         "the privacy note is defined once and rendered once, on Home"
-    assert "+ privacyNote();" in html.split("SCREENS.home")[1][:2000], \
+    assert "+ privacyNote()" in html.split("SCREENS.home")[1][:2400], \
         "the privacy note left Home"
     rule = html.split(".privacy-strip{")[1].split("}")[0]
     assert "position:fixed" not in rule, "the privacy line is chrome again"
     # "Fully protected" was a promise no product can keep, and the one
     # sentence a user is entitled to hold you to. What replaced it is what is
     # actually true, and is also what they wanted to know.
-    for lang, phrase in (("uz", "boshqa foydalanuvchilardan ajratilgan"),
-                         ("en", "separate from other users"),
-                         ("ru", "отделены от данных других")):
+    # Short, as the owner asked: "protected", never "fully protected".
+    for lang, phrase in (("uz", "Ma'lumotlaringiz himoyalangan"),
+                         ("en", "Your data is protected"),
+                         ("ru", "Ваши данные защищены")):
         assert phrase in html, f"{lang} privacy line missing"
         assert phrase in application.t(lang, "privacy_line")
 
@@ -1149,7 +1158,8 @@ def test_no_unimplemented_security_claim_is_made():
     text = ((ROOT / "webapp" / "index.html").read_text()
             + (ROOT / "app.py").read_text()).lower()
     for claim in ("end-to-end", "e2e encrypt", "shifrlangan", "зашифрован",
-                  "hatto admin", "даже админ"):
+                  "hatto admin", "даже админ", "to'liq himoyalangan",
+                  "fully protected", "полностью защищ", "aes-256", "hatto biz"):
         assert claim not in text, f"unimplemented security claim: {claim!r}"
 
 
@@ -1264,8 +1274,7 @@ def _set_theme(telegram_id: int, value: str) -> None:
 def test_every_offered_theme_is_one_the_mini_app_styles():
     """The picker and the stylesheet must not be able to disagree."""
     styled = (ROOT / "webapp" / "index.html").read_text()
-    assert application.THEMES == ["ocean", "midnight", "aurora", "bento",
-                                  "spatial"]
+    assert application.THEMES == ["clean-white", "blossom", "obsidian", "emerald"]
     for name in application.THEMES:
         assert f'[data-theme="{name}"]' in styled, \
             f"{name} is offered but never styled"
@@ -1348,7 +1357,9 @@ def test_the_picker_shows_the_same_palette_the_theme_uses():
 
     styled = (ROOT / "webapp" / "index.html").read_text()
     picker = styled[styled.index("const THEMES = ["):styled.index("const THEME_NAMES")]
-    for entry in re.findall(r'\{id:"(\w+)",\s*c:\[([^\]]*)\]\}', picker):
+    entries = re.findall(r'\{id:"([\w-]+)",\s*c:\[([^\]]*)\]\}', picker)
+    assert [name for name, _ in entries] == application.THEMES
+    for entry in entries:
         name, colours = entry
         shown = [c.strip().strip('"').lower() for c in colours.split(",")]
         block = _theme_block(styled, name)
@@ -1400,7 +1411,7 @@ def test_each_theme_owns_its_ground_in_each_mode(mode):
         block = _theme_block(styled, name, mode)
         grounds[name] = re.search(r"--bg:\s*(#[0-9A-Fa-f]+)",
                                   block).group(1).lower()
-    assert len(set(grounds.values())) == 5, grounds
+    assert len(set(grounds.values())) == len(application.THEMES), grounds
 
 
 def test_light_and_dark_are_genuinely_different():
@@ -1436,9 +1447,15 @@ def test_the_mode_is_resolved_in_one_place():
     assert 'localStorage.setItem("ernestos-appearance"' in html
 
 
-def test_a_retired_theme_reads_as_the_default(alice):
+def test_a_retired_theme_reads_as_its_successor(alice):
+    """An old name shows as the theme migration 0014 will move it to, and a
+    name nobody ever used as the default."""
     _set_theme(ALICE["id"], "pink")
-    assert alice.get("/api/me").json()["theme"] == "ocean"
+    assert alice.get("/api/me").json()["theme"] == "blossom"
+    _set_theme(ALICE["id"], "ocean")
+    assert alice.get("/api/me").json()["theme"] == "clean-white"
+    _set_theme(ALICE["id"], "neon-zebra")
+    assert alice.get("/api/me").json()["theme"] == "clean-white"
 
 
 def test_the_migration_moves_a_retired_theme_to_its_closest_survivor(alice):
@@ -1466,12 +1483,69 @@ def test_the_theme_migration_keeps_a_reused_name(alice):
 
 
 def test_the_theme_migration_is_safe_to_run_twice(alice):
-    _set_theme(ALICE["id"], "obsidian")
+    _set_theme(ALICE["id"], "rose")
     migrations.m0003_retire_themes()
     again = migrations.m0003_retire_themes()
     assert again["total"] == 0
     with SessionLocal() as s:
-        assert s.get(User, ALICE["id"]).theme == "slate"
+        assert s.get(User, ALICE["id"]).theme == "blossom"
+
+
+@pytest.mark.parametrize("live", ["clean-white", "blossom", "obsidian", "emerald"])
+def test_no_older_theme_migration_moves_a_live_name(alice, live):
+    """blossom, obsidian and emerald were names once before; every older step
+    now leaves the live ones alone, so the whole chain can be re-run."""
+    _set_theme(ALICE["id"], live)
+    for step in ("0003", "0005", "0007", "0008", "0014"):
+        migrations.MIGRATIONS[step]()
+    with SessionLocal() as s:
+        assert s.get(User, ALICE["id"]).theme == live
+
+
+@pytest.mark.parametrize("old,new", [
+    ("ocean", "clean-white"), ("midnight", "obsidian"), ("aurora", "blossom"),
+    ("bento", "obsidian"), ("spatial", "emerald"), ("calm", "clean-white"), ("pink", "blossom"),
+])
+def test_the_curated_theme_migration_lands_on_a_live_theme(alice, old, new):
+    _set_theme(ALICE["id"], old)
+    migrations.m0014_curated_themes()
+    with SessionLocal() as s:
+        assert s.get(User, ALICE["id"]).theme == new
+    assert migrations.m0014_curated_themes()["total"] == 0
+
+
+@pytest.mark.parametrize("old", ["ocean", "cobalt", "pure", "titan", "muse", "rage", "sage", "oxford"])
+def test_running_every_theme_migration_in_order_ends_on_a_live_theme(alice, old):
+    _set_theme(ALICE["id"], old)
+    for step in ("0003", "0005", "0007", "0008", "0014"):
+        migrations.MIGRATIONS[step]()
+    with SessionLocal() as s:
+        assert s.get(User, ALICE["id"]).theme in application.THEMES
+
+
+def test_free_keeps_clean_white_and_pro_may_choose(client, plans_on):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    _expire_grants(uid)
+    caller = Caller(client, {"id": uid, "first_name": "T"})
+    refused = caller.post("/api/settings", {"theme": "blossom"})
+    assert refused.status_code == 402 and refused.json()["key"] == "themes"
+    assert caller.post("/api/settings", {"theme": "clean-white"}).status_code == 200
+    with SessionLocal() as s:
+        plans.grant(s, uid, "pro", 30, "test", ref=f"theme-pro-{uid}")
+        s.commit()
+    assert caller.post("/api/settings", {"theme": "emerald"}).status_code == 200
+    assert caller.get("/api/me").json()["theme"] == "emerald"
+
+
+def test_the_mini_app_holds_free_to_clean_white_with_dark_mode_open():
+    """v16: Free keeps Clean White but has dark mode too — a light-only app
+    at night is one people delete. The colour themes stay Pro."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert 'root.dataset.theme = themeLocked() ? FREE_THEME : themeOf(state.me?.theme);' in html
+    mode = html[html.index("function resolveMode(){"):]
+    assert "themeLocked()" not in mode[:mode.index("\n}\n")]
+    assert '"theme-locked"' in html
 
 
 def test_a_retired_theme_cannot_be_set_again(alice):
@@ -4163,7 +4237,7 @@ def test_the_prayer_migration_is_safe_to_run_twice(alice):
 
 @pytest.mark.parametrize("old,new", [
     ("cobalt", "ocean"), ("slate", "midnight"), ("oxford", "pure"),
-    ("blossom", "aurora"), ("obsidian", "midnight"), ("emerald", "sage"),
+    ("rose", "aurora"), ("pink", "aurora"),
 ])
 def test_the_theme_rename_lands_on_the_closest_survivor(alice, old, new):
     _set_theme(ALICE["id"], old)
@@ -4205,33 +4279,28 @@ def test_the_older_theme_migration_cannot_undo_the_newer_one(alice):
 
 
 def test_every_theme_rename_target_is_a_theme_that_exists():
-    """The last mapping in the chain has to land on something real."""
-    for target in migrations.THEME_SYSTEMS.values():
+    """The last mapping in the chain lands on something real, and every name
+    an earlier step can produce is mapped by a later one or is live."""
+    live = migrations.LIVE_THEMES
+    assert live == set(application.THEMES)
+    for target in migrations.THEME_CURATED.values():
         assert target in application.THEMES, target
-    # And every name an earlier migration can produce is handled by the next.
-    # Every name an earlier step can produce is either handled by the next
-    # step or already a live name that needs no move. A rename that rewrites a
-    # live name would make the chain cyclic: running it twice would walk a row
-    # from calm to ocean and back again.
-    def handled(target, mapping, by):
-        assert target in mapping or target in migrations.LIVE_THEMES, \
-            f"{target} is produced but {by} neither maps nor keeps it"
-
-    for target in migrations.THEME_RENAMES.values():
-        handled(target, migrations.THEME_REDESIGN, "0007")
-    for target in migrations.RETIRED_THEMES.values():
-        handled(target, migrations.THEME_REDESIGN, "0007")
-    for target in migrations.THEME_REDESIGN.values():
-        handled(target, migrations.THEME_SYSTEMS, "0008")
-    for name in migrations.LIVE_THEMES:
-        assert name in application.THEMES
-        assert name not in migrations.THEME_SYSTEMS, \
-            f"0008 renames {name}, which is a live theme"
+    later = {"0003": [migrations.THEME_RENAMES, migrations.THEME_REDESIGN,
+                      migrations.THEME_SYSTEMS, migrations.THEME_CURATED],
+             "0005": [migrations.THEME_REDESIGN, migrations.THEME_SYSTEMS, migrations.THEME_CURATED],
+             "0007": [migrations.THEME_SYSTEMS, migrations.THEME_CURATED],
+             "0008": [migrations.THEME_CURATED]}
+    produced = {"0003": migrations.RETIRED_THEMES, "0005": migrations.THEME_RENAMES,
+                "0007": migrations.THEME_REDESIGN, "0008": migrations.THEME_SYSTEMS}
+    for step, mapping in produced.items():
+        for target in mapping.values():
+            assert target in live or any(target in m for m in later[step]), \
+                f"{step} produces {target}, which nothing after it maps"
 
 
 @pytest.mark.parametrize("old,new", [
     ("pure", "calm"), ("sage", "muse"), ("cobalt", "calm"),
-    ("slate", "titan"), ("blossom", "muse"),
+    ("slate", "titan"), ("rose", "muse"),
 ])
 def test_the_redesign_moves_a_theme_to_its_closest_survivor(alice, old, new):
     _set_theme(ALICE["id"], old)
@@ -4240,7 +4309,7 @@ def test_the_redesign_moves_a_theme_to_its_closest_survivor(alice, old, new):
         assert s.get(User, ALICE["id"]).theme == new
 
 
-@pytest.mark.parametrize("name", ["ocean", "midnight", "aurora"])
+@pytest.mark.parametrize("name", ["clean-white", "blossom", "obsidian", "emerald"])
 def test_the_redesign_leaves_a_name_that_is_live_again(alice, name):
     """Three of the names 0007 used to rewrite are live themes now.
 
@@ -4672,7 +4741,7 @@ def test_each_theme_declares_its_own_lead_colour():
         block = _theme_block(styled, name)
         leads[name] = re.search(r"--c1:\s*(#[0-9A-Fa-f]+)",
                                 block).group(1).lower()
-    assert len(set(leads.values())) == 5, leads
+    assert len(set(leads.values())) == len(application.THEMES), leads
 
 
 def test_the_brand_surface_control_is_visible_on_it():
@@ -4687,20 +4756,29 @@ def test_the_brand_surface_control_is_visible_on_it():
 
 
 def test_the_floating_add_never_covers_the_page():
-    """v12.2: one + (type) and a microphone (speak) bottom right, as the owner
-    asked. The v9.1 problems stay solved: nothing floats over a blank page
-    while loading, the page is padded so the last row stays reachable, and
-    the buttons step aside for a sheet or the keyboard."""
+    """v19: the microphone is back above the + (asked for by name: inside
+    the quick sheet nobody found it), on the screens whose + adds what voice
+    understands. The v9.1 / D03 problems stay solved: nothing floats over a
+    blank page while loading, the page is padded for both buttons so the last
+    row stays reachable, and they step aside for a sheet or the keyboard."""
     html = (ROOT / "webapp" / "index.html").read_text()
     assert 'id="fab"' in html and "#fab:empty{display:none}" in html
     render = html[html.index('document.getElementById("fab").innerHTML'):]
     first = render.split("\n")[0].strip()
-    assert "chromeOff" in first and first.endswith('? "" : `'), "fab drawn while loading"
+    assert "chromeOff" in first and '? "" : `${fabMic()}${fabAdd()}`' in first, "fab drawn while loading"
     # Not over prayer or the journal, which are filled in place.
     assert 'state.tab === "prayer" || state.tab === "journal"' in html
-    assert '"quick-add"' in render[:700] and 'data-act="voice-start"' in render[:700]
-    assert '"money-add"' in render[:700], "on Money the + adds money"
-    assert "fab && fab.innerHTML.trim() ? 84 : 0" in html, "page not padded for the fab"
+    assert "${fabMic()}${fabAdd()}" in render[:700]
+    mic = html[html.index("function fabMic(){"):]
+    mic = mic[:mic.index("\n}\n")]
+    assert 'data-act="voice-start"' in mic and '["home", "tasks", "habits"]' in mic, "Moliya has its own mic"
+    quick = html[html.index("function quickSheet("):]
+    assert 'data-act="voice-start"' in quick[:quick.index("\n}\n")], "voice lost"
+    fab = html[html.index("function fabAdd(){"):]
+    fab = fab[:fab.index("\n}\n")]
+    assert '"quick-add"' in fab and '"money-add"' in fab, "on Money the + adds money"
+    assert 'data-act="goal-add"' in fab, "on Goals the + adds a goal at the level shown"
+    assert 'fab.innerHTML.includes("fab-mic") ? 146 : 84' in html, "page not padded for the fab"
     assert "body:has(#sheet.show) #fab" in html
     for screen in ("SCREENS.habits", "SCREENS.tasks",
                    "SCREENS.team", "SCREENS.money", "SCREENS.project"):
@@ -4931,6 +5009,31 @@ def test_the_statistics_screen_reads_the_trend_arrows():
     assert "TREND_ICON" in html[html.index("SCREENS.stats = () => {"):]
 
 
+def test_the_overall_trend_is_signed_once():
+    """"↓-5" read as a double negative; the arrow is the sign."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    stats = html[html.index("SCREENS.stats = () => {"):]
+    assert '${change > 0 ? "+" : ""}${change}' not in stats
+    assert "Math.abs(change)" in stats
+
+
+def test_phone_notifications_never_stay_on_the_ellipsis():
+    """A bridge without `pushStatus`, or one that fails, still gets a sentence."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    notify = html[html.index('"set-notify": () => {'):html.index('"push-allow":')]
+    assert 'Promise.resolve("no_build")' in notify
+    assert '.catch(() => "no_build")' in notify
+
+
+def test_profile_numbers_never_print_undefined():
+    """Habit history, Qadam and the review read missing numbers as "—"."""
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert "const n0 = (v, suffix" in html
+    for raw in ("${h.streak}</b>", "${h.percent}%", "${p.streak?.current}</div>",
+                "${p.perfect_days}</div>", "${r.tasks_done}</div>"):
+        assert raw not in html, raw
+
+
 def test_the_report_tick_is_short_enough_to_be_punctual():
     """The tick interval *is* the worst-case lateness: a report set for 21:30
     on a ten-minute tick could arrive at 21:40, which reads as a slow bot."""
@@ -5091,7 +5194,7 @@ def test_tasks_is_today_plan_calendar():
     assert "calendarBlock()" not in main, "the month is the calendar tab now"
     assert "projectsTab()" not in main, "projects are a view of their own"
     calendar = html[html.index("function calendarTab("):html.index("function sectionHead(")]
-    assert "calendarBlock()" in calendar and "countdownBlock(" in calendar
+    assert "calendarBlock(true)" in calendar and "calAgenda()" in calendar and "countdownBlock(" in calendar
 
     open_tab = html[html.index("function openTab("):html.index("function doneTab(")]
     assert "weekFocusBlock()" not in open_tab, "the focus block is printed twice"
@@ -5215,14 +5318,20 @@ APPLE_SYSTEM_COLOURS = {
     "#8E8E93", "#98989D",   # gray
     # Accessible variants, for a hue used as text on a light ground.
     "#248A3D", "#B25000", "#D70015",
+    # WCAG 2.2 AA (v21): green and orange as text on the light surfaces need
+    # 4.5:1, which Apple's own accessible variants miss by a hair (4.17).
+    "#1F7A36", "#9A4500",
     # The ink both light-on-dark and dark-on-light themes lead with.
     "#1C1C1A", "#F2F2ED",
 }
 
 
-@pytest.mark.parametrize("name", application.THEMES)
+@pytest.mark.parametrize("name", ["clean-white"])
 @pytest.mark.parametrize("mode", ["light", "dark"])
 def test_every_brand_colour_is_an_apple_system_colour(name, mode):
+    """Clean White is the system-blue theme and keeps Apple's palette. The
+    three curated themes (v15) are their own palettes by design — rose,
+    slate, emerald — and are checked for vividness and contrast instead."""
     import re
 
     styled = (ROOT / "webapp" / "index.html").read_text()
@@ -5234,6 +5343,34 @@ def test_every_brand_colour_is_an_apple_system_colour(name, mode):
         colour = found.group(1).upper()
         assert colour in APPLE_SYSTEM_COLOURS, \
             f"{name}/{mode} {token} is {colour}, which is not a system colour"
+
+
+@pytest.mark.parametrize("name", ["clean-white", "blossom", "obsidian", "emerald"])
+@pytest.mark.parametrize("mode", ["light", "dark"])
+def test_every_theme_meets_wcag_aa_text_contrast(name, mode):
+    """WCAG 2.2 AA 1.4.3: 4.5:1 for text. The label on a filled button, the
+    quietest text on the quietest surface, and green/orange/red as text — in
+    every theme and mode. axe-core found the old system blue at 4.0."""
+    import re
+    block = _theme_block((ROOT / "webapp" / "index.html").read_text(), name, mode)
+    get = lambda token: re.search(r"%s:\s*(#[0-9A-Fa-f]{6})" % re.escape(token), block).group(1)
+
+    def lum(h):
+        def f(c):
+            c /= 255
+            return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+        r, g, b = (int(h[i:i + 2], 16) for i in (1, 3, 5))
+        return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+
+    def ratio(a, b):
+        hi, lo = sorted((lum(a), lum(b)), reverse=True)
+        return (hi + 0.05) / (lo + 0.05)
+
+    pairs = [("--on-primary", "--primary-fill"), ("--text-3", "--surface-2"), ("--text-3", "--surface"),
+             ("--text-2", "--surface"), ("--ok", "--surface"), ("--warn", "--surface"),
+             ("--danger", "--surface")]
+    low = [f"{a} on {b}: {ratio(get(a), get(b)):.2f}" for a, b in pairs if ratio(get(a), get(b)) < 4.5]
+    assert not low, f"{name}/{mode} below 4.5:1 — " + "; ".join(low)
 
 
 def test_a_light_lead_colour_carries_a_dark_label():
@@ -5766,19 +5903,21 @@ def test_referral_work_did_not_change_the_new_user_defaults():
 # ==========================================================================
 
 def test_every_priority_paints_its_own_edge():
-    """Red, amber, and a quiet default — not one colour and two blanks.
+    """Red for urgent, a quiet grey for the default, the plain border for low.
 
-    Only `.pri-high` was styled, so "is this urgent?" had exactly two answers
-    on screen: red, or unknown. Medium is deliberately the weaker of the two
-    colours — it is what every task is born with, and at full strength it would
-    drown the red it exists to set off.
+    Only `.pri-high` was styled once, so "is this urgent?" had two answers:
+    red, or unknown. v15 (audit D05): medium was amber, but amber next to red
+    on every row read as "everything is a warning". Medium is what every task
+    is born with, so it gets a neutral stripe and red keeps its meaning.
     """
     html = (ROOT / "webapp" / "index.html").read_text()
-    assert ".trow.pri-high{border-left-color:var(--danger)}" in html
-    assert ".trow.pri-medium{border-left-color:color-mix(" in html
+    # v15 (audit S07): red is kept for what is late; urgent is amber.
+    assert ".trow.pri-high{border-left-color:var(--warn)}" in html
+    assert ".trow.late{border-left-color:var(--danger)}" in html
+    assert ".trow.pri-medium{border-left-color:var(--border-2)}" in html
     assert ".trow.pri-low{border-left-color:var(--border)}" in html
     # And the row still carries the class the CSS hangs off.
-    assert 'return `<div class="trow pri-${task.priority}">' in html
+    assert 'return `<div class="trow pri-${task.priority}${late > 0 ? " late" : ""}">' in html
 
 
 def test_the_prayer_screen_asks_for_honesty_in_every_language():
@@ -6067,7 +6206,9 @@ def test_the_recovery_allowance_runs_out():
     uid = _progress_user()
     with SessionLocal() as s:
         p = svc._progress_row(s, uid)
-        start = svc.today_local() - timedelta(days=10)
+        # Inside one month: the allowance renews on the 1st, so a window
+        # counted back from today failed whenever it crossed a month end.
+        start = date(2026, 8, 10)
         svc._apply_day_to_streak(p, start, 80)
         for i in (1, 2):
             svc._apply_day_to_streak(p, start + timedelta(days=i), 10)
@@ -6882,8 +7023,9 @@ def test_the_report_diagnostic_explains_one_user(client, monkeypatch):
         user.morning_time, user.evening_time = dtime(5, 0), dtime(19, 25)
         s.commit()
 
-    body = client.get(f"/health/reports?key={TOKEN}&limit=200").json()
+    body = client.get(f"/health/reports?key={TOKEN}&user={telegram_id}").json()
     assert "scheduler_running" in body and "lock_refusals" in body
+    assert [r["telegram_id"] for r in body["reports"]] == [telegram_id]
     mine = [r for r in body["reports"] if r["telegram_id"] == telegram_id]
     assert mine, "an onboarded account must appear in the diagnostic"
     row = mine[0]
@@ -10109,7 +10251,7 @@ def test_the_calendar_plans_only_today_and_later():
     """A past day shows what was done and offers nothing to add; today and the
     days ahead open even when empty, and that is where a task is planned."""
     html = (ROOT / "webapp" / "index.html").read_text()
-    grid = html[html.index("function calendarBlock(){"):html.index("const TREND_ICON")]
+    grid = html[html.index("function calendarBlock(inline){"):html.index("const TREND_ICON")]
     assert "const past = iso < c.today;" in grid
     assert "const opens = events.length || !past;" in grid
     assert 'class="cal-day pad"' in grid and "cal-day empty" not in grid
@@ -10396,7 +10538,10 @@ async def test_the_bot_sets_a_money_limit():
 def test_the_mini_app_limit_is_visible_and_takes_words():
     html = (ROOT / "webapp" / "index.html").read_text()
     screen = html[html.index("SCREENS.money = () => {"):html.index("function moneySheet(")]
-    assert 'class="medit"' in screen and 't("money_limit_tap")' in screen
+    # v15 (audit F24/F26): the whole row opens the limit; without one it
+    # says "Limit belgilanmagan · Limit qo'yish" instead of a hint line.
+    assert 'data-act="money-budget"' in screen and 't("money_set_limit")' in screen
+    assert 't("money_limit_tap")' not in screen
     assert "parseMoneyInput(val(\"money-limit\"))" in html
 
 
@@ -10432,6 +10577,9 @@ def test_a_pinned_task_never_hides_a_late_one(client):
     with SessionLocal() as s:
         ws = svc.workspace_id_for(s, uid)
         user = s.get(User, uid)
+        # Without the wake-up ritual: before the wake deadline it rightly
+        # comes first, and this test must not depend on the hour it runs at.
+        svc.set_modules(s, ws, {"prayer", "journal"})
         late = svc.add_task(s, ws, "Pasport", deadline=svc.today_local() - timedelta(days=2))
         pinned = svc.add_task(s, ws, "Q4 reja", deadline=svc.today_local())
         svc.set_top3(s, ws, pinned.id, True)
@@ -11073,6 +11221,8 @@ def test_the_rules_document_matches_the_code():
     assert f"| Odatlar (marosimlardan tashqari) | **{L['habits']['free']}** | **{L['habits']['pro']}** |" in doc
     assert f"| Faol vazifalar | **{L['active_tasks']['free']}** |" in doc
     assert f"| Loyihalar | **{L['projects']['free']}** | **{L['projects']['pro']}** |" in doc
+    assert (f"| Maqsadlar (bosqich va asosiy, ochiqlari) | **{L['life_goals']['free']}** |"
+            f" **{L['life_goals']['pro']}** |") in doc
     assert (f"| Ovozli buyruq | **{L['voice_week']['free']}** / hafta | **{L['voice_day']['pro']}** / kun"
             f" | **{L['voice_day']['max']}** / kun |") in doc
     assert f"**{_plans.TRIAL_DAYS}** kunlik Pro" in doc
@@ -12201,3 +12351,1239 @@ def test_the_export_can_be_put_back_together(fresh):
     task_ids = {t["id"] for t in data["tasks"]}
     project_ids = {p["id"] for p in data["projects"]}
     assert all(t["project_id"] in project_ids for t in data["tasks"] if t["project_id"]) or not task_ids
+
+
+def test_the_profile_picture_is_not_rate_limited_like_an_export():
+    """Shown on Home, Settings and Profile: at five a minute the second screen
+    got a 429 and the upload after it failed too."""
+    from types import SimpleNamespace as NS
+    rc = application._rate_class
+    req = lambda method, path: NS(method=method, url=NS(path=path))
+    assert rc(req("GET", "/api/avatar")) == "read"
+    assert rc(req("POST", "/api/avatar")) == "write"
+    assert rc(req("DELETE", "/api/avatar")) == "write"
+    assert rc(req("GET", "/api/stats/export")) == "heavy"
+    html = (ROOT / "webapp" / "index.html").read_text()
+    # One URL per picture while its token lives, so the phone can cache it.
+    assert "avatarUrlCache" in html and "240000" in html
+    # The picker is tapped directly, not reached through a hidden input.
+    assert 'data-act="avatar-pick" hidden' not in html
+
+
+# --------------------------------------------------------------------------
+# Coins
+# --------------------------------------------------------------------------
+
+def _give_xp(uid: int, xp: int) -> None:
+    """XP the way milestones pay it (outside the daily cap)."""
+    with SessionLocal() as s:
+        svc.award_xp(s, uid, f"achievement:{uid}:test{xp}:{next(_next_id)}", "achievement",
+                     xp, svc.today_local())
+        s.commit()
+
+
+def test_coins_are_read_off_the_xp_ledger_and_spent_once(client, plans_on):
+    import coins
+    uid = next(_next_id)
+    _fresh_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "C"})
+    assert caller.get("/api/coins").json()["balance"] == 0
+    _give_xp(uid, 3005)                       # 300 coins (10 XP each, rounded down)
+    info = caller.get("/api/coins").json()
+    assert info["balance"] == 300 and info["xp_per_coin"] == coins.XP_PER_COIN
+    # Today's line counts ordinary activity against the cap, not milestones.
+    assert info["today"] == 0 and info["daily_cap"] == 12
+    assert {i["key"] for i in info["items"]} == set(coins.ITEMS)
+
+    r = caller.post("/api/coins/buy", {"item": "pro_7", "key": "k-1"})
+    assert r.status_code == 200, r.text
+    assert r.json()["coins"]["spent"] == 300
+    # The same key again (a retry) buys nothing more. (The balance itself may
+    # move: opening screens can unlock an achievement, which pays XP.)
+    again = caller.post("/api/coins/buy", {"item": "pro_7", "key": "k-1"}).json()
+    assert again["repeat"] is True and again["coins"]["spent"] == 300
+    # Not enough left: refused, with how many are missing.
+    left = again["coins"]["balance"]
+    short = caller.post("/api/coins/buy", {"item": "pro_3", "key": "k-2"})
+    assert short.status_code == 409 and short.json()["detail"] == "not_enough_coins"
+    assert short.json()["short"] == 150 - left
+    assert caller.post("/api/coins/buy", {"item": "gold", "key": "k-3"}).status_code == 422
+    with SessionLocal() as s:
+        grants = s.scalars(select(db.PlanGrant).where(db.PlanGrant.account_id == uid,
+                                                      db.PlanGrant.source == "coins")).all()
+        assert [(g.tier, (g.ends_at - g.starts_at).days) for g in grants] == [("pro", 7)]
+
+
+def test_a_streak_freeze_is_bought_at_most_twice_a_month(client):
+    import coins
+    uid = next(_next_id)
+    _fresh_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "F"})
+    _give_xp(uid, 5000)
+    for i in range(coins.FREEZE_PER_MONTH):
+        assert caller.post("/api/coins/buy", {"item": "freeze_1", "key": f"f{i}"}).status_code == 200
+    third = caller.post("/api/coins/buy", {"item": "freeze_1", "key": "f9"})
+    assert third.status_code == 409 and third.json()["detail"] == "freeze_limit"
+    with SessionLocal() as s:
+        row = svc._progress_row(s, uid)
+        assert svc.RECOVERY_DAYS_PER_MONTH - row.recovery_used == svc.RECOVERY_DAYS_PER_MONTH + 2
+
+
+def test_plan_items_are_not_sold_while_plans_are_off(client):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "O"})
+    _give_xp(uid, 5000)
+    pro = next(i for i in caller.get("/api/coins").json()["items"] if i["key"] == "pro_3")
+    assert pro["blocked"] == "plans_off"
+    assert caller.post("/api/coins/buy", {"item": "pro_3"}).json()["detail"] == "plans_off"
+
+
+def test_coin_purchases_leave_with_the_account_and_are_in_the_export(client):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "E"})
+    _give_xp(uid, 2000)
+    caller.post("/api/coins/buy", {"item": "freeze_1", "key": "e1"})
+    assert caller.get("/api/export").json()["coin_spends"][0]["item"] == "freeze_1"
+    with SessionLocal() as s:
+        svc.delete_account(s, uid)
+        assert not s.scalars(select(db.CoinSpend).where(db.CoinSpend.account_id == uid)).all()
+
+
+# ---------------------------------------------------------------------------
+# Goals: milestone and ultimate (tactical = the week's focus)
+# ---------------------------------------------------------------------------
+
+def test_goals_hold_milestones_under_an_ultimate_goal(client):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "G"})
+    big = caller.post("/api/goals", {"level": "ultimate", "title": "EGH: Capital Venture",
+                                     "category": "capital", "horizon": "2040",
+                                     "status": "dream", "amount": 10_000_000, "cover": "🚀"})
+    assert big.status_code == 200, big.text
+    big_id = big.json()["id"]
+    a = caller.post("/api/goals", {"level": "milestone", "title": "Birinchi $100k",
+                                   "category": "capital", "horizon": "2027",
+                                   "parent_id": big_id, "progress": 40}).json()["id"]
+    b = caller.post("/api/goals", {"level": "milestone", "title": "Jamoa 5 kishi",
+                                   "parent_id": big_id}).json()["id"]
+    goals = {g["id"]: g for g in caller.get("/api/goals").json()["goals"]}
+    assert goals[big_id]["milestones"] == 2 and goals[big_id]["auto_progress"] is True
+    assert goals[big_id]["progress"] == 20          # (40 + 0) / 2
+    assert goals[big_id]["amount"] == 10_000_000 and goals[big_id]["horizon"] == "2040"
+    assert goals[a]["parent_id"] == big_id
+
+    assert caller.patch(f"/api/goals/{b}", {"status": "done"}).status_code == 200
+    goals = {g["id"]: g for g in caller.get("/api/goals").json()["goals"]}
+    assert goals[b]["progress"] == 100 and goals[b]["done_at"]
+    assert goals[big_id]["progress"] == 70 and goals[big_id]["milestones_done"] == 1
+    # Finished goals sort last.
+    assert [g["id"] for g in caller.get("/api/goals").json()["goals"]][-1] == b
+
+    # Removing the ultimate goal keeps its milestones, no longer under it.
+    assert caller.delete(f"/api/goals/{big_id}").status_code == 200
+    goals = {g["id"]: g for g in caller.get("/api/goals").json()["goals"]}
+    assert big_id not in goals and goals[a]["parent_id"] is None
+    # ...and it can be brought back.
+    assert caller.patch(f"/api/goals/{big_id}", {"archived": False}).status_code == 200
+    assert big_id in {g["id"] for g in caller.get("/api/goals").json()["goals"]}
+
+
+def test_goal_input_is_checked(client):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "V"})
+    m = caller.post("/api/goals", {"level": "milestone", "title": "M"}).json()["id"]
+    # A milestone cannot sit under another milestone, nor under somebody else's goal.
+    assert caller.post("/api/goals", {"title": "x", "parent_id": m}).status_code == 422
+    other = next(_next_id)
+    _fresh_account(other)
+    theirs = Caller(client, {"id": other, "first_name": "O"}).post(
+        "/api/goals", {"level": "ultimate", "title": "Theirs"}).json()["id"]
+    assert caller.post("/api/goals", {"title": "x", "parent_id": theirs}).status_code == 422
+    assert caller.patch(f"/api/goals/{theirs}", {"title": "mine"}).status_code == 404
+    assert caller.delete(f"/api/goals/{theirs}").status_code == 404
+    assert caller.post("/api/goals", {"title": "x", "horizon": "soon"}).status_code == 422
+    assert caller.post("/api/goals", {"title": "x", "level": "tactical"}).status_code == 422
+    assert caller.post("/api/goals", {"title": "x", "status": "maybe"}).status_code == 422
+    assert caller.post("/api/goals", {"title": "x", "amount": -5}).status_code == 422
+    # An unknown category is kept as "other" rather than refused.
+    odd = caller.post("/api/goals", {"title": "y", "category": "space"}).json()["id"]
+    assert next(g for g in caller.get("/api/goals").json()["goals"]
+                if g["id"] == odd)["category"] == "other"
+    # Only a milestone has a parent: an ultimate goal drops it.
+    up = caller.post("/api/goals", {"level": "ultimate", "title": "U"}).json()["id"]
+    caller.patch(f"/api/goals/{m}", {"parent_id": up})
+    caller.patch(f"/api/goals/{m}", {"level": "ultimate"})
+    assert next(g for g in caller.get("/api/goals").json()["goals"]
+                if g["id"] == m)["parent_id"] is None
+
+
+def test_free_plan_keeps_three_open_goals_and_finished_ones_do_not_count(client, plans_on):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    _expire_grants(uid)
+    caller = Caller(client, {"id": uid, "first_name": "L"})
+    limit = plans.LIMITS["life_goals"]["free"]
+    ids = [caller.post("/api/goals", {"title": f"g{i}"}).json()["id"] for i in range(limit)]
+    refused = caller.post("/api/goals", {"title": "one more"})
+    assert refused.status_code == 402 and refused.json()["key"] == "life_goals"
+    # Finishing one frees its place; reopening it would need one again.
+    caller.patch(f"/api/goals/{ids[0]}", {"status": "done"})
+    assert caller.post("/api/goals", {"title": "now fits"}).status_code == 200
+    assert caller.patch(f"/api/goals/{ids[0]}", {"status": "active"}).status_code == 402
+
+
+def test_goals_are_exported_and_leave_with_the_account(client):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "X"})
+    caller.post("/api/goals", {"level": "ultimate", "title": "Ironman", "category": "health",
+                               "horizon": "lifetime"})
+    exported = caller.get("/api/export").json()["goals"]
+    assert exported[0]["title"] == "Ironman" and exported[0]["horizon"] == "lifetime"
+    with SessionLocal() as s:
+        svc.delete_account(s, uid)
+        assert not s.scalars(select(db.LifeGoal).where(db.LifeGoal.title == "Ironman")).all()
+
+
+# ---------------------------------------------------------------------------
+# Money: accounts, transfers, repeating payments, the year
+# ---------------------------------------------------------------------------
+
+def _max_account(uid: int) -> None:
+    with SessionLocal() as s:
+        plans.grant(s, uid, "max", 30, "test", ref=f"test-max-{uid}")
+        s.commit()
+
+
+def test_accounts_hold_their_own_balance_and_transfers_only_move_money(client, plans_on):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    _max_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "W"})
+    cash = caller.post("/api/money/accounts", {"name": "Naqd", "kind": "cash", "opening": 500_000}).json()["id"]
+    card = caller.post("/api/money/accounts", {"name": "Karta", "kind": "card", "opening": 2_000_000}).json()["id"]
+    assert caller.post("/api/money", {"kind": "expense", "amount": 45_000, "category": "food",
+                                      "account_id": cash}).status_code == 200
+    assert caller.post("/api/money/text", {"text": "maosh 3 mln keldi", "account_id": card}).status_code == 200
+    r = caller.post("/api/money/transfers", {"from_account": card, "to_account": cash, "amount": 300_000})
+    assert r.status_code == 200, r.text
+    m = caller.get("/api/money").json()
+    w = m["wallet"]
+    bal = {a["id"]: a["balance"] for a in w["accounts"]}
+    assert bal[cash] == 500_000 - 45_000 + 300_000
+    assert bal[card] == 2_000_000 + 3_000_000 - 300_000
+    # The total counts the opening amounts and is not changed by the transfer.
+    assert m["balance"] == w["total"] == 2_500_000 + 3_000_000 - 45_000
+    assert w["unassigned"] == 0 and w["transfers"][0]["from_name"] == "Karta"
+    # A transfer to the same account, or to somebody else's, is refused.
+    assert caller.post("/api/money/transfers", {"from_account": cash, "to_account": cash,
+                                                "amount": 1}).status_code == 422
+    other = next(_next_id)
+    _fresh_account(other)
+    theirs = Caller(client, {"id": other, "first_name": "T"}).post(
+        "/api/money/accounts", {"name": "Theirs"}).json()["id"]
+    assert caller.post("/api/money/transfers", {"from_account": cash, "to_account": theirs,
+                                                "amount": 1}).status_code == 422
+    assert caller.post("/api/money", {"kind": "expense", "amount": 1, "account_id": theirs}).status_code == 422
+    # Removing an account keeps its entries; their money moves to "unassigned".
+    assert caller.patch(f"/api/money/accounts/{cash}", {"archived": True}).status_code == 200
+    w = caller.get("/api/money/wallet").json()
+    assert [a["id"] for a in w["accounts"]] == [card]
+    assert w["total"] == w["accounts"][0]["balance"] + w["unassigned"]
+
+
+def test_a_repeating_payment_becomes_an_expense_and_moves_its_date(client, plans_on):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    _max_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "S"})
+    card = caller.post("/api/money/accounts", {"name": "Karta", "kind": "card"}).json()["id"]
+    sub = caller.post("/api/money/subscriptions", {"name": "Internet", "amount": 150_000,
+                                                   "category": "home", "account_id": card,
+                                                   "period": "monthly", "next_due": "2026-01-31"})
+    assert sub.status_code == 200, sub.text
+    sid = sub.json()["id"]
+    w = caller.get("/api/money/wallet").json()
+    assert w["subs_monthly"] == 150_000 and w["subscriptions"][0]["next_due"] == "2026-01-31"
+    paid = caller.post(f"/api/money/subscriptions/{sid}/pay").json()
+    assert paid["entry"]["amount"] == 150_000 and paid["entry"]["category"] == "home"
+    assert paid["entry"]["account_id"] == card
+    # The end of January moves to the end of February, not into March.
+    assert paid["next_due"] == "2026-02-28"
+    caller.patch(f"/api/money/subscriptions/{sid}", {"period": "yearly"})
+    w = caller.get("/api/money/wallet").json()
+    assert w["subs_monthly"] == 12_500
+    assert caller.patch(f"/api/money/subscriptions/{sid}", {"archived": True}).status_code == 200
+    assert caller.get("/api/money/wallet").json()["subscriptions"] == []
+
+
+def test_money_extras_follow_the_plan(client, plans_on):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    _expire_grants(uid)
+    caller = Caller(client, {"id": uid, "first_name": "F"})
+    access = caller.get("/api/money/wallet").json()["access"]
+    assert access == {"tier": "free", "accounts": 1, "subs": 0, "transfers": False, "year": False}
+    a = caller.post("/api/money/accounts", {"name": "Naqd"}).json()["id"]
+    second = caller.post("/api/money/accounts", {"name": "Karta"})
+    assert second.status_code == 402 and second.json()["key"] == "money_accounts"
+    sub = caller.post("/api/money/subscriptions", {"name": "Netflix", "amount": 1})
+    assert sub.status_code == 402 and sub.json()["needs"] == "pro"
+    assert caller.post("/api/money/transfers", {"from_account": a, "to_account": a,
+                                                "amount": 1}).json()["key"] == "money_transfers"
+    year = caller.get("/api/money/year")
+    assert year.status_code == 402 and year.json()["needs"] == "max"
+    # Pro: a few accounts and transfers, but the year view stays Max.
+    with SessionLocal() as s:
+        plans.grant(s, uid, "pro", 30, "test", ref=f"test-pro-{uid}")
+        s.commit()
+    b = caller.post("/api/money/accounts", {"name": "Karta"}).json()["id"]
+    assert caller.post("/api/money/transfers", {"from_account": a, "to_account": b,
+                                                "amount": 10}).status_code == 200
+    assert caller.get("/api/money/year").status_code == 402
+
+
+def test_the_year_of_money_month_by_month(client):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "Y"})
+    caller.post("/api/money", {"kind": "income", "amount": 1_000_000, "category": "salary", "day": "2026-03-05"})
+    caller.post("/api/money", {"kind": "expense", "amount": 200_000, "category": "food", "day": "2026-03-07"})
+    caller.post("/api/money", {"kind": "expense", "amount": 50_000, "category": "transport", "day": "2026-07-01"})
+    y = caller.get("/api/money/year?year=2026").json()
+    assert y["months"][2] == {"month": 3, "income": 1_000_000, "expense": 200_000}
+    assert y["months"][6]["expense"] == 50_000
+    assert (y["income"], y["expense"], y["net"]) == (1_000_000, 250_000, 750_000)
+    assert [c["id"] for c in y["categories"]] == ["food", "transport"]
+
+
+def test_wallet_rows_are_exported_and_leave_with_the_account(client, plans_on):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    _max_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "E"})
+    a = caller.post("/api/money/accounts", {"name": "Bank", "kind": "bank"}).json()["id"]
+    b = caller.post("/api/money/accounts", {"name": "Kripto", "kind": "crypto"}).json()["id"]
+    caller.post("/api/money/transfers", {"from_account": a, "to_account": b, "amount": 5})
+    caller.post("/api/money/subscriptions", {"name": "Telefon", "amount": 60_000})
+    w = caller.get("/api/export").json()["money_wallet"]
+    assert [x["name"] for x in w["accounts"]] == ["Bank", "Kripto"]
+    assert w["transfers"][0]["amount"] == 5 and w["subscriptions"][0]["name"] == "Telefon"
+    with SessionLocal() as s:
+        ws = s.scalar(select(db.Workspace.id).where(db.Workspace.user_id == uid))
+        assert s.scalars(select(db.MoneyAccount).where(db.MoneyAccount.workspace_id == ws)).all()
+        svc.delete_account(s, uid)
+        for model in (db.MoneyAccount, db.MoneyTransfer, db.MoneySubscription):
+            assert not s.scalars(select(model).where(model.workspace_id == ws)).all()
+
+
+def test_the_mini_app_declares_each_function_and_action_once():
+    """A second `function x()` silently replaces the first (the later one
+    wins), and a second key in the actions object does the same — a sheet
+    opens that belongs to another screen. Both happened once; never again."""
+    import re
+    from collections import Counter
+    html = (ROOT / "webapp" / "index.html").read_text()
+    script = html[html.index("<script>"):]
+    funcs = Counter(re.findall(r"^(?:async )?function ([A-Za-z_$][\w$]*)\s*\(", script, re.M))
+    assert not [n for n, c in funcs.items() if c > 1], [n for n, c in funcs.items() if c > 1]
+    start = script.index("\nconst A = {")
+    actions = script[start:script.index("\n};", start)]
+    keys = Counter(re.findall(r'^  "([\w-]+)":', actions, re.M))
+    assert not [k for k, c in keys.items() if c > 1], [k for k, c in keys.items() if c > 1]
+
+
+def test_the_phone_gets_two_days_of_reminders_to_show_by_itself(client):
+    """A build without Firebase schedules reminders on the phone: tasks with
+    a reminder, habits with a time, both reports and payments due — with the
+    same settings the bot uses, and stable keys so a reschedule replaces."""
+    from zoneinfo import ZoneInfo
+    uid = 7471
+    _onboard(uid)
+    tz = ZoneInfo("Asia/Tashkent")
+    with SessionLocal() as s:
+        user = s.get(User, uid)
+        user.timezone, user.habit_reminders, user.language = "Asia/Tashkent", True, "uz"
+        user.quiet_from, user.quiet_to = dtime(22, 0), dtime(7, 0)
+        ws = s.scalar(select(db.Workspace.id).where(db.Workspace.user_id == uid))
+        s.commit()
+    # Tomorrow, so the habit added today is already active on both days.
+    d0 = svc.today_local(tz) + timedelta(days=1)
+    d1 = d0 + timedelta(days=1)
+    now = datetime.combine(d0, dtime(8, 0), tzinfo=tz)
+    with SessionLocal() as s:
+        task = svc.add_task(s, ws, "Mijozga qo'ng'iroq", deadline=d0)
+        task.due_time, task.remind_before = dtime(10, 0), 15
+        done = svc.add_task(s, ws, "Tugagan", deadline=d0)
+        done.due_time, done.remind_before, done.status = dtime(11, 0), 0, "done"
+        habit = svc.add_habit(s, ws, "Kitob")
+        habit.remind_at = dtime(21, 30)
+        s.add(db.MoneySubscription(workspace_id=ws, name="Internet", amount=150_000,
+                                   period="monthly", next_due=d1))
+        s.commit()
+        items = svc.upcoming_notifications(s, ws, s.get(User, uid), now=now)
+    keys = [x["key"] for x in items]
+    assert f"task:{task.id}:{d0}" in keys and f"task:{done.id}:{d0}" not in keys
+    first = next(x for x in items if x["key"].startswith("task:"))
+    assert first["at"].startswith(f"{d0}T09:45") and first["at"].endswith("+05:00")
+    assert first["title"] == "⏰ Vazifa vaqti" and first["open"] == "tasks"
+    assert f"habit:{habit.id}:{d0}" in keys and f"habit:{habit.id}:{d1}" in keys
+    assert f"evening:{d0}" in keys and f"morning:{d1}" in keys
+    # This morning's report (05:00) is already past; 05:00 tomorrow falls in quiet hours.
+    assert f"morning:{d0}" not in keys
+    assert next(x for x in items if x["key"] == f"morning:{d1}")["silent"] is True
+    bill = next(x for x in items if x["key"].startswith("bill:"))
+    assert bill["body"] == "Internet — 150 000" and bill["at"].startswith(f"{d1}T10:00")
+    assert all(now.isoformat() < x["at"] for x in items)
+    assert keys == [x["key"] for x in sorted(items, key=lambda x: x["at"])]
+
+
+def test_the_reminder_schedule_is_for_the_phone_app_only(client):
+    _onboard(7472)
+    phone = {"X-Telegram-Init-Data": _app_login(client, 7472)}
+    r = client.get("/api/app/schedule", headers=phone)
+    assert r.status_code == 200 and isinstance(r.json()["items"], list)
+    assert Caller(client, {"id": 7472, "first_name": "M"}).get("/api/app/schedule").status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Promo codes
+# ---------------------------------------------------------------------------
+
+def test_a_promo_code_gives_its_days_once_per_account(client, plans_on):
+    import promo
+    with SessionLocal() as s:
+        promo.create(s, "launch-30", "max", 30, max_uses=2)
+        s.commit()
+    a, b, c = next(_next_id), next(_next_id), next(_next_id)
+    for uid in (a, b, c):
+        _fresh_account(uid)
+        _expire_grants(uid)
+    first = Caller(client, {"id": a, "first_name": "A"})
+    r = first.post("/api/promocode/redeem", {"code": " launch-30 "})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["tier"] == "max" and body["days"] == 30 and body["plan"]["tier"] == "max"
+    assert body["until"] and 29 <= body["plan"]["days_left"] <= 30
+    again = first.post("/api/promocode/redeem", {"code": "LAUNCH-30"})
+    assert again.status_code == 409 and again.json()["detail"] == "already_used"
+    assert Caller(client, {"id": b, "first_name": "B"}).post(
+        "/api/promocode/redeem", {"code": "LAUNCH-30"}).status_code == 200
+    # Two uses: the third account is told it is used up.
+    third = Caller(client, {"id": c, "first_name": "C"}).post("/api/promocode/redeem", {"code": "LAUNCH-30"})
+    assert third.status_code == 409 and third.json()["detail"] == "exhausted"
+    with SessionLocal() as s:
+        assert promo.count_redeemed(s, "launch-30") == 2
+        grants = s.scalars(select(db.PlanGrant).where(db.PlanGrant.account_id == a,
+                                                      db.PlanGrant.source == "promo")).all()
+        assert len(grants) == 1
+
+
+def test_promo_code_refusals_name_the_reason(client, plans_on):
+    import promo
+    from datetime import datetime as _dt
+    with SessionLocal() as s:
+        promo.create(s, "OLD", "pro", 7, expires_at=_dt(2020, 1, 1))
+        promo.create(s, "OFFCODE", "pro", 7)
+        promo.deactivate(s, "offcode")
+        s.commit()
+    uid = next(_next_id)
+    _fresh_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "R"})
+    assert caller.post("/api/promocode/redeem", {"code": "NOPE"}).json()["detail"] == "not_found"
+    assert caller.post("/api/promocode/redeem", {"code": "old"}).json()["detail"] == "expired"
+    assert caller.post("/api/promocode/redeem", {"code": "OFFCODE"}).json()["detail"] == "inactive"
+    with pytest.raises(promo.PromoError):
+        with SessionLocal() as s:
+            promo.create(s, "OLD", "max", 7)
+    with pytest.raises(promo.PromoError):
+        with SessionLocal() as s:
+            promo.create(s, "bad code!", "max", 7)
+
+
+def test_promo_redeeming_is_rate_limited_like_sign_in():
+    from types import SimpleNamespace
+    assert application._rate_class(SimpleNamespace(url=SimpleNamespace(path="/api/promocode/redeem"),
+                                                   method="POST")) == "auth"
+
+
+def test_a_promo_code_queues_after_time_of_the_same_tier(client, plans_on):
+    import promo
+    with SessionLocal() as s:
+        promo.create(s, "MORE7", "pro", 7)
+        s.commit()
+    uid = next(_next_id)
+    _fresh_account(uid)            # 3 days of Pro trial
+    caller = Caller(client, {"id": uid, "first_name": "Q"})
+    days = caller.post("/api/promocode/redeem", {"code": "MORE7"}).json()["plan"]["days_left"]
+    assert days in (9, 10, 11)
+
+
+def test_promo_redemptions_leave_with_the_account_and_are_exported(client, plans_on):
+    import promo
+    with SessionLocal() as s:
+        promo.create(s, "EXPORTME", "pro", 3)
+        s.commit()
+    uid = next(_next_id)
+    _fresh_account(uid)
+    caller = Caller(client, {"id": uid, "first_name": "X"})
+    caller.post("/api/promocode/redeem", {"code": "EXPORTME"})
+    assert caller.get("/api/export").json()["promo_codes_used"][0]["code"] == "EXPORTME"
+    with SessionLocal() as s:
+        svc.delete_account(s, uid)
+        assert not s.scalars(select(db.PromoCodeRedemption).where(
+            db.PromoCodeRedemption.user_id == uid)).all()
+
+
+def test_a_weeks_goal_names_the_milestone_it_moves_forward(client):
+    """Audit S24: a tactical goal can point at one milestone. Only the owner's
+    own live milestones are accepted, the link travels when the goal is moved
+    to next week, and the app shows it as a pill under the goal."""
+    uid = next(_next_id)
+    _fresh_account(uid)
+    me = Caller(client, {"id": uid, "first_name": "G"})
+    big = me.post("/api/goals", {"level": "ultimate", "title": "Kapital"}).json()["id"]
+    ms = me.post("/api/goals", {"level": "milestone", "title": "Birinchi $100k",
+                                "parent_id": big}).json()["id"]
+    made = me.post("/api/focus", {"title": "10 ta mijoz", "goal_id": ms})
+    assert made.status_code == 200, made.text
+    fid = made.json()["id"]
+    week = me.get("/api/focus").json()["week"]
+    assert week["primary"]["goal_id"] == ms and week["primary"]["goal_title"] == "Birinchi $100k"
+
+    # An ultimate goal is not a milestone; someone else's milestone is not found.
+    assert me.patch(f"/api/focus/{fid}", {"title": "10 ta mijoz", "goal_id": big}).status_code == 404
+    other_uid = next(_next_id)
+    _fresh_account(other_uid)
+    other = Caller(client, {"id": other_uid, "first_name": "O"})
+    theirs = other.post("/api/goals", {"level": "milestone", "title": "Sir"}).json()["id"]
+    assert me.patch(f"/api/focus/{fid}", {"title": "10 ta mijoz", "goal_id": theirs}).status_code == 404
+    assert me.get("/api/focus").json()["week"]["primary"]["goal_id"] == ms
+
+    # A rename that does not mention the link keeps it; null clears it.
+    assert me.patch(f"/api/focus/{fid}", {"title": "12 ta mijoz"}).status_code == 200
+    assert me.get("/api/focus").json()["week"]["primary"]["goal_id"] == ms
+    assert me.patch(f"/api/focus/{fid}", {"title": "12 ta mijoz", "goal_id": None}).status_code == 200
+    assert me.get("/api/focus").json()["week"]["primary"]["goal_id"] is None
+
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert "function focusGoalPill(row)" in html and "${focusGoalPill(primary)}" in html
+    assert "...missionGoalBody()" in html
+
+
+def test_a_repeating_payment_says_when_it_was_paid_and_what_is_left(client):
+    """Audit F04/F17: "To'langan · date" comes from the entry the payment
+    made, and the month's plan splits into paid and left."""
+    uid = next(_next_id)
+    _fresh_account(uid)
+    me = Caller(client, {"id": uid, "first_name": "M"})
+    today = svc.today_local()
+    made = me.post("/api/money/subscriptions", {"name": "Internet", "amount": 150000,
+                                                "category": "home", "next_due": today.isoformat()})
+    assert made.status_code == 200, made.text
+    other = me.post("/api/money/subscriptions", {"name": "Ijara", "amount": 3500000, "category": "home",
+                                                 "next_due": (today + timedelta(days=20)).isoformat()})
+    assert other.status_code == 200, other.text
+    w = me.get("/api/money/wallet").json()
+    subs = {x["name"]: x for x in w["subscriptions"]}
+    assert subs["Internet"]["paid_now"] is False and subs["Internet"]["last_paid"] is None
+    assert w["subs_monthly"] == 3650000 and w["subs_paid_month"] == 0 and w["subs_left_month"] == 3650000
+
+    sid = subs["Internet"]["id"]
+    assert me.post(f"/api/money/subscriptions/{sid}/pay", {}).status_code == 200
+    w = me.get("/api/money/wallet").json()
+    subs = {x["name"]: x for x in w["subscriptions"]}
+    assert subs["Internet"]["last_paid"] == today.isoformat()
+    assert subs["Internet"]["paid_now"] is True and subs["Ijara"]["paid_now"] is False
+    assert w["subs_paid_month"] == 150000 and w["subs_left_month"] == 3500000
+
+
+def test_category_shares_always_add_up_to_100():
+    """Audit F02: the ring's shares use the largest remainder method."""
+    import shutil
+    import subprocess
+    if not shutil.which("node"):
+        pytest.skip("node is not installed")
+    html = (ROOT / "webapp" / "index.html").read_text()
+    fn = html[html.index("function sharePercents(values){"):html.index("/* \"1,2 mln\"")]
+    script = fn + """
+const cases = [[45000, 30000, 120000, 1200000], [1, 1, 1], [5, 3, 2], [0, 0], [7]];
+console.log(JSON.stringify(cases.map(sharePercents)));"""
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True).stdout
+    results = json.loads(out)
+    for shares in results[:3] + results[4:]:
+        assert sum(shares) == 100, shares
+    assert results[0] == [3, 2, 9, 86] or sum(results[0]) == 100
+    assert results[3] == [0, 0]
+
+
+def test_csv_cells_cannot_become_formulas():
+    """Audit S78: text that a spreadsheet would run is made plain text;
+    numbers, negative ones included, stay numbers."""
+    assert svc.csv_cell("=HYPERLINK(\"x\")") == "\"'=HYPERLINK(\"\"x\"\")\""
+    assert svc.csv_cell("+998901234567") == "'+998901234567"
+    assert svc.csv_cell("@cmd") == "'@cmd"
+    assert svc.csv_cell("-2+3") == "'-2+3"
+    assert svc.csv_cell(-5) == "-5" and svc.csv_cell(12.5) == "12.5"
+    assert svc.csv_cell("Ish, oila") == '"Ish, oila"'
+    assert svc.csv_cell("on_time") == "on_time"
+
+
+def test_the_streak_sheet_uses_the_servers_threshold():
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert f"const STREAK_MIN = {svc.STREAK_THRESHOLD};" in html
+    assert '"streak-why": () =>' in html
+
+
+def test_quick_capture_from_the_offline_queue_saves_as_it_was_meant(client):
+    """v16: a line typed with no signal is replayed later with nobody to
+    answer a question — money becomes the entry, 'ertaga' counts from the day
+    it was typed, and a time that had passed stays on that day."""
+    uid = next(_next_id)
+    _fresh_account(uid)
+    me = Caller(client, {"id": uid, "first_name": "Q"})
+    today = svc.today_local()
+    typed = today - timedelta(days=1)
+
+    r = me.post("/api/quick", {"title": "Tushlik 45 ming", "offline": True,
+                                "recorded_day": typed.isoformat()})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["money"] is True and body["entry"]["amount"] == 45000
+    assert body["entry"]["day"] == typed.isoformat()
+
+    r = me.post("/api/quick", {"title": "Ertaga soat 10 da hisobot", "offline": True,
+                                "recorded_day": typed.isoformat()}).json()
+    assert r["ok"] is True and r["id"] and r["deadline"] == today.isoformat() and r["due_time"] == "10:00"
+
+    # Online, the same money line still only opens the check (nothing saved).
+    before = len(me.get("/api/money").json()["entries"])
+    assert me.post("/api/quick", {"title": "Non 5 ming"}).json() == {"ok": True, "money": True}
+    assert len(me.get("/api/money").json()["entries"]) == before
+
+
+def test_the_offline_queue_takes_every_record_but_not_sign_in_or_payments():
+    html = (ROOT / "webapp" / "index.html").read_text()
+    rx = html[html.index("const QUEUEABLE = /"):]
+    rx = rx[:rx.index(";\n")]
+    for kind in ("quick", "tasks", "habits", "prayers", "money", "journal", "debts", "focus", "goals"):
+        assert kind in rx, kind
+    for never in ("auth", "plans", "pay", "agent", "me", "settings", "promocode"):
+        assert never + "|" not in rx and "|" + never not in rx, never
+    assert "err.queued = {path, method" in html
+    assert "if(queueIfOffline(e)){ lastDraft = null; closeSheet(); render(); }" in html
+    assert 'q.path === "/api/quick"' in html and "offline: true, recorded_day: todayISO()" in html
+    assert "async function flushVoice()" in html and 'indexedDB.open(VOICE_DB, 1)' in html
+
+
+def test_a_groups_work_and_its_members_check_ins_are_counted_apart(client):
+    """Audit V27/T53: one pooled ('any') task is one item of group work, not
+    one per member; it closes for the group when either member ticks it,
+    while an 'all' task stays open until both have."""
+    one, two, team_id = _pair(client)
+    a = Caller(client, {"id": one, "first_name": "Ernest"})
+    today = svc.today_local().isoformat()
+    shop = a.post(f"/api/teams/{team_id}/tasks", {"title": "Oziq-ovqat", "deadline": today,
+                                                  "completion": "any"}).json()["id"]
+    a.post(f"/api/teams/{team_id}/tasks", {"title": "Kechki sayr", "deadline": today,
+                                           "completion": "all"})
+    assert a.post(f"/api/teams/tasks/{shop}/toggle", {}).status_code == 200
+    teams = a.get("/api/teams").json()["teams"]
+    units = next(t for t in teams if t["id"] == team_id)["board"]["units"]
+    assert units["items"] == 2 and units["closed"] == 1, units
+    html = (ROOT / "webapp" / "index.html").read_text()
+    assert 't("team_work_closed", {done: units.closed, total: units.items})' in html
+
+
+def test_edit_profile_name_surname_and_a_unique_handle(client):
+    """Edit profile really edits: name, surname and @handle, unique regardless
+    of case, and Telegram's own copy no longer overwrites them afterwards."""
+    a, b = next(_next_id), next(_next_id)
+    _onboard(a); _onboard(b)
+    ha = {"X-Telegram-Init-Data": init_data({"id": a, "first_name": "Ernest"})}
+    hb = {"X-Telegram-Init-Data": init_data({"id": b, "first_name": "Bob"})}
+
+    class _C:
+        def __init__(self, h): self.h = h
+        def post(self, url, json): return client.post(url, headers=self.h, json=json)
+        def get(self, url): return client.get(url, headers=self.h)
+    ca, cb = _C(ha), _C(hb)
+    r = ca.post("/api/profile", json={"first_name": "  Ernest  ", "last_name": "Karimov",
+                                      "username": "@ErnestOS_1", "gender": "male"})
+    assert r.status_code == 200, r.text
+    me = ca.get("/api/me").json()
+    assert (me["first_name"], me["last_name"], me["username"], me["gender"]) == \
+        ("Ernest", "Karimov", "ErnestOS_1", "male")
+    taken = cb.post("/api/profile", json={"username": "ernestos_1"})
+    assert taken.status_code == 409 and taken.json()["detail"] == "username_taken"
+    for bad in ("ab", "1abcd", "ab cd e", "x" * 40):
+        assert cb.post("/api/profile", json={"username": bad}).status_code == 422, bad
+    assert cb.post("/api/profile", json={"first_name": "   "}).status_code == 422
+    # A message from Telegram later carries the old name and handle.
+    with SessionLocal() as s:
+        svc.get_or_create_user(s, a, first_name="Old", last_name="Name", username="old_tg")
+        s.commit()
+        row = s.get(User, a)
+        assert (row.first_name, row.last_name, row.username) == ("Ernest", "Karimov", "ErnestOS_1")
+    # Clearing the handle is allowed.
+    assert ca.post("/api/profile", json={"username": ""}).status_code == 200
+    assert ca.get("/api/me").json()["username"] == ""
+
+
+def test_goal_areas_business_first_and_charity_with_islam():
+    """Business is its own area; charity sits with Islam. Old values from an
+    old client or an old row read as the new ones, and 0015 rewrites rows."""
+    import migrations
+    from db import LifeGoal
+
+    assert svc.GOAL_CATEGORIES[0] == "business"
+    assert "charity" not in svc.GOAL_CATEGORIES and "career" not in svc.GOAL_CATEGORIES
+    uid = next(_next_id)
+    _onboard(uid)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        a = svc.add_goal(s, ws, title="Kompaniya", level="ultimate", category="career")
+        b = svc.add_goal(s, ws, title="Jamg'arma", level="ultimate", category="charity")
+        assert (a.category, b.category) == ("business", "islam")
+        # A row written before this change still reads in the new area.
+        old = LifeGoal(workspace_id=ws, title="Eski", level="ultimate", category="charity",
+                       status="dream")
+        s.add(old); s.commit()
+        cats = {g["title"]: g["category"] for g in svc.list_goals(s, ws)}
+        assert cats["Eski"] == "islam"
+        old_id = old.id
+    out = migrations.m0015_goal_areas()
+    assert out["moved"].get("charity→islam", 0) >= 1
+    with SessionLocal() as s:
+        assert s.get(LifeGoal, old_id).category == "islam"
+    assert migrations.m0015_goal_areas()["total"] == 0
+
+
+def test_goal_area_strings_exist_in_every_language():
+    html = (ROOT / "webapp" / "index.html").read_text()
+    for key in ("gc_business", "gc_islam", "gl_area_none", "gl_area_week_none"):
+        assert html.count(f"  {key}:") + html.count(f" {key}:") >= 3, key
+    assert "gc_charity" not in html and "gc_career" not in html
+
+
+def test_a_task_given_by_name_tells_that_person_and_the_rest_the_usual(monkeypatch):
+    """"Bobur gave you a task" reaches the person it was given to — even on
+    the "assigned only" level — and the others hear the ordinary change."""
+    import asyncio
+
+    owner, aziz, bobur = next(_next_id), next(_next_id), next(_next_id)
+    for uid in (owner, aziz, bobur):
+        _onboard(uid)
+    with SessionLocal() as s:
+        team = svc.create_team(s, owner, "Savdo")
+        svc.join_team(s, aziz, team.code)
+        svc.join_team(s, bobur, team.code)
+        svc.set_team_notify(s, aziz, team.id, "assigned")
+        team_id = team.id
+    sent = []
+
+    class _Inner:
+        async def send_message(self, chat_id, text, **kw):
+            sent.append((chat_id, text))
+
+    class _App:
+        bot = _Inner()
+
+    monkeypatch.setattr(application, "telegram_app", _App())
+    told = asyncio.run(application.notify_teammates(
+        team_id, owner, "team_ev_task_add", "Shartnoma", "Savdo", assigned=[aziz]))
+    by = {chat: text for chat, text in sent}
+    assert told == 2
+    assert "Shartnoma" in by[aziz] and "📌" in by[aziz]
+    assert "📌" not in by[bobur] and "Shartnoma" in by[bobur]
+    assert owner not in by
+
+
+def test_close_people_pro_only_with_birthday_rhythm_and_links(client, monkeypatch):
+    """Yaqinlarim: Free is closed; on Pro a person carries contacts, a
+    birthday kept in the one birthdays table, and a rhythm that says who is
+    due a call. Deleting the person takes the birthday with it."""
+    import plans
+    from db import Birthday, CloseOne
+
+    uid = next(_next_id)
+    _onboard(uid)
+    h = {"X-Telegram-Init-Data": init_data({"id": uid, "first_name": "Ernest"})}
+    monkeypatch.setattr(plans, "ENABLED", True)
+    monkeypatch.setattr(plans, "tier_of", lambda s, u: "free")
+    assert client.get("/api/people", headers=h).json()["access"]["allowed"] is False
+    r = client.post("/api/people", headers=h, json={"first_name": "Aziz"})
+    assert r.status_code == 402
+
+    monkeypatch.setattr(plans, "tier_of", lambda s, u: "pro")
+    r = client.post("/api/people", headers=h, json={
+        "first_name": " Aziz ", "last_name": "Karimov", "relation": "friend",
+        "phone": "+998 90 123-45-67", "telegram": "https://t.me/aziz_k",
+        "instagram": "@aziz.k", "link": "linkedin.com/in/aziz", "touch_days": 14,
+        "birth_date": "1995-10-20"})
+    assert r.status_code == 200, r.text
+    pid = r.json()["id"]
+    people = client.get("/api/people", headers=h).json()["people"]
+    p = people[0]
+    assert (p["name"], p["telegram"], p["instagram"], p["link"]) == \
+        ("Aziz Karimov", "aziz_k", "aziz.k", "https://linkedin.com/in/aziz")
+    assert p["touch_due"] is True, "never in touch with a rhythm set is due"
+    assert p["birthday"]["date"] == "1995-10-20"
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        assert [b.person_name for b in s.scalars(select(Birthday).where(Birthday.workspace_id == ws))] == ["Aziz Karimov"]
+        assert svc.close_touch_due(s, ws)[0]["name"] == "Aziz Karimov"
+
+    assert client.post(f"/api/people/{pid}/touched", headers=h).status_code == 200
+    p = client.get("/api/people", headers=h).json()["people"][0]
+    assert p["touch_due"] is False and p["days_since"] == 0 and p["touch_in"] == 14
+
+    for bad in ({"phone": "abc"}, {"telegram": "bad handle!"}, {"first_name": "  "}):
+        assert client.patch(f"/api/people/{pid}", headers=h, json=bad).status_code == 422, bad
+    assert client.patch(f"/api/people/{pid}", headers=h, json={"birth_date": ""}).status_code == 200
+    with SessionLocal() as s:
+        assert s.scalar(select(func.count(Birthday.id)).where(Birthday.workspace_id == ws)) == 0
+    client.patch(f"/api/people/{pid}", headers=h, json={"birth_date": "1995-10-21"})
+    assert client.delete(f"/api/people/{pid}", headers=h).status_code == 200
+    assert client.get("/api/people", headers=h).json()["people"] == []
+    with SessionLocal() as s:
+        assert s.scalar(select(func.count(Birthday.id)).where(Birthday.workspace_id == ws)) == 0
+        assert s.scalar(select(func.count(CloseOne.id)).where(CloseOne.workspace_id == ws)) == 1  # archived
+
+
+def _mailbox(monkeypatch, tmp_path):
+    """Email goes to files: the code is read back the way a person would."""
+    monkeypatch.setenv("EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("EMAIL_OUTBOX_DIR", str(tmp_path))
+
+    def last_code(to):
+        import json as _json
+        import re as _re
+        files = sorted(tmp_path.glob("*.json"))
+        for f in reversed(files):
+            msg = _json.loads(f.read_text())
+            if msg["to"] == to:
+                return _re.search(r"\b(\d{6})\b", msg["subject"]).group(1)
+        return None
+    return last_code
+
+
+def test_sign_up_with_email_then_setup_in_the_app(client, monkeypatch, tmp_path):
+    """No Telegram anywhere: an email, a mailed code, a new account with a
+    negative id, setup answered in the app, and then the app just works."""
+    import email_auth
+    from db import AccountEmail, EmailCode
+
+    last_code = _mailbox(monkeypatch, tmp_path)
+    assert client.get("/api/app/config").json()["email"] is True
+    r = client.post("/api/auth/email/start", json={"email": " Ernest@Example.COM ", "language": "uz"})
+    assert r.status_code == 200, r.text
+    code = last_code("ernest@example.com")
+    assert code and len(code) == 6
+    with SessionLocal() as s:
+        stored = s.scalar(select(EmailCode.code_hash).where(EmailCode.email == "ernest@example.com"))
+        assert stored and code not in stored, "only a digest is kept"
+    # Asking again within the minute is refused, and says when.
+    again = client.post("/api/auth/email/start", json={"email": "ernest@example.com"})
+    assert again.status_code == 429 and int(again.headers["Retry-After"]) > 0
+
+    bad = client.post("/api/auth/email/verify", json={"email": "ernest@example.com", "code": "000000"})
+    assert bad.status_code == 401
+    r = client.post("/api/auth/email/verify", json={"email": "ernest@example.com", "code": code,
+                                                    "device": "test", "language": "uz"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["new"] is True and body["token"].startswith("app:")
+    h = {"X-Telegram-Init-Data": body["token"]}
+    # The same code never works twice.
+    assert client.post("/api/auth/email/verify", json={"email": "ernest@example.com",
+                                                       "code": code}).status_code == 401
+
+    me = client.get("/api/me", headers=h).json()
+    assert me["telegram_id"] <= -email_auth.EMAIL_ID_BASE
+    assert me["has_telegram"] is False and me["email"] == "ernest@example.com"
+    assert me["onboarded"] is False
+    assert client.get("/api/home", headers=h).status_code == 409
+
+    r = client.post("/api/onboarding", headers=h, json={"first_name": "Ernest", "language": "en",
+                                                        "modules": ["wake", "journal"], "wake_time": "06:00"})
+    assert r.status_code == 200, r.text
+    me = client.get("/api/me", headers=h).json()
+    assert me["onboarded"] is True and me["first_name"] == "Ernest" and me["language"] == "en"
+    assert me["modules"]["wake"] is True and me["modules"]["prayer"] is False
+    assert client.get("/api/home", headers=h).status_code == 200
+    assert client.post("/api/tasks", headers=h, json={"title": "Birinchi vazifa"}).status_code == 200
+
+    # Signing in again on another phone lands in the same account.
+    import time as _t
+    with SessionLocal() as s:
+        s.execute(update(EmailCode).values(created_at=EmailCode.created_at - timedelta(minutes=2)))
+        s.commit()
+    assert client.post("/api/auth/email/start", json={"email": "ernest@example.com"}).status_code == 200
+    r = client.post("/api/auth/email/verify", json={"email": "ernest@example.com",
+                                                    "code": last_code("ernest@example.com")})
+    assert r.json()["new"] is False
+    me2 = client.get("/api/me", headers={"X-Telegram-Init-Data": r.json()["token"]}).json()
+    assert me2["telegram_id"] == me["telegram_id"]
+    with SessionLocal() as s:
+        assert s.get(AccountEmail, "ernest@example.com").account_id == me["telegram_id"]
+
+
+def test_a_wrong_code_five_times_kills_it(client, monkeypatch, tmp_path):
+    last_code = _mailbox(monkeypatch, tmp_path)
+    client.post("/api/auth/email/start", json={"email": "guess@example.com"})
+    code = last_code("guess@example.com")
+    for _ in range(5):
+        assert client.post("/api/auth/email/verify",
+                           json={"email": "guess@example.com", "code": "111111" if code != "111111" else "222222"}
+                           ).status_code == 401
+    assert client.post("/api/auth/email/verify",
+                       json={"email": "guess@example.com", "code": code}).status_code == 401
+
+
+def test_email_is_said_plainly_when_mail_is_not_set_up(client, monkeypatch):
+    for key in ("EMAIL_PROVIDER", "RESEND_API_KEY", "BREVO_API_KEY", "SMTP_HOST", "EMAIL_FROM"):
+        monkeypatch.delenv(key, raising=False)
+    assert client.get("/api/app/config").json()["email"] is False
+    r = client.post("/api/auth/email/start", json={"email": "a@example.com"})
+    assert r.status_code == 503 and r.json()["detail"] == "email_unavailable"
+    assert client.post("/api/auth/email/start", json={"email": "not-an-email"}).status_code == 422
+
+
+def test_a_telegram_account_attaches_an_email_and_signs_the_phone_in_with_it(client, monkeypatch, tmp_path):
+    """Ernest's own account, with everything in it, gets an email; the phone
+    then signs in with that email to the same account — no second account."""
+    last_code = _mailbox(monkeypatch, tmp_path)
+    uid = next(_next_id)
+    _onboard(uid)
+    h = {"X-Telegram-Init-Data": init_data({"id": uid, "first_name": "Ernest"})}
+    assert client.post("/api/account/email/start", headers=h,
+                       json={"email": "me@example.com"}).status_code == 200
+    assert client.post("/api/account/email/verify", headers=h,
+                       json={"email": "me@example.com", "code": "999999"}).status_code == 401
+    r = client.post("/api/account/email/verify", headers=h,
+                    json={"email": "me@example.com", "code": last_code("me@example.com")})
+    assert r.status_code == 200 and r.json()["email"] == "me@example.com"
+    assert client.get("/api/me", headers=h).json()["email"] == "me@example.com"
+
+    with SessionLocal() as s:
+        from db import EmailCode
+        s.execute(update(EmailCode).values(created_at=EmailCode.created_at - timedelta(minutes=2)))
+        s.commit()
+    client.post("/api/auth/email/start", json={"email": "me@example.com"})
+    r = client.post("/api/auth/email/verify", json={"email": "me@example.com",
+                                                    "code": last_code("me@example.com")})
+    assert r.json()["new"] is False
+    me = client.get("/api/me", headers={"X-Telegram-Init-Data": r.json()["token"]}).json()
+    assert me["telegram_id"] == uid and me["has_telegram"] is True
+
+    # Somebody else cannot take that address.
+    other = next(_next_id)
+    _onboard(other)
+    h2 = {"X-Telegram-Init-Data": init_data({"id": other, "first_name": "B"})}
+    r = client.post("/api/account/email/start", headers=h2, json={"email": "ME@example.com"})
+    assert r.status_code == 409 and r.json()["detail"] == "email_taken"
+
+
+def test_an_email_account_hears_its_messages_in_the_app_not_telegram(monkeypatch):
+    """No Telegram call is made for an account without Telegram; the message
+    lands in the app's inbox instead."""
+    import asyncio
+    import email_auth
+
+    with SessionLocal() as s:
+        account = email_auth.create_account(s, "inbox@example.com", language="uz")
+    sent, delivered = [], []
+
+    class _Bot:
+        async def send_message(self, *a, **kw):
+            sent.append(a)
+
+    async def _deliver(chat_id, text, markup=None, **kw):
+        delivered.append((chat_id, text))
+        return True
+
+    monkeypatch.setattr(application.app_push, "deliver", _deliver)
+    fan = application.AccountFanOut(_Bot(), "report")
+    asyncio.run(fan.send_message(account, "Salom"))
+    assert sent == [] and delivered == [(account, "Salom")]
+
+
+def test_deleting_an_email_account_frees_the_address(client, monkeypatch, tmp_path):
+    import email_auth
+    from db import AccountEmail
+
+    with SessionLocal() as s:
+        account = email_auth.create_account(s, "gone@example.com", language="uz")
+        svc.delete_account(s, account)
+        assert s.get(AccountEmail, "gone@example.com") is None
+
+
+def test_safe_migrations_run_themselves_once_on_start():
+    """A deploy needs no shell: 0014 and 0015 run on start-up, once each."""
+    import migrations
+    from db import AppliedMigration, LifeGoal
+
+    with SessionLocal() as s:
+        s.query(AppliedMigration).delete()
+        uid = next(_next_id)
+        s.commit()
+    _onboard(uid)
+    with SessionLocal() as s:
+        ws = svc.workspace_id_for(s, uid)
+        s.add(LifeGoal(workspace_id=ws, title="Old", level="ultimate", category="career", status="dream"))
+        s.commit()
+    assert migrations.auto_apply() == ["0014", "0015"]
+    with SessionLocal() as s:
+        assert s.scalar(select(LifeGoal.category).where(LifeGoal.workspace_id == ws)) == "business"
+        assert {r.name for r in s.scalars(select(AppliedMigration))} == {"0014", "0015"}
+    assert migrations.auto_apply() == [], "never twice"
+
+
+# --- Google and Apple ---------------------------------------------------------
+
+def _oidc_keys(monkeypatch):
+    """A real RSA key standing in for Google's and Apple's: tokens are signed
+    with it and its public half is the key set the server fetches."""
+    import base64 as _b64
+    import json as _json
+    import time as _time
+    import oidc
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import padding, rsa
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    nums = key.public_key().public_numbers()
+    enc = lambda b: _b64.urlsafe_b64encode(b).rstrip(b"=").decode()
+    as_bytes = lambda n: n.to_bytes((n.bit_length() + 7) // 8, "big")
+    jwk = {"kty": "RSA", "kid": "k1", "n": enc(as_bytes(nums.n)), "e": enc(as_bytes(nums.e))}
+    monkeypatch.setattr(oidc, "_fetch_keys", lambda provider: {"k1": jwk})
+    oidc._cache.clear()
+
+    def sign(claims, kid="k1", alg="RS256"):
+        head = enc(_json.dumps({"alg": alg, "kid": kid}).encode())
+        now = int(_time.time())
+        body = enc(_json.dumps({"iat": now, "exp": now + 3600, **claims}).encode())
+        sig = key.sign(f"{head}.{body}".encode(), padding.PKCS1v15(), hashes.SHA256())
+        return f"{head}.{body}.{enc(sig)}"
+    return sign
+
+
+def test_google_on_the_phone_signs_in_and_finds_the_same_person_again(client, monkeypatch):
+    sign = _oidc_keys(monkeypatch)
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "web.apps.googleusercontent.com")
+    cfg = client.get("/api/app/config").json()
+    assert cfg["google"]["client_id"] == "web.apps.googleusercontent.com"
+    claims = {"iss": "https://accounts.google.com", "aud": "web.apps.googleusercontent.com",
+              "sub": "g-123", "email": "Ali@Gmail.com", "email_verified": True, "given_name": "Ali"}
+    r = client.post("/api/auth/social/google", json={"id_token": sign(claims), "language": "en"})
+    assert r.status_code == 200, r.text
+    assert r.json()["new"] is True
+    me = client.get("/api/me", headers={"X-Telegram-Init-Data": r.json()["token"]}).json()
+    assert me["email"] == "ali@gmail.com" and me["has_telegram"] is False and me["onboarded"] is False
+    again = client.post("/api/auth/social/google", json={"id_token": sign(claims)}).json()
+    assert again["new"] is False
+    me2 = client.get("/api/me", headers={"X-Telegram-Init-Data": again["token"]}).json()
+    assert me2["telegram_id"] == me["telegram_id"]
+
+
+def test_a_google_token_is_refused_unless_every_check_holds(client, monkeypatch):
+    sign = _oidc_keys(monkeypatch)
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "web.apps.googleusercontent.com")
+    good = {"iss": "accounts.google.com", "aud": "web.apps.googleusercontent.com", "sub": "g-9",
+            "email": "x@gmail.com", "email_verified": True}
+    import time as _time
+    for bad in ({**good, "aud": "someone-else"}, {**good, "iss": "https://evil.example"},
+                {**good, "exp": int(_time.time()) - 3600}):
+        assert client.post("/api/auth/social/google", json={"id_token": sign(bad)}).status_code == 401
+    token = sign(good)
+    head, body, sig = token.split(".")
+    tampered = f"{head}.{body[:-4]}AAAA.{sig}"
+    assert client.post("/api/auth/social/google", json={"id_token": tampered}).status_code == 401
+    assert client.post("/api/auth/social/google", json={"id_token": sign(good, alg="none")}).status_code == 401
+    monkeypatch.delenv("GOOGLE_CLIENT_ID")
+    assert client.post("/api/auth/social/google", json={"id_token": token}).status_code == 503
+
+
+def test_google_lands_in_the_telegram_account_that_has_the_same_email(client, monkeypatch, tmp_path):
+    """Ernest attaches his Gmail in Settings once; "Sign in with Google" then
+    opens that same account with all its data — no second account."""
+    sign = _oidc_keys(monkeypatch)
+    last_code = _mailbox(monkeypatch, tmp_path)
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "web.apps.googleusercontent.com")
+    uid = next(_next_id)
+    _onboard(uid)
+    h = {"X-Telegram-Init-Data": init_data({"id": uid, "first_name": "Ernest"})}
+    client.post("/api/account/email/start", headers=h, json={"email": "ernest@gmail.com"})
+    client.post("/api/account/email/verify", headers=h,
+                json={"email": "ernest@gmail.com", "code": last_code("ernest@gmail.com")})
+    r = client.post("/api/auth/social/google", json={"id_token": sign({
+        "iss": "accounts.google.com", "aud": "web.apps.googleusercontent.com", "sub": "g-ernest",
+        "email": "ernest@gmail.com", "email_verified": True})}).json()
+    assert r["new"] is False
+    assert client.get("/api/me", headers={"X-Telegram-Init-Data": r["token"]}).json()["telegram_id"] == uid
+    # An unverified address is never used to find an account.
+    r = client.post("/api/auth/social/google", json={"id_token": sign({
+        "iss": "accounts.google.com", "aud": "web.apps.googleusercontent.com", "sub": "g-other",
+        "email": "ernest@gmail.com", "email_verified": False})}).json()
+    assert r["new"] is True
+
+
+def test_apple_in_the_browser_hands_the_session_to_the_app_once(client, monkeypatch):
+    """Apple on Android: the app opens Apple's page with its own state, Apple
+    posts back here, and the app collects the session with that state."""
+    import social_auth
+    from db import OAuthPending
+
+    sign = _oidc_keys(monkeypatch)
+    monkeypatch.setenv("APPLE_CLIENT_ID", "uz.ernestos.signin")
+    monkeypatch.setenv("PUBLIC_URL", "https://ernestos.example")
+    assert client.get("/api/app/config").json()["apple"] == {"browser": True}
+    verifier = "a" * 48
+    state = social_auth.state_for(verifier)
+    r = client.get(f"/api/auth/oauth/apple/start?state={state}&lang=uz", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"].startswith("https://appleid.apple.com/auth/authorize?")
+    assert "redirect_uri=https%3A%2F%2Fernestos.example%2Fapi%2Fauth%2Foauth%2Fapple%2Fcallback" in r.headers["location"]
+    with SessionLocal() as s:
+        nonce = s.get(OAuthPending, social_auth._digest(state)).nonce
+    assert client.post("/api/auth/oauth/poll", json={"verifier": verifier}).json()["status"] == "pending"
+
+    # A token with another attempt's nonce is refused.
+    wrong = sign({"iss": "https://appleid.apple.com", "aud": "uz.ernestos.signin", "sub": "apple-1",
+                  "email": "relay@privaterelay.appleid.com", "email_verified": "true", "nonce": "x"})
+    page = client.post("/api/auth/oauth/apple/callback", content=f"state={state}&id_token={wrong}",
+                       headers={"Content-Type": "application/x-www-form-urlencoded"})
+    assert page.status_code == 200
+    assert client.post("/api/auth/oauth/poll", json={"verifier": verifier}).json()["status"] == "error"
+
+    verifier = "b" * 48
+    state = social_auth.state_for(verifier)
+    client.get(f"/api/auth/oauth/apple/start?state={state}", follow_redirects=False)
+    with SessionLocal() as s:
+        nonce = s.get(OAuthPending, social_auth._digest(state)).nonce
+    token = sign({"iss": "https://appleid.apple.com", "aud": "uz.ernestos.signin", "sub": "apple-2",
+                  "email": "relay2@privaterelay.appleid.com", "email_verified": "true", "nonce": nonce})
+    page = client.post("/api/auth/oauth/apple/callback", content=f"state={state}&id_token={token}",
+                       headers={"Content-Type": "application/x-www-form-urlencoded"})
+    assert "uz.ernestos.app://auth/done" in page.text
+    leaked = client.post("/api/auth/oauth/poll", json={"verifier": state}).json()
+    assert leaked["status"] == "unknown", "the state from the URL is not the key"
+    got = client.post("/api/auth/oauth/poll", json={"verifier": verifier}).json()
+    assert got["status"] == "done" and got["new"] is True and got["token"].startswith("app:")
+    assert client.get("/api/me", headers={"X-Telegram-Init-Data": got["token"]}).status_code == 200
+    assert client.post("/api/auth/oauth/poll", json={"verifier": verifier}).json()["status"] == "unknown", "once"
+
+
+def test_google_in_the_browser_trades_the_code_and_checks_the_nonce(client, monkeypatch):
+    import social_auth
+    from db import OAuthPending
+
+    sign = _oidc_keys(monkeypatch)
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "web.apps.googleusercontent.com")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "s")
+    monkeypatch.setenv("PUBLIC_URL", "https://ernestos.example")
+    assert client.get("/api/app/config").json()["google"]["browser"] is True
+    verifier = "c" * 48
+    state = social_auth.state_for(verifier)
+    r = client.get(f"/api/auth/oauth/google/start?state={state}", follow_redirects=False)
+    assert r.headers["location"].startswith("https://accounts.google.com/o/oauth2/v2/auth?")
+    with SessionLocal() as s:
+        nonce = s.get(OAuthPending, social_auth._digest(state)).nonce
+    monkeypatch.setattr(social_auth, "google_code_to_token", lambda code: sign({
+        "iss": "https://accounts.google.com", "aud": "web.apps.googleusercontent.com",
+        "sub": "g-browser", "email": "b@gmail.com", "email_verified": True, "nonce": nonce}))
+    page = client.get(f"/api/auth/oauth/google/callback?state={state}&code=abc")
+    assert page.status_code == 200 and "auth/done" in page.text
+    got = client.post("/api/auth/oauth/poll", json={"verifier": verifier}).json()
+    assert got["status"] == "done"
+    # A state nobody started is not a door.
+    assert client.get(f"/api/auth/oauth/google/callback?state={'d' * 48}&code=abc").status_code == 200
+    assert client.post("/api/auth/oauth/poll", json={"verifier": "d" * 48}).json()["status"] == "unknown"
+    assert client.post("/api/auth/oauth/poll", json={"verifier": "short"}).status_code == 422
+
+
+def test_an_error_on_a_phone_reaches_the_log_without_secrets(client, caplog):
+    """window.onerror on the phone → one log line: what broke and where, with
+    tokens, init data and emails cut out, the account as a short hash; and
+    the reports have a budget of their own, apart from sign-in tries."""
+    import logging
+    application._buckets.clear()
+    caplog.set_level(logging.WARNING, logger="ernestos")
+    leaked = "app:" + "x" * 40
+    r = client.post("/api/app/client-error", headers={"X-Telegram-Init-Data": init_data(ALICE)}, json={
+        "kind": "error", "screen": "money", "app": True, "build": "android-61",
+        "message": f"TypeError: cannot read 'amount' ({leaked}) for ali@example.com",
+        "stack": "at render (index.html:7570:3) hash=abcdef0123"})
+    assert r.status_code == 200 and r.json() == {"ok": True}
+    line = next(rec.getMessage() for rec in caplog.records if rec.getMessage().startswith("client "))
+    assert "TypeError: cannot read 'amount'" in line and "on money" in line and "android-61" in line
+    assert leaked not in line and "x" * 24 not in line, "no token in the log"
+    assert "ali@example.com" not in line and "abcdef0123" not in line
+    assert "anon" not in line, "a signed-in report names the account by hash"
+    assert str(ALICE["id"]) not in line, "and never by its id"
+    # Its own budget: ten reports, then 429 — the sign-in budget untouched.
+    req = type("R", (), {"url": type("U", (), {"path": "/api/app/client-error"})(), "method": "POST"})()
+    assert application._rate_class(req) == "report"
+    for _ in range(application.RATE_LIMITS["report"][0]):
+        assert application.rate_limit_check(999101, "report") is None
+    assert application.rate_limit_check(999101, "report") is not None
+    assert application.rate_limit_check(999101, "auth") is None
+    application._buckets.clear()
+
+
+def test_privacy_policy_is_a_public_page_in_three_languages(client):
+    """Google Play and the law want a policy at a public address: what is
+    collected, who processes it, how long it is kept, how to delete it."""
+    for lang, word in (("uz", "Maxfiylik siyosati"), ("ru", "Политика конфиденциальности"),
+                       ("en", "Privacy policy")):
+        r = client.get(f"/privacy?lang={lang}")
+        assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
+        assert f'<html lang="{lang}">' in r.text and word in r.text
+        assert f"/account/delete?lang={lang}" in r.text, "the policy links to deletion"
+        for processor in ("Railway", "Groq", "Firebase"):
+            assert processor in r.text
+    assert '<html lang="uz">' in client.get("/privacy?lang=xx").text
+
+
+def test_an_account_is_deleted_from_the_web_page_with_an_emailed_code(client, monkeypatch, tmp_path):
+    """Play's rule: delete without the app. The page mails a deletion code to
+    an address that has an account; the code erases that account. An address
+    without one gets the same answer and no mail."""
+    import email_auth
+    from db import AccountEmail
+    last_code = _mailbox(monkeypatch, tmp_path)
+    page = client.get("/account/delete?lang=uz")
+    assert page.status_code == 200 and "Akkauntni o'chirish" in page.text
+    assert page.headers["cache-control"] == "no-store"
+    with SessionLocal() as s:
+        account = email_auth.create_account(s, "gone@example.com", first_name="Gone")
+    import app_auth
+    with SessionLocal() as s:
+        h = {"X-Telegram-Init-Data": app_auth.TOKEN_PREFIX + app_auth.issue_session(s, account, "test")}
+    assert client.post("/api/onboarding", headers=h, json={"first_name": "Gone", "language": "uz"}).status_code == 200
+    assert client.post("/api/tasks", headers=h, json={"title": "Bir ish"}).status_code in (200, 201)
+
+    # Nobody at this address: same answer, no mail.
+    r = client.post("/api/account/delete/start", json={"email": "nobody@example.com"})
+    assert r.status_code == 200 and last_code("nobody@example.com") is None
+    assert client.post("/api/account/delete/confirm",
+                       json={"email": "nobody@example.com", "code": "123456"}).status_code == 404
+
+    r = client.post("/api/account/delete/start", json={"email": "Gone@Example.com", "language": "uz"})
+    assert r.status_code == 200, r.text
+    code = last_code("gone@example.com")
+    subject = sorted(tmp_path.glob("*.json"))[-1].read_text()
+    assert "o'chirish" in subject, "the mail says what the code does"
+    # A sign-in code is not a deletion code, and a wrong one is refused.
+    assert client.post("/api/account/delete/confirm",
+                       json={"email": "gone@example.com", "code": "000000"}).status_code == 401
+    assert client.get("/api/me", headers=h).status_code == 200, "still there after a wrong code"
+    r = client.post("/api/account/delete/confirm", json={"email": "gone@example.com", "code": code})
+    assert r.status_code == 200 and r.json()["deleted"] is True
+    with SessionLocal() as s:
+        assert s.get(AccountEmail, "gone@example.com") is None
+    assert client.get("/api/me", headers=h).status_code == 401, "its sessions end too"

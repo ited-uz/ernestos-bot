@@ -62,6 +62,8 @@ jobs:
 
       - name: Build the web layer
         working-directory: mobile
+        env:
+          ERNEST_BUILD: android-${{ github.run_number }}
         run: |
           if [ -z "$API_URL" ]; then
             echo "::warning::ERNEST_API_URL is not set — compiling only, no APK will be published."
@@ -71,14 +73,48 @@ jobs:
           fi
           npx cap sync android
 
+      # A fixed signing key (secret ANDROID_KEYSTORE_B64 + ANDROID_KEYSTORE_PASSWORD,
+      # made once with scripts/make_android_key.py): updates install over the
+      # last build, and Google sign-in recognises the app by its SHA-1.
+      # Without them the APK gets a throwaway key each run.
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$KEYSTORE_PASSWORD" ]; then
+            printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/ernestos.p12"
+            echo "ERNEST_KEYSTORE=$RUNNER_TEMP/ernestos.p12" >> "$GITHUB_ENV"
+            echo "ERNEST_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            # The certificate's SHA-1 is public (Google Cloud asks for it); the key stays secret.
+            SHA1=$(keytool -list -v -storetype pkcs12 -keystore "$RUNNER_TEMP/ernestos.p12" \
+                     -storepass:env KEYSTORE_PASSWORD 2>/dev/null | awk '/SHA1:/{print $2; exit}')
+            echo "Signing key SHA-1: $SHA1"
+            echo "### Signing key SHA-1 (Google Cloud → Android client): \`$SHA1\`" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::notice::ANDROID_KEYSTORE_B64 not set — APK signed with a throwaway debug key (no in-place updates, no native Google sign-in)."
+          fi
+
+      # With the signing key: a release APK (not debuggable — no USB access to
+      # the app's data, no WebView inspection of the session). Without it: a
+      # debug APK, as before, so the build still proves the project compiles.
       - name: Build the APK
         working-directory: mobile/android
-        run: ./gradlew --no-daemon assembleDebug -PversionCode=${{ github.run_number }} -PversionName=13.1.${{ github.run_number }}
+        run: |
+          # Signed: the release APK to install, and the .aab Google Play takes.
+          if [ -n "${ERNEST_KEYSTORE:-}" ]; then TASKS="assembleRelease bundleRelease"; KIND=release; else TASKS=assembleDebug; KIND=debug; fi
+          ./gradlew --no-daemon $TASKS -PversionCode=${{ github.run_number }} -PversionName=13.1.${{ github.run_number }}
+          mkdir -p "$RUNNER_TEMP/apk"
+          cp "app/build/outputs/apk/$KIND/app-$KIND.apk" "$RUNNER_TEMP/apk/ErnestOS-${{ github.run_number }}.apk"
+          if [ "$KIND" = release ]; then
+            cp app/build/outputs/bundle/release/app-release.aab "$RUNNER_TEMP/apk/ErnestOS-${{ github.run_number }}.aab"
+          fi
+          echo "### APK: $KIND build$( [ "$KIND" = release ] && echo ' + Play bundle (.aab)')" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish the APK
         if: env.API_URL != ''
         uses: actions/upload-artifact@v4
         with:
           name: ErnestOS-android-${{ github.run_number }}
-          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ runner.temp }}/apk/
           retention-days: 30

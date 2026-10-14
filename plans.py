@@ -70,17 +70,24 @@ RANK = {"free": 0, "pro": 1, "max": 2}
 #: None means no limit. Keys are what `require` is asked about.
 LIMITS: dict[str, dict[str, int | None]] = {
     "habits":          {"free": 3,  "pro": 25,   "max": None},
-    "active_tasks":    {"free": 30, "pro": None, "max": None},
+    "active_tasks":    {"free": 20, "pro": None, "max": None},
     "recurring_tasks": {"free": 3,  "pro": 25,   "max": None},
     "projects":        {"free": 1,  "pro": 15,   "max": None},
+    #: Milestone and ultimate goals still being worked on.
+    "life_goals":      {"free": 2,  "pro": 25,   "max": None},
     "open_debts":      {"free": 3,  "pro": None, "max": None},
+    #: Money accounts (cash, card, bank…) and repeating payments.
+    "money_accounts":  {"free": 1,  "pro": 3,    "max": None},
+    "money_subs":      {"free": 0,  "pro": 3,    "max": None},
     #: Teams an account owns. Joining somebody else's team is always free.
     "teams_owned":     {"free": 0,  "pro": 2,    "max": 10},
+    #: Yaqinlarim — close people with contacts, birthdays and a rhythm.
+    "close_people":    {"free": 0,  "pro": 50,   "max": None},
     #: Members of a team, set by its owner's plan.
     "team_members":    {"free": 8,  "pro": 10,   "max": 50},
     #: Voice and AI requests: per day on Pro and Max, per week on Free.
     "voice_day":       {"free": None, "pro": 30, "max": 100},
-    "voice_week":      {"free": 5,  "pro": None, "max": None},
+    "voice_week":      {"free": 3,  "pro": None, "max": None},
 }
 
 #: Features that are simply on or off.
@@ -89,6 +96,10 @@ FEATURES: dict[str, tuple[str, ...]] = {
     "timer_rhythm":  ("pro", "max"),   # 25/5, 50/10, 90/15
     "stats_history": ("pro", "max"),   # month and year views
     "stats_csv":     ("max",),         # statistics as a spreadsheet file
+    "money_transfers": ("pro", "max"), # moving money between own accounts
+    "money_year":    ("max",),         # the year of money, month by month
+    "themes":        ("pro", "max"),   # Blossom, Obsidian, Emerald (dark mode is free)
+    "now_ai":        ("pro", "max"),   # AI picks what to do now, with a reason
 }
 
 

@@ -37,10 +37,10 @@ from sqlalchemy.orm import Session
 import plans
 
 from db import (
-    AgentAudit, AgentDraft, AgentPreference,
-    Birthday, Countdown, DailyReportLog, DailyScore, Feedback, Habit, HabitLog,
+    AgentAudit, AgentChatMessage, AgentDraft, AgentPreference,
+    Birthday, CloseOne, Countdown, DailyReportLog, DailyScore, Feedback, Habit, HabitLog,
     HabitPauseInterval, HabitScheduleVersion, IdempotencyKey, JobRun,
-    Debt, DebtPayment, JournalEntry, MoneyBudget, ResetLog, Snooze, MoneyEntry, PrayerDay, PrayerLog, Project,
+    Debt, DebtPayment, JournalEntry, LifeGoal, MoneyAccount, MoneyBudget, MoneySubscription, MoneyTransfer, ResetLog, Snooze, MoneyEntry, PrayerDay, PrayerLog, Project,
     Referral, ReferralCode, Task,
     Team, TeamActivity, TeamDayScore, TeamHabit, TeamHabitLog, TeamJoinRequest,
     TeamMember, TeamTask, TeamTaskDone, TimerRun, User, UserAchievement,
@@ -297,7 +297,10 @@ def get_or_create_user(s: Session, telegram_id: int, *, first_name: str = "",
     if user is not None:
         if user.plan_started_at is None and plans.ENABLED:
             plans.ensure_started(s, user, created=False)   # launch gift, once
-        # Keep Telegram profile fields fresh, but never overwrite with blanks.
+        # Keep Telegram profile fields fresh, but never overwrite with blanks,
+        # and never over what the person typed into "Edit profile" themselves.
+        if user.profile_edited_at is not None:
+            return user, False
         if first_name and not user.onboarded:
             user.first_name = first_name
         elif first_name and not user.first_name:
@@ -1970,6 +1973,209 @@ def delete_project(s: Session, ws: int, project_id: int) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Goals above the week
+# ---------------------------------------------------------------------------
+
+#: Tactical goals are the week's focus; these are the two levels above it.
+GOAL_LEVELS = ["milestone", "ultimate"]
+GOAL_STATUSES = ["dream", "active", "done"]
+GOAL_CATEGORIES = ["business", "capital", "health", "islam", "family",
+                   "learning", "other"]
+#: Areas that were folded into others: "career" always read as "Business",
+#: and charity now sits with Islam ("Islom va xayriya"). Old rows and old
+#: clients are read through this map; migration 0015 rewrites the rows.
+GOAL_CATEGORY_ALIASES = {"career": "business", "charity": "islam"}
+
+
+def goal_category(value) -> str:
+    value = GOAL_CATEGORY_ALIASES.get(value, value)
+    return value if value in GOAL_CATEGORIES else "other"
+GOAL_UNITS = ["USD", "UZS", "EUR", "RUB"]
+_GOAL_AMOUNT_MAX = 10 ** 13
+
+
+def _goal_horizon(value) -> str:
+    """"2030", "lifetime" or "". Anything else is a mistake, not a horizon."""
+    value = str(value or "").strip().lower()
+    if value in ("", "lifetime"):
+        return value
+    if value.isdigit() and 2000 <= int(value) <= 2200:
+        return value
+    raise ValueError("bad_horizon")
+
+
+def _goal_fields(s: Session, ws: int, fields: dict, goal: LifeGoal | None) -> dict:
+    """Validated column values for a new goal or a change to one."""
+    out: dict = {}
+    if "title" in fields:
+        title = str(fields["title"] or "").strip()[:200]
+        if not title:
+            raise ValueError("empty_goal_title")
+        out["title"] = title
+    if "level" in fields:
+        if fields["level"] not in GOAL_LEVELS:
+            raise ValueError("bad_goal_level")
+        out["level"] = fields["level"]
+    if "category" in fields:
+        out["category"] = goal_category(fields["category"])
+    if "status" in fields:
+        if fields["status"] not in GOAL_STATUSES:
+            raise ValueError("bad_goal_status")
+        out["status"] = fields["status"]
+    if "horizon" in fields:
+        out["horizon"] = _goal_horizon(fields["horizon"])
+    if "amount" in fields:
+        amount = fields["amount"]
+        if amount in (None, ""):
+            out["amount"] = None
+        else:
+            amount = int(amount)
+            if not 0 <= amount <= _GOAL_AMOUNT_MAX:
+                raise ValueError("bad_goal_amount")
+            out["amount"] = amount or None
+    if "unit" in fields:
+        unit = str(fields["unit"] or "USD").upper()
+        out["unit"] = unit if unit in GOAL_UNITS else "USD"
+    if "progress" in fields:
+        out["progress"] = max(0, min(100, int(fields["progress"] or 0)))
+    if "cover" in fields:
+        out["cover"] = str(fields["cover"] or "").strip()[:16]
+    if "note" in fields:
+        out["note"] = str(fields["note"] or "").strip()[:2000]
+    level = out.get("level") or (goal.level if goal else "milestone")
+    if "parent_id" in fields or "level" in fields:
+        parent_id = fields.get("parent_id", goal.parent_id if goal else None)
+        if level != "milestone" or not parent_id:
+            out["parent_id"] = None
+        else:
+            parent = s.get(LifeGoal, int(parent_id))
+            if (parent is None or parent.workspace_id != ws or parent.archived_at
+                    or parent.level != "ultimate"
+                    or (goal is not None and parent.id == goal.id)):
+                raise ValueError("bad_goal_parent")
+            out["parent_id"] = parent.id
+    return out
+
+
+def _goal_dict(g: LifeGoal, children: list[LifeGoal]) -> dict:
+    """One goal as the app draws it. An ultimate goal with milestones shows
+    how many of them are done instead of a number typed by hand."""
+    done_children = sum(1 for c in children if c.status == "done")
+    if g.status == "done":
+        progress = 100
+    elif g.level == "ultimate" and children:
+        progress = round(sum(100 if c.status == "done" else (c.progress or 0)
+                             for c in children) / len(children))
+    else:
+        progress = g.progress or 0
+    return {
+        "id": g.id, "level": g.level, "title": g.title, "category": goal_category(g.category),
+        "horizon": g.horizon or "", "status": g.status,
+        "amount": int(g.amount) if g.amount is not None else None,
+        "unit": g.unit or "USD",
+        "progress": progress, "own_progress": g.progress or 0,
+        "auto_progress": g.level == "ultimate" and bool(children) and g.status != "done",
+        "parent_id": g.parent_id, "cover": g.cover or "", "note": g.note or "",
+        "position": g.position or 0,
+        "milestones": len(children), "milestones_done": done_children,
+        "created_at": g.created_at.isoformat() if g.created_at else None,
+        "done_at": g.done_at.isoformat() if g.done_at else None,
+    }
+
+
+def list_goals(s: Session, ws: int) -> list[dict]:
+    """Every goal that is not archived: in progress, then someday, then
+    achieved — each by position."""
+    rows = s.scalars(select(LifeGoal).where(LifeGoal.workspace_id == ws,
+                                            LifeGoal.archived_at.is_(None))).all()
+    kids: dict[int, list[LifeGoal]] = {}
+    for g in rows:
+        if g.level == "milestone" and g.parent_id:
+            kids.setdefault(g.parent_id, []).append(g)
+    order = {"active": 0, "dream": 1, "done": 2}
+    rows = sorted(rows, key=lambda g: (order.get(g.status, 1), g.position or 0, g.id))
+    return [_goal_dict(g, kids.get(g.id, []) if g.level == "ultimate" else []) for g in rows]
+
+
+def _open_goal_count(s: Session, ws: int) -> int:
+    """What the plan limit counts: goals still being worked on. A finished
+    goal stays on the board and does not take a place."""
+    return int(s.scalar(select(func.count(LifeGoal.id)).where(
+        LifeGoal.workspace_id == ws, LifeGoal.archived_at.is_(None),
+        LifeGoal.status != "done")) or 0)
+
+
+def add_goal(s: Session, ws: int, **fields) -> LifeGoal:
+    fields.setdefault("level", "milestone")
+    values = _goal_fields(s, ws, fields, None)
+    if "title" not in values:
+        raise ValueError("empty_goal_title")
+    if values.get("status", "active") != "done":
+        plans.require_in_workspace(s, ws, "life_goals", _open_goal_count(s, ws))
+    last = s.scalar(select(func.max(LifeGoal.position)).where(
+        LifeGoal.workspace_id == ws, LifeGoal.level == values["level"])) or 0
+    goal = LifeGoal(workspace_id=ws, position=last + 1, **values)
+    if goal.status == "done":
+        goal.done_at = utcnow()
+    s.add(goal)
+    s.commit()
+    return goal
+
+
+def _owned_goal(s: Session, ws: int, goal_id: int, *, allow_archived: bool = False) -> LifeGoal:
+    goal = s.get(LifeGoal, goal_id)
+    if goal is None or goal.workspace_id != ws or (goal.archived_at and not allow_archived):
+        raise NotFound("goal")
+    return goal
+
+
+def update_goal(s: Session, ws: int, goal_id: int, **fields) -> LifeGoal:
+    goal = _owned_goal(s, ws, goal_id, allow_archived=True)
+    archived = fields.pop("archived", None)
+    if archived is False and goal.archived_at and goal.status != "done":
+        # Bringing a goal back takes a place again, like adding it.
+        plans.require_in_workspace(s, ws, "life_goals", _open_goal_count(s, ws))
+    values = _goal_fields(s, ws, fields, goal)
+    if (values.get("status") in ("dream", "active") and goal.status == "done"
+            and not goal.archived_at):
+        plans.require_in_workspace(s, ws, "life_goals", _open_goal_count(s, ws))
+    if values.get("level") == "milestone" and goal.level == "ultimate":
+        # An ultimate goal turned into a milestone lets its milestones go.
+        for child in s.scalars(select(LifeGoal).where(LifeGoal.parent_id == goal.id)).all():
+            child.parent_id = None
+    for key, value in values.items():
+        setattr(goal, key, value)
+    if "status" in values:
+        goal.done_at = (goal.done_at or utcnow()) if goal.status == "done" else None
+    if archived is not None:
+        goal.archived_at = utcnow() if archived else None
+    s.commit()
+    return goal
+
+
+def delete_goal(s: Session, ws: int, goal_id: int) -> str:
+    """Archive a goal. Its milestones stay, no longer under it."""
+    goal = _owned_goal(s, ws, goal_id)
+    for child in s.scalars(select(LifeGoal).where(LifeGoal.parent_id == goal.id)).all():
+        child.parent_id = None
+    goal.archived_at = utcnow()
+    s.commit()
+    return goal.title
+
+
+def _export_goals(s: Session, ws: int) -> list[dict]:
+    return [{"id": g.id, "level": g.level, "title": g.title, "category": g.category,
+             "horizon": g.horizon, "status": g.status,
+             "amount": int(g.amount) if g.amount is not None else None,
+             "unit": g.unit, "progress": g.progress, "parent_id": g.parent_id,
+             "cover": g.cover, "note": g.note,
+             "done_at": g.done_at.isoformat() if g.done_at else None,
+             "archived": g.archived_at is not None}
+            for g in s.scalars(select(LifeGoal).where(LifeGoal.workspace_id == ws)
+                               .order_by(LifeGoal.id)).all()]
+
+
+# ---------------------------------------------------------------------------
 # Tasks
 # ---------------------------------------------------------------------------
 
@@ -2664,8 +2870,9 @@ def focus_is_done(row: WeeklyFocus, linked: dict[int, Task] | None = None) -> bo
 
 
 def _focus_dict(row: WeeklyFocus, linked: dict[int, Task] | None = None,
-                carries: int = 0) -> dict:
+                carries: int = 0, goals: dict[int, "LifeGoal"] | None = None) -> dict:
     task = (linked or {}).get(row.task_id) if row.task_id else None
+    goal = (goals or {}).get(row.goal_id) if row.goal_id else None
     done = focus_is_done(row, linked)
     return {"id": row.id, "slot": row.slot, "title": row.title,
             # Moved on to a later week: kept here as history, not counted.
@@ -2679,7 +2886,30 @@ def _focus_dict(row: WeeklyFocus, linked: dict[int, Task] | None = None,
             # A goal delivered by a task is done when the task is, and is
             # scored through the task — once.
             "task_id": row.task_id if task is not None else None,
-            "task_title": task.title if task is not None else None}
+            "task_title": task.title if task is not None else None,
+            # The milestone this week's goal moves forward (audit S24).
+            "goal_id": goal.id if goal is not None else None,
+            "goal_title": goal.title if goal is not None else None}
+
+
+def _linked_goals(s: Session, ws: int, rows: list[WeeklyFocus]) -> dict[int, "LifeGoal"]:
+    ids = [r.goal_id for r in rows if r.goal_id]
+    if not ids:
+        return {}
+    return {g.id: g for g in s.scalars(select(LifeGoal).where(
+        LifeGoal.workspace_id == ws, LifeGoal.id.in_(ids),
+        LifeGoal.archived_at.is_(None))).all()}
+
+
+def _focus_goal_or_none(s: Session, ws: int, goal_id: int | None) -> int | None:
+    """A week's goal can point at one of the owner's live milestones."""
+    if not goal_id:
+        return None
+    goal = s.get(LifeGoal, goal_id)
+    if (goal is None or goal.workspace_id != ws or goal.archived_at is not None
+            or goal.level != "milestone"):
+        raise NotFound("goal")
+    return goal.id
 
 
 def _linked_tasks(s: Session, ws: int, rows: list[WeeklyFocus]) -> dict[int, Task]:
@@ -2703,7 +2933,8 @@ def list_focus(s: Session, ws: int, when: date | None = None, *,
         stmt = stmt.where(WeeklyFocus.carried_to.is_(None))
     rows = s.scalars(stmt.order_by(WeeklyFocus.slot, WeeklyFocus.id)).all()
     linked = _linked_tasks(s, ws, rows)
-    return [_focus_dict(r, linked, _carry_count(s, r)) for r in rows]
+    goals = _linked_goals(s, ws, rows)
+    return [_focus_dict(r, linked, _carry_count(s, r), goals) for r in rows]
 
 
 def _carry_count(s: Session, row: WeeklyFocus) -> int:
@@ -2750,7 +2981,7 @@ def _focus_task_or_none(s: Session, ws: int, task_id: int | None) -> int | None:
 
 def add_focus(s: Session, ws: int, title: str, when: date | None = None, *,
               priority: str = DEFAULT_MISSION_PRIORITY,
-              task_id: int | None = None,
+              task_id: int | None = None, goal_id: int | None = None,
               tz: ZoneInfo | None = None) -> WeeklyFocus:
     title = title.strip()[:200]
     if not title:
@@ -2765,7 +2996,8 @@ def add_focus(s: Session, ws: int, title: str, when: date | None = None, *,
     if free is None:
         raise ValueError("week is full")
     row = WeeklyFocus(workspace_id=ws, week_start=start, slot=free, title=title,
-                      priority=priority, task_id=_focus_task_or_none(s, ws, task_id))
+                      priority=priority, task_id=_focus_task_or_none(s, ws, task_id),
+                      goal_id=_focus_goal_or_none(s, ws, goal_id))
     s.add(row)
     s.commit()
     return row
@@ -2790,7 +3022,7 @@ def carry_focus_forward(s: Session, ws: int, focus_id: int, *,
         raise ValueError("already_carried")
     moved = WeeklyFocus(workspace_id=ws, week_start=target, slot=free,
                         title=row.title, priority=row.priority, task_id=row.task_id,
-                        carried_from=row.id)
+                        goal_id=row.goal_id, carried_from=row.id)
     s.add(moved)
     s.flush()
     # The old week keeps its row, marked as moved on (audit #17). Its slot is
@@ -2802,7 +3034,7 @@ def carry_focus_forward(s: Session, ws: int, focus_id: int, *,
 
 
 def edit_focus(s: Session, ws: int, focus_id: int, title: str, *,
-               priority: str | None = None, task_id=...) -> WeeklyFocus:
+               priority: str | None = None, task_id=..., goal_id=...) -> WeeklyFocus:
     row = s.get(WeeklyFocus, focus_id)
     if row is None or row.workspace_id != ws:
         raise NotFound("focus")
@@ -2814,6 +3046,8 @@ def edit_focus(s: Session, ws: int, focus_id: int, title: str, *,
         row.priority = priority
     if task_id is not ...:
         row.task_id = _focus_task_or_none(s, ws, task_id)
+    if goal_id is not ...:
+        row.goal_id = _focus_goal_or_none(s, ws, goal_id)
     s.commit()
     return row
 
@@ -3087,6 +3321,200 @@ def delete_birthday(s: Session, ws: int, birthday_id: int) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Yaqinlarim — close people
+# ---------------------------------------------------------------------------
+#
+# Name, how to reach them, the birthday, and a rhythm ("every 14 days"). The
+# point is the nudge: whom you have not spoken to for longer than you meant
+# to, and whose birthday is coming. Pro and Max (`close_people`).
+
+CLOSE_RELATIONS = ["family", "partner", "friend", "colleague", "mentor", "client", "other"]
+CLOSE_TOUCH_DAYS = (7, 14, 30, 90)
+_HANDLE_RE = re.compile(r"^[A-Za-z0-9_.]{2,64}$")
+
+
+def _clean_handle(value) -> str:
+    """"@aziz", "t.me/aziz", "https://instagram.com/aziz/" → "aziz"."""
+    text = str(value or "").strip()
+    text = re.sub(r"^https?://", "", text, flags=re.I)
+    text = re.sub(r"^(www\.)?(t\.me|telegram\.me|instagram\.com)/", "", text, flags=re.I)
+    text = text.strip("/").lstrip("@").split("?")[0]
+    if not text:
+        return ""
+    if not _HANDLE_RE.match(text):
+        raise ValueError("bad_handle")
+    return text
+
+
+def _clean_phone(value) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if not re.fullmatch(r"\+?[0-9 ()\-]{5,30}", text):
+        raise ValueError("bad_phone")
+    return text
+
+
+def _clean_link(value) -> str:
+    text = str(value or "").strip()[:300]
+    if not text:
+        return ""
+    if not re.match(r"^https?://", text, flags=re.I):
+        text = "https://" + text
+    if " " in text or "." not in text:
+        raise ValueError("bad_link")
+    return text
+
+
+def _close_fields(fields: dict) -> dict:
+    out: dict = {}
+    if "first_name" in fields:
+        name = " ".join(str(fields["first_name"] or "").split())[:80]
+        if not name:
+            raise ValueError("empty_name")
+        out["first_name"] = name
+    if "last_name" in fields:
+        out["last_name"] = " ".join(str(fields["last_name"] or "").split())[:80]
+    if "relation" in fields:
+        out["relation"] = fields["relation"] if fields["relation"] in CLOSE_RELATIONS else "other"
+    if "phone" in fields:
+        out["phone"] = _clean_phone(fields["phone"])
+    for key in ("telegram", "instagram"):
+        if key in fields:
+            out[key] = _clean_handle(fields[key])
+    if "link" in fields:
+        out["link"] = _clean_link(fields["link"])
+    if "note" in fields:
+        out["note"] = str(fields["note"] or "").strip()[:2000]
+    if "touch_days" in fields:
+        days = fields["touch_days"]
+        out["touch_days"] = int(days) if days and int(days) in CLOSE_TOUCH_DAYS else None
+    return out
+
+
+def _close_name(row: CloseOne) -> str:
+    return " ".join(x for x in (row.first_name, row.last_name) if x).strip()
+
+
+def _sync_close_birthday(s: Session, ws: int, row: CloseOne, birth) -> None:
+    """Keep the one linked `birthdays` row in step: set, moved, or removed."""
+    linked = s.get(Birthday, row.birthday_id) if row.birthday_id else None
+    if birth is None:
+        if linked is not None:
+            s.delete(linked)
+        row.birthday_id = None
+        return
+    if linked is None or linked.workspace_id != ws:
+        linked = Birthday(workspace_id=ws, person_name=_close_name(row), birth_date=birth)
+        s.add(linked)
+        s.flush()
+        row.birthday_id = linked.id
+    else:
+        linked.birth_date = birth
+        linked.person_name = _close_name(row)
+
+
+def _close_dict(row: CloseOne, bday: Birthday | None, today: date) -> dict:
+    since = (today - row.last_contact).days if row.last_contact else None
+    due = bool(row.touch_days) and (since is None or since >= row.touch_days)
+    birthday = None
+    if bday is not None:
+        nxt = _next_occurrence(bday.birth_date, today)
+        birthday = {"date": bday.birth_date.isoformat(), "next": nxt.isoformat(),
+                    "days_left": (nxt - today).days, "turning": nxt.year - bday.birth_date.year}
+    return {
+        "id": row.id, "name": _close_name(row), "first_name": row.first_name,
+        "last_name": row.last_name or "", "relation": row.relation or "other",
+        "phone": row.phone or "", "telegram": row.telegram or "",
+        "instagram": row.instagram or "", "link": row.link or "", "note": row.note or "",
+        "touch_days": row.touch_days,
+        "last_contact": row.last_contact.isoformat() if row.last_contact else None,
+        "days_since": since, "touch_due": due,
+        "touch_in": (row.touch_days - since) if row.touch_days and since is not None and not due else None,
+        "birthday": birthday,
+    }
+
+
+def list_close_people(s: Session, ws: int, *, tz: ZoneInfo | None = None) -> list[dict]:
+    """Everyone close, by name; who is due a call and whose birthday is near
+    are read off each row."""
+    today = today_local(tz)
+    rows = s.scalars(select(CloseOne).where(CloseOne.workspace_id == ws,
+                                            CloseOne.archived_at.is_(None))).all()
+    bdays = {b.id: b for b in s.scalars(select(Birthday).where(
+        Birthday.id.in_([r.birthday_id for r in rows if r.birthday_id]))).all()} if rows else {}
+    out = [_close_dict(r, bdays.get(r.birthday_id), today) for r in rows]
+    return sorted(out, key=lambda x: x["name"].lower())
+
+
+def close_touch_due(s: Session, ws: int, *, tz: ZoneInfo | None = None, limit: int = 3) -> list[dict]:
+    """Who has gone longest past their rhythm — for the morning report."""
+    due = [p for p in list_close_people(s, ws, tz=tz) if p["touch_due"]]
+    due.sort(key=lambda p: -(p["days_since"] if p["days_since"] is not None else 10 ** 6))
+    return due[:limit]
+
+
+def _close_row(s: Session, ws: int, person_id: int) -> CloseOne:
+    row = s.get(CloseOne, person_id)
+    if row is None or row.workspace_id != ws or row.archived_at is not None:
+        raise NotFound("person")
+    return row
+
+
+def add_close_one(s: Session, ws: int, *, birth_date=None, **fields) -> CloseOne:
+    used = int(s.scalar(select(func.count(CloseOne.id)).where(
+        CloseOne.workspace_id == ws, CloseOne.archived_at.is_(None))) or 0)
+    plans.require_in_workspace(s, ws, "close_people", used)
+    fields.setdefault("first_name", "")
+    values = _close_fields(fields)
+    row = CloseOne(workspace_id=ws, **values)
+    s.add(row)
+    s.flush()
+    if birth_date:
+        _sync_close_birthday(s, ws, row, birth_date)
+    s.commit()
+    return row
+
+
+def update_close_one(s: Session, ws: int, person_id: int, **fields) -> CloseOne:
+    row = _close_row(s, ws, person_id)
+    birth_given = "birth_date" in fields
+    birth = fields.pop("birth_date", None)
+    for key, value in _close_fields(fields).items():
+        setattr(row, key, value)
+    if birth_given:
+        _sync_close_birthday(s, ws, row, birth)
+    elif row.birthday_id:
+        linked = s.get(Birthday, row.birthday_id)
+        if linked is not None:
+            linked.person_name = _close_name(row)
+    s.commit()
+    return row
+
+
+def touched_close_one(s: Session, ws: int, person_id: int, *,
+                      tz: ZoneInfo | None = None, day: date | None = None) -> CloseOne:
+    """"I was in touch today" — resets the rhythm."""
+    row = _close_row(s, ws, person_id)
+    row.last_contact = day or today_local(tz)
+    s.commit()
+    return row
+
+
+def delete_close_one(s: Session, ws: int, person_id: int) -> str:
+    row = _close_row(s, ws, person_id)
+    name = _close_name(row)
+    if row.birthday_id:
+        linked = s.get(Birthday, row.birthday_id)
+        if linked is not None:
+            s.delete(linked)
+        row.birthday_id = None
+    row.archived_at = utcnow()
+    s.commit()
+    return name
+
+
+# ---------------------------------------------------------------------------
 # Money — kept apart from everything productive
 # ---------------------------------------------------------------------------
 #
@@ -3279,23 +3707,26 @@ def _money_dict(row: MoneyEntry) -> dict:
     return {"id": row.id, "kind": row.kind, "amount": int(row.amount),
             "category": row.category, "note": row.note or "",
             "source": row.source or "manual", "day": row.day.isoformat(),
+            "account_id": row.account_id,
             "created_at": (row.created_at.replace(tzinfo=_utc.utc).isoformat()
                            if row.created_at else None)}
 
 
 def add_money(s: Session, ws: int, kind: str, amount, category: str = "", *,
               note: str = "", source: str = "manual", day: date | None = None,
-              tz: ZoneInfo | None = None) -> dict:
+              tz: ZoneInfo | None = None, account_id: int | None = None) -> dict:
     if kind not in MONEY_KINDS:
         raise ValueError("bad_kind")
     amount = clean_money_amount(amount)
     if money_category_kind(category) != kind:
         category = detect_money_category(note, kind)
+    if account_id is not None:
+        _own_account(s, ws, account_id)
     tz = tz or _habit_tz(s, ws)
     row = MoneyEntry(workspace_id=ws, kind=kind, amount=amount, category=category,
                      note=str(note or "").strip()[:200],
                      source=source if source in ("manual", "voice", "bot") else "manual",
-                     day=day or today_local(tz))
+                     day=day or today_local(tz), account_id=account_id)
     s.add(row)
     s.commit()
     return _money_dict(row)
@@ -3313,7 +3744,7 @@ def delete_money(s: Session, ws: int, entry_id: int) -> dict:
 
 def update_money(s: Session, ws: int, entry_id: int, *, kind: str | None = None,
                  amount=None, category: str | None = None, note: str | None = None,
-                 day: date | None = None) -> dict:
+                 day: date | None = None, account_id=...) -> dict:
     """Correct an entry in place (K21): amount, direction, category, note or
     day. Deleting and typing it again lost its place and its history."""
     row = s.get(MoneyEntry, entry_id)
@@ -3333,15 +3764,24 @@ def update_money(s: Session, ws: int, entry_id: int, *, kind: str | None = None,
             else detect_money_category(row.note, row.kind)
     if day is not None:
         row.day = day
+    if account_id is not ...:
+        if account_id is not None:
+            _own_account(s, ws, account_id)
+        row.account_id = account_id
     s.commit()
     return _money_dict(row)
 
 
 def restore_money(s: Session, ws: int, data: dict) -> dict:
     """Undo a delete: the same entry, back on the day it was."""
+    account_id = data.get("account_id")
+    if account_id is not None:
+        account = s.get(MoneyAccount, account_id)
+        if account is None or account.workspace_id != ws or account.archived_at:
+            account_id = None
     return add_money(s, ws, data["kind"], data["amount"], data["category"],
                      note=data.get("note", ""), source=data.get("source", "manual"),
-                     day=date.fromisoformat(data["day"]))
+                     day=date.fromisoformat(data["day"]), account_id=account_id)
 
 
 def money_budgets(s: Session, ws: int) -> dict[str, int]:
@@ -3402,7 +3842,10 @@ def money_overview(s: Session, ws: int, *, month: date | None = None,
     balance_rows = dict(s.execute(select(MoneyEntry.kind, func.sum(MoneyEntry.amount))
                                   .where(MoneyEntry.workspace_id == ws)
                                   .group_by(MoneyEntry.kind)).all())
-    balance = int(balance_rows.get("income") or 0) - int(balance_rows.get("expense") or 0)
+    # With accounts, what they held when added is part of what one has.
+    opening = int(s.scalar(select(func.coalesce(func.sum(MoneyAccount.opening), 0)).where(
+        MoneyAccount.workspace_id == ws, MoneyAccount.archived_at.is_(None))) or 0)
+    balance = int(balance_rows.get("income") or 0) - int(balance_rows.get("expense") or 0) + opening
     limits = money_budgets(s, ws)
     categories = []
     for cid, icon, colour, _default, kind in MONEY_CATEGORIES:
@@ -3429,7 +3872,346 @@ def money_overview(s: Session, ws: int, *, month: date | None = None,
             "kinds": {c[0]: c[4] for c in MONEY_CATEGORIES},
             "icons": {c[0]: c[1] for c in MONEY_CATEGORIES},
             "colors": {c[0]: c[2] for c in MONEY_CATEGORIES},
-            "debts": debts_overview(s, ws, tz=tz)}
+            "debts": debts_overview(s, ws, tz=tz),
+            "wallet": wallet_overview(s, ws, today=today, balance=balance)}
+
+
+# ---------------------------------------------------------------------------
+# Accounts, transfers and repeating payments
+#
+# Accounts say where the money is; transfers move it between them without
+# being income or spending; a repeating payment becomes an ordinary expense
+# the moment it is marked paid. Free has one account, Pro a few with
+# transfers and three repeating payments, Max all of it and the year view.
+# ---------------------------------------------------------------------------
+
+MONEY_ACCOUNT_KINDS = ["cash", "card", "bank", "crypto", "invest", "business", "other"]
+SUB_PERIODS = ["weekly", "monthly", "yearly"]
+#: How many of a period's payments fall in a month, for the "per month" sum.
+_PER_MONTH = {"weekly": 52 / 12, "monthly": 1, "yearly": 1 / 12}
+
+
+def _own_account(s: Session, ws: int, account_id: int, *, archived: bool = False) -> MoneyAccount:
+    row = s.get(MoneyAccount, int(account_id))
+    if row is None or row.workspace_id != ws or (row.archived_at is not None and not archived):
+        raise ValueError("bad_account")
+    return row
+
+
+def _clean_opening(value) -> int:
+    try:
+        value = int(round(float(value or 0)))
+    except (TypeError, ValueError):
+        raise ValueError("bad_amount")
+    if abs(value) > MONEY_MAX_AMOUNT:
+        raise ValueError("bad_amount")
+    return value
+
+
+def _next_due(day: date, period: str) -> date:
+    if period == "weekly":
+        return day + timedelta(days=7)
+    if period == "yearly":
+        try:
+            return day.replace(year=day.year + 1)
+        except ValueError:                      # 29 February
+            return day.replace(year=day.year + 1, day=28)
+    month = day.month % 12 + 1
+    year = day.year + (day.month == 12)
+    last = _month_bounds(date(year, month, 1))[1].day
+    return date(year, month, min(day.day, last))
+
+
+def _prev_due(day: date, period: str) -> date:
+    """One period before `day` — the start of the period it closes."""
+    if period == "weekly":
+        return day - timedelta(days=7)
+    if period == "yearly":
+        try:
+            return day.replace(year=day.year - 1)
+        except ValueError:                      # 29 February
+            return day.replace(year=day.year - 1, day=28)
+    month = (day.month - 2) % 12 + 1
+    year = day.year - (day.month == 1)
+    last = _month_bounds(date(year, month, 1))[1].day
+    return date(year, month, min(day.day, last))
+
+
+def money_access(s: Session, ws: int) -> dict:
+    """What this workspace's plan opens in Money, for the screen to draw
+    locks rather than discover them by being refused."""
+    owner = workspace_owner(s, ws)
+    tier = plans.tier_of(s, owner)
+    return {"tier": tier,
+            "accounts": plans.LIMITS["money_accounts"][tier] if plans.ENABLED else None,
+            "subs": plans.LIMITS["money_subs"][tier] if plans.ENABLED else None,
+            "transfers": not plans.ENABLED or tier in plans.FEATURES["money_transfers"],
+            "year": not plans.ENABLED or tier in plans.FEATURES["money_year"]}
+
+
+def wallet_overview(s: Session, ws: int, *, today: date | None = None,
+                    balance: int | None = None) -> dict:
+    """Every open account with its balance, the repeating payments, and the
+    latest transfers. `unassigned` is what entries without an account (or
+    on a removed one) add up to, so the accounts and it sum to the total."""
+    today = today or today_local(_habit_tz(s, ws))
+    accounts = s.scalars(select(MoneyAccount).where(
+        MoneyAccount.workspace_id == ws, MoneyAccount.archived_at.is_(None))
+        .order_by(MoneyAccount.position, MoneyAccount.id)).all()
+    ids = [a.id for a in accounts]
+    flow: dict[int, int] = defaultdict(int)
+    if ids:
+        for account_id, kind, total in s.execute(select(
+                MoneyEntry.account_id, MoneyEntry.kind, func.sum(MoneyEntry.amount)).where(
+                MoneyEntry.workspace_id == ws, MoneyEntry.account_id.in_(ids))
+                .group_by(MoneyEntry.account_id, MoneyEntry.kind)).all():
+            flow[account_id] += int(total or 0) * (1 if kind == "income" else -1)
+        for account_id, total in s.execute(select(
+                MoneyTransfer.to_account_id, func.sum(MoneyTransfer.amount)).where(
+                MoneyTransfer.workspace_id == ws).group_by(MoneyTransfer.to_account_id)).all():
+            flow[account_id] += int(total or 0)
+        for account_id, total in s.execute(select(
+                MoneyTransfer.from_account_id, func.sum(MoneyTransfer.amount)).where(
+                MoneyTransfer.workspace_id == ws).group_by(MoneyTransfer.from_account_id)).all():
+            flow[account_id] -= int(total or 0)
+    rows = [{"id": a.id, "name": a.name, "kind": a.kind, "opening": int(a.opening or 0),
+             "balance": int(a.opening or 0) + flow.get(a.id, 0)} for a in accounts]
+    in_accounts = sum(r["balance"] for r in rows)
+    if balance is None:
+        totals = dict(s.execute(select(MoneyEntry.kind, func.sum(MoneyEntry.amount))
+                                .where(MoneyEntry.workspace_id == ws)
+                                .group_by(MoneyEntry.kind)).all())
+        balance = (int(totals.get("income") or 0) - int(totals.get("expense") or 0)
+                   + sum(r["opening"] for r in rows))
+    names = {a.id: a.name for a in s.scalars(select(MoneyAccount).where(
+        MoneyAccount.workspace_id == ws)).all()}
+    subs = s.scalars(select(MoneySubscription).where(
+        MoneySubscription.workspace_id == ws, MoneySubscription.archived_at.is_(None))
+        .order_by(MoneySubscription.next_due, MoneySubscription.id)).all()
+    transfers = s.scalars(select(MoneyTransfer).where(MoneyTransfer.workspace_id == ws)
+                          .order_by(MoneyTransfer.day.desc(), MoneyTransfer.id.desc()).limit(10)).all()
+    # What each repeating payment last paid, and how much of this month's
+    # plan is already paid (audit F04, F17) — read off the entries it made.
+    last_paid: dict[int, date] = {}
+    paid_month = 0
+    sub_ids = [x.id for x in subs]
+    if sub_ids:
+        first, last = _month_bounds(today)
+        for sid, day, amount in s.execute(select(
+                MoneyEntry.subscription_id, MoneyEntry.day, MoneyEntry.amount).where(
+                MoneyEntry.workspace_id == ws, MoneyEntry.subscription_id.in_(sub_ids))).all():
+            if sid not in last_paid or day > last_paid[sid]:
+                last_paid[sid] = day
+            if first <= day <= last:
+                paid_month += int(amount)
+    plan_month = round(sum(int(x.amount) * _PER_MONTH.get(x.period, 1) for x in subs))
+    return {
+        "accounts": rows, "total": balance, "unassigned": balance - in_accounts,
+        "subscriptions": [{"id": x.id, "name": x.name, "amount": int(x.amount),
+                           "category": x.category, "account_id": x.account_id,
+                           "account_name": names.get(x.account_id) if x.account_id else None,
+                           "period": x.period, "next_due": x.next_due.isoformat(),
+                           "days_left": (x.next_due - today).days,
+                           "last_paid": last_paid[x.id].isoformat() if x.id in last_paid else None,
+                           # Paid for the due date just covered: the next one is
+                           # still ahead, and the last payment falls after the
+                           # due date before the covered one (an early payment
+                           # counts; one from two periods ago does not).
+                           "paid_now": x.id in last_paid and x.next_due > today
+                                       and last_paid[x.id] > _prev_due(
+                                           _prev_due(x.next_due, x.period), x.period)}
+                          for x in subs],
+        "subs_monthly": plan_month,
+        "subs_paid_month": paid_month,
+        "subs_left_month": max(0, plan_month - paid_month),
+        "transfers": [{"id": x.id, "from": x.from_account_id, "to": x.to_account_id,
+                       "from_name": names.get(x.from_account_id, "?"),
+                       "to_name": names.get(x.to_account_id, "?"),
+                       "amount": int(x.amount), "note": x.note or "", "day": x.day.isoformat()}
+                      for x in transfers],
+        "kinds": MONEY_ACCOUNT_KINDS, "periods": SUB_PERIODS,
+        "access": money_access(s, ws),
+    }
+
+
+def add_account(s: Session, ws: int, name: str, kind: str = "cash", opening=0) -> MoneyAccount:
+    name = " ".join(str(name or "").split())[:60]
+    if not name:
+        raise ValueError("bad_name")
+    plans.require_in_workspace(s, ws, "money_accounts", s.scalar(
+        select(func.count(MoneyAccount.id)).where(MoneyAccount.workspace_id == ws,
+                                                  MoneyAccount.archived_at.is_(None))) or 0)
+    last = s.scalar(select(func.max(MoneyAccount.position)).where(
+        MoneyAccount.workspace_id == ws)) or 0
+    row = MoneyAccount(workspace_id=ws, name=name,
+                       kind=kind if kind in MONEY_ACCOUNT_KINDS else "other",
+                       opening=_clean_opening(opening), position=last + 1)
+    s.add(row)
+    s.commit()
+    return row
+
+
+def update_account(s: Session, ws: int, account_id: int, *, name=None, kind=None,
+                   opening=None, archived: bool | None = None) -> MoneyAccount:
+    row = _own_account(s, ws, account_id, archived=True)
+    if name is not None:
+        name = " ".join(str(name).split())[:60]
+        if not name:
+            raise ValueError("bad_name")
+        row.name = name
+    if kind is not None:
+        row.kind = kind if kind in MONEY_ACCOUNT_KINDS else "other"
+    if opening is not None:
+        row.opening = _clean_opening(opening)
+    if archived is not None:
+        if not archived and row.archived_at is not None:
+            plans.require_in_workspace(s, ws, "money_accounts", s.scalar(
+                select(func.count(MoneyAccount.id)).where(
+                    MoneyAccount.workspace_id == ws, MoneyAccount.archived_at.is_(None))) or 0)
+        row.archived_at = utcnow() if archived else None
+    s.commit()
+    return row
+
+
+def add_transfer(s: Session, ws: int, from_id: int, to_id: int, amount, *,
+                 note: str = "", day: date | None = None,
+                 tz: ZoneInfo | None = None) -> MoneyTransfer:
+    plans.require_feature(s, workspace_owner(s, ws), "money_transfers")
+    if int(from_id) == int(to_id):
+        raise ValueError("same_account")
+    source, target = _own_account(s, ws, from_id), _own_account(s, ws, to_id)
+    row = MoneyTransfer(workspace_id=ws, from_account_id=source.id, to_account_id=target.id,
+                        amount=clean_money_amount(amount), note=str(note or "").strip()[:200],
+                        day=day or today_local(tz or _habit_tz(s, ws)))
+    s.add(row)
+    s.commit()
+    return row
+
+
+def delete_transfer(s: Session, ws: int, transfer_id: int) -> None:
+    row = s.get(MoneyTransfer, transfer_id)
+    if row is None or row.workspace_id != ws:
+        raise NotFound("transfer")
+    s.delete(row)
+    s.commit()
+
+
+def _sub_fields(s: Session, ws: int, fields: dict) -> dict:
+    out: dict = {}
+    if "name" in fields:
+        name = " ".join(str(fields["name"] or "").split())[:80]
+        if not name:
+            raise ValueError("bad_name")
+        out["name"] = name
+    if "amount" in fields:
+        out["amount"] = clean_money_amount(fields["amount"])
+    if "category" in fields:
+        out["category"] = (fields["category"] if money_category_kind(fields["category"]) == "expense"
+                           else "other")
+    if "period" in fields:
+        if fields["period"] not in SUB_PERIODS:
+            raise ValueError("bad_period")
+        out["period"] = fields["period"]
+    if "next_due" in fields:
+        if not isinstance(fields["next_due"], date):
+            raise ValueError("bad_date")
+        out["next_due"] = fields["next_due"]
+    if "account_id" in fields:
+        out["account_id"] = (_own_account(s, ws, fields["account_id"]).id
+                             if fields["account_id"] is not None else None)
+    return out
+
+
+def add_subscription(s: Session, ws: int, **fields) -> MoneySubscription:
+    plans.require_in_workspace(s, ws, "money_subs", s.scalar(
+        select(func.count(MoneySubscription.id)).where(
+            MoneySubscription.workspace_id == ws,
+            MoneySubscription.archived_at.is_(None))) or 0)
+    values = _sub_fields(s, ws, fields)
+    if "name" not in values or "amount" not in values:
+        raise ValueError("bad_name" if "name" not in values else "bad_amount")
+    values.setdefault("next_due", today_local(_habit_tz(s, ws)))
+    row = MoneySubscription(workspace_id=ws, **values)
+    s.add(row)
+    s.commit()
+    return row
+
+
+def _own_sub(s: Session, ws: int, sub_id: int) -> MoneySubscription:
+    row = s.get(MoneySubscription, sub_id)
+    if row is None or row.workspace_id != ws or row.archived_at is not None:
+        raise NotFound("subscription")
+    return row
+
+
+def update_subscription(s: Session, ws: int, sub_id: int, **fields) -> MoneySubscription:
+    row = _own_sub(s, ws, sub_id)
+    archived = fields.pop("archived", None)
+    for key, value in _sub_fields(s, ws, fields).items():
+        setattr(row, key, value)
+    if archived:
+        row.archived_at = utcnow()
+    s.commit()
+    return row
+
+
+def pay_subscription(s: Session, ws: int, sub_id: int, *, tz: ZoneInfo | None = None) -> dict:
+    """Record this period's payment as an expense and move to the next."""
+    row = _own_sub(s, ws, sub_id)
+    account_id = row.account_id
+    if account_id is not None:
+        account = s.get(MoneyAccount, account_id)
+        if account is None or account.archived_at is not None:
+            account_id = None
+    entry = add_money(s, ws, "expense", int(row.amount), row.category, note=row.name,
+                      tz=tz, account_id=account_id)
+    paid = s.get(MoneyEntry, entry["id"])
+    if paid is not None:
+        paid.subscription_id = row.id
+    row.next_due = _next_due(row.next_due, row.period)
+    s.commit()
+    return {"entry": entry, "next_due": row.next_due.isoformat()}
+
+
+def money_year(s: Session, ws: int, year: int) -> dict:
+    """A year of money, month by month, and where the spending went."""
+    plans.require_feature(s, workspace_owner(s, ws), "money_year")
+    first, last = date(year, 1, 1), date(year, 12, 31)
+    months = [{"month": m, "income": 0, "expense": 0} for m in range(1, 13)]
+    by_cat: dict[str, int] = defaultdict(int)
+    for day, kind, category, amount in s.execute(select(
+            MoneyEntry.day, MoneyEntry.kind, MoneyEntry.category, MoneyEntry.amount).where(
+            MoneyEntry.workspace_id == ws, MoneyEntry.day >= first,
+            MoneyEntry.day <= last)).all():
+        months[day.month - 1][kind] += int(amount)
+        if kind == "expense":
+            by_cat[category] += int(amount)
+    income = sum(m["income"] for m in months)
+    expense = sum(m["expense"] for m in months)
+    return {"year": year, "months": months, "income": income, "expense": expense,
+            "net": income - expense,
+            "categories": sorted(({"id": k, "spent": v} for k, v in by_cat.items()),
+                                 key=lambda c: -c["spent"])}
+
+
+def _export_wallet(s: Session, ws: int) -> dict:
+    return {
+        "accounts": [{"id": a.id, "name": a.name, "kind": a.kind, "opening": int(a.opening or 0),
+                      "archived": a.archived_at is not None}
+                     for a in s.scalars(select(MoneyAccount).where(
+                         MoneyAccount.workspace_id == ws).order_by(MoneyAccount.id)).all()],
+        "transfers": [{"from": x.from_account_id, "to": x.to_account_id, "amount": int(x.amount),
+                       "note": x.note, "day": x.day.isoformat()}
+                      for x in s.scalars(select(MoneyTransfer).where(
+                          MoneyTransfer.workspace_id == ws).order_by(MoneyTransfer.id)).all()],
+        "subscriptions": [{"name": x.name, "amount": int(x.amount), "category": x.category,
+                           "account_id": x.account_id, "period": x.period,
+                           "next_due": x.next_due.isoformat(),
+                           "archived": x.archived_at is not None}
+                          for x in s.scalars(select(MoneySubscription).where(
+                              MoneySubscription.workspace_id == ws)
+                              .order_by(MoneySubscription.id)).all()],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -4306,6 +5088,24 @@ def summary(s: Session, ws: int, *, gender: str | None = None,
     return out
 
 
+def csv_cell(value) -> str:
+    """One CSV cell that a spreadsheet will not run (audit S78).
+
+    Text starting with = + - @ (or a tab / carriage return) is read as a
+    formula by Excel and Sheets; a leading apostrophe makes it plain text.
+    Numbers pass through untouched, so "-5" stays a number. Quotes and
+    commas are escaped the CSV way.
+    """
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    text = "" if value is None else str(value)
+    if text[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        text = "'" + text
+    if any(c in text for c in (",", '"', "\n", "\r")):
+        text = '"' + text.replace('"', '""') + '"'
+    return text
+
+
 def stats_csv(s: Session, ws: int, period: str = "month", *,
               gender: str | None = None, tz: ZoneInfo | None = None) -> str:
     """The statistics view as CSV, for the download button."""
@@ -4328,7 +5128,7 @@ def stats_csv(s: Session, ws: int, period: str = "month", *,
     lines.append(f"prayer on-time %,{detail['on_time_percent']}")
     lines.append("prayer status,count")
     for status, count in sorted(detail["counts"].items()):
-        lines.append(f"{status},{count}")
+        lines.append(f"{csv_cell(status)},{csv_cell(count)}")
     lines.append("")
     lines.append("date,overall %,tasks %,habits %,prayer %,measured")
     for point in data["series"]:
@@ -5069,6 +5869,8 @@ EXPORT_SCHEMA_VERSION = 2
 
 def export_workspace(s: Session, ws: int, user: User) -> dict:
     """Everything this workspace contains, as plain JSON-ready data."""
+    from coins import export as coins_export
+    from promo import redeemed_by as promo_export
     def habits():
         for h in s.scalars(select(Habit).where(Habit.workspace_id == ws)).all():
             # `id` is what habit_logs, schedule versions, pauses and timers
@@ -5164,6 +5966,7 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
             for f in s.scalars(select(WeeklyFocus)
                                .where(WeeklyFocus.workspace_id == ws)
                                .order_by(WeeklyFocus.week_start)).all()],
+        "goals": _export_goals(s, ws),
         "weekly_reviews": [
             {"week_start": r.week_start.isoformat(), "went_well": r.went_well,
              "blocked": r.blocked, "next_focus": r.next_focus}
@@ -5178,13 +5981,18 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
              "note": r.note}
             for r in s.scalars(select(Birthday)
                                .where(Birthday.workspace_id == ws)).all()],
+        "close_people": [
+            {k: v for k, v in p.items() if k not in ("id", "days_since", "touch_due", "touch_in")}
+            for p in list_close_people(s, ws)],
         "money": [
             {"id": r.id, "day": r.day.isoformat(), "kind": r.kind, "amount": int(r.amount),
-             "category": r.category, "note": r.note, "source": r.source}
+             "category": r.category, "note": r.note, "source": r.source,
+             "account_id": r.account_id}
             for r in s.scalars(select(MoneyEntry)
                                .where(MoneyEntry.workspace_id == ws)
                                .order_by(MoneyEntry.day, MoneyEntry.id)).all()],
         "money_budgets": money_budgets(s, ws),
+        "money_wallet": _export_wallet(s, ws),
         "debts": _export_debts(s, ws),
         "agent_inbox": [
             {"id": r.id, "status": r.status, "revision": r.revision,
@@ -5196,6 +6004,12 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
             {"draft_id": r.draft_id, "revision": r.revision, "event": r.event,
              "detail": json.loads(r.detail), "created_at": r.created_at.isoformat()}
             for r in s.scalars(select(AgentAudit).where(AgentAudit.workspace_id == ws)).all()],
+        "coin_spends": coins_export(s, user.telegram_id),
+        "promo_codes_used": promo_export(s, user.telegram_id),
+        "agent_chat": [{"role": r.role, "text": r.text,
+                        "at": r.created_at.isoformat() if r.created_at else None}
+                       for r in s.scalars(select(AgentChatMessage).where(
+                           AgentChatMessage.workspace_id == ws).order_by(AgentChatMessage.id)).all()],
         "daily_scores": [
             {"day": r.day.isoformat(), "score": r.total_score, "grade": r.grade,
              "closed": bool(r.closed)}
@@ -5211,9 +6025,10 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
 WORKSPACE_TABLES = [AgentAudit, AgentDraft, AgentPreference,
                     TimerRun, HabitLog, HabitScheduleVersion, HabitPauseInterval,
                     Habit, PrayerLog, PrayerDay, ResetLog, Task,
-                    Project, WeeklyFocus, WeeklyReview, JournalEntry, Birthday,
+                    Project, WeeklyFocus, WeeklyReview, JournalEntry, CloseOne, Birthday,
                     Countdown, Feedback, DailyReportLog, MoneyEntry, MoneyBudget,
-                    DebtPayment, Debt, Snooze]
+                    DebtPayment, Debt, Snooze, LifeGoal,
+                    MoneyTransfer, MoneySubscription, MoneyAccount, AgentChatMessage]
 
 
 def wipe_workspace(s: Session, telegram_id: int) -> bool:
@@ -5296,7 +6111,11 @@ def delete_account(s: Session, telegram_id: int) -> bool:
     s.execute(sql_delete(TeamDayScore).where(TeamDayScore.user_id == telegram_id))
     s.execute(sql_delete(TeamJoinRequest).where(TeamJoinRequest.user_id == telegram_id))
     from db import UserAvatar
+    import coins
     s.execute(sql_delete(UserAvatar).where(UserAvatar.account_id == telegram_id))
+    coins.forget(s, [telegram_id])
+    import promo
+    promo.forget(s, [telegram_id])
     # The login, the password, and every Telegram signed in to the account.
     import accounts
     accounts.forget_account(s, telegram_id)
@@ -6605,6 +7424,7 @@ def morning_data(s: Session, ws: int, user: User) -> dict:
             "focus": focus,
             "focus_done": sum(1 for f in focus if f["done"]),
             "birthdays": [b for b in list_birthdays(s, ws, within_days=1, tz=tz)],
+            "touch": close_touch_due(s, ws, tz=tz),
             "countdowns": list_countdowns(s, ws, tz=tz, include_past=False),
             "habits": [h["name"] for h in today_habits if not h["done"]],
             "habits_done": sum(1 for h in today_habits if h["done"]),
@@ -6710,6 +7530,57 @@ REMINDER_JOB_MINUTES = 5
 HABIT_REMINDER_WINDOW = timedelta(minutes=30)
 
 
+#: An @handle as Telegram allows it: a letter first, then letters, digits
+#: and "_", 5–32 long. Telegram's own minimum is 5; ours matches so a handle
+#: copied from Telegram is always accepted.
+USERNAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{4,31}$")
+PROFILE_NAME_MAX = 60
+
+
+def _clean_person_name(value, *, required: bool) -> str:
+    text = " ".join(str(value or "").split())[:PROFILE_NAME_MAX]
+    if any(ord(c) < 32 for c in text):
+        raise ValueError("bad_name")
+    if required and not text:
+        raise ValueError("empty_name")
+    return text
+
+
+def save_profile(s: Session, user: User, **fields) -> dict:
+    """The person's own name, surname, @handle and gender, typed in the app.
+
+    Once edited here, Telegram's copy no longer overwrites them (see
+    `get_or_create_user`). A handle is unique regardless of case; an empty
+    one clears it.
+    """
+    changed = False
+    if fields.get("first_name") is not None:
+        user.first_name = _clean_person_name(fields["first_name"], required=True)
+        changed = True
+    if fields.get("last_name") is not None:
+        user.last_name = _clean_person_name(fields["last_name"], required=False)
+        changed = True
+    if fields.get("username") is not None:
+        handle = str(fields["username"]).strip().lstrip("@")
+        if handle:
+            if not USERNAME_RE.match(handle):
+                raise ValueError("bad_username")
+            taken = s.scalar(select(User.telegram_id).where(
+                func.lower(User.username) == handle.lower(),
+                User.telegram_id != user.telegram_id).limit(1))
+            if taken is not None:
+                raise ValueError("username_taken")
+        user.username = handle
+        changed = True
+    if fields.get("gender") in ("male", "female"):
+        user.gender = fields["gender"]
+    if changed:
+        user.profile_edited_at = utcnow()
+    s.commit()
+    return {"first_name": user.first_name, "last_name": user.last_name,
+            "username": user.username, "gender": user.gender}
+
+
 def prefs_for(user: User) -> dict:
     """The user's notification settings, with every NULL resolved."""
     return {
@@ -6723,6 +7594,7 @@ def prefs_for(user: User) -> dict:
         "quiet_from": user.quiet_from.strftime("%H:%M") if user.quiet_from else "",
         "quiet_to": user.quiet_to.strftime("%H:%M") if user.quiet_to else "",
         "day_capacity": user.day_capacity or 0,
+        "now_ai": not user.now_ai_off,
     }
 
 
@@ -6741,6 +7613,87 @@ def in_quiet_hours(user: User, now: datetime | None = None) -> bool:
     return moment >= start or moment < end
 
 
+#: The words of a reminder the phone shows by itself (see
+#: `upcoming_notifications`). Kept short: a lock screen shows one line.
+_LOCAL_TEXT = {
+    "uz": {"task": "⏰ Vazifa vaqti", "habit": "🔁 Odat vaqti", "morning": "☀️ Kun rejasi",
+           "morning_body": "Bugun nima muhim? Rejani oching.", "evening": "🌙 Kun yakuni",
+           "evening_body": "Kunni yoping: kundalik va ertangi reja.", "bill": "💳 To'lov kuni"},
+    "en": {"task": "⏰ Task time", "habit": "🔁 Habit time", "morning": "☀️ Today's plan",
+           "morning_body": "What matters today? Open the plan.", "evening": "🌙 Day's end",
+           "evening_body": "Close the day: journal and tomorrow's plan.", "bill": "💳 Payment due"},
+    "ru": {"task": "⏰ Время задачи", "habit": "🔁 Время привычки", "morning": "☀️ План дня",
+           "morning_body": "Что важно сегодня? Откройте план.", "evening": "🌙 Итог дня",
+           "evening_body": "Закройте день: дневник и план на завтра.", "bill": "💳 День платежа"},
+}
+
+
+def upcoming_notifications(s: Session, ws: int, user: User, *, now: datetime | None = None,
+                           hours: int = 48) -> list[dict]:
+    """What the phone should remind about in the next `hours`, for a build
+    that shows reminders by itself (no Firebase): task and habit reminders,
+    the morning and evening reports, and repeating payments due.
+
+    The same settings as the bot's own reminders apply. Each item has a
+    stable `key`, so scheduling them again replaces rather than duplicates.
+    Done tasks and habits already ticked today are left out; what changes
+    later is corrected the next time the app opens.
+    """
+    tz = user_tz(user)
+    now = now or now_local(tz)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=tz)
+    horizon = now + timedelta(hours=hours)
+    today = now.date()
+    days = [today + timedelta(days=i) for i in range(hours // 24 + 1)]
+    prefs = prefs_for(user)
+    words = _LOCAL_TEXT.get(user.language or "uz", _LOCAL_TEXT["uz"])
+    out: list[dict] = []
+
+    def add(key: str, moment: datetime, title: str, body: str, opens: str) -> None:
+        moment = moment.replace(tzinfo=tz) if moment.tzinfo is None else moment
+        if now < moment <= horizon:
+            out.append({"key": key, "at": moment.isoformat(), "title": title, "body": body[:180],
+                        "silent": in_quiet_hours(user, moment.astimezone(tz).replace(tzinfo=None)),
+                        "open": opens})
+
+    if prefs["task_reminders"]:
+        for task in s.scalars(select(Task).where(
+                Task.workspace_id == ws, Task.archived_at.is_(None), Task.status == "waiting",
+                Task.remind_before.isnot(None), Task.deadline.isnot(None),
+                Task.deadline >= today, Task.deadline <= days[-1])).all():
+            moment = datetime.combine(task.deadline, task.due_time or dtime(9, 0))
+            add(f"task:{task.id}:{task.deadline.isoformat()}",
+                moment - timedelta(minutes=task.remind_before or 0), words["task"], task.title, "tasks")
+
+    if prefs["habit_reminders"]:
+        for day in days:
+            for habit in list_habits(s, ws, day, tz=tz):
+                if not habit["due"] or not habit["remind_at"] or (day == today and habit["done"]):
+                    continue
+                hour, minute = (int(x) for x in habit["remind_at"].split(":"))
+                add(f"habit:{habit['id']}:{day.isoformat()}", datetime.combine(day, dtime(hour, minute)),
+                    words["habit"], habit["name"], "habits")
+
+    for day in days:
+        if prefs["morning_report"]:
+            add(f"morning:{day.isoformat()}", datetime.combine(day, user.morning_time or DEFAULT_MORNING_TIME),
+                words["morning"], words["morning_body"], "home")
+        if prefs["evening_report"]:
+            add(f"evening:{day.isoformat()}", datetime.combine(day, user.evening_time or DEFAULT_EVENING_TIME),
+                words["evening"], words["evening_body"], "home")
+
+    for sub in s.scalars(select(MoneySubscription).where(
+            MoneySubscription.workspace_id == ws, MoneySubscription.archived_at.is_(None),
+            MoneySubscription.next_due >= today, MoneySubscription.next_due <= days[-1])).all():
+        amount = f"{int(sub.amount):,}".replace(",", " ")
+        add(f"bill:{sub.id}:{sub.next_due.isoformat()}", datetime.combine(sub.next_due, dtime(10, 0)),
+            words["bill"], f"{sub.name} — {amount}", "money")
+
+    out.sort(key=lambda x: x["at"])
+    return out[:60]
+
+
 def save_prefs(s: Session, user: User, **fields) -> dict:
     """Write notification settings. Unknown or malformed values are ignored."""
     if "timezone" in fields and fields["timezone"]:
@@ -6754,6 +7707,8 @@ def save_prefs(s: Session, user: User, **fields) -> dict:
                 "habit_reminders"):
         if key in fields and fields[key] is not None:
             setattr(user, key, bool(fields[key]))
+    if fields.get("now_ai") is not None:
+        user.now_ai_off = not bool(fields["now_ai"])
     for key in ("morning_time", "evening_time"):
         if key in fields and fields[key] is not None:
             setattr(user, key, fields[key])
@@ -7617,6 +8572,8 @@ _NOTIFY_HEARS = {
     "join": {"all"},
     "report": {"all", "important"},
     "reminder": {"all", "important"},
+    # A task given to you by name reaches you on every level but "off".
+    "assigned": {"all", "important", "assigned"},
 }
 
 
@@ -8322,6 +9279,9 @@ def team_day_summary(s: Session, team_id: int, day: date | None = None, *,
         "total": len(detail["tasks"]) + len(detail["habits"]),
         # The three numbers the screen needs to stay countable by hand.
         "units": {"items": len(detail["tasks"]) + len(detail["habits"]),
+                  # Items closed for the whole group (audit V27): every member
+                  # who owed it is done — under "any", one is enough.
+                  "closed": sum(1 for x in detail["tasks"] + detail["habits"] if not x["missing"]),
                   "confirmations": confirmations, "confirmed": confirmed,
                   "left": confirmations - confirmed},
     }
@@ -8493,6 +9453,8 @@ def team_scoreboard(s: Session, user_id: int, team_id: int, *,
                      "done_by": row["finished_for"],
                      "owed": len(row["owed_by"]),
                      "done_count": len(row["finished_for"]),
+                     # all | any: whether one member's tick closes it for everyone.
+                     "completion": row.get("completion", "all"),
                      "missing": row["missing"]}
             (done_items if not entry["missing"] else open_items).append(entry)
 
@@ -8505,6 +9467,7 @@ def team_scoreboard(s: Session, user_id: int, team_id: int, *,
             "open": open_items, "done": done_items,
             "open_count": len(open_items), "done_count": len(done_items),
             "units": {"items": len(open_items) + len(done_items),
+                      "closed": len(done_items),
                       "confirmations": confirmations, "confirmed": confirmed,
                       "left": confirmations - confirmed}}
 

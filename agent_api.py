@@ -7,6 +7,7 @@ from fastapi import APIRouter, Header, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+import agent_chat
 import agent_core as core
 import config
 from agent_actions import AgentError
@@ -35,6 +36,12 @@ class FieldEdit(BaseModel):
 class Revision(BaseModel):
     model_config = ConfigDict(extra="forbid")
     revision: int = Field(ge=1)
+
+
+class ChatIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    text: str = Field(min_length=1, max_length=2000)
+    request_key: str = Field(pattern=KEY)
 
 
 class JournalText(BaseModel):
@@ -101,6 +108,13 @@ def install(app, auth):
                                   mime=request.headers.get("content-type"))
         return card(draft, user.language)
 
+    @router.get("/now")
+    async def now(x_telegram_init_data: str | None = Header(None)):
+        """The AI pick for the Hozir card (Pro and Max; the person can switch it off)."""
+        import now_ai
+        user, ws = auth(x_telegram_init_data)
+        return await now_ai.pick(user.telegram_id, ws)
+
     @router.post("/journal/text")
     async def journal_text(body: JournalText, x_telegram_init_data: str | None = Header(None)):
         user, ws = auth(x_telegram_init_data)
@@ -130,5 +144,45 @@ def install(app, auth):
     def cancel(draft_id: str, body: Revision, x_telegram_init_data: str | None = Header(None)):
         user, ws = auth(x_telegram_init_data)
         return card(core.cancel(ws, draft_id, body.revision), user.language)
+
+    @router.get("/chat")
+    def chat_history(x_telegram_init_data: str | None = Header(None)):
+        """The conversation so far, and whether the assistant can answer."""
+        _, ws = auth(x_telegram_init_data)
+        return {"messages": agent_chat.history(ws), "agent": core.preferences(ws)}
+
+    @router.post("/chat")
+    async def chat(body: ChatIn, x_telegram_init_data: str | None = Header(None)):
+        """A question or a request. A requested change comes back as a draft
+        card; nothing is executed until it is confirmed."""
+        user, ws = auth(x_telegram_init_data)
+        result = await agent_chat.ask(user.telegram_id, ws, body.request_key, body.text)
+        if result.get("draft"):
+            result["draft"] = card(result["draft"], user.language)
+        return result
+
+    @router.post("/chat/audio")
+    async def chat_audio(request: Request, x_telegram_init_data: str | None = Header(None),
+                         x_agent_request_key: str | None = Header(None)):
+        """Speak to the assistant instead of typing: a question gets an
+        answer, a request comes back as a card — executed only on Confirm."""
+        user, ws = auth(x_telegram_init_data)
+        prefs = core.preferences(ws)
+        if not prefs["enabled"]:
+            raise AgentError("agent_disabled", 503)
+        if not prefs["consent"]:
+            raise AgentError("consent_required", 403)
+        data = await read_audio(request)
+        result = await agent_chat.ask_by_voice(user.telegram_id, ws, x_agent_request_key or "", data,
+                                               request.headers.get("content-type"))
+        if result.get("draft"):
+            result["draft"] = card(result["draft"], user.language)
+        return result
+
+    @router.delete("/chat")
+    def chat_clear(x_telegram_init_data: str | None = Header(None)):
+        _, ws = auth(x_telegram_init_data)
+        agent_chat.clear(ws)
+        return {"ok": True}
 
     app.include_router(router)

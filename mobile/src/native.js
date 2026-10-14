@@ -47,7 +47,45 @@
     },
     open: function (url) { openExternal(url); },
     pushStatus: function () { return pushStatus(); },
+    /* "granted", "denied" or "n/a" (no such setting: older Android, no plugin). */
+    exactAlarms: function () {
+      var local = plugin("LocalNotifications");
+      if (!local || !local.checkExactNotificationSetting) return Promise.resolve("n/a");
+      return local.checkExactNotificationSetting()
+        .then(function (r) { return (r && r.exact_alarm) || "n/a"; })
+        .catch(function () { return "n/a"; });
+    },
+    /* Opens Android's "Alarms & reminders" for this app — only when asked. */
+    allowExactAlarms: function () {
+      var local = plugin("LocalNotifications");
+      if (!local || !local.changeExactNotificationSetting) return Promise.resolve("n/a");
+      return local.changeExactNotificationSetting()
+        .then(function (r) { syncLocal(); return (r && r.exact_alarm) || "n/a"; })
+        .catch(function () { return "n/a"; });
+    },
     requestPush: function () { return requestPush(); },
+    /* Google's own account picker (Credential Manager): the phone's signed-in
+       Google accounts, one tap, an ID token for the server to check. Rejects
+       with "no_plugin" off-device; a closed picker rejects with a message
+       that says "cancel". */
+    nativeGoogle: !!(cap && cap.isNativePlatform && cap.isNativePlatform()),
+    googleSignIn: function (webClientId) {
+      var social = plugin("SocialLogin");
+      if (!social || !this.nativeGoogle) return Promise.reject(new Error("no_plugin"));
+      return social.initialize({ google: { webClientId: webClientId } })
+        .then(function () { return social.login({ provider: "google", options: {} }); })
+        .then(function (res) {
+          var token = res && res.result && res.result.idToken;
+          if (!token) throw new Error("no_id_token");
+          return token;
+        });
+    },
+    /* The browser sign-in (Apple, or Google without the picker) ends on
+       uz.ernestos.app://auth/done; the login page listens for this. */
+    closeBrowser: function () {
+      var browser = plugin("Browser");
+      if (browser && browser.close) browser.close().catch(function () {});
+    },
     /* A tapped push asked for the inbox; the Mini App takes the request once. */
     takePendingInbox: function () {
       var wanted = pendingInbox;
@@ -204,6 +242,40 @@
     });
   }
 
+  /* The status bar follows the APP's light/dark, not the phone's: with the
+     phone in light mode and the app set to dark, Android drew dark clock and
+     battery icons on the app's dark top — invisible. The Mini App writes its
+     mode to <html data-mode>; mirror every change into SystemBars. */
+  var bars = plugin("SystemBars");
+  if (bars && bars.setStyle && !onLoginPage) {
+    var lastBars = "";
+    var paintBars = function () {
+      var mode = document.documentElement.getAttribute("data-mode");
+      if (!mode) return;
+      var style = mode === "dark" ? "DARK" : "LIGHT";
+      if (style === lastBars) return;
+      lastBars = style;
+      bars.setStyle({ style: style }).catch(function () { lastBars = ""; });
+    };
+    new MutationObserver(paintBars).observe(document.documentElement,
+      { attributes: true, attributeFilter: ["data-mode"] });
+    paintBars();
+  }
+
+  /* Back from the browser: the sign-in page's deep link, or just the app
+     coming to the front. Either way the login page asks the server. */
+  if (app && app.addListener) {
+    var back = function (url) {
+      try { window.dispatchEvent(new CustomEvent("ernest:return", { detail: { url: url || "" } })); } catch (e) {}
+    };
+    app.addListener("appUrlOpen", function (ev) {
+      var url = (ev && ev.url) || "";
+      if (url.indexOf("uz.ernestos.app://auth") === 0) window.ErnestApp.closeBrowser();
+      back(url);
+    });
+    app.addListener("resume", function () { back(""); });
+  }
+
   /* ---- push: register this phone with Firebase and the server ----
      Only in builds made with a google-services.json (config.js says so):
      without Firebase, registering would fail natively. The inbox works
@@ -235,16 +307,124 @@
       pendingInbox = true;
       window.dispatchEvent(new Event("ernest:open-inbox"));
     });
-    /* Asked for only when the person turns notifications on in Settings
-       (K10/K11), never on every launch. Already allowed: register quietly. */
+    /* Allowed already: register quietly. Not asked yet: ask once when the
+       app opens (the owner's request), then not again for a few days —
+       Android stops showing the dialog after two refusals anyway. */
     push.checkPermissions().then(function (p) {
       if (p.receive === "granted") return push.register();
+      if (p.receive !== "denied" && mayAskNow()) {
+        return push.requestPermissions().then(function (r) {
+          if (r.receive === "granted") push.register();
+        });
+      }
     }).catch(noop);
+  }
+
+  /* ---- reminders shown by the phone itself ----
+     A build without Firebase cannot receive pushes, so the reminders of the
+     next two days (/api/app/schedule) are scheduled on the device and
+     replaced on every open and every return to the app. What changes while
+     the app stays closed is corrected the next time it opens. */
+  var ASKED_KEY = "ernest.notify.asked";
+  var LOCAL_BASE = 700000;
+  function mayAskNow() {
+    try {
+      var last = Number(localStorage.getItem(ASKED_KEY) || 0);
+      if (Date.now() - last < 3 * 864e5) return false;
+      localStorage.setItem(ASKED_KEY, String(Date.now()));
+      return true;
+    } catch (e) { return true; }
+  }
+  /* A whole number per reminder key, so the same reminder keeps its id. */
+  function localId(key) {
+    var h = 0;
+    for (var i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0;
+    return LOCAL_BASE + (Math.abs(h) % 1000000000);
+  }
+  /* Android 12+: exact alarms need "Alarms & reminders", off by default
+     from Android 14. Without it the plugin opens that settings screen on
+     every schedule() — and coming back to the app schedules again, so the
+     person is thrown into Settings in a loop. Exact only when it is already
+     allowed; otherwise inexact (a few minutes of slack), and the switch is
+     offered once, by name, in Settings → Eslatmalar. */
+  function exactAllowed(local) {
+    if (!local.checkExactNotificationSetting) return Promise.resolve(true);
+    return local.checkExactNotificationSetting()
+      .then(function (r) { return !r || r.exact_alarm !== "denied"; })
+      .catch(function () { return false; });
+  }
+  var syncing = null;
+  function syncLocal() {
+    var local = plugin("LocalNotifications");
+    if (!local || CFG.push || !token) return Promise.resolve("off");
+    if (syncing) return syncing;
+    syncing = local.checkPermissions().then(function (p) {
+      if (p.display === "granted") return p.display;
+      if (p.display === "denied" || !mayAskNow()) return p.display;
+      return local.requestPermissions().then(function (r) { return r.display; });
+    }).then(function (state) {
+      if (state !== "granted") return state;
+      return nativeFetch(API + "/api/app/schedule", { headers: { "X-Telegram-Init-Data": token } })
+        .then(function (r) { return r.ok ? r.json() : { items: null }; })
+        .then(function (data) {
+          if (!data || !data.items) return "on";
+          return local.getPending().then(function (pending) {
+            var ours = (pending.notifications || []).filter(function (n) {
+              return n.extra && n.extra.ernest; });
+            return ours.length ? local.cancel({ notifications: ours.map(function (n) {
+              return { id: n.id }; }) }) : null;
+          }).then(function () {
+            return exactAllowed(local);
+          }).then(function (exact) {
+            var list = data.items.map(function (x) {
+              return { id: localId(x.key), title: x.title, body: x.body,
+                       schedule: { at: new Date(x.at), allowWhileIdle: true },
+                       isExactNotification: exact,
+                       channelId: x.silent ? "quiet" : "reminders",
+                       extra: { ernest: 1, open: x.open || "inbox" } };
+            });
+            return list.length ? local.schedule({ notifications: list }) : null;
+          }).then(function () { return "on"; });
+        });
+    }).catch(function () { return "off"; }).then(function (v) { syncing = null; return v; });
+    return syncing;
+  }
+  function setUpLocal() {
+    var local = plugin("LocalNotifications");
+    if (!local || CFG.push || !token) return;
+    [{ id: "reminders", name: "Eslatmalar", description: "Eslatmalar, hisobotlar, to'lovlar",
+       importance: 4, visibility: 1, vibration: true },
+     { id: "quiet", name: "Sokin soatlar", description: "Sokin soatlarda ovozsiz",
+       importance: 2, visibility: 1, vibration: false }].forEach(function (c) {
+      if (local.createChannel) local.createChannel(c).catch(noop);
+    });
+    local.addListener("localNotificationActionPerformed", function (ev) {
+      var open = ev && ev.notification && ev.notification.extra && ev.notification.extra.open;
+      pendingInbox = true;
+      window.dispatchEvent(new CustomEvent("ernest:open-inbox", { detail: { open: open } }));
+    });
+    syncLocal();
+    // Back in the app: what was done meanwhile drops out of the schedule.
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) syncLocal();
+    });
+    // A change in the Mini App (a tick, a new task) reschedules shortly after.
+    var later = null;
+    window.addEventListener("ernest:changed", function () {
+      clearTimeout(later);
+      later = setTimeout(syncLocal, 4000);
+    });
   }
   /* What Settings shows: is this build able to push at all, and what has
      the phone allowed. Nothing here claims a message was delivered. */
   function pushStatus() {
     var push = plugin("PushNotifications");
+    var local = plugin("LocalNotifications");
+    if ((!push || !CFG.push) && local) {
+      return local.checkPermissions().then(function (p) {
+        return p.display === "granted" ? "on" : p.display === "denied" ? "denied" : "ask";
+      }).catch(function () { return "no_build"; });
+    }
     if (!push || !CFG.push) return Promise.resolve("no_build");
     return push.checkPermissions().then(function (p) {
       return p.receive === "granted" ? "on" : p.receive === "denied" ? "denied" : "ask";
@@ -252,13 +432,23 @@
   }
   function requestPush() {
     var push = plugin("PushNotifications");
+    var local = plugin("LocalNotifications");
+    if ((!push || !CFG.push) && local) {
+      return local.requestPermissions().then(function (p) {
+        if (p.display === "granted") { syncLocal(); return "on"; }
+        return p.display === "denied" ? "denied" : "ask";
+      }).catch(function () { return "denied"; });
+    }
     if (!push || !CFG.push) return Promise.resolve("no_build");
     return push.requestPermissions().then(function (p) {
       if (p.receive === "granted") { push.register(); return "on"; }
       return p.receive === "denied" ? "denied" : "ask";
     }).catch(function () { return "denied"; });
   }
-  if (!onLoginPage) document.addEventListener("DOMContentLoaded", setUpPush);
+  if (!onLoginPage) {
+    document.addEventListener("DOMContentLoaded", setUpPush);
+    document.addEventListener("DOMContentLoaded", setUpLocal);
+  }
 
   function refreshViewport() {
     WebApp.viewportHeight = WebApp.viewportStableHeight = window.innerHeight;

@@ -23,14 +23,31 @@ const notify = name => Number(execFileSync(PY, ['-c',
   + 'm = M([[B("15 daqiqa", callback_data=f"snz:h:{h.id}:15"), B("Bajarildi", callback_data=f"habit:toggle:{h.id}")]])\n'
   + 'asyncio.run(app_push.deliver(777001, "🔔 <b>Odat vaqti</b>\\n" + h.name, m, kind="reminder"))\n'
   + 'print(h.id)'], { encoding: 'utf8' }).trim());
+// Email goes to files in the browser checks; the code is read back from the
+// newest message to that address, the way a person reads their inbox.
+const fs = require('fs');
+const readCode = to => {
+  const dir = path.join(OUT, 'mail');
+  const files = fs.readdirSync(dir).filter(f => f.endsWith('.json')).sort().reverse();
+  for (const f of files) {
+    const m = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+    if (m.to === to) return m.subject.match(/\b(\d{6})\b/)[1];
+  }
+  throw new Error('no mail to ' + to);
+};
 const revokeAll = () => execFileSync(PY, ['-c',
   'import db\nfrom sqlalchemy import update\nwith db.SessionLocal() as s:\n'
   + ' s.execute(update(db.AppSession).values(revoked_at=db.utcnow())); s.commit()']);
 
 const results = [];
+let failPage = null;
 const step = async (name, fn) => {
   try { await fn(); results.push(['ok', name]); console.log('✓', name); }
-  catch (e) { results.push(['FAIL', name]); console.log('✗', name, '—', e.message.split('\n')[0]); }
+  catch (e) {
+    results.push(['FAIL', name]); console.log('✗', name, '—', e.message.split('\n')[0]);
+    // What the screen showed when it failed, next to the other shots.
+    try { await failPage?.screenshot({ path: path.join(OUT, 'fail-' + results.length + '.png') }); } catch (_) {}
+  }
 };
 
 (async () => {
@@ -43,19 +60,46 @@ const step = async (name, fn) => {
       Filesystem: { writeFile: async o => { (window.__saved = window.__saved || []).push(o);
                                             return { uri: 'file:///cache/' + o.path }; } },
       Share: { share: async o => { window.__shared = o; } },
+      // Reminders shown by the phone: record the permission asked and what
+      // was scheduled, as Android's alarm manager would receive it.
+      LocalNotifications: {
+        _granted: false, scheduled: [], asked: 0,
+        checkPermissions: async function () { return { display: this._granted ? 'granted' : 'prompt' }; },
+        requestPermissions: async function () { this.asked++; this._granted = true; return { display: 'granted' }; },
+        getPending: async function () { return { notifications: this.scheduled }; },
+        cancel: async function (o) { const ids = o.notifications.map(n => n.id);
+                                     this.scheduled = this.scheduled.filter(n => !ids.includes(n.id)); },
+        schedule: async function (o) { this.scheduled = this.scheduled.concat(o.notifications); },
+        createChannel: async () => {}, addListener: () => {},
+        // Android 14+: "Alarms & reminders" is off until the person turns it on.
+        exact: 'denied', settingsOpened: 0,
+        checkExactNotificationSetting: async function () { return { exact_alarm: this.exact }; },
+        changeExactNotificationSetting: async function () {
+          this.settingsOpened++; this.exact = 'granted'; return { exact_alarm: 'granted' }; },
+      },
+      // The status bar's icon colour, as Android would be told it.
+      SystemBars: { styles: [], setStyle: async function (o) { this.styles.push(o.style); } },
+      // Android's back button and the app's place in the background.
+      App: { listeners: {}, minimized: 0,
+             addListener: function (name, fn) { this.listeners[name] = fn; return { remove: () => {} }; },
+             minimizeApp: async function () { this.minimized++; } },
     } };
   });
   const page = await context.newPage();
+  failPage = page;
   const errors = [];
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
-  // 401 (signed out) and 402 (plan limit) are answers the app handles.
-  page.on('console', m => { if (m.type() === 'error' && !/401|402|ErnestOS:/.test(m.text())) errors.push('console: ' + m.text()); });
+  // 401 (signed out), 402 (plan limit) and 409 (setup not finished — the app
+  // shows its setup screen) are answers the app handles.
+  page.on('console', m => { if (m.type() === 'error' && !/401|402|409|ErnestOS:|ERR_INTERNET_DISCONNECTED/.test(m.text())) errors.push('console: ' + m.text()); });
   const shot = n => page.screenshot({ path: path.join(OUT, 'app-' + n + '.png') });
+  // The bot's code lives under "Sign in with Telegram", folded by default.
+  const openTg = () => page.evaluate(() => { const d = document.getElementById('tg-box'); if (d) d.open = true; });
 
   await step('No session: the app opens on the sign-in screen', async () => {
     await page.goto(SHELL + '/index.html');
     await page.waitForURL(/login\.html$/);
-    await page.waitForSelector('#code');
+    await page.waitForSelector('#email');
     await shot('01-login');
   });
 
@@ -63,28 +107,62 @@ const step = async (name, fn) => {
     await page.click('[data-lang="ru"]');
     assert.match(await page.textContent('#t-lead'), /Войдите/);
     await page.reload();
-    await page.waitForSelector('#code');
+    await page.waitForSelector('#email');
     assert.match(await page.textContent('#t-lead'), /Войдите/);
     await page.click('[data-lang="uz"]');
-    assert.match(await page.textContent('#t-lead'), /kirig|kod bilan/);
+    assert.match(await page.textContent('#t-lead'), /kiring/);
   });
 
   await step('A wrong code is refused in place', async () => {
     // A complete code is sent by itself — no button press needed.
-    await page.fill('#code', 'ZZZZZZZZ');
+    await openTg(); await page.fill('#code', 'ZZZZZZZZ');
     await page.waitForFunction(() => document.getElementById('msg').textContent.length > 0);
     assert.match(await page.textContent('#msg'), /noto'g'ri|wrong|неверный/);
     await shot('02-bad-code');
   });
 
   await step('The bot code signs in and the Mini App home renders', async () => {
-    await page.fill('#code', issue().toLowerCase());
+    await openTg(); await page.fill('#code', issue().toLowerCase());
     await page.waitForURL(/index\.html$/);
     await page.waitForFunction(() => typeof state !== 'undefined' && state.me && !state.loading, null, { timeout: 15000 });
     await page.waitForTimeout(500);
     assert.ok((await page.content()).includes('Eski hisobot'), 'home shows the seeded late task');
     assert.ok(await page.evaluate(() => Telegram.WebApp.isErnestApp), 'native.js is the WebApp');
     await shot('03-home');
+  });
+
+  await step('Opening the app asks to notify, and the next reminders are set on the phone', async () => {
+    const local = () => page.evaluate(() => {
+      const n = window.Capacitor.Plugins.LocalNotifications;
+      return { asked: n.asked, items: n.scheduled.map(x => ({ id: x.id, title: x.title, at: String(x.schedule.at),
+                                                               channel: x.channelId, open: x.extra.open })) };
+    });
+    await page.waitForFunction(() => window.Capacitor.Plugins.LocalNotifications.scheduled.length > 0, null, { timeout: 8000 });
+    const first = await local();
+    assert.equal(first.asked, 1, 'permission asked once on open');
+    assert.ok(first.items.some(x => /Kun|hisobot|reja/i.test(x.title)), 'a report reminder is scheduled');
+    // Coming back to the app reschedules: the same reminders, not twice as many.
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await page.waitForTimeout(800);
+    const again = await local();
+    assert.equal(again.items.length, first.items.length, 'rescheduling replaces');
+    assert.deepEqual(again.items.map(x => x.id).sort(), first.items.map(x => x.id).sort());
+    // Exact alarms not allowed (Android 14+ default): scheduled inexact, and
+    // Android's settings screen is NOT opened — it used to open on every sync.
+    const exact = await page.evaluate(() => { const n = window.Capacitor.Plugins.LocalNotifications;
+      return { opened: n.settingsOpened, flags: [...new Set(n.scheduled.map(x => x.isExactNotification))] }; });
+    assert.equal(exact.opened, 0, 'no settings screen thrown at the person');
+    assert.deepEqual(exact.flags, [false]);
+  });
+
+  await step('Opening the app shows Now in focus; the rest waits until a tap', async () => {
+    await page.evaluate(() => goto('home'));
+    await page.evaluate(() => { state.homeVeil = true; render(); });
+    assert.ok(await page.locator('.home-rest.veiled').count(), 'the rest is veiled');
+    assert.equal(await page.locator('.home-rest').getAttribute('inert'), '', 'veiled part cannot be tapped');
+    await page.click('.unveil');
+    await page.waitForFunction(() => !document.querySelector('.home-rest.veiled'));
+    assert.ok(await page.locator('.now-swap svg').count(), 'swap is an icon');
   });
 
   await step('A habit tick reaches the server through the app token', async () => {
@@ -174,12 +252,52 @@ const step = async (name, fn) => {
     assert.ok(await page.evaluate(() => Telegram.WebApp.BackButton.isVisible), 'back shown with a sheet');
   });
 
+  await step('Android back walks back one screen; only Bugun leaves the app', async () => {
+    const back = () => page.evaluate(() => window.Capacitor.Plugins.App.listeners.backButton());
+    await page.evaluate(() => { closeSheet(); goto('money'); });
+    await page.waitForTimeout(300);
+    await back();
+    await page.waitForFunction(() => state.screen === 'home');
+    assert.equal(await page.evaluate(() => window.Capacitor.Plugins.App.minimized), 0, 'Moliya → Bugun, app stays');
+    await back();
+    await page.waitForTimeout(200);
+    assert.equal(await page.evaluate(() => window.Capacitor.Plugins.App.minimized), 1, 'from Bugun the app goes to the background');
+  });
+
+  await step("The status bar follows the app's light or dark, not the phone's", async () => {
+    const styles = () => page.evaluate(() => window.Capacitor.Plugins.SystemBars.styles);
+    assert.equal((await styles()).at(-1), 'LIGHT');
+    await page.evaluate(() => { document.documentElement.dataset.mode = 'dark'; });
+    await page.waitForTimeout(100);
+    assert.equal((await styles()).at(-1), 'DARK');
+    await page.evaluate(() => { document.documentElement.dataset.mode = 'light'; });
+    await page.waitForTimeout(100);
+    assert.equal((await styles()).at(-1), 'LIGHT');
+  });
+
+  await step('Reminders at the exact time: offered by name in Settings, turned on only when tapped', async () => {
+    await page.evaluate(() => { closeSheet(); A.settings(); });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => A['set-notify']());
+    await page.waitForSelector('[data-act="exact-allow"]', { timeout: 5000 });
+    await shot('25-exact-alarm');
+    await page.click('[data-act="exact-allow"]');
+    await page.waitForFunction(() => window.Capacitor.Plugins.LocalNotifications.settingsOpened === 1);
+    await page.waitForFunction(() => window.Capacitor.Plugins.LocalNotifications.scheduled.length
+      && window.Capacitor.Plugins.LocalNotifications.scheduled.every(x => x.isExactNotification === true), null, { timeout: 5000 });
+    await page.waitForSelector('[data-act="exact-allow"]', { state: 'detached', timeout: 5000 });
+    await page.evaluate(() => closeSheet());
+  });
+
   await step('Settings: profile on top, a chosen photo is saved and served', async () => {
     await page.evaluate(() => A.settings());
     await page.waitForSelector('#sheet-body .set-profile');
     // A real 1x1 PNG, so the phone-side shrink has something to decode.
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
-    await page.setInputFiles('#sheet-body input[data-act="avatar-pick"]', { name: 'me.png', mimeType: 'image/png', buffer: png });
+    // A tap on the picture itself opens the phone's picker.
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser', { timeout: 5000 }),
+                                         page.click('#sheet-body .avatar.xl')]);
+    await chooser.setFiles({ name: 'me.png', mimeType: 'image/png', buffer: png });
     await page.waitForFunction(() => !!state.me.avatar_custom, null, { timeout: 8000 });
     const served = await page.evaluate(async () => {
       const r = await fetch(`${API_BASE}/api/avatar?token=${encodeURIComponent(state.me.avatar_token)}`);
@@ -192,13 +310,155 @@ const step = async (name, fn) => {
 
   await step('Plans: a month/year switch and two buy buttons, closed by the cross', async () => {
     await page.click('#sheet-body [data-act="set-plan"]');
-    await page.waitForSelector('#sheet-body .pcards');
+    await page.waitForSelector('#sheet-body .ptable');
+    assert.equal(await page.locator('#sheet-body .ptable tbody tr').count(), 20, 'every limit has a row');
     assert.equal(await page.locator('#sheet-body [data-act="plan-buy"]').count(), 2);
     await page.click('#sheet-body [data-act="plan-period"][data-p="year"]');
     const keys = await page.locator('#sheet-body [data-act="plan-buy"]').evaluateAll(b => b.map(x => x.dataset.key));
     assert.deepEqual(keys, ['pro_year', 'max_year']);
     await page.click('#sheet-body .sheet-head [data-act="close"]');
     await page.waitForFunction(() => !document.getElementById('sheet').classList.contains('show'));
+  });
+
+  await step('Profile: rating and coins; a streak freeze is bought with two taps', async () => {
+    // 1 000 XP is 100 coins: enough for a freeze (80).
+    py('import db, services as svc\nwith db.SessionLocal() as s:\n'
+       + ' svc.award_xp(s, 777001, "achievement:777001:e2e-coins", "achievement", 1000, svc.today_local()); s.commit()');
+    await page.evaluate(() => closeSheet());
+    await page.evaluate(() => goto('steps'));
+    await page.waitForSelector('.coin-card', { timeout: 8000 });
+    assert.ok(await page.locator('.rank-card').count(), 'the rating block is on Profile');
+    await page.click('.coin-card');
+    await page.waitForSelector('#sheet-body .coin-item');
+    const before = await page.evaluate(() => state.coins.balance);
+    assert.ok(before >= 100, 'coins come from XP');
+    await page.click('#sheet-body [data-act="coins-buy"][data-value="freeze_1"]');
+    await page.waitForSelector('#sheet-body [data-act="coins-buy"][data-value="freeze_1"]:has-text("Tasdiqlash")');
+    await page.click('#sheet-body [data-act="coins-buy"][data-value="freeze_1"]');
+    await page.waitForFunction(b => state.coins.balance === b - 80, before, { timeout: 8000 });
+    const spends = py('import db\nfrom sqlalchemy import select, func\nwith db.SessionLocal() as s:\n'
+       + ' print(s.scalar(select(func.count(db.CoinSpend.id)).where(db.CoinSpend.account_id == 777001)))').trim();
+    assert.equal(spends, '1');
+    await shot('08-coins');
+    await page.evaluate(() => closeSheet());
+  });
+
+  await step('Reja → Maqsadlar: an ultimate goal and a milestone under it, saved on the server', async () => {
+    await page.evaluate(() => closeSheet());
+    await page.evaluate(() => goto('goals'));
+    await page.waitForSelector('.glevels .glevel.on.lv-ultimate', { timeout: 8000 });
+    await page.waitForSelector('.gempty [data-act="goal-add"]');
+    await page.click('#fab .fab-add');
+    await page.waitForSelector('#sheet-body #gl-title');
+    await page.fill('#gl-title', 'EGH: Capital Venture');
+    await page.click('#sheet-body [data-act="gl-pick"][data-field="gl-cat"][data-value="capital"]');
+    await page.click('#sheet-body [data-act="gl-pick"][data-field="gl-horizon"][data-value="2040"]');
+    await page.click('#sheet-body .gmore summary');
+    await page.fill('#gl-amount', '10 000 000');
+    await page.click('#sheet-body [data-act="goal-save"]');
+    await page.waitForSelector('.gcard .gamount:has-text("$10M")', { timeout: 8000 });
+    // A milestone under it, from the milestone tab's +.
+    await page.click('[data-act="goal-tab"][data-tab="milestone"]');
+    await page.click('#fab .fab-add');
+    await page.waitForSelector('#sheet-body #gl-parent');
+    await page.fill('#gl-title', 'Birinchi $100 000');
+    await page.selectOption('#gl-parent', { label: 'EGH: Capital Venture' });
+    await page.locator('#gl-progress').fill('40');
+    await page.click('#sheet-body [data-act="goal-save"]');
+    await page.waitForSelector('.gitem:has-text("Birinchi $100 000") .gpct:has-text("40%")', { timeout: 8000 });
+    assert.ok(await page.locator('.gitem .gparent:has-text("EGH: Capital Venture")').count(), 'parent shown');
+    // The ultimate goal now reads its progress off the milestone.
+    await page.click('[data-act="goal-tab"][data-tab="ultimate"]');
+    await page.waitForSelector('.gcard .gprog:has-text("40%")');
+    const rows = py('import db\nfrom sqlalchemy import select\nwith db.SessionLocal() as s:\n'
+       + ' for g in s.scalars(select(db.LifeGoal).order_by(db.LifeGoal.id)): print(g.level, g.amount, g.parent_id is not None, g.progress)').trim();
+    assert.deepEqual(rows.split('\n'), ['ultimate 10000000 False 0', 'milestone None True 40']);
+    await shot('09-goals');
+    // The tactical tab is the week's focus.
+    await page.click('[data-act="goal-tab"][data-tab="tactical"]');
+    await page.waitForSelector('.ghint');
+    assert.ok(await page.locator('[data-act="focus-add"]').count(), 'week focus reachable from Goals');
+  });
+
+  await step('Moliya: two accounts, a transfer, a repeating payment paid, and the year', async () => {
+    await page.evaluate(() => closeSheet());
+    await page.evaluate(() => goto('money'));
+    await page.waitForSelector('[data-act="money-tab"][data-value="accounts"]', { timeout: 8000 });
+    await page.click('[data-act="money-tab"][data-value="accounts"]');
+    await page.click('.wempty [data-act="acct-add"][data-kind="cash"]');
+    await page.waitForSelector('#sheet-body #acct-name');
+    assert.equal(await page.inputValue('#acct-name'), 'Naqd');
+    await page.fill('#acct-opening', '1 mln');
+    await page.click('#sheet-body [data-act="acct-save"]');
+    await page.waitForSelector('.wacct:has-text("Naqd")', { timeout: 8000 });
+    await page.click('.wactions [data-act="acct-add"]');
+    await page.fill('#acct-name', 'Karta');
+    await page.click('#sheet-body [data-act="acct-kind"][data-value="card"]');
+    await page.fill('#acct-opening', '500000');
+    await page.click('#sheet-body [data-act="acct-save"]');
+    await page.waitForSelector('.wacct:has-text("Karta")', { timeout: 8000 });
+    await page.click('.wactions [data-act="transfer-open"]');
+    await page.waitForSelector('#sheet-body #tr-amount');
+    await page.fill('#tr-amount', '200 ming');
+    await page.click('#sheet-body [data-act="transfer-save"]');
+    await page.waitForSelector('.wtr:has-text("200 000")', { timeout: 8000 });
+    const bal = await page.evaluate(() => state.money.wallet.accounts.map(a => [a.name, a.balance]));
+    assert.deepEqual(bal, [['Naqd', 800000], ['Karta', 700000]]);
+    await page.click('[data-act="msub-add"]');
+    await page.waitForSelector('#sheet-body #sub-name');
+    await page.fill('#sub-name', 'Internet');
+    await page.fill('#sub-amount', '150 ming');
+    await page.click('#sheet-body [data-act="msub-save"]');
+    await page.waitForSelector('.wsub:has-text("Internet")', { timeout: 8000 });
+    await page.click('.wsub:has-text("Internet") [data-act="msub-pay"]');
+    await page.waitForFunction(() => state.money.entries.some(e => e.note === 'Internet' && e.amount === 150000), null, { timeout: 8000 });
+    const rows = py('import db\nfrom sqlalchemy import select\nwith db.SessionLocal() as s:\n'
+       + ' print(len(s.scalars(select(db.MoneyAccount)).all()), len(s.scalars(select(db.MoneyTransfer)).all()),'
+       + ' s.scalar(select(db.MoneyEntry.amount).where(db.MoneyEntry.note == "Internet")))').trim();
+    assert.equal(rows, '2 1 150000');
+    await shot('10-money-accounts');
+    // The account is on Max by now (granted in the statistics step): the
+    // year card is open and counts the payment just made.
+    await page.click('[data-act="money-tab"][data-value="cats"]');
+    await page.waitForSelector('.ycard .ybars', { timeout: 8000 });
+    assert.ok(await page.locator('.ycard .ytotals .neg:has-text("150 000")').count(), 'year counts the payment');
+  });
+
+  await step('Xabarlar has an AI assistant tab; without an AI key it says so plainly', async () => {
+    await page.evaluate(() => closeSheet());
+    await page.evaluate(() => goto('home'));
+    await page.click('.bellbtn[data-act="inbox-open"]');
+    await page.waitForSelector('#sheet-body [data-act="inbox-tab"][data-tab="chat"]');
+    await page.click('#sheet-body [data-act="inbox-tab"][data-tab="chat"]');
+    const available = await page.evaluate(() => Boolean(state.me?.agent?.available));
+    if (available) await page.waitForSelector('#sheet-body .chat-intro, #sheet-body #chat-text');
+    else await page.waitForSelector('#sheet-body .hint:has-text("ulanmagan")');
+    await page.evaluate(() => closeSheet());
+  });
+
+  await step('Offline: a quick task and a money line wait on the phone and reach the server once back online', async () => {
+    await page.evaluate(() => { closeSheet(); goto('home'); });
+    await page.waitForSelector('.fab-add', { timeout: 8000 });
+    await context.setOffline(true);
+    await page.click('.fab-add');
+    await page.waitForSelector('#sheet-body #quick-title');
+    await page.fill('#quick-title', 'Oflayn vazifa');
+    await page.click('#sheet-body [data-act="quick-save"]');
+    await page.waitForFunction(() => loadQueue().length === 1, null, { timeout: 8000 });
+    await page.click('.fab-add');
+    await page.waitForSelector('#sheet-body #quick-title');
+    await page.fill('#quick-title', 'Oflayn tushlik 33 ming');
+    await page.click('#sheet-body [data-act="quick-save"]');
+    await page.waitForFunction(() => loadQueue().length === 2, null, { timeout: 8000 });
+    assert.ok(await page.locator('[data-act="queue-flush"]').count(), 'the waiting count is on screen');
+    await shot('12-offline-queue');
+    await context.setOffline(false);
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await page.waitForFunction(() => loadQueue().length === 0, null, { timeout: 20000 });
+    const rows = py('import db\nfrom sqlalchemy import select, func\nwith db.SessionLocal() as s:\n'
+      + ' print(s.scalar(select(func.count(db.Task.id)).where(db.Task.title == "Oflayn vazifa")),'
+      + ' s.scalar(select(func.count(db.MoneyEntry.id)).where(db.MoneyEntry.amount == 33000)))').trim();
+    assert.equal(rows, '1 1', 'each queued record reached the server once');
   });
 
   await step('An ended session goes back to sign-in', async () => {
@@ -209,7 +469,7 @@ const step = async (name, fn) => {
   });
 
   await step('Sign out from settings ends the session on the server too', async () => {
-    await page.fill('#code', issue());
+    await openTg(); await page.fill('#code', issue());
     await page.waitForURL(/index\.html$/);
     await page.waitForFunction(() => typeof state !== 'undefined' && state.me && !state.loading, null, { timeout: 15000 });
     const token = await page.evaluate(() => localStorage.getItem('ernest.app.token'));
@@ -221,7 +481,87 @@ const step = async (name, fn) => {
     assert.equal(status, 401);
   });
 
-  await step('No JavaScript errors', async () => { assert.deepEqual(errors, []); });
+  await step('Email: a new address signs up, setup runs in the app, the day opens', async () => {
+    await page.waitForSelector('#email');
+    await page.fill('#email', 'yangi@example.com');
+    await page.click('#send');
+    await page.waitForSelector('#otp-form:not([hidden])');
+    assert.match(await page.textContent('#t-sent'), /yangi@example\.com/);
+    await shot('20-email-code');
+    await page.fill('#otp', readCode('yangi@example.com'));   // sent as soon as it is whole
+    await page.waitForURL(/index\.html$/);
+    await page.waitForSelector('#su-name', { timeout: 15000 });
+    await shot('21-setup');
+    await page.fill('#su-name', 'Dilnoza');
+    await page.click('[data-act="su-mod"][data-value="prayer"]');
+    await page.fill('#su-name', 'Dilnoza');
+    await page.click('[data-act="su-finish"]');
+    await page.waitForFunction(() => typeof state !== 'undefined' && state.me && state.me.onboarded
+      && !state.loading && !state.needsSetup, null, { timeout: 15000 });
+    const me = await page.evaluate(() => state.me);
+    assert.equal(me.first_name, 'Dilnoza');
+    assert.equal(me.has_telegram, false);
+    assert.equal(me.email, 'yangi@example.com');
+    assert.equal(me.modules.prayer, false, 'what was switched off stays off');
+    await page.waitForTimeout(400);
+    await shot('22-email-home');
+  });
+
+  // Google/Apple through the browser. The provider's page itself is outside
+  // the test (no real Google/Apple account here): its verified return is
+  // stood in for by the server's own sign-in step for that attempt. What is
+  // real: the buttons from /api/app/config, the hash the page sends, the
+  // redirect the server builds, and the page collecting the session.
+  await step('Google and Apple: buttons under email; Apple signs in through the browser', async () => {
+    await page.evaluate(() => localStorage.removeItem('ernest.app.token'));
+    await page.goto(SHELL + '/login.html');
+    await page.click('[data-lang="uz"]');
+    await page.waitForSelector('#google:not([hidden])');
+    await page.waitForSelector('#apple:not([hidden])');
+    assert.match(await page.textContent('#google'), /Google orqali kirish/);
+    await shot('23-social-buttons');
+    await page.evaluate(() => { window.__opened = []; window.ErnestApp.open = u => window.__opened.push(u); });
+
+    // Google without the phone's picker goes to the browser; Cancel undoes it.
+    await page.click('#google');
+    await page.waitForFunction(() => window.__opened.length === 1);
+    assert.match(await page.evaluate(() => window.__opened[0]), /\/api\/auth\/oauth\/google\/start\?state=[0-9a-f]{64}&lang=uz$/);
+    await page.waitForSelector('#social-wait:not([hidden])');
+    await page.click('#social-cancel');
+    await page.waitForSelector('#social-wait', { state: 'hidden' });
+    assert.equal(await page.isDisabled('#apple'), false);
+
+    await page.click('#apple');
+    await page.waitForFunction(() => window.__opened.length === 2);
+    const url = await page.evaluate(() => window.__opened[1]);
+    const state = url.match(/state=([0-9a-f]{64})/)[1];
+    await shot('24-social-waiting');
+    const r = await fetch(url, { redirect: 'manual' });
+    assert.equal(r.status, 302);
+    const to = new URL(r.headers.get('location'));
+    assert.equal(to.origin + to.pathname, 'https://appleid.apple.com/auth/authorize');
+    assert.equal(to.searchParams.get('state'), state);
+    assert.equal(to.searchParams.get('response_mode'), 'form_post');
+    // A state read from the address bar or a log is not enough to collect.
+    const leaked = await (await fetch(url.split('/api/')[0] + '/api/auth/oauth/poll', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ verifier: state }) })).json();
+    assert.equal(leaked.status, 'unknown');
+    py('import db, social_auth, app_auth\nwith db.SessionLocal() as s:\n'
+       + ` row = social_auth.pending(s, ${JSON.stringify(state)})\n assert row and row.provider == "apple"\n`
+       + ' acc, new = social_auth.sign_in(s, "apple", {"sub": "e2e-apple-1", "email": "e2e@privaterelay.appleid.com", "email_verified": "true"}, language=row.language)\n'
+       + ' tok = app_auth.TOKEN_PREFIX + app_auth.issue_session(s, acc, "apple · browser")\n'
+       + ` social_auth.finish(s, social_auth.pending(s, ${JSON.stringify(state)}), token=tok, new=new)`);
+    // The deep link back into the app; the page collects at once.
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('ernest:return', { detail: { url: 'uz.ernestos.app://auth/done' } })));
+    await page.waitForURL(/index\.html$/, { timeout: 8000 });
+    await page.waitForSelector('#su-name', { timeout: 15000 });
+    const me = await page.evaluate(async () => (await fetch('/api/me', { headers: {
+      'X-Telegram-Init-Data': localStorage.getItem('ernest.app.token') } })).json());
+    assert.equal(me.has_telegram, false);
+    assert.equal(me.email, 'e2e@privaterelay.appleid.com');
+  });
+
+  await step('No JavaScript errors', async () => { if(errors.length) console.log(JSON.stringify(errors)); assert.deepEqual(errors, []); });
 
   await browser.close();
   const failed = results.filter(r => r[0] === 'FAIL');

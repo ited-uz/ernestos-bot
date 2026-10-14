@@ -107,6 +107,12 @@ tekshirish sanasigacha «Hozir» va resetdan chiqadi, sana kelganda
 - Job kechiksa ham eslatma **30** daqiqa ichida bir marta yetkaziladi.
 - Har eslatmani **15 / 60 / 180** daqiqaga surish mumkin; muddat o‘zgarmaydi.
 - Sokin soatlarda eslatmalar ovozsiz keladi.
+- Telefon ilovasi ochilganda bildirishnoma ruxsatini so'raydi. Rad etilsa,
+  **3** kundan keyin yana bir marta so'raydi; telefonda o'chirilgan bo'lsa so'ramaydi.
+- Firebase'siz versiyada eslatmalarni telefonning o'zi ko'rsatadi: ilova har
+  ochilganda keyingi **48** soatdagi eslatmalarni (vazifa, odat, ertalabki va
+  kechki hisobot, doimiy to'lov kuni) qayta rejalaydi. Ilova yopiq paytdagi
+  o'zgarish keyingi ochilishda tuzatiladi.
 
 ## Kun sig‘imi
 
@@ -123,14 +129,19 @@ navbatga tushadi va ulanganda bir marta yuboriladi.
 | | Free | Pro | Max |
 |---|---|---|---|
 | Odatlar (marosimlardan tashqari) | **3** | **25** | cheksiz |
-| Faol vazifalar | **30** | cheksiz | cheksiz |
+| Faol vazifalar | **20** | cheksiz | cheksiz |
 | Takrorlanuvchi vazifalar | **3** | **25** | cheksiz |
 | Loyihalar | **1** | **15** | cheksiz |
+| Maqsadlar (bosqich va asosiy, ochiqlari) | **2** | **25** | cheksiz |
 | Ochiq qarzlar | **3** | cheksiz | cheksiz |
+| Moliya hisoblari (naqd, karta, bank…) | **1** | **3** | cheksiz |
+| Doimiy to‘lovlar | — | **3** | cheksiz |
+| Hisoblar orasida o‘tkazma | — | bor | bor |
+| Yillik moliya (12 oy) | — | — | bor |
 | O‘zi yaratgan jamoalar | **0** | **2** | **10** |
 | Jamoa a’zolari (egasining tarifi) | **8** | **10** | **50** |
-| Ovozli buyruq | **5** / hafta | **30** / kun | **100** / kun |
-| AI kun xulosasi, taymer ritmi, oylik/yillik statistika | — | bor | bor |
+| Ovozli buyruq | **3** / hafta | **30** / kun | **100** / kun |
+| AI kun xulosasi, AI «Hozir» tavsiyasi, taymer ritmi, oylik/yillik statistika | — | bor | bor |
 | Statistikani faylga yuklash | — | — | bor |
 
 - Yangi akkaunt **3** kunlik Pro bilan boshlanadi. Tariflar yoqilgunga qadar
@@ -167,3 +178,146 @@ navbatga tushadi va ulanganda bir marta yuboriladi.
   saqlashdan oldin ko‘rsatiladi.
 - Setup bitta odat bilan boshlanadi, ko‘pi bilan **3** ta tanlanadi; turish
   vaqti so‘raladi va ertalabki hisobot shunga moslanadi.
+
+## Coinlar
+
+- Coin ball (XP) asosida hisoblanadi: har **10** ball = **1** coin.
+- Oddiy faollik kuniga ko'pi bilan **120** ball, ya'ni **12** coin beradi. Yutuq va seriya ballari bu chegaradan tashqari.
+- Har bir harakat bir marta hisoblanadi. Belgini qo'yib-olib coin "ishlab" bo'lmaydi.
+- **Do'kon:**
+  - Pro 3 kun — **150** coin;
+  - Pro 7 kun — **300** coin;
+  - Max 3 kun — **400** coin;
+  - seriyani muzlatish +1 — **80** coin, oyiga ko'pi bilan **2** ta.
+- Sotib olingan kunlar tarifga hozirgisidan keyin qo'shiladi.
+- Tariflar o'chiq bo'lsa (`PLANS_ENABLED=0`), Pro/Max mahsulotlari sotilmaydi.
+- Xarid ikki bosish bilan tasdiqlanadi. Bir so'rov ikki marta kelsa, bir marta sotib olinadi.
+
+## AI yordamchi (chat)
+
+- Telefon ilovasida **Xabarlar → AI yordamchi**, Telegram'da avatar yonidagi tugma.
+- Javob sizning vazifa, odat, hafta maqsadi, maqsadlar va shu oy moliyangizdan
+  tuziladi. Ma'lumotda yo'q raqamni o'ylab topmaydi.
+- O'zgartirish so'ralsa (vazifa, odat, pul yozuvi, qarz), ovozli buyruqdagi
+  karta chiqadi; **Tasdiqlash** bosilmaguncha hech narsa o'zgarmaydi.
+- Har savol AI limitidan bitta oladi; o'zgartirish kartasi yana bitta.
+  Free — haftasiga **5** ta, Pro — kuniga **30** ta, Max — kuniga **100** ta.
+- Oxirgi **40** ta xabar saqlanadi; «Suhbatni tozalash» hammasini o'chiradi.
+
+## Promokodlar va mavzular (v15)
+
+- Promokod Pro yoki Max kunlarini beradi. Har bir akkaunt bitta kodni **bir marta** ishlatadi.
+  Kod kiritish: ilovada **Sozlamalar → Promokod kiritish** yoki botda `/promo KOD`.
+- Kod yaratish faqat adminlarga (Railway'da `ADMIN_IDS` = Telegram ID'lar, vergul bilan):
+  `/promo_new KOD pro|max KUN [NECHA_MARTA] [YYYY-MM-DD]`, `/promo_list`, `/promo_off KOD`.
+- Kod kunlari shu tarifdagi mavjud muddatdan keyin qo'shiladi.
+- Ko'p urinish bilan kod topishning oldi olingan: 10 daqiqada ko'pi bilan **10** urinish.
+- Mavzular: **Clean White** (hamma uchun), **Blossom**, **Obsidian Slate**, **Emerald Royal** (Pro va Max).
+- Free tarifda ilova Clean White mavzusida ko'rinadi; yorug' va tungi rejim ikkalasi ham ochiq (v16).
+  Tanlangan rangli mavzu saqlanib qoladi va tarif qaytsa, o'zi tiklanadi.
+- Tarif jadvalida yo'q funksiya qizil ✕ bilan ko'rsatiladi. Jadvaldagi yagona qizil narsa — shu ✕;
+  limitlar oddiy raqam bilan yoziladi (v17).
+- Eski mavzu nomlari `python migrations.py 0014` bilan yangilariga o'tkaziladi.
+
+## Internetsiz ishlash va AI Hozir (v16)
+
+- Internet yo'qligida kun yozuvlari telefonda navbatga turadi va ulanganda o'sha kalit bilan
+  bir marta yuboriladi: tezkor qo'shish, vazifa, odat, namoz, pul, xulosa, qarz, maqsad, guruh.
+  Ovozli yozuv telefonda saqlanadi va internet kelganda tasdiqlash kartasi chiqadi.
+- Kirish, to'lov, tarif, sozlamalar va AI so'rovlari navbatga olinmaydi.
+- AI «Hozir» tavsiyasi faqat Pro va Max'da. v17 dan rozilik oynasi yo'q: Pro/Max'da o'zi ishlaydi,
+  **Sozlamalar → Kuzatiladigan bo'limlar → AI «Hozir» tavsiyasi** orqali o'chiriladi. Bugungi ochiq
+  vazifalar nomlari AI xizmatiga yuborilishi Maxfiylik siyosatida yozilgan. AI faqat ochiq vazifalaringiz orasidan
+  bittasini tanlaydi va bir jumla sabab yozadi. Javob 45 daqiqa keshlanadi, kuniga cheklangan.
+
+## Profil, maqsadlar, guruhlar, qarzlar va Yaqinlarim (v17)
+
+- **Profilni tahrirlash:** ism, familiya, @username, jins va rasm ilovada o'zgaradi.
+  - Username 5–32 belgidan iborat, lotin harfi bilan boshlanadi. Unda harf, raqam va `_` bo'lishi mumkin.
+  - Username takrorlanmaydi: katta-kichik harf farqi hisobga olinmaydi.
+  - Bo'sh qoldirilsa, username ko'rsatilmaydi.
+  - Ilovada bir marta tahrirlangandan keyin Telegram'dagi ism va username uning ustiga yozilmaydi.
+- **Maqsad yo'nalishlari:** Biznes, Kapital, Salomatlik, Islom va xayriya, Oila, Ilm, Boshqa.
+  - Eski «Xayriya» endi «Islom va xayriya» ichida.
+  - Eski `career` endi «Biznes».
+  - Bazani bir marta yangilash kerak: `python migrations.py 0015`. U ishlamaguncha ham eski yozuvlar yangi yo'nalishda ko'rinadi.
+  - Yo'nalish tanlansa, uchala daraja (haftalik, bosqich, hayotiy) shu yo'nalish bo'yicha saralanadi.
+    Haftalik maqsad o'zi bog'langan bosqichning yo'nalishini oladi.
+- **Guruhlar:** «Guruhlar» ochilganda avval guruhlar ro'yxati chiqadi, keyin tanlangan guruh.
+  - Vazifada «Kim bajaradi» uchta: **Birga** (har kim o'z ulushini), **Guruh uchun** (bittasi bajarsa yopiladi),
+    **Aniq odamga** (a'zo nomi bilan tanlanadi).
+  - Aniq odamga berilgan vazifa haqida o'sha odamga «📌 … sizga topshiriq berdi» xabari boradi.
+    Bu xabar «faqat menga tegishli» bildirishnoma darajasida ham keladi.
+  - «Ishlar» oynasidagi filtrlar: Hammasi · Menga · Men bergan · Birga.
+- **Qarzlar:** bir odamning hamma qarzi bitta kartada.
+  - Ism katta-kichik harf va bo'shliqdan qat'i nazar bir xil o'qiladi.
+  - Kartada jami summa ko'rinadi: qarama-qarshi tomondagi qarz undan ayiriladi.
+  - Karta ichida har bir qarz alohida turadi. U yerda «Yana qarz berdim / oldim» va «Hammasi qaytdi» tugmalari bor.
+- **Yaqinlarim** (Profil → Yaqinlarim) — Pro (50 kishigacha) va Max (cheklovsiz). Free uchun yopiq.
+  - Kartada: ism, familiya, kim bo'lishi, tug'ilgan kun, telefon, Telegram, Instagram, boshqa havola va eslatma.
+  - Har odam uchun «har N kunda bog'lanish» ritmi (7/14/30/90) tanlanadi. Muddati o'tganlar tepada turadi.
+    «Bog'landim» bosilsa, ritm qaytadan boshlanadi.
+  - Tug'ilgan kun umumiy tug'ilgan kunlar jadvalida saqlanadi, shu sababli ertalabki hisobot va taqvimda ko'rinadi.
+  - Ertalabki hisobotda «Bog'lanish vaqti» bo'limi chiqadi: ko'pi bilan 3 kishi.
+  - Odam o'chirilsa, tug'ilgan kuni ham o'chadi. Eksport va «barcha ma'lumotni o'chirish» Yaqinlarimni ham qamraydi.
+
+
+## Email bilan ro'yxatdan o'tish (v18)
+
+- Ilovaga email va 6 xonali kod bilan kiriladi, parol yo'q.
+  - Kod 10 daqiqa amal qiladi. 5 marta noto'g'ri kiritilsa, kod bekor bo'ladi.
+  - Bitta manzilga daqiqada 1 ta, soatiga 5 tagacha kod yuboriladi.
+  - Serverda faqat kodning SHA-256 digesti saqlanadi.
+- **Yangi email** — yangi akkaunt, Telegram'siz.
+  - Bunday akkauntning ID'si katta manfiy son: −10¹² dan pastga.
+  - Sozlash (ism, til, kuzatiladigan bo'limlar, uyg'onish vaqti) ilovaning o'zida bo'ladi.
+- **Ulangan email** — o'sha akkaunt. Telegram akkauntiga email Profilni tahrirlash → Email orqali ulanadi.
+  - Bir email faqat bitta akkauntga ulanadi. Bir akkauntda bitta email bo'ladi.
+- **Telegram'siz akkaunt:** hisobot, eslatma, guruh va daraja xabarlari ilova ichidagi Xabarlarga va push'ga keladi; Telegram'ga yuborilmaydi.
+  - Guruhga «Kod bilan qo'shilish» orqali kiriladi.
+  - To'lov Telegram Stars bilan: hisob-faktura shu akkauntga yoziladi, to'lovni istalgan Telegram'dan qilish mumkin.
+- **Email xizmati:**
+  - Resend (`RESEND_API_KEY`), Brevo (`BREVO_API_KEY`) yoki SMTP; yuboruvchi manzil `EMAIL_FROM`.
+  - Sozlanmagan bo'lsa, ilova buni ochiq aytadi va Telegram orqali kirishni taklif qiladi.
+  - Xat ketmagan bo'lsa, undagi kod ham ishlamaydi.
+- **Migratsiyalar:** server ishga tushganda `0014` va `0015` bir martadan avtomatik bajariladi va `applied_migrations` jadvaliga yoziladi.
+
+
+## Google va Apple bilan kirish, ovozli buyruq (v19)
+
+- **Google** (`GOOGLE_CLIENT_ID`; brauzer yo'li uchun `GOOGLE_CLIENT_SECRET` va `PUBLIC_URL` ham):
+  - telefonda Android'ning o'z akkaunt oynasi (Credential Manager) ochiladi, u `id_token` qaytaradi;
+  - server tokenni Google'ning ochiq kalitlari (JWKS) bilan tekshiradi: RS256 imzo, `iss`, `aud`, `exp`;
+  - oyna ishlamasa — Google sahifasi brauzerda ochiladi (code flow + nonce).
+- **Apple** (`APPLE_CLIENT_ID` = Services ID, `PUBLIC_URL`): faqat brauzer orqali, `form_post`, `id_token` nonce bilan tekshiriladi.
+- **Brauzer yo'lining himoyasi:**
+  - ilova maxfiy `verifier` yaratadi va brauzer manziliga faqat uning SHA-256 hashini (`state`) qo'yadi;
+  - sessiyani faqat `verifier` egasi bir marta oladi;
+  - manzil logga yoki tarixga tushsa ham, undan sessiya olib bo'lmaydi;
+  - urinish 10 daqiqa yashaydi.
+- **Bir odam — bitta akkaunt:** avval shu provayder identifikatori qidiriladi, keyin tasdiqlangan email bo'yicha mavjud akkaunt, topilmasa yangi akkaunt ochiladi.
+- **APK imzosi:** CI `ANDROID_KEYSTORE_B64` + `ANDROID_KEYSTORE_PASSWORD` bilan imzolaydi va SHA-1 ni Summary'ga yozadi. Kalit `scripts/make_android_key.py` bilan bir marta yaratiladi; repo va artefaktlarda saqlanmaydi.
+- **Ovozli buyruq:**
+  - 🎤 tugmasi `+` ustida turadi: Bugun, Vazifalar, Odatlar va Moliya ekranlarida;
+  - yozuv → AI matnga aylantiradi va karta tuzadi → **faqat «Tasdiqlash»dan keyin** bajariladi;
+  - AI yordamchida ham 🎤 bor (`/api/agent/chat/audio`): ovoz matnga aylanadi, so'ng oddiy suhbat navbati bo'ladi — savolga javob yoki tasdiqlash kartasi;
+  - limit matn bilan bir xil (Free haftasiga 3, Pro kuniga 30, Max kuniga 100). Limit tugagan bo'lsa, ovoz AI xizmatiga yuborilmaydi;
+  - ruxsat (consent) bo'lmasa, audio o'qilmaydi.
+- **Ovoz bilan yopish (bo'lgan ishni aytish):**
+  - «meetingga borib keldim», «tugatdim», «to'ladim» — mos vazifa `status=done`, odat `done=yes`. Yangi narsa yaratilmaydi; mos narsa topilmasa yoki bir nechtasi mos kelsa, AI bitta savol beradi;
+  - «Akmal qarzini berdi» — Akmalning ochiq qarzi to'liq yopiladi (`status=done`); «200 mingini qaytardi» — qisman qaytish (`paid`);
+  - qarzning kimi, summasi va yo'nalishi ovoz bilan o'zgarmaydi; qarz ovoz bilan o'chirilmaydi;
+  - qoldiqdan katta summa rad etiladi (`paid_exceeds_remaining`), yopilgan qarzga qayta yozilmaydi;
+  - AI ko'radigan ro'yxatda faqat ochiq qarzlar bor, har biri bilan qolgan summa (`owed`) va yo'nalishi.
+
+
+## Android ilova sifati (v20)
+
+- **Orqaga tugmasi:** bir daraja orqaga — oyna (sheet) → guruh → loyiha → «Bugun». Faqat «Bugun»dan ilova fonga ketadi.
+- **Status bar:** soat va batareya ikonkalari ilovaning o'z rejimiga (yorug'/tungi) moslashadi, telefon rejimiga emas.
+- **Eslatmalar:** «Aniq vaqt» ruxsati bo'lsa — aniq vaqtda, bo'lmasa — bir necha daqiqa kechikish bilan. Android sozlamalar oynasi faqat foydalanuvchi «Yoqish»ni bosganda ochiladi.
+- **Shrift o'lchami:** telefonning shrift o'lchami 85%–115% oralig'ida qo'llanadi; undan kattasi 115% da to'xtaydi (tor ekranda tablar sig'ishi uchun).
+- **Zaxira nusxa:** ilova ma'lumotlari Google/adb zaxirasiga va boshqa telefonga ko'chirishga tushmaydi (sessiya tokeni telefonda qoladi). Yangi telefonda qayta kiriladi, ma'lumotlar serverdan keladi.
+- **Release APK:** imzo kaliti bo'lsa CI release APK yig'adi (debuggable emas, WebView'ni USB orqali ko'rib bo'lmaydi).
+- **Xatolar haqida xabar:** telefondagi JS xatosi serverga `/api/app/client-error` orqali boradi. Logga xabar matni, ekran va build yoziladi; token, email va initData kesiladi; akkaunt faqat qisqa hash bilan. Bir seansda ko'pi bilan 20 ta, serverda 10 daqiqada 10 ta (alohida limit, kirish limitiga ta'sir qilmaydi).
+- **Moliya:** mikrofon faqat kiritish maydoni yonida (FAB mikrofoni yo'q). **Profil** (Qadam, Statistika) ekranlarida `+` yo'q.

@@ -50,6 +50,8 @@ h1{font-size:26px;line-height:1.2;margin:0 0 8px;text-align:center;font-weight:7
 input{width:100%;min-height:56px;border:1px solid var(--border-2);border-radius:12px;background:var(--surface);
       color:var(--text);font:inherit;font-size:24px;font-weight:650;letter-spacing:.18em;text-align:center;
       text-transform:uppercase;margin:4px 0 12px;outline:0}
+input.mail{font-size:17px;font-weight:500;letter-spacing:0;text-align:left;text-transform:none;padding:0 14px}
+input.otp{letter-spacing:.5em}
 input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 25%,transparent)}
 .msg{min-height:22px;font-size:14px;text-align:center;margin:0 0 12px;color:var(--danger)}
 .hint{color:var(--text-3);font-size:13px;text-align:center;margin:20px 0 0}
@@ -62,6 +64,42 @@ input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,v
 .row input{flex:1}
 .paste{flex:0 0 auto;min-height:56px;margin:4px 0 12px;padding:0 14px;border-radius:12px;font:inherit;
       font-size:14px;border:1px solid var(--border-2);background:var(--surface);color:var(--text);cursor:pointer}
+.label{font-size:14px;font-weight:600;color:var(--text-2);margin:0 0 2px}
+.sent{color:var(--text-2);font-size:15px;margin:0 0 8px}
+.sent b{color:var(--text);word-break:break-all}
+.link{background:none;border:0;color:var(--primary);font:inherit;font-size:14px;font-weight:600;cursor:pointer;padding:8px 0}
+.link[disabled]{color:var(--text-3);cursor:default}
+.links{display:flex;justify-content:space-between;gap:8px;margin-top:4px}
+details.tg{margin-top:16px}
+details.tg summary{cursor:pointer;color:var(--text-2);font-size:14px;font-weight:600;text-align:center;
+      list-style:none;padding:10px 0}
+details.tg summary::-webkit-details-marker{display:none}
+details.tg[open] summary{margin-bottom:8px}
+.note{font-size:13px;color:var(--text-3);text-align:center;margin:12px 0 0}
+.or{display:flex;align-items:center;gap:12px;color:var(--text-3);font-size:13px;margin:18px 0 12px}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--border-2)}
+.sbtn{width:100%;min-height:50px;border-radius:12px;font:inherit;font-size:16px;font-weight:600;cursor:pointer;
+      display:flex;align-items:center;justify-content:center;gap:10px;margin:0 0 10px;padding:0 16px}
+.sbtn svg{flex:0 0 20px;width:20px;height:20px}
+.sbtn.google{background:#FFFFFF;color:#1F1F1F;border:1px solid #747775}
+.sbtn.apple{background:#000000;color:#FFFFFF;border:1px solid #000000}
+@media (prefers-color-scheme: dark){
+  .sbtn.google{background:#131314;color:#E3E3E3;border-color:#8E918F}
+  .sbtn.apple{background:#FFFFFF;color:#000000;border-color:#FFFFFF}
+}
+.sbtn[disabled]{opacity:.5}
+.waiting{color:var(--text-2);font-size:14px;text-align:center;margin:4px 0 0}
+/* Why ErnestOS: five things no other app does together. */
+.usp{margin:28px 0 0}
+.usp h2{font-size:18px;margin:0 0 12px;text-align:center}
+.usp ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.usp li{display:flex;gap:12px;align-items:flex-start;background:var(--surface);border:1px solid var(--border);
+        border-radius:16px;padding:12px 14px}
+.usp .ic{flex:0 0 36px;height:36px;border-radius:10px;background:var(--surface-2);display:grid;place-items:center;font-size:19px}
+.usp b{display:block;color:var(--text);font-size:15px;line-height:1.3}
+.usp span{color:var(--text-2);font-size:14px;line-height:1.4}
+.legal{font-size:13px;color:var(--text-2);text-align:center;margin:22px 0 0;line-height:1.5}
+.legal a{color:var(--primary);font-weight:600}
 </style>
 </head>
 <body>
@@ -74,31 +112,108 @@ input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,v
     <button type="button" data-lang="ru">Русский</button>
     <button type="button" data-lang="en">English</button>
   </div>
-  <div class="card">
-    <div class="step"><span class="num">1</span><p id="t-step1"></p></div>
-    <button class="btn secondary" id="get-code" type="button"></button>
-    <div class="gap"></div>
-    <div class="step"><span class="num">2</span><p id="t-step2"></p></div>
-    <form id="form" autocomplete="off">
-      <div class="row">
-        <input id="code" inputmode="text" autocapitalize="characters" spellcheck="false"
-               autocomplete="one-time-code" maxlength="9" placeholder="ABCD-2345" aria-label="code" />
-        <button class="paste" id="paste" type="button"></button>
-      </div>
-      <p class="msg" id="msg" role="alert"></p>
-      <button class="btn" id="submit" type="submit"></button>
+
+  <!-- Email: the way in for everybody. A new address makes an account. -->
+  <div class="card" id="email-card">
+    <form id="email-form" autocomplete="on">
+      <p class="label" id="t-email"></p>
+      <input id="email" class="mail" type="email" inputmode="email" autocomplete="email"
+             autocapitalize="off" spellcheck="false" maxlength="254" placeholder="you@example.com" />
+      <p class="msg" id="email-msg" role="alert"></p>
+      <button class="btn" id="send" type="submit"></button>
     </form>
+    <form id="otp-form" autocomplete="off" hidden>
+      <p class="sent" id="t-sent"></p>
+      <input id="otp" class="otp" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code"
+             maxlength="6" placeholder="••••••" aria-label="code" />
+      <p class="msg" id="otp-msg" role="alert"></p>
+      <button class="btn" id="verify" type="submit"></button>
+      <div class="links">
+        <button class="link" id="resend" type="button"></button>
+        <button class="link" id="change" type="button"></button>
+      </div>
+    </form>
+    <p class="note" id="t-note"></p>
   </div>
-  <p class="hint" id="t-hint"></p>
+
+  <!-- Google / Apple: the account already on the phone. Shown only when the
+       server has the provider set up (see /api/app/config). -->
+  <div id="social" hidden>
+    <div class="or" id="t-or"></div>
+    <button class="sbtn google" id="google" type="button" hidden>
+      <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+      <span id="t-google"></span>
+    </button>
+    <button class="sbtn apple" id="apple" type="button" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.37 12.6c-.02-2.3 1.88-3.4 1.96-3.46-1.07-1.56-2.73-1.78-3.32-1.8-1.41-.14-2.76.83-3.48.83-.72 0-1.83-.81-3-.79-1.55.02-2.97.9-3.77 2.28-1.6 2.79-.41 6.91 1.16 9.17.76 1.1 1.67 2.35 2.87 2.3 1.15-.05 1.59-.75 2.98-.75 1.39 0 1.78.75 3 .72 1.24-.02 2.03-1.12 2.78-2.23.88-1.28 1.24-2.52 1.26-2.58-.03-.01-2.42-.93-2.44-3.69zM14.1 5.86c.63-.77 1.06-1.83.94-2.89-.91.04-2.02.61-2.67 1.37-.58.67-1.09 1.76-.96 2.8 1.02.08 2.06-.52 2.69-1.28z"/></svg>
+      <span id="t-apple"></span>
+    </button>
+    <p class="msg" id="social-msg" role="alert"></p>
+    <div id="social-wait" hidden>
+      <p class="waiting" id="t-waiting"></p>
+      <div class="links" style="justify-content:center"><button class="link" id="social-cancel" type="button"></button></div>
+    </div>
+  </div>
+
+  <!-- Telegram: the bot's code, for those who started there. -->
+  <details class="tg" id="tg-box">
+    <summary id="t-tg"></summary>
+    <div class="card">
+      <div class="step"><span class="num">1</span><p id="t-step1"></p></div>
+      <button class="btn secondary" id="get-code" type="button"></button>
+      <div class="gap"></div>
+      <div class="step"><span class="num">2</span><p id="t-step2"></p></div>
+      <form id="form" autocomplete="off">
+        <div class="row">
+          <input id="code" inputmode="text" autocapitalize="characters" spellcheck="false"
+                 autocomplete="one-time-code" maxlength="9" placeholder="ABCD-2345" aria-label="code" />
+          <button class="paste" id="paste" type="button"></button>
+        </div>
+        <p class="msg" id="msg" role="alert"></p>
+        <button class="btn" id="submit" type="submit"></button>
+      </form>
+      <p class="hint" id="t-hint"></p>
+    </div>
+  </details>
+
+  <!-- Why ErnestOS: the five things it does that other planners do not. -->
+  <section class="usp" aria-labelledby="t-usp">
+    <h2 id="t-usp"></h2>
+    <ul id="usp-list"></ul>
+  </section>
+
+  <p class="legal" id="legal"></p>
 </main>
 <script>
 (function(){
-  /* K09: the language can be picked here and is remembered; the bot's name is
-     remembered too, so "Get a code" works on a second launch with no signal;
-     each failure says what actually happened; a copied code can be pasted
-     with one tap and is sent as soon as it is complete. */
+  /* Email first: an address and the six digits mailed to it are the whole
+     sign-up — and the whole sign-in after that. The Telegram bot's code
+     stays below for accounts that began in Telegram (or attach the email in
+     Settings, and use it here from then on). */
   var L = {
-    uz:{lead:"Telegram botdagi kod bilan kiring. Ma'lumotlaringiz bot va ilovada bir xil.",
+    uz:{usp:"Nega ErnestOS?",
+        usps:[["🎙","O'zbekcha gapiring — u bajaradi","«Ertaga 10 da Aziz bilan uchrashuv», «Tushlik 45 ming», «Akmal qarzini berdi». Sheva, rus-o'zbek aralash ham tushunadi. Siz tasdiqlaysiz, keyin bajariladi."],
+              ["🧭","Butun hayot — bitta ilovada","Vazifa, odat, namoz, moliya, qarz, maqsad va yaqinlar. 5–6 ta ilova o'rniga bittasi, bitta «Bugun» va bitta statistika."],
+              ["🕌","Musulmon kun tartibiga mos","5 vaqt namoz (jamoat bilan, vaqtida, qazo) kunlik natijangizga kiradi; «Islom va xayriya» maqsadlari alohida yo'nalish."],
+              ["🎯","«Hozir» — bitta ish, ro'yxat emas","Ochganingizda ro'yxat emas, aynan hozir qilinadigan bitta ish turadi. Pro/Max'da uni AI tanlaydi va sababini bir gapda aytadi."],
+              ["👥","Telegram'da ham, telefonda ham, jamoa bilan","Bot va Mini App, Android ilova — bitta akkaunt. Oila yoki jamoaga topshiriq bering, kim nima qilganini ko'ring."]],
+        legal:"Davom etsangiz, {privacy} bilan rozilik bildirasiz. {delete}",
+        privacy:"Maxfiylik siyosati", delete_acc:"Akkauntni o'chirish",
+        or:"yoki", google:"Google orqali kirish", apple:"Apple orqali kirish",
+        waiting:"Brauzerda kirishni yakunlang — ilova o'zi davom etadi.", cancel:"Bekor qilish",
+        social_fail:"Kirib bo'lmadi. Qayta urinib ko'ring yoki email bilan kiring.",
+        social_off:"Bu usul hali sozlanmagan. Email bilan kiring.",
+        social_expired:"Vaqt tugadi. Qayta bosing.",
+        lead:"Email bilan kiring yoki ro'yxatdan o'ting. Parol kerak emas — emailingizga kod keladi.",
+        email:"Email manzilingiz", send:"Kod yuborish", sending:"Yuborilmoqda…",
+        sent:"6 xonali kod <b>{email}</b> manziliga yuborildi. Xat kelmasa, Spam papkasini ham ko'ring.",
+        verify:"Kirish", resend:"Kodni qayta yuborish", resend_in:"Qayta yuborish · {n}", change:"Boshqa email",
+        note:"Yangi email bo'lsa, akkaunt o'zi yaratiladi.",
+        bad_email:"Email manzili noto'g'ri.", bad_otp:"Kod noto'g'ri yoki eskirgan. Yangisini so'rang.",
+        otp_short:"Kod 6 ta raqam.", too_soon:"{n} soniyadan keyin qayta yuborish mumkin.",
+        no_mail:"Email orqali kirish hali yoqilmagan. Hozircha Telegram orqali kiring.",
+        mail_fail:"Xat yuborilmadi. Birozdan keyin qayta urining.",
+        tg:"Telegram orqali kirish",
         step1:"<b>Botdan kod oling.</b> Bot ochiladi va 8 belgili kod yuboradi.",
         step2:"<b>Kodni shu yerga yozing yoki joylang.</b>",
         get:"Telegram'da kod olish", submit:"Kirish", wait:"Tekshirilmoqda…", paste:"Joylash",
@@ -111,7 +226,29 @@ input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,v
         noclip:"Nusxa topilmadi. Kodni qo'lda yozing.",
         short:"Kod 8 ta belgidan iborat.",
         hint:"Botni topa olmasangiz, Telegram'da botga /app deb yozing."},
-    ru:{lead:"Войдите с кодом из Telegram-бота. Данные в боте и приложении общие.",
+    ru:{usp:"Почему ErnestOS?",
+        usps:[["🎙","Скажите по-узбекски — оно сделает","«Завтра в 10 встреча с Азизом», «Обед 45 тысяч», «Акмал вернул долг». Понимает диалекты и смесь русского с узбекским. Вы подтверждаете — затем выполняется."],
+              ["🧭","Вся жизнь — в одном приложении","Задачи, привычки, намаз, финансы, долги, цели и близкие. Одно вместо 5–6 приложений, один «Сегодня» и одна статистика."],
+              ["🕌","Под распорядок мусульманина","5 намазов (с джамаатом, вовремя, када) входят в итог дня; цели «Ислам и благотворительность» — отдельное направление."],
+              ["🎯","«Сейчас» — одно дело, а не список","При открытии — не список, а одно дело, которое нужно сделать сейчас. В Pro/Max его выбирает AI и объясняет причину одной фразой."],
+              ["👥","В Telegram и на телефоне, вместе с командой","Бот и Mini App, Android-приложение — один аккаунт. Давайте задачи семье или команде и видите, кто что сделал."]],
+        legal:"Продолжая, вы принимаете {privacy}. {delete}",
+        privacy:"Политику конфиденциальности", delete_acc:"Удаление аккаунта",
+        or:"или", google:"Войти через Google", apple:"Войти через Apple",
+        waiting:"Завершите вход в браузере — приложение продолжит само.", cancel:"Отмена",
+        social_fail:"Не удалось войти. Попробуйте снова или войдите по email.",
+        social_off:"Этот способ ещё не настроен. Войдите по email.",
+        social_expired:"Время вышло. Нажмите ещё раз.",
+        lead:"Войдите или зарегистрируйтесь по email. Пароль не нужен — на почту придёт код.",
+        email:"Ваш email", send:"Отправить код", sending:"Отправляем…",
+        sent:"Код из 6 цифр отправлен на <b>{email}</b>. Если письма нет, проверьте папку «Спам».",
+        verify:"Войти", resend:"Отправить ещё раз", resend_in:"Ещё раз · {n}", change:"Другой email",
+        note:"Если email новый, аккаунт создастся сам.",
+        bad_email:"Неверный email.", bad_otp:"Код неверный или устарел. Запросите новый.",
+        otp_short:"Код — 6 цифр.", too_soon:"Повторно можно через {n} сек.",
+        no_mail:"Вход по email ещё не включён. Пока войдите через Telegram.",
+        mail_fail:"Письмо не отправлено. Попробуйте чуть позже.",
+        tg:"Войти через Telegram",
         step1:"<b>Получите код в боте.</b> Бот откроется и пришлёт код из 8 символов.",
         step2:"<b>Введите или вставьте код здесь.</b>",
         get:"Получить код в Telegram", submit:"Войти", wait:"Проверяем…", paste:"Вставить",
@@ -124,7 +261,29 @@ input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,v
         noclip:"В буфере ничего нет. Введите код вручную.",
         short:"Код состоит из 8 символов.",
         hint:"Если бот не открылся, напишите ему в Telegram /app."},
-    en:{lead:"Sign in with a code from the Telegram bot. Your data is the same in the bot and the app.",
+    en:{usp:"Why ErnestOS?",
+        usps:[["🎙","Speak Uzbek — it gets done","“Meeting with Aziz tomorrow at 10”, “Lunch 45 thousand”, “Akmal paid back his debt”. Understands dialects and Uzbek mixed with Russian. You confirm, then it happens."],
+              ["🧭","Your whole life in one app","Tasks, habits, prayer, money, debts, goals and close people. One app instead of five or six, one Today and one set of stats."],
+              ["🕌","Built around a Muslim day","The five daily prayers (in congregation, on time, qada) count in your day's result; Islam & charity is a goal area of its own."],
+              ["🎯","“Now” — one thing, not a list","You open the app to the one thing to do right now, not a list. On Pro/Max the AI picks it and says why in one sentence."],
+              ["👥","In Telegram and on your phone, with your team","Bot and Mini App, Android app — one account. Assign tasks to family or a team and see who did what."]],
+        legal:"By continuing you accept the {privacy}. {delete}",
+        privacy:"Privacy policy", delete_acc:"Delete account",
+        or:"or", google:"Sign in with Google", apple:"Sign in with Apple",
+        waiting:"Finish signing in in the browser — the app carries on by itself.", cancel:"Cancel",
+        social_fail:"Could not sign in. Try again or use your email.",
+        social_off:"This way is not set up yet. Use your email.",
+        social_expired:"That took too long. Tap again.",
+        lead:"Sign in or sign up with your email. No password — a code comes to your inbox.",
+        email:"Your email", send:"Send code", sending:"Sending…",
+        sent:"A 6-digit code went to <b>{email}</b>. If it is not there, check Spam too.",
+        verify:"Sign in", resend:"Send again", resend_in:"Send again · {n}", change:"Another email",
+        note:"A new email creates an account by itself.",
+        bad_email:"That email does not look right.", bad_otp:"The code is wrong or expired. Ask for a new one.",
+        otp_short:"The code is 6 digits.", too_soon:"You can send again in {n} seconds.",
+        no_mail:"Email sign-in is not switched on yet. Use Telegram for now.",
+        mail_fail:"The email was not sent. Try again shortly.",
+        tg:"Sign in with Telegram",
         step1:"<b>Get a code from the bot.</b> The bot opens and sends an 8-character code.",
         step2:"<b>Type or paste the code here.</b>",
         get:"Get a code in Telegram", submit:"Sign in", wait:"Checking…", paste:"Paste",
@@ -146,21 +305,51 @@ input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,v
   var lang = keep.get("ernest.app.lang") || (navigator.language || "uz").slice(0,2);
   if(!L[lang]) lang = "uz";
   var T = L[lang];
+  var mail = {email: keep.get("ernest.app.email") || "", stage: "email", wait: 0, timer: null};
 
   function paint(){
     T = L[lang];
     document.documentElement.lang = lang;
     $("t-lead").textContent = T.lead;
+    $("t-email").textContent = T.email;
+    $("send").textContent = T.send;
+    $("verify").textContent = T.verify;
+    $("change").textContent = T.change;
+    $("t-note").textContent = T.note;
+    $("t-tg").textContent = T.tg;
     $("t-step1").innerHTML = T.step1;
     $("t-step2").innerHTML = T.step2;
     $("get-code").textContent = T.get;
     $("submit").textContent = T.submit;
     $("paste").textContent = T.paste;
     $("t-hint").textContent = T.hint;
+    $("t-or").textContent = T.or;
+    $("t-usp").textContent = T.usp;
+    $("usp-list").innerHTML = T.usps.map(function(u){
+      return '<li><span class="ic" aria-hidden="true">' + u[0] + '</span><div><b>' + u[1] + '</b><span>' + u[2] + '</span></div></li>';
+    }).join("");
+    var base = (window.ErnestApp && window.ErnestApp.api) || "";
+    var link = function(path, text){
+      return '<a href="' + base + path + '?lang=' + lang + '" data-ext="1">' + text + '</a>'; };
+    $("legal").innerHTML = T.legal.replace("{privacy}", link("/privacy", T.privacy))
+                                  .replace("{delete}", link("/account/delete", T.delete_acc));
+    $("t-google").textContent = T.google;
+    $("t-apple").textContent = T.apple;
+    $("t-waiting").textContent = T.waiting;
+    $("social-cancel").textContent = T.cancel;
     $("msg").textContent = "";
+    paintMail();
     Array.prototype.forEach.call(document.querySelectorAll("[data-lang]"), function(b){
       b.setAttribute("aria-pressed", b.getAttribute("data-lang") === lang ? "true" : "false");
     });
+  }
+  function paintMail(){
+    $("email-form").hidden = mail.stage !== "email";
+    $("otp-form").hidden = mail.stage !== "code";
+    $("t-sent").innerHTML = T.sent.replace("{email}", mail.email.replace(/[<>&"]/g, ""));
+    $("resend").disabled = mail.wait > 0;
+    $("resend").textContent = mail.wait > 0 ? T.resend_in.replace("{n}", mail.wait) : T.resend;
+    if(mail.stage === "email" && !$("email").value) $("email").value = mail.email;
   }
   Array.prototype.forEach.call(document.querySelectorAll("[data-lang]"), function(b){
     b.onclick = function(){ lang = b.getAttribute("data-lang"); keep.set("ernest.app.lang", lang); paint(); };
@@ -169,14 +358,206 @@ input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,v
 
   var bot = keep.get("ernest.app.bot") || "";
   fetch("/api/app/config").then(function(r){ return r.json(); })
-    .then(function(c){ if(c.bot_username){ bot = c.bot_username; keep.set("ernest.app.bot", bot); } })
+    .then(function(c){
+      if(c.bot_username){ bot = c.bot_username; keep.set("ernest.app.bot", bot); }
+      // No mail service on the server: say so, and open the Telegram way.
+      if(c.email === false){ $("email-msg").textContent = T.no_mail; $("tg-box").open = true; }
+      showSocial(c);
+    })
     .catch(function(){});
 
+  function device(){
+    return ((window.Telegram && Telegram.WebApp.platform) || "app") + " · " +
+           (navigator.userAgent.match(/\(([^;)]+;[^;)]+)/) || ["", ""])[1].slice(0, 60);
+  }
+  function post(path, body){
+    var ctl = window.AbortController ? new AbortController() : null;
+    var timer = setTimeout(function(){ if(ctl) ctl.abort(); }, 20000);
+    return fetch(path, {method:"POST", headers:{"Content-Type":"application/json"},
+                        body: JSON.stringify(body), signal: ctl ? ctl.signal : undefined})
+      .then(function(r){ clearTimeout(timer); return r; },
+            function(e){ clearTimeout(timer); throw e; });
+  }
+  function tick(){
+    clearInterval(mail.timer);
+    mail.timer = setInterval(function(){
+      mail.wait = Math.max(0, mail.wait - 1);
+      paintMail();
+      if(!mail.wait) clearInterval(mail.timer);
+    }, 1000);
+  }
+  function failText(e){ return e && e.name === "AbortError" ? T.slow : T.offline; }
+
+  var sending = false;
+  function sendCode(msgEl){
+    var email = ($("email").value || mail.email).trim();
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email)){ msgEl.textContent = T.bad_email; return; }
+    if(sending) return;
+    sending = true;
+    var btn = $("send"); btn.disabled = true; btn.textContent = T.sending;
+    msgEl.textContent = "";
+    post("/api/auth/email/start", {email: email, language: lang})
+      .then(function(r){
+        if(r.ok) return r.json().then(function(b){
+          mail.email = email.toLowerCase(); keep.set("ernest.app.email", mail.email);
+          mail.stage = "code"; mail.wait = b.resend_in || 60; tick(); paintMail();
+          $("otp").value = ""; $("otp").focus();
+        });
+        var n = parseInt(r.headers.get("Retry-After") || "60", 10) || 60;
+        if(r.status === 422) msgEl.textContent = T.bad_email;
+        else if(r.status === 429){
+          msgEl.textContent = T.too_soon.replace("{n}", n);
+          if(mail.stage === "code"){ mail.wait = n; tick(); paintMail(); }
+        }
+        else if(r.status === 503){ msgEl.textContent = T.no_mail; $("tg-box").open = true; }
+        else if(r.status === 502) msgEl.textContent = T.mail_fail;
+        else msgEl.textContent = T.server;
+      })
+      .catch(function(e){ msgEl.textContent = failText(e); })
+      .then(function(){ sending = false; btn.disabled = false; btn.textContent = T.send; });
+  }
+  $("email-form").addEventListener("submit", function(e){ e.preventDefault(); sendCode($("email-msg")); });
+  $("resend").onclick = function(){ if(!mail.wait) sendCode($("otp-msg")); };
+  $("change").onclick = function(){ mail.stage = "email"; $("email").value = mail.email; paintMail(); $("email").focus(); };
+
+  var checking = false;
+  function verify(){
+    var code = $("otp").value.replace(/\D/g, "");
+    if(code.length !== 6){ $("otp-msg").textContent = T.otp_short; return; }
+    if(checking) return;
+    checking = true;
+    var btn = $("verify"); btn.disabled = true; btn.textContent = T.wait;
+    post("/api/auth/email/verify", {email: mail.email, code: code, device: device(), language: lang})
+      .then(function(r){
+        if(r.ok) return r.json().then(function(b){ window.ErnestApp.signIn(b.token); });
+        if(r.status === 429){
+          var n = parseInt(r.headers.get("Retry-After") || "60", 10) || 60;
+          $("otp-msg").textContent = T.many.replace("{n}", n);
+        } else if(r.status >= 500) $("otp-msg").textContent = T.server;
+        else $("otp-msg").textContent = T.bad_otp;
+      })
+      .catch(function(e){ $("otp-msg").textContent = failText(e); })
+      .then(function(){ checking = false; btn.disabled = false; btn.textContent = T.verify; });
+  }
+  $("otp").addEventListener("input", function(){
+    $("otp-msg").textContent = "";
+    var v = $("otp").value.replace(/\D/g, "").slice(0, 6);
+    $("otp").value = v;
+    if(v.length === 6 && !checking) verify();
+  });
+  $("otp-form").addEventListener("submit", function(e){ e.preventDefault(); verify(); });
+
+  /* ---- Google / Apple ----
+     Google: the phone's own account sheet (one tap) when the app has it;
+     otherwise, and for Apple, the provider's page in the in-app browser.
+     The browser way: the app makes a secret verifier, sends only its hash
+     (the state) through the browser, and collects the session from the
+     server with the verifier once the provider sends the person back. */
+  var social = {cfg: {}, busy: false, verifier: "", timer: null, until: 0};
+  function showSocial(c){
+    social.cfg = {google: c.google || null, apple: c.apple || null};
+    var g = !!(c.google && (window.ErnestApp.nativeGoogle || c.google.browser));
+    var a = !!c.apple;
+    $("google").hidden = !g;
+    $("apple").hidden = !a;
+    $("social").hidden = !(g || a);
+  }
+  function socialBusy(on){
+    social.busy = on;
+    $("google").disabled = on; $("apple").disabled = on;
+  }
+  function socialFail(text){
+    stopWaiting();
+    socialBusy(false);
+    $("social-msg").textContent = text || T.social_fail;
+  }
+  function hex(bytes){
+    return Array.prototype.map.call(bytes, function(b){ return ("0" + b.toString(16)).slice(-2); }).join("");
+  }
+  function viaBrowser(provider){
+    var c = window.crypto;
+    if(!c || !c.getRandomValues || !c.subtle){ socialFail(); return; }
+    var v = new Uint8Array(32); c.getRandomValues(v);
+    var verifier = hex(v);
+    c.subtle.digest("SHA-256", new TextEncoder().encode(verifier)).then(function(d){
+      social.verifier = verifier;
+      social.until = Date.now() + 10 * 60 * 1000;
+      $("social-wait").hidden = false;
+      window.ErnestApp.open(window.ErnestApp.api + "/api/auth/oauth/" + provider + "/start?state=" +
+                            hex(new Uint8Array(d)) + "&lang=" + lang);
+      clearInterval(social.timer);
+      social.timer = setInterval(poll, 2000);
+    }).catch(function(){ socialFail(); });
+  }
+  function stopWaiting(){
+    clearInterval(social.timer);
+    social.verifier = "";
+    $("social-wait").hidden = true;
+  }
+  var polling = false;
+  function poll(){
+    if(!social.verifier || polling) return;
+    if(Date.now() > social.until){ socialFail(T.social_expired); return; }
+    polling = true;
+    var mine = social.verifier;
+    post("/api/auth/oauth/poll", {verifier: mine})
+      .then(function(r){ return r.ok ? r.json() : {status: "error"}; })
+      .then(function(b){
+        if(mine !== social.verifier) return;          // cancelled meanwhile
+        if(b.status === "done"){ stopWaiting(); window.ErnestApp.signIn(b.token); }
+        else if(b.status === "error") socialFail();
+        // "pending" waits; "unknown" means the browser has not reached us yet.
+      })
+      .catch(function(){ /* offline for a moment: the next tick tries again */ })
+      .then(function(){ polling = false; });
+  }
+  window.addEventListener("ernest:return", function(){ poll(); });
+  document.addEventListener("visibilitychange", function(){ if(!document.hidden) poll(); });
+  $("social-cancel").onclick = function(){ stopWaiting(); socialBusy(false); };
+
+  $("google").onclick = function(){
+    var g = social.cfg.google;
+    if(!g || social.busy) return;
+    $("social-msg").textContent = "";
+    socialBusy(true);
+    if(!window.ErnestApp.nativeGoogle){ viaBrowser("google"); return; }
+    window.ErnestApp.googleSignIn(g.client_id)
+      .then(function(idToken){
+        return post("/api/auth/social/google", {id_token: idToken, device: device(), language: lang})
+          .then(function(r){
+            if(r.ok) return r.json().then(function(b){ window.ErnestApp.signIn(b.token); });
+            if(r.status === 503) socialFail(T.social_off);
+            else if(r.status === 429) socialFail(T.many.replace("{n}", r.headers.get("Retry-After") || "60"));
+            else socialFail();
+          }, function(e){ socialFail(failText(e)); });
+      }, function(e){
+        var m = String(e && (e.message || e.code) || "");
+        if(/cancel/i.test(m)){ socialBusy(false); return; }   // closed the sheet
+        // No picker on this phone (old Play services, unregistered build):
+        // the browser way still works when the server has it.
+        if(g.browser) viaBrowser("google"); else socialFail();
+      });
+  };
+  $("apple").onclick = function(){
+    if(!social.cfg.apple || social.busy) return;
+    $("social-msg").textContent = "";
+    socialBusy(true);
+    viaBrowser("apple");
+  };
+
+  /* The policy and deletion pages open in the phone's browser. */
+  document.addEventListener("click", function(e){
+    var a = e.target.closest && e.target.closest("a[data-ext]");
+    if(!a) return;
+    e.preventDefault();
+    window.ErnestApp.open(a.href);
+  });
+
+  /* ---- Telegram: the bot's 8-character code ---- */
   $("get-code").onclick = function(){
     if(!bot){ $("msg").textContent = T.nobot; window.ErnestApp.open("https://t.me/"); return; }
     window.ErnestApp.open("https://t.me/" + bot + "?start=app");
   };
-
   var input = $("code");
   function tidy(){
     var raw = input.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
@@ -185,7 +566,6 @@ input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,v
   }
   input.addEventListener("input", function(){
     $("msg").textContent = "";
-    // A pasted or autofilled whole code goes at once.
     if(tidy().length === 8 && !busy) submit();
   });
   $("paste").onclick = function(){
@@ -198,20 +578,13 @@ input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,v
       if(tidy().length === 8) submit();
     }).catch(function(){ $("msg").textContent = T.noclip; input.focus(); });
   };
-
   var busy = false;
   function submit(){
     var code = input.value.replace(/[^A-Z0-9]/gi, "");
     if(code.length !== 8){ $("msg").textContent = T.short; return; }
     var btn = $("submit");
     busy = true; btn.disabled = true; btn.textContent = T.wait;
-    var device = ((window.Telegram && Telegram.WebApp.platform) || "app") + " · " +
-                 (navigator.userAgent.match(/\(([^;)]+;[^;)]+)/) || ["", ""])[1].slice(0, 60);
-    var ctl = window.AbortController ? new AbortController() : null;
-    var timer = setTimeout(function(){ if(ctl) ctl.abort(); }, 15000);
-    fetch("/api/app/login", {method:"POST", headers:{"Content-Type":"application/json"},
-                             body: JSON.stringify({code: code, device: device}),
-                             signal: ctl ? ctl.signal : undefined})
+    post("/api/app/login", {code: code, device: device()})
       .then(function(r){
         if(r.ok) return r.json().then(function(b){ window.ErnestApp.signIn(b.token); });
         if(r.status === 429){
@@ -223,10 +596,8 @@ input:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,v
           $("msg").textContent = T.bad;
         }
       })
-      .catch(function(e){
-        $("msg").textContent = e && e.name === "AbortError" ? T.slow : T.offline;
-      })
-      .then(function(){ clearTimeout(timer); busy = false; btn.disabled = false; btn.textContent = T.submit; });
+      .catch(function(e){ $("msg").textContent = failText(e); })
+      .then(function(){ busy = false; btn.disabled = false; btn.textContent = T.submit; });
   }
   $("form").addEventListener("submit", function(e){ e.preventDefault(); if(!busy) submit(); });
 })();

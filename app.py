@@ -13,10 +13,13 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import hashlib
 import hmac
 import json
+import legal
 import logging
 import os
+import re
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -26,7 +29,7 @@ from urllib.parse import quote
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select, text as sql_text
 from sqlalchemy.exc import DBAPIError, OperationalError
@@ -43,7 +46,13 @@ from telegram.ext import (
 
 import accounts
 import app_auth
+import email_auth
+import mailer
+import oidc
+import social_auth
 import app_push
+import coins
+import promo
 import plans
 import agent_api
 import agent_core
@@ -457,7 +466,7 @@ async def notify_level_up(bot, telegram_id: int, level: dict, lang: str) -> None
     the transaction that awarded the level in the first place.
     """
     try:
-        await bot.send_message(
+        await AccountFanOut(bot, "progress").send_message(
             telegram_id,
             t(lang, "level_up", numeral=level["numeral"],
               name=t(lang, f"plevel_{level['key']}"),
@@ -2388,34 +2397,36 @@ async def show_team_tasks(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
 # Settings
 # ---------------------------------------------------------------------------
 
-#: Five themes, in the Mini App picker's order. Each is a complete visual
-#: system — its own colour, radius, shadow depth, gradient policy, type weight
-#: and motion timing — not the same screen in a different hue:
+#: Four themes, in the Mini App picker's order (v15):
 #:
-#:   ocean     Ocean Glass. Frosted panels over deep blue. The default.
-#:   midnight  Midnight Minimal. Calm dark, no gradient, low stimulus.
-#:   aurora    Aurora Glass. Glass over indigo/violet/cyan light.
-#:   bento     Pure Bento. Light, bordered blocks; fastest to read.
-#:   spatial   Spatial Layered. Floating planes and long soft shadows.
+#:   clean-white  Clean White. Blue on white; the default and the only theme
+#:                on Free, which also stays in light mode.
+#:   blossom      Soft rose, blush and wine.
+#:   obsidian     Monochrome slate with an ice-blue accent.
+#:   emerald      Racing green, emerald and bronze.
 #:
-#: Every earlier name is mapped forward by migrations 0007 and 0008; an
-#: unknown value reads as the default rather than being rejected, so no
-#: account can end up with no theme at all.
-THEMES = ["ocean", "midnight", "aurora", "bento", "spatial"]
-DEFAULT_THEME = "ocean"
+#: Every earlier name is mapped forward by migration 0014; an unknown value
+#: reads as its successor or the default, so no account is left without one.
+THEMES = ["clean-white", "blossom", "obsidian", "emerald"]
+DEFAULT_THEME = "clean-white"
+#: The one theme Free has; the other three need Pro or Max (plans "themes").
+FREE_THEME = "clean-white"
 
 #: Product names, so the chat picker and the Mini App picker say the same
 #: thing. The id is what is stored; this is only ever displayed.
 THEME_NAMES = {
-    "ocean": "Ocean Glass", "midnight": "Midnight Minimal",
-    "aurora": "Aurora Glass", "bento": "Pure Bento",
-    "spatial": "Spatial Layered",
+    "clean-white": "Clean White", "blossom": "Blossom",
+    "obsidian": "Obsidian Slate", "emerald": "Emerald Royal",
 }
 
 
 def theme_of(name: str | None) -> str:
-    """Read a stored theme, falling back for names that no longer exist."""
-    return name if name in THEMES else DEFAULT_THEME
+    """Read a stored theme. An older name reads as its successor (migration
+    0014's map) until the migration has rewritten it."""
+    from migrations import THEME_CURATED
+    if name in THEMES:
+        return name
+    return THEME_CURATED.get(name or "", DEFAULT_THEME)
 
 
 async def show_invite(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -5000,7 +5011,12 @@ async def route_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     elif action == "theme":
         with SessionLocal() as s:
             row = s.get(User, user.telegram_id)
-            row.theme = parts[1] if parts[1] in THEMES else DEFAULT_THEME
+            wanted = parts[1] if parts[1] in THEMES else DEFAULT_THEME
+            if wanted != FREE_THEME and plans.tier_of(s, user.telegram_id) not in plans.FEATURES["themes"]:
+                await query.answer(re.sub(r"<[^>]+>", "", plan_limit_text(lang, plans.PlanLimit(
+                    "themes", None, "free", "pro")))[:190], show_alert=True)
+                return
+            row.theme = wanted
             s.commit()
             snapshot = row
         # A confirmation that does not name the change is a confirmation the
@@ -5094,11 +5110,15 @@ PLAN_TEXT = {
         "join": "📢 Kanalga qo'shilish",
         "what": {"habits": "Ko'proq odat", "active_tasks": "Ko'proq faol vazifa",
                  "recurring_tasks": "Ko'proq takrorlanuvchi vazifa", "projects": "Ko'proq loyiha",
+                 "life_goals": "Ko'proq maqsad",
                  "open_debts": "Ko'proq ochiq qarz", "teams_owned": "Jamoa yaratish",
+                 "money_accounts": "Ko'proq hisob", "money_subs": "Ko'proq doimiy to'lov",
+                 "money_transfers": "Hisoblar orasida o'tkazma", "money_year": "Yillik moliya",
                  "team_members": "Jamoada ko'proq a'zo", "voice_week": "Ko'proq ovozli buyruq",
                  "voice_day": "Ko'proq ovozli buyruq", "journal_ai": "AI bilan kundalik",
                  "timer_rhythm": "Ish va tanaffus ritmi", "stats_history": "Oylik va yillik statistika",
-                 "stats_csv": "Statistikani faylga yuklash"},
+                 "stats_csv": "Statistikani faylga yuklash",
+                 "themes": "Rangli mavzular", "now_ai": "AI «Hozir» tavsiyasi"},
     },
     "ru": {
         "title": "💎 <b>Ваш тариф: {tier}</b>",
@@ -5120,11 +5140,15 @@ PLAN_TEXT = {
         "join": "📢 Подписаться на канал",
         "what": {"habits": "Больше привычек", "active_tasks": "Больше активных задач",
                  "recurring_tasks": "Больше повторяющихся задач", "projects": "Больше проектов",
+                 "life_goals": "Больше целей",
                  "open_debts": "Больше открытых долгов", "teams_owned": "Создание команд",
+                 "money_accounts": "Больше счетов", "money_subs": "Больше регулярных платежей",
+                 "money_transfers": "Переводы между счетами", "money_year": "Финансы за год",
                  "team_members": "Больше участников в команде", "voice_week": "Больше голосовых команд",
                  "voice_day": "Больше голосовых команд", "journal_ai": "AI-итоги дня",
                  "timer_rhythm": "Ритм работы и отдыха", "stats_history": "Статистика за месяц и год",
-                 "stats_csv": "Выгрузка статистики в файл"},
+                 "stats_csv": "Выгрузка статистики в файл",
+                 "themes": "Цветные темы", "now_ai": "AI-совет «Сейчас»"},
     },
     "en": {
         "title": "💎 <b>Your plan: {tier}</b>",
@@ -5146,11 +5170,15 @@ PLAN_TEXT = {
         "join": "📢 Join the channel",
         "what": {"habits": "More habits", "active_tasks": "More open tasks",
                  "recurring_tasks": "More repeating tasks", "projects": "More projects",
+                 "life_goals": "More goals",
                  "open_debts": "More open debts", "teams_owned": "Creating teams",
+                 "money_accounts": "More accounts", "money_subs": "More repeating payments",
+                 "money_transfers": "Transfers between accounts", "money_year": "The year of money",
                  "team_members": "More team members", "voice_week": "More voice commands",
                  "voice_day": "More voice commands", "journal_ai": "AI day summary",
                  "timer_rhythm": "Work and break rhythm", "stats_history": "Month and year statistics",
-                 "stats_csv": "Statistics as a file"},
+                 "stats_csv": "Statistics as a file",
+                 "themes": "Colour themes", "now_ai": "AI «Now» suggestion"},
     },
 }
 
@@ -5217,6 +5245,94 @@ async def cmd_plan(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     info = _plan_of(uid)
     await message.reply_text(plan_text(lang, info), parse_mode=ParseMode.HTML,
                              reply_markup=plan_keyboard(lang, info))
+
+
+#: What the bot answers about a promo code, by the reason in promo.PromoError.
+PROMO_TEXT = {
+    "uz": {"ok": "🎁 Promokod qabul qilindi: {plan} — {days} kun. Amal qilish muddati: {until} gacha.",
+           "usage": "Promokodni shunday yuboring: /promo KOD",
+           "not_found": "Bunday promokod yo'q. Harflarini tekshiring.",
+           "inactive": "Bu promokod o'chirilgan.", "expired": "Bu promokodning muddati tugagan.",
+           "exhausted": "Bu promokod tugab bo'lgan.", "already_used": "Siz bu promokoddan foydalangansiz.",
+           "plans_off": "Hozircha tariflar o'chiq."},
+    "en": {"ok": "🎁 Promo code accepted: {plan} — {days} days. Active until {until}.",
+           "usage": "Send it like this: /promo CODE",
+           "not_found": "No such promo code. Check the letters.",
+           "inactive": "This promo code is switched off.", "expired": "This promo code has expired.",
+           "exhausted": "This promo code has been used up.", "already_used": "You have already used this code.",
+           "plans_off": "Plans are off for now."},
+    "ru": {"ok": "🎁 Промокод принят: {plan} — {days} дн. Действует до {until}.",
+           "usage": "Отправьте так: /promo КОД",
+           "not_found": "Такого промокода нет. Проверьте буквы.",
+           "inactive": "Этот промокод отключён.", "expired": "Срок этого промокода истёк.",
+           "exhausted": "Этот промокод закончился.", "already_used": "Вы уже использовали этот промокод.",
+           "plans_off": "Тарифы пока выключены."},
+}
+
+
+async def cmd_promo(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """/promo KOD — redeem a promo code from the chat."""
+    message = update.effective_message
+    uid = account_of(update)
+    if message is None or uid is None:
+        return
+    with SessionLocal() as s:
+        user = s.get(User, uid)
+        lang = (user.language if user else None) or "uz"
+    words = PROMO_TEXT.get(lang, PROMO_TEXT["uz"])
+    if not ctx.args:
+        await message.reply_text(words["usage"])
+        return
+    with SessionLocal() as s:
+        try:
+            got = promo.redeem(s, uid, ctx.args[0])
+        except promo.PromoError as e:
+            s.rollback()
+            await message.reply_text(words.get(e.code, words["not_found"]))
+            return
+        s.commit()
+    until = (_plan_of(uid).get("until") or "")[:10]
+    await message.reply_text(words["ok"].format(plan=PLAN_NAMES.get(got["tier"], "Pro"),
+                                                days=got["days"], until=until or "—"))
+
+
+async def cmd_promo_admin(update: Update, ctx: ContextTypes.DEFAULT_TYPE, action: str) -> None:
+    """Admins only (config.ADMIN_IDS):
+    /promo_new KOD pro|max KUN [ISHLATISH] [YYYY-MM-DD] · /promo_list · /promo_off KOD"""
+    message = update.effective_message
+    uid = account_of(update)
+    if message is None or uid is None or uid not in config.ADMIN_IDS:
+        return
+    args = list(ctx.args or [])
+    with SessionLocal() as s:
+        if action == "list":
+            rows = promo.listing(s)
+            text = "\n".join(f"{r['code']} · {r['tier']} {r['days']}d · {r['used']}/{r['max_uses'] or '∞'}"
+                             f"{' · ' + r['expires_at'] if r['expires_at'] else ''}{'' if r['active'] else ' · OFF'}"
+                             for r in rows) or "—"
+            await message.reply_text(text)
+            return
+        if action == "off":
+            ok = bool(args) and promo.deactivate(s, args[0])
+            s.commit()
+            await message.reply_text("OK" if ok else "Topilmadi")
+            return
+        try:
+            if len(args) < 3:
+                raise promo.PromoError("usage", 422)
+            uses = int(args[3]) if len(args) > 3 and args[3] not in ("-", "0") else None
+            ends = datetime.fromisoformat(args[4]) if len(args) > 4 else None
+            row = promo.create(s, args[0], args[1].lower(), int(args[2]), max_uses=uses,
+                               expires_at=ends, created_by=uid)
+            s.commit()
+        except (promo.PromoError, ValueError) as e:
+            s.rollback()
+            await message.reply_text(f"Xato: {getattr(e, 'code', 'bad_value')}\n"
+                                     "/promo_new KOD pro|max KUN [ISHLATISH] [YYYY-MM-DD]")
+            return
+        await message.reply_text(f"✅ {row.code} · {row.tier} · {row.duration_days} kun · "
+                                 f"{row.max_uses or '∞'} marta"
+                                 f"{' · ' + row.expires_at.date().isoformat() if row.expires_at else ''}")
 
 
 async def send_plan_invoice(update: Update, ctx: ContextTypes.DEFAULT_TYPE, product_key: str) -> None:
@@ -5401,6 +5517,13 @@ def render_morning(data: dict, lang: str) -> str:
             when = "🎉" if b["days_left"] == 0 \
                 else f"{b['days_left']} {t(lang, 'days_short')}"
             lines.append(f"🎂 {esc(b['person_name'])} — {when}")
+    if today.get("touch"):
+        lines.append("")
+        lines.append(f"🤝 <b>{t(lang, 'r_touch')}</b>")
+        for p in today["touch"]:
+            ago = (t(lang, "r_touch_never") if p["days_since"] is None
+                   else t(lang, "r_touch_days", n=p["days_since"]))
+            lines.append(f"• {esc(p['name'])} — {ago}")
 
     lines.append("")
     lines.append(t(lang, "r_start_now") if planned else t(lang, "r_nothing_planned"))
@@ -5789,6 +5912,15 @@ class AccountFanOut:
 
     async def send_message(self, *args, **kwargs):
         chat_id = kwargs.get("chat_id", args[0] if args else None)
+        try:
+            no_telegram = email_auth.is_email_account(int(chat_id))
+        except (TypeError, ValueError):
+            no_telegram = False
+        if no_telegram:
+            # An account made with an email has no Telegram chat: the app's
+            # inbox and the phone's push are where its messages go.
+            await self._to_app(chat_id, args, kwargs)
+            return None
         try:
             result = await self._bot.send_message(*args, **kwargs)
         except TelegramError:
@@ -7000,6 +7132,10 @@ BOT_COMMANDS = [
     # countdowns live in the Mini App.
     ("timer", lambda u, c: show_active_timer(u, c)),
     ("countdown", lambda u, c: show_countdowns(u, c)),
+    ("promo", lambda u, c: cmd_promo(u, c)),
+    ("promo_new", lambda u, c: cmd_promo_admin(u, c, "new")),
+    ("promo_list", lambda u, c: cmd_promo_admin(u, c, "list")),
+    ("promo_off", lambda u, c: cmd_promo_admin(u, c, "off")),
 ]
 
 
@@ -7013,6 +7149,9 @@ async def lifespan(_: FastAPI):
     global telegram_app, scheduler, BOT_USERNAME
 
     db.init_db()
+    # Data migrations that are safe on every start run themselves, once.
+    import migrations
+    migrations.auto_apply()
     log.info("database ready: %s", db.engine.url.render_as_string(hide_password=True))
 
     # Advisory locks are held by a *connection*, and a process that is killed
@@ -7143,7 +7282,10 @@ app = FastAPI(title="ErnestOS", lifespan=lifespan,
 #: Telegram, so each class gets its own budget (audit 012).
 RATE_LIMITS = {"read": (60, 60), "write": (30, 60), "heavy": (5, 60),
                # Sign-in codes: ten tries per ten minutes per address.
-               "auth": (10, 600)}
+               "auth": (10, 600),
+               # Error reports from phones: their own budget, so a broken
+               # screen never spends a person's sign-in or promocode tries.
+               "report": (10, 600)}
 #: The suite drives hundreds of writes as one user in a few seconds, which is
 #: not the traffic this limit describes. Tests exercise it explicitly instead.
 RATE_LIMIT_ENABLED = ENVIRONMENT != "test"
@@ -7159,9 +7301,16 @@ _buckets = limiter._hits
 
 def _rate_class(request: Request) -> str:
     path = request.url.path
-    if path.startswith(("/api/stats/export", "/api/avatar")):
+    if path.startswith("/api/stats/export"):
         return "heavy"
-    if path == "/api/app/login":
+    # The picture is shown on several screens; at five a minute (the old
+    # "heavy" class) the second screen already got a 429 and an empty circle,
+    # and the upload after it failed the same way. It is an ordinary read, and
+    # setting or removing it an ordinary write.
+    if path == "/api/app/client-error":
+        return "report"
+    if path in ("/api/app/login", "/api/promocode/redeem", "/api/auth/social/google") or path.startswith(
+            ("/api/auth/email/", "/api/account/email/", "/api/account/delete/")):
         return "auth"
     return "read" if request.method == "GET" else "write"
 
@@ -7178,7 +7327,7 @@ async def guard_requests(request: Request, call_next):
         return await call_next(request)
 
     declared = request.headers.get("content-length")
-    body_limit = config.AGENT_AUDIO_BYTES if request.url.path in {"/api/agent/audio", "/api/agent/journal/audio"} else MAX_BODY_BYTES
+    body_limit = config.AGENT_AUDIO_BYTES if request.url.path in {"/api/agent/audio", "/api/agent/journal/audio", "/api/agent/chat/audio"} else MAX_BODY_BYTES
     if declared and declared.isdigit() and int(declared) > body_limit:
         return JSONResponse(status_code=413, content={"detail": "payload_too_large"})
 
@@ -7399,12 +7548,43 @@ class ProjectIn(BaseModel):
     deadline: str | None = Field(default=None, max_length=10)
 
 
+class GoalIn(BaseModel):
+    level: str = Field(default="milestone", max_length=10)
+    title: str = Field(min_length=1, max_length=200)
+    category: str = Field(default="other", max_length=12)
+    horizon: str = Field(default="", max_length=10)
+    status: str = Field(default="active", max_length=10)
+    amount: int | None = Field(default=None, ge=0, le=10 ** 13)
+    unit: str = Field(default="USD", max_length=3)
+    progress: int = Field(default=0, ge=0, le=100)
+    parent_id: int | None = None
+    cover: str = Field(default="", max_length=16)
+    note: str = Field(default="", max_length=2000)
+
+
+class GoalPatch(BaseModel):
+    level: str | None = Field(default=None, max_length=10)
+    title: str | None = Field(default=None, max_length=200)
+    category: str | None = Field(default=None, max_length=12)
+    horizon: str | None = Field(default=None, max_length=10)
+    status: str | None = Field(default=None, max_length=10)
+    amount: int | None = Field(default=None, ge=0, le=10 ** 13)
+    unit: str | None = Field(default=None, max_length=3)
+    progress: int | None = Field(default=None, ge=0, le=100)
+    parent_id: int | None = None
+    cover: str | None = Field(default=None, max_length=16)
+    note: str | None = Field(default=None, max_length=2000)
+    archived: bool | None = None
+
+
 class FocusIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     priority: str | None = Field(default=None, max_length=6)
     #: The task this mission is carried out by. Finishing the task finishes
     #: the mission — the day scores it once, as the task.
     task_id: int | None = None
+    #: The milestone this week's goal moves forward (audit S24).
+    goal_id: int | None = None
 
 
 class HabitOrderIn(BaseModel):
@@ -7496,7 +7676,7 @@ def health_live():
 
 
 @app.get("/health/reports")
-def health_reports(key: str = "", limit: int = 20):
+def health_reports(key: str = "", limit: int = 20, user: int | None = None):
     """Why a given user did or did not get their report, in one request.
 
     Every previous answer to "the reports are not arriving" needed the
@@ -7537,8 +7717,12 @@ def health_reports(key: str = "", limit: int = 20):
 
     with SessionLocal() as s:
         recipients = {r[0] for r in svc.active_recipients(s)}
-        users = s.scalars(select(User).where(User.onboarded.is_(True))
-                          .order_by(User.telegram_id).limit(limit)).all()
+        # `user` narrows it to the one account asked about; without it the
+        # first `limit` accounts are listed.
+        query = select(User).where(User.onboarded.is_(True))
+        if user is not None:
+            query = query.where(User.telegram_id == user)
+        users = s.scalars(query.order_by(User.telegram_id).limit(limit)).all()
         out["onboarded"] = s.scalar(select(func.count()).select_from(User)
                                     .where(User.onboarded.is_(True))) or 0
         out["recipients"] = len(recipients)
@@ -7706,6 +7890,9 @@ def api_me(init=Header(default=None, alias="X-Telegram-Init-Data")):
             "version": version.VERSION, "build": version.BUILD,
             "first_name": user.first_name, "last_name": user.last_name,
             "username": user.username,
+            "email": _email_of(user.telegram_id),
+            #: An account made with an email in the app has no Telegram.
+            "has_telegram": not email_auth.is_email_account(user.telegram_id),
             "language": user.language, "gender": user.gender,
             "theme": theme_of(user.theme), "quote": user.quote,
             "has_photo": has_photo,
@@ -7757,6 +7944,11 @@ def _team_names_of(uid: int) -> list[dict]:
                 for team in svc.teams_for(s, uid)]
 
 
+def _email_of(uid: int) -> str | None:
+    with SessionLocal() as s:
+        return email_auth.email_of(s, uid)
+
+
 def _login_of(uid: int) -> str | None:
     with SessionLocal() as s:
         row = accounts.credential_for(s, uid)
@@ -7800,11 +7992,34 @@ def api_settings(body: SettingsIn, init=Header(default=None, alias="X-Telegram-I
         if body.gender in ("male", "female"):
             row.gender = body.gender
         if body.theme in THEMES:
+            if body.theme != FREE_THEME:
+                plans.require_feature(s, user.telegram_id, "themes")
             row.theme = body.theme
         if body.quote is not None:
             row.quote = body.quote.strip()[:300]
         s.commit()
     return {"ok": True}
+
+
+class ProfileIn(BaseModel):
+    first_name: str | None = Field(default=None, max_length=svc.PROFILE_NAME_MAX)
+    last_name: str | None = Field(default=None, max_length=svc.PROFILE_NAME_MAX)
+    username: str | None = Field(default=None, max_length=33)
+    gender: str | None = Field(default=None, max_length=6)
+
+
+@app.post("/api/profile")
+def api_profile(body: ProfileIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Edit profile: the name, surname and @handle the person chooses."""
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        row = s.get(User, user.telegram_id)
+        try:
+            out = svc.save_profile(s, row, **body.model_dump(exclude_unset=True))
+        except ValueError as e:
+            code = 409 if str(e) == "username_taken" else 422
+            raise HTTPException(status_code=code, detail=str(e))
+    return {"ok": True, "profile": out}
 
 
 class PrefsIn(BaseModel):
@@ -7822,6 +8037,8 @@ class PrefsIn(BaseModel):
     quiet_to: str | None = Field(default=None, max_length=5)
     #: Focused minutes on an ordinary day; 0 clears it.
     day_capacity: int | None = Field(default=None, ge=0, le=18 * 60)
+    #: The AI pick on the Hozir card, on or off.
+    now_ai: bool | None = None
 
 
 def _time(value: str | None) -> dtime | None:
@@ -7930,7 +8147,8 @@ class TeamHabitPatch(BaseModel):
 
 
 async def notify_teammates(team_id: int, actor_id: int, key: str,
-                           what: str, team_name: str) -> int:
+                           what: str, team_name: str,
+                           assigned: list[int] | None = None) -> int:
     """Tell the rest of the team what just changed. Returns how many heard.
 
     A shared list that changes silently is a shared list people stop
@@ -7952,6 +8170,16 @@ async def notify_teammates(team_id: int, actor_id: int, key: str,
             # Each member's own language, and only members whose notification
             # level for this team still hears changes.
             recipients = svc.team_recipients(s, team_id, actor_id, "change")
+            # Whoever the task was given to by name hears "gave you a task",
+            # on any level but "off"; the rest hear the ordinary change.
+            given = set(assigned or ())
+            if given:
+                recipients = [(u, lang, key) for u, lang in recipients if u not in given] + [
+                    (u, lang, "team_ev_task_assigned")
+                    for u, lang in svc.team_recipients(s, team_id, actor_id, "assigned")
+                    if u in given]
+            else:
+                recipients = [(u, lang, key) for u, lang in recipients]
             actor = s.get(User, actor_id)
             actor_name = (actor.first_name or "").strip() if actor else ""
     except Exception:
@@ -7959,12 +8187,12 @@ async def notify_teammates(team_id: int, actor_id: int, key: str,
         return 0
 
     bot = AccountFanOut(telegram_app.bot, "team")
-    for uid, lang in recipients:
+    for uid, lang, said in recipients:
         lang = lang or "uz"
         try:
             await bot.send_message(
                 uid,
-                t(lang, key, who=esc(actor_name or "?"), what=esc(what))
+                t(lang, said, who=esc(actor_name or "?"), what=esc(what))
                 + "\n" + t(lang, "team_ev_in", name=esc(team_name)),
                 parse_mode=ParseMode.HTML)
             told += 1
@@ -8070,7 +8298,7 @@ async def api_team_join(body: JoinIn,
     if telegram_app is not None:
         for member_id, member_lang in recipients:
             try:
-                await telegram_app.bot.send_message(
+                await AccountFanOut(telegram_app.bot, "team").send_message(
                     member_id, t(member_lang, "team_member_joined", who=joiner,
                                  name=esc(name)), parse_mode=ParseMode.HTML)
             except TelegramError as e:
@@ -8127,7 +8355,7 @@ async def api_team_transfer(team_id: int, body: TransferIn,
         name = team.name
     if telegram_app is not None:
         try:
-            await telegram_app.bot.send_message(
+            await AccountFanOut(telegram_app.bot, "team").send_message(
                 body.user_id, t(target_lang, "team_owner_offer", name=esc(name)),
                 parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup([[
@@ -8205,7 +8433,7 @@ async def api_team_request_answer(request_id: int, body: AnswerIn,
         key = {"approved": "team_joined", "declined": "team_request_declined",
                "full": "team_full"}.get(outcome, "team_already")
         try:
-            await telegram_app.bot.send_message(
+            await AccountFanOut(telegram_app.bot, "team").send_message(
                 joiner_id, t(joiner_lang, key, name=esc(name)), parse_mode=ParseMode.HTML)
         except TelegramError as e:
             log.info("could not answer join request %s: %s", request_id, e)
@@ -8573,7 +8801,9 @@ async def api_team_task_add(team_id: int, body: TeamTaskIn,
         team = svc.team_for(s, user.telegram_id, team_id)
         name = team.name if team else ""
     await notify_teammates(team_id, user.telegram_id, "team_ev_task_add",
-                           created["title"], name)
+                           created["title"], name,
+                           assigned=(created.get("assignees")
+                                     if created.get("completion") == "assignees" else None))
     return created
 
 
@@ -9593,6 +9823,51 @@ def api_project_delete(project_id: int, init=Header(default=None, alias="X-Teleg
     return {"ok": True}
 
 
+@app.get("/api/goals")
+def api_goals(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Milestone and ultimate goals. The tactical level is /api/focus."""
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        return {"goals": svc.list_goals(s, ws), "levels": svc.GOAL_LEVELS,
+                "statuses": svc.GOAL_STATUSES, "categories": svc.GOAL_CATEGORIES,
+                "units": svc.GOAL_UNITS}
+
+
+@app.post("/api/goals")
+def api_goal_add(body: GoalIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        try:
+            goal = svc.add_goal(s, ws, **body.model_dump())
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        return {"ok": True, "id": goal.id}
+
+
+@app.patch("/api/goals/{goal_id}")
+def api_goal_patch(goal_id: int, body: GoalPatch,
+                   init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    fields = body.model_dump(exclude_unset=True)
+    for key in ("level", "title", "category", "status", "unit"):
+        if key in fields and fields[key] is None:
+            del fields[key]
+    with SessionLocal() as s:
+        try:
+            svc.update_goal(s, ws, goal_id, **fields)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    return {"ok": True}
+
+
+@app.delete("/api/goals/{goal_id}")
+def api_goal_delete(goal_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        svc.delete_goal(s, ws, goal_id)
+    return {"ok": True}
+
+
 @app.get("/api/focus")
 def api_focus(init=Header(default=None, alias="X-Telegram-Init-Data")):
     user, ws = auth(init)
@@ -9623,7 +9898,7 @@ def api_focus_add(body: FocusIn, init=Header(default=None, alias="X-Telegram-Ini
         try:
             row = svc.add_focus(s, ws, body.title,
                                 priority=body.priority or svc.DEFAULT_MISSION_PRIORITY,
-                                task_id=body.task_id)
+                                task_id=body.task_id, goal_id=body.goal_id)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
     return {"ok": True, "id": row.id}
@@ -9706,6 +9981,12 @@ class QuickAddIn(BaseModel):
     #: Read only, write nothing: the shared-task path reuses this parser so
     #: "ertaga 15:00 hisobot" means the same in both places (audit #23).
     preview: bool = False
+    #: v16: sent from the phone's offline queue. Nobody is there to answer a
+    #: question, so the line is saved as it was meant on the day it was typed:
+    #: money becomes the entry, "ertaga" counts from `recorded_day`, and a
+    #: time that had passed stays on that day.
+    offline: bool = False
+    recorded_day: str | None = Field(default=None, max_length=10)
 
 
 class HabitParseIn(BaseModel):
@@ -9755,12 +10036,25 @@ def api_quick_add(body: QuickAddIn,
     text = body.title.strip()
     if not text:
         raise HTTPException(status_code=422, detail="empty_title")
+    tz = svc.user_tz(user)
     # "Tushlik 45 ming" is money, not a task: the app opens the money check.
     if svc.looks_like_money(text) and svc.parse_money_text(text) is not None:
-        return {"ok": True, "money": True}
+        if not body.offline:
+            return {"ok": True, "money": True}
+        money = svc.parse_money_text(text)
+        day = _date(body.recorded_day) if body.recorded_day else None
+        if day and day > svc.today_local(tz):
+            day = None
+        with SessionLocal() as s:
+            entry = svc.add_money(s, ws, money["kind"], money["amount"], money["category"],
+                                  note=money["note"], tz=tz, day=day)
+        return {"ok": True, "money": True, "entry": entry}
     # "Ertaga soat 10 da hisobot" → "hisobot", tomorrow, 10:00 — like the bot.
-    tz = svc.user_tz(user)
-    parsed = svc.parse_quick_capture(text, svc.today_local(tz), svc.now_local(tz).time())
+    if body.offline and body.recorded_day:
+        recorded = _date(body.recorded_day)
+        parsed = svc.parse_quick_capture(text, recorded, dtime(0, 0))
+    else:
+        parsed = svc.parse_quick_capture(text, svc.today_local(tz), svc.now_local(tz).time())
     if body.deadline:
         parsed["deadline"], parsed["past_time"] = _date(body.deadline), False
     out = {"title": parsed["title"],
@@ -10091,11 +10385,9 @@ def api_focus_edit(focus_id: int, body: FocusIn,
     _, ws = auth(init)
     with SessionLocal() as s:
         try:
-            if "task_id" in body.model_fields_set:
-                svc.edit_focus(s, ws, focus_id, body.title, priority=body.priority,
-                               task_id=body.task_id)
-            else:
-                svc.edit_focus(s, ws, focus_id, body.title, priority=body.priority)
+            links = {k: getattr(body, k) for k in ("task_id", "goal_id")
+                     if k in body.model_fields_set}
+            svc.edit_focus(s, ws, focus_id, body.title, priority=body.priority, **links)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
     return {"ok": True}
@@ -10149,6 +10441,88 @@ def api_birthday_delete(birthday_id: int, init=Header(default=None, alias="X-Tel
     return {"ok": True}
 
 
+# --- Yaqinlarim: close people (Pro and Max) -----------------------------------
+
+class CloseIn(BaseModel):
+    first_name: str | None = Field(default=None, max_length=80)
+    last_name: str | None = Field(default=None, max_length=80)
+    relation: str | None = Field(default=None, max_length=16)
+    phone: str | None = Field(default=None, max_length=40)
+    telegram: str | None = Field(default=None, max_length=120)
+    instagram: str | None = Field(default=None, max_length=120)
+    link: str | None = Field(default=None, max_length=300)
+    note: str | None = Field(default=None, max_length=2000)
+    touch_days: int | None = Field(default=None, ge=0, le=365)
+    #: YYYY-MM-DD; "" clears it.
+    birth_date: str | None = Field(default=None, max_length=10)
+
+
+def _close_body(body: CloseIn) -> dict:
+    fields = body.model_dump(exclude_unset=True)
+    if "birth_date" in fields:
+        raw = fields["birth_date"]
+        fields["birth_date"] = _date(raw) if raw else None
+        if raw and fields["birth_date"] is None:
+            raise HTTPException(status_code=422, detail="bad_date")
+    return fields
+
+
+@app.get("/api/people")
+def api_people(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Yaqinlarim: everyone close, and whether this plan may add more."""
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        people = svc.list_close_people(s, ws, tz=svc.user_tz(user))
+        tier = plans.tier_of(s, user.telegram_id) if plans.ENABLED else "max"
+    limit = plans.LIMITS["close_people"].get(tier) if plans.ENABLED else None
+    return {"people": people, "relations": svc.CLOSE_RELATIONS,
+            "touch_days": list(svc.CLOSE_TOUCH_DAYS),
+            "access": {"tier": tier, "limit": limit,
+                       "allowed": limit is None or limit > 0}}
+
+
+@app.post("/api/people")
+def api_people_add(body: CloseIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    fields = _close_body(body)
+    with SessionLocal() as s:
+        try:
+            row = svc.add_close_one(s, ws, **fields)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        return {"ok": True, "id": row.id}
+
+
+@app.patch("/api/people/{person_id}")
+def api_people_edit(person_id: int, body: CloseIn,
+                    init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    fields = _close_body(body)
+    with SessionLocal() as s:
+        try:
+            svc.update_close_one(s, ws, person_id, **fields)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    return {"ok": True}
+
+
+@app.post("/api/people/{person_id}/touched")
+def api_people_touched(person_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """"I was in touch today": the rhythm starts again."""
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        row = svc.touched_close_one(s, ws, person_id, tz=svc.user_tz(user))
+        return {"ok": True, "last_contact": row.last_contact.isoformat()}
+
+
+@app.delete("/api/people/{person_id}")
+def api_people_delete(person_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        svc.delete_close_one(s, ws, person_id)
+    return {"ok": True}
+
+
 # --- money: its own place, outside every productivity number ------------------
 
 class MoneyIn(BaseModel):
@@ -10160,11 +10534,13 @@ class MoneyIn(BaseModel):
     #: A past day may be named (an undo puts an entry back where it was);
     #: a future one may not.
     day: str | None = Field(default=None, max_length=10)
+    account_id: int | None = None
 
 
 class MoneyTextIn(BaseModel):
     text: str = Field(min_length=1, max_length=300)
     source: str = Field(default="manual", max_length=8)
+    account_id: int | None = None
     #: The Chiqim / Kirim button that was pressed; empty lets the words decide.
     kind: str = Field(default="", max_length=8)
 
@@ -10202,7 +10578,8 @@ def api_money_add(body: MoneyIn, init=Header(default=None, alias="X-Telegram-Ini
     with SessionLocal() as s:
         try:
             return svc.add_money(s, ws, body.kind, body.amount, body.category,
-                                 note=body.note, source=body.source, day=day, tz=tz)
+                                 note=body.note, source=body.source, day=day, tz=tz,
+                                 account_id=body.account_id)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
 
@@ -10227,9 +10604,13 @@ def api_money_text(body: MoneyTextIn,
     if parsed is None:
         raise HTTPException(status_code=422, detail="no_amount")
     with SessionLocal() as s:
-        return svc.add_money(s, ws, parsed["kind"], parsed["amount"],
-                             parsed["category"], note=parsed["note"],
-                             source=body.source, tz=svc.user_tz(user))
+        try:
+            return svc.add_money(s, ws, parsed["kind"], parsed["amount"],
+                                 parsed["category"], note=parsed["note"],
+                                 source=body.source, tz=svc.user_tz(user),
+                                 account_id=body.account_id)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
 
 
 class MoneyPatchIn(BaseModel):
@@ -10238,6 +10619,8 @@ class MoneyPatchIn(BaseModel):
     category: str | None = Field(default=None, max_length=24)
     note: str | None = Field(default=None, max_length=200)
     day: str | None = Field(default=None, max_length=10)
+    #: null takes the entry off its account; leaving it out keeps it.
+    account_id: int | None = None
 
 
 @app.patch("/api/money/{entry_id}")
@@ -10250,8 +10633,10 @@ def api_money_edit(entry_id: int, body: MoneyPatchIn,
         raise HTTPException(status_code=422, detail="future_day")
     with SessionLocal() as s:
         try:
+            extra = ({"account_id": body.account_id}
+                     if "account_id" in body.model_fields_set else {})
             return svc.update_money(s, ws, entry_id, kind=body.kind, amount=body.amount,
-                                    category=body.category, note=body.note, day=day)
+                                    category=body.category, note=body.note, day=day, **extra)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
 
@@ -10262,6 +10647,146 @@ def api_money_delete(entry_id: int,
     _, ws = auth(init)
     with SessionLocal() as s:
         return {"ok": True, "entry": svc.delete_money(s, ws, entry_id)}
+
+
+class AccountIn(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+    kind: str = Field(default="cash", max_length=10)
+    opening: int = Field(default=0, ge=-svc.MONEY_MAX_AMOUNT, le=svc.MONEY_MAX_AMOUNT)
+
+
+class AccountPatch(BaseModel):
+    name: str | None = Field(default=None, max_length=60)
+    kind: str | None = Field(default=None, max_length=10)
+    opening: int | None = Field(default=None, ge=-svc.MONEY_MAX_AMOUNT, le=svc.MONEY_MAX_AMOUNT)
+    archived: bool | None = None
+
+
+class MoneyTransferIn(BaseModel):
+    from_account: int
+    to_account: int
+    amount: int = Field(gt=0, le=svc.MONEY_MAX_AMOUNT)
+    note: str = Field(default="", max_length=200)
+    day: str | None = Field(default=None, max_length=10)
+
+
+class SubIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    amount: int = Field(gt=0, le=svc.MONEY_MAX_AMOUNT)
+    category: str = Field(default="other", max_length=24)
+    account_id: int | None = None
+    period: str = Field(default="monthly", pattern="^(weekly|monthly|yearly)$")
+    next_due: str | None = Field(default=None, max_length=10)
+
+
+class SubPatch(BaseModel):
+    name: str | None = Field(default=None, max_length=80)
+    amount: int | None = Field(default=None, gt=0, le=svc.MONEY_MAX_AMOUNT)
+    category: str | None = Field(default=None, max_length=24)
+    account_id: int | None = None
+    period: str | None = Field(default=None, pattern="^(weekly|monthly|yearly)$")
+    next_due: str | None = Field(default=None, max_length=10)
+    archived: bool | None = None
+
+
+def _wallet_call(fn):
+    """A wallet write: a bad value is a 422 with its reason."""
+    try:
+        return fn()
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.get("/api/money/wallet")
+def api_wallet(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        return svc.wallet_overview(s, ws)
+
+
+@app.post("/api/money/accounts")
+def api_account_add(body: AccountIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        row = _wallet_call(lambda: svc.add_account(s, ws, body.name, body.kind, body.opening))
+        return {"ok": True, "id": row.id}
+
+
+@app.patch("/api/money/accounts/{account_id}")
+def api_account_patch(account_id: int, body: AccountPatch,
+                      init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        _wallet_call(lambda: svc.update_account(s, ws, account_id,
+                                                **body.model_dump(exclude_unset=True)))
+    return {"ok": True}
+
+
+@app.post("/api/money/transfers")
+def api_transfer_add(body: MoneyTransferIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, ws = auth(init)
+    tz = svc.user_tz(user)
+    day = _date(body.day)
+    if day is not None and day > svc.today_local(tz):
+        raise HTTPException(status_code=422, detail="future_day")
+    with SessionLocal() as s:
+        row = _wallet_call(lambda: svc.add_transfer(s, ws, body.from_account, body.to_account,
+                                                    body.amount, note=body.note, day=day, tz=tz))
+        return {"ok": True, "id": row.id}
+
+
+@app.delete("/api/money/transfers/{transfer_id}")
+def api_transfer_delete(transfer_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    with SessionLocal() as s:
+        svc.delete_transfer(s, ws, transfer_id)
+    return {"ok": True}
+
+
+@app.post("/api/money/subscriptions")
+def api_sub_add(body: SubIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    fields = body.model_dump()
+    fields["next_due"] = _date(fields["next_due"]) if fields["next_due"] else None
+    if fields["next_due"] is None:
+        fields.pop("next_due")
+    with SessionLocal() as s:
+        row = _wallet_call(lambda: svc.add_subscription(s, ws, **fields))
+        return {"ok": True, "id": row.id}
+
+
+@app.patch("/api/money/subscriptions/{sub_id}")
+def api_sub_patch(sub_id: int, body: SubPatch,
+                  init=Header(default=None, alias="X-Telegram-Init-Data")):
+    _, ws = auth(init)
+    fields = body.model_dump(exclude_unset=True)
+    if "next_due" in fields:
+        fields["next_due"] = _date(fields["next_due"])
+    for key in ("name", "amount", "category", "period", "next_due"):
+        if key in fields and fields[key] is None:
+            del fields[key]
+    with SessionLocal() as s:
+        _wallet_call(lambda: svc.update_subscription(s, ws, sub_id, **fields))
+    return {"ok": True}
+
+
+@app.post("/api/money/subscriptions/{sub_id}/pay")
+def api_sub_pay(sub_id: int, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """This period's payment, recorded as an ordinary expense."""
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        return svc.pay_subscription(s, ws, sub_id, tz=svc.user_tz(user))
+
+
+@app.get("/api/money/year")
+def api_money_year(year: int | None = None,
+                   init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, ws = auth(init)
+    year = year or svc.today_local(svc.user_tz(user)).year
+    if not 2000 <= year <= 2100:
+        raise HTTPException(status_code=422, detail="bad_year")
+    with SessionLocal() as s:
+        return svc.money_year(s, ws, year)
 
 
 @app.put("/api/money/budgets/{category}")
@@ -10599,6 +11124,58 @@ def api_wake_time(body: WakeTimeIn, init=Header(default=None, alias="X-Telegram-
 
 # --- Plans ---
 
+# --- Coins ---
+
+@app.get("/api/coins")
+def api_coins(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """The coin balance (read off the XP ledger), today's coins and the shop."""
+    user, _ = auth(init)
+    with SessionLocal() as s:
+        return coins.summary(s, user.telegram_id, svc.today_local(svc.user_tz(user)))
+
+
+class CoinBuyIn(BaseModel):
+    item: str = Field(max_length=24)
+    #: The client's idempotency key: a purchase sent twice is bought once.
+    key: str | None = Field(default=None, max_length=64)
+
+
+@app.post("/api/coins/buy")
+def api_coins_buy(body: CoinBuyIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Spend coins on Pro/Max days or a streak freeze."""
+    user, _ = auth(init)
+    today = svc.today_local(svc.user_tz(user))
+    with SessionLocal() as s:
+        try:
+            got = coins.buy(s, user.telegram_id, body.item, ref=body.key, today=today)
+        except coins.CoinError as e:
+            s.rollback()
+            return JSONResponse(status_code=e.status, content={"detail": e.code, **e.extra})
+        s.commit()
+        return {"ok": True, **got, "coins": coins.summary(s, user.telegram_id, today),
+                "plan": _plan_of(user.telegram_id)}
+
+
+class PromoIn(BaseModel):
+    code: str = Field(min_length=1, max_length=40)
+
+
+@app.post("/api/promocode/redeem")
+def api_promo_redeem(body: PromoIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Redeem a promo code for days of Pro or Max. Rate-limited like sign-in,
+    so codes cannot be guessed by trying many."""
+    user, _ = auth(init, require_onboarded=False)
+    with SessionLocal() as s:
+        try:
+            got = promo.redeem(s, user.telegram_id, body.code)
+        except promo.PromoError as e:
+            s.rollback()
+            return JSONResponse(status_code=e.status, content={"detail": e.code})
+        s.commit()
+    plan = _plan_of(user.telegram_id)
+    return {"ok": True, **got, "until": plan.get("until"), "plan": plan}
+
+
 @app.get("/api/plans")
 def api_plans(init=Header(default=None, alias="X-Telegram-Init-Data")):
     """The caller's plan, what each plan allows, and the prices."""
@@ -10640,7 +11217,8 @@ class AppLoginIn(BaseModel):
 @app.get("/api/app/config")
 def api_app_config():
     """What the phone app needs before anybody is signed in. Public."""
-    return {"bot_username": BOT_USERNAME, "version": version.VERSION}
+    return {"bot_username": BOT_USERNAME, "version": version.VERSION,
+            "email": mailer.configured(), **social_auth.public_config()}
 
 
 @app.post("/api/app/login")
@@ -10653,6 +11231,348 @@ def api_app_login(body: AppLoginIn):
     if token is None:
         raise HTTPException(status_code=401, detail="bad_code")
     return {"token": app_auth.TOKEN_PREFIX + token}
+
+
+# --- Email: sign up and sign in without Telegram -----------------------------
+
+class EmailStartIn(BaseModel):
+    email: str = Field(max_length=254)
+    language: str = Field(default="uz", max_length=2)
+
+
+class EmailVerifyIn(BaseModel):
+    email: str = Field(max_length=254)
+    code: str = Field(max_length=12)
+    device: str = Field(default="", max_length=80)
+    language: str = Field(default="uz", max_length=2)
+
+
+async def _mail_code(email: str, purpose: str, language: str,
+                     account_id: int | None = None, kind: str = "signin") -> dict:
+    """Issue a code and mail it. Says plainly when mail is not set up or a
+    code was asked for too soon; a code whose mail failed never works."""
+    if not mailer.configured():
+        raise HTTPException(status_code=503, detail="email_unavailable")
+    with SessionLocal() as s:
+        try:
+            code = email_auth.issue_code(s, email, purpose, account_id)
+        except email_auth.TooSoon as e:
+            raise HTTPException(status_code=429, detail="email_too_soon",
+                                headers={"Retry-After": str(e.seconds)})
+    subject, text, html = mailer.code_message(language, code, kind)
+    try:
+        await mailer.send(email, subject, text, html)
+    except mailer.MailError:
+        with SessionLocal() as s:
+            email_auth.burn_codes(s, email)
+        raise HTTPException(status_code=502, detail="email_send_failed")
+    return {"ok": True, "resend_in": int(email_auth.RESEND_AFTER.total_seconds()),
+            "ttl": int(email_auth.CODE_TTL.total_seconds())}
+
+
+# --- Public pages the stores ask for: privacy policy, delete without the app ---
+
+@app.get("/privacy", response_class=HTMLResponse)
+def page_privacy(lang: str = "uz"):
+    return HTMLResponse(legal.privacy_page(lang), headers={"Cache-Control": "public, max-age=3600"})
+
+
+@app.get("/account/delete", response_class=HTMLResponse)
+def page_account_delete(lang: str = "uz"):
+    return HTMLResponse(legal.delete_page(lang),
+                        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+
+
+class DeleteStartIn(BaseModel):
+    email: str = Field(max_length=254)
+    language: str = Field(default="uz", max_length=2)
+
+
+class DeleteConfirmIn(BaseModel):
+    email: str = Field(max_length=254)
+    code: str = Field(max_length=12)
+
+
+@app.post("/api/account/delete/start")
+async def api_account_delete_start(body: DeleteStartIn):
+    """A deletion code to the address — only when an account has it, but the
+    same answer either way, so the page cannot be used to test addresses."""
+    try:
+        email = email_auth.normalize_email(body.email)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="bad_email")
+    if not mailer.configured():
+        raise HTTPException(status_code=503, detail="email_unavailable")
+    with SessionLocal() as s:
+        account = email_auth.account_for(s, email)
+    if account is None:
+        return {"ok": True}
+    return await _mail_code(email, "delete", body.language, account, kind="delete")
+
+
+@app.post("/api/account/delete/confirm")
+def api_account_delete_confirm(body: DeleteConfirmIn):
+    """The code proves the address; the account behind it is erased — the
+    same erase as the in-app button, team handover rule included."""
+    try:
+        email = email_auth.normalize_email(body.email)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="bad_email")
+    with SessionLocal() as s:
+        account = email_auth.account_for(s, email)
+        if account is None:
+            raise HTTPException(status_code=404, detail="no_account")
+        if not email_auth.check_code(s, email, body.code, "delete", account_id=account):
+            raise HTTPException(status_code=401, detail="bad_code")
+        try:
+            svc.delete_account(s, account)
+        except ValueError as e:
+            s.rollback()
+            raise HTTPException(status_code=409, detail=str(e))
+    log.info("account deleted from the web page")
+    return {"ok": True, "deleted": True}
+
+
+@app.post("/api/auth/email/start")
+async def api_email_start(body: EmailStartIn):
+    """Send a sign-in code. The same answer whether or not the address has
+    an account — the next step creates one if it has not."""
+    try:
+        email = email_auth.normalize_email(body.email)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="bad_email")
+    return await _mail_code(email, "signin", body.language)
+
+
+@app.post("/api/auth/email/verify")
+def api_email_verify(body: EmailVerifyIn):
+    """Trade the mailed code for a phone session: the address's account, or
+    a new one (`new: true`, setup then runs in the app)."""
+    try:
+        email = email_auth.normalize_email(body.email)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="bad_email")
+    with SessionLocal() as s:
+        if not email_auth.check_code(s, email, body.code, "signin"):
+            raise HTTPException(status_code=401, detail="bad_code")
+        account = email_auth.account_for(s, email)
+        new = account is None
+        if new:
+            account = email_auth.create_account(s, email, language=body.language)
+        token = app_auth.issue_session(s, account, body.device)
+    return {"token": app_auth.TOKEN_PREFIX + token, "new": new}
+
+
+class EmailAttachIn(BaseModel):
+    email: str = Field(max_length=254)
+
+
+class EmailAttachVerifyIn(BaseModel):
+    email: str = Field(max_length=254)
+    code: str = Field(max_length=12)
+
+
+@app.post("/api/account/email/start")
+async def api_account_email_start(body: EmailAttachIn,
+                                  init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Attach an email to this account (or change it): a code to the new
+    address proves it is theirs."""
+    user, _ = auth(init, require_onboarded=False)
+    try:
+        email = email_auth.normalize_email(body.email)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="bad_email")
+    with SessionLocal() as s:
+        owner = email_auth.account_for(s, email)
+    if owner is not None and owner != user.telegram_id:
+        raise HTTPException(status_code=409, detail="email_taken")
+    return await _mail_code(email, "attach", user.language or "uz", user.telegram_id)
+
+
+@app.post("/api/account/email/verify")
+def api_account_email_verify(body: EmailAttachVerifyIn,
+                             init=Header(default=None, alias="X-Telegram-Init-Data")):
+    user, _ = auth(init, require_onboarded=False)
+    try:
+        email = email_auth.normalize_email(body.email)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="bad_email")
+    with SessionLocal() as s:
+        if not email_auth.check_code(s, email, body.code, "attach", user.telegram_id):
+            raise HTTPException(status_code=401, detail="bad_code")
+        try:
+            email_auth.attach(s, user.telegram_id, email)
+        except ValueError:
+            raise HTTPException(status_code=409, detail="email_taken")
+    return {"ok": True, "email": email}
+
+
+# --- Google and Apple -----------------------------------------------------------
+
+class SocialTokenIn(BaseModel):
+    id_token: str = Field(min_length=20, max_length=8192)
+    device: str = Field(default="", max_length=80)
+    language: str = Field(default="uz", max_length=2)
+
+
+@app.post("/api/auth/social/google")
+def api_social_google(body: SocialTokenIn):
+    """The Google account on the phone (Android's own account sheet): its ID
+    token, checked here, becomes a phone session."""
+    audiences = social_auth.google_audiences()
+    if not audiences:
+        raise HTTPException(status_code=503, detail="google_unavailable")
+    try:
+        claims = oidc.verify("google", body.id_token, audiences)
+    except oidc.TokenError as e:
+        log.info("google token refused: %s", e)
+        raise HTTPException(status_code=401, detail="bad_token")
+    with SessionLocal() as s:
+        account, new = social_auth.sign_in(s, "google", claims, language=body.language)
+        token = app_auth.issue_session(s, account, body.device)
+    return {"token": app_auth.TOKEN_PREFIX + token, "new": new}
+
+
+_OAUTH_PAGE = {
+    "uz": ("Kirdingiz", "ErnestOS ilovasiga qayting — u o'zi davom etadi.", "Ilovaga qaytish",
+           "Kirib bo'lmadi", "Ilovaga qayting va qayta urinib ko'ring."),
+    "en": ("You are signed in", "Go back to the ErnestOS app — it carries on by itself.", "Back to the app",
+           "Could not sign in", "Go back to the app and try again."),
+    "ru": ("Вход выполнен", "Вернитесь в приложение ErnestOS — оно продолжит само.", "Вернуться в приложение",
+           "Не удалось войти", "Вернитесь в приложение и попробуйте снова."),
+}
+#: The phone app listens for this address and comes to the front on it.
+APP_RETURN_URL = "uz.ernestos.app://auth/done"
+
+
+def _oauth_page(lang: str, ok: bool):
+    title, body, button, bad_title, bad_body = _OAUTH_PAGE.get(lang, _OAUTH_PAGE["uz"])
+    head, text = (title, body) if ok else (bad_title, bad_body)
+    return HTMLResponse(
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        f"<title>ErnestOS</title></head><body style=\"font-family:-apple-system,Roboto,Arial,sans-serif;"
+        "text-align:center;padding:64px 24px;color:#15171C\">"
+        f"<div style='font-size:44px'>{'✅' if ok else '⚠️'}</div><h1 style='font-size:22px'>{head}</h1>"
+        f"<p style='color:#4F5561'>{text}</p>"
+        f"<p><a href='{APP_RETURN_URL}' style='display:inline-block;margin-top:12px;padding:14px 22px;"
+        "border-radius:12px;background:#2B66D6;color:#fff;text-decoration:none;font-weight:600'>"
+        f"{button}</a></p>"
+        f"<script>setTimeout(function(){{location.href='{APP_RETURN_URL}'}},400)</script>"
+        "</body></html>",
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+
+
+@app.get("/api/auth/oauth/{provider}/start")
+def api_oauth_start(provider: str, state: str = "", lang: str = "uz"):
+    """Open the provider's page for a sign-in the app started with `state`."""
+    if provider not in social_auth.PROVIDERS or not social_auth.browser_ready(provider):
+        return _oauth_page(lang, False)
+    if not social_auth.valid_state(state):
+        return _oauth_page(lang, False)
+    with SessionLocal() as s:
+        url = social_auth.start(s, provider, state, lang)
+    return RedirectResponse(url, status_code=302, headers={"Cache-Control": "no-store"})
+
+
+def _oauth_finish(provider: str, state: str, id_token: str | None, error: str | None):
+    """Check the token against the attempt's nonce, sign in, and leave the
+    session for the app to collect."""
+    with SessionLocal() as s:
+        row = social_auth.pending(s, state) if social_auth.valid_state(state) else None
+        if row is None or row.provider != provider:
+            return _oauth_page("uz", False)
+        lang = row.language
+        if error or not id_token:
+            social_auth.finish(s, row, error="cancelled" if error else "no_token")
+            return _oauth_page(lang, False)
+        audiences = (social_auth.google_audiences() if provider == "google"
+                     else social_auth.apple_audiences())
+        try:
+            claims = oidc.verify(provider, id_token, audiences, nonce=row.nonce)
+        except oidc.TokenError as e:
+            log.info("%s token refused: %s", provider, e)
+            social_auth.finish(s, row, error="bad_token")
+            return _oauth_page(lang, False)
+        account, new = social_auth.sign_in(s, provider, claims, language=lang)
+        token = app_auth.TOKEN_PREFIX + app_auth.issue_session(s, account, provider + " · browser")
+        row = social_auth.pending(s, state)
+        social_auth.finish(s, row, token=token, new=new)
+    return _oauth_page(lang, True)
+
+
+@app.get("/api/auth/oauth/google/callback")
+def api_oauth_google_callback(state: str = "", code: str = "", error: str = ""):
+    id_token = None
+    if code and not error:
+        try:
+            id_token = social_auth.google_code_to_token(code)
+        except Exception as e:
+            log.info("google code exchange failed: %s", type(e).__name__)
+            error = "exchange"
+    return _oauth_finish("google", state, id_token, error or None)
+
+
+@app.post("/api/auth/oauth/apple/callback")
+async def api_oauth_apple_callback(request: Request):
+    """Apple posts the result here (form_post): the ID token and our state."""
+    from urllib.parse import parse_qs
+    form = {k: v[0] for k, v in parse_qs((await request.body()).decode("utf-8", "replace")).items()}
+    return _oauth_finish("apple", form.get("state", ""), form.get("id_token"), form.get("error"))
+
+
+class OAuthPollIn(BaseModel):
+    verifier: str = Field(max_length=128)
+
+
+@app.post("/api/auth/oauth/poll")
+def api_oauth_poll(body: OAuthPollIn):
+    """The app asks for the sign-in it started. The state in the browser's
+    URL is only a hash of the app's secret verifier, so a state read from a
+    log or a history cannot collect the session; the verifier can, once."""
+    if not social_auth.valid_state(body.verifier):
+        raise HTTPException(status_code=422, detail="bad_state")
+    with SessionLocal() as s:
+        return social_auth.collect(s, social_auth.state_for(body.verifier))
+
+
+# --- Setup in the app, for accounts that never saw the bot ------------------
+
+class OnboardingIn(BaseModel):
+    first_name: str = Field(min_length=1, max_length=60)
+    language: str = Field(default="uz", max_length=2)
+    modules: list[str] = Field(default_factory=list, max_length=4)
+    wake_time: str | None = Field(default=None, max_length=5)
+
+
+@app.post("/api/onboarding")
+def api_onboarding(body: OnboardingIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Name, language, what to track and when the day starts — the bot's
+    setup questions, answered in the app. Finishes the account."""
+    user, ws = auth(init, require_onboarded=False)
+    name = " ".join(body.first_name.split())[:60]
+    if not name:
+        raise HTTPException(status_code=422, detail="empty_name")
+    wake = _time(body.wake_time) if body.wake_time else None
+    with SessionLocal() as s:
+        row = s.get(User, user.telegram_id)
+        row.first_name = name
+        if body.language in ("uz", "en", "ru"):
+            row.language = body.language
+            svc.localize_system_habits(s, ws, body.language)
+        chosen = {m for m in body.modules if m in ("wake", "prayer", "journal")}
+        svc.set_modules(s, ws, chosen, user=row)
+        if wake is not None:
+            row.morning_time = wake
+            s.commit()
+            if svc.wake_habit(s, ws) is not None:
+                svc.set_wake_time(s, ws, wake)
+        row = s.get(User, user.telegram_id)
+        row.onboarding_step = "done"
+        row.onboarded = True
+        s.commit()
+        svc.maybe_qualify_referral(s, user.telegram_id)
+    return {"ok": True}
 
 
 class PushTokenIn(BaseModel):
@@ -10679,6 +11599,16 @@ def api_app_push_token(body: PushTokenIn,
     with SessionLocal() as s:
         app_push.register_device(s, user.telegram_id, session_id, body.token, body.platform)
     return {"ok": True, "push": app_push.fcm.configured}
+
+
+@app.get("/api/app/schedule")
+def api_app_schedule(init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """Reminders for the next two days, for a phone build without Firebase
+    to schedule on the device itself. The app replaces them on every open."""
+    _app_session(init)
+    user, ws = auth(init)
+    with SessionLocal() as s:
+        return {"items": svc.upcoming_notifications(s, ws, s.get(User, user.telegram_id))}
 
 
 @app.get("/api/app/notifications")
@@ -10753,6 +11683,38 @@ def api_app_notification_action(notification_id: int, body: NotificationActionIn
             raise HTTPException(status_code=409, detail=str(e) or "conflict")
         app_push.mark_read(s, user.telegram_id, [notification_id])
     return result
+
+
+class ClientErrorIn(BaseModel):
+    kind: str = Field(default="error", max_length=16)
+    message: str = Field(default="", max_length=400)
+    stack: str = Field(default="", max_length=2000)
+    screen: str = Field(default="", max_length=24)
+    app: bool = False
+    build: str = Field(default="", max_length=40)
+
+
+#: Anything token-shaped is cut before a client error reaches the log.
+_SECRETISH = re.compile(r"(app:)?[A-Za-z0-9_\-]{24,}|hash=[0-9a-f]+|[\w.+-]+@[\w-]+\.[\w.]+")
+
+
+@app.post("/api/app/client-error")
+def api_client_error(body: ClientErrorIn, init=Header(default=None, alias="X-Telegram-Init-Data")):
+    """An error on someone's phone, so it is seen at all: the message, where,
+    and which build — no data, no token, no email (cut out here as well), and
+    the account only as a short hash. The report rate class caps a flood."""
+    who = "anon"
+    if init:
+        try:
+            uid = int(verify_init_data(init)["id"])
+            who = hashlib.sha256(str(accounts.resolve_id(uid)).encode()).hexdigest()[:8]
+        except (HTTPException, ValueError, KeyError, TypeError):
+            pass
+    clean = lambda s, n: _SECRETISH.sub("…", " ".join(str(s or "").split()))[:n]
+    log.warning("client %s [%s%s] %s on %s · %s", clean(body.kind, 16), "app" if body.app else "tg",
+                f" {clean(body.build, 40)}" if body.build else "", who, clean(body.screen, 24) or "-",
+                clean(body.message, 300) + (f" | {clean(body.stack, 900)}" if body.stack else ""))
+    return {"ok": True}
 
 
 @app.post("/api/app/logout")

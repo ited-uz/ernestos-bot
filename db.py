@@ -106,7 +106,7 @@ class User(Base):
 
     language: Mapped[str] = mapped_column(String(2), default="uz")     # uz|en|ru
     gender: Mapped[str | None] = mapped_column(String(6), nullable=True)  # male|female
-    theme: Mapped[str] = mapped_column(String(20), default="ocean")
+    theme: Mapped[str] = mapped_column(String(20), default="clean-white")
     quote: Mapped[str] = mapped_column(Text, default="")
     #: Telegram file_id of the uploaded avatar, or empty for initials.
     photo_file_id: Mapped[str] = mapped_column(String(200), default="")
@@ -137,6 +137,12 @@ class User(Base):
     #: Minutes of focused time the person has on an ordinary day; NULL — not
     #: given. Compared with today's planned minutes (audit #2).
     day_capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: The AI pick on the Hozir card (Pro and Max). NULL or False — on; True —
+    #: switched off in Settings. No consent sheet in front of it any more.
+    now_ai_off: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    #: Set the first time the person edits their name or @handle in the app.
+    #: From then on Telegram's own name and username no longer overwrite them.
+    profile_edited_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     #: How many real actions this account has taken — a task ticked, a habit
     #: logged, a prayer recorded. The channel is not asked for until this
@@ -569,6 +575,9 @@ class WeeklyFocus(Base):
     carried_from: Mapped[int | None] = mapped_column(Integer, nullable=True)
     #: The task this mission is delivered by, if any.
     task_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: The milestone (LifeGoal, level "milestone") this week's goal moves
+    #: forward, if any. Added in place, so nullable and without a foreign key.
+    goal_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     __table_args__ = (
@@ -634,6 +643,77 @@ class Birthday(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class CloseOne(Base):
+    """Somebody close — family, a partner, a friend, a mentor — with how to
+    reach them and how often the person wants to be in touch.
+
+    The birthday is kept in `birthdays` (one linked row), so the morning
+    report and the calendar go on reading a single table. `touch_days` is
+    the rhythm ("every 14 days"); `last_contact` is the last time the person
+    said they were in touch. Pro and Max.
+    """
+
+    __tablename__ = "close_people"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    first_name: Mapped[str] = mapped_column(String(80))
+    last_name: Mapped[str] = mapped_column(String(80), default="")
+    #: family | partner | friend | colleague | mentor | client | other
+    relation: Mapped[str] = mapped_column(String(16), default="friend")
+    phone: Mapped[str] = mapped_column(String(40), default="")
+    telegram: Mapped[str] = mapped_column(String(64), default="")
+    instagram: Mapped[str] = mapped_column(String(64), default="")
+    link: Mapped[str] = mapped_column(String(300), default="")
+    note: Mapped[str] = mapped_column(Text, default="")
+    touch_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_contact: Mapped[date | None] = mapped_column(Date, nullable=True)
+    birthday_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("birthdays.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class LifeGoal(Base):
+    """A goal above the week: a milestone, or the ultimate goal it serves.
+
+    The week's own goals (the tactical level) already live in `WeeklyFocus`;
+    this table holds the two levels above it. A milestone may name the
+    ultimate goal it moves forward (`parent_id`), and an ultimate goal with
+    milestones reads its progress off them.
+
+    Named `life_goals` because migration 0002 moves any old `goals` table
+    aside, and a new table under that name would be moved with it.
+    """
+
+    __tablename__ = "life_goals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    level: Mapped[str] = mapped_column(String(10))               # milestone | ultimate
+    title: Mapped[str] = mapped_column(String(200))
+    category: Mapped[str] = mapped_column(String(12), default="other")
+    #: "2030", "lifetime" or "" — when it is meant to be reached.
+    horizon: Mapped[str] = mapped_column(String(10), default="")
+    status: Mapped[str] = mapped_column(String(10), default="active")  # dream | active | done
+    #: What reaching it is worth, when it is about money. Whole units.
+    amount: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    #: USD | UZS | EUR | RUB — a label for the amount; nothing converts.
+    unit: Mapped[str] = mapped_column(String(3), default="USD")
+    #: 0–100, set by hand. An ultimate goal with milestones ignores it.
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    parent_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("life_goals.id", ondelete="SET NULL"), nullable=True)
+    cover: Mapped[str] = mapped_column(String(16), default="")
+    note: Mapped[str] = mapped_column(Text, default="")
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    done_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class MoneyEntry(Base):
     """One movement of money: spent (`expense`) or received (`income`).
 
@@ -656,6 +736,76 @@ class MoneyEntry(Base):
     #: The user's local day it belongs to, so a month is the user's month.
     day: Mapped[date] = mapped_column(Date, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    #: The account it came out of or went into (`MoneyAccount`); NULL for an
+    #: entry not tied to one. A plain column, not a foreign key: it is added
+    #: to live tables by the additive schema pass, which cannot add one.
+    account_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: The repeating payment (`MoneySubscription`) this entry paid, when it
+    #: was recorded by "To'lovni qayd etish". Plain and nullable for the same
+    #: reason; it is what "paid this month" and "paid on" are read from.
+    subscription_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class MoneyAccount(Base):
+    """Where money is kept: cash, a card, a bank, crypto, investments.
+
+    Its balance is the opening amount plus what was recorded against it,
+    plus transfers in, minus transfers out. Removing one archives it, so
+    the entries recorded against it keep their history.
+    """
+
+    __tablename__ = "money_accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(60))
+    kind: Mapped[str] = mapped_column(String(10), default="cash")
+    #: What was there when the account was added. May be below zero (a card
+    #: in debt).
+    opening: Mapped[int] = mapped_column(BigInteger, default=0)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class MoneyTransfer(Base):
+    """Money moved between two of one's own accounts. Neither income nor an
+    expense: the total stays the same, only where it sits changes."""
+
+    __tablename__ = "money_transfers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    from_account_id: Mapped[int] = mapped_column(Integer)
+    to_account_id: Mapped[int] = mapped_column(Integer)
+    amount: Mapped[int] = mapped_column(BigInteger)
+    note: Mapped[str] = mapped_column(String(200), default="")
+    day: Mapped[date] = mapped_column(Date, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class MoneySubscription(Base):
+    """A payment that comes back: rent, a phone plan, a service.
+
+    Marking it paid records an ordinary expense and moves `next_due` one
+    period on, so what was paid is in the month like anything else.
+    """
+
+    __tablename__ = "money_subscriptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    amount: Mapped[int] = mapped_column(BigInteger)
+    category: Mapped[str] = mapped_column(String(24), default="other")
+    account_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    period: Mapped[str] = mapped_column(String(8), default="monthly")  # weekly | monthly | yearly
+    next_due: Mapped[date] = mapped_column(Date)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class MoneyBudget(Base):
@@ -1149,6 +1299,88 @@ class AppSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class AccountEmail(Base):
+    """The email address that signs in to an account, once proven.
+
+    An account made in the phone app with an email has no Telegram: its id is
+    a large negative number (see `email_auth.EMAIL_ID_BASE`), never a real
+    Telegram id. A Telegram account can have an email attached too, and from
+    then on the same email signs the phone in to that same account.
+    """
+
+    __tablename__ = "account_emails"
+
+    #: Lower case, as typed otherwise.
+    email: Mapped[str] = mapped_column(String(254), primary_key=True)
+    account_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
+    verified_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class EmailCode(Base):
+    """A six-digit code mailed to an address. Only its digest is kept."""
+
+    __tablename__ = "email_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(254), index=True)
+    #: signin — the phone signs in (or signs up); attach — the signed-in
+    #: account claims this address.
+    purpose: Mapped[str] = mapped_column(String(10), default="signin")
+    account_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    code_hash: Mapped[str] = mapped_column(String(64))
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class SocialIdentity(Base):
+    """A Google or Apple account that signs in to one ErnestOS account.
+
+    Keyed by the provider's own stable subject id (`sub`), never by the
+    email: an address can change at Google, the subject cannot.
+    """
+
+    __tablename__ = "social_identities"
+
+    provider: Mapped[str] = mapped_column(String(10), primary_key=True)
+    subject: Mapped[str] = mapped_column(String(255), primary_key=True)
+    account_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    email: Mapped[str] = mapped_column(String(254), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class OAuthPending(Base):
+    """A sign-in started in the phone's browser, waiting to be collected.
+
+    The app makes a random `state`, opens the provider's page with it, and
+    asks the server with that same state until the session is ready. Only a
+    digest of the state is stored; the row lives minutes and is read once.
+    """
+
+    __tablename__ = "oauth_pending"
+
+    state_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(10))
+    nonce: Mapped[str] = mapped_column(String(64))
+    language: Mapped[str] = mapped_column(String(2), default="uz")
+    #: The finished session ("app:…"), until the app collects it.
+    token: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    new_account: Mapped[bool] = mapped_column(Boolean, default=False)
+    error: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class AppliedMigration(Base):
+    """A data migration that ran here, so start-up runs each one once."""
+
+    __tablename__ = "applied_migrations"
+
+    name: Mapped[str] = mapped_column(String(40), primary_key=True)
+    applied_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class PlanGrant(Base):
     """A stretch of Pro or Max on an account: the sign-up trial, the channel
     bonus, a referral, a launch gift or a payment.
@@ -1173,6 +1405,41 @@ class PlanGrant(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class PromoCode(Base):
+    """A code that gives days of Pro or Max — for a campaign, a partner or a
+    giveaway. Created by an admin in the bot (/promo_new); `used_count` is
+    raised in the same statement that checks it against `max_uses`, so two
+    people redeeming the last use at once cannot both get it."""
+
+    __tablename__ = "promo_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    #: Stored upper-case; what people type is upper-cased before the lookup.
+    code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    tier: Mapped[str] = mapped_column(String(8))                 # pro | max
+    duration_days: Mapped[int] = mapped_column(Integer)
+    #: None: no limit on how many accounts may use it.
+    max_uses: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    used_count: Mapped[int] = mapped_column(Integer, default=0)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class PromoCodeRedemption(Base):
+    """One account's use of one code — once per account and code."""
+
+    __tablename__ = "promo_code_redemptions"
+    __table_args__ = (UniqueConstraint("promo_id", "user_id", name="uq_promo_redemption"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    promo_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("promo_codes.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    redeemed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class AppNotification(Base):
     """What the bot told an account, kept for the phone app's inbox.
 
@@ -1190,6 +1457,24 @@ class AppNotification(Base):
     actions: Mapped[str] = mapped_column(Text, default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
     read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class CoinSpend(Base):
+    """One purchase in the coin shop. Coins themselves are read off the XP
+    ledger (`coins.py`); only spending is stored. `ref` is the client's
+    idempotency key, so a purchase sent twice is bought once."""
+
+    __tablename__ = "coin_spends"
+    __table_args__ = (UniqueConstraint("account_id", "ref", name="uq_coin_spend_ref"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    item: Mapped[str] = mapped_column(String(24))
+    coins: Mapped[int] = mapped_column(Integer)
+    ref: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: "YYYY-MM" of the purchase, for per-month limits.
+    month: Mapped[str] = mapped_column(String(7), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class UserAvatar(Base):
@@ -1825,6 +2110,26 @@ class AgentAudit(Base):
     event: Mapped[str] = mapped_column(String(24))
     request_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
     detail: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class AgentChatMessage(Base):
+    """One line of the conversation with the assistant in the app.
+
+    A reply that proposes a change points at the draft holding it, so the
+    chat shows the same confirm card the voice agent does and nothing is
+    done without the person's tap. Only the latest messages are kept.
+    """
+
+    __tablename__ = "agent_chat_messages"
+    __table_args__ = (UniqueConstraint("workspace_id", "request_key", name="uq_agent_chat_request"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(10))            # user | assistant
+    text: Mapped[str] = mapped_column(Text, default="")
+    #: The client's key for the question; a retry gets the stored answer.
+    request_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    draft_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

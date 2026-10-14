@@ -146,6 +146,10 @@ MAX_BODY_BYTES = int(os.environ.get("MAX_BODY_BYTES", str(256 * 1024)))
 # patches the copy silently changes nothing.
 
 ADMIN_LOG_CHANNEL_ID = os.environ.get("ADMIN_LOG_CHANNEL_ID", "").strip()
+#: Telegram ids allowed to create promo codes in the bot (/promo_new),
+#: comma-separated. Empty: nobody can.
+ADMIN_IDS = {int(x) for x in os.environ.get("ADMIN_IDS", "").replace(" ", "").split(",")
+             if x.lstrip("-").isdigit()}
 #: Suggestions and complaints get their own channel, apart from event logs.
 FEEDBACK_CHANNEL_ID = (os.environ.get("FEEDBACK_CHANNEL_ID", "").strip()
                        or ADMIN_LOG_CHANNEL_ID)

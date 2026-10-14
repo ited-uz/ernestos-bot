@@ -863,6 +863,60 @@ def test_journal_ai_wire_is_strict_json_with_the_five_questions(monkeypatch):
     assert json.loads(sent["messages"][1]["content"]) == {"language": "uz", "text": "salom"}
 
 
+def test_voice_closes_a_debt_in_full_or_in_part(person, monkeypatch):
+    """"Akmal qarzini berdi" closes the open debt; "Akmal 200 mingini
+    qaytardi" records a part. The card says how much and what is left, and
+    nothing changes until Confirm. More than is owed, or a closed debt, is
+    refused rather than guessed."""
+    caller, uid, ws = person
+    with db.SessionLocal() as s:
+        akmal = svc.add_debt(s, ws, "Akmal", 500000, "lent")["id"]
+        aka = svc.add_debt(s, ws, "Akam", 1500000, "borrowed")["id"]
+        old = svc.add_debt(s, ws, "Vali", 100000, "lent")["id"]
+        svc.settle_debt(s, ws, old)
+    with db.SessionLocal() as s:
+        items = core.catalog(s, uid, ws)["items"]
+    debts = {i["id"]: i for i in items if i["entity"] == "debt"}
+    assert set(debts) == {akmal, aka}, "only open debts are offered"
+    assert debts[akmal]["name"] == "Akmal" and debts[akmal]["owed"] == 500000
+    assert debts[akmal]["direction"] == "lent"
+
+    part = capture(person, monkeypatch, plan(action("debt", "update", akmal, paid=200000)),
+                   text="Akmal 200 mingini qaytardi")
+    assert part["status"] == "ready", part
+    assert "💵 Qarzning bir qismi qaytdi" in part["preview"]
+    assert "<b>Akmal</b> — 200 000 so‘m" in part["preview"] and "Qoladi: 300 000 so‘m" in part["preview"]
+    assert caller.get("/api/debts").json()["owed_to_me"] == 500000, "nothing before Confirm"
+    assert any("paid" in e["fields"] for e in part["editable"]), "the amount can be fixed by hand"
+    core.confirm(uid, ws, part["id"], part["revision"])
+    assert caller.get("/api/debts").json()["owed_to_me"] == 300000
+
+    whole = capture(person, monkeypatch, plan(action("debt", "update", akmal, status="done")),
+                    text="Akmal qarzini berdi")
+    assert "✅ Qarz to‘liq qaytdi" in whole["preview"] and "300 000 so‘m" in whole["preview"]
+    assert "Qoladi" not in whole["preview"]
+    core.confirm(uid, ws, whole["id"], whole["revision"])
+    d = caller.get("/api/debts").json()
+    assert d["owed_to_me"] == 0 and not [x for x in d["open"] if x["person"] == "Akmal"]
+
+    mine = capture(person, monkeypatch, plan(action("debt", "update", aka, status="done")),
+                   text="Akamga qarzimni qaytardim")
+    assert "✅ Qarzni to‘liq qaytardingiz" in mine["preview"] and "1 500 000" in mine["preview"]
+
+    too_much = capture(person, monkeypatch, plan(action("debt", "update", aka, paid=2000000)),
+                       text="Akamga 2 million qaytardim")
+    assert too_much["status"] == "failed" and too_much["error"] == "paid_exceeds_remaining"
+    closed = capture(person, monkeypatch, plan(action("debt", "update", old, status="done")),
+                     text="Vali qarzini berdi")
+    assert closed["status"] == "failed"
+    # A return never edits who or how much was lent, and is never deleted by voice.
+    for bad in (action("debt", "update", aka, amount=1), action("debt", "delete", aka)):
+        assert capture(person, monkeypatch, plan(bad), text="x")["status"] == "failed"
+    # The model is told: a report of what happened closes, never creates.
+    assert "DEBT RETURNED" in provider.SYSTEM and "borib keldim" in provider.SYSTEM
+    assert "Akmal qarzini berdi" in provider.CHAT_SYSTEM
+
+
 def test_agent_records_a_debt_not_an_expense(person, monkeypatch):
     caller, uid, ws = person
     debt = action("debt", person="Aziz", amount=200000, direction="lent", deadline="2026-10-09")
@@ -995,3 +1049,225 @@ def test_a_manual_edit_keeps_the_proposal_stale_check(person, monkeypatch):
     with pytest.raises(actions.AgentError) as stale:
         core.confirm(uid, ws, draft["id"], edited["revision"])
     assert stale.value.code == "stale_target"
+
+
+# ---------------------------------------------------------------------------
+# The assistant chat
+# ---------------------------------------------------------------------------
+
+def test_chat_answers_from_the_persons_own_data(person, monkeypatch):
+    fresh, uid, ws = person
+    import agent_chat
+    with db.SessionLocal() as s:
+        svc.add_task(s, ws, "Hisobotni yuborish", deadline=svc.today_local(svc.user_tz(s.get(db.User, uid))))
+        svc.add_goal(s, ws, level="ultimate", title="EGH: Capital Venture", category="capital")
+    seen = {}
+
+    async def fake_chat(context, history, text):
+        seen.update(context=context, history=history, text=text)
+        return provider.ChatReply(reply="• Bugun: Hisobotni yuborish.\n• Keyin: maqsad.", command=None)
+    monkeypatch.setattr(provider, "chat", fake_chat)
+    out = asyncio.run(agent_chat.ask(uid, ws, "chat-key-0001", "Bugungi xulosa"))
+    assert out["draft"] is None and [m["role"] for m in out["messages"]] == ["user", "assistant"]
+    assert out["messages"][1]["text"].startswith("• Bugun")
+    ctx = seen["context"]
+    assert "Hisobotni yuborish" in ctx["tasks"]["today"][0]
+    assert ctx["goals"][0]["title"] == "EGH: Capital Venture"
+    assert ctx["money_this_month"]["unit"] == "UZS"
+    # A retry with the same key does not ask the model again.
+    monkeypatch.setattr(provider, "chat", AsyncMock(side_effect=AssertionError("asked twice")))
+    again = asyncio.run(agent_chat.ask(uid, ws, "chat-key-0001", "Bugungi xulosa"))
+    assert again["repeat"] is True and len(again["messages"]) == 2
+    # The next turn sees the conversation so far.
+    monkeypatch.setattr(provider, "chat", fake_chat)
+    asyncio.run(agent_chat.ask(uid, ws, "chat-key-0002", "Va ertaga?"))
+    assert [h["role"] for h in seen["history"]] == ["user", "assistant"]
+
+
+def test_a_requested_change_comes_back_as_a_card_and_waits_for_confirm(person, monkeypatch):
+    _, uid, ws = person
+    import agent_chat
+    monkeypatch.setattr(provider, "chat", AsyncMock(return_value=provider.ChatReply(
+        reply="Vazifani qo'shishga tayyorladim — pastda tasdiqlang.",
+        command="Ertaga mijozga qo'ng'iroq qilish vazifasini qo'sh")))
+    monkeypatch.setattr(provider, "plan", AsyncMock(return_value=plan(action(title="Mijozga qo'ng'iroq"))))
+    n = count(db.Task, ws)
+    out = asyncio.run(agent_chat.ask(uid, ws, "chat-key-1001", "Ertaga mijozga qo'ng'iroq qilishni eslat"))
+    draft = out["draft"]
+    assert draft["status"] == "ready" and count(db.Task, ws) == n
+    assert out["messages"][-1]["draft"]["id"] == draft["id"]
+    core.confirm(uid, ws, draft["id"], draft["revision"])
+    assert count(db.Task, ws) == n + 1
+    assert agent_chat.history(ws)[-1]["draft"]["status"] == "executed"
+
+
+def test_chat_needs_consent_counts_against_the_budget_and_keeps_failures_retryable(person, monkeypatch):
+    _, uid, ws = person
+    import agent_chat
+    core.consent(ws, False)
+    with pytest.raises(actions.AgentError) as e:
+        asyncio.run(agent_chat.ask(uid, ws, "chat-key-2001", "salom"))
+    assert e.value.code == "consent_required"
+    core.consent(ws, True)
+
+    async def down(*args):
+        raise actions.AgentError("provider_unavailable", 503)
+    monkeypatch.setattr(provider, "chat", down)
+    with pytest.raises(actions.AgentError):
+        asyncio.run(agent_chat.ask(uid, ws, "chat-key-2002", "salom"))
+    # The failed question is not left behind, so the same key can ask again.
+    assert agent_chat.history(ws) == []
+    monkeypatch.setattr(provider, "chat", AsyncMock(return_value=provider.ChatReply(reply="Salom!", command=None)))
+    asyncio.run(agent_chat.ask(uid, ws, "chat-key-2002", "salom"))
+    with db.SessionLocal() as s:
+        assert s.get(db.AgentPreference, ws).usage_count == 2
+
+
+def test_chat_by_voice_writes_the_words_out_and_answers_like_text(person, client, monkeypatch):
+    """The mic in the chat: speech → the same turn as typing. A request comes
+    back as a card and changes nothing until Confirm; a resend does not hear
+    the audio twice; a used-up plan is refused before any transcription."""
+    caller, uid, ws = person
+    import agent_chat
+    heard = AsyncMock(return_value="Ertaga soat 10 da Aziz bilan uchrashuv qo'sh")
+    monkeypatch.setattr(provider, "transcribe", heard)
+    monkeypatch.setattr(provider, "chat", AsyncMock(return_value=provider.ChatReply(
+        reply="Tayyorladim — tasdiqlang.", command="Ertaga 10:00 Aziz bilan uchrashuv")))
+    monkeypatch.setattr(provider, "plan", AsyncMock(return_value=plan(action(title="Aziz bilan uchrashuv"))))
+    n = count(db.Task, ws)
+    headers = {**caller.h, "Content-Type": "audio/webm", "X-Agent-Request-Key": "voice-chat-0001"}
+    r = client.post("/api/agent/chat/audio", headers=headers, content=b"\x1aE\xdf\xa3voice")
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["transcript"].startswith("Ertaga soat 10")
+    assert out["messages"][0] == {**out["messages"][0], "role": "user", "text": out["transcript"]}
+    assert out["draft"]["status"] == "ready" and count(db.Task, ws) == n
+    core.confirm(uid, ws, out["draft"]["id"], out["draft"]["revision"])
+    assert count(db.Task, ws) == n + 1
+    # The same recording sent again: the stored turn, no second transcription.
+    again = client.post("/api/agent/chat/audio", headers=headers, content=b"\x1aE\xdf\xa3voice").json()
+    assert again["repeat"] is True and heard.await_count == 1
+    # Nothing heard: said so, nothing stored.
+    monkeypatch.setattr(provider, "transcribe", AsyncMock(return_value="  "))
+    r = client.post("/api/agent/chat/audio", content=b"\x1aE\xdf\xa3voice",
+                    headers={**headers, "X-Agent-Request-Key": "voice-chat-0002"})
+    assert r.status_code == 422 and r.json()["detail"] == "empty_audio"
+    # Out of budget: refused before the audio goes anywhere.
+    with db.SessionLocal() as s:
+        p = s.get(db.AgentPreference, ws)
+        p.usage_day, p.usage_count = svc.today_local(svc.user_tz(s.get(db.User, uid))), 10_000
+        s.commit()
+    monkeypatch.setattr(provider, "transcribe", AsyncMock(side_effect=AssertionError("transcribed over budget")))
+    r = client.post("/api/agent/chat/audio", content=b"\x1aE\xdf\xa3voice",
+                    headers={**headers, "X-Agent-Request-Key": "voice-chat-0003"})
+    assert r.status_code in (402, 429), r.text
+    # Without consent the audio is not read at all.
+    core.consent(ws, False)
+    r = client.post("/api/agent/chat/audio", content=b"x",
+                    headers={**headers, "X-Agent-Request-Key": "voice-chat-0004"})
+    assert r.status_code == 403
+
+
+def test_chat_keeps_only_the_latest_messages_and_can_be_cleared(person, monkeypatch):
+    _, uid, ws = person
+    import agent_chat
+    monkeypatch.setattr(agent_chat, "KEEP", 6)
+    monkeypatch.setattr(provider, "chat", AsyncMock(return_value=provider.ChatReply(reply="ok", command=None)))
+    for i in range(5):
+        asyncio.run(agent_chat.ask(uid, ws, f"chat-key-30{i:02d}", f"savol {i}"))
+    texts = [m["text"] for m in agent_chat.history(ws)]
+    assert len(texts) == 6 and texts[0] == "savol 2"
+    agent_chat.clear(ws)
+    assert agent_chat.history(ws) == []
+
+
+def test_chat_over_http(client, person, monkeypatch):
+    fresh, uid, ws = person
+    monkeypatch.setattr(provider, "chat", AsyncMock(return_value=provider.ChatReply(reply="Salom!", command=None)))
+    r = fresh.post("/api/agent/chat", json={"text": "salom", "request_key": "http-chat-0001"})
+    assert r.status_code == 200, r.text
+    assert fresh.get("/api/agent/chat").json()["messages"][-1]["text"] == "Salom!"
+    assert fresh.get("/api/export").json()["agent_chat"][0]["text"] == "salom"
+    assert fresh.delete("/api/agent/chat").status_code == 200
+    assert fresh.get("/api/agent/chat").json()["messages"] == []
+
+
+# ---------------------------------------------------------------------------
+# AI pick for the Hozir card (v16) — the model is mocked, never called.
+# ---------------------------------------------------------------------------
+
+def _now_reset():
+    import now_ai
+    now_ai._cache.clear()
+    now_ai._calls.clear()
+
+
+def test_now_ai_picks_only_among_the_persons_own_open_tasks(person, monkeypatch):
+    import now_ai
+    _now_reset()
+    caller, uid, ws = person
+    today = svc.today_local().isoformat()
+    a = caller.post("/api/tasks", {"title": "Hisobotni yuborish", "deadline": today,
+                                   "priority": "high"}).json()["id"]
+    caller.post("/api/tasks", {"title": "Kitob o'qish", "deadline": today})
+    seen = {}
+    async def fake(payload):
+        seen.update(payload)
+        return provider.NowPick(key=f"p{a}", reason="Bugungi muddat va yuqori muhimlik: hisobot birinchi.")
+    monkeypatch.setattr(provider, "now_pick", fake)
+    r = caller.get("/api/agent/now")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["source"] == "ai" and body["pick"]["id"] == a and body["pick"]["reason"] == "ai"
+    assert body["pick"]["ai_reason"].startswith("Bugungi muddat")
+    keys = {t["key"] for t in seen["tasks"]}
+    assert f"p{a}" in keys and all(not k.startswith("_") for t in seen["tasks"] for k in t)
+
+    # Same list, same answer: served from the cache without asking again.
+    calls = {"n": 0}
+    async def counting(payload):
+        calls["n"] += 1
+        return provider.NowPick(key=f"p{a}", reason="x")
+    monkeypatch.setattr(provider, "now_pick", counting)
+    assert caller.get("/api/agent/now").json()["cached"] is True and calls["n"] == 0
+
+    # A key that is not a candidate is refused, never shown.
+    _now_reset()
+    async def invented(payload):
+        return provider.NowPick(key="p999999", reason="Uydirma vazifa")
+    monkeypatch.setattr(provider, "now_pick", invented)
+    assert caller.get("/api/agent/now").status_code == 422
+
+
+def test_now_ai_is_pro_and_max_on_without_a_consent_sheet_switchable_and_capped(person, monkeypatch):
+    """No consent sheet in front of the Hozir pick: Pro and Max get it, the
+    person's own switch in Settings turns it off, and the daily cap holds."""
+    import now_ai
+    import plans
+    _now_reset()
+    caller, uid, ws = person
+    caller.post("/api/tasks", {"title": "Qo'ng'iroq", "deadline": svc.today_local().isoformat()})
+    monkeypatch.setattr(provider, "now_pick", AsyncMock(side_effect=AssertionError("no call expected")))
+    monkeypatch.setattr(plans, "ENABLED", True)
+    monkeypatch.setattr(plans, "tier_of", lambda s, u: "free")
+    r = caller.get("/api/agent/now")
+    assert r.status_code == 402 and r.json()["detail"] == "plan_limit"
+
+    monkeypatch.setattr(plans, "tier_of", lambda s, u: "pro")
+    core.consent(ws, False)
+    assert caller.get("/api/me").json()["prefs"]["now_ai"] is True
+    assert caller.post("/api/prefs", {"now_ai": False}).json()["prefs"]["now_ai"] is False
+    r = caller.get("/api/agent/now")
+    assert r.status_code == 403 and r.json()["detail"] == "now_ai_off"
+    caller.post("/api/prefs", {"now_ai": True})
+
+    # Without the agent consent the pick still goes ahead — up to the cap.
+    monkeypatch.setattr(now_ai, "DAILY_CAP", 0)
+    assert caller.get("/api/agent/now").status_code == 429
+
+
+def test_now_ai_with_nothing_open_says_so_without_a_call(person, monkeypatch):
+    _now_reset()
+    caller, _, _ = person
+    monkeypatch.setattr(provider, "now_pick", AsyncMock(side_effect=AssertionError("no call expected")))
+    assert caller.get("/api/agent/now").json() == {"source": "none", "pick": None}

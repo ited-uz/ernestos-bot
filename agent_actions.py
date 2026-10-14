@@ -26,7 +26,7 @@ class Change(BaseModel):
                    "priority", "project_id", "recurrence", "remind_before",
                    "timer_minutes", "category", "schedule", "remind_at",
                    "start", "day", "kind", "amount", "note", "person", "direction",
-                   "status", "done"]
+                   "status", "done", "paid"]
     value: str | None
 
 
@@ -79,10 +79,14 @@ FIELDS = {
     "habit": {"name", "category", "schedule", "remind_at", "timer_minutes", "start", "done"},
     "project": {"name", "description", "deadline"},
     "money": {"kind", "amount", "category", "note", "day"},
-    # Create only: closing or changing a debt is one tap in the app.
     "debt": {"person", "amount", "direction", "note", "deadline"},
 }
-PERSONAL = {"task": db.Task, "habit": db.Habit, "project": db.Project, "money": db.MoneyEntry}
+#: An EXISTING open debt is only closed by voice: "Akmal qarzini berdi"
+#: (status=done, all of it) or "Akmal 200 mingini qaytardi" (paid=200000).
+#: Who, how much and which way stay as they were lent.
+DEBT_UPDATE_FIELDS = {"status", "paid"}
+PERSONAL = {"task": db.Task, "habit": db.Habit, "project": db.Project, "money": db.MoneyEntry,
+            "debt": db.Debt}
 TEAM = {"task": db.TeamTask, "habit": db.TeamHabit, "project": db.Project}
 NULLABLE = {"deadline", "due_time", "project_id", "remind_at", "recurrence", "remind_before", "timer_minutes"}
 
@@ -142,6 +146,8 @@ def target(s, uid, ws, a, *, lock=False):
     row = s.scalar(stmt.with_for_update() if lock else stmt)
     if row is None or getattr(row, "archived_at", None):
         raise AgentError("not_found", 404)
+    if a["entity"] == "debt" and row.settled_at is not None:
+        raise AgentError("debt_closed", 422)
     if a["scope"] == "team" and a["operation"] in {"update", "delete"} and not _tick_only(a):
         svc._require_manage(s, uid, row.team_id, row.created_by)
     if a["entity"] == "habit" and getattr(row, "system_key", None):
@@ -156,13 +162,13 @@ def _value(key, raw):
             raise AgentError("invalid_fields", 422)
         return None
     raw = raw.strip()
-    if key in {"amount", "project_id", "remind_before", "timer_minutes"}:
+    if key in {"amount", "paid", "project_id", "remind_before", "timer_minutes"}:
         if not re.fullmatch(r"\d{1,13}", raw):
             raise AgentError("invalid_fields", 422)
         value = int(raw)
-        high = {"amount": 10**12, "timer_minutes": 1440,
+        high = {"amount": 10**12, "paid": 10**12, "timer_minutes": 1440,
                 "remind_before": 10080, "project_id": 2**31 - 1}[key]
-        if value > high or (key in {"amount", "project_id"} and value < 1):
+        if value > high or (key in {"amount", "paid", "project_id"} and value < 1):
             raise AgentError("invalid_fields", 422)
         return value
     if key in {"deadline", "day"}:
@@ -199,7 +205,7 @@ def prepare(s, uid, ws, plan: Plan, allowed_catalog=None):
         entity, op = a["entity"], a["operation"]
         if (op == "create") != (a["target_id"] is None):
             raise AgentError("invalid_action", 422)
-        if entity == "debt" and (op != "create" or a["scope"] != "personal"):
+        if entity == "debt" and (op == "delete" or a["scope"] != "personal"):
             raise AgentError("invalid_action", 422)
         row = target(s, uid, ws, a)
         if allowed_catalog is not None:
@@ -210,7 +216,8 @@ def prepare(s, uid, ws, plan: Plan, allowed_catalog=None):
             if a["scope"] == "team" and a["team_id"] not in {t["id"] for t in allowed_catalog["teams"]}:
                 raise AgentError("unknown_reference", 422)
         fields = {}
-        allowed = FIELDS[entity] if op in {"create", "update"} else set()
+        allowed = (DEBT_UPDATE_FIELDS if entity == "debt" and op == "update"
+                   else FIELDS[entity] if op in {"create", "update"} else set())
         for change in spec.changes:
             if change.field in fields or change.field not in allowed:
                 raise AgentError("invalid_fields", 422)
@@ -219,8 +226,21 @@ def prepare(s, uid, ws, plan: Plan, allowed_catalog=None):
             raise AgentError("invalid_fields", 422)
         if entity == "habit" and op == "update" and "start" in fields:
             raise AgentError("invalid_fields", 422)
-        if op == "create" and ({"status", "done"} & set(fields)):
+        if op == "create" and ({"status", "done", "paid"} & set(fields)):
             raise AgentError("invalid_fields", 422)
+        if entity == "debt" and op == "update":
+            # Either all of it (status=done) or a part (paid=N), never both,
+            # never more than is still owed: 400 000 said for 40 000 must
+            # not look like a closed loan.
+            remaining = svc._debt_out(s, row)["amount"]
+            if set(fields) == {"status"} and fields["status"] == "done":
+                a["settles"] = remaining
+            elif set(fields) == {"paid"} and fields["paid"] <= remaining:
+                a["settles"] = fields["paid"]
+            else:
+                raise AgentError("paid_exceeds_remaining" if "paid" in fields else "invalid_fields", 422)
+            a["remaining"] = remaining
+            a["direction"] = row.direction
         if op == "create":
             required = {"task": "title", "habit": "name", "project": "name", "money": "amount",
                         "debt": "amount"}[entity]
@@ -265,6 +285,7 @@ def prepare(s, uid, ws, plan: Plan, allowed_catalog=None):
         a.pop("changes")
         a["fields"] = fields
         a["name"] = (getattr(row, "title", None) or getattr(row, "name", None)
+                     or (row.person if entity == "debt" and row else None)
                      or (f'{row.kind}: {row.amount:,} UZS · {row.category} · {row.day} · {row.note}' if entity == "money" and row else None)
                      or fields.get("title") or fields.get("name") or fields.get("person") or entity)
         a["before"] = snapshot(row) if row is not None else None
@@ -291,12 +312,21 @@ def catalog(s, uid, ws):
                 q = q.where(model.team_id.in_(tids))
             if hasattr(model, "archived_at"):
                 q = q.where(model.archived_at.is_(None))
+            if model is db.Debt:
+                q = q.where(model.settled_at.is_(None))
             rows = s.scalars(q.order_by(model.id.desc()).limit(81)).all()
             truncated |= len(rows) > 80
             for row in rows[:80]:
                 item = {"entity": entity, "scope": scope, "id": row.id,
-                        "name": getattr(row, "title", None) or getattr(row, "name", ""),
+                        "name": getattr(row, "title", None) or getattr(row, "name", None)
+                                or getattr(row, "person", ""),
                         "team_id": getattr(row, "team_id", None)}
+                if model is db.Debt:
+                    # What is still owed and which way: "lent" = they owe me.
+                    item.update(owed=svc._debt_out(s, row)["amount"], direction=row.direction,
+                                due=row.due)
+                    items.append(item)
+                    continue
                 for field in ("status", "deadline", "due_time", "project_id", "category", "schedule", "system_key", "day", "amount", "kind", "note"):
                     if hasattr(row, field):
                         item[field] = getattr(row, field)
@@ -351,7 +381,7 @@ def execute(s, uid, ws, a):
     team = a["scope"] == "team"
     out = None
     want_done = None
-    if op == "update" and ("status" in fields or "done" in fields):
+    if op == "update" and entity in {"task", "habit"} and ("status" in fields or "done" in fields):
         want_done = fields.pop("status", None) == "done" if entity == "task" else fields.pop("done") == "yes"
     if entity == "task":
         if op == "create":
@@ -392,6 +422,12 @@ def execute(s, uid, ws, a):
                 setattr(row, key, value)
             s.flush()
             out = row
+    elif entity == "debt" and op == "update":
+        try:
+            out = svc.settle_debt(s, ws, tid, True, paid=fields.get("paid"))
+        except ValueError as e:
+            raise AgentError(str(e) if str(e) in {"debt_closed", "paid_exceeds_remaining"}
+                             else "invalid_action", 422) from None
     elif entity == "debt":
         out = svc.add_debt(s, ws, fields["person"], fields["amount"], fields["direction"],
                            note=fields.get("note") or "", due=fields.get("deadline"))
@@ -430,6 +466,16 @@ HEADINGS = {
            ("money", "update"): "✏️ Edit money entry", ("money", "delete"): "🗑 Delete money entry",
            ("debt", "lent"): "🤝 You lent", ("debt", "borrowed"): "🤝 You borrowed"},
 }
+#: (direction, all of it?) → heading. lent: they pay me back; borrowed: I pay.
+DEBT_CLOSE = {
+    "uz": {("lent", True): "✅ Qarz to‘liq qaytdi", ("lent", False): "💵 Qarzning bir qismi qaytdi",
+           ("borrowed", True): "✅ Qarzni to‘liq qaytardingiz", ("borrowed", False): "💵 Qarzning bir qismini qaytardingiz"},
+    "ru": {("lent", True): "✅ Долг возвращён полностью", ("lent", False): "💵 Вернули часть долга",
+           ("borrowed", True): "✅ Вы вернули долг полностью", ("borrowed", False): "💵 Вы вернули часть долга"},
+    "en": {("lent", True): "✅ Debt paid back in full", ("lent", False): "💵 Part of the debt paid back",
+           ("borrowed", True): "✅ You paid the debt back in full", ("borrowed", False): "💵 You paid back part of the debt"},
+}
+DEBT_LEFT = {"uz": "Qoladi: {amount}", "ru": "Останется: {amount}", "en": "Still owed: {amount}"}
 DONE_HEADINGS = {"uz": {True: "✅ Bajarildi deb belgilanadi", False: "↩ Qayta ochiladi"},
                  "ru": {True: "✅ Отметить выполненным", False: "↩ Открыть снова"},
                  "en": {True: "✅ Mark as done", False: "↩ Reopen"}}
@@ -480,6 +526,14 @@ def _block(a, lang, today):
     f, op, entity = a["fields"], a["operation"], a["entity"]
     words, before = VALUES.get(lang, VALUES["uz"]), a.get("before") or {}
     detail = DETAIL.get(lang, DETAIL["uz"])
+    if entity == "debt" and op == "update":
+        whole = "status" in f
+        heading = DEBT_CLOSE.get(lang, DEBT_CLOSE["uz"])[(a.get("direction", "lent"), whole)]
+        lines = [heading, f'<b>{escape(str(a["name"]))}</b> — {_amount(a.get("settles", 0), lang)}']
+        left = int(a.get("remaining", 0)) - int(a.get("settles", 0))
+        if left > 0:
+            lines.append(DEBT_LEFT.get(lang, DEBT_LEFT["uz"]).format(amount=_amount(left, lang)))
+        return "\n".join(lines)
     if entity == "debt":
         heading = HEADINGS.get(lang, HEADINGS["uz"])[("debt", f.get("direction", "lent"))]
         lines = [heading, f'<b>{escape(str(f.get("person", "")))}</b> — {_amount(f.get("amount", 0), lang)}']

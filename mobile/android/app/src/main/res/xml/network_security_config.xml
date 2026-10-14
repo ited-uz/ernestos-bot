@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- HTTPS only, and only the system's certificate authorities: no plain
+     HTTP to the server, no user-installed CA trusted for the app's traffic
+     (OWASP MASVS-NETWORK). -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
