@@ -21,6 +21,6 @@
     "@capgo/capacitor-social-login": "8.5.16"
   },
   "devDependencies": {
-    "@capacitor/cli": "8.5.2"
+    "@capacitor/cli": "8.5.3"
   }
 }
