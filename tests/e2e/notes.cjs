@@ -169,6 +169,56 @@ const noOverflow = page => page.evaluate(() => document.documentElement.scrollWi
     assert.ok((await api(page, `/api/notes/${noteId}`)).body.includes('written offline'));
   });
 
+  await step('Written offline and left: the note reaches the server by itself when the network is back', async () => {
+    await page.click('[data-act="nt-back"]');
+    await page.waitForSelector('.nt-search');
+    await context.setOffline(true);
+    try {
+      await page.click('.nt-actions [data-act="nt-new"]');
+      await page.fill('#nt-title', 'Offline idea');
+      await page.fill('#nt-body', 'Typed on the metro');
+      await waitBadge(page, 's-offline', 10000);
+      await page.click('[data-act="nt-back"]');              // left before it could be saved
+      await page.waitForSelector('.nt-search');              // the list, not an error page
+      assert.ok(await page.isVisible('.nt-grid .nt-card'), 'the notes last loaded are still shown');
+      assert.ok(await page.isVisible('[data-act="nt-resume"]'), 'the unsent note is shown on Notes');
+      await shot(page, '360-offline-list');
+    } finally { await context.setOffline(false); }
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await page.waitForFunction(() => !Object.keys(localStorage).some(k => k.includes('ernestos-note-draft-777001-new-')), null, { timeout: 10000 });
+    const got = await api(page, '/api/notes?view=all&q=metro');
+    assert.equal(got.notes.length, 1, 'exactly one note, not two');
+    await page.waitForFunction(() => !document.querySelector('[data-act="nt-resume"]'));
+    await page.evaluate(id => ntOpen(id), noteId);
+    await page.waitForSelector('#nt-body');
+  });
+
+  await step('Drafts left on a closed app: sent on the next start; a clashing one is kept, not lost', async () => {
+    const n = await api(page, `/api/notes/${noteId}`);
+    await api(page, `/api/notes/${noteId}`, { method: 'PATCH', body: { base_revision: n.revision, body: n.body + ' (server)' } });
+    await page.evaluate(([id, rev]) => {
+      localStorage.setItem('ernestos-note-draft-777001-new-closedappkey0001', JSON.stringify(
+        { title: 'Left in the phone', body: 'written before the app was closed', base: 0, at: Date.now(),
+          id: null, createKey: 'closedappkey0001', meta: { kind: 'quick', tags: [], notebook_ids: [], status: 'inbox' } }));
+      localStorage.setItem(`ernestos-note-draft-777001-${id}`, JSON.stringify(
+        { title: 'Marketing lecture 1', body: 'typed on an old version', base: rev, at: Date.now(), id }));
+    }, [noteId, n.revision]);
+    await page.reload();
+    await page.waitForFunction(() => typeof state !== 'undefined' && state.me && !state.loading, null, { timeout: 15000 });
+    await page.waitForFunction(() => !localStorage.getItem('ernestos-note-draft-777001-new-closedappkey0001'), null, { timeout: 10000 });
+    const sent = await api(page, '/api/notes?view=all&q=closed');
+    assert.equal(sent.notes.length, 1, 'the new note arrived once');
+    assert.equal(sent.notes[0].kind, 'quick');
+    const kept = await page.evaluate(id => JSON.parse(localStorage.getItem(`ernestos-note-draft-777001-${id}`) || 'null'), noteId);
+    assert.ok(kept && kept.conflict && kept.body === 'typed on an old version', 'the clashing draft stays, marked');
+    await page.evaluate(id => { state.homeVeil = false; ntOpen(id); }, noteId);
+    await page.waitForSelector('.nt-conflict');
+    assert.equal(await page.inputValue('#nt-body'), 'typed on an old version');
+    await page.click('[data-act="nt-keep"][data-value="theirs"]');
+    await page.waitForFunction(() => !state.noteConflict);
+    assert.equal(await page.evaluate(id => localStorage.getItem(`ernestos-note-draft-777001-${id}`), noteId), null);
+  });
+
   await step('An image attachment uploads, is inserted and shows in preview', async () => {
     const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64)]);
     await page.setInputFiles('#nt-file', { name: 'board.png', mimeType: 'image/png', buffer: png });
@@ -191,6 +241,13 @@ const noOverflow = page => page.evaluate(() => document.documentElement.scrollWi
     await page.waitForSelector('.nt-rel');
     const tasks = JSON.stringify(await api(page, '/api/tasks'));
     assert.ok(tasks.includes('Email the professor'));
+    // The task shows the note it came from, and opens it.
+    const taskId = await page.evaluate(() => state.note.relations.find(r => r.rel === 'created_task').target_id);
+    await page.evaluate(async id => { state.tasks = await api('/api/tasks'); openTaskSheet(id); }, taskId);
+    await page.waitForSelector('#sheet .nt-linked .chip', { timeout: 8000 });
+    assert.ok((await page.textContent('#sheet .nt-linked')).includes('Marketing lecture 1'));
+    await page.click('#sheet .nt-linked .chip');
+    await page.waitForFunction(id => state.screen === 'note' && state.note?.id === id && !document.getElementById('sheet').classList.contains('show'), noteId);
   });
 
   await step('Notebooks: a suggested one is created only when tapped, and filters the list', async () => {

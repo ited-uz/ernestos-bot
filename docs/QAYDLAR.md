@@ -39,7 +39,9 @@ Arxiv, Savat — shu to‘plamning filtrlari (nusxa yo‘q).
 - **Avtomatik saqlash va halol holatlar**: O‘zgarish bor → Saqlanmoqda… →
   Saqlandi; Internet yo‘q · qurilmada; Ziddiyat; Saqlanmadi. Har bir
   harf qurilmada (akkaunt bo‘yicha alohida) saqlanadi va server qabul
-  qilmaguncha o‘chmaydi.
+  qilmaguncha o‘chmaydi. Oflayn yozib chiqib ketilgan qaydlar internet
+  qaytganda (yoki ilova keyingi ochilganda) o‘zi yuboriladi; oflaynda
+  Qaydlar ro‘yxati oxirgi ko‘rilgan holatda qoladi.
 - **Ziddiyat (409)**: boshqa qurilmada o‘zgargan qaydga eski versiya asosida
   saqlash rad etiladi; serverdagi va sizning versiyangiz ikkalasi saqlanadi;
   siz tanlaysiz: «Meniki», «Serverdagisi», «Ikkalasi ham».
@@ -49,7 +51,8 @@ Arxiv, Savat — shu to‘plamning filtrlari (nusxa yo‘q).
   bir qayd bir nechta daftarda.
 - **Bog‘lanishlar**: `[nom](note:ID)` va `[[Sarlavha]]` havolalari, teskari
   havolalar (backlinks) ID bo‘yicha — nom o‘zgarsa ham buzilmaydi. O‘z
-  vazifa / loyiha / maqsadlaringizga bog‘lash. Jamoa elementlariga bog‘lab
+  vazifa / loyiha / maqsadlaringizga bog‘lash — bog‘langan qaydlar vazifa,
+  maqsad va loyiha oynasida ham ko‘rinadi. Jamoa elementlariga bog‘lab
   bo‘lmaydi, jamoa a’zolari sizning qaydingizni hech qachon ko‘rmaydi.
 - **Qayd → vazifa**: avval ko‘rinish (hech narsa yozilmaydi), keyin bitta
   tranzaksiyada vazifa + bog‘lanish; takroriy bosish ikkinchi vazifa
@@ -78,7 +81,8 @@ Arxiv, Savat — shu to‘plamning filtrlari (nusxa yo‘q).
   bajarilmaydi va undan amal (command) yasalmaydi.
 - **NotebookLM**: [NOTES_NOTEBOOKLM_SETUP.md](NOTES_NOTEBOOKLM_SETUP.md).
 - **Kvota/XP**: qayd yozish, saqlash, import — bepul amal, kvota, XP yoki
-  referal hisobiga kirmaydi.
+  referal hisobiga kirmaydi. Bitta akkaunt bazani to‘ldirmasligi uchun
+  jami qayd matniga chegara bor: Free 20 mln, Pro 200 mln, Max 1 mlrd belgi.
 - **Hisob**: JSON eksportda qaydlar bor; «ma’lumotni tozalash» va «hisobni
   o‘chirish» barcha 14 jadvalni tozalaydi va Google ruxsatini bekor qiladi;
   qurilmadagi saqlanmagan qaydlar ham o‘chiriladi.
@@ -109,14 +113,16 @@ Google bilan.
 
 Raqamlar (2026-10-17, shu branch):
 
-- Python (SQLite): **1218 o‘tdi**, 0 xato. Shundan Notes: 51 ta
-  (`test_notes.py` 33, `test_notes_connector.py` 18).
-- Python (PostgreSQL 16, lokal): to‘liq to‘plam **1208 o‘tdi + 8 skip**
-  (faqat SQLite sxemasi uchun yozilganlar); keyin qo‘shilgan 2 test bilan
-  Notes’ning 51 testi PostgreSQL’da alohida **51/51**.
-- Brauzer (headless Chromium, haqiqiy server): Notes E2E **22/22**, asosiy
+- Python (SQLite): **1224 o‘tdi**, 0 xato. Shundan Notes: 57 ta
+  (`test_notes.py` 39, `test_notes_connector.py` 18).
+- Python (PostgreSQL 16, lokal, toza baza): **1216 o‘tdi + 8 skip**
+  (faqat SQLite sxemasi uchun yozilganlar), 0 xato.
+- Brauzer (headless Chromium, haqiqiy server): Notes E2E **24/24**, asosiy
   E2E 11/11, ilova qobig‘i 29/29, oflayn nusxa ✅ (Notes bilan); frontend
   unit testlari ✅; pyflakes ✅.
+- 10 sintetik foydalanuvchi bilan audit (115 qayd, 125 tekshiruv, 360 px
+  UI’da 738 tekshiruv, 8 ta tuzatilgan xato):
+  [QAYDLAR_AUDIT.md](QAYDLAR_AUDIT.md).
 - Jonli Google/NotebookLM: **o‘tkazilmagan** —
   `scripts/notebooklm_live_check.py` → `BLOCKED: missing settings`.
 

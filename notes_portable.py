@@ -23,7 +23,7 @@ import re
 import secrets
 import stat
 import zipfile
-from sqlalchemy import func, select
+from sqlalchemy import delete as sql_delete, func, or_, select
 from sqlalchemy.orm import Session
 
 import notes
@@ -324,6 +324,13 @@ def excluded(path: str) -> str | None:
 
 
 _NOTION_ID = re.compile(r"\s([0-9a-f]{32})(?=\.md$|\.csv$|$)")
+
+
+def _notion_clean(path: str) -> str:
+    """A Notion path without the 32-hex ids Notion appends to every name."""
+    return "/".join(_NOTION_ID.sub("", part).strip() for part in path.split("/")) if path else ""
+
+
 _INLINE_TAG = re.compile(r"(?<![\w&/#])#([\w\-/]{1,40})", re.UNICODE)
 _WIKI_EMBED = re.compile(r"!\[\[([^\]|#]+)(?:\|[^\]]*)?\]\]")
 _MD_IMAGE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)\)")
@@ -399,7 +406,7 @@ def parse(data: bytes, source: str = "auto") -> dict:
             if first:
                 title = title or first.group(1).strip()
                 body = body[first.end():].lstrip("\n")
-            folder = "/".join(_NOTION_ID.sub("", p).strip() for p in folder.split("/")) if folder else ""
+            folder = _notion_clean(folder)
         else:
             external = "obsidian:" + path
         title = title or name
@@ -447,8 +454,11 @@ def parse(data: bytes, source: str = "auto") -> dict:
             if text is None:
                 continue
             m = _NOTION_ID.search(path.rsplit("/", 1)[-1])
-            db_dir = path[:-4]
-            known = md_titles_by_dir.get(_NOTION_ID.sub("", db_dir).strip(), set()) | md_titles_by_dir.get(db_dir, set())
+            # Rows that have their own page are imported as that page.
+            db_dir = _notion_clean(path[:-4])
+            known = md_titles_by_dir.get(db_dir, set())
+            db_name = db_dir.rsplit("/", 1)[-1]
+            top = db_dir.split("/")[0] if "/" in db_dir else ''
             reader = csv.reader(io.StringIO(text))
             header = next(reader, None)
             if not header:
@@ -459,7 +469,8 @@ def parse(data: bytes, source: str = "auto") -> dict:
                 props = "\n".join(f"- **{h}**: {v}" for h, v in zip(header[1:], row[1:]) if v.strip())
                 items.append({
                     "path": f"{path}#{k + 1}", "title": notes.clean_title(row[0]), "body": props,
-                    "too_long": False, "tags": [], "notebooks": [notes.clean_title(_NOTION_ID.sub("", path.rsplit("/", 1)[-1][:-4]).strip())[:80]],
+                    "too_long": False, "tags": notes.clean_tags([db_name])[:1] if db_name else [],
+                    "notebooks": [notes.clean_title(top)[:80]] if top else [],
                     "kind": "note", "status": "inbox", "pinned": False, "archived": False,
                     "source_url": "", "ai_excluded": False, "uid": "",
                     "external_id": f"notion:{m.group(1) if m else path}:{k + 1}", "embeds": [], "folder": "",
@@ -479,8 +490,10 @@ def _resolve(s: Session, ws: int, item: dict) -> tuple[str, Note | None]:
         found = s.scalar(select(Note).where(Note.workspace_id == ws, Note.external_id == item["external_id"]))
     h = notes.content_hash(item["title"], item["body"])
     if found is not None:
-        return ("skip_duplicate" if found.content_hash == h else "update"), found
-    dup = s.scalar(select(Note).where(Note.workspace_id == ws, Note.content_hash == h).limit(1))
+        same = h in (found.content_hash, found.import_hash)
+        return ("skip_duplicate" if same else "update"), found
+    dup = s.scalar(select(Note).where(Note.workspace_id == ws,
+                                      or_(Note.content_hash == h, Note.import_hash == h)).limit(1))
     if dup is not None:
         return "skip_duplicate", dup
     return "new", None
@@ -489,6 +502,10 @@ def _resolve(s: Session, ws: int, item: dict) -> tuple[str, Note | None]:
 def preview(s: Session, ws: int, data: bytes, source: str = "auto") -> dict:
     notes.tidy(s)
     parsed = parse(data, source)
+    # One import waits for confirmation at a time: a new preview replaces it,
+    # so repeated uploads cannot pile archives up in the database.
+    s.execute(sql_delete(NoteImportBatch).where(NoteImportBatch.workspace_id == ws,
+                                                NoteImportBatch.status == "preview"))
     rows = []
     for it in parsed["items"]:
         action, found = _resolve(s, ws, it)
@@ -553,6 +570,9 @@ def commit(s: Session, ws: int, token: str, *, exclude_paths=()) -> dict:
         try:
             book_ids = [_book(s, ws, b, books) for b in it["notebooks"] if b]
             if action == "update":
+                grows = len(it["title"]) + len(it["body"]) - len(found.title) - len(found.body)
+                if grows > 0:
+                    notes.check_text_room(s, ws, grows)
                 notes._snapshot(s, found, "import", force=True)
                 found.title, found.body = it["title"], it["body"]
                 found.content_hash = notes.content_hash(found.title, found.body)
@@ -577,6 +597,7 @@ def commit(s: Session, ws: int, token: str, *, exclude_paths=()) -> dict:
                 if it["archived"]:
                     note.archived_at = utcnow()
                 made += 1
+            note.import_hash = notes.content_hash(it["title"], it["body"])
             # Embedded files the archive carries become attachments.
             body = note.body
             for ref in it["embeds"]:

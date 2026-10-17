@@ -1862,6 +1862,10 @@ class Note(Base):
     #: Where an imported note came from, for an idempotent re-import.
     import_source: Mapped[str] = mapped_column(String(12), default="")
     external_id: Mapped[str] = mapped_column(String(300), default="", index=True)
+    #: Hash of the text as the archive had it (before embeds became
+    #: attachments): the same archive again is recognised, and edits made here
+    #: since are not overwritten by it.
+    import_hash: Mapped[str] = mapped_column(String(64), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 

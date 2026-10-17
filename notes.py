@@ -50,6 +50,9 @@ KEEP_REVISIONS = 30
 REVISION_WINDOW = timedelta(minutes=10)
 PAGE_MAX = 100
 
+#: The text of all of an account's notes together, in characters. Saving is
+#: free; this only stops one account from filling the database.
+TEXT_TOTAL = {"free": 20_000_000, "pro": 200_000_000, "max": 1_000_000_000}
 #: Attachments: one file, and all of an account's files together.
 ATTACH_FILE_MAX = 5 * 1024 * 1024
 ATTACH_TOTAL_MB = {"free": 25, "pro": 250, "max": 1024}
@@ -444,6 +447,7 @@ def create(s: Session, ws: int, *, title: str = "", body: str = "", kind: str = 
         raise Invalid("bad_status")
     title, body = clean_title(title), clean_body(body)
     tag_list = clean_tags(tags)
+    check_text_room(s, ws, len(title) + len(body))
     now = utcnow()
     note = Note(workspace_id=ws, uid=new_uid(), title=title, body=body, kind=kind,
                 template=template, status=status, source_url=clean_url(source_url),
@@ -523,6 +527,9 @@ def update(s: Session, ws: int, note_id: int, fields: dict, base_revision: int |
                 raise Conflict(detail(s, ws, note))
             changed = False
         if changed:
+            grows = len(title) + len(body) - len(note.title) - len(note.body)
+            if grows > 0:
+                check_text_room(s, ws, grows)
             _snapshot(s, note, "edit")
             note.title, note.body = title, body
             note.content_hash = content_hash(title, body)
@@ -668,7 +675,8 @@ def _clean_book(fields: dict, partial: bool) -> dict:
     if "color" in fields:
         out["color"] = fields["color"] if fields["color"] in COLORS else "violet"
     if "icon" in fields:
-        out["icon"] = str(fields["icon"] or "").strip()[:8]
+        # An emoji or two; markup characters have no place in an icon.
+        out["icon"] = re.sub(r"[<>\"'&]", "", str(fields["icon"] or "")).strip()[:8]
     if "position" in fields:
         out["position"] = max(0, min(int(fields["position"] or 0), 10_000))
     return out
@@ -872,10 +880,22 @@ def attachment_view(a: NoteAttachment) -> dict:
             "created_at": _stamp(a.created_at)}
 
 
-def _storage_cap(s: Session, ws: int) -> int:
+def _tier(s: Session, ws: int) -> str:
     owner = _owner(s, ws)
-    tier = plans.tier_of(s, owner.telegram_id) if (plans.ENABLED and owner) else "pro"
-    return ATTACH_TOTAL_MB.get(tier, ATTACH_TOTAL_MB["free"]) * 1024 * 1024
+    return plans.tier_of(s, owner.telegram_id) if (plans.ENABLED and owner) else "pro"
+
+
+def _storage_cap(s: Session, ws: int) -> int:
+    return ATTACH_TOTAL_MB.get(_tier(s, ws), ATTACH_TOTAL_MB["free"]) * 1024 * 1024
+
+
+def check_text_room(s: Session, ws: int, adding: int) -> None:
+    """Refuse text that would take the account past its notes-text cap."""
+    cap = TEXT_TOTAL.get(_tier(s, ws), TEXT_TOTAL["free"])
+    used = s.scalar(select(func.coalesce(func.sum(func.length(Note.body) + func.length(Note.title)), 0))
+                    .where(Note.workspace_id == ws)) or 0
+    if used + adding > cap:
+        raise Invalid("notes_storage_full")
 
 
 def safe_filename(name: str) -> str:

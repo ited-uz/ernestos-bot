@@ -547,3 +547,61 @@ def test_the_phone_app_may_send_the_notes_headers():
     cors = next(m for m in application.app.user_middleware if m.cls.__name__ == "CORSMiddleware")
     assert {"X-File-Name", "If-Match"} <= set(cors.kwargs["allow_headers"])
     assert "ETag" in cors.kwargs["expose_headers"]
+
+
+def test_reimporting_a_vault_with_pictures_changes_nothing_and_keeps_edits(fresh):
+    """The picture link is rewritten to an attachment on import; the same
+    archive again must still be recognised, and must not undo an edit."""
+    vault = _zip({"V/a.md": "Text\n\n![[p.png]]", "V/p.png": PNG})
+    pv = _preview(fresh, vault).json()
+    fresh.post(f"/api/notes/import/{pv['token']}/commit", json={})
+    note = fresh.get("/api/notes?view=all").json()["notes"][0]
+    full = fresh.get(f"/api/notes/{note['id']}").json()
+    save(fresh, full, body=full["body"] + "\n\nmy edit")
+    again = _preview(fresh, vault).json()
+    assert again["counts"] == {"new": 0, "update": 0, "skip_duplicate": 1, "excluded": 0}
+    fresh.post(f"/api/notes/import/{again['token']}/commit", json={})
+    after = fresh.get(f"/api/notes/{note['id']}").json()
+    assert after["body"].endswith("my edit") and len(after["attachments"]) == 1
+
+
+def test_a_notion_database_row_with_its_own_page_is_imported_once(fresh):
+    a, b, c = "a" * 32, "b" * 32, "c" * 32
+    data = _zip({f"Home {a}.md": "# Home\n\nx",
+                 f"Home {a}/Leads {b}.csv": "Name,Stage\nAcme,Won\nBeta,Lead\n",
+                 f"Home {a}/Leads {b}/Acme {c}.md": "# Acme\n\nStage: Won"})
+    pv = _preview(fresh, data).json()
+    assert sorted(i["title"] for i in pv["items"]) == ["Acme", "Beta", "Home"]
+    beta = next(i for i in pv["items"] if i["title"] == "Beta")
+    assert beta["notebooks"] == ["Home"] and beta["tags"] == ["leads"]
+
+
+def test_an_account_cannot_fill_the_database_with_note_text(fresh, monkeypatch):
+    monkeypatch.setitem(notes.TEXT_TOTAL, "pro", 1000)
+    n = make(fresh, title="t", body="x" * 900)
+    assert fresh.post("/api/notes", json={"body": "y" * 200}).json()["detail"] == "notes_storage_full"
+    assert save(fresh, n, body="x" * 990).status_code == 200          # growing within the cap
+    assert save(fresh, fresh.get(f"/api/notes/{n['id']}").json(), body="x" * 1200).json()["detail"] == "notes_storage_full"
+    assert save(fresh, fresh.get(f"/api/notes/{n['id']}").json(), body="short").status_code == 200   # shrinking always works
+
+
+def test_a_full_length_note_fits_on_free(client, plans_on):
+    uid = next(_next_id)
+    _fresh_account(uid)
+    _expire_grants(uid)
+    c = Caller(client, {"id": uid, "first_name": "F"})
+    assert c.post("/api/notes", json={"title": "Long", "body": "z" * notes.BODY_MAX}).status_code == 201
+
+
+def test_a_new_import_preview_replaces_the_one_waiting(fresh):
+    first = _preview(fresh, _zip({"a.md": "one"})).json()
+    _preview(fresh, _zip({"b.md": "two"}))
+    with SessionLocal() as s:
+        assert s.scalar(select(func.count()).select_from(db.NoteImportBatch).where(
+            db.NoteImportBatch.workspace_id == _ws(fresh.user["id"]))) == 1
+    assert fresh.post(f"/api/notes/import/{first['token']}/commit", json={}).status_code == 404
+
+
+def test_a_notebook_icon_carries_no_markup(fresh):
+    book = fresh.post("/api/notes/notebooks", json={"name": "B", "icon": "<i>x</i>"}).json()
+    assert "<" not in book["icon"] and ">" not in book["icon"]
