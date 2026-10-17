@@ -14,6 +14,7 @@ import asyncio
 import base64
 import binascii
 import hashlib
+import ipaddress
 import hmac
 import json
 import legal
@@ -32,7 +33,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select, text as sql_text
-from sqlalchemy.exc import DBAPIError, OperationalError
+from sqlalchemy.exc import DataError, DBAPIError, OperationalError
 from telegram import (
     InlineKeyboardButton, InlineKeyboardMarkup, InputFile, LabeledPrice, MenuButtonWebApp,
     ReplyKeyboardMarkup, Update, WebAppInfo,
@@ -55,6 +56,10 @@ import coins
 import promo
 import plans
 import agent_api
+import notes_api
+import notes_connector
+import notes_portable
+import notes as notes_svc
 import agent_core
 import agent_provider
 from agent_bot import AgentBot
@@ -3251,7 +3256,7 @@ async def create_task_from_flow(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
             timer = row.get("timer_minutes")
             team = svc.team_for(s, user.telegram_id, int(dest))
             team_name = team.name if team else ""
-    text = (t(lang, "task_added", title=title) if team_name is None
+    text = (t(lang, "task_added", title=esc(title)) if team_name is None
             else t(lang, "task_added_team", title=esc(title), team=esc(team_name)))
     if update.callback_query:
         try:
@@ -7153,6 +7158,9 @@ async def lifespan(_: FastAPI):
     import migrations
     migrations.auto_apply()
     log.info("database ready: %s", db.engine.url.render_as_string(hide_password=True))
+    connector_task = None
+    if ENVIRONMENT != "test":
+        connector_task = asyncio.create_task(notes_connector.worker())
 
     # Advisory locks are held by a *connection*, and a process that is killed
     # mid-job leaves its lock behind until the database notices the connection
@@ -7260,6 +7268,8 @@ async def lifespan(_: FastAPI):
 
     yield
 
+    if connector_task:
+        connector_task.cancel()
     if scheduler:
         scheduler.shutdown(wait=False)
     if telegram_app:
@@ -7281,6 +7291,8 @@ app = FastAPI(title="ErnestOS", lifespan=lifespan,
 #: Per-user token buckets. Reads are cheap, writes cost more, and exports hit
 #: Telegram, so each class gets its own budget (audit 012).
 RATE_LIMITS = {"read": (60, 60), "write": (30, 60), "heavy": (5, 60),
+               # A note being typed saves itself every couple of seconds.
+               "notes": (120, 60),
                # Sign-in codes: ten tries per ten minutes per address.
                "auth": (10, 600),
                # Error reports from phones: their own budget, so a broken
@@ -7301,8 +7313,10 @@ _buckets = limiter._hits
 
 def _rate_class(request: Request) -> str:
     path = request.url.path
-    if path.startswith("/api/stats/export"):
+    if path.startswith(("/api/stats/export", "/api/notes/download/")) or path in NOTES_HEAVY:
         return "heavy"
+    if request.method == "PATCH" and NOTE_SAVE.match(path):
+        return "notes"
     # The picture is shown on several screens; at five a minute (the old
     # "heavy" class) the second screen already got a 429 and an empty circle,
     # and the upload after it failed the same way. It is an ordinary read, and
@@ -7313,6 +7327,34 @@ def _rate_class(request: Request) -> str:
             ("/api/auth/email/", "/api/account/email/", "/api/account/delete/")):
         return "auth"
     return "read" if request.method == "GET" else "write"
+
+
+#: Notes routes that read or write whole archives.
+NOTES_HEAVY = {"/api/notes/export.zip", "/api/notes/import/preview", "/api/notes/ai/export"}
+NOTE_SAVE = re.compile(r"^/api/notes/\d+$")
+#: Upload routes with their own, larger body limit (read with a counted stream).
+BODY_LIMITS = {"/api/notes/import/preview": notes_portable.UPLOAD_MAX}
+NOTE_ATTACH = re.compile(r"^/api/notes/\d+/attachments$")
+
+
+def client_host(request: Request) -> str:
+    """The caller's address. Behind the hosting proxy that is the last
+    X-Forwarded-For hop (the proxy appends it); the socket's peer would be the
+    proxy itself, and every signed-out visitor would share one budget."""
+    if config.TRUST_PROXY:
+        hops = [h.strip() for h in request.headers.get("x-forwarded-for", "").split(",") if h.strip()]
+        # From the right: the proxies' own internal hops are skipped, and the
+        # first public address is the caller. Anything left of it was written
+        # by the caller and is not believed.
+        for hop in reversed(hops):
+            try:
+                if ipaddress.ip_address(hop).is_global:
+                    return hop
+            except ValueError:
+                continue
+        if hops:
+            return hops[-1]
+    return request.client.host if request.client else "unknown"
 
 
 def rate_limit_check(key: int, bucket: str) -> int | None:
@@ -7328,6 +7370,12 @@ async def guard_requests(request: Request, call_next):
 
     declared = request.headers.get("content-length")
     body_limit = config.AGENT_AUDIO_BYTES if request.url.path in {"/api/agent/audio", "/api/agent/journal/audio", "/api/agent/chat/audio"} else MAX_BODY_BYTES
+    body_limit = BODY_LIMITS.get(request.url.path, body_limit)
+    if NOTE_ATTACH.match(request.url.path):
+        body_limit = notes_svc.ATTACH_FILE_MAX
+    elif request.url.path.startswith(("/api/notes/", "/api/notes")) and request.method in ("POST", "PATCH"):
+        # A note body may be up to notes.BODY_MAX characters of UTF-8.
+        body_limit = max(body_limit, notes_svc.BODY_MAX * 4 + 16_384)
     if declared and declared.isdigit() and int(declared) > body_limit:
         return JSONResponse(status_code=413, content={"detail": "payload_too_large"})
 
@@ -7344,7 +7392,7 @@ async def guard_requests(request: Request, call_next):
         # the account it signed in to — the same account `auth` will serve.
         key = accounts.resolve_id(key)
     if not key:
-        host = request.client.host if request.client else "unknown"
+        host = client_host(request)
         # Offset by one: `hash(host) % 10_000_000 == 0` would produce key 0,
         # which is the sentinel for "no identified user" a few lines above, so
         # one unlucky address would share a bucket with that branch.
@@ -7400,6 +7448,7 @@ async def guard_requests(request: Request, call_next):
     if (key > 0 and request.method in MUTATING_METHODS
             and 200 <= response.status_code < 300
             and not request.url.path.startswith("/api/agent/")
+            and not request.url.path.startswith(UNCOUNTED_PREFIXES)
             and request.url.path not in UNCOUNTED_PATHS):
         try:
             with SessionLocal() as s:
@@ -7439,6 +7488,10 @@ UNCOUNTED_PATHS = {
     "/api/money/preview", "/api/habits/parse", "/api/quick/parse",
     "/api/plans/invoice",
 }
+#: Notes save themselves while being typed: no write under Notes spends a
+#: free action, a quota, XP or a referral step. Turning a note into a task
+#: is subject to the task limits in the service instead.
+UNCOUNTED_PREFIXES = ("/api/notes",)
 
 
 @app.exception_handler(Exception)
@@ -7457,6 +7510,16 @@ async def plan_limit(request: Request, exc: plans.PlanLimit):
 
 @app.exception_handler(svc.NotFound)
 async def not_found(request: Request, exc: svc.NotFound):
+    return JSONResponse(status_code=404, content={"detail": "not_found"})
+
+
+@app.exception_handler(OverflowError)
+@app.exception_handler(DataError)
+async def id_out_of_range(request: Request, exc: Exception):
+    """An id no row can have (larger than the column holds) is a missing row,
+    not a server fault: SQLite overflows in the driver, PostgreSQL refuses it
+    as out of range."""
+    log.info("value out of range on %s %s: %s", request.method, request.url.path, type(exc).__name__)
     return JSONResponse(status_code=404, content={"detail": "not_found"})
 
 
@@ -7655,6 +7718,16 @@ def _tick_day(value: str | None, tz) -> date | None:
     if day > today or (today - day).days > TICK_BACKFILL_DAYS:
         raise HTTPException(status_code=422, detail="day_out_of_range")
     return None if day == today else day
+
+
+def _record_day(value: str | None, tz) -> date | None:
+    """The day a prayer or a journal entry is written for. Any past day may
+    be filled in; tomorrow may not — a day is not prayed or reflected on
+    before it comes, and marking it early would lift its score in advance."""
+    day = _date(value)
+    if day is not None and day > svc.today_local(tz):
+        raise HTTPException(status_code=422, detail="day_out_of_range")
+    return day
 
 
 def _date(value: str | None) -> date | None:
@@ -8221,6 +8294,9 @@ def api_teams(init=Header(default=None, alias="X-Telegram-Init-Data")):
                 # see that there is one and who to ask.
                 "invite_link": (svc.team_invite_link(team, BOT_USERNAME)
                                 if perms["invite"] else None),
+                # The bare code too: without a bot @name there is no link, and
+                # a phone-only member joins by typing the code.
+                "invite_code": team.code if perms["invite"] else None,
                 "invite": svc.invite_info(team),
                 "ownership_offer": team.pending_owner_id == uid,
                 "pending_owner_id": team.pending_owner_id,
@@ -9568,13 +9644,13 @@ def api_prayer_set(body: PrayerIn, init=Header(default=None, alias="X-Telegram-I
     with SessionLocal() as s:
         try:
             svc.set_prayer(s, ws, body.prayer, body.status, user.gender,
-                           _date(body.day), tz=tz)
+                           _record_day(body.day, tz), tz=tz)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
         # Return the whole day, so one tap updates the score, the 5/5 count and
         # the habit tick together rather than in three separate requests.
         return {"ok": True,
-                **svc.prayer_state(s, ws, _date(body.day) or svc.today_local(tz),
+                **svc.prayer_state(s, ws, _record_day(body.day, tz) or svc.today_local(tz),
                                    user.gender)}
 
 
@@ -9591,11 +9667,11 @@ def api_prayer_clear(body: PrayerClearIn,
     tz = svc.user_tz(user)
     with SessionLocal() as s:
         try:
-            svc.clear_prayer(s, ws, body.prayer, user.gender, _date(body.day), tz=tz)
+            svc.clear_prayer(s, ws, body.prayer, user.gender, _record_day(body.day, tz), tz=tz)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
         return {"ok": True,
-                **svc.prayer_state(s, ws, _date(body.day) or svc.today_local(tz),
+                **svc.prayer_state(s, ws, _record_day(body.day, tz) or svc.today_local(tz),
                                    user.gender)}
 
 
@@ -9605,11 +9681,11 @@ def api_prayer_excused(body: ExcusedIn, init=Header(default=None, alias="X-Teleg
     tz = svc.user_tz(user)
     with SessionLocal() as s:
         try:
-            svc.set_excused(s, ws, body.excused, user.gender, _date(body.day), tz=tz)
+            svc.set_excused(s, ws, body.excused, user.gender, _record_day(body.day, tz), tz=tz)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
         return {"ok": True,
-                **svc.prayer_state(s, ws, _date(body.day) or svc.today_local(tz),
+                **svc.prayer_state(s, ws, _record_day(body.day, tz) or svc.today_local(tz),
                                    user.gender)}
 
 
@@ -9943,9 +10019,10 @@ def api_journal_save(body: JournalIn, init=Header(default=None, alias="X-Telegra
     """
     user, ws = auth(init)
     tz = svc.user_tz(user)
+    day = _record_day(body.day, tz)
     with SessionLocal() as s:
         if body.base is not None and body.answers:
-            current = svc.get_journal(s, ws, _date(body.day), tz=tz) or {}
+            current = svc.get_journal(s, ws, day, tz=tz) or {}
             if (current.get("updated_at") or "") != body.base:
                 theirs = current.get("answers") or {}
                 clash = {k: theirs[k] for k, v in body.answers.items()
@@ -9955,7 +10032,7 @@ def api_journal_save(body: JournalIn, init=Header(default=None, alias="X-Telegra
                         "detail": "journal_conflict", "server": clash,
                         "updated_at": current.get("updated_at")})
         row = svc.save_journal(s, ws, answers=body.answers, text=body.text,
-                               day=_date(body.day), mood=body.mood, tz=tz)
+                               day=day, mood=body.mood, tz=tz)
         entry = svc.get_journal(s, ws, row.day, tz=tz)
     return {"ok": True, "day": row.day.isoformat(),
             "updated_at": entry["updated_at"] if entry else None,
@@ -10016,7 +10093,8 @@ def api_quick_parse(body: QuickParseIn,
     parsed = svc.parse_quick_capture(body.title.strip(), svc.today_local(tz), svc.now_local(tz).time())
     out = {"title": parsed["title"],
            "deadline": parsed["deadline"].isoformat() if parsed["deadline"] else None,
-           "due_time": parsed["due_time"].strftime("%H:%M") if parsed["due_time"] else None}
+           "due_time": parsed["due_time"].strftime("%H:%M") if parsed["due_time"] else None,
+           "recurrence": parsed.get("recurrence") or ""}
     if parsed["past_time"]:
         tomorrow = svc.today_local(tz) + timedelta(days=1)
         return {"ok": False, "ask": "past_time", **out,
@@ -10059,7 +10137,8 @@ def api_quick_add(body: QuickAddIn,
         parsed["deadline"], parsed["past_time"] = _date(body.deadline), False
     out = {"title": parsed["title"],
            "deadline": parsed["deadline"].isoformat() if parsed["deadline"] else None,
-           "due_time": parsed["due_time"].strftime("%H:%M") if parsed["due_time"] else None}
+           "due_time": parsed["due_time"].strftime("%H:%M") if parsed["due_time"] else None,
+           "recurrence": parsed.get("recurrence") or ""}
     if parsed["past_time"]:
         # Not saved: the app asks "today or tomorrow?" and sends the answer.
         tomorrow = svc.today_local(tz) + timedelta(days=1)
@@ -10069,7 +10148,7 @@ def api_quick_add(body: QuickAddIn,
         return {"ok": True, "preview": True, **out}
     with SessionLocal() as s:
         task = svc.add_task(s, ws, parsed["title"], deadline=parsed["deadline"],
-                            due_time=parsed["due_time"])
+                            due_time=parsed["due_time"], recurrence=out["recurrence"])
     return {"ok": True, "id": task.id, **out}
 
 
@@ -10996,7 +11075,10 @@ async def api_feedback(body: FeedbackIn,
     """
     user, ws = auth(init)
     with SessionLocal() as s:
-        row = svc.save_feedback(s, ws, user.telegram_id, body.message)
+        try:
+            row = svc.save_feedback(s, ws, user.telegram_id, body.message)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="empty_feedback")
         feedback_id = row.id
 
     delivered = False
@@ -11737,6 +11819,30 @@ def index():
 
 
 agent_api.install(app, auth)
+notes_api.install(app, auth)
+
+#: Sent with every answer. The Mini App is framed only by Telegram's own web
+#: clients (web.telegram.org); no other site may put it in a frame and dress
+#: it up as something else. Content types are taken as declared, never
+#: sniffed, so a stored picture is never read as a page.
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Content-Security-Policy": "frame-ancestors 'self' https://web.telegram.org https://*.telegram.org",
+}
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    for name, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(name, value)
+    # HTTPS only once the request really came over HTTPS (the proxy says so),
+    # so a local http run is never pinned to https.
+    if request.headers.get("x-forwarded-proto", request.url.scheme) == "https":
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+    return response
+
 
 # The phone app's pages are served from inside the app (Capacitor:
 # `https://localhost` on Android, `capacitor://localhost` on iOS), so its
@@ -11753,7 +11859,7 @@ app.add_middleware(
     allow_origins=config.APP_ORIGINS,
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
     allow_headers=["Content-Type", "X-Telegram-Init-Data", "X-Idempotency-Key",
-                   "X-Agent-Request-Key"],
-    expose_headers=["X-Trial-Remaining", "Retry-After", "Content-Disposition"],
+                   "X-Agent-Request-Key", "X-File-Name", "If-Match"],
+    expose_headers=["X-Trial-Remaining", "Retry-After", "Content-Disposition", "ETag"],
     max_age=600,
 )

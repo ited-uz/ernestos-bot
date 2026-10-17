@@ -225,6 +225,14 @@ if(/[?&]preview(=|&|$)/.test(location.search))
   --hero-border:color-mix(in srgb, var(--c1) 22%, var(--border));
 }
 
+/* Notes: notebook and note-kind hues, fixed across themes (mixed into each
+   theme's own surfaces where they are drawn). */
+:root{
+  --nb-violet:#7C5CFF; --nb-teal:#14B8A6; --nb-amber:#F59E0B;
+  --nb-rose:#F43F5E; --nb-sky:#0EA5E9; --nb-slate:#64748B;
+  --nt-pin:#E0A100; --nt-flame:#E8590C;
+}
+
 /* ==================================================================
    Base
    ================================================================== */
@@ -275,6 +283,9 @@ h3{font-size:18px;font-weight:640;letter-spacing:-.3px;line-height:1.3;
 .row{display:flex;align-items:center;gap:var(--s2)}
 .grow{flex:1;min-width:0}
 .ellipsis{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* A name beside a button (the wake-up row) wraps to two lines instead of
+   losing its end on a 360px screen. */
+.clamp2{overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
 .wrap{overflow-wrap:anywhere}
 .strike{text-decoration:line-through;color:var(--text-2)}
 .i{flex:none;vertical-align:-3px}
@@ -1866,6 +1877,220 @@ h1.greet{font-size:17px;font-weight:650;letter-spacing:-.2px;line-height:1.25}
 @keyframes pill-in{0%{transform:scaleX(.45);opacity:.4}65%{transform:scaleX(1.08)}100%{transform:none;opacity:1}}
 @keyframes hero-glow{0%{box-shadow:0 0 0 0 color-mix(in srgb, var(--primary) 32%, transparent)}
   100%{box-shadow:0 0 0 14px color-mix(in srgb, var(--primary) 0%, transparent)}}
+/* ==================================================================
+   Qaydlar (Notes)
+   Notebook colours are fixed hues mixed into the theme's own surfaces, so
+   they read the same in every theme and stay calm in dark mode.
+   ================================================================== */
+.nb-violet{--nb:var(--nb-violet)} .nb-teal{--nb:var(--nb-teal)} .nb-amber{--nb:var(--nb-amber)}
+.nb-rose{--nb:var(--nb-rose)} .nb-sky{--nb:var(--nb-sky)} .nb-slate{--nb:var(--nb-slate)}
+.k-note{--nk:var(--c1)} .k-quick{--nk:var(--c4)} .k-study{--nk:var(--nb-teal)}
+.k-thought{--nk:var(--c3)} .k-idea{--nk:var(--nb-amber)} .k-resource{--nk:var(--c5)}
+.nt-dot{display:inline-block;width:9px;height:9px;border-radius:50%;flex:none;
+  background:var(--nb, var(--text-3));margin-right:6px;vertical-align:1px}
+.nt-head{display:flex;align-items:center;gap:var(--s1);margin-bottom:var(--s2)}
+.nt-search{display:flex;align-items:center;gap:10px;background:var(--surface);
+  border:var(--border-w) solid var(--border);border-radius:14px;padding:0 6px 0 14px;
+  min-height:48px;color:var(--text-3);box-shadow:var(--shadow-1);margin:0}
+.nt-search:focus-within{border-color:var(--primary);box-shadow:var(--ring)}
+.nt-search input{border:0;background:none;box-shadow:none;padding:12px 0;min-height:46px;font-size:16px}
+.nt-search input:focus{box-shadow:none;border:0}
+.nt-clear{background:none;border:0;color:var(--text-3);width:40px;height:40px;display:grid;place-items:center;cursor:pointer}
+.nt-actions{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:var(--s1);margin:var(--s2) 0}
+.nt-actions .btn{min-height:48px;padding:8px 10px;font-size:15px;gap:6px;white-space:nowrap}
+@media (max-width:389px){ .nt-actions{grid-template-columns:1fr 1fr} .nt-actions .nt-new{grid-column:1 / -1} }
+.nt-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--s1);margin:var(--s2) 0 var(--s3)}
+.nt-stat{background:var(--surface);border:var(--border-w) solid var(--border);border-radius:14px;
+  padding:10px 8px;text-align:center;display:flex;flex-direction:column;gap:2px;min-width:0}
+.nt-stat b{font-size:20px;font-weight:700;letter-spacing:-.3px;line-height:1.15}
+.nt-stat span{font-size:12px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nt-stat.hot b{color:var(--nt-flame)}
+.nt-views{margin-bottom:var(--s1)}
+.nt-count{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 6px;border-radius:10px;
+  background:var(--primary-fill);color:var(--on-primary);font-size:12px;font-weight:700;margin-left:4px}
+.nt-chips-row{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;margin-bottom:var(--s1);
+  scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.nt-chips-row::-webkit-scrollbar{display:none}
+.nt-chips-row .chip{flex:none}
+.nt-grid,.nt-pins{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--s1)}
+.nt-card{position:relative;background:var(--surface);border:var(--border-w) solid var(--border);
+  border-radius:16px;padding:12px 14px 10px 16px;cursor:pointer;box-shadow:var(--shadow-1);
+  transition:transform var(--motion), border-color var(--motion), box-shadow var(--motion);overflow:hidden}
+.nt-card::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:0 3px 3px 0;
+  background:color-mix(in srgb, var(--nk, var(--c1)) 70%, transparent)}
+.nt-card:hover{border-color:var(--border-2);transform:translateY(-1px)}
+.nt-card:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.nt-card-top{display:flex;align-items:flex-start;gap:8px}
+.nt-card-top b{font-size:16px;font-weight:640;line-height:1.35;overflow-wrap:anywhere}
+.nt-kind{font-size:16px;line-height:1.35;flex:none}
+.nt-pin{color:var(--nt-pin);flex:none;margin-top:2px}
+.nt-snip{color:var(--text-2);font-size:14px;line-height:1.45;margin-top:4px;overflow-wrap:anywhere}
+.nt-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin-top:8px;font-size:12.5px;color:var(--text-2)}
+.nt-bk{display:inline-flex;align-items:center;max-width:160px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.nt-tag{color:var(--primary);white-space:nowrap}
+.nt-badge{font-size:11.5px;font-weight:650;padding:2px 8px;border-radius:8px;
+  background:color-mix(in srgb, var(--warn) 14%, var(--surface));color:var(--warn)}
+.nt-pins .nt-card{background:color-mix(in srgb, var(--nb-amber) 6%, var(--surface))}
+.nt-empty{text-align:center;padding:var(--s5) var(--s3);color:var(--text-2);display:grid;gap:6px;justify-items:center}
+.nt-empty-ic{font-size:38px;width:72px;height:72px;border-radius:24px;display:grid;place-items:center;
+  background:var(--surface-2);margin-bottom:4px}
+.nt-gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s2);margin-top:var(--s2)}
+.nt-book{position:relative;text-align:left;border:var(--border-w) solid var(--border);border-radius:18px;
+  padding:14px;min-height:118px;display:flex;flex-direction:column;gap:4px;cursor:pointer;font:inherit;color:var(--text);
+  background:linear-gradient(160deg, color-mix(in srgb, var(--nb, var(--c1)) 16%, var(--surface)) 0%, var(--surface) 70%);
+  box-shadow:var(--shadow-1);transition:transform var(--motion)}
+.nt-book:hover{transform:translateY(-2px)}
+.nt-book b{font-size:15.5px;font-weight:650;line-height:1.3;overflow-wrap:anywhere}
+.nt-book-ic{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;font-size:20px;margin-bottom:6px;overflow:hidden;white-space:nowrap;
+  background:color-mix(in srgb, var(--nb, var(--c1)) 22%, var(--surface));color:var(--nb, var(--primary))}
+.nt-suggest{border-style:dashed;background:var(--surface)}
+.nt-add{border-style:dashed;background:none;color:var(--text-2);align-items:center;justify-content:center;text-align:center}
+.nt-add .nt-book-ic{background:var(--surface-2);color:var(--text-2)}
+.nt-bookhead{display:flex;align-items:center;gap:var(--s2);padding:12px 12px 12px 14px;margin:var(--s1) 0 var(--s2);
+  border-radius:16px;border:var(--border-w) solid var(--border);
+  background:linear-gradient(120deg, color-mix(in srgb, var(--nb) 18%, var(--surface)), var(--surface))}
+.nt-bookhead .nt-book-ic{margin:0}
+.nt-bookhead b{font-size:18px}
+/* Desktop and tablets: a side column with the views and notebooks. */
+.nt-side{display:none}
+.nt-side-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;cursor:pointer;
+  color:var(--text);min-height:40px;font-size:14.5px}
+.nt-side-row:hover{background:var(--surface-2)}
+.nt-side-row.on{background:color-mix(in srgb, var(--primary) 12%, var(--surface));color:var(--primary);font-weight:620}
+.nt-side-h{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:650;
+  letter-spacing:.3px;text-transform:uppercase;color:var(--text-3);margin:18px 10px 6px}
+.nt-side-h .act{cursor:pointer;color:var(--primary);display:grid;place-items:center;width:28px;height:28px}
+@media (min-width:760px){
+  .nt-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .nt-pins{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .nt-gallery{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media (min-width:1000px){
+  body.nt-wide #app{max-width:1180px}
+  .nt-layout{display:grid;grid-template-columns:230px minmax(0,1fr);gap:28px;align-items:start}
+  .nt-side{display:block;position:sticky;top:12px;max-height:calc(100dvh - 120px);overflow:auto;
+    padding:8px;border-right:var(--border-w) solid var(--border)}
+  .nt-main .nt-views,.nt-main .nt-chips-row .chip[data-act="nt-view"]{display:none}
+  .nt-gallery{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+/* ---- the editor ---- */
+.nt-ed{padding-bottom:var(--s4)}
+.nt-bar{position:sticky;top:0;z-index:6;display:flex;align-items:center;gap:6px;padding:6px 0;margin:-4px 0 6px;
+  background:var(--bg);border-bottom:var(--border-w) solid transparent}
+.nt-mode{flex:none}
+.nt-mode > *{min-height:36px;padding:4px 10px;font-size:13.5px;display:flex;align-items:center;gap:4px}
+@media (max-width:399px){ .nt-mode > * span{display:none} }
+.nt-save{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--text-2);
+  padding:4px 10px;border-radius:999px;background:var(--surface-2);white-space:nowrap;max-width:46vw;overflow:hidden;text-overflow:ellipsis}
+.nt-save i{width:7px;height:7px;border-radius:50%;background:var(--text-3);flex:none}
+.nt-save.s-idle{display:none}
+.nt-save.s-saving i,.nt-save.s-pending i{background:var(--c1);animation:ntpulse 1s ease-in-out infinite}
+.nt-save.s-saved i{background:var(--ok)}
+.nt-save.s-offline{color:var(--warn);background:color-mix(in srgb, var(--warn) 12%, var(--surface));cursor:pointer}
+.nt-save.s-offline i{background:var(--warn)}
+.nt-save.s-conflict,.nt-save.s-failed{color:var(--danger);background:color-mix(in srgb, var(--danger) 10%, var(--surface));cursor:pointer}
+.nt-save.s-conflict i,.nt-save.s-failed i{background:var(--danger)}
+@keyframes ntpulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){ .nt-save i{animation:none!important} .nt-card,.nt-book{transition:none} }
+.nt-title{font-size:26px;font-weight:720;letter-spacing:-.5px;border:0;background:none;box-shadow:none;
+  padding:6px 0;min-height:48px;line-height:1.25}
+.nt-title:focus{box-shadow:none;border:0}
+.nt-chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}
+.nt-chips .chip{min-height:34px;padding:4px 11px;font-size:13.5px}
+.nt-inboxchip{color:var(--warn);border-color:color-mix(in srgb, var(--warn) 40%, var(--border))}
+.nt-bchip{background:color-mix(in srgb, var(--nb) 12%, var(--surface));border-color:color-mix(in srgb, var(--nb) 35%, var(--border))}
+.nt-tagchip{color:var(--primary)}
+.nt-addchip{color:var(--text-3);border-style:dashed}
+.nt-toolbar{position:sticky;top:52px;z-index:5;display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;
+  background:var(--surface);border:var(--border-w) solid var(--border);border-radius:12px;padding:4px;margin-bottom:8px}
+.nt-toolbar::-webkit-scrollbar{display:none}
+.nt-tb{flex:none;min-width:40px;height:40px;border:0;background:none;border-radius:9px;cursor:pointer;
+  color:var(--text);font-size:15px;display:grid;place-items:center}
+.nt-tb:hover,.nt-tb:focus-visible{background:var(--surface-2)}
+.nt-tb-sep{width:1px;background:var(--border);margin:6px 4px;flex:none}
+.nt-body{border:0;background:none;box-shadow:none;padding:4px 0;min-height:260px;resize:none;
+  font-size:16.5px;line-height:1.65;overflow:hidden}
+.nt-body:focus{box-shadow:none;border:0}
+.nt-foot{margin:8px 0 4px}
+.nt-newhint{margin-top:12px}
+.nt-conflict{border:var(--border-w) solid color-mix(in srgb, var(--danger) 45%, var(--border));border-radius:14px;
+  background:color-mix(in srgb, var(--danger) 6%, var(--surface));padding:12px 14px;margin:6px 0 10px;display:grid;gap:6px}
+.nt-conflict .btns{display:flex;flex-wrap:wrap;gap:6px}
+.nt-conflict .btn{width:auto}
+.nt-theirs{margin-top:6px;padding:8px 10px;border-radius:10px;background:var(--surface-2)}
+.nt-theirs pre{white-space:pre-wrap;font:inherit;font-size:13.5px;margin:6px 0 0;max-height:220px;overflow:auto}
+.nt-panels{display:grid;gap:var(--s2);margin-top:var(--s3)}
+.nt-panel{background:var(--surface);border:var(--border-w) solid var(--border);border-radius:14px;padding:10px 12px}
+.nt-panel-h{display:flex;align-items:center;gap:6px;font-weight:650;font-size:14px;margin-bottom:6px}
+.nt-panel-h .act{margin-left:auto;color:var(--primary);font-size:13.5px;display:inline-flex;align-items:center;gap:3px;cursor:pointer;min-height:32px}
+.nt-rel{display:flex;align-items:center;gap:8px;min-height:38px;font-size:14px;cursor:default}
+.nt-rel[data-act]{cursor:pointer}
+.nt-linked:not(:empty){margin-top:14px}
+.nt-linked-h{font-size:13.5px;font-weight:650;color:var(--text-2);display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.iconbtn.sm{width:32px;height:32px;min-width:32px;min-height:32px}
+@media (min-width:1000px){
+  .nt-ed-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:28px;align-items:start}
+  .nt-ed-main{max-width:780px}
+  .nt-panels{position:sticky;top:64px;margin-top:0}
+}
+/* ---- rendered Markdown ---- */
+.md{font-size:16.5px;line-height:1.65;overflow-wrap:anywhere}
+.md > * + *{margin-top:.6em}
+.md .md-h{font-weight:700;letter-spacing:-.2px;line-height:1.3;margin-top:1em}
+.md h2.md-h{font-size:22px} .md h3.md-h{font-size:19px} .md h4.md-h,.md h5.md-h,.md h6.md-h{font-size:17px}
+.md ul,.md ol{padding-left:1.4em} .md li + li{margin-top:.25em}
+.md li.md-task{list-style:none;margin-left:-1.4em;display:flex;gap:10px;align-items:flex-start}
+.md-check{width:20px;height:20px;border-radius:6px;border:2px solid var(--border-2);flex:none;margin-top:3px;cursor:pointer}
+.md-check.on{background:var(--ok);border-color:var(--ok);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3'%3E%3Cpath d='M5 12l4 4 10-10'/%3E%3C/svg%3E");
+  background-size:14px;background-position:center;background-repeat:no-repeat}
+.md-check.on + span{color:var(--text-2);text-decoration:line-through}
+.md blockquote{border-left:3px solid var(--border-2);padding:2px 0 2px 12px;color:var(--text-2)}
+.md code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;background:var(--surface-2);
+  padding:1px 5px;border-radius:5px}
+.md pre.md-code{background:var(--surface-2);border-radius:12px;padding:12px 14px;overflow-x:auto;font-size:14px;line-height:1.5}
+.md pre.md-code code{background:none;padding:0}
+.md hr{border:0;border-top:var(--border-w) solid var(--border);margin:1.2em 0}
+.md-table{overflow-x:auto}
+.md table{border-collapse:collapse;font-size:14.5px;min-width:100%}
+.md th,.md td{border:var(--border-w) solid var(--border);padding:6px 10px;text-align:left;vertical-align:top}
+.md th{background:var(--surface-2);font-weight:650}
+.md a{color:var(--primary);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.md a.md-note{text-decoration-style:dotted}
+.md img.md-img{max-width:100%;border-radius:12px;border:var(--border-w) solid var(--border);display:block;min-height:40px;background:var(--surface-2)}
+.nt-preview{min-height:200px;padding:4px 0}
+.nt-revbody{max-height:50vh;overflow:auto;margin-top:10px;padding:10px;border-radius:12px;background:var(--surface-2)}
+/* ---- sheets ---- */
+.nt-tpls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+.nt-tpl{display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:left;padding:12px;border-radius:14px;
+  border:var(--border-w) solid var(--border);background:var(--surface);cursor:pointer;font:inherit;color:var(--text);min-height:92px}
+.nt-tpl:hover{border-color:var(--primary)}
+.nt-tpl-ic{font-size:22px}
+.nt-tpl b{font-size:14.5px}
+.nt-steps{padding-left:1.3em;display:grid;gap:12px;margin-top:10px}
+.nt-steps li.done::marker{color:var(--ok);font-weight:700}
+.nt-steps .row input{min-height:40px;padding:8px 10px;font-size:14px}
+.nt-pill{font-size:11.5px;font-weight:650;padding:3px 9px;border-radius:999px;background:var(--surface-2);color:var(--text-2);white-space:nowrap}
+.nt-pill.ok{background:color-mix(in srgb, var(--ok) 14%, var(--surface));color:var(--ok)}
+.nt-pill.warn{background:color-mix(in srgb, var(--warn) 14%, var(--surface));color:var(--warn)}
+.nt-pill.bad{background:color-mix(in srgb, var(--danger) 12%, var(--surface));color:var(--danger)}
+.nt-set{margin-top:10px}
+.nt-set .btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.nt-set .btns .btn{width:auto}
+.nt-acct{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:12px;background:var(--surface-2);margin-top:12px}
+.nt-confirm{margin-top:12px;border-color:var(--primary)}
+.nt-warn{border-color:var(--warn);margin-top:12px}
+.nt-impstats{display:flex;flex-wrap:wrap;gap:10px 16px;margin:8px 0;font-size:14px}
+.nt-implist{max-height:42vh;overflow:auto;margin-top:8px}
+.nt-implist .item{min-height:48px;gap:10px}
+.nt-implist .item.dim{opacity:.6}
+.nt-implist input[type=checkbox]{width:20px;height:20px;flex:none;min-height:0}
+.nt-colorchip{min-width:44px;justify-content:center}
+.nt-colorchip .nt-dot{width:16px;height:16px;margin:0}
+.nt-colorchip.on{background:color-mix(in srgb, var(--nb) 20%, var(--surface));border-color:var(--nb);color:var(--text)}
+/* Quick capture: four kinds, one line each. */
+.seg.qk > *{font-size:14px;padding:6px 4px;gap:4px;display:flex;align-items:center;justify-content:center}
+#quick-note{min-height:120px}
 </style>
 </head>
 <body>
@@ -2405,6 +2630,8 @@ const DICT = {
   wipe_warn:"Barcha vazifa, odat, namoz yozuvi, kundalik, loyiha va maqsadlar butunlay o'chiriladi. Buni qaytarib bo'lmaydi.",
   wipe_keeps:"Hisobingiz, tilingiz, temangiz va sozlamalaringiz saqlanadi. Standart odatlar qaytariladi.",
   wipe_continue:"Ha, hammasini o'chirish", wipe_done:"Ma'lumotlar o'chirildi",
+  err_day_out_of_range:"Bu kun uchun belgilab bo'lmaydi.",
+  privacy_offline:"Bu oflayn nusxa. Hamma yozuvlaringiz faqat shu brauzerning xotirasida turadi va hech qayerga yuborilmaydi. Brauzer ma'lumotlari tozalansa, ular ham o'chadi — Zaxira orqali nusxa olib turing.",
   privacy_body:"Har bir foydalanuvchining ma'lumoti alohida ish maydonida saqlanadi va boshqa foydalanuvchilarga ko'rinmaydi. Ma'lumotlar PostgreSQL bazasida saqlanadi; texnik xizmat uchun administrator bazaga kirish huquqiga ega. Kun xulosangiz tashqi xizmatga yuborilmaydi — faqat o'zingiz «AI bilan to'ldirish»ni bossangiz, o'sha matn tahlil uchun AI xizmatiga yuboriladi. Pro va Max'da AI «Hozir» tavsiyasi uchun bugungi ochiq vazifalar nomlari AI xizmatiga (Groq yoki Google) yuboriladi. Uni Sozlamalar → Kuzatiladigan bo'limlar ichida o'chirish mumkin.",
   delete_account:"Akkaunt va ma'lumotlarni o'chirish",
   delete_account_warn:"Barcha odatlar, vazifalar, namoz yozuvlari va kundalik butunlay o'chiriladi. Buni qaytarib bo'lmaydi.",
@@ -2981,6 +3208,8 @@ const DICT = {
   wipe_warn:"Every task, habit, prayer record, journal entry, project and week goal is erased for good. This cannot be undone.",
   wipe_keeps:"Your account, language, theme and settings stay. The default habits are put back.",
   wipe_continue:"Yes, erase everything", wipe_done:"Your data was erased",
+  err_day_out_of_range:"That day can't be marked.",
+  privacy_offline:"This is the offline copy. Everything you enter stays in this browser's storage and is sent nowhere. Clearing the browser's data deletes it too, so take a backup now and then.",
   privacy_body:"Each user's data lives in its own workspace and is not visible to other users. It is stored in a PostgreSQL database, which an administrator can access for maintenance. Your day summary is never sent to an external service — only if you tap «Fill with AI» is that text sent to the AI service for sorting. On Pro and Max, the AI «Now» suggestion sends the names of today's open tasks to an AI service (Groq or Google). It can be switched off in Settings → Tracked sections.",
   delete_account:"Delete account and data",
   delete_account_warn:"Every habit, task, prayer record and journal entry will be permanently erased. This cannot be undone.",
@@ -3556,6 +3785,8 @@ const DICT = {
   wipe_warn:"Все задачи, привычки, записи намаза, дневник, проекты и цели будут стёрты навсегда. Отменить это нельзя.",
   wipe_keeps:"Аккаунт, язык, тема и настройки останутся. Привычки по умолчанию вернутся.",
   wipe_continue:"Да, стереть всё", wipe_done:"Данные удалены",
+  err_day_out_of_range:"Этот день отметить нельзя.",
+  privacy_offline:"Это офлайн-копия. Всё, что вы вводите, хранится только в памяти этого браузера и никуда не отправляется. Очистка данных браузера удалит и их — делайте резервную копию.",
   privacy_body:"Данные каждого пользователя лежат в отдельном рабочем пространстве и не видны другим пользователям. Они хранятся в базе PostgreSQL, к которой администратор имеет доступ для обслуживания. Итоги дня не передаются внешним сервисам — только если вы нажмёте «Заполнить с AI», этот текст отправится AI-сервису для разбора. В Pro и Max для AI-совета «Сейчас» названия сегодняшних открытых задач отправляются AI-сервису (Groq или Google). Его можно выключить в Настройках → Отслеживаемые разделы.",
   delete_account:"Удалить аккаунт и данные",
   delete_account_warn:"Все привычки, задачи, записи намазов и дневник будут удалены безвозвратно. Это нельзя отменить.",
@@ -3796,6 +4027,7 @@ const ICONS = {
   book:'<path d="M5 4.5h9a3 3 0 0 1 3 3v12H8a3 3 0 0 1-3-3v-12Z"/><path d="M17 7.5h2v12H8"/>',
   flame:'<path d="M12 3.5s4.5 4 4.5 8a4.5 4.5 0 0 1-9 0c0-1.6.8-3 1.6-4 .3 1.2 1 1.9 1.7 1.9 1.2 0 1.6-1.4 1.2-5.9Z"/>',
   x:'<path d="M6 6l12 12M18 6 6 18"/>',
+  link:'<path d="M10.5 13.5a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.1 1.1"/><path d="M13.5 10.5a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.1-1.1"/>',
   star:'<path d="M12 3.8l2.5 5.1 5.6.8-4 3.9.9 5.6-5-2.6-5 2.6.9-5.6-4-3.9 5.6-.8Z"/>',
   /* Two bulbs meeting at a waist, capped top and bottom: a countdown. */
   hourglass:'<path d="M6.5 3.5h11M6.5 20.5h11"/>'
@@ -3845,6 +4077,12 @@ const RELEASE_WORDS = {
   ru: {more:"Ещё", load_more:"Показать ещё", loaded_tasks:"Показано {n} из {total} дел", retry_screen:"Обновить", session_expired:"Сессия истекла. Откройте приложение заново из бота.", rate_wait:"Слишком много действий. Повторите через {n} сек.", invalid_input:"Проверьте поля: дату, время, название или сумму.", not_found_item:"Запись удалена или недоступна. Обновите список.", now_empty:"На сегодня пока нет плана", now_empty_hint:"Добавьте первую задачу или выберите привычку.", now_team:"Осталось {n} ваших командных дел", monthly_income:"Доход за месяц", monthly_expense:"Расход за месяц", balance_hint:"За всё время: записанные доходы минус расходы", task_points:"Баллы приоритета: {earned}/{total}", weighted_tasks:"С учётом приоритета: высокий 3, средний 2, низкий 1 балл.", weighted_habits:"Процент зависит от уровня привычки.", prayer_quality:"Баллы качества: {earned}/{total}", planned_count:"Запланировано на сегодня: {n}", not_due_count:"Не запланировано сегодня: {n} · Не учитывается", habit_count_hint:"Намаз считается отдельно; общие привычки — в Команде.", team_units:"{items} дел · {confirmations} личных отметок · осталось {left} отметок", team_left_today:"Ещё открытые дела", team_you_done:"Вы выполнили", team_waiting_on:"Ещё не выполнили", trial_notice:"Первые {n} действий бесплатны. Затем для изменений нужна подписка на канал. Данные сохраняются и доступны для чтения.", trial_remaining:"Осталось {n} действий до запроса подписки на канал.", presets_offer:"Выберите готовые привычки", presets_offer_hint:"Добавьте подходящие одним нажатием. Ваши привычки сохранятся.", dismiss:"Позже", agent_title:"Голосовой помощник", agent_ready:"Отправьте голос или текст боту. Сначала проверьте и подтвердите действие.", agent_off:"Сейчас недоступен. Добавляйте задачи и привычки через +.", agent_open:"Открыть помощника в боте", money_review:"Проверьте запись", money_review_hint:"Проверьте сумму, тип и категорию перед сохранением.", journal_local:"Сохранено на устройстве. Повторите сохранение после подключения.", saving_failed:"Не сохранено. Введённые данные остались в форме.", habit_auto_prayer:"Автоматически · после записи всех 5 намазов", habit_auto_journal:"Автоматически · после заполнения дневника", money_latest:"Записи за месяц", record_limit:"Показаны последние {n} записей. Полную историю можно скачать в разделе Мои данные."}
 };
 for(const [lang, words] of Object.entries(RELEASE_WORDS)) Object.assign(DICT[lang], words);
+const NOTES_WORDS = {
+  uz: {nt_offline_list:"Internet yo‘q — oxirgi yuklangan qaydlar. Yangi qayd yozsangiz, qurilmada saqlanadi.", nt_linked_notes:"Qaydlar", nt_synced:"Qurilmadagi {n} ta qayd saqlandi", err_notes_storage_full:"Qaydlar matni uchun joy tugadi — eskilarini o‘chiring yoki tarifni oshiring.", nav_notes:"Qaydlar", nt_title:"Qaydlar", nt_search_ph:"Qaydlardan qidirish", nt_clear:"Tozalash", nt_new:"Yangi qayd", nt_template:"Shablon", nt_daily:"Kundalik", nt_tools:"Vositalar", nt_more_tools:"Boshqa vositalar", nt_more:"Yana", nt_done:"Tayyor", nt_st_total:"Jami", nt_st_today:"Bugun", nt_st_month:"Shu oy", nt_st_streak:"Seriya", nt_v_inbox:"Inbox", nt_v_all:"Hammasi", nt_v_books:"Daftarlar", nt_v_pinned:"Qadalgan", nt_v_daily:"Kundaliklar", nt_v_archived:"Arxiv", nt_v_trash:"Savat", nt_pinned:"Qadalgan", nt_recent:"So‘nggilari", nt_untitled:"Nomsiz qayd", nt_n_notes:"{n} ta qayd", nt_suggest:"Taklif · bosib yarating", nt_book_new:"Yangi daftar", nt_book_edit:"Daftarni tahrirlash", nt_book_name:"Nomi", nt_book_color:"Rangi", nt_book_icon:"Belgisi (emoji)", nt_book_delete:"Daftarni o‘chirish", nt_book_delete_q:"Daftar o‘chirilsinmi? Qaydlar o‘chmaydi — Hammasi bo‘limida qoladi.", nt_books_hint:"Qayd bir nechta daftarda bo‘lishi mumkin.", nt_empty:"Hali qayd yo‘q", nt_empty_hint:"Fikr, ma’ruza yoki g‘oyani yozing — avtomatik saqlanadi.", nt_inbox_empty:"Inbox bo‘sh", nt_no_results:"Hech narsa topilmadi", nt_no_results_hint:"Boshqa so‘z bilan qidirib ko‘ring.", nt_trash_empty:"Savatni bo‘shatish", nt_trash_empty_q:"Savatdagi qaydlar butunlay o‘chirilsinmi? Qaytarib bo‘lmaydi.", nt_unsent:"Bu qurilmada serverga yetmagan {n} ta qayd bor — ochib saqlang", nt_just_now:"hozirgina", nt_min_ago:"{n} daq. oldin", nt_edit:"Yozish", nt_preview:"Ko‘rish", nt_title_ph:"Sarlavha", nt_body_ph:"Yozishni boshlang… Markdown ishlaydi: ## sarlavha, - ro‘yxat, - [ ] vazifa", nt_empty_body:"Bo‘sh qayd", nt_words:"{n} so‘z", nt_updated:"yangilandi", nt_s_pending:"O‘zgarish bor", nt_s_saving:"Saqlanmoqda…", nt_s_saved:"Saqlandi", nt_s_offline:"Internet yo‘q · qurilmada", nt_s_conflict:"Ziddiyat", nt_s_failed:"Saqlanmadi", nt_format:"Formatlash", nt_f_heading:"Sarlavha", nt_f_bold:"Qalin", nt_f_italic:"Kursiv", nt_f_list:"Ro‘yxat", nt_f_check:"Bajariladigan ish", nt_f_quote:"Iqtibos", nt_f_code:"Kod", nt_f_table:"Jadval", nt_f_hr:"Ajratgich", nt_f_link:"Bog‘lash", nt_f_attach:"Fayl biriktirish", nt_k_note:"Qayd", nt_k_quick:"Tezkor", nt_k_study:"O‘qish", nt_k_thought:"Fikr", nt_k_idea:"G‘oya", nt_k_resource:"Manba", nt_kind:"Qayd turi", nt_reviewed:"Ko‘rib chiqilgan", nt_tags:"Teglar", nt_tags_hint:"Vergul bilan ajrating. Masalan: marketing, ma’ruza", nt_ai_off_short:"AI’dan yashirin", nt_in_trash:"Savatda", nt_conflict_title:"Bu qayd boshqa joyda o‘zgartirilgan", nt_conflict_hint:"Ikkala versiya ham saqlangan. Qaysi birini qoldirishni tanlang.", nt_conflict_see:"Serverdagi versiyani ko‘rish", nt_keep_mine:"Meniki qolsin", nt_keep_theirs:"Serverdagisi qolsin", nt_keep_both:"Ikkalasi ham", nt_kept_both:"Sizning versiyangiz alohida qayd bo‘lib saqlandi", nt_copy:"nusxa", nt_new_hint:"Yozishni boshlashingiz bilan qayd saqlanadi.", nt_related:"Bog‘langan ishlar", nt_add:"Qo‘shish", nt_related_none:"Vazifa, loyiha yoki maqsadga bog‘lanmagan.", nt_rel_task:"Vazifa", nt_rel_project:"Loyiha", nt_rel_goal:"Maqsad", nt_rel_note:"Qayd", nt_rel_made:"shu qayddan", nt_unlink:"Bog‘lanishni olib tashlash", nt_links:"Havolalar", nt_files:"Fayllar", nt_pin:"Qadab qo‘yish", nt_unpin:"Qadashni olish", nt_mark_reviewed:"Ko‘rib chiqildi deb belgilash", nt_back_inbox:"Inbox’ga qaytarish", nt_to_task:"Vazifaga aylantirish", nt_history:"Versiyalar tarixi", nt_send_nlm:"NotebookLM’ga yuborish", nt_ai_exclude:"AI va NotebookLM’dan yashirish", nt_ai_allow:"AI’ga ko‘rinadigan qilish", nt_ai_off_hint:"Bu qayd AI yordamchiga va NotebookLM eksportiga berilmaydi.", nt_ai_on_hint:"AI yordamchi bu qaydni sizning savolingizga javob berishda iqtibos bilan ishlatishi mumkin. Pul va jamoa ma’lumotlari qaydlar orqali berilmaydi.", nt_export_md:"Markdown fayl sifatida", nt_archive:"Arxivga", nt_unarchive:"Arxivdan chiqarish", nt_trash:"Savatga tashlash", nt_trashed:"Savatga tashlandi", nt_restore:"Qaytarish", nt_restored:"Qaytarildi", nt_delete_forever:"Butunlay o‘chirish", nt_delete_forever_q:"Qayd butunlay o‘chirilsinmi? Qaytarib bo‘lmaydi.", nt_nlm_hint:"Qaydlarni Google Docs orqali NotebookLM’ga", nt_import:"Import (Obsidian, Notion)", nt_import_hint:"ZIP’ni avval ko‘rib, keyin tasdiqlaysiz", nt_export_zip:"Markdown ZIP eksport", nt_export_zip_hint:"Hamma narsa bilan, yo‘qotishsiz", nt_export_obsidian:"Obsidian uchun eksport", nt_export_obsidian_hint:"[[havolalar]] bilan, vault sifatida", nt_ai_memory:"AI xotira eksporti", nt_ai_memory_hint:"AI uchun ruxsat berilgan qaydlar, iqtiboslar bilan", nt_template_title:"Shablon", nt_t_blank:"Bo‘sh", nt_t_study:"Ma’ruza", nt_t_learning:"O‘rganish", nt_t_thought:"Fikr", nt_t_idea:"G‘oya", nt_t_resource:"Manba", nt_t_project:"Loyiha konteksti", nt_t_daily:"Kundalik", nt_t_weekly:"Haftalik tahlil", nt_t_decision:"Qaror", nt_t_person:"Inson", nt_t_ai_tool:"AI vosita", nt_t_vocab:"Lug‘at", nt_t_blank_hint:"Toza varaq", nt_task_hint:"Avval ko‘rib chiqing — tasdiqlamaguningizcha hech narsa yaratilmaydi.", nt_task_title:"Vazifa nomi", nt_task_desc:"Tavsif (qaydga havola bilan)", nt_task_create:"Vazifa yaratish", nt_task_already:"Bu qayddan {n} ta vazifa yaratilgan.", nt_task_made:"Vazifa yaratildi va qaydga bog‘landi", nt_link_hint:"Qayd tanlansa, matnga havola qo‘shiladi. Vazifa, loyiha yoki maqsad tanlansa — qayd unga bog‘lanadi.", nt_linked:"Bog‘landi", nt_link_after_save:"Havola saqlangandan keyin ochiladi", nt_save_first:"Avval biror narsa yozing — qayd saqlansin", nt_uploading:"Yuklanmoqda…", nt_att_delete_q:"Fayl o‘chirilsinmi?", nt_history_hint:"Avtomatik saqlashlar 10 daqiqada bitta versiya bo‘ladi. Oxirgi 30 tasi saqlanadi.", nt_history_none:"Hali oldingi versiya yo‘q.", nt_rev_conflict:"ziddiyatdagi versiya", nt_rev_restore:"tiklashdan oldin", nt_rev_import:"importdan oldin", nt_rev_restore_btn:"Shu versiyani tiklash", nt_import_how:"Obsidian vault yoki Notion eksportining ZIP faylini tanlang. Avval ro‘yxat ko‘rsatiladi, siz tasdiqlaysiz.", nt_import_obsidian:"Obsidian: .obsidian, .git, _system/examples, AI/inbox, AI/exports, AI/log.md olinmaydi.", nt_import_notion:"Notion: Markdown sahifalar va CSV ma’lumotlar bazasi qatorlari.", nt_import_safe:"Hech narsa ishga tushirilmaydi: DataviewJS va Templater oddiy matn bo‘lib qoladi. Qayta import dublikat yaratmaydi.", nt_import_pick:"ZIP tanlash", nt_import_preview:"Import ko‘rinishi", nt_imp_new:"yangi", nt_imp_update:"yangilanadi", nt_imp_same:"o‘zgarmagan", nt_imp_excluded:"chiqarib tashlangan", nt_import_go:"{n} ta qaydni import qilish", nt_imported:"{n} ta qayd import qilindi", nt_warn_dataview_kept_as_text:"Dataview/DataviewJS bloklari bor — ishga tushirilmaydi, matn bo‘lib qoladi.", nt_warn_templater_kept_as_text:"Templater buyruqlari bor — ishga tushirilmaydi, matn bo‘lib qoladi.", nt_warn_ignored_properties:"Ba’zi murakkab xossalar (front matter) o‘qilmadi.", nt_nlm_intro:"Tanlangan qaydlar sizning Google Drive’ingizda Google Docs bo‘lib yaratiladi va o‘sha hujjat yangilanib boradi. NotebookLM’ga manba sifatida hujjatni o‘zingiz qo‘shasiz.", nt_nlm_not_configured:"Server sozlanmagan — ulash hozircha mumkin emas", nt_nlm_missing:"Yetishmayapti", nt_nlm_connect:"Google Drive’ni ulash", nt_nlm_scope:"Ruxsat faqat drive.file: ErnestOS faqat o‘zi yaratgan fayllarni ko‘radi. Google sahifasi brauzerda ochiladi.", nt_nlm_confirm_q:"Shu Google akkaunt sizniki ekanini tasdiqlang", nt_nlm_confirm:"Ha, ulash", nt_nlm_not_me:"Men emas", nt_nlm_acct_connected:"ulangan", nt_nlm_acct_disconnecting:"uzilmoqda", nt_nlm_acct_error:"qayta ulash kerak", nt_nlm_acct_pending_confirm:"tasdiq kutilmoqda", nt_nlm_sets:"NotebookLM manbalari", nt_nlm_new_set:"Daftarni yuborish", nt_nlm_need_book:"Avval daftar yarating.", nt_nlm_step1:"Google Docs hujjati Drive’ingizda tayyor.", nt_nlm_doc:"Hujjat", nt_nlm_step2:"NotebookLM’da daftar oching → Add source → Google Docs → «ErnestOS · …» ni tanlang. Keyin daftar havolasini shu yerga qo‘ying.", nt_nlm_step3:"NotebookLM’dan so‘rang: «ErnestOS verification code nima?» — javobini shu yerga qo‘ying.", nt_nlm_step4:"Qaydlar o‘zgarganda «Yangilash» bosing, so‘ng NotebookLM’da manbani ochib «Sync with Google Drive» ni bosing.", nt_nlm_open:"NotebookLM’da ochish", nt_nlm_answer_ph:"NotebookLM javobi", nt_nlm_verify:"Tekshirish", nt_nlm_verified:"Tasdiqlandi: NotebookLM hujjatni o‘qidi", nt_nlm_sync:"Yangilash", nt_nlm_none:"NotebookLM: ulanmagan", nt_nlm_waiting:"NotebookLM: kutilmoqda", nt_nlm_verified_st:"tasdiqlangan", nt_nlm_verified_status:"NotebookLM: tasdiqlangan", nt_nlm_disconnect:"Google Drive’ni uzish", nt_nlm_disconnect_hint:"Google’dagi ruxsat bekor qilinadi va token o‘chiriladi. Hujjatlarni Drive’da qoldirish yoki savatga tashlashni tanlang.", nt_nlm_keep_docs:"Hujjatlar Drive’da qolsin", nt_nlm_trash_docs:"Hujjatlarni Drive savatiga", nt_nlm_drop_q:"Bu manba o‘chirilsinmi?", nt_nlm_drop_hint:"NotebookLM’dagi manba o‘zingiz o‘chirmaguningizcha qoladi.", nt_nlm_edition:"Bu oddiy (consumer) NotebookLM uchun. NotebookLM Enterprise’ning API’lari Google Cloud’da Preview holatida — bu ulanishda ishlatilmaydi.", nt_set_working:"eksport qilinmoqda", nt_set_changed:"yangilash kerak", nt_set_draft:"eksport kutilmoqda", nt_set_exporting:"eksport qilinmoqda", nt_set_exported:"eksport qilingan", nt_set_error:"xato", nt_set_deleting:"o‘chirilmoqda", nt_set_at:"{when}", nt_nlm_err_reauth_required:"Google ruxsati bekor qilingan yoki eskirgan — qayta ulang.", nt_nlm_err_doc_recreated:"Hujjat Drive’da o‘chirilgan edi — yangisi yaratildi. NotebookLM’ga qayta qo‘shing.", nt_nlm_err_not_connected:"Google Drive ulanmagan.", nt_nlm_err_set_too_large:"Juda katta to‘plam — bir nechta daftarga bo‘ling.", nt_nlm_err_network:"Internet xatosi — keyinroq qayta uriniladi.", nt_nlm_err_key_missing:"Server shifrlash kaliti yo‘q.", nt_nlm_err_other:"Xato: {code}", qk_note:"Qayd", qk_money:"Pul", quick_note_ph:"Fikr, g‘oya, eslatma… (birinchi qator — sarlavha)", quick_note_hint:"Qaydlar → Inbox’ga tushadi. Vazifa yoki pul bo‘lib qolmaydi.", quick_note_saved:"Qaydlar Inbox’iga saqlandi", quick_money_ph:"Masalan: tushlik 45 000", quick_money_hint:"Summa va kategoriya avtomatik aniqlanadi, keyin tasdiqlaysiz.", err_note_too_long:"Qayd juda uzun.", err_bad_url:"Havola http(s):// bilan boshlanishi kerak.", err_too_many_tags:"Teglar ko‘p — 20 tagacha.", err_notebook_exists:"Bunday nomli daftar bor.", err_empty_name:"Nom kiriting.", err_trash_first:"Avval savatga tashlang.", err_revision_required:"Versiya ma’lum emas — sahifani yangilang.", err_file_type:"Bu turdagi fayl qabul qilinmaydi.", err_file_too_large:"Fayl 5 MB dan katta.", err_storage_full:"Fayllar uchun joy tugadi.", err_empty_file:"Fayl bo‘sh.", err_bad_notebook_link:"Havola https://notebooklm.google.com/notebook/… ko‘rinishida bo‘lishi kerak.", err_code_mismatch:"Kod mos kelmadi. NotebookLM javobini to‘liq qo‘ying.", err_notebook_link_first:"Avval NotebookLM havolasini saqlang.", err_export_first:"Avval eksport tugashini kuting.", err_no_notes:"Qayd tanlanmagan.", err_not_a_zip:"Bu ZIP fayl emas.", err_unsafe_path:"Arxivda xavfli yo‘l bor — import qilinmadi.", err_zip_bomb:"Arxiv juda katta yoki shubhali — import qilinmadi.", err_archive_too_large:"Arxiv 30 MB dan katta.", err_too_many_files:"Arxivda fayllar juda ko‘p.", err_too_many_notes:"Bir importda 3000 tagacha qayd.", err_note_trashed:"Qayd savatda — avval qaytaring.", err_bad_cursor:"Ro‘yxatni yangilang.", err_not_connected:"Google Drive ulanmagan.", err_nothing_to_confirm:"Tasdiqlanadigan ulanish yo‘q.", err_connector_not_configured:"NotebookLM ulanishi serverda sozlanmagan.", err_too_many_notebooks:"Daftarlar soni chegarasiga yetildi.", err_notebook_gone:"Daftar topilmadi."},
+  en: {nt_offline_list:"Offline — the notes last loaded. A new note is kept on this device.", nt_linked_notes:"Notes", nt_synced:"{n} notes from this device saved", err_notes_storage_full:"Note storage is full — delete old notes or upgrade the plan.", nav_notes:"Notes", nt_title:"Notes", nt_search_ph:"Search notes", nt_clear:"Clear", nt_new:"New note", nt_template:"Template", nt_daily:"Daily", nt_tools:"Tools", nt_more_tools:"More tools", nt_more:"More", nt_done:"Done", nt_st_total:"Total", nt_st_today:"Today", nt_st_month:"Month", nt_st_streak:"Streak", nt_v_inbox:"Inbox", nt_v_all:"All", nt_v_books:"Notebooks", nt_v_pinned:"Pinned", nt_v_daily:"Daily notes", nt_v_archived:"Archive", nt_v_trash:"Trash", nt_pinned:"Pinned", nt_recent:"Recent", nt_untitled:"Untitled", nt_n_notes:"{n} notes", nt_suggest:"Suggestion · tap to create", nt_book_new:"New notebook", nt_book_edit:"Edit notebook", nt_book_name:"Name", nt_book_color:"Colour", nt_book_icon:"Icon (emoji)", nt_book_delete:"Delete notebook", nt_book_delete_q:"Delete this notebook? Its notes stay — they remain in All.", nt_books_hint:"A note can be in several notebooks.", nt_empty:"No notes yet", nt_empty_hint:"Write a thought, a lecture or an idea — it saves itself.", nt_inbox_empty:"Inbox is clear", nt_no_results:"Nothing found", nt_no_results_hint:"Try another word.", nt_trash_empty:"Empty trash", nt_trash_empty_q:"Delete the notes in the trash for good? This cannot be undone.", nt_unsent:"{n} notes on this device have not reached the server — open to save", nt_just_now:"just now", nt_min_ago:"{n} min ago", nt_edit:"Write", nt_preview:"Preview", nt_title_ph:"Title", nt_body_ph:"Start writing… Markdown works: ## heading, - list, - [ ] to-do", nt_empty_body:"Empty note", nt_words:"{n} words", nt_updated:"updated", nt_s_pending:"Edited", nt_s_saving:"Saving…", nt_s_saved:"Saved", nt_s_offline:"Offline · on this device", nt_s_conflict:"Conflict", nt_s_failed:"Not saved", nt_format:"Formatting", nt_f_heading:"Heading", nt_f_bold:"Bold", nt_f_italic:"Italic", nt_f_list:"List", nt_f_check:"To-do", nt_f_quote:"Quote", nt_f_code:"Code", nt_f_table:"Table", nt_f_hr:"Divider", nt_f_link:"Link", nt_f_attach:"Attach file", nt_k_note:"Note", nt_k_quick:"Quick", nt_k_study:"Study", nt_k_thought:"Thought", nt_k_idea:"Idea", nt_k_resource:"Resource", nt_kind:"Note type", nt_reviewed:"Reviewed", nt_tags:"Tags", nt_tags_hint:"Separate with commas. E.g. marketing, lecture", nt_ai_off_short:"Hidden from AI", nt_in_trash:"In trash", nt_conflict_title:"This note was changed somewhere else", nt_conflict_hint:"Both versions are kept. Choose which one stays.", nt_conflict_see:"See the server version", nt_keep_mine:"Keep mine", nt_keep_theirs:"Keep the server's", nt_keep_both:"Keep both", nt_kept_both:"Your version was saved as a separate note", nt_copy:"copy", nt_new_hint:"The note is saved as soon as you start writing.", nt_related:"Linked work", nt_add:"Add", nt_related_none:"Not linked to a task, project or goal.", nt_rel_task:"Task", nt_rel_project:"Project", nt_rel_goal:"Goal", nt_rel_note:"Note", nt_rel_made:"from this note", nt_unlink:"Remove link", nt_links:"Links", nt_files:"Files", nt_pin:"Pin", nt_unpin:"Unpin", nt_mark_reviewed:"Mark as reviewed", nt_back_inbox:"Back to Inbox", nt_to_task:"Turn into a task", nt_history:"Version history", nt_send_nlm:"Send to NotebookLM", nt_ai_exclude:"Hide from AI and NotebookLM", nt_ai_allow:"Let AI see it", nt_ai_off_hint:"This note is never given to the AI assistant or a NotebookLM export.", nt_ai_on_hint:"The AI assistant may use this note, with a citation, when answering you. Money and team data never reach it through notes.", nt_export_md:"As a Markdown file", nt_archive:"Archive", nt_unarchive:"Unarchive", nt_trash:"Move to trash", nt_trashed:"Moved to trash", nt_restore:"Restore", nt_restored:"Restored", nt_delete_forever:"Delete forever", nt_delete_forever_q:"Delete this note for good? This cannot be undone.", nt_nlm_hint:"Notes into NotebookLM through Google Docs", nt_import:"Import (Obsidian, Notion)", nt_import_hint:"You see the ZIP's contents first, then confirm", nt_export_zip:"Export Markdown ZIP", nt_export_zip_hint:"Everything, nothing lost", nt_export_obsidian:"Export for Obsidian", nt_export_obsidian_hint:"As a vault with [[wikilinks]]", nt_ai_memory:"AI memory export", nt_ai_memory_hint:"Notes allowed for AI, with citations", nt_template_title:"Template", nt_t_blank:"Blank", nt_t_study:"Lecture", nt_t_learning:"Learning", nt_t_thought:"Thought", nt_t_idea:"Idea", nt_t_resource:"Resource", nt_t_project:"Project context", nt_t_daily:"Daily", nt_t_weekly:"Weekly review", nt_t_decision:"Decision", nt_t_person:"Person", nt_t_ai_tool:"AI tool", nt_t_vocab:"Vocabulary", nt_t_blank_hint:"A clean page", nt_task_hint:"Review it first — nothing is created until you confirm.", nt_task_title:"Task name", nt_task_desc:"Description (with a link back to the note)", nt_task_create:"Create task", nt_task_already:"{n} tasks were already made from this note.", nt_task_made:"Task created and linked to the note", nt_link_hint:"Pick a note to put a link in the text. Pick a task, project or goal to link this note to it.", nt_linked:"Linked", nt_link_after_save:"The link opens once the note is saved", nt_save_first:"Write something first so the note is saved", nt_uploading:"Uploading…", nt_att_delete_q:"Delete this file?", nt_history_hint:"Autosaves within 10 minutes are one version. The last 30 are kept.", nt_history_none:"No earlier versions yet.", nt_rev_conflict:"conflicting version", nt_rev_restore:"before a restore", nt_rev_import:"before an import", nt_rev_restore_btn:"Restore this version", nt_import_how:"Choose the ZIP of an Obsidian vault or a Notion export. You see the list first and confirm.", nt_import_obsidian:"Obsidian: .obsidian, .git, _system/examples, AI/inbox, AI/exports and AI/log.md are left out.", nt_import_notion:"Notion: Markdown pages and CSV database rows.", nt_import_safe:"Nothing is run: DataviewJS and Templater stay plain text. Importing again creates no duplicates.", nt_import_pick:"Choose ZIP", nt_import_preview:"Import preview", nt_imp_new:"new", nt_imp_update:"updated", nt_imp_same:"unchanged", nt_imp_excluded:"left out", nt_import_go:"Import {n} notes", nt_imported:"{n} notes imported", nt_warn_dataview_kept_as_text:"Dataview/DataviewJS blocks found — they are not run and stay text.", nt_warn_templater_kept_as_text:"Templater commands found — they are not run and stay text.", nt_warn_ignored_properties:"Some complex properties (front matter) were not read.", nt_nlm_intro:"The notes you pick become Google Docs in your own Google Drive, and the same documents are updated later. You add them to NotebookLM as sources yourself.", nt_nlm_not_configured:"The server is not set up — connecting is not possible yet", nt_nlm_missing:"Missing", nt_nlm_connect:"Connect Google Drive", nt_nlm_scope:"Permission is drive.file only: ErnestOS sees only the files it created. Google's page opens in your browser.", nt_nlm_confirm_q:"Confirm this Google account is yours", nt_nlm_confirm:"Yes, connect", nt_nlm_not_me:"Not me", nt_nlm_acct_connected:"connected", nt_nlm_acct_disconnecting:"disconnecting", nt_nlm_acct_error:"reconnect needed", nt_nlm_acct_pending_confirm:"waiting for confirmation", nt_nlm_sets:"NotebookLM sources", nt_nlm_new_set:"Send a notebook", nt_nlm_need_book:"Create a notebook first.", nt_nlm_step1:"The Google Doc is ready in your Drive.", nt_nlm_doc:"Document", nt_nlm_step2:"In NotebookLM open a notebook → Add source → Google Docs → pick “ErnestOS · …”. Then paste the notebook's link here.", nt_nlm_step3:"Ask NotebookLM: “What is the ErnestOS verification code?” — paste its answer here.", nt_nlm_step4:"When notes change, tap Update, then open the source in NotebookLM and tap “Sync with Google Drive”.", nt_nlm_open:"Open in NotebookLM", nt_nlm_answer_ph:"NotebookLM's answer", nt_nlm_verify:"Check", nt_nlm_verified:"Verified: NotebookLM read the document", nt_nlm_sync:"Update", nt_nlm_none:"NotebookLM: not linked", nt_nlm_waiting:"NotebookLM: waiting", nt_nlm_verified_st:"verified", nt_nlm_verified_status:"NotebookLM: verified", nt_nlm_disconnect:"Disconnect Google Drive", nt_nlm_disconnect_hint:"The permission is revoked at Google and the token is deleted. Choose to keep the documents in Drive or move them to its trash.", nt_nlm_keep_docs:"Keep the documents in Drive", nt_nlm_trash_docs:"Move the documents to Drive's trash", nt_nlm_drop_q:"Delete this source?", nt_nlm_drop_hint:"The source in NotebookLM stays until you remove it there.", nt_nlm_edition:"This is for consumer NotebookLM. NotebookLM Enterprise APIs are in Preview on Google Cloud and are not used by this connector.", nt_set_working:"exporting", nt_set_changed:"needs update", nt_set_draft:"waiting to export", nt_set_exporting:"exporting", nt_set_exported:"exported", nt_set_error:"error", nt_set_deleting:"deleting", nt_set_at:"{when}", nt_nlm_err_reauth_required:"Google access was revoked or expired — reconnect.", nt_nlm_err_doc_recreated:"The document had been deleted in Drive — a new one was made. Add it to NotebookLM again.", nt_nlm_err_not_connected:"Google Drive is not connected.", nt_nlm_err_set_too_large:"Too big — split it into several notebooks.", nt_nlm_err_network:"Network error — it will be retried.", nt_nlm_err_key_missing:"The server's encryption key is missing.", nt_nlm_err_other:"Error: {code}", qk_note:"Note", qk_money:"Money", quick_note_ph:"A thought, an idea, a reminder… (first line is the title)", quick_note_hint:"Goes to Notes → Inbox. It does not become a task or money.", quick_note_saved:"Saved to the Notes inbox", quick_money_ph:"E.g. lunch 45 000", quick_money_hint:"The amount and category are read for you; you confirm.", err_note_too_long:"The note is too long.", err_bad_url:"A link must start with http(s)://.", err_too_many_tags:"Too many tags — up to 20.", err_notebook_exists:"A notebook with this name exists.", err_empty_name:"Enter a name.", err_trash_first:"Move it to the trash first.", err_revision_required:"Unknown version — refresh.", err_file_type:"This file type is not accepted.", err_file_too_large:"The file is larger than 5 MB.", err_storage_full:"File storage is full.", err_empty_file:"The file is empty.", err_bad_notebook_link:"The link must look like https://notebooklm.google.com/notebook/…", err_code_mismatch:"The code does not match. Paste NotebookLM's full answer.", err_notebook_link_first:"Save the NotebookLM link first.", err_export_first:"Wait for the export to finish first.", err_no_notes:"No notes picked.", err_not_a_zip:"This is not a ZIP file.", err_unsafe_path:"The archive has an unsafe path — not imported.", err_zip_bomb:"The archive is too large or suspicious — not imported.", err_archive_too_large:"The archive is larger than 30 MB.", err_too_many_files:"Too many files in the archive.", err_too_many_notes:"Up to 3000 notes per import.", err_note_trashed:"The note is in the trash — restore it first.", err_bad_cursor:"Refresh the list.", err_not_connected:"Google Drive is not connected.", err_nothing_to_confirm:"Nothing to confirm.", err_connector_not_configured:"The NotebookLM connector is not set up on the server.", err_too_many_notebooks:"Notebook limit reached.", err_notebook_gone:"Notebook not found."},
+  ru: {nt_offline_list:"Нет сети — последние загруженные заметки. Новая заметка сохранится на устройстве.", nt_linked_notes:"Заметки", nt_synced:"Сохранено заметок с устройства: {n}", err_notes_storage_full:"Место для заметок закончилось — удалите старые или повысьте тариф.", nav_notes:"Заметки", nt_title:"Заметки", nt_search_ph:"Поиск по заметкам", nt_clear:"Очистить", nt_new:"Новая заметка", nt_template:"Шаблон", nt_daily:"Дневник", nt_tools:"Инструменты", nt_more_tools:"Другие инструменты", nt_more:"Ещё", nt_done:"Готово", nt_st_total:"Всего", nt_st_today:"Сегодня", nt_st_month:"За месяц", nt_st_streak:"Серия", nt_v_inbox:"Входящие", nt_v_all:"Все", nt_v_books:"Блокноты", nt_v_pinned:"Закреплённые", nt_v_daily:"Дневники", nt_v_archived:"Архив", nt_v_trash:"Корзина", nt_pinned:"Закреплённые", nt_recent:"Недавние", nt_untitled:"Без названия", nt_n_notes:"{n} заметок", nt_suggest:"Предложение · нажмите, чтобы создать", nt_book_new:"Новый блокнот", nt_book_edit:"Изменить блокнот", nt_book_name:"Название", nt_book_color:"Цвет", nt_book_icon:"Значок (эмодзи)", nt_book_delete:"Удалить блокнот", nt_book_delete_q:"Удалить блокнот? Заметки останутся — во «Всех».", nt_books_hint:"Заметка может быть в нескольких блокнотах.", nt_empty:"Заметок пока нет", nt_empty_hint:"Запишите мысль, лекцию или идею — сохранится само.", nt_inbox_empty:"Входящие пусты", nt_no_results:"Ничего не найдено", nt_no_results_hint:"Попробуйте другое слово.", nt_trash_empty:"Очистить корзину", nt_trash_empty_q:"Удалить заметки из корзины навсегда? Это нельзя отменить.", nt_unsent:"На этом устройстве {n} заметок не дошли до сервера — откройте, чтобы сохранить", nt_just_now:"только что", nt_min_ago:"{n} мин назад", nt_edit:"Текст", nt_preview:"Просмотр", nt_title_ph:"Заголовок", nt_body_ph:"Начните писать… Работает Markdown: ## заголовок, - список, - [ ] задача", nt_empty_body:"Пустая заметка", nt_words:"{n} слов", nt_updated:"изменено", nt_s_pending:"Есть изменения", nt_s_saving:"Сохранение…", nt_s_saved:"Сохранено", nt_s_offline:"Нет сети · на устройстве", nt_s_conflict:"Конфликт", nt_s_failed:"Не сохранено", nt_format:"Форматирование", nt_f_heading:"Заголовок", nt_f_bold:"Жирный", nt_f_italic:"Курсив", nt_f_list:"Список", nt_f_check:"Задача", nt_f_quote:"Цитата", nt_f_code:"Код", nt_f_table:"Таблица", nt_f_hr:"Разделитель", nt_f_link:"Связать", nt_f_attach:"Прикрепить файл", nt_k_note:"Заметка", nt_k_quick:"Быстрая", nt_k_study:"Учёба", nt_k_thought:"Мысль", nt_k_idea:"Идея", nt_k_resource:"Источник", nt_kind:"Тип заметки", nt_reviewed:"Разобрано", nt_tags:"Теги", nt_tags_hint:"Через запятую. Например: маркетинг, лекция", nt_ai_off_short:"Скрыто от AI", nt_in_trash:"В корзине", nt_conflict_title:"Эту заметку изменили в другом месте", nt_conflict_hint:"Обе версии сохранены. Выберите, какую оставить.", nt_conflict_see:"Показать версию на сервере", nt_keep_mine:"Оставить мою", nt_keep_theirs:"Оставить серверную", nt_keep_both:"Обе", nt_kept_both:"Ваша версия сохранена отдельной заметкой", nt_copy:"копия", nt_new_hint:"Заметка сохраняется, как только вы начинаете писать.", nt_related:"Связанные дела", nt_add:"Добавить", nt_related_none:"Не связана с задачей, проектом или целью.", nt_rel_task:"Задача", nt_rel_project:"Проект", nt_rel_goal:"Цель", nt_rel_note:"Заметка", nt_rel_made:"из этой заметки", nt_unlink:"Убрать связь", nt_links:"Ссылки", nt_files:"Файлы", nt_pin:"Закрепить", nt_unpin:"Открепить", nt_mark_reviewed:"Отметить как разобранную", nt_back_inbox:"Вернуть во входящие", nt_to_task:"Сделать задачей", nt_history:"История версий", nt_send_nlm:"Отправить в NotebookLM", nt_ai_exclude:"Скрыть от AI и NotebookLM", nt_ai_allow:"Показывать AI", nt_ai_off_hint:"Эта заметка не передаётся AI-помощнику и в экспорт для NotebookLM.", nt_ai_on_hint:"AI-помощник может использовать эту заметку со ссылкой, отвечая вам. Деньги и данные команды через заметки не передаются.", nt_export_md:"Файлом Markdown", nt_archive:"В архив", nt_unarchive:"Из архива", nt_trash:"В корзину", nt_trashed:"Перемещено в корзину", nt_restore:"Восстановить", nt_restored:"Восстановлено", nt_delete_forever:"Удалить навсегда", nt_delete_forever_q:"Удалить заметку навсегда? Это нельзя отменить.", nt_nlm_hint:"Заметки в NotebookLM через Google Docs", nt_import:"Импорт (Obsidian, Notion)", nt_import_hint:"Сначала вы видите содержимое ZIP, потом подтверждаете", nt_export_zip:"Экспорт Markdown ZIP", nt_export_zip_hint:"Всё, без потерь", nt_export_obsidian:"Экспорт для Obsidian", nt_export_obsidian_hint:"Как vault со [[ссылками]]", nt_ai_memory:"Экспорт памяти для AI", nt_ai_memory_hint:"Заметки, разрешённые для AI, со ссылками", nt_template_title:"Шаблон", nt_t_blank:"Пустая", nt_t_study:"Лекция", nt_t_learning:"Изучение", nt_t_thought:"Мысль", nt_t_idea:"Идея", nt_t_resource:"Источник", nt_t_project:"Контекст проекта", nt_t_daily:"Дневник", nt_t_weekly:"Обзор недели", nt_t_decision:"Решение", nt_t_person:"Человек", nt_t_ai_tool:"AI-инструмент", nt_t_vocab:"Словарь", nt_t_blank_hint:"Чистый лист", nt_task_hint:"Сначала проверьте — ничего не создаётся до подтверждения.", nt_task_title:"Название задачи", nt_task_desc:"Описание (со ссылкой на заметку)", nt_task_create:"Создать задачу", nt_task_already:"Из этой заметки уже создано задач: {n}.", nt_task_made:"Задача создана и связана с заметкой", nt_link_hint:"Выберите заметку — в текст добавится ссылка. Задачу, проект или цель — заметка будет с ними связана.", nt_linked:"Связано", nt_link_after_save:"Ссылка откроется после сохранения", nt_save_first:"Сначала напишите что-нибудь, чтобы заметка сохранилась", nt_uploading:"Загрузка…", nt_att_delete_q:"Удалить файл?", nt_history_hint:"Автосохранения в пределах 10 минут — одна версия. Хранятся последние 30.", nt_history_none:"Ранних версий пока нет.", nt_rev_conflict:"конфликтная версия", nt_rev_restore:"до восстановления", nt_rev_import:"до импорта", nt_rev_restore_btn:"Восстановить эту версию", nt_import_how:"Выберите ZIP хранилища Obsidian или экспорта Notion. Сначала вы увидите список и подтвердите.", nt_import_obsidian:"Obsidian: .obsidian, .git, _system/examples, AI/inbox, AI/exports и AI/log.md не импортируются.", nt_import_notion:"Notion: страницы Markdown и строки баз данных CSV.", nt_import_safe:"Ничего не запускается: DataviewJS и Templater остаются текстом. Повторный импорт не создаёт дубликатов.", nt_import_pick:"Выбрать ZIP", nt_import_preview:"Предпросмотр импорта", nt_imp_new:"новые", nt_imp_update:"обновятся", nt_imp_same:"без изменений", nt_imp_excluded:"исключены", nt_import_go:"Импортировать заметок: {n}", nt_imported:"Импортировано заметок: {n}", nt_warn_dataview_kept_as_text:"Есть блоки Dataview/DataviewJS — они не запускаются и остаются текстом.", nt_warn_templater_kept_as_text:"Есть команды Templater — они не запускаются и остаются текстом.", nt_warn_ignored_properties:"Некоторые сложные свойства (front matter) не прочитаны.", nt_nlm_intro:"Выбранные заметки становятся Google Docs в вашем Google Drive, и потом обновляются те же документы. В NotebookLM вы добавляете их как источники сами.", nt_nlm_not_configured:"Сервер не настроен — подключение пока невозможно", nt_nlm_missing:"Не хватает", nt_nlm_connect:"Подключить Google Drive", nt_nlm_scope:"Доступ только drive.file: ErnestOS видит лишь созданные им файлы. Страница Google откроется в браузере.", nt_nlm_confirm_q:"Подтвердите, что это ваш аккаунт Google", nt_nlm_confirm:"Да, подключить", nt_nlm_not_me:"Это не я", nt_nlm_acct_connected:"подключён", nt_nlm_acct_disconnecting:"отключается", nt_nlm_acct_error:"нужно переподключить", nt_nlm_acct_pending_confirm:"ждёт подтверждения", nt_nlm_sets:"Источники NotebookLM", nt_nlm_new_set:"Отправить блокнот", nt_nlm_need_book:"Сначала создайте блокнот.", nt_nlm_step1:"Документ Google Docs готов в вашем Drive.", nt_nlm_doc:"Документ", nt_nlm_step2:"В NotebookLM откройте блокнот → Add source → Google Docs → выберите «ErnestOS · …». Затем вставьте сюда ссылку на блокнот.", nt_nlm_step3:"Спросите NotebookLM: «Какой ErnestOS verification code?» — вставьте ответ сюда.", nt_nlm_step4:"Когда заметки изменятся, нажмите «Обновить», затем в NotebookLM откройте источник и нажмите «Sync with Google Drive».", nt_nlm_open:"Открыть в NotebookLM", nt_nlm_answer_ph:"Ответ NotebookLM", nt_nlm_verify:"Проверить", nt_nlm_verified:"Подтверждено: NotebookLM прочитал документ", nt_nlm_sync:"Обновить", nt_nlm_none:"NotebookLM: не привязан", nt_nlm_waiting:"NotebookLM: ожидание", nt_nlm_verified_st:"подтверждено", nt_nlm_verified_status:"NotebookLM: подтверждено", nt_nlm_disconnect:"Отключить Google Drive", nt_nlm_disconnect_hint:"Доступ отзывается в Google, токен удаляется. Выберите: оставить документы в Drive или отправить в его корзину.", nt_nlm_keep_docs:"Оставить документы в Drive", nt_nlm_trash_docs:"Документы в корзину Drive", nt_nlm_drop_q:"Удалить этот источник?", nt_nlm_drop_hint:"Источник в NotebookLM останется, пока вы не удалите его там.", nt_nlm_edition:"Это для обычного (consumer) NotebookLM. API NotebookLM Enterprise находятся в Preview в Google Cloud и здесь не используются.", nt_set_working:"экспорт идёт", nt_set_changed:"нужно обновить", nt_set_draft:"ждёт экспорта", nt_set_exporting:"экспорт идёт", nt_set_exported:"экспортировано", nt_set_error:"ошибка", nt_set_deleting:"удаляется", nt_set_at:"{when}", nt_nlm_err_reauth_required:"Доступ Google отозван или истёк — подключите заново.", nt_nlm_err_doc_recreated:"Документ был удалён в Drive — создан новый. Добавьте его в NotebookLM заново.", nt_nlm_err_not_connected:"Google Drive не подключён.", nt_nlm_err_set_too_large:"Слишком много — разделите на несколько блокнотов.", nt_nlm_err_network:"Ошибка сети — будет повтор.", nt_nlm_err_key_missing:"На сервере нет ключа шифрования.", nt_nlm_err_other:"Ошибка: {code}", qk_note:"Заметка", qk_money:"Деньги", quick_note_ph:"Мысль, идея, напоминание… (первая строка — заголовок)", quick_note_hint:"Попадёт в Заметки → Входящие. Не станет задачей или деньгами.", quick_note_saved:"Сохранено во входящие заметок", quick_money_ph:"Например: обед 45 000", quick_money_hint:"Сумма и категория распознаются, вы подтверждаете.", err_note_too_long:"Заметка слишком длинная.", err_bad_url:"Ссылка должна начинаться с http(s)://.", err_too_many_tags:"Слишком много тегов — до 20.", err_notebook_exists:"Блокнот с таким названием уже есть.", err_empty_name:"Введите название.", err_trash_first:"Сначала переместите в корзину.", err_revision_required:"Неизвестная версия — обновите.", err_file_type:"Такой тип файла не принимается.", err_file_too_large:"Файл больше 5 МБ.", err_storage_full:"Место для файлов закончилось.", err_empty_file:"Файл пустой.", err_bad_notebook_link:"Ссылка должна выглядеть как https://notebooklm.google.com/notebook/…", err_code_mismatch:"Код не совпал. Вставьте ответ NotebookLM целиком.", err_notebook_link_first:"Сначала сохраните ссылку NotebookLM.", err_export_first:"Сначала дождитесь окончания экспорта.", err_no_notes:"Заметки не выбраны.", err_not_a_zip:"Это не ZIP-файл.", err_unsafe_path:"В архиве опасный путь — не импортировано.", err_zip_bomb:"Архив слишком большой или подозрительный — не импортировано.", err_archive_too_large:"Архив больше 30 МБ.", err_too_many_files:"В архиве слишком много файлов.", err_too_many_notes:"До 3000 заметок за один импорт.", err_note_trashed:"Заметка в корзине — сначала восстановите.", err_bad_cursor:"Обновите список.", err_not_connected:"Google Drive не подключён.", err_nothing_to_confirm:"Нечего подтверждать.", err_connector_not_configured:"Подключение NotebookLM не настроено на сервере.", err_too_many_notebooks:"Достигнут лимит блокнотов.", err_notebook_gone:"Блокнот не найден."}
+};
+for(const [lang, words] of Object.entries(NOTES_WORDS)) Object.assign(DICT[lang], words);
 const D = () => DICT[state.lang] || DICT.uz;
 /* A missing key returns the key itself rather than "undefined", so a gap
    is visible in testing instead of silently shipping. */
@@ -3953,6 +4191,7 @@ function openSheet(html, view){
   state.sheetView = view || null;
   const body = document.getElementById("sheet-body");
   body.innerHTML = `<div class="grabber"></div>${html}`;
+  ntFillLinked(body);
   /* A different sheet starts at its top; the same one redrawn (a switch
      flipped, an answer arrived) stays where the person was. */
   const key = state.sheetView || html.trim().slice(0, 160);
@@ -4002,6 +4241,7 @@ document.getElementById("sheet").addEventListener("click", e => {
 function backTarget(){
   if(sheetOpen()) return "sheet";
   if(state.screen === "project") return "project";
+  if(state.screen === "note") return "note";
   if(IS_APP && state.screen === "team" && state.teamView === "group") return "group";
   if(IS_APP && state.screen !== "home") return "home";
   return null;
@@ -4016,6 +4256,7 @@ tg?.BackButton?.onClick?.(() => {
   const to = backTarget();
   if(to === "sheet") return closeSheet();
   if(to === "project") return goto("tasks");
+  if(to === "note") return A["nt-back"]();
   if(to === "group") return setState({teamView: "list"});
   if(to === "home") return goto("home");
   setState({screen:"home"});
@@ -5745,7 +5986,7 @@ function habitRow(x, cat, wake){
   return `<div class="item ${TIERS[cat]} ${x.due ? "" : "off"}">
       ${edge}${box}
       <div class="grow" ${open}>
-        <div class="ellipsis">${esc(x.name)}</div>
+        <div class="${wakeBtn ? "clamp2" : "ellipsis"}">${esc(x.name)}</div>
         ${meta.length ? `<div class="meta">${meta.join(" · ")}</div>` : ""}
       </div>
       ${wakeBtn || `<button class="iconbtn sm plain" ${open}
@@ -6016,6 +6257,8 @@ function clearDraft(){
    every unsent entry and AI text this account left on the phone. */
 async function forgetLocalDrafts(){
   clearTimeout(journalTimer);
+  clearTimeout(NT.timer); NT.dirty = false;
+  ntForgetDrafts();
   journalPending = {};
   state.jaiPending = {};
   voice.kept = null;
@@ -7092,6 +7335,7 @@ function goalSheet(g, level){
       <label for="gl-note">${t("gl_note")}</label>
       <textarea id="gl-note" rows="3" maxlength="2000">${esc(g?.note || "")}</textarea>
     </details>
+    ${g ? ntLinkedSlot("goal", g.id) : ""}
     <button class="btn" style="margin-top:16px" data-act="goal-save" ${g ? `data-id="${g.id}"` : ""}>${t("save")}</button>
     ${g ? `<button class="btn danger" data-act="goal-delete" data-id="${g.id}" style="margin-top:8px">
       ${icon("trash", 15)} ${t("delete")}</button>` : ""}`;
@@ -7430,6 +7674,7 @@ SCREENS.project = () => {
 
   if(p.description)
     h += `<div class="t2 small wrap" style="margin-top:8px">${esc(p.description)}</div>`;
+  if(!team) h += ntLinkedSlot("project", p.id);
 
   // Progress in words as well as a percentage: "4 / 7" alone makes the
   // reader do the arithmetic.
@@ -8413,13 +8658,25 @@ function voiceConsentSheet(){
 }
 
 function quickSheet(){
-  const habit = state.quickType === "habit";
+  const type = state.quickType || "task";
+  const habit = type === "habit";
   const voice = state.me?.agent?.available ? `<button class="btn secondary quick-voice" data-act="voice-start">
       ${icon("mic", 18)} ${t("quick_voice_btn")}</button>` : "";
-  return `${voice}<div class="seg big" style="margin-bottom:12px">
-      <div class="${habit ? "" : "on"}" data-act="quick-type" data-value="task">${icon("check", 16)} ${t("task_word")}</div>
-      <div class="${habit ? "on" : ""}" data-act="quick-type" data-value="habit">${icon("repeat", 16)} ${t("habit_word")}</div>
-    </div>
+  const seg = `<div class="seg big qk" style="margin-bottom:12px" role="tablist">${[
+      ["task", "check", "task_word"], ["note", "book", "qk_note"], ["money", "wallet", "qk_money"], ["habit", "repeat", "habit_word"]]
+    .map(([id, ic, key]) => `<div class="${type === id ? "on" : ""}" role="tab" tabindex="0" aria-selected="${type === id}"
+      data-act="quick-type" data-value="${id}">${icon(ic, 15)} ${t(key)}</div>`).join("")}</div>`;
+  /* A note is never parsed into a task or an amount: it goes to Notes → Inbox
+     as typed. Money is read by the money parser and confirmed there. */
+  if(type === "note") return `${seg}
+    <textarea id="quick-note" placeholder="${t("quick_note_ph")}" aria-label="${t("qk_note")}"></textarea>
+    <div class="hint" style="margin-top:6px">${t("quick_note_hint")}</div>
+    <button class="btn" data-act="quick-save" style="margin-top:12px">${t("save")}</button>`;
+  if(type === "money") return `${seg}
+    <input id="quick-title" placeholder="${t("quick_money_ph")}" enterkeyhint="done" data-search="quick-save" inputmode="text">
+    <div class="hint" style="margin-top:6px">${t("quick_money_hint")}</div>
+    <button class="btn" data-act="quick-save" style="margin-top:12px">${t("save")}</button>`;
+  return `${voice}${seg}
     <input id="quick-title" placeholder="${t(habit ? "quick_habit_ph" : "quick_ph")}" enterkeyhint="done"
            data-search="quick-save" />
     <div class="hint" style="margin-top:6px">${t(habit ? "quick_habit_hint" : "quick_hint")}</div>
@@ -8898,6 +9155,7 @@ function taskSheet(task, presetProject){
                 : `data-act="task-save"${presetProject ? ` data-project="${presetProject}"` : ""}`}
       >${t("save")}</button>
     ${editing && !shared && task.status !== "done" ? blockPicker(task) : ""}
+    ${editing && !shared ? ntLinkedSlot("task", task.id) : ""}
     ${editing ? `<button class="btn danger" data-act="task-delete-go"
       data-id="${task.id}" style="margin-top:8px">
       ${icon("trash", 15)} ${t("delete")}</button>` : ""}
@@ -9673,8 +9931,8 @@ function settingsSheet(){
     ${row("fresh-start", "repeat", "tone-4", t("fresh_start"), t("fresh_start_hint"))}
     ${row("feedback", "message", "tone-3", t("feedback"), t("feedback_hint"))}
 
-    <div class="item pressable set-signout" data-act="sign-out">
-      <span class="itile">${icon("back", 17)}</span><div class="grow">${t("sign_out")}</div></div>
+    ${me.offline_copy ? "" : `<div class="item pressable set-signout" data-act="sign-out">
+      <span class="itile">${icon("back", 17)}</span><div class="grow">${t("sign_out")}</div></div>`}
     ${IS_APP ? "" : `<div class="t3 tiny" style="text-align:center;margin-top:6px">${t("sign_out_tg_hint")}</div>`}
     <div class="brandline"><img src="${BRAND_MARK}" alt="" width="22" height="22" />
       <span>ErnestOS${me.version ? ` v${esc(me.version)} · ${esc(me.build || "")}` : ""}</span></div>`;
@@ -9685,6 +9943,8 @@ function settingsSheet(){
    finger and lost the picture they had just chosen. */
 function settingsInvite(row){
   const r = state.referral, steps = r?.steps || [];
+  // Invites switched off on the server (no bot username): nothing to offer.
+  if(r && r.configured === false) return "";
   const q = r?.counts?.qualified ?? 0;
   const next = steps.find(x => !x.reached);
   return steps.length ? `<div class="tinted block tone-2 pressable set-card" id="set-invite" data-act="set-referral">
@@ -10571,12 +10831,12 @@ function legalUrl(path){
 }
 function privacySheet(){
   return `<h3>${icon("book", 18)} ${t("privacy_policy")}</h3>
-    <div class="hint" style="margin-top:8px">${t("privacy_body")}</div>
+    <div class="hint" style="margin-top:8px">${t(state.me?.offline_copy ? "privacy_offline" : "privacy_body")}</div>
     <div class="hint" style="margin-top:var(--s2)">${t("data_yours_body")}</div>
-    <button class="btn secondary" data-act="open-url" data-url="${esc(legalUrl("/privacy"))}" style="margin-top:16px">
+    ${state.me?.offline_copy ? "" : `<button class="btn secondary" data-act="open-url" data-url="${esc(legalUrl("/privacy"))}" style="margin-top:16px">
       ${icon("book", 16)} ${t("privacy_full")}</button>
     <button class="btn text" data-act="open-url" data-url="${esc(legalUrl("/account/delete"))}" style="margin-top:6px">
-      ${t("privacy_delete_web")}</button>
+      ${t("privacy_delete_web")}</button>`}
     <button class="btn secondary" data-act="set-privacy" style="margin-top:16px">
       ${t("close")}</button>`;
 }
@@ -10659,11 +10919,12 @@ function confirmSheet(action, id, label){
 const NAV = [
   {id:"home",    icon:"home",   key:"nav_home"},
   {id:"tracker", icon:"check",  key:"nav_tracker"},
+  {id:"notes",   icon:"book",   key:"nav_notes"},
   {id:"money",   icon:"wallet", key:"nav_money"},
   {id:"profile", icon:"user",   key:"nav_profile"},
 ];
 //: Which tab stays lit for each screen. A project opens from Tasks.
-const NAV_OF = {habits:"tracker", tasks:"tracker", goals:"tracker", project:"tracker",
+const NAV_OF = {note:"notes", habits:"tracker", tasks:"tracker", goals:"tracker", project:"tracker",
                 team:"tracker", steps:"profile", stats:"profile", people:"profile", more:"profile"};
 //: A tab opens where the person last was inside it.
 function navTarget(id){
@@ -10736,6 +10997,8 @@ SCREENS.more = () => `<h1>${t("more")}</h1>` + [
    keep their own +. */
 function fabMic(){
   if(!["home", "tasks", "habits"].includes(state.screen)) return "";
+  // A mic that can only answer "AI is off" is not offered (server without AI, offline copy).
+  if(!state.me?.agent?.available) return "";
   return `<button class="fab-mic" data-act="voice-start" aria-label="${t("voice_cmd")}"
     title="${t("voice_cmd")}">${icon("mic", 24)}</button>`;
 }
@@ -10744,7 +11007,9 @@ function fabMic(){
 function fabAdd(){
   const sc = state.screen;
   // Qadam and Statistika add nothing: a + there only covered their counters.
-  if(sc === "steps" || sc === "stats" || sc === "profile") return "";
+  if(sc === "steps" || sc === "stats" || sc === "profile" || sc === "note") return "";
+  if(sc === "notes") return `<button class="fab-add" data-act="nt-new" aria-label="${t("nt_new")}"
+      title="${t("nt_new")}">${icon("plus", 30)}</button>`;
   if(sc === "goals"){
     const tab = GOAL_LEVELS.includes(state.goalTab) ? state.goalTab : "ultimate";
     const attrs = tab === "tactical"
@@ -10931,6 +11196,7 @@ function markJust(){
 
 function render(){
   const root = document.documentElement;
+  const typing = ntCaptureFocus();
   /* Two attributes drive the entire visual system: which identity, and which
      mode. Every theme defines both, so no combination inherits another's
      surfaces. */
@@ -10981,9 +11247,11 @@ function render(){
      of the way while the page scrolls down, and the page ends below them. */
   document.getElementById("fab").innerHTML = chromeOff || noFab ? "" : `${fabMic()}${fabAdd()}`;
 
+  document.body.classList?.toggle?.("nt-wide", state.screen === "notes" || state.screen === "note");
   syncShell();
   syncBackButton();
   markJust();
+  ntAfterRender(typing);
   const counting = app.querySelector?.(".qanim");
   if(counting && !counting.dataset.counted){ counting.dataset.counted = "1"; animateCounts(counting); }
 }
@@ -11016,6 +11284,10 @@ async function loadScreen(screen){
       setState({home: await api("/api/home")});
       saveLastGood();
       loadNowAi();
+    } else if(screen === "notes"){
+      await ntLoadHome();
+    } else if(screen === "note"){
+      await ntLoadNote();
     } else if(screen === "money"){
       await loadMoney(state.moneyMonth);
     } else if(screen === "team"){
@@ -11162,6 +11434,8 @@ let lastDraft = null;
 function errorMessage(e){
   if(e.status === 401) return t("session_expired");
   if(e.status === 429) return t("rate_wait", {n:e.retryAfter || 30});
+  // A refusal with its own explanation says it; any other bad value says so plainly.
+  if([409, 422, 503].includes(e.status) && e.detail && DICT.uz["err_" + e.detail]) return t("err_" + e.detail);
   if(e.status === 422) return t("invalid_input");
   if(e.status === 404) return t("not_found_item");
   return e.status ? t("error") : t("offline");
@@ -11310,8 +11584,8 @@ const queueKey = () => `ernestos-queue-${state.me?.telegram_id || "anon"}`;
 /* v16: every record of the day can wait for the network — tasks, habits,
    prayer, money, the journal, debts, goals and group ticks. Sign-in,
    payments, plans, AI and settings cannot: they need the server's answer. */
-const QUEUEABLE = /^\/api\/(quick|tasks|habits|prayers|money|journal|debts|focus|goals|countdowns|birthdays|projects|teams\/(tasks|habits|projects))(\/|\?|$)/;
-const QUEUE_LABEL = [[/^\/api\/(quick|tasks|projects)/, "task_word"], [/^\/api\/habits/, "habit_word"],
+const QUEUEABLE = /^\/api\/(notes$|(quick|tasks|habits|prayers|money|journal|debts|focus|goals|countdowns|birthdays|projects|teams\/(tasks|habits|projects))(\/|\?|$))/;
+const QUEUE_LABEL = [[/^\/api\/notes/, "qk_note"], [/^\/api\/(quick|tasks|projects)/, "task_word"], [/^\/api\/habits/, "habit_word"],
   [/^\/api\/prayers/, "prayer"], [/^\/api\/money/, "nav_money"], [/^\/api\/journal/, "journal"],
   [/^\/api\/debts/, "money_tab_debts"], [/^\/api\/(focus|goals)/, "goals_tab"],
   [/^\/api\/teams/, "groups_tab"], [/^\/api\/(countdowns|birthdays)/, "calendar"]];
@@ -11496,6 +11770,400 @@ document.addEventListener("visibilitychange", async () => {
 });
 
 const A = {
+  /* ---------- Qaydlar (Notes) — the editor and its sheets are defined with
+     the Notes screen below; these are what their buttons do. ---------- */
+  "nt-view": el => {
+    haptic();
+    const v = el.dataset.value;
+    state.noteView = v; state.noteTag = "";
+    if(v !== "notebook") state.noteBook = null;
+    if(state.screen !== "notes") return goto("notes");
+    render();
+    ntLoadHome().catch(handleError);     // the counts move with the list
+  },
+  "nt-tag": el => {
+    state.noteTag = state.noteTag === el.dataset.value ? "" : el.dataset.value;
+    if(state.noteView === "notebooks") state.noteView = "all";
+    render(); ntLoadList(false).then(render).catch(handleError);
+  },
+  "nt-search": () => {
+    state.noteQuery = (document.getElementById("nt-q")?.value || "").trim();
+    if(state.noteView === "notebooks") state.noteView = "all";
+    render(); ntLoadList(false).then(render).catch(handleError);
+  },
+  "nt-search-clear": () => { state.noteQuery = ""; render(); ntLoadList(false).then(render).catch(handleError); },
+  "nt-more": () => ntLoadList(true).then(render).catch(handleError),
+  "nt-open": el => { if(sheetOpen()) closeSheet(); ntOpen(el.dataset.id); },
+  "nt-new": () => { haptic(); ntNew(); },
+  "nt-resume": el => ntResume(el.dataset.key),
+  "nt-templates": () => openSheet(ntTemplatesSheet(), "nt-tpl"),
+  "nt-tpl": el => ntNew({template: el.dataset.value}),
+  "nt-daily": async () => {
+    try{ const n = await api("/api/notes/daily", {method:"POST"}); ntOpen(n.id); }
+    catch(e){ handleError(e); }
+  },
+  "nt-book": el => {
+    haptic();
+    state.noteView = "notebook"; state.noteBook = Number(el.dataset.id); state.noteTag = "";
+    if(state.screen !== "notes") return goto("notes");
+    render(); ntLoadHome().catch(handleError);
+  },
+  "nt-book-new": () => { state.ntBookColor = null; openSheet(ntBookSheet(), "nt-book"); },
+  "nt-book-menu": el => { const b = ntBook(Number(el.dataset.id)); state.ntBookColor = null;
+    openSheet(ntBookSheet(b) + `<button class="btn secondary" data-act="nt-book-export" data-id="${b.id}" style="margin-top:8px">${icon("download", 16)} ${t("nt_export_zip")}</button>
+      <button class="btn secondary" data-act="nt-nlm-add" data-id="${b.id}" style="margin-top:8px">${icon("book", 16)} ${t("nt_send_nlm")}</button>`, "nt-book"); },
+  "nt-book-color": el => { state.ntBookColor = el.dataset.value;
+    document.querySelectorAll(".nt-colorchip").forEach(c => c.classList.toggle("on", c.dataset.value === el.dataset.value)); },
+  "nt-book-save": async el => {
+    const name = (document.getElementById("nt-book-name")?.value || "").trim();
+    if(!name) return toast(t("err_empty_name"));
+    const body = {name, color: state.ntBookColor || undefined,
+                  icon: (document.getElementById("nt-book-icon")?.value || "").trim()};
+    const id = el.dataset.id;
+    try{
+      const b = await api(id ? `/api/notes/notebooks/${id}` : "/api/notes/notebooks", {method: id ? "PATCH" : "POST", body});
+      state.notes = await api("/api/notes/home");
+      if(state.screen === "note" && !id && state.note) await ntMeta({notebook_ids: [...(state.note.notebook_ids || []), b.id]});
+      closeSheet(); render();
+    }catch(e){ handleError(e); }
+  },
+  "nt-book-suggest": async el => {
+    try{
+      await api("/api/notes/notebooks", {method:"POST", body:{name: el.dataset.name, color: el.dataset.color, icon: el.dataset.icon}});
+      state.notes = await api("/api/notes/home"); render();
+    }catch(e){ handleError(e); }
+  },
+  "nt-book-delete": el => confirmSheet("nt-book-delete-go", el.dataset.id, t("nt_book_delete_q")),
+  "nt-book-delete-go": async el => {
+    try{ await api(`/api/notes/notebooks/${el.dataset.id}`, {method:"DELETE"});
+      state.noteView = "notebooks"; state.noteBook = null; closeSheet(); await ntLoadHome(); }
+    catch(e){ handleError(e); }
+  },
+  "nt-book-export": el => ntDownload("zip", Number(el.dataset.id)),
+  "nt-trash-empty": () => confirmSheet("nt-trash-empty-go", "", t("nt_trash_empty_q")),
+  "nt-trash-empty-go": async () => {
+    try{ await api("/api/notes/trash/empty", {method:"POST"}); closeSheet(); await ntLoadHome(); }
+    catch(e){ handleError(e); }
+  },
+  "nt-tools": () => openSheet(ntToolsSheet(), "nt-tools"),
+  "nt-export": () => ntDownload("zip"),
+  "nt-export-obsidian": () => ntDownload("obsidian"),
+  "nt-ai-export": () => ntDownload("ai"),
+  /* the editor */
+  "nt-back": async () => {
+    await ntFlush();
+    goto("notes");
+  },
+  "nt-retry": () => { NT.dirty = true; ntFlush(); },
+  "nt-mode": el => {
+    state.notePreview = el.dataset.value === "preview";
+    render();
+  },
+  "nt-menu": () => openSheet(ntMenuSheet(), "nt-menu"),
+  "nt-kind": () => openSheet(ntPickSheet("kind"), "nt-pick"),
+  "nt-kind-set": el => { closeSheet(); ntMeta({kind: el.dataset.value}); },
+  "nt-status": () => { closeSheet(); ntMeta({status: state.note.status === "inbox" ? "reviewed" : "inbox"}); },
+  "nt-pin": () => { closeSheet(); ntMeta({pinned: !state.note.pinned}); },
+  "nt-archive": () => { closeSheet(); ntMeta({archived: !state.note.archived}); },
+  "nt-ai": () => { closeSheet(); ntMeta({ai_excluded: !state.note.ai_excluded}); },
+  "nt-books": () => openSheet(ntPickSheet("books"), "nt-pick"),
+  "nt-book-toggle": el => {
+    const id = Number(el.dataset.id);
+    const cur = new Set(state.note.notebook_ids || []);
+    cur.has(id) ? cur.delete(id) : cur.add(id);
+    el.classList.toggle("on");
+    ntMeta({notebook_ids: [...cur]});
+  },
+  "nt-tags": () => openSheet(ntPickSheet("tags"), "nt-pick"),
+  "nt-tag-add": el => {
+    const input = document.getElementById("nt-tags-in");
+    if(input){ const cur = input.value.split(",").map(x => x.trim()).filter(Boolean);
+      if(!cur.includes(el.dataset.value)) cur.push(el.dataset.value); input.value = cur.join(", "); }
+  },
+  "nt-tags-save": () => {
+    const tags = (document.getElementById("nt-tags-in")?.value || "").split(/[,\n]/).map(x => x.trim().replace(/^#/, "")).filter(Boolean);
+    closeSheet(); ntMeta({tags});
+  },
+  "nt-fmt": el => ntFormat(el.dataset.fmt),
+  "nt-check": el => {
+    const line = Number(el.dataset.line);
+    const lines = state.noteEdit.body.split("\n");
+    if(!lines[line]) return;
+    lines[line] = lines[line].replace(/\[( |x|X)\]/, m => m === "[ ]" ? "[x]" : "[ ]");
+    ntInput("body", lines.join("\n"));
+    render();
+  },
+  "nt-goto": el => {
+    const n = state.note || {};
+    const all = [...(n.links || []), ...(n.backlinks || [])];
+    const hit = el.dataset.uid ? all.find(x => x.uid === el.dataset.uid)
+      : all.find(x => (x.title || "").toLowerCase() === String(el.dataset.title || "").toLowerCase());
+    if(hit) return ntOpen(hit.id);
+    toast(NT.dirty ? t("nt_link_after_save") : t("not_found_item"));
+  },
+  "nt-att": async el => {
+    try{
+      const blob = await ntBlob(`/api/notes/attachments/${el.dataset.uid}`);
+      const att = (state.note?.attachments || []).find(a => a.uid === el.dataset.uid);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = att?.filename || "file";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    }catch(e){ handleError(e); }
+  },
+  "nt-att-del": el => confirmSheet("nt-att-del-go", el.dataset.uid, t("nt_att_delete_q")),
+  "nt-att-del-go": async el => {
+    try{ await api(`/api/notes/attachments/${el.dataset.id}`, {method:"DELETE"}); closeSheet(); await ntLoadNote(); }
+    catch(e){ handleError(e); }
+  },
+  "nt-attach": async () => {
+    if(!state.note?.id){ await ntFlush(); if(!state.note?.id) return toast(t("nt_save_first")); }
+    document.getElementById("nt-file")?.click();
+  },
+  "nt-file": async el => {
+    const file = el.files?.[0];
+    el.value = "";
+    if(!file || !state.note?.id) return;
+    if(file.size > 5 * 1024 * 1024) return toast(t("err_file_too_large"));
+    try{
+      toast(t("nt_uploading"));
+      const res = await fetch(`/api/notes/${state.note.id}/attachments`, {method:"POST", body:file,
+        signal: requestTimeout(120000),
+        headers:{"Content-Type": file.type || "application/octet-stream", "X-File-Name": encodeURIComponent(file.name),
+                 "X-Telegram-Init-Data": tg?.initData || ""}});
+      const out = await res.json().catch(() => ({}));
+      if(!res.ok){ const e = new Error("http_" + res.status); e.status = res.status; e.detail = out.detail; throw e; }
+      const md = out.mime.startsWith("image/") ? `![${out.filename}](attachment:${out.uid})` : `[${out.filename}](attachment:${out.uid})`;
+      ntInsert("\n" + md + "\n");
+      state.note.attachments = [...(state.note.attachments || []), out];
+      render();
+    }catch(e){ handleError(e); }
+  },
+  "nt-link": async () => {
+    state.ntLinks = null;
+    openSheet(ntLinkSheet(), "nt-link");
+    try{ state.ntLinks = await api("/api/notes/link-targets?q="); if(state.sheetView === "nt-link") openSheet(ntLinkSheet(), "nt-link"); }
+    catch(e){ handleError(e); }
+  },
+  "nt-link-search": async () => {
+    const q = document.getElementById("nt-link-q")?.value || "";
+    try{ state.ntLinks = await api("/api/notes/link-targets?q=" + encodeURIComponent(q));
+      openSheet(ntLinkSheet(), "nt-link");
+      const input = document.getElementById("nt-link-q"); if(input){ input.value = q; } }
+    catch(e){ handleError(e); }
+  },
+  "nt-link-pick": async el => {
+    const kind = el.dataset.kind;
+    closeSheet();
+    if(kind === "note"){
+      ntInsert(`[${el.dataset.title || "note"}](note:${el.dataset.uid})`);
+      if(state.notePreview) render();
+      return;
+    }
+    if(!state.note?.id){ await ntFlush(); if(!state.note?.id) return toast(t("nt_save_first")); }
+    try{
+      const r = await api(`/api/notes/${state.note.id}/relations`, {method:"POST", body:{kind, target_id: Number(el.dataset.id)}});
+      state.note.relations = r.relations; render(); toast(t("nt_linked"));
+    }catch(e){ handleError(e); }
+  },
+  "nt-unrel": async el => {
+    try{ const r = await api(`/api/notes/${state.note.id}/relations/${el.dataset.id}`, {method:"DELETE"});
+      state.note.relations = r.relations; render(); }
+    catch(e){ handleError(e); }
+  },
+  "nt-to-task": async () => {
+    closeSheet();
+    if(!state.note?.id){ await ntFlush(); if(!state.note?.id) return toast(t("nt_save_first")); }
+    const ta = document.getElementById("nt-body");
+    const picked = ta ? ta.value.slice(NT.sel[0], NT.sel[1]) : "";
+    try{
+      state.ntTask = await api(`/api/notes/${state.note.id}/task-preview`, {method:"POST", body:{text: picked}});
+      NT.taskKey = "nt-task-" + newKey();
+      openSheet(ntTaskSheet(state.ntTask), "nt-task");
+    }catch(e){ handleError(e); }
+  },
+  "nt-to-task-go": async () => {
+    const p = state.ntTask;
+    const title = (document.getElementById("nt-task-title")?.value || "").trim();
+    if(!title) return toast(t("invalid_input"));
+    const project = document.getElementById("nt-task-project")?.value;
+    try{
+      const r = await api(`/api/notes/${state.note.id}/to-task`, {method:"POST", body:{title, description: p.description,
+        deadline: document.getElementById("nt-task-day")?.value || null,
+        project_id: project ? Number(project) : null, request_key: NT.taskKey}});
+      state.note.relations = r.relations;
+      state.calendarStale = true;
+      closeSheet(); render(); toast(t("nt_task_made"));
+    }catch(e){ handleError(e); }
+  },
+  "nt-history": async () => {
+    closeSheet();
+    if(!state.note?.id) return toast(t("nt_save_first"));
+    state.ntRevs = null; openSheet(ntHistorySheet(), "nt-hist");
+    try{ state.ntRevs = (await api(`/api/notes/${state.note.id}/revisions`)).revisions; openSheet(ntHistorySheet(), "nt-hist"); }
+    catch(e){ handleError(e); }
+  },
+  "nt-rev": async el => {
+    try{
+      const r = await api(`/api/notes/${state.note.id}/revisions/${el.dataset.id}`);
+      openSheet(`<h3>${esc(r.title || t("nt_untitled"))}</h3><div class="t3 tiny">${ntWhen(r.created_at)}</div>
+        <div class="md nt-preview nt-revbody">${mdRender(r.body)}</div>
+        <button class="btn" data-act="nt-rev-restore" data-id="${r.id}" style="margin-top:12px">${t("nt_rev_restore_btn")}</button>
+        <button class="btn secondary" data-act="nt-history">${t("back")}</button>`, "nt-rev");
+    }catch(e){ handleError(e); }
+  },
+  "nt-rev-restore": async el => {
+    await ntFlush();
+    try{
+      const r = await api(`/api/notes/${state.note.id}/revisions/${el.dataset.id}/restore`, {method:"POST",
+        body:{base_revision: state.note.revision}});
+      state.note = r; state.noteEdit = {title: r.title, body: r.body}; NT.dirty = false; ntClearDraft();
+      closeSheet(); render(); toast(t("nt_restored"));
+    }catch(e){ if(e.status === 409 && e.body?.note){ state.noteConflict = e.body.note; closeSheet(); render(); } else handleError(e); }
+  },
+  "nt-keep": async el => {
+    const theirs = state.noteConflict;
+    const mine = {...state.noteEdit};
+    if(el.dataset.value === "theirs"){
+      state.note = theirs; state.noteEdit = {title: theirs.title, body: theirs.body};
+      state.noteConflict = null; NT.dirty = false; ntClearDraft(); ntSetSave("saved"); render(); return;
+    }
+    if(el.dataset.value === "mine"){
+      state.note = theirs; state.noteConflict = null; NT.dirty = true; render(); return ntFlush();
+    }
+    try{
+      await api("/api/notes", {method:"POST", body:{title: `${mine.title || t("nt_untitled")} (${t("nt_copy")})`,
+        body: mine.body, kind: theirs.kind, notebook_ids: theirs.notebook_ids, tags: theirs.tags}});
+      state.note = theirs; state.noteEdit = {title: theirs.title, body: theirs.body};
+      state.noteConflict = null; NT.dirty = false; ntClearDraft(); ntSetSave("saved"); render(); toast(t("nt_kept_both"));
+    }catch(e){ handleError(e); }
+  },
+  "nt-trash": async () => {
+    closeSheet();
+    if(!state.note?.id){ ntClearDraft(); NT.dirty = false; return goto("notes"); }
+    await ntFlush();
+    try{
+      await api(`/api/notes/${state.note.id}/trash`, {method:"POST"});
+      const id = state.note.id;
+      NT.dirty = false; goto("notes");
+      toast(t("nt_trashed"), t("undo"), async () => { await api(`/api/notes/${id}/restore`, {method:"POST"}); ntLoadHome(); });
+    }catch(e){ handleError(e); }
+  },
+  "nt-restore": async () => {
+    closeSheet();
+    try{ state.note = await api(`/api/notes/${state.note.id}/restore`, {method:"POST"}); render(); toast(t("nt_restored")); }
+    catch(e){ handleError(e); }
+  },
+  "nt-delete-forever": () => confirmSheet("nt-delete-forever-go", state.note.id, t("nt_delete_forever_q")),
+  "nt-delete-forever-go": async el => {
+    try{ await api(`/api/notes/${el.dataset.id}`, {method:"DELETE"}); ntClearDraft(); closeSheet(); goto("notes"); }
+    catch(e){ handleError(e); }
+  },
+  "nt-export-md": () => {
+    closeSheet();
+    const n = state.note, e = state.noteEdit;
+    const blob = new Blob([`# ${e.title}\n\n${e.body}`], {type: "text/markdown"});
+    const name = (e.title || "note").replace(/[^\p{L}\p{N} _-]+/gu, "").slice(0, 60).trim() + ".md";
+    if(window.ErnestApp?.saveFile) return window.ErnestApp.saveFile(name, `# ${e.title}\n\n${e.body}`, "text/markdown");
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = name || `note-${n.uid || "new"}.md`;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+  },
+  "nt-send-nlm": async () => {
+    closeSheet();
+    if(!state.note?.id) return toast(t("nt_save_first"));
+    try{
+      await api("/api/notes/connector/sets", {method:"POST", body:{name: state.note.title || t("nt_untitled"), note_ids:[state.note.id]}});
+      A["nt-nlm"]();
+    }catch(e){ handleError(e); }
+  },
+  /* import */
+  "nt-import": () => { state.ntImport = null; state.ntImportSkip = []; openSheet(ntImportSheet(), "nt-import"); },
+  "nt-import-reset": () => { state.ntImport = null; closeSheet(); },
+  "nt-import-file": async el => {
+    const file = el.files?.[0];
+    if(!file) return;
+    if(file.size > 30 * 1024 * 1024) return toast(t("err_archive_too_large"));
+    state.ntImportBusy = true; openSheet(ntImportSheet(), "nt-import");
+    try{
+      state.ntImport = await apiRaw("/api/notes/import/preview", file, "application/zip");
+      state.ntImportSkip = [];
+    }catch(e){ handleError(e); }
+    state.ntImportBusy = false;
+    if(state.sheetView === "nt-import") openSheet(ntImportSheet(), "nt-import");
+  },
+  "nt-imp-toggle": el => {
+    const s = new Set(state.ntImportSkip || []);
+    el.checked ? s.delete(el.dataset.path) : s.add(el.dataset.path);
+    state.ntImportSkip = [...s];
+  },
+  "nt-import-go": async () => {
+    try{
+      const r = await api(`/api/notes/import/${state.ntImport.token}/commit`, {method:"POST", body:{exclude: state.ntImportSkip || []}});
+      state.ntImport = null; closeSheet();
+      toast(t("nt_imported", {n: r.created + r.updated}));
+      state.noteView = "all"; await ntLoadHome();
+    }catch(e){ handleError(e); }
+  },
+  /* NotebookLM */
+  "nt-nlm": () => { state.ntNlm = null; openSheet(ntNlmSheet(), "nlm"); ntNlmLoad(); },
+  "nt-nlm-connect": async () => {
+    try{
+      const {url} = await api("/api/notes/connector/google/start", {method:"POST"});
+      state.ntNlmWaiting = true;
+      // The phone's real browser: Google refuses sign-in inside embedded views.
+      if(tg?.openLink) tg.openLink(url, {try_instant_view: false}); else window.open(url, "_blank", "noopener");
+      clearTimeout(NT.poll); NT.poll = setTimeout(ntNlmLoad, 4000);
+      setTimeout(() => { state.ntNlmWaiting = false; }, 10 * 60 * 1000);
+    }catch(e){
+      if(e.status === 503) return ntNlmLoad();
+      handleError(e);
+    }
+  },
+  "nt-nlm-confirm": async () => {
+    try{ state.ntNlm = await api("/api/notes/connector/confirm", {method:"POST"}); state.ntNlmWaiting = false;
+      openSheet(ntNlmSheet(), "nlm"); ntNlmLoad(); }
+    catch(e){ handleError(e); }
+  },
+  "nt-nlm-disconnect": async el => {
+    try{ state.ntNlm = await api("/api/notes/connector/disconnect", {method:"POST", body:{trash_docs: el.dataset.trash === "1"}});
+      state.ntNlmWaiting = false; openSheet(ntNlmSheet(), "nlm"); ntNlmLoad(); }
+    catch(e){ handleError(e); }
+  },
+  "nt-nlm-add": async el => {
+    try{
+      await api("/api/notes/connector/sets", {method:"POST", body:{notebook_id: Number(el.dataset.id)}});
+      if(state.sheetView !== "nlm") openSheet(ntNlmSheet(), "nlm");
+      await ntNlmLoad();
+    }catch(e){ handleError(e); }
+  },
+  "nt-nlm-sync": async el => {
+    try{ state.ntNlm = await api(`/api/notes/connector/sets/${el.dataset.id}/sync`, {method:"POST"}); ntNlmLoad(); }
+    catch(e){ handleError(e); }
+  },
+  "nt-nlm-url": async el => {
+    const url = (document.getElementById("nt-nlm-url-" + el.dataset.id)?.value || "").trim();
+    try{ state.ntNlm = await api(`/api/notes/connector/sets/${el.dataset.id}`, {method:"PATCH", body:{nlm_url: url}});
+      openSheet(ntNlmSheet(), "nlm"); toast(t("saved")); }
+    catch(e){ handleError(e); }
+  },
+  "nt-nlm-verify": async el => {
+    const answer = (document.getElementById("nt-nlm-code-" + el.dataset.id)?.value || "").trim();
+    if(!answer) return;
+    try{ state.ntNlm = await api(`/api/notes/connector/sets/${el.dataset.id}/verify`, {method:"POST", body:{answer}});
+      openSheet(ntNlmSheet(), "nlm"); toast(t("nt_nlm_verified")); }
+    catch(e){ handleError(e); }
+  },
+  "nt-nlm-drop": el => openSheet(`<h3>${t("nt_nlm_drop_q")}</h3><div class="hint">${t("nt_nlm_drop_hint")}</div>
+      <button class="btn secondary" data-act="nt-nlm-drop-go" data-id="${el.dataset.id}" data-trash="0" style="margin-top:12px">${t("nt_nlm_keep_docs")}</button>
+      <button class="btn danger" data-act="nt-nlm-drop-go" data-id="${el.dataset.id}" data-trash="1">${t("nt_nlm_trash_docs")}</button>
+      <button class="btn text" data-act="nt-nlm">${t("cancel")}</button>`, "nlm-drop"),
+  "nt-nlm-drop-go": async el => {
+    try{ state.ntNlm = await api(`/api/notes/connector/sets/${el.dataset.id}/delete`, {method:"POST", body:{trash_docs: el.dataset.trash === "1"}});
+      openSheet(ntNlmSheet(), "nlm"); ntNlmLoad(); }
+    catch(e){ handleError(e); }
+  },
   "tasks-more": moreTasks,
   "offer-dismiss": () => { try{ localStorage.setItem(offerKey(), "1"); }catch(_){} render(); },
   "retry-screen": () => loadScreen(state.screen),
@@ -11844,15 +12512,25 @@ const A = {
     setTimeout(() => document.getElementById("quick-title")?.focus(), 60); },
   "quick-type": el => {
     haptic();
-    const typed = document.getElementById("quick-title")?.value || "";
+    const typed = document.getElementById("quick-title")?.value || document.getElementById("quick-note")?.value || "";
     state.quickType = el.dataset.value;
     openSheet(quickSheet());
-    const input = document.getElementById("quick-title");
+    const input = document.getElementById("quick-title") || document.getElementById("quick-note");
     if(input){ input.value = typed; input.focus(); }
   },
   "quick-save": () => {
+    if(state.quickType === "note"){
+      const text = (document.getElementById("quick-note")?.value || "").trim();
+      if(!text) return;
+      const [first, ...rest] = text.split("\n");
+      const title = first.length > 120 ? "" : first.trim();
+      const body = {title, body: title ? rest.join("\n").trim() : text, kind: "quick", status: "inbox"};
+      return save(() => api("/api/notes", {method:"POST", body}), state.screen === "notes" ? "notes" : null,
+                  false, t("quick_note_saved"), {body:{title: title || text.slice(0, 60)}});
+    }
     const title = trimmed("quick-title");
     if(!title) return;
+    if(state.quickType === "money"){ closeSheet(); return moneyText(title, "manual"); }
     if(state.quickType === "habit") return quickHabit(title);
     quickTask(title, destOf());
   },
@@ -14000,11 +14678,13 @@ function teamMenuSheet(team){
       ${team.invite_link && !inv.expired ? `
         <input id="team-link" readonly value="${esc(team.invite_link)}">
         <div class="t2 small" style="margin:6px 0">${t("tm_code_line")} <b class="num" style="letter-spacing:.06em">${
-          esc(team.invite_link.split("team_")[1] || "")}</b></div>
+          esc(team.invite_code || team.invite_link.split("team_")[1] || "")}</b></div>
         <div class="btns">
           <button class="btn" data-act="team-copy">${t("team_copy")}</button>
           <button class="btn secondary" data-act="team-share">${t("share")}</button>
-        </div>` : ""}
+        </div>` : team.invite_code && !inv.expired ? `
+        <div class="t2 small" style="margin:6px 0">${t("tm_code_line")} <b class="num" style="letter-spacing:.06em">${
+          esc(team.invite_code)}</b></div>` : ""}
       <div class="t2 small" style="margin-top:6px">${inviteStatus(inv)}</div>
       <div class="btns">
         <button class="btn secondary sm" data-act="team-invite-renew">${t("invite_renew")}</button>
@@ -14356,6 +15036,977 @@ tg?.onEvent?.("themeChanged", () => render());
 window.addEventListener("resize", syncShell);
 tg?.onEvent?.("viewportChanged", syncShell);
 
+/* ==================================================================
+   Qaydlar (Notes)
+   ==================================================================
+   One dataset on the server; Inbox, All, a notebook, Pinned, Archive and
+   Trash are filters over it. The editor writes Markdown, saves itself a
+   moment after typing stops, and says honestly what happened: Saving,
+   Saved, Offline (kept on this phone), Conflict (changed elsewhere — both
+   versions kept) or Failed. Unsent text lives in localStorage per account
+   until the server has it. */
+const NOTE_KIND_ICON = {note:"📝", quick:"⚡", study:"🎓", thought:"💭", idea:"💡", resource:"🔗"};
+const NOTE_KINDS = Object.keys(NOTE_KIND_ICON);
+const NOTE_COLORS = ["violet", "teal", "amber", "rose", "sky", "slate"];
+const NT = {timer:null, inflight:null, again:false, dirty:false, sel:[0, 0], retry:null,
+            blobs:{}, createKey:null, taskKey:null, poll:null, importFile:null};
+
+const ntAcct = () => state.me?.telegram_id || "anon";
+const ntDraftPrefix = () => `ernestos-note-draft-${ntAcct()}-`;
+const ntDraftKey = () => ntDraftPrefix() + (state.note?.id || ("new-" + (NT.createKey || "x")));
+function ntReadDraft(key){ try{ return JSON.parse(localStorage.getItem(key) || "null"); }catch(_){ return null; } }
+function ntWriteDraft(){
+  if(!state.noteEdit) return true;
+  const n = state.note || {};
+  try{
+    localStorage.setItem(ntDraftKey(), JSON.stringify({
+      title: state.noteEdit.title, body: state.noteEdit.body, base: n.revision || 0, at: Date.now(),
+      id: n.id || null, createKey: n.id ? null : NT.createKey,
+      meta: n.id ? null : {kind: n.kind, template: n.template, notebook_ids: n.notebook_ids || [],
+                           tags: n.tags || [], status: n.status || "inbox"}}));
+    return true;
+  }catch(_){ return false; }
+}
+function ntClearDraft(key){ try{ localStorage.removeItem(key || ntDraftKey()); }catch(_){} }
+/* Notes typed on this phone that never reached the server (written offline,
+   or the app closed before the first save). */
+function ntUnsent(){
+  const out = [];
+  try{
+    for(let i = 0; i < localStorage.length; i++){
+      const k = localStorage.key(i);
+      if(k && k.startsWith(ntDraftPrefix() + "new-")){
+        const d = ntReadDraft(k);
+        if(d && (d.title || d.body)) out.push({key:k, ...d});
+      }
+    }
+  }catch(_){}
+  return out.sort((a, b) => b.at - a.at);
+}
+function ntForgetDrafts(){
+  try{
+    const gone = [];
+    for(let i = 0; i < localStorage.length; i++){
+      const k = localStorage.key(i);
+      if(k && k.startsWith(ntDraftPrefix())) gone.push(k);
+    }
+    gone.forEach(k => localStorage.removeItem(k));
+  }catch(_){}
+}
+
+/* ---------- Markdown, sanitized by construction ----------
+   Everything is escaped first; only the shapes below become markup, and a
+   link becomes one only for http(s), mailto, another note or an attachment.
+   Raw HTML in a note is shown as text. Nothing in a note runs. */
+/* Quotes and apostrophes are left as they are in text: attributes below are
+   double-quoted and `"` is still escaped, so "Founder's notes" stays a
+   readable [[link]] target. */
+const mdEsc = s => String(s ?? "").replace(/[<>&"]/g, c => ({"<":"&lt;", ">":"&gt;", "&":"&amp;", '"':"&quot;"}[c]));
+function mdEmph(s){
+  return s.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^\w*])\*([^*\n]+)\*(?!\w)/g, "$1<em>$2</em>")
+    .replace(/(^|[^\w])_([^_\n]+)_(?!\w)/g, "$1<em>$2</em>")
+    .replace(/~~([^~\n]+)~~/g, "<del>$1</del>");
+}
+function mdInline(s){
+  // Finished pieces are held aside, so emphasis never reaches inside a tag.
+  const keep = [];
+  const hold = html => `\u0000${keep.push(html) - 1}\u0000`;
+  s = s.replace(/`([^`\n]+)`/g, (_, c) => hold(`<code>${c}</code>`));
+  s = s.replace(/!\[([^\]]*)\]\(attachment:([0-9a-f]{32})\)/g,
+    (_, alt, uid) => hold(`<img class="md-img" data-att="${uid}" alt="${alt}">`));
+  s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, label, url) => {
+    const inner = mdEmph(label);
+    let u = /^note:([0-9a-f]{26})$/.exec(url);
+    if(u) return hold(`<a class="md-note" data-act="nt-goto" data-uid="${u[1]}" role="link" tabindex="0">${inner}</a>`);
+    u = /^attachment:([0-9a-f]{32})$/.exec(url);
+    if(u) return hold(`<a class="md-att" data-act="nt-att" data-uid="${u[1]}" role="link" tabindex="0">📎 ${inner}</a>`);
+    if(/^(https?:\/\/|mailto:)/i.test(url))
+      return hold(`<a href="${url}" data-act="open-url" data-url="${url}" target="_blank" rel="noopener noreferrer">${inner}</a>`);
+    return m;
+  });
+  s = s.replace(/\[\[([^\]|#\n]{1,300})(?:#[^\]|\n]*)?(?:\|([^\]\n]*))?\]\]/g,
+    (_, target, label) => hold(`<a class="md-note" data-act="nt-goto" data-title="${target.trim()}" role="link" tabindex="0">${label || target}</a>`));
+  s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)\u0000]+)/g,
+    (_, pre, url) => pre + hold(`<a href="${url}" data-act="open-url" data-url="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`));
+  s = mdEmph(s);
+  for(let round = 0; round < 4 && s.includes("\u0000"); round++)
+    s = s.replace(/\u0000(\d+)\u0000/g, (_, i) => keep[+i]);
+  return s;
+}
+function mdRender(src){
+  const lines = mdEsc(src || "").split("\n");
+  const out = [];
+  let i = 0;
+  while(i < lines.length){
+    const line = lines[i];
+    if(/^```/.test(line)){
+      const lang = line.slice(3).trim();
+      const body = [];
+      i++;
+      while(i < lines.length && !/^```/.test(lines[i])) body.push(lines[i++]);
+      i++;
+      out.push(`<pre class="md-code"${lang ? ` data-lang="${lang}"` : ""}><code>${body.join("\n")}</code></pre>`);
+      continue;
+    }
+    let m = /^(#{1,6})\s+(.*)$/.exec(line);
+    if(m){ const n = Math.min(m[1].length + 1, 6); out.push(`<h${n} class="md-h">${mdInline(m[2])}</h${n}>`); i++; continue; }
+    if(/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)){ out.push("<hr>"); i++; continue; }
+    if(/^&gt;\s?/.test(line)){
+      const body = [];
+      while(i < lines.length && /^&gt;\s?/.test(lines[i])) body.push(lines[i++].replace(/^&gt;\s?/, ""));
+      out.push(`<blockquote>${mdInline(body.join("<br>"))}</blockquote>`);
+      continue;
+    }
+    if(/^\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\|?\s*:?-{2,}/.test(lines[i + 1])){
+      const cells = l => l.trim().replace(/^\||\|$/g, "").split("|").map(c => mdInline(c.trim()));
+      const head = cells(line);
+      i += 2;
+      const rows = [];
+      while(i < lines.length && /^\|.*\|\s*$/.test(lines[i])) rows.push(cells(lines[i++]));
+      out.push(`<div class="md-table"><table><thead><tr>${head.map(c => `<th>${c}</th>`).join("")}</tr></thead>
+        <tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`);
+      continue;
+    }
+    if(/^\s*([-*+]|\d+[.)])\s+/.test(line)){
+      const ordered = /^\s*\d+[.)]\s+/.test(line);
+      const items = [];
+      while(i < lines.length && /^\s*([-*+]|\d+[.)])\s+/.test(lines[i])){
+        const raw = lines[i].replace(/^\s*([-*+]|\d+[.)])\s+/, "");
+        const task = /^\[([ xX])\]\s?(.*)$/.exec(raw);
+        items.push(task
+          ? `<li class="md-task"><span class="md-check ${task[1] === " " ? "" : "on"}" data-act="nt-check" data-line="${i}"
+               role="checkbox" aria-checked="${task[1] !== " "}" tabindex="0"></span><span>${mdInline(task[2])}</span></li>`
+          : `<li>${mdInline(raw)}</li>`);
+        i++;
+      }
+      out.push(`<${ordered ? "ol" : "ul"}>${items.join("")}</${ordered ? "ol" : "ul"}>`);
+      continue;
+    }
+    if(!line.trim()){ i++; continue; }
+    const para = [];
+    while(i < lines.length && lines[i].trim() && !/^(#{1,6}\s|```|&gt;|\s*([-*+]|\d+[.)])\s+|\|.*\|\s*$)/.test(lines[i]))
+      para.push(lines[i++]);
+    if(!para.length){ para.push(lines[i++]); }
+    out.push(`<p>${mdInline(para.join("<br>"))}</p>`);
+  }
+  return out.join("") || `<p class="t3">${t("nt_empty_body")}</p>`;
+}
+
+/* ---------- small helpers ---------- */
+function ntWhen(iso){
+  if(!iso) return "";
+  const d = new Date(iso);
+  const mins = Math.round((Date.now() - d.getTime()) / 60000);
+  if(mins < 1) return t("nt_just_now");
+  if(mins < 60) return t("nt_min_ago", {n: mins});
+  if(d.toDateString() === new Date().toDateString())
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear() % 100}`;
+}
+const ntErr = code => DICT.uz["nt_nlm_err_" + code] ? t("nt_nlm_err_" + code)
+  : t("nt_nlm_err_other", {code: String(code || "")});
+const ntBook = id => (state.notes?.notebooks || []).find(b => b.id === id);
+const ntWords = s => (String(s || "").match(/[\p{L}\p{N}_]+/gu) || []).length;
+
+async function apiRaw(path, data, type, timeout){
+  const res = await fetch(path, {method:"POST", body:data, signal: requestTimeout(timeout || 120000),
+    headers:{"Content-Type": type || "application/octet-stream", "X-Telegram-Init-Data": tg?.initData || ""}});
+  if(!res.ok){
+    const err = new Error("http_" + res.status);
+    err.status = res.status;
+    try{ err.body = await res.json(); err.detail = err.body?.detail; }catch(_){}
+    throw err;
+  }
+  return res.json();
+}
+async function ntBlob(path){
+  const res = await fetch(path, {headers:{"X-Telegram-Init-Data": tg?.initData || ""},
+                                 signal: requestTimeout(60000)});
+  if(!res.ok){ const e = new Error("http_" + res.status); e.status = res.status; throw e; }
+  return res.blob();
+}
+/* A file out of the app: the phone app shares it, Telegram downloads it from
+   a five-minute link (it cannot save a file fetched with a header), a
+   browser saves the blob. */
+async function ntDownload(what, notebookId){
+  try{
+    const link = await api("/api/notes/download-link", {method:"POST", body:{what, notebook_id: notebookId || null}});
+    if(window.ErnestApp?.saveFile){
+      const blob = await ntBlob(link.url);
+      const b64 = await new Promise((ok, bad) => { const r = new FileReader();
+        r.onload = () => ok(String(r.result).split(",")[1]); r.onerror = bad; r.readAsDataURL(blob); });
+      await window.ErnestApp.saveFile(link.filename, b64, blob.type, true);
+      return toast(t("file_ready"));
+    }
+    if(tg?.downloadFile && tg.initData){
+      return tg.downloadFile({url: new URL(link.url, location.href).href, file_name: link.filename});
+    }
+    const blob = await ntBlob(link.url);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = link.filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    toast(t("file_ready"));
+  }catch(e){ handleError(e); }
+}
+
+/* ---------- loading ---------- */
+function ntListKey(){
+  return JSON.stringify([state.noteView, state.noteBook, state.noteQuery, state.noteTag]);
+}
+async function ntLoadList(more){
+  const view = state.noteView === "notebooks" ? null : state.noteView;
+  if(!view) return;
+  const key = ntListKey();
+  const q = new URLSearchParams({view, limit: "30"});
+  if(view === "notebook") q.set("notebook_id", state.noteBook);
+  if(state.noteQuery) q.set("q", state.noteQuery);
+  if(state.noteTag) q.set("tag", state.noteTag);
+  if(more && state.noteList?.next) q.set("cursor", state.noteList.next);
+  const page = await api("/api/notes?" + q);
+  if(key !== ntListKey()) return;      // the filter changed meanwhile
+  state.noteList = {key, notes: more ? [...(state.noteList?.notes || []), ...page.notes] : page.notes,
+                    next: page.next_cursor};
+}
+async function ntLoadHome(){
+  state.noteView = state.noteView || "inbox";
+  let home;
+  try{
+    [home] = await Promise.all([api("/api/notes/home"), ntLoadList(false)]);
+  }catch(e){
+    if(!isOffline(e)) throw e;
+    /* No network: the notes last shown stay on screen, with what this phone
+       still holds to send — never an error page in place of the notes. */
+    state.notesOffline = true;
+    state.notes = state.notes || {stats:null, recent:[], pinned:[], counts:{}, notebooks:[], tags:[],
+                                   templates:[], suggested_notebooks:[]};
+    if(state.noteList?.key !== ntListKey()) state.noteList = {key: ntListKey(), notes: [], next: null};
+    render();
+    return;
+  }
+  state.notesOffline = false;
+  state.notes = home;
+  if(state.noteView === "inbox" && !home.counts.inbox && !state.noteVisited) state.noteView = "all";
+  if(state.noteView === "all" && state.noteList?.key !== ntListKey()) await ntLoadList(false);
+  state.noteVisited = true;
+  render();
+}
+async function ntLoadNote(){
+  const id = state.noteOpenId;
+  if(!id) return;
+  // A screen reload while this note is being typed must not paint over it.
+  if(state.note?.id === id && (NT.dirty || NT.inflight)) return;
+  const n = await api(`/api/notes/${id}`);
+  if(state.noteOpenId !== id) return;
+  state.note = n;
+  state.noteConflict = null;
+  const draft = ntReadDraft(ntDraftPrefix() + id);
+  state.noteEdit = {title: n.title, body: n.body};
+  if(draft && (draft.title !== n.title || draft.body !== n.body)){
+    state.noteEdit = {title: draft.title, body: draft.body};
+    NT.dirty = true;
+    if(draft.base === n.revision && !draft.conflict) ntSchedule(300);
+    else { state.noteConflict = n; ntSetSave("conflict"); }
+  } else if(draft) ntClearDraft(ntDraftPrefix() + id);
+  if(!state.noteConflict && !NT.dirty) state.noteSave = "saved";
+  if(!state.notes) api("/api/notes/home").then(h => { state.notes = h; if(state.screen === "note") render(); }).catch(() => {});
+  render();
+}
+
+/* ---------- saving ---------- */
+const SAVE_LABEL = {idle:"", pending:"nt_s_pending", saving:"nt_s_saving", saved:"nt_s_saved",
+                    offline:"nt_s_offline", conflict:"nt_s_conflict", failed:"nt_s_failed"};
+function ntSaveBadge(){
+  const s = state.noteSave || "idle";
+  if(s === "idle") return `<span id="nt-save" class="nt-save s-idle"></span>`;
+  return `<span id="nt-save" class="nt-save s-${s}" role="status" aria-live="polite"
+    ${s === "failed" || s === "offline" ? 'data-act="nt-retry" tabindex="0"' : ""}>
+    <i></i>${t(SAVE_LABEL[s])}${state.noteSaveWhy ? ` · ${esc(state.noteSaveWhy)}` : ""}</span>`;
+}
+function ntSetSave(s, why){
+  state.noteSave = s;
+  state.noteSaveWhy = why || "";
+  const el = document.getElementById("nt-save");
+  if(el) el.outerHTML = ntSaveBadge();
+}
+function ntSchedule(ms){
+  clearTimeout(NT.timer);
+  NT.timer = setTimeout(ntFlush, ms ?? 1200);
+}
+function ntInput(field, value){
+  if(!state.noteEdit) return;
+  state.noteEdit[field] = value;
+  NT.dirty = true;
+  if(!ntWriteDraft()) toast(t("queue_store_failed"));
+  if(state.noteConflict) return;
+  if(state.noteSave !== "saving") ntSetSave("pending");
+  ntSchedule();
+  const words = document.getElementById("nt-words");
+  if(words && field === "body") words.textContent = t("nt_words", {n: ntWords(value)});
+}
+async function ntFlush(){
+  clearTimeout(NT.timer);
+  if(NT.inflight){ NT.again = true; return NT.inflight; }
+  if(!NT.dirty || state.noteConflict || !state.noteEdit) return;
+  const n = state.note;
+  if(!n) return;
+  const edit = {...state.noteEdit};
+  if(!n.id && !edit.title.trim() && !edit.body.trim()) return;
+  const before = ntDraftKey();
+  NT.dirty = false;
+  ntSetSave("saving");
+  NT.inflight = (async () => {
+    try{
+      let r;
+      if(!n.id){
+        r = await api("/api/notes", {method:"POST", headers:{"X-Idempotency-Key": NT.createKey},
+          body:{title: edit.title, body: edit.body, kind: n.kind || "", template: n.template || "blank",
+                notebook_ids: n.notebook_ids || [], tags: n.tags || [], status: n.status || "inbox",
+                pinned: Boolean(n.pinned)}});
+        ntClearDraft(before);
+        state.noteOpenId = r.id;
+      } else {
+        r = await api(`/api/notes/${n.id}`, {method:"PATCH", body:{base_revision: n.revision,
+          title: edit.title, body: edit.body}});
+      }
+      if(state.note !== n && state.note?.id !== r.id) return;    // another note is open now
+      state.note = r;
+      if(NT.dirty) ntWriteDraft(); else ntClearDraft();
+      ntSetSave(NT.dirty ? "pending" : "saved");
+      if(!n.id && state.screen === "note") render();
+      // Saved after the person went back to the list: the list shows it.
+      if(state.screen === "notes") ntLoadHome().catch(() => {});
+    }catch(e){
+      NT.dirty = true;
+      ntWriteDraft();
+      if(e.status === 409 && e.detail === "conflict" && e.body?.note){
+        state.noteConflict = e.body.note;
+        ntSetSave("conflict");
+        render();
+      } else if(isOffline(e) || e.status >= 500 || e.status === 429 || (e.status === 409 && e.detail === "in_progress")){
+        ntSetSave("offline");
+        clearTimeout(NT.retry);
+        NT.retry = setTimeout(() => { if(NT.dirty) ntFlush(); }, 15000);
+      } else if(e.status === 401){
+        ntSetSave("failed", t("session_expired"));
+      } else ntSetSave("failed", errorMessage(e));
+    }finally{
+      NT.inflight = null;
+      if(NT.again){ NT.again = false; if(NT.dirty && !state.noteConflict) ntSchedule(50); }
+    }
+  })();
+  return NT.inflight;
+}
+/* Meta changes (kind, inbox, pin, tags, notebooks…) are not content: they go
+   at once, without a revision, so they never collide with typing. */
+async function ntMeta(fields){
+  const n = state.note;
+  if(!n) return;
+  if(!n.id){ Object.assign(n, fields); ntWriteDraft(); render(); return; }
+  try{
+    const r = await api(`/api/notes/${n.id}`, {method:"PATCH", body: fields});
+    state.note = {...r};
+    render();
+  }catch(e){ handleError(e); }
+}
+
+/* ---------- opening ---------- */
+function ntOpen(id){
+  if(state.screen === "note" && NT.dirty) ntFlush();
+  NT.dirty = false;
+  state.note = null; state.noteEdit = null; state.noteConflict = null; state.noteSave = "idle";
+  state.notePreview = false;
+  state.noteOpenId = Number(id);
+  goto("note");
+}
+function ntNew(opts = {}){
+  if(state.screen === "note" && NT.dirty) ntFlush();
+  NT.dirty = false;
+  NT.createKey = newKey();
+  const tpl = opts.template ? (state.notes?.templates || []).find(x => x.key === opts.template) : null;
+  state.noteOpenId = null;
+  state.note = {id: null, revision: 0, kind: opts.kind || tpl?.kind || "note", template: opts.template || "blank",
+                tags: [], notebook_ids: opts.notebook_ids || (state.noteView === "notebook" && state.noteBook ? [state.noteBook] : []),
+                status: "inbox", pinned: false, relations: [], links: [], backlinks: [], attachments: []};
+  state.noteEdit = {title: tpl?.title || opts.title || "", body: tpl?.body || opts.body || ""};
+  state.noteConflict = null; state.notePreview = false; state.noteSave = "idle";
+  closeSheet();
+  goto("note");
+  setTimeout(() => document.getElementById(state.noteEdit.title ? "nt-body" : "nt-title")?.focus(), 80);
+}
+function ntResume(key){
+  const d = ntReadDraft(key);
+  if(!d) return;
+  NT.createKey = d.createKey || newKey();
+  state.noteOpenId = null;
+  state.note = {id: null, revision: 0, relations: [], links: [], backlinks: [], attachments: [], pinned: false,
+                ...(d.meta || {kind: "note", tags: [], notebook_ids: [], status: "inbox"})};
+  state.noteEdit = {title: d.title || "", body: d.body || ""};
+  NT.dirty = true;
+  state.noteConflict = null; state.notePreview = false; state.noteSave = "pending";
+  goto("note");
+  ntSchedule(200);
+}
+
+/* ---------- notes on a task, a project, a goal ----------
+   Only the owner's own notes, read with the owner's own session: a team's
+   items have no slot, so a private note never shows through a shared one. */
+const ntLinkedSlot = (kind, id) => `<div class="nt-linked" data-nt-linked="${kind}:${Number(id)}"></div>`;
+const ntLinkedCache = {};
+function ntFillLinked(root){
+  root?.querySelectorAll?.("[data-nt-linked]:not([data-filled])").forEach(el => {
+    el.dataset.filled = "1";
+    const [kind, id] = el.dataset.ntLinked.split(":");
+    const draw = list => { if(!list.length) return;
+      el.innerHTML = `<div class="nt-linked-h">${icon("book", 15)} ${t("nt_linked_notes")}</div><div class="chips">${list.map(n =>
+        `<div class="chip sm" data-act="nt-open" data-id="${n.id}" role="button" tabindex="0">${NOTE_KIND_ICON[n.kind] || "📝"} ${esc(n.title || t("nt_untitled"))}</div>`).join("")}</div>`; };
+    const key = el.dataset.ntLinked;
+    if(ntLinkedCache[key]) draw(ntLinkedCache[key]);
+    api(`/api/notes/for/${kind}/${id}`).then(r => { ntLinkedCache[key] = r.notes; if(document.contains(el)) draw(r.notes); }).catch(() => {});
+  });
+}
+
+/* ---------- unsent notes go out on their own ----------
+   At start, when the network is back and when the app comes to the front:
+   every draft this account left on the phone is sent — a new note with the
+   key it was first tried with (so it is never made twice), an edit on the
+   revision it was typed over. A draft that clashes is kept, marked, for the
+   person to settle in the editor; nothing is dropped here. */
+async function ntSyncDrafts(){
+  if(NT.syncing || !state.me?.telegram_id) return;
+  NT.syncing = true;
+  let sent = 0;
+  try{
+    const keys = [];
+    for(let i = 0; i < localStorage.length; i++){
+      const k = localStorage.key(i);
+      if(k && k.startsWith(ntDraftPrefix())) keys.push(k);
+    }
+    // The note still held in memory (being saved, or waiting to be) is the
+    // editor's to send; two senders of one draft would race each other.
+    const mine = state.note && (NT.dirty || NT.inflight || state.screen === "note") ? ntDraftKey() : null;
+    for(const key of keys){
+      if(key === mine) continue;
+      const d = ntReadDraft(key);
+      if(!d || d.conflict) continue;
+      const tail = key.slice(ntDraftPrefix().length);
+      try{
+        if(tail.startsWith("new-")){
+          if(!String(d.title || "").trim() && !String(d.body || "").trim()){ ntClearDraft(key); continue; }
+          await api("/api/notes", {method:"POST", headers:{"X-Idempotency-Key": d.createKey || tail.slice(4)},
+            body:{title: d.title || "", body: d.body || "", ...(d.meta || {})}});
+        } else {
+          await api(`/api/notes/${Number(tail)}`, {method:"PATCH", body:{base_revision: d.base, title: d.title, body: d.body}});
+        }
+        ntClearDraft(key);
+        sent++;
+      }catch(e){
+        if(isOffline(e) || e.status >= 500 || e.status === 429 || e.status === 401
+           || (e.status === 409 && e.detail === "in_progress")) break;
+        // A clash or a refusal waits for the person; it is never thrown away.
+        try{ if(localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({...d, conflict: e.status || true})); }catch(_){}
+      }
+    }
+  }finally{ NT.syncing = false; }
+  if(sent){
+    toast(t("nt_synced", {n: sent}));
+    if(state.screen === "notes") ntLoadHome().catch(() => {});
+  }
+}
+
+/* ---------- the Notes home ---------- */
+function ntStats(st){
+  if(!st) return "";
+  const tile = (n, key, extra) => `<div class="nt-stat ${extra || ""}"><b class="num">${n}</b><span>${t(key)}</span></div>`;
+  return `<div class="nt-stats">${tile(st.total, "nt_st_total")}${tile(st.today, "nt_st_today")}
+    ${tile(st.month, "nt_st_month")}${tile(`${st.streak ? "🔥 " : ""}${st.streak}`, "nt_st_streak", st.streak ? "hot" : "")}</div>`;
+}
+function ntCard(n){
+  const books = (n.notebook_ids || []).map(ntBook).filter(Boolean);
+  const meta = [
+    ...books.slice(0, 2).map(b => `<span class="nt-bk"><span class="nt-dot nb-${esc(b.color)}"></span>${esc(b.name)}</span>`),
+    ...(n.tags || []).slice(0, 3).map(tag => `<span class="nt-tag">#${esc(tag)}</span>`),
+  ].join("");
+  return `<article class="nt-card k-${esc(n.kind)}" data-act="nt-open" data-id="${n.id}" role="button" tabindex="0">
+    <div class="nt-card-top"><span class="nt-kind" aria-hidden="true">${NOTE_KIND_ICON[n.kind] || "📝"}</span>
+      <b class="grow clamp2">${esc(n.title || t("nt_untitled"))}</b>
+      ${n.pinned ? `<span class="nt-pin" title="${t("nt_pinned")}">${icon("star", 14)}</span>` : ""}</div>
+    ${n.snippet ? `<div class="nt-snip clamp2">${esc(n.snippet)}</div>` : ""}
+    <div class="nt-meta">${meta}<span class="grow"></span>
+      ${n.status === "inbox" && state.noteView !== "inbox" ? `<span class="nt-badge">${t("nt_v_inbox")}</span>` : ""}
+      <span class="t3">${ntWhen(n.updated_at)}</span></div></article>`;
+}
+function ntViews(){
+  const c = state.notes?.counts || {};
+  const v = state.noteView;
+  const seg = [["inbox", `${t("nt_v_inbox")}${c.inbox ? ` <span class="nt-count">${c.inbox}</span>` : ""}`],
+               ["all", t("nt_v_all")], ["notebooks", t("nt_v_books")]];
+  const chips = [["pinned", "nt_v_pinned"], ["daily", "nt_v_daily"], ["archived", "nt_v_archived"], ["trash", "nt_v_trash"]];
+  return `<div class="seg nt-views" role="tablist">${seg.map(([id, label]) =>
+      `<div class="${v === id || (id === "notebooks" && v === "notebook") ? "on" : ""}" role="tab" tabindex="0"
+        aria-selected="${v === id}" data-act="nt-view" data-value="${id}">${label}</div>`).join("")}</div>
+    <div class="chips nt-chips-row">${chips.map(([id, key]) => `<div class="chip sm ${v === id ? "on" : ""}"
+      data-act="nt-view" data-value="${id}">${t(key)}${id === "trash" && c.trash ? ` · ${c.trash}` : ""}</div>`).join("")}
+      ${(state.notes?.tags || []).slice(0, 8).map(x => `<div class="chip sm ${state.noteTag === x.tag ? "on" : ""}"
+        data-act="nt-tag" data-value="${esc(x.tag)}">#${esc(x.tag)}</div>`).join("")}</div>`;
+}
+function ntGallery(){
+  const books = state.notes?.notebooks || [];
+  const sug = state.notes?.suggested_notebooks || [];
+  return `<div class="nt-gallery">${books.map(b => `<button class="nt-book nb-${esc(b.color)}" data-act="nt-book" data-id="${b.id}">
+      <span class="nt-book-ic">${esc(b.icon || "📒")}</span><b class="clamp2">${esc(b.name)}</b>
+      <span class="t3 tiny">${t("nt_n_notes", {n: b.count})}</span></button>`).join("")}
+    ${sug.map(x => `<button class="nt-book nt-suggest nb-${x.color}" data-act="nt-book-suggest"
+        data-name="${esc(x.name)}" data-color="${x.color}" data-icon="${x.icon}">
+      <span class="nt-book-ic">${x.icon}</span><b>${esc(x.name)}</b><span class="t3 tiny">${t("nt_suggest")}</span></button>`).join("")}
+    <button class="nt-book nt-add" data-act="nt-book-new"><span class="nt-book-ic">${icon("plus", 22)}</span>
+      <b>${t("nt_book_new")}</b></button></div>`;
+}
+function ntListBlock(){
+  const list = state.noteList;
+  const v = state.noteView;
+  let head = "";
+  if(v === "notebook"){
+    const b = ntBook(state.noteBook);
+    head = b ? `<div class="nt-bookhead nb-${esc(b.color)}"><span class="nt-book-ic">${esc(b.icon || "📒")}</span>
+      <div class="grow"><b>${esc(b.name)}</b><div class="t3 tiny">${t("nt_n_notes", {n: b.count})}</div></div>
+      <button class="iconbtn" data-act="nt-book-menu" data-id="${b.id}" aria-label="${t("nt_more")}">${icon("dots", 20)}</button></div>` : "";
+  }
+  if(v === "trash" && (list?.notes || []).length)
+    head += `<button class="btn quiet sm" data-act="nt-trash-empty" style="margin:8px 0">${icon("trash", 16)} ${t("nt_trash_empty")}</button>`;
+  const pinned = (v === "inbox" || v === "all") && !state.noteQuery && !state.noteTag
+    ? (state.notes?.pinned || []) : [];
+  if(!list || list.key !== ntListKey()) return head + `<div class="spin" aria-busy="true"></div>`;
+  const notes = list.notes.filter(n => !pinned.some(p => p.id === n.id));
+  const empty = !list.notes.length ? `<div class="nt-empty">
+      <div class="nt-empty-ic">${state.noteQuery ? "🔎" : v === "trash" ? "🗑" : v === "inbox" ? "📥" : "✍️"}</div>
+      <b>${t(state.noteQuery ? "nt_no_results" : v === "inbox" ? "nt_inbox_empty" : "nt_empty")}</b>
+      <div class="t3 small">${t(state.noteQuery ? "nt_no_results_hint" : "nt_empty_hint")}</div></div>` : "";
+  return head + (pinned.length ? `<h2>${t("nt_pinned")}</h2><div class="nt-pins">${pinned.map(ntCard).join("")}</div>` : "")
+    + (pinned.length && notes.length ? `<h2>${t("nt_recent")}</h2>` : "")
+    + `<div class="nt-grid">${notes.map(ntCard).join("")}</div>` + empty
+    + (list.next ? `<button class="btn secondary" data-act="nt-more" style="margin-top:12px">${t("load_more")}</button>` : "");
+}
+function ntSide(){
+  const books = state.notes?.notebooks || [];
+  const v = state.noteView;
+  const row = (id, ic, key, n) => `<div class="nt-side-row ${v === id ? "on" : ""}" data-act="nt-view" data-value="${id}"
+    role="button" tabindex="0">${icon(ic, 17)}<span class="grow">${t(key)}</span>${n ? `<span class="t3 tiny">${n}</span>` : ""}</div>`;
+  const c = state.notes?.counts || {};
+  return `<aside class="nt-side">
+    ${row("inbox", "inbox", "nt_v_inbox", c.inbox)}${row("all", "list", "nt_v_all")}${row("pinned", "star", "nt_v_pinned")}
+    ${row("daily", "calendar", "nt_v_daily")}${row("archived", "folder", "nt_v_archived")}${row("trash", "trash", "nt_v_trash", c.trash)}
+    <div class="nt-side-h">${t("nt_v_books")}<span class="act" data-act="nt-book-new" role="button" tabindex="0">${icon("plus", 15)}</span></div>
+    ${books.map(b => `<div class="nt-side-row ${v === "notebook" && state.noteBook === b.id ? "on" : ""}" data-act="nt-book"
+      data-id="${b.id}" role="button" tabindex="0"><span class="nt-dot nb-${esc(b.color)}"></span><span class="grow ellipsis">${esc(b.name)}</span>
+      <span class="t3 tiny">${b.count}</span></div>`).join("")}
+    <div class="nt-side-h">${t("nt_tools")}</div>
+    <div class="nt-side-row" data-act="nt-nlm" role="button" tabindex="0">${icon("book", 17)}<span class="grow">NotebookLM</span></div>
+    <div class="nt-side-row" data-act="nt-import" role="button" tabindex="0">${icon("download", 17)}<span class="grow">${t("nt_import")}</span></div>
+    <div class="nt-side-row" data-act="nt-tools" role="button" tabindex="0">${icon("dots", 17)}<span class="grow">${t("nt_more_tools")}</span></div>
+  </aside>`;
+}
+SCREENS.notes = () => {
+  const h = state.notes;
+  const unsent = ntUnsent();
+  const v = state.noteView || "inbox";
+  return `<div class="nt-layout">${ntSide()}<section class="nt-main">
+    <div class="head nt-head"><h1 class="grow">${t("nt_title")}</h1>
+      <button class="iconbtn" data-act="nt-nlm" aria-label="NotebookLM" title="NotebookLM">${icon("book", 21)}</button>
+      <button class="iconbtn" data-act="nt-tools" aria-label="${t("nt_tools")}">${icon("dots", 22)}</button></div>
+    <label class="nt-search" for="nt-q">${icon("search", 18)}
+      <input id="nt-q" type="search" placeholder="${t("nt_search_ph")}" value="${esc(state.noteQuery || "")}"
+        data-search="nt-search" enterkeyhint="search" autocomplete="off" aria-label="${t("nt_search_ph")}">
+      ${state.noteQuery ? `<button class="nt-clear" data-act="nt-search-clear" aria-label="${t("nt_clear")}">${icon("x", 16)}</button>` : ""}</label>
+    <div class="nt-actions">
+      <button class="btn nt-new" data-act="nt-new">${icon("edit", 18)} ${t("nt_new")}</button>
+      <button class="btn secondary" data-act="nt-templates">${icon("tiles", 18)} ${t("nt_template")}</button>
+      <button class="btn secondary" data-act="nt-daily">${icon("calendar", 18)} ${t("nt_daily")}</button></div>
+    ${state.notesOffline ? `<div class="banner" style="border-color:var(--warn)">${icon("info", 16)}
+        <div class="grow">${t("nt_offline_list")}</div></div>` : ""}
+    ${unsent.length ? `<div class="banner" data-act="nt-resume" data-key="${esc(unsent[0].key)}" role="button" tabindex="0"
+        style="border-color:var(--warn)">${icon("clock", 16)}<div class="grow">${t("nt_unsent", {n: unsent.length})}
+        <div class="t3 tiny ellipsis">${esc(unsent[0].title || unsent[0].body.slice(0, 60))}</div></div>${icon("chevron", 15)}</div>` : ""}
+    ${h ? ntStats(h.stats) : ""}
+    ${ntViews()}
+    ${!h ? `<div class="spin" aria-busy="true"></div>` : v === "notebooks" ? ntGallery() : ntListBlock()}
+  </section></div>`;
+};
+
+/* ---------- the editor ---------- */
+function ntToolbar(){
+  const b = (fmt, label, title) => `<button class="nt-tb" data-act="nt-fmt" data-fmt="${fmt}" title="${title}"
+    aria-label="${title}" type="button">${label}</button>`;
+  return `<div class="nt-toolbar" role="toolbar" aria-label="${t("nt_format")}">
+    ${b("h", "H", t("nt_f_heading"))}${b("bold", "<b>B</b>", t("nt_f_bold"))}${b("italic", "<i>I</i>", t("nt_f_italic"))}
+    ${b("ul", "•", t("nt_f_list"))}${b("check", "☐", t("nt_f_check"))}${b("quote", "❝", t("nt_f_quote"))}
+    ${b("code", "&lt;/&gt;", t("nt_f_code"))}${b("table", "▦", t("nt_f_table"))}${b("hr", "—", t("nt_f_hr"))}
+    <span class="nt-tb-sep"></span>
+    <button class="nt-tb" data-act="nt-link" title="${t("nt_f_link")}" aria-label="${t("nt_f_link")}" type="button">${icon("link", 18)}</button>
+    <button class="nt-tb" data-act="nt-attach" title="${t("nt_f_attach")}" aria-label="${t("nt_f_attach")}" type="button">📎</button>
+    <button class="nt-tb" data-act="nt-to-task" title="${t("nt_to_task")}" aria-label="${t("nt_to_task")}" type="button">${icon("check", 17)}</button>
+    <input type="file" id="nt-file" class="hide" data-act="nt-file"
+      accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,text/plain,text/markdown,text/csv,audio/*"></div>`;
+}
+function ntConflictBanner(){
+  const theirs = state.noteConflict;
+  return `<div class="nt-conflict" role="alert"><b>${icon("info", 16)} ${t("nt_conflict_title")}</b>
+    <div class="t2 small">${t("nt_conflict_hint")}</div>
+    <details><summary class="small">${t("nt_conflict_see")}</summary>
+      <div class="nt-theirs"><b>${esc(theirs.title || t("nt_untitled"))}</b><pre>${esc(String(theirs.body || "").slice(0, 3000))}</pre></div></details>
+    <div class="btns"><button class="btn sm" data-act="nt-keep" data-value="mine">${t("nt_keep_mine")}</button>
+      <button class="btn secondary sm" data-act="nt-keep" data-value="theirs">${t("nt_keep_theirs")}</button>
+      <button class="btn secondary sm" data-act="nt-keep" data-value="both">${t("nt_keep_both")}</button></div></div>`;
+}
+function ntPanels(n){
+  if(!n?.id) return `<div class="t3 tiny nt-newhint">${t("nt_new_hint")}</div>`;
+  const rel = n.relations || [];
+  const relIcon = {task: "check", project: "folder", goal: "target"};
+  return `<div class="nt-panels">
+    <div class="nt-panel"><div class="nt-panel-h">${icon("link", 16)} ${t("nt_related")}
+        <span class="act" data-act="nt-link" role="button" tabindex="0">${icon("plus", 15)} ${t("nt_add")}</span></div>
+      ${rel.length ? rel.map(r => `<div class="nt-rel">${icon(relIcon[r.kind] || "check", 16)}<span class="grow ellipsis">${esc(r.title)}</span>
+          <span class="t3 tiny">${t("nt_rel_" + r.kind)}${r.rel === "created_task" ? " · " + t("nt_rel_made") : ""}</span>
+          <button class="iconbtn sm" data-act="nt-unrel" data-id="${r.id}" aria-label="${t("nt_unlink")}">${icon("x", 14)}</button></div>`).join("")
+        : `<div class="t3 small">${t("nt_related_none")}</div>`}</div>
+    ${(n.backlinks || []).length || (n.links || []).length ? `<div class="nt-panel"><div class="nt-panel-h">${icon("list", 16)} ${t("nt_links")}</div>
+      ${(n.links || []).map(x => `<div class="nt-rel" data-act="nt-open" data-id="${x.id}" role="button" tabindex="0">→ <span class="grow ellipsis">${esc(x.title || t("nt_untitled"))}</span></div>`).join("")}
+      ${(n.backlinks || []).map(x => `<div class="nt-rel" data-act="nt-open" data-id="${x.id}" role="button" tabindex="0">← <span class="grow ellipsis">${esc(x.title || t("nt_untitled"))}</span></div>`).join("")}</div>` : ""}
+    ${(n.attachments || []).length ? `<div class="nt-panel"><div class="nt-panel-h">📎 ${t("nt_files")}</div>
+      ${n.attachments.map(a => `<div class="nt-rel"><span class="grow ellipsis" data-act="nt-att" data-uid="${a.uid}" role="button" tabindex="0">${esc(a.filename)}</span>
+        <span class="t3 tiny">${Math.max(1, Math.round(a.size / 1024))} KB</span>
+        <button class="iconbtn sm" data-act="nt-att-del" data-uid="${a.uid}" aria-label="${t("delete")}">${icon("trash", 14)}</button></div>`).join("")}</div>` : ""}
+  </div>`;
+}
+function ntChips(n){
+  const books = (n.notebook_ids || []).map(ntBook).filter(Boolean);
+  return `<div class="nt-chips">
+    <div class="chip sm" data-act="nt-kind">${NOTE_KIND_ICON[n.kind] || "📝"} ${t("nt_k_" + (n.kind || "note"))}</div>
+    <div class="chip sm ${n.status === "inbox" ? "nt-inboxchip" : ""}" data-act="nt-status">${n.status === "inbox"
+      ? icon("inbox", 15) + " " + t("nt_v_inbox") : icon("check", 15) + " " + t("nt_reviewed")}</div>
+    ${books.map(b => `<div class="chip sm nt-bchip nb-${esc(b.color)}" data-act="nt-books"><span class="nt-dot nb-${esc(b.color)}"></span>${esc(b.name)}</div>`).join("")}
+    ${(n.tags || []).map(tag => `<div class="chip sm nt-tagchip" data-act="nt-tags">#${esc(tag)}</div>`).join("")}
+    <div class="chip sm nt-addchip" data-act="nt-books">${icon("folder", 15)}${books.length ? "" : " " + t("nt_v_books")}</div>
+    <div class="chip sm nt-addchip" data-act="nt-tags">#${(n.tags || []).length ? "" : " " + t("nt_tags")}</div>
+    ${n.ai_excluded ? `<div class="chip sm" data-act="nt-menu">${icon("shield", 15)} ${t("nt_ai_off_short")}</div>` : ""}
+    ${n.trashed ? `<div class="chip sm" style="color:var(--danger)">${icon("trash", 15)} ${t("nt_in_trash")}</div>` : ""}
+  </div>`;
+}
+SCREENS.note = () => {
+  const n = state.note, e = state.noteEdit;
+  if(!n || !e) return `<div class="spin" aria-busy="true"></div>`;
+  return `<div class="nt-ed ${state.notePreview ? "preview" : ""}">
+    <div class="nt-bar">
+      <button class="iconbtn" data-act="nt-back" aria-label="${t("back")}">${icon("back", 22)}</button>
+      ${ntSaveBadge()}<span class="grow"></span>
+      <div class="seg nt-mode" role="tablist">
+        <div class="${state.notePreview ? "" : "on"}" data-act="nt-mode" data-value="edit" role="tab" tabindex="0">${icon("edit", 15)}<span> ${t("nt_edit")}</span></div>
+        <div class="${state.notePreview ? "on" : ""}" data-act="nt-mode" data-value="preview" role="tab" tabindex="0">${icon("book", 15)}<span> ${t("nt_preview")}</span></div></div>
+      <button class="iconbtn" data-act="nt-menu" aria-label="${t("nt_more")}">${icon("dots", 22)}</button></div>
+    ${state.noteConflict ? ntConflictBanner() : ""}
+    <div class="nt-ed-grid"><div class="nt-ed-main">
+      <input id="nt-title" class="nt-title" placeholder="${t("nt_title_ph")}" value="${esc(e.title)}"
+        data-nt-input="title" maxlength="300" autocomplete="off" aria-label="${t("nt_title_ph")}">
+      ${ntChips(n)}
+      ${state.notePreview ? `<div class="md nt-preview">${mdRender(e.body)}</div>`
+        : `${ntToolbar()}<textarea id="nt-body" class="nt-body" data-nt-input="body" placeholder="${t("nt_body_ph")}"
+             aria-label="${t("nt_body_ph")}" spellcheck="true">${esc(e.body)}</textarea>`}
+      <div class="nt-foot t3 tiny"><span id="nt-words">${t("nt_words", {n: ntWords(e.body)})}</span>
+        ${n.id ? ` · ${t("nt_updated")} ${ntWhen(n.updated_at)}` : ""}</div>
+    </div>${ntPanels(n)}</div></div>`;
+};
+/* A redraw while typing (the first save of a new note, a sheet closing)
+   puts the caret back where it was instead of dropping the keyboard. */
+function ntCaptureFocus(){
+  const el = document.activeElement;
+  if(!el || (el.id !== "nt-title" && el.id !== "nt-body")) return null;
+  return {id: el.id, start: el.selectionStart, end: el.selectionEnd, y: window.scrollY};
+}
+function ntAfterRender(typing){
+  ntFillLinked(document.getElementById("app"));
+  if(state.screen !== "note") return;
+  const ta = document.getElementById("nt-body");
+  if(ta) ntGrow(ta);
+  document.querySelectorAll?.("img[data-att]").forEach(ntLoadImage);
+  const el = typing && document.getElementById(typing.id);
+  if(el){
+    el.focus({preventScroll: true});
+    try{ el.setSelectionRange(typing.start, typing.end); }catch(_){}
+    window.scrollTo?.(0, typing.y);
+  }
+}
+function ntGrow(ta){
+  ta.style.height = "auto";
+  ta.style.height = Math.max(ta.scrollHeight, 260) + "px";
+}
+async function ntLoadImage(img){
+  const uid = img.dataset.att;
+  try{
+    if(!NT.blobs[uid]) NT.blobs[uid] = URL.createObjectURL(await ntBlob(`/api/notes/attachments/${uid}`));
+    img.src = NT.blobs[uid];
+  }catch(_){ img.alt = "⚠ " + (img.alt || "image"); }
+}
+/* Markdown around the selection, without losing it. */
+function ntFormat(fmt){
+  const ta = document.getElementById("nt-body");
+  if(!ta) return;
+  let [s, e] = NT.sel;
+  const v = ta.value;
+  s = Math.min(s, v.length); e = Math.min(Math.max(e, s), v.length);
+  const sel = v.slice(s, e);
+  const lineStart = v.lastIndexOf("\n", s - 1) + 1;
+  let out, caret;
+  const wrap = (a, b, ph) => { const inner = sel || ph; out = v.slice(0, s) + a + inner + b + v.slice(e);
+    caret = [s + a.length, s + a.length + inner.length]; };
+  const prefix = p => {
+    const end = e > s && v[e - 1] === "\n" ? e - 1 : e;
+    const block = v.slice(lineStart, end).split("\n").map(l => p + l).join("\n");
+    out = v.slice(0, lineStart) + block + v.slice(end);
+    caret = [lineStart + block.length, lineStart + block.length];
+  };
+  if(fmt === "bold") wrap("**", "**", t("nt_f_bold"));
+  else if(fmt === "italic") wrap("*", "*", t("nt_f_italic"));
+  else if(fmt === "code") sel.includes("\n") ? wrap("```\n", "\n```", "") : wrap("`", "`", "code");
+  else if(fmt === "h") prefix("## ");
+  else if(fmt === "ul") prefix("- ");
+  else if(fmt === "check") prefix("- [ ] ");
+  else if(fmt === "quote") prefix("> ");
+  else if(fmt === "hr"){ out = v.slice(0, e) + "\n\n---\n\n" + v.slice(e); caret = [e + 7, e + 7]; }
+  else if(fmt === "table"){ const tbl = "\n| | |\n|---|---|\n| | |\n"; out = v.slice(0, e) + tbl + v.slice(e);
+    caret = [e + 3, e + 3]; }
+  else return;
+  ta.value = out;
+  ta.focus();
+  ta.setSelectionRange(caret[0], caret[1]);
+  NT.sel = caret;
+  ntGrow(ta);
+  ntInput("body", out);
+}
+function ntInsert(text){
+  const ta = document.getElementById("nt-body");
+  const v = state.noteEdit.body;
+  const [s, e] = NT.sel;
+  const out = v.slice(0, s) + text + v.slice(Math.max(e, s));
+  state.noteEdit.body = out;
+  NT.sel = [s + text.length, s + text.length];
+  if(ta){ ta.value = out; ntGrow(ta); }
+  ntInput("body", out);
+}
+
+/* ---------- sheets ---------- */
+function ntMenuSheet(){
+  const n = state.note;
+  const item = (act, ic, label, extra = "", danger) => `<div class="item pressable" data-act="${act}" ${extra}
+    role="button" tabindex="0" ${danger ? 'style="color:var(--danger)"' : ""}>${icon(ic, 18)}<span class="grow">${label}</span></div>`;
+  if(n.trashed) return `<h3>${esc(n.title || t("nt_untitled"))}</h3>
+    ${item("nt-restore", "repeat", t("nt_restore"))}${item("nt-delete-forever", "trash", t("nt_delete_forever"), "", true)}`;
+  return `<h3>${esc(n.title || t("nt_untitled"))}</h3><div class="list">
+    ${item("nt-pin", "star", t(n.pinned ? "nt_unpin" : "nt_pin"))}
+    ${item("nt-status", n.status === "inbox" ? "check" : "inbox", t(n.status === "inbox" ? "nt_mark_reviewed" : "nt_back_inbox"))}
+    ${item("nt-to-task", "check", t("nt_to_task"))}
+    ${item("nt-history", "clock", t("nt_history"))}
+    ${item("nt-send-nlm", "book", t("nt_send_nlm"))}
+    ${item("nt-ai", "shield", t(n.ai_excluded ? "nt_ai_allow" : "nt_ai_exclude"))}
+    ${item("nt-export-md", "download", t("nt_export_md"))}
+    ${item("nt-archive", "folder", t(n.archived ? "nt_unarchive" : "nt_archive"))}
+    ${item("nt-trash", "trash", t("nt_trash"), "", true)}</div>
+    <div class="t3 tiny" style="margin-top:10px">${n.ai_excluded ? t("nt_ai_off_hint") : t("nt_ai_on_hint")}</div>`;
+}
+function ntToolsSheet(){
+  const item = (act, ic, label, hint) => `<div class="item pressable" data-act="${act}" role="button" tabindex="0">
+    ${icon(ic, 18)}<div class="grow"><div>${label}</div>${hint ? `<div class="t3 tiny">${hint}</div>` : ""}</div>${icon("chevron", 15)}</div>`;
+  return `<h3>${t("nt_tools")}</h3><div class="list">
+    ${item("nt-nlm", "book", "NotebookLM", t("nt_nlm_hint"))}
+    ${item("nt-import", "download", t("nt_import"), t("nt_import_hint"))}
+    ${item("nt-export", "folder", t("nt_export_zip"), t("nt_export_zip_hint"))}
+    ${item("nt-export-obsidian", "folder", t("nt_export_obsidian"), t("nt_export_obsidian_hint"))}
+    ${item("nt-ai-export", "shield", t("nt_ai_memory"), t("nt_ai_memory_hint"))}</div>`;
+}
+function ntPickSheet(kind){
+  const n = state.note;
+  if(kind === "kind") return `<h3>${t("nt_kind")}</h3><div class="chips">${NOTE_KINDS.map(k =>
+    `<div class="chip ${n.kind === k ? "on" : ""}" data-act="nt-kind-set" data-value="${k}">${NOTE_KIND_ICON[k]} ${t("nt_k_" + k)}</div>`).join("")}</div>`;
+  if(kind === "books"){
+    const books = state.notes?.notebooks || [];
+    return `<h3>${t("nt_v_books")}</h3><div class="hint">${t("nt_books_hint")}</div>
+      <div class="chips" style="margin-top:10px">${books.map(b => `<div class="chip ${(n.notebook_ids || []).includes(b.id) ? "on" : ""}"
+        data-act="nt-book-toggle" data-id="${b.id}"><span class="nt-dot nb-${esc(b.color)}"></span>${esc(b.name)}</div>`).join("")}
+        <div class="chip" data-act="nt-book-new">${icon("plus", 15)} ${t("nt_book_new")}</div></div>
+      <button class="btn" data-act="close" style="margin-top:14px">${t("nt_done")}</button>`;
+  }
+  return `<h3>${t("nt_tags")}</h3><div class="hint">${t("nt_tags_hint")}</div>
+    <input id="nt-tags-in" value="${esc((n.tags || []).join(", "))}" placeholder="marketing, lecture" enterkeyhint="done"
+      data-search="nt-tags-save" autocomplete="off">
+    <div class="chips" style="margin-top:8px">${(state.notes?.tags || []).slice(0, 16).map(x =>
+      `<div class="chip sm" data-act="nt-tag-add" data-value="${esc(x.tag)}">#${esc(x.tag)}</div>`).join("")}</div>
+    <button class="btn" data-act="nt-tags-save" style="margin-top:14px">${t("save")}</button>`;
+}
+function ntBookSheet(b){
+  b = b || {};
+  return `<h3>${b.id ? t("nt_book_edit") : t("nt_book_new")}</h3>
+    <label for="nt-book-name">${t("nt_book_name")}</label>
+    <input id="nt-book-name" value="${esc(b.name || "")}" maxlength="80" placeholder="University" data-search="nt-book-save">
+    <label>${t("nt_book_color")}</label>
+    <div class="chips">${NOTE_COLORS.map(c => `<div class="chip sm nt-colorchip nb-${c} ${(state.ntBookColor || b.color || "violet") === c ? "on" : ""}"
+      data-act="nt-book-color" data-value="${c}" aria-label="${c}"><span class="nt-dot nb-${c}"></span></div>`).join("")}</div>
+    <label for="nt-book-icon">${t("nt_book_icon")}</label>
+    <input id="nt-book-icon" value="${esc(b.icon || "")}" maxlength="4" placeholder="📒" style="width:90px">
+    <button class="btn" data-act="nt-book-save" data-id="${b.id || ""}" style="margin-top:16px">${t("save")}</button>
+    ${b.id ? `<button class="btn danger" data-act="nt-book-delete" data-id="${b.id}" style="margin-top:8px">${t("nt_book_delete")}</button>` : ""}`;
+}
+function ntTemplatesSheet(){
+  const tpls = state.notes?.templates || [];
+  return `<h3>${t("nt_template")}</h3><div class="nt-tpls">${tpls.map(x => `<button class="nt-tpl" data-act="nt-tpl" data-value="${x.key}">
+    <span class="nt-tpl-ic">${x.icon}</span><b>${t("nt_t_" + x.key)}</b>
+    <span class="t3 tiny clamp2">${esc((x.preview || "").replace(/[#|\-\[\]]/g, " ").replace(/\s+/g, " ").trim()) || t("nt_t_blank_hint")}</span></button>`).join("")}</div>`;
+}
+function ntTaskSheet(p){
+  const projects = p.projects || [];
+  return `<h3>${icon("check", 18)} ${t("nt_to_task")}</h3><div class="hint">${t("nt_task_hint")}</div>
+    <label for="nt-task-title">${t("nt_task_title")}</label>
+    <input id="nt-task-title" value="${esc(p.title)}" maxlength="300">
+    <label for="nt-task-day">${t("deadline")}</label>
+    ${dateField("nt-task-day", p.deadline || "")}
+    ${projects.length ? `<label for="nt-task-project">${t("project")}</label><select id="nt-task-project">
+      <option value="">—</option>${projects.map(x => `<option value="${x.id}" ${x.id === p.project_id ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select>` : ""}
+    <div class="card tight flat" style="margin-top:12px"><div class="t3 tiny">${t("nt_task_desc")}</div>
+      <div class="small wrap" style="white-space:pre-wrap">${esc(p.description)}</div></div>
+    ${(p.already || []).length ? `<div class="hint">${t("nt_task_already", {n: p.already.length})}</div>` : ""}
+    <button class="btn" data-act="nt-to-task-go" style="margin-top:14px">${t("nt_task_create")}</button>
+    <button class="btn secondary" data-act="close">${t("cancel")}</button>`;
+}
+function ntLinkSheet(){
+  const r = state.ntLinks;
+  const row = (kind, x) => `<div class="item pressable" data-act="nt-link-pick" data-kind="${kind}" data-id="${x.id}"
+      data-uid="${x.uid || ""}" data-title="${esc(x.title || "")}" role="button" tabindex="0">
+      ${kind === "note" ? NOTE_KIND_ICON[x.kind] || "📝" : icon({task: "check", project: "folder", goal: "target"}[kind], 17)}
+      <span class="grow ellipsis">${esc(x.title || t("nt_untitled"))}</span><span class="t3 tiny">${t("nt_rel_" + kind)}</span></div>`;
+  const list = !r ? `<div class="spin"></div>` : [
+    ...(r.notes || []).filter(x => x.id !== state.note?.id).map(x => row("note", x)),
+    ...(r.tasks || []).map(x => row("task", x)), ...(r.projects || []).map(x => row("project", x)),
+    ...(r.goals || []).map(x => row("goal", x))].join("") || `<div class="hint">${t("nt_no_results")}</div>`;
+  return `<h3>${t("nt_f_link")}</h3><div class="hint">${t("nt_link_hint")}</div>
+    <input id="nt-link-q" placeholder="${t("nt_search_ph")}" data-search="nt-link-search" enterkeyhint="search" autocomplete="off">
+    <div class="list" style="margin-top:10px">${list}</div>`;
+}
+function ntHistorySheet(){
+  const list = state.ntRevs;
+  return `<h3>${icon("clock", 18)} ${t("nt_history")}</h3><div class="hint">${t("nt_history_hint")}</div>
+    <div class="list" style="margin-top:10px">${!list ? `<div class="spin"></div>` : list.length ? list.map(r =>
+      `<div class="item pressable" data-act="nt-rev" data-id="${r.id}" role="button" tabindex="0">
+        <div class="grow"><div class="ellipsis">${esc(r.title || t("nt_untitled"))}</div>
+        <div class="t3 tiny">${ntWhen(r.created_at)} · ${t("nt_words", {n: r.words})}${r.reason !== "edit" ? " · " + t("nt_rev_" + r.reason) : ""}</div></div>
+        ${icon("chevron", 15)}</div>`).join("") : `<div class="hint">${t("nt_history_none")}</div>`}</div>`;
+}
+function ntImportSheet(){
+  const p = state.ntImport;
+  if(!p) return `<h3>${t("nt_import")}</h3><div class="hint">${t("nt_import_how")}</div>
+    <ul class="nt-steps small"><li>${t("nt_import_obsidian")}</li><li>${t("nt_import_notion")}</li><li>${t("nt_import_safe")}</li></ul>
+    <label class="btn" for="nt-import-file" style="margin-top:12px">${icon("download", 18)} ${t("nt_import_pick")}</label>
+    <input id="nt-import-file" type="file" accept=".zip,application/zip" class="hide" data-act="nt-import-file">
+    ${state.ntImportBusy ? `<div class="spin"></div>` : ""}`;
+  const c = p.counts;
+  const label = {new: "nt_imp_new", update: "nt_imp_update", skip_duplicate: "nt_imp_same"};
+  const skip = new Set(state.ntImportSkip || []);
+  return `<h3>${t("nt_import_preview")}</h3>
+    <div class="nt-impstats"><span><b>${c.new}</b> ${t("nt_imp_new")}</span><span><b>${c.update}</b> ${t("nt_imp_update")}</span>
+      <span><b>${c.skip_duplicate}</b> ${t("nt_imp_same")}</span><span><b>${c.excluded}</b> ${t("nt_imp_excluded")}</span></div>
+    ${(p.warnings || []).map(w => `<div class="hint">⚠ ${t("nt_warn_" + w)}</div>`).join("")}
+    <div class="list nt-implist">${p.items.slice(0, 300).map(x => `<div class="item ${x.action === "skip_duplicate" ? "dim" : ""}">
+      ${x.action === "skip_duplicate" ? "＝" : `<input type="checkbox" ${skip.has(x.path) ? "" : "checked"} data-act="nt-imp-toggle" data-path="${esc(x.path)}" aria-label="${esc(x.title)}">`}
+      <div class="grow"><div class="ellipsis">${esc(x.title)}</div><div class="t3 tiny ellipsis">${esc(x.path)} · ${t(label[x.action])}${x.notebooks.length ? " · " + esc(x.notebooks.join(", ")) : ""}</div></div></div>`).join("")}</div>
+    <button class="btn" data-act="nt-import-go" style="margin-top:12px" ${c.new + c.update ? "" : "disabled"}>${t("nt_import_go", {n: Math.max(0, c.new + c.update - skip.size)})}</button>
+    <button class="btn secondary" data-act="nt-import-reset">${t("cancel")}</button>`;
+}
+
+/* ---------- NotebookLM ---------- */
+function ntNlmSheet(){
+  const st = state.ntNlm;
+  if(!st) return `<h3>NotebookLM</h3><div class="spin"></div>`;
+  const acct = st.account;
+  const intro = `<div class="hint">${t("nt_nlm_intro")}</div>`;
+  let body;
+  if(!st.configured){
+    body = `<div class="card tight flat nt-warn"><b>${t("nt_nlm_not_configured")}</b>
+      <div class="t3 tiny">${t("nt_nlm_missing")}: ${st.missing.map(esc).join(", ")}</div></div>`;
+  } else if(!acct){
+    body = `<button class="btn" data-act="nt-nlm-connect" style="margin-top:12px">${icon("globe", 18)} ${t("nt_nlm_connect")}</button>
+      <div class="t3 tiny" style="margin-top:6px">${t("nt_nlm_scope")}</div>`;
+  } else if(acct.status === "pending_confirm"){
+    body = `<div class="card tight nt-confirm"><b>${t("nt_nlm_confirm_q")}</b>
+      <div class="small">${esc(acct.email)}${acct.name ? ` · ${esc(acct.name)}` : ""}</div>
+      <div class="btns" style="margin-top:10px"><button class="btn sm" data-act="nt-nlm-confirm">${t("nt_nlm_confirm")}</button>
+      <button class="btn secondary sm" data-act="nt-nlm-disconnect" data-trash="0">${t("nt_nlm_not_me")}</button></div></div>`;
+  } else {
+    body = `<div class="nt-acct">${icon("check", 16)} <span class="grow ellipsis">${esc(acct.email)}</span>
+        <span class="nt-pill ${acct.status === "connected" ? "ok" : "warn"}">${t("nt_nlm_acct_" + acct.status)}</span></div>
+      ${acct.last_error ? `<div class="hint" style="color:var(--warn)">${ntErr(acct.last_error)}</div>` : ""}`;
+  }
+  const sets = (st.sets || []).map(x => {
+    const exported = x.status === "exported";
+    const steps = `<ol class="nt-steps small">
+        <li class="${exported ? "done" : ""}">${t("nt_nlm_step1")}${x.packs.length ? `<div class="chips" style="margin-top:6px">${x.packs.map(p =>
+          p.doc_url ? `<a class="chip sm" data-act="open-url" data-url="${esc(p.doc_url)}" href="${esc(p.doc_url)}" target="_blank" rel="noopener">📄 ${x.packs.length > 1 ? `${p.part}/${x.packs.length}` : t("nt_nlm_doc")}</a>` : "").join("")}</div>` : ""}</li>
+        <li class="${x.nlm_url ? "done" : ""}">${t("nt_nlm_step2")}
+          <div class="row" style="margin-top:6px"><input id="nt-nlm-url-${x.id}" value="${esc(x.nlm_url || "")}" placeholder="https://notebooklm.google.com/notebook/…" autocomplete="off">
+          <button class="btn secondary sm" data-act="nt-nlm-url" data-id="${x.id}">${t("save")}</button></div>
+          ${x.nlm_url ? `<a class="small" data-act="open-url" data-url="${esc(x.nlm_url)}" href="${esc(x.nlm_url)}" target="_blank" rel="noopener">${t("nt_nlm_open")} ↗</a>` : `<a class="small" data-act="open-url" data-url="https://notebooklm.google.com/" href="https://notebooklm.google.com/" target="_blank" rel="noopener">notebooklm.google.com ↗</a>`}</li>
+        <li class="${x.nlm_status === "verified" ? "done" : ""}">${t("nt_nlm_step3")}
+          <div class="row" style="margin-top:6px"><input id="nt-nlm-code-${x.id}" placeholder="${t("nt_nlm_answer_ph")}" autocomplete="off">
+          <button class="btn secondary sm" data-act="nt-nlm-verify" data-id="${x.id}">${t("nt_nlm_verify")}</button></div></li>
+        <li>${t("nt_nlm_step4")}</li></ol>`;
+    const job = x.job && (x.job.status === "queued" || x.job.status === "running");
+    return `<div class="card nt-set">
+      <div class="row"><b class="grow ellipsis">${esc(x.name)}</b>
+        <span class="nt-pill ${x.status === "error" ? "bad" : exported && !x.changed ? "ok" : "warn"}">${t("nt_set_" + (job ? "working" : x.changed ? "changed" : x.status))}</span>
+        <span class="nt-pill ${x.nlm_status === "verified" ? "ok" : x.nlm_status === "waiting" ? "warn" : ""}">${t({waiting: "nt_nlm_waiting", verified: "nt_nlm_verified_status"}[x.nlm_status] || "nt_nlm_none")}</span></div>
+      <div class="t3 tiny">${x.notebook ? `📒 ${esc(x.notebook)} · ` : ""}${t("nt_n_notes", {n: x.notes})}${x.exported_at ? " · " + t("nt_set_at", {when: ntWhen(x.exported_at)}) : ""}</div>
+      ${x.last_error ? `<div class="hint" style="color:var(--warn)">${ntErr(x.last_error)}</div>` : ""}
+      ${acct?.status === "connected" ? steps : ""}
+      <div class="btns">${acct?.status === "connected" ? `<button class="btn secondary sm" data-act="nt-nlm-sync" data-id="${x.id}">${icon("repeat", 15)} ${t("nt_nlm_sync")}</button>` : ""}
+        <button class="btn quiet sm" data-act="nt-nlm-drop" data-id="${x.id}">${t("delete")}</button></div></div>`;
+  }).join("");
+  const books = state.notes?.notebooks || [];
+  const add = acct && acct.status !== "pending_confirm" ? `<h2>${t("nt_nlm_new_set")}</h2><div class="chips">${books.map(b =>
+    `<div class="chip sm" data-act="nt-nlm-add" data-id="${b.id}"><span class="nt-dot nb-${esc(b.color)}"></span>${esc(b.name)}</div>`).join("")
+    || `<div class="hint">${t("nt_nlm_need_book")}</div>`}</div>` : "";
+  const leave = acct && acct.status !== "pending_confirm" ? `<details style="margin-top:16px"><summary class="small t2">${t("nt_nlm_disconnect")}</summary>
+    <div class="hint">${t("nt_nlm_disconnect_hint")}</div>
+    <button class="btn quiet sm" data-act="nt-nlm-disconnect" data-trash="0" style="margin-top:8px">${t("nt_nlm_keep_docs")}</button>
+    <button class="btn danger sm" data-act="nt-nlm-disconnect" data-trash="1" style="margin-top:8px">${t("nt_nlm_trash_docs")}</button></details>` : "";
+  return `<h3>${icon("book", 18)} NotebookLM</h3>${intro}${body}${sets ? `<h2>${t("nt_nlm_sets")}</h2>${sets}` : ""}${add}${leave}
+    <div class="t3 tiny" style="margin-top:14px">${t("nt_nlm_edition")}</div>`;
+}
+async function ntNlmLoad(){
+  try{ state.ntNlm = await api("/api/notes/connector"); }
+  catch(e){ handleError(e); return; }
+  if(state.sheetView === "nlm") openSheet(ntNlmSheet(), "nlm");
+  const st = state.ntNlm;
+  const busy = (st.sets || []).some(x => x.job && ["queued", "running"].includes(x.job.status))
+    || ["disconnecting"].includes(st.account?.status) || state.ntNlmWaiting;
+  clearTimeout(NT.poll);
+  if(busy && state.sheetView === "nlm") NT.poll = setTimeout(ntNlmLoad, 4000);
+}
+
+
+/* Typing: the state and the draft follow every keystroke; the screen is not
+   redrawn (that would move the caret), only the save badge and the count. */
+document.addEventListener("input", e => {
+  const field = e.target?.dataset?.ntInput;
+  if(!field) return;
+  if(field === "body"){ ntGrow(e.target); NT.sel = [e.target.selectionStart, e.target.selectionEnd]; }
+  ntInput(field, e.target.value);
+});
+for(const ev of ["select", "keyup", "click", "focusout"])
+  document.addEventListener(ev, e => {
+    if(e.target?.id === "nt-body") NT.sel = [e.target.selectionStart, e.target.selectionEnd];
+  });
+document.addEventListener("visibilitychange", () => { if(document.hidden && NT.dirty) ntFlush(); });
+window.addEventListener("online", () => { if(NT.dirty && !state.noteConflict) ntFlush(); ntSyncDrafts(); });
+document.addEventListener("visibilitychange", () => { if(!document.hidden) ntSyncDrafts(); });
+
 /* ---------- boot ---------- */
 async function boot(){
   try{ state.appearance = localStorage.getItem("ernestos-appearance") || "auto"; }
@@ -14394,6 +16045,7 @@ async function boot(){
     saveLastGood();
     // Ticks and recordings kept while offline in an earlier session go out now.
     if(loadQueue().length) flushQueue();
+    ntSyncDrafts();
     flushVoice();
     if(IS_APP){
       refreshInbox();

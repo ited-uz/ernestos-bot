@@ -129,6 +129,14 @@ APP_ORIGINS = [o.strip().rstrip("/") for o in os.environ.get(
     "APP_ORIGINS", "https://localhost,capacitor://localhost,http://localhost").split(",")
     if o.strip()]
 
+#: Behind a hosting proxy (Railway) every request arrives from the proxy's own
+#: address, so the caller is read from the last X-Forwarded-For hop — the one
+#: the proxy itself appended, which a client cannot forge. Off when the app is
+#: reached directly, where that header would be the caller's own word.
+TRUST_PROXY = os.environ.get("TRUST_PROXY", "").strip().lower() in ("1", "true", "yes") or (
+    os.environ.get("TRUST_PROXY", "").strip() == ""
+    and any(os.environ.get(k) for k in ("RAILWAY_ENVIRONMENT", "RAILWAY_ENVIRONMENT_NAME", "RAILWAY_PROJECT_ID")))
+
 #: Telegram initData older than this is rejected, so a captured URL cannot be
 #: replayed days later.
 INIT_DATA_MAX_AGE = int(os.environ.get("INIT_DATA_MAX_AGE", "86400"))

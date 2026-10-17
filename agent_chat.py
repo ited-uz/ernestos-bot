@@ -36,9 +36,11 @@ def _slim(text, n=80):
     return text if len(text) <= n else text[: n - 1] + "…"
 
 
-def context(s, uid, ws) -> dict:
-    """What the assistant knows: today's work, the week, goals and money.
-    Bounded so one turn stays cheap; names are trimmed."""
+def context(s, uid, ws, question: str = "") -> dict:
+    """What the assistant knows: today's work, the week, goals and money,
+    and excerpts of the person's notes that match the question (untrusted
+    data with citations — see notes.ai_context). Bounded so one turn stays
+    cheap; names are trimmed."""
     user = s.get(db.User, uid)
     tz = svc.user_tz(user)
     today = svc.today_local(tz)
@@ -87,7 +89,14 @@ def context(s, uid, ws) -> dict:
                                     for x in wallet.get("subscriptions", []) if x["days_left"] <= 7][:6],
             "debts": {"owed_to_me": debts.get("owed_to_me", 0), "i_owe": debts.get("i_owe", 0)},
         },
+        "notes": _notes(s, ws, question),
     }
+
+
+def _notes(s, ws, question):
+    import notes
+    found = notes.ai_context(s, ws, question, limit=4, chars=400)
+    return found if found["notes"] else None
 
 
 def _message(row, drafts) -> dict:
@@ -184,7 +193,7 @@ async def ask(uid, ws, key, text) -> dict:
                 db.AgentChatMessage.workspace_id == ws, db.AgentChatMessage.request_key == key)):
             return {"messages": history(ws), "draft": None, "repeat": True}
         core._budget(s, uid, ws)
-        snapshot = context(s, uid, ws)
+        snapshot = context(s, uid, ws, question=text)
         past = [{"role": r.role, "text": r.text} for r in reversed(s.scalars(
             select(db.AgentChatMessage).where(db.AgentChatMessage.workspace_id == ws)
             .order_by(db.AgentChatMessage.id.desc()).limit(HISTORY)).all())]

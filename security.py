@@ -143,7 +143,9 @@ UNGATED_WRITES = ("/api/settings", "/api/prefs", "/api/feedback",
 UNGATED_RECORDING = re.compile(
     r"^/api/(?:habits/\d+/(?:toggle|qty)|teams/(?:tasks|habits)/\d+/toggle|tasks/\d+"
     r"|prayers(?:/clear|/excused)?|journal|wakeup|focus/\d+/toggle|quick/parse"
-    r"|timers/[a-z]+/\d+/(?:start|log)|timers/runs/\d+/[a-z]+)$")
+    r"|timers/[a-z]+/\d+/(?:start|log)|timers/runs/\d+/[a-z]+"
+    # Saving a note already written is keeping one's own record.
+    r"|notes/\d+)$")
 
 
 def gate_allows(method: str, path: str) -> bool:

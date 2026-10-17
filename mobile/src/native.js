@@ -94,11 +94,14 @@
     },
     /* Data export: write the file into the app's cache, then hand it to the
        phone's share sheet, where the person picks Files, Drive, Telegram… */
-    saveFile: function (name, text, mime) {
+    // `base64`: `text` is base64 bytes (a ZIP), written as they are.
+    saveFile: function (name, text, mime, base64) {
       var fs = plugin("Filesystem"), share = plugin("Share");
       if (!fs || !share) return Promise.reject(new Error("no_filesystem"));
       var safe = String(name || "ernestos.txt").replace(/[^A-Za-z0-9._-]/g, "_");
-      return fs.writeFile({ path: safe, data: String(text), directory: "CACHE", encoding: "utf8" })
+      var file = { path: safe, data: String(text), directory: "CACHE" };
+      if (!base64) file.encoding = "utf8";
+      return fs.writeFile(file)
         .then(function (res) {
           return share.share({ title: safe, files: [res.uri], dialogTitle: safe })
             .catch(function (e) {
