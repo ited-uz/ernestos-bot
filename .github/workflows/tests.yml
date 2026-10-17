@@ -114,7 +114,7 @@ jobs:
         run: E2E_OUT=tests/e2e/out NODE_PATH="$(npm root -g)" node tests/e2e/offline_copy.cjs
       - name: Screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-screenshots
           path: tests/e2e/out/*.png
