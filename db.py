@@ -1618,6 +1618,9 @@ class TeamMember(Base):
     role: Mapped[str] = mapped_column(String(10), default="member")  # owner|admin|member
     joined_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     left_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    #: Set when an admin took this person out (not when they left). Such a
+    #: person comes back only through a join request an admin approves.
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     #: all | important | assigned | off — how much this team may message them.
     notify: Mapped[str | None] = mapped_column(String(10), nullable=True)
 

@@ -533,6 +533,10 @@
       return null;
     };
     const bad = (status, detail) => ({__status:status, detail});
+    const REPEAT = [[/\bhar\s+kun(?:i|ga)?\b|каждый\s+день|ежедневно|\bevery\s+day\b|\bdaily\b/i, "daily"],
+                    [/\bish\s+kunlari\b|по\s+будням|\bweekdays\b/i, "weekdays"],
+                    [/\bhar\s+hafta(?:da)?\b|каждую\s+неделю|еженедельно|\bevery\s+week\b|\bweekly\b/i, "weekly"],
+                    [/\bhar\s+oy(?:da)?\b|каждый\s+месяц|ежемесячно|\bevery\s+month\b|\bmonthly\b/i, "monthly"]];
     const MODULE_HABIT = {wake:["wakeup", "non_negotiable"], prayer:["prayer", "non_negotiable"], journal:["journal", "non_negotiable"]};
     const RITUAL_NAME = {wakeup:{uz:"Erta turish", en:"Wake up early", ru:"Ранний подъём"},
                          prayer:{uz:"5 vaqt namoz", en:"5 daily prayers", ru:"5 намазов"},
@@ -593,14 +597,20 @@
 
       /* --- tasks --- */
       if(path === "/api/quick" || (path === "/api/tasks" && method === "POST")){
-        const p = path === "/api/quick" ? P.parseLine(body.title) : {title:body.title, deadline:body.deadline ?? null,
-                                                                    due_time:body.due_time || null};
+        // "Har kuni …", "har oy …": how often, said in words (the server's rule).
+        let line = String(body.title || ""), rule = body.recurrence || "";
+        if(path === "/api/quick") for(const [re, r] of REPEAT){
+          const m = line.match(re);
+          if(m){ rule = r; line = (line.slice(0, m.index) + line.slice(m.index + m[0].length)).replace(/\s+/g, " ").trim(); break; }
+        }
+        const p = path === "/api/quick" ? P.parseLine(line) : {title:body.title, deadline:body.deadline ?? null,
+                                                               due_time:body.due_time || null};
         if(path === "/api/quick" && body.deadline) p.deadline = body.deadline;
         const title = String(p.title || "").trim();
         if(!title) return bad(422, "empty_title");
         const row = task(newId(), title, {deadline:path === "/api/quick" ? (p.deadline || TODAY) : p.deadline,
           due_time:p.due_time, priority:body.priority || "medium", description:body.description || "",
-          remind_before:body.remind_before ?? null, recurrence:body.recurrence || "",
+          remind_before:body.remind_before ?? null, recurrence:rule,
           timer_minutes:body.timer_minutes ?? null, project_id:body.project_id || null,
           project:projectName(body.project_id), created:TODAY});
         DB.tasks.push(row);

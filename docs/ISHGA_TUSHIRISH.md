@@ -151,7 +151,7 @@ Shundan keyingi har bir APK shu kalit bilan imzolanadi. Actions → android → 
 |---|---|---|
 | `BOT_TOKEN` | **Ha** | Telegram bot tokeni. Eslatma va hisobotlar jadvali ham shunga bog'liq |
 | `DATABASE_URL` | **Ha** | PostgreSQL manzili (Railway Postgres) |
-| `WEBAPP_URL` | **Ha** | Mini App manzili (`https://…railway.app/webapp`) |
+| `WEBAPP_URL` | **Ha** | Mini App manzili — serverning o'zi: `https://…railway.app` (oxiriga `/webapp` qo'shmang, u 404 beradi) |
 | `RESEND_API_KEY` yoki `BREVO_API_KEY` + `EMAIL_FROM` | **Email uchun ha** | Ro'yxatdan o'tish kodlari (2-bo'lim) |
 | `WEBHOOK_URL`, `WEBHOOK_SECRET` | Tavsiya | Bot webhook orqali ishlaydi |
 | `BOT_USERNAME` | Tavsiya | Taklif havolalari uchun |
@@ -164,6 +164,7 @@ Shundan keyingi har bir APK shu kalit bilan imzolanadi. Actions → android → 
 | `ELEVENLABS_API_KEY` | Ixtiyoriy | O'zbekcha ovozni yaxshiroq taniydi |
 | `FCM_SERVICE_ACCOUNT` | Push uchun | Telefonga bildirishnoma (Firebase xizmat hisobi JSON) |
 | `PLANS_ENABLED` | Ixtiyoriy | Standart holatda yoqilgan (Free/Pro/Max). `0` — hamma narsa ochiq |
+| `TRUST_PROXY` | Ixtiyoriy | Railway'da o'zi yoqiladi: kirmagan foydalanuvchilar limiti har bir odamning haqiqiy IP'si bo'yicha hisoblanadi. Boshqa hostingda proksi bo'lsa `1` qo'ying, to'g'ridan-to'g'ri ochiq serverda qo'ymang |
 
 ## 6. APK'ni olish
 

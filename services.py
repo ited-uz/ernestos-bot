@@ -2632,7 +2632,15 @@ def update_task(s: Session, ws: int, task_id: int, **fields) -> Task:
         task.remind_before = clean_remind_before(fields["remind_before"])
         task.reminder_sent_at = None
     if "recurrence" in fields:
-        task.recurrence = clean_recurrence(fields["recurrence"])
+        rule = clean_recurrence(fields["recurrence"])
+        # Turning a one-off into a repeating task counts against the plan
+        # exactly as creating one does; changing an existing rule does not.
+        if plans.ENABLED and rule and not task.recurrence and task.status != "done":
+            plans.require_in_workspace(s, ws, "recurring_tasks", s.scalar(
+                select(func.count(Task.id)).where(
+                    Task.workspace_id == ws, Task.status != "done", Task.archived_at.is_(None),
+                    Task.recurrence.is_not(None), Task.recurrence != "")) or 0)
+        task.recurrence = rule
         _ROLLED.pop(ws, None)
     if "project_id" in fields:
         pid = fields["project_id"]
@@ -3842,9 +3850,10 @@ def money_overview(s: Session, ws: int, *, month: date | None = None,
     balance_rows = dict(s.execute(select(MoneyEntry.kind, func.sum(MoneyEntry.amount))
                                   .where(MoneyEntry.workspace_id == ws)
                                   .group_by(MoneyEntry.kind)).all())
-    # With accounts, what they held when added is part of what one has.
+    # With accounts, what they held when added is part of what one has —
+    # removed accounts too, since their entries are still counted above.
     opening = int(s.scalar(select(func.coalesce(func.sum(MoneyAccount.opening), 0)).where(
-        MoneyAccount.workspace_id == ws, MoneyAccount.archived_at.is_(None))) or 0)
+        MoneyAccount.workspace_id == ws)) or 0)
     balance = int(balance_rows.get("income") or 0) - int(balance_rows.get("expense") or 0) + opening
     limits = money_budgets(s, ws)
     categories = []
@@ -3981,8 +3990,11 @@ def wallet_overview(s: Session, ws: int, *, today: date | None = None,
         totals = dict(s.execute(select(MoneyEntry.kind, func.sum(MoneyEntry.amount))
                                 .where(MoneyEntry.workspace_id == ws)
                                 .group_by(MoneyEntry.kind)).all())
+        # Every account's opening amount, removed ones included: their entries
+        # and transfers are still in the totals, so their starting money is too.
         balance = (int(totals.get("income") or 0) - int(totals.get("expense") or 0)
-                   + sum(r["opening"] for r in rows))
+                   + int(s.scalar(select(func.sum(MoneyAccount.opening)).where(
+                       MoneyAccount.workspace_id == ws)) or 0))
     names = {a.id: a.name for a in s.scalars(select(MoneyAccount).where(
         MoneyAccount.workspace_id == ws)).all()}
     subs = s.scalars(select(MoneySubscription).where(
@@ -8333,7 +8345,10 @@ def join_team(s: Session, user_id: int, code: str) -> tuple[Team | None, str]:
     if len(teams_for(s, user_id)) >= MAX_TEAMS_PER_USER:
         return team, "full"
 
-    if team.approval_required:
+    # Somebody an admin removed does not walk back in on the old link: they
+    # ask, and an admin decides, even where the team admits anyone else.
+    removed = existing is not None and existing.removed_at is not None
+    if team.approval_required or removed:
         pending = s.scalar(select(TeamJoinRequest).where(
             TeamJoinRequest.team_id == team.id, TeamJoinRequest.user_id == user_id,
             TeamJoinRequest.status == "pending"))
@@ -8349,7 +8364,7 @@ def _admit(s: Session, team: Team, user_id: int,
            existing: TeamMember | None = None) -> str:
     if existing is not None:
         # Coming back: a new stretch of membership, from now.
-        existing.left_at = None
+        existing.left_at = existing.removed_at = None
         existing.joined_at = utcnow()
         existing.role = "member"
     else:
@@ -8515,7 +8530,7 @@ def remove_member(s: Session, actor_id: int, team_id: int, member_id: int) -> bo
     actor_role = role_of(s, team_id, actor_id)
     if row.role == "admin" and actor_role != "owner":
         raise PermissionError("forbidden")
-    row.left_at = utcnow()
+    row.left_at = row.removed_at = utcnow()
     _log_team(s, team.id, actor_id, "remove", _display_name(s.get(User, member_id)))
     s.commit()
     return True
@@ -11160,6 +11175,24 @@ def _spoken_time(raw: str) -> tuple[dtime | None, str]:
     return dtime(hour, 30 if m.group("half") else 0), rest
 
 
+#: "Har kuni 7:00 yugurish": how often, said in words, and the rule it is.
+_REPEAT_PHRASES = [
+    (r"\bhar\s+kun(?:i|ga)?\b|каждый\s+день|ежедневно|\bevery\s+day\b|\bdaily\b", "daily"),
+    (r"\bish\s+kunlari\b|по\s+будням|\bweekdays\b", "weekdays"),
+    (r"\bhar\s+hafta(?:da)?\b|каждую\s+неделю|еженедельно|\bevery\s+week\b|\bweekly\b", "weekly"),
+    (r"\bhar\s+oy(?:da)?\b|каждый\s+месяц|ежемесячно|\bevery\s+month\b|\bmonthly\b", "monthly"),
+]
+
+
+def _repeat_rule(raw: str) -> tuple[str, str]:
+    """The repeat rule named in a line, and the line without it."""
+    for pattern, rule in _REPEAT_PHRASES:
+        m = re.search(pattern, raw, re.IGNORECASE)
+        if m:
+            return rule, " ".join((raw[:m.start()] + raw[m.end():]).split())
+    return "", raw
+
+
 def parse_quick_capture(text: str, today: date, now: dtime | None = None) -> dict:
     """Split "ertaga 15:00 doktorga qo'ng'iroq" into title, date and time.
 
@@ -11169,6 +11202,7 @@ def parse_quick_capture(text: str, today: date, now: dtime | None = None) -> dic
     """
     raw = " ".join((text or "").split())
     deadline, due = None, None
+    recurrence, raw = _repeat_rule(raw)
 
     # A date with its year is read first: otherwise "12.05.2030" loses
     # "12.05" to the clock ("12:05") and "2030-05-12" is read as 5 December.
@@ -11221,7 +11255,7 @@ def parse_quick_capture(text: str, today: date, now: dtime | None = None) -> dic
     if time_only:
         deadline = today  # "soat 10 da hisobot": a time with no day means today
     return {"title": title or " ".join((text or "").split()),
-            "deadline": deadline, "due_time": due,
+            "deadline": deadline, "due_time": due, "recurrence": recurrence,
             # "10:00 hisobot" typed at 20:00 may mean tomorrow: today is only a
             # guess, and the caller asks instead of hiding it (audit #49).
             "past_time": bool(time_only and now is not None and due < now)}

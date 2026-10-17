@@ -11021,7 +11021,7 @@ def test_quick_preview_parses_without_saving(fresh):
     tomorrow = (svc.today_local() + timedelta(days=1)).isoformat()
     r = fresh.post("/api/quick", {"title": "ertaga 15:00 hisobot", "preview": True}).json()
     assert r == {"ok": True, "preview": True, "title": "hisobot",
-                 "deadline": tomorrow, "due_time": "15:00"}
+                 "deadline": tomorrow, "due_time": "15:00", "recurrence": ""}
     with SessionLocal() as s:
         ws = svc.workspace_id_for(s, fresh.user["id"])
         assert s.scalar(select(func.count(db.Task.id)).where(db.Task.workspace_id == ws)) == 0
