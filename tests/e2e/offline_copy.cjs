@@ -85,12 +85,26 @@ const api = (p, url, opts) => p.evaluate(([u, o]) => api(u, o), [url, opts || {}
   const steps = (await api(p, '/api/progress/me')).steps;
   assert.equal(steps.total, 4, 'Qadam: task, habit, prayer, journal');
   await p.screenshot({ path: path.join(OUT, 'offline-day1.png') });
+
+  // Notes work in the copy too: typed, saved by itself, kept in the browser.
+  await p.evaluate(() => goto('notes')); await step(p, 600);
+  await p.click('.nt-actions [data-act="nt-new"]'); await step(p, 300);
+  await p.fill('#nt-title', 'Lecture notes');
+  await p.fill('#nt-body', '## Key ideas\n- [ ] Read chapter 3');
+  await step(p, 2500);
+  assert.match(await p.getAttribute('#nt-save', 'class'), /s-saved/, 'the note did not save');
+  await p.evaluate(() => A['nt-back']()); await step(p, 600);
+  assert.equal(await p.locator('.nt-grid .nt-card').count(), 1);
+  const nlm = await api(p, '/api/notes/connector');
+  assert.equal(nlm.configured, false, 'the copy claims a Google connection');
+  await p.screenshot({ path: path.join(OUT, 'offline-notes.png') });
   await p.close();
 
   // 3. A reload keeps everything.
   p = await open(`${D1}T21:00:00`);
   assert.equal((await api(p, '/api/money')).entries.length, 1);
   assert.equal((await api(p, '/api/home')).overall.value, 53);
+  assert.deepEqual((await api(p, '/api/notes?view=all')).notes.map(n => n.title), ['Lecture notes']);
   await p.close();
 
   // 4. The next day starts clean; yesterday stays on record.
@@ -122,6 +136,7 @@ const api = (p, url, opts) => p.evaluate(([u, o]) => api(u, o), [url, opts || {}
   await p.clock.runFor(2500);
   assert.equal((await api(p, '/api/home')).overall.yesterday, 53, 'restore lost the record');
   assert.equal((await api(p, '/api/money')).entries.length, 1);
+  assert.equal((await api(p, '/api/notes?view=all')).notes.length, 1, 'restore lost the notes');
 
   assert.deepEqual(errors, [], 'page errors');
   await browser.close();

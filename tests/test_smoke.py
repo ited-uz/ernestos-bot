@@ -1085,19 +1085,21 @@ def test_the_old_goals_stay_retired_and_new_goals_have_their_own_table():
     assert "goals" not in db.Base.metadata.tables
 
 
-def test_the_mini_app_navigation_is_four_places():
-    """Bugun · Reja · Moliya · Profil (K13). Reja switches Habits ↔ Tasks ↔
-    Goals ↔ Groups and Profil switches Steps ↔ Statistics at the top, while the
-    bar stays, so leaving is always one tap. v16: groups moved from Profil to
-    Reja — they are planning, and were three levels deep."""
+def test_the_mini_app_navigation_is_five_places():
+    """Bugun · Reja · Qaydlar · Moliya · Profil (K13, then Notes). Reja switches
+    Habits ↔ Tasks ↔ Goals ↔ Groups and Profil switches Steps ↔ Statistics at
+    the top, while the bar stays, so leaving is always one tap. v16: groups
+    moved from Profil to Reja — they are planning, and were three levels deep.
+    Notes got a place of its own: it is a different job from planning."""
     html = (ROOT / "webapp" / "index.html").read_text()
     nav = html[html.index("const NAV = ["):html.index("const NAV_OF")]
     assert [line.split('id:"')[1].split('"')[0]
             for line in nav.splitlines() if 'id:"' in line] == \
-        ["home", "tracker", "money", "profile"]
+        ["home", "tracker", "notes", "money", "profile"]
     labels = [line.split('key:"')[1].split('"')[0] for line in nav.splitlines() if 'key:"' in line]
-    assert labels == ["nav_home", "nav_tracker", "nav_money", "nav_profile"]
-    for word in ('nav_home:"Bugun"', 'nav_tracker:"Reja"', 'nav_money:"Moliya"', 'nav_profile:"Profil"'):
+    assert labels == ["nav_home", "nav_tracker", "nav_notes", "nav_money", "nav_profile"]
+    for word in ('nav_home:"Bugun"', 'nav_tracker:"Reja"', 'nav_notes:"Qaydlar"', 'nav_money:"Moliya"',
+                 'nav_profile:"Profil"'):
         assert word in html, word
     group = html[html.index("function groupBar(screen){"):html.index("const offerKey")]
     assert '[["habits", "habits"], ["tasks", "tasks"], ["goals", "goals_tab"], ["team", "groups_tab"]]' in group

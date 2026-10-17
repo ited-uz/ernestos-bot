@@ -25,7 +25,7 @@ jobs:
       # Unused imports and undefined names only. Nothing stylistic, so this
       # gate fails on real mistakes and never on taste.
       - name: Lint
-        run: python -m pyflakes app.py services.py db.py migrations.py dependencies.py ratelimit.py agent_actions.py agent_core.py agent_provider.py agent_bot.py agent_text.py agent_api.py task_pages.py config.py security.py version.py plans.py coins.py agent_chat.py
+        run: python -m pyflakes app.py services.py db.py migrations.py dependencies.py ratelimit.py agent_actions.py agent_core.py agent_provider.py agent_bot.py agent_text.py agent_api.py task_pages.py config.py security.py version.py plans.py coins.py agent_chat.py notes.py notes_api.py notes_connector.py notes_crypto.py notes_portable.py notes_templates.py scripts/notebooklm_live_check.py
 
       # The suite runs against SQLite: ENVIRONMENT=test keeps it off Telegram
       # and out of the rate limiter, and tests/test_smoke.py points
@@ -97,6 +97,12 @@ jobs:
         env:
           PYTHON: python
         run: NODE_PATH="$(npm root -g)" scripts/e2e.sh
+      # Notes in the real app: autosave states, conflict, offline, safe
+      # preview, attachments, note → task, import, every width and scheme.
+      - name: Notes checks
+        env:
+          PYTHON: python
+        run: NODE_PATH="$(npm root -g)" scripts/e2e_notes.sh
       # The phone app's web layer: sign-in code, the Mini App through
       # native.js, cross-origin calls, session end.
       - name: Phone app checks

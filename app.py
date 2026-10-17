@@ -56,6 +56,10 @@ import coins
 import promo
 import plans
 import agent_api
+import notes_api
+import notes_connector
+import notes_portable
+import notes as notes_svc
 import agent_core
 import agent_provider
 from agent_bot import AgentBot
@@ -7154,6 +7158,9 @@ async def lifespan(_: FastAPI):
     import migrations
     migrations.auto_apply()
     log.info("database ready: %s", db.engine.url.render_as_string(hide_password=True))
+    connector_task = None
+    if ENVIRONMENT != "test":
+        connector_task = asyncio.create_task(notes_connector.worker())
 
     # Advisory locks are held by a *connection*, and a process that is killed
     # mid-job leaves its lock behind until the database notices the connection
@@ -7261,6 +7268,8 @@ async def lifespan(_: FastAPI):
 
     yield
 
+    if connector_task:
+        connector_task.cancel()
     if scheduler:
         scheduler.shutdown(wait=False)
     if telegram_app:
@@ -7282,6 +7291,8 @@ app = FastAPI(title="ErnestOS", lifespan=lifespan,
 #: Per-user token buckets. Reads are cheap, writes cost more, and exports hit
 #: Telegram, so each class gets its own budget (audit 012).
 RATE_LIMITS = {"read": (60, 60), "write": (30, 60), "heavy": (5, 60),
+               # A note being typed saves itself every couple of seconds.
+               "notes": (120, 60),
                # Sign-in codes: ten tries per ten minutes per address.
                "auth": (10, 600),
                # Error reports from phones: their own budget, so a broken
@@ -7302,8 +7313,10 @@ _buckets = limiter._hits
 
 def _rate_class(request: Request) -> str:
     path = request.url.path
-    if path.startswith("/api/stats/export"):
+    if path.startswith(("/api/stats/export", "/api/notes/download/")) or path in NOTES_HEAVY:
         return "heavy"
+    if request.method == "PATCH" and NOTE_SAVE.match(path):
+        return "notes"
     # The picture is shown on several screens; at five a minute (the old
     # "heavy" class) the second screen already got a 429 and an empty circle,
     # and the upload after it failed the same way. It is an ordinary read, and
@@ -7314,6 +7327,14 @@ def _rate_class(request: Request) -> str:
             ("/api/auth/email/", "/api/account/email/", "/api/account/delete/")):
         return "auth"
     return "read" if request.method == "GET" else "write"
+
+
+#: Notes routes that read or write whole archives.
+NOTES_HEAVY = {"/api/notes/export.zip", "/api/notes/import/preview", "/api/notes/ai/export"}
+NOTE_SAVE = re.compile(r"^/api/notes/\d+$")
+#: Upload routes with their own, larger body limit (read with a counted stream).
+BODY_LIMITS = {"/api/notes/import/preview": notes_portable.UPLOAD_MAX}
+NOTE_ATTACH = re.compile(r"^/api/notes/\d+/attachments$")
 
 
 def client_host(request: Request) -> str:
@@ -7349,6 +7370,12 @@ async def guard_requests(request: Request, call_next):
 
     declared = request.headers.get("content-length")
     body_limit = config.AGENT_AUDIO_BYTES if request.url.path in {"/api/agent/audio", "/api/agent/journal/audio", "/api/agent/chat/audio"} else MAX_BODY_BYTES
+    body_limit = BODY_LIMITS.get(request.url.path, body_limit)
+    if NOTE_ATTACH.match(request.url.path):
+        body_limit = notes_svc.ATTACH_FILE_MAX
+    elif request.url.path.startswith(("/api/notes/", "/api/notes")) and request.method in ("POST", "PATCH"):
+        # A note body may be up to notes.BODY_MAX characters of UTF-8.
+        body_limit = max(body_limit, notes_svc.BODY_MAX * 4 + 16_384)
     if declared and declared.isdigit() and int(declared) > body_limit:
         return JSONResponse(status_code=413, content={"detail": "payload_too_large"})
 
@@ -7421,6 +7448,7 @@ async def guard_requests(request: Request, call_next):
     if (key > 0 and request.method in MUTATING_METHODS
             and 200 <= response.status_code < 300
             and not request.url.path.startswith("/api/agent/")
+            and not request.url.path.startswith(UNCOUNTED_PREFIXES)
             and request.url.path not in UNCOUNTED_PATHS):
         try:
             with SessionLocal() as s:
@@ -7460,6 +7488,10 @@ UNCOUNTED_PATHS = {
     "/api/money/preview", "/api/habits/parse", "/api/quick/parse",
     "/api/plans/invoice",
 }
+#: Notes save themselves while being typed: no write under Notes spends a
+#: free action, a quota, XP or a referral step. Turning a note into a task
+#: is subject to the task limits in the service instead.
+UNCOUNTED_PREFIXES = ("/api/notes",)
 
 
 @app.exception_handler(Exception)
@@ -11787,6 +11819,7 @@ def index():
 
 
 agent_api.install(app, auth)
+notes_api.install(app, auth)
 
 #: Sent with every answer. The Mini App is framed only by Telegram's own web
 #: clients (web.telegram.org); no other site may put it in a frame and dress
@@ -11826,7 +11859,7 @@ app.add_middleware(
     allow_origins=config.APP_ORIGINS,
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
     allow_headers=["Content-Type", "X-Telegram-Init-Data", "X-Idempotency-Key",
-                   "X-Agent-Request-Key"],
-    expose_headers=["X-Trial-Remaining", "Retry-After", "Content-Disposition"],
+                   "X-Agent-Request-Key", "X-File-Name", "If-Match"],
+    expose_headers=["X-Trial-Remaining", "Retry-After", "Content-Disposition", "ETag"],
     max_age=600,
 )

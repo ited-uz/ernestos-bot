@@ -41,6 +41,7 @@
       ME_KEYS.forEach(k => { if(stored.me && stored.me[k] !== undefined) DB.me[k] = stored.me[k]; });
       Object.assign(X, stored.x || {});
       P.seq.set(stored.seq || {});
+      if(X.notes) DB.notesStore = X.notes;
     } else {
       // A first visit: the app's own setup asks for a name and what to track.
       DB.me.onboarded = false;
@@ -56,6 +57,8 @@
     DB.me.prefs = {...DB.me.prefs, now_ai:false};
     DB.me.offline_copy = true;
     DB.inbox = [];
+    // Notes live in what is saved, so they are in the backup file too.
+    X.notes = DB.notesStore = X.notes || DB.notesStore || {notes:[], books:[], seq:1};
     // Today's prayers are the same object preview.js scores.
     X.prayers[TODAY] = X.prayers[TODAY] || {};
     DB.prayers = X.prayers[TODAY];

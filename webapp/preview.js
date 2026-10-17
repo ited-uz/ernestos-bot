@@ -563,7 +563,168 @@
     return {...h, grid, streak, percent:u30 ? Math.round(d30 / u30 * 100) : 0,
             last7_done:d7, last7_due:u7, last30_done:d30, last30_due:u30};
   };
+  /* ---------- Notes, for the demo and the offline copy ----------
+     The same shapes the server returns, kept in memory here (the offline
+     copy keeps them in the browser). Google Drive, files and import need the
+     server and say so instead of pretending. */
+  DB.notesStore = DB.notesStore || {notes:[], books:[], seq:1};
+  const NS = () => DB.notesStore;
+  const nStamp = () => new Date().toISOString();
+  const nUid = () => Array.from({length:26}, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join("");
+  const nPlain = s => String(s || "").replace(/\[\[([^\]|]+)(\|[^\]]*)?\]\]/g, "$1").replace(/[#>*_`~|\[\]()!]/g, " ")
+    .replace(/^\s*-\s/gm, " ").replace(/\s+/g, " ").trim();
+  const nWords = s => (String(s || "").match(/[\p{L}\p{N}_]+/gu) || []).length;
+  const nSum = n => ({id:n.id, uid:n.uid, title:n.title, kind:n.kind, status:n.status, snippet:nPlain(n.body).slice(0, 160),
+    pinned:!!n.pinned, archived:!!n.archived, trashed:!!n.trashed, daily_date:n.daily_date || null,
+    ai_excluded:!!n.ai_excluded, words:nWords(n.body), revision:n.revision, tags:n.tags || [],
+    notebook_ids:n.notebook_ids || [], created_at:n.created_at, updated_at:n.updated_at});
+  const nFull = n => ({...nSum(n), body:n.body, template:n.template || "blank", source_url:"",
+    relations:n.relations || [], links:[], backlinks:[], attachments:[]});
+  const nBooks = () => NS().books.map(b => ({...b, count:NS().notes.filter(n =>
+    !n.trashed && !n.archived && (n.notebook_ids || []).includes(b.id)).length}));
+  const N_TPL = {
+    uz:{study:["Ma’ruza — ", "## Asosiy g‘oyalar\n- \n\n## Savollar\n- \n"], idea:["G‘oya — ", "## G‘oya\n\n## Kim to‘laydi\n\n## Birinchi sinov\n- [ ] \n"],
+        daily:["Kundalik — " + TODAY, "## Bugungi 3 ta asosiy ish\n- [ ] \n- [ ] \n- [ ] \n"], thought:["", "## Fikr\n\n## Nega muhim\n"]},
+    en:{study:["Lecture — ", "## Key ideas\n- \n\n## Questions\n- \n"], idea:["Idea — ", "## The idea\n\n## Who pays\n\n## First test\n- [ ] \n"],
+        daily:["Daily — " + TODAY, "## Top 3\n- [ ] \n- [ ] \n- [ ] \n"], thought:["", "## Thought\n\n## Why it matters\n"]},
+    ru:{study:["Лекция — ", "## Ключевые идеи\n- \n\n## Вопросы\n- \n"], idea:["Идея — ", "## Идея\n\n## Кто платит\n\n## Первый тест\n- [ ] \n"],
+        daily:["Дневник — " + TODAY, "## Топ-3\n- [ ] \n- [ ] \n- [ ] \n"], thought:["", "## Мысль\n\n## Почему важно\n"]},
+  };
+  const nTemplates = () => {
+    const tbl = N_TPL[LANG] || N_TPL.en;
+    const meta = {study:["study", "🎓"], idea:["idea", "💡"], daily:["note", "📅"], thought:["thought", "💭"]};
+    return [{key:"blank", kind:"note", icon:"📝", preview:"", title:"", body:""},
+      ...Object.entries(tbl).map(([k, [title, body]]) => ({key:k, kind:meta[k][0], icon:meta[k][1], preview:body.slice(0, 160), title, body}))];
+  };
+  const nDay = s => String(s || "").slice(0, 10);
+  function nStats(){
+    const live = NS().notes.filter(n => !n.trashed);
+    const days = new Set(live.map(n => n.local_date));
+    let streak = 0;
+    for(let i = days.has(TODAY) ? 0 : 1; days.has(day(-i)); i++) streak++;
+    return {total:live.length, today:live.filter(n => n.local_date === TODAY).length,
+            month:live.filter(n => (n.local_date || "").slice(0, 7) === TODAY.slice(0, 7)).length, streak};
+  }
+  function nList(q){
+    const view = q.get("view") || "all", text = (q.get("q") || "").toLowerCase(), tag = q.get("tag") || "";
+    let rows = NS().notes.filter(n => {
+      if(view === "trash") return n.trashed;
+      if(n.trashed) return false;
+      if(view === "archived") return n.archived;
+      if(view === "daily") return !!n.daily_date;
+      if(view === "notebook") return (n.notebook_ids || []).includes(Number(q.get("notebook_id")));
+      if(n.archived) return false;
+      if(view === "inbox") return n.status === "inbox";
+      if(view === "pinned") return n.pinned;
+      return true;
+    });
+    if(text) rows = rows.filter(n => (n.title + "\n" + n.body).toLowerCase().includes(text));
+    if(tag) rows = rows.filter(n => (n.tags || []).includes(tag));
+    return {notes:rows.sort((a, b) => b.updated_at.localeCompare(a.updated_at)).map(nSum), next_cursor:null};
+  }
+  function nHome(){
+    const live = NS().notes.filter(n => !n.trashed && !n.archived).sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+    const tags = {};
+    NS().notes.filter(n => !n.trashed).forEach(n => (n.tags || []).forEach(t => { tags[t] = (tags[t] || 0) + 1; }));
+    return {today:TODAY, stats:nStats(), recent:live.slice(0, 8).map(nSum), pinned:live.filter(n => n.pinned).map(nSum),
+      counts:{inbox:live.filter(n => n.status === "inbox").length, trash:NS().notes.filter(n => n.trashed).length},
+      daily_id:(NS().notes.find(n => n.daily_date === TODAY && !n.trashed) || {}).id || null,
+      notebooks:nBooks(), tags:Object.entries(tags).map(([tag, count]) => ({tag, count})),
+      templates:nTemplates(), suggested_notebooks:NS().books.length ? [] : [
+        {name:"ErnestOS", color:"violet", icon:"🚀"}, {name:"University", color:"teal", icon:"🎓"},
+        {name:"Idea Bank", color:"amber", icon:"💡"}]};
+  }
+  const nFind = id => NS().notes.find(n => n.id === Number(id));
+  function nCreate(b){
+    const n = {id:NS().seq++, uid:nUid(), title:String(b.title || "").slice(0, 300), body:String(b.body || ""),
+      kind:b.kind || "note", template:b.template || "blank", status:b.status || "inbox", tags:(b.tags || []).map(String),
+      notebook_ids:(b.notebook_ids || []).map(Number), pinned:!!b.pinned, revision:1, local_date:TODAY,
+      daily_date:b.daily_date || null, created_at:nStamp(), updated_at:nStamp(), relations:[]};
+    NS().notes.push(n);
+    return n;
+  }
+  function notesGet(path, q){
+    let m;
+    if(path === "/api/notes/home") return nHome();
+    if(path === "/api/notes") return nList(q);
+    if(path === "/api/notes/notebooks") return {notebooks:nBooks()};
+    if(path === "/api/notes/templates") return {templates:nTemplates()};
+    if(path === "/api/notes/tags") return {tags:nHome().tags};
+    if(path === "/api/notes/storage") return {used:0, cap:0, file_max:0};
+    if(path === "/api/notes/connector")
+      return {configured:false, missing:["server"], scope:"", account:null, sets:[], edition:"consumer"};
+    if(path === "/api/notes/link-targets"){
+      const text = (q.get("q") || "").toLowerCase();
+      return {notes:NS().notes.filter(n => !n.trashed && n.title.toLowerCase().includes(text)).slice(0, 8)
+        .map(n => ({id:n.id, uid:n.uid, title:n.title, kind:n.kind})), tasks:[], projects:[], goals:[]};
+    }
+    if((m = path.match(/^\/api\/notes\/(\d+)\/revisions$/))) return {revisions:[]};
+    if((m = path.match(/^\/api\/notes\/(\d+)$/))){ const n = nFind(m[1]); return n ? nFull(n) : {__status:404, detail:"not_found"}; }
+    return {__status:503, detail:"connector_not_configured"};
+  }
+  function notesMutate(method, path, body){
+    if(!path.startsWith("/api/notes")) return undefined;
+    let m;
+    const b = body || {};
+    if(path === "/api/notes" && method === "POST") return nFull(nCreate(b));
+    if(path === "/api/notes/daily"){
+      let n = NS().notes.find(x => x.daily_date === TODAY);
+      if(n){ n.trashed = false; return {...nFull(n), created:false}; }
+      const tpl = nTemplates().find(x => x.key === "daily");
+      n = nCreate({title:tpl.title, body:tpl.body, daily_date:TODAY, status:"reviewed"});
+      return {...nFull(n), created:true};
+    }
+    if(path === "/api/notes/trash/empty"){ const gone = NS().notes.filter(n => n.trashed).length;
+      NS().notes = NS().notes.filter(n => !n.trashed); return {deleted:gone}; }
+    if(path === "/api/notes/notebooks" && method === "POST"){
+      const name = String(b.name || "").trim();
+      if(!name) return {__status:422, detail:"empty_name"};
+      if(NS().books.some(x => x.name.toLowerCase() === name.toLowerCase())) return {__status:422, detail:"notebook_exists"};
+      const book = {id:NS().seq++, name, color:b.color || "violet", icon:b.icon || "", description:"", position:0, archived:false};
+      NS().books.push(book);
+      return book;
+    }
+    if((m = path.match(/^\/api\/notes\/notebooks\/(\d+)$/))){
+      const book = NS().books.find(x => x.id === Number(m[1]));
+      if(!book) return {__status:404, detail:"not_found"};
+      if(method === "DELETE"){ NS().books = NS().books.filter(x => x !== book);
+        NS().notes.forEach(n => { n.notebook_ids = (n.notebook_ids || []).filter(i => i !== book.id); }); return {ok:true}; }
+      Object.assign(book, Object.fromEntries(Object.entries(b).filter(([k]) => ["name", "color", "icon"].includes(k))));
+      return book;
+    }
+    if((m = path.match(/^\/api\/notes\/(\d+)(\/[a-z-]+)?$/))){
+      const n = nFind(m[1]);
+      if(!n) return {__status:404, detail:"not_found"};
+      const act = m[2] || "";
+      if(act === "/trash"){ n.trashed = true; return nFull(n); }
+      if(act === "/restore"){ n.trashed = false; return nFull(n); }
+      if(act === "/task-preview") return {title:(b.text || n.title || "…").replace(/^[-*]\s+(\[[ xX]\]\s+)?/, "").slice(0, 300),
+        description:`From note: ${n.title}`, deadline:null, project_id:null, already:[], projects:[]};
+      if(act === "/to-task"){
+        const t = task(++nextId, b.title, {deadline:b.deadline || null});
+        DB.tasks.push(t);
+        n.relations = [...(n.relations || []), {id:NS().seq++, kind:"task", target_id:t.id, rel:"created_task", title:b.title, status:"waiting"}];
+        return {task:{id:t.id, title:t.title}, created:true, relations:n.relations};
+      }
+      if(act) return {__status:503, detail:"connector_not_configured"};
+      if(method === "DELETE"){ if(!n.trashed) return {__status:422, detail:"trash_first"};
+        NS().notes = NS().notes.filter(x => x !== n); return {ok:true}; }
+      if(method === "PATCH"){
+        if(("title" in b || "body" in b)){
+          if(b.base_revision !== n.revision) return {__status:409, detail:"conflict", note:nFull(n)};
+          if((b.title ?? n.title) !== n.title || (b.body ?? n.body) !== n.body){
+            n.title = b.title ?? n.title; n.body = b.body ?? n.body; n.revision++; n.updated_at = nStamp();
+          }
+        }
+        for(const k of ["kind", "status", "pinned", "archived", "ai_excluded", "tags", "notebook_ids"]) if(k in b) n[k] = b[k];
+        return nFull(n);
+      }
+    }
+    return {__status:503, detail:"connector_not_configured"};
+  }
+
   const ROUTES = [
+    [/^\/api\/notes(\/.*)?$/, (q, m) => notesGet(m[0], q)],
     [/^\/api\/me$/, () => DB.me],
     [/^\/api\/habits\/(\d+)\/history$/, (q, m) => habitHistory(Number(m[1]))],
     [/^\/api\/teams\/habits\/(\d+)\/history$/, (q, m) => habitHistory(Number(m[1]))],
@@ -730,6 +891,8 @@
     editable:[{index:0, fields:{title:"Mijozga qo'ng'iroq qilish", deadline:tomorrow(), due_time:"10:00", priority:"medium"}}]});
 
   function mutate(method, path, body){
+    const fromNotes = notesMutate(method, path, body);
+    if(fromNotes !== undefined) return fromNotes;
     // Email in the demo: no mail is sent; any six digits confirm it.
     if(path === "/api/account/email/start") return {ok:true, resend_in:60, ttl:600};
     if(path === "/api/account/email/verify"){

@@ -164,6 +164,8 @@ Shundan keyingi har bir APK shu kalit bilan imzolanadi. Actions → android → 
 | `ELEVENLABS_API_KEY` | Ixtiyoriy | O'zbekcha ovozni yaxshiroq taniydi |
 | `FCM_SERVICE_ACCOUNT` | Push uchun | Telefonga bildirishnoma (Firebase xizmat hisobi JSON) |
 | `PLANS_ENABLED` | Ixtiyoriy | Standart holatda yoqilgan (Free/Pro/Max). `0` — hamma narsa ochiq |
+| `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET` | NotebookLM uchun | Qaydlar → Google Docs → NotebookLM. Bo'lmasa `GOOGLE_CLIENT_ID/SECRET` ishlatiladi. To'liq: [NOTES_NOTEBOOKLM_SETUP.md](NOTES_NOTEBOOKLM_SETUP.md) |
+| `CONNECTOR_TOKEN_KEY` | NotebookLM uchun | Google refresh token'larini shifrlaydigan 32 baytli kalit. Yo'q bo'lsa ulanish o'chiq turadi (ochiq matnda saqlanmaydi) |
 | `TRUST_PROXY` | Ixtiyoriy | Railway'da o'zi yoqiladi: kirmagan foydalanuvchilar limiti har bir odamning haqiqiy IP'si bo'yicha hisoblanadi. Boshqa hostingda proksi bo'lsa `1` qo'ying, to'g'ridan-to'g'ri ochiq serverda qo'ymang |
 
 ## 6. APK'ni olish

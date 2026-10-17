@@ -1814,6 +1814,322 @@ class TeamJoinRequest(Base):
 
 
 # ---------------------------------------------------------------------------
+# Notes
+# ---------------------------------------------------------------------------
+#
+# One table of notes; Inbox, All, Pinned, a notebook, Trash are filters over
+# it, never copies. Every row carries `workspace_id` like the rest of the
+# schema, so one person's notes are reached only through their own workspace.
+
+class Note(Base):
+    """A note. The Markdown body is the note; everything else is about it."""
+
+    __tablename__ = "notes"
+    __table_args__ = (
+        # One Daily note per local date; other notes leave it NULL.
+        UniqueConstraint("workspace_id", "daily_date", name="uq_note_daily"),
+        UniqueConstraint("workspace_id", "uid", name="uq_note_uid"),
+        Index("ix_notes_ws_updated", "workspace_id", "updated_at", "id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    #: Stable public id: links between notes, exports and the NotebookLM
+    #: manifest name a note by this, so a rename never breaks them.
+    uid: Mapped[str] = mapped_column(String(26))
+    title: Mapped[str] = mapped_column(String(300), default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    #: note | quick | study | thought | idea | resource
+    kind: Mapped[str] = mapped_column(String(12), default="note")
+    #: The template it was started from (informational).
+    template: Mapped[str] = mapped_column(String(20), default="blank")
+    #: inbox | reviewed. Pin, archive and trash are independent of it.
+    status: Mapped[str] = mapped_column(String(10), default="inbox")
+    pinned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    trashed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    daily_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    source_url: Mapped[str] = mapped_column(String(1000), default="")
+    #: Kept out of the AI context and out of every connector export.
+    ai_excluded: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: Optimistic saving: a change names the revision it was made on.
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    content_hash: Mapped[str] = mapped_column(String(64), default="")
+    words: Mapped[int] = mapped_column(Integer, default=0)
+    #: The person's local date when it was written, for today / streak.
+    local_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    #: Where an imported note came from, for an idempotent re-import.
+    import_source: Mapped[str] = mapped_column(String(12), default="")
+    external_id: Mapped[str] = mapped_column(String(300), default="", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class NoteNotebook(Base):
+    __tablename__ = "note_notebooks"
+    __table_args__ = (UniqueConstraint("workspace_id", "name", name="uq_notebook_name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    description: Mapped[str] = mapped_column(String(300), default="")
+    #: violet | teal | amber | rose | sky | slate
+    color: Mapped[str] = mapped_column(String(10), default="violet")
+    icon: Mapped[str] = mapped_column(String(8), default="")
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class NoteNotebookMember(Base):
+    """A note in a notebook. A note may be in several, or in none."""
+
+    __tablename__ = "note_notebook_members"
+
+    note_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("notes.id", ondelete="CASCADE"), primary_key=True)
+    notebook_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("note_notebooks.id", ondelete="CASCADE"), primary_key=True, index=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    added_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class NoteTag(Base):
+    __tablename__ = "note_tags"
+
+    note_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("notes.id", ondelete="CASCADE"), primary_key=True)
+    tag: Mapped[str] = mapped_column(String(40), primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+
+
+class NoteLink(Base):
+    """A link written in one note's body to another note, by id: the
+    backlinks of a note are the rows that point at it."""
+
+    __tablename__ = "note_links"
+
+    source_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("notes.id", ondelete="CASCADE"), primary_key=True)
+    target_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("notes.id", ondelete="CASCADE"), primary_key=True, index=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+
+
+class NoteRelation(Base):
+    """A note tied to one of the person's own tasks, projects or goals.
+
+    Only the note's owner ever reads these; nothing a team member sees joins
+    to this table, so a private note never shows through a shared item."""
+
+    __tablename__ = "note_relations"
+    __table_args__ = (UniqueConstraint("note_id", "kind", "target_id", name="uq_note_relation"),
+                      UniqueConstraint("workspace_id", "request_key", name="uq_note_relation_key"))
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    note_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("notes.id", ondelete="CASCADE"), index=True)
+    #: task | project | goal
+    kind: Mapped[str] = mapped_column(String(10))
+    target_id: Mapped[int] = mapped_column(Integer)
+    #: about | created_task
+    rel: Mapped[str] = mapped_column(String(14), default="about")
+    #: The client's key for a note → task conversion; a retry finds this row.
+    request_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class NoteRevision(Base):
+    """An earlier version of a note. Bounded per note (see notes.KEEP_REVISIONS)."""
+
+    __tablename__ = "note_revisions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    note_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("notes.id", ondelete="CASCADE"), index=True)
+    revision: Mapped[int] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String(300), default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    #: edit | restore | conflict | import
+    reason: Mapped[str] = mapped_column(String(10), default="edit")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class NoteAttachment(Base):
+    """A file attached to a note. Bytes live in the row, bounded per file
+    and per account (notes.ATTACH_*)."""
+
+    __tablename__ = "note_attachments"
+    __table_args__ = (UniqueConstraint("uid", name="uq_note_attachment_uid"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    note_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("notes.id", ondelete="CASCADE"), index=True)
+    uid: Mapped[str] = mapped_column(String(32))
+    filename: Mapped[str] = mapped_column(String(200))
+    mime: Mapped[str] = mapped_column(String(80))
+    size: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    data: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class NoteImportBatch(Base):
+    """An uploaded Obsidian/Notion export waiting for the person to look at
+    the preview and confirm. Lives an hour; the upload is never executed."""
+
+    __tablename__ = "note_import_batches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    token: Mapped[str] = mapped_column(String(40), unique=True)
+    source: Mapped[str] = mapped_column(String(12))
+    #: The preview shown (JSON) and, until confirmed, the uploaded archive
+    #: itself — read again on confirm, never unpacked to disk or executed.
+    payload: Mapped[str] = mapped_column(Text)
+    archive: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)
+    sha256: Mapped[str] = mapped_column(String(64), default="")
+    status: Mapped[str] = mapped_column(String(10), default="preview")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+# ---- Google Drive / NotebookLM connector -----------------------------------
+
+class ConnectorAccount(Base):
+    """A person's Google Drive connection (scope drive.file only).
+
+    The refresh token is stored encrypted (notes_crypto); it never leaves the
+    server, never reaches a log, a URL or an API response."""
+
+    __tablename__ = "connector_accounts"
+    __table_args__ = (UniqueConstraint("workspace_id", "provider", name="uq_connector_ws"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(16), default="google_drive")
+    #: pending_confirm | connected | disconnecting | revoked | error
+    status: Mapped[str] = mapped_column(String(16), default="pending_confirm")
+    account_email: Mapped[str] = mapped_column(String(200), default="")
+    account_name: Mapped[str] = mapped_column(String(200), default="")
+    refresh_token_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scope: Mapped[str] = mapped_column(String(300), default="")
+    folder_id: Mapped[str] = mapped_column(String(128), default="")
+    last_error: Mapped[str] = mapped_column(String(80), default="")
+    connected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_ok_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class ConnectorOAuthState(Base):
+    """One Google consent attempt: a hash of the state, the PKCE verifier
+    (encrypted), whose it is. Read once, lives ten minutes."""
+
+    __tablename__ = "connector_oauth_states"
+
+    state_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    verifier_enc: Mapped[str] = mapped_column(Text)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class NlmSourceSet(Base):
+    """A set of notes sent to Google Docs for one NotebookLM notebook.
+
+    status: draft | exporting | exported | error
+    nlm_status: none | waiting (link saved, not yet checked) | verified"""
+
+    __tablename__ = "nlm_source_sets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    #: The notebook it follows, or NULL for a hand-picked list.
+    notebook_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("note_notebooks.id", ondelete="SET NULL"), nullable=True)
+    #: JSON list of note ids for a hand-picked set.
+    note_ids: Mapped[str] = mapped_column(Text, default="[]")
+    status: Mapped[str] = mapped_column(String(12), default="draft")
+    content_hash: Mapped[str] = mapped_column(String(64), default="")
+    exported_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    nlm_url: Mapped[str] = mapped_column(String(300), default="")
+    nlm_status: Mapped[str] = mapped_column(String(10), default="none")
+    #: Written into the pack; NotebookLM quoting it back proves it read the docs.
+    verify_code: Mapped[str] = mapped_column(String(16), default="")
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_error: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class NlmPack(Base):
+    """One Google Doc of a source set. The Drive file id is kept and the doc
+    is updated in place, so the NotebookLM source keeps pointing at it."""
+
+    __tablename__ = "nlm_packs"
+    __table_args__ = (UniqueConstraint("set_id", "part", name="uq_nlm_pack_part"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    set_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("nlm_source_sets.id", ondelete="CASCADE"), index=True)
+    part: Mapped[int] = mapped_column(Integer, default=1)
+    drive_file_id: Mapped[str] = mapped_column(String(128), default="")
+    content_hash: Mapped[str] = mapped_column(String(64), default="")
+    #: JSON manifest: [{"uid", "title", "hash"}] of the notes in this doc.
+    manifest: Mapped[str] = mapped_column(Text, default="[]")
+    chars: Mapped[int] = mapped_column(Integer, default=0)
+    #: pending | exported | orphan (left in Drive after the person chose to keep it)
+    status: Mapped[str] = mapped_column(String(10), default="pending")
+    exported_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ConnectorJob(Base):
+    """Work for the Drive connector, done outside any request.
+
+    Claimed with a lease; a worker that died leaves a lease that runs out and
+    the job is picked up again. Network calls never run inside a database
+    transaction: claim, commit, call Google, then record in a new one."""
+
+    __tablename__ = "connector_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    #: export_set | trash_set | disconnect
+    kind: Mapped[str] = mapped_column(String(12))
+    ref_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: JSON options (e.g. {"trash_docs": true}).
+    options: Mapped[str] = mapped_column(Text, default="{}")
+    #: queued | running | done | failed | cancelled
+    status: Mapped[str] = mapped_column(String(10), default="queued", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_run_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    lease_token: Mapped[str] = mapped_column(String(32), default="")
+    last_error: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+# ---------------------------------------------------------------------------
 # Schema creation
 # ---------------------------------------------------------------------------
 

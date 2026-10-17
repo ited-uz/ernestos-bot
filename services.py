@@ -38,6 +38,9 @@ import plans
 
 from db import (
     AgentAudit, AgentChatMessage, AgentDraft, AgentPreference,
+    ConnectorAccount, ConnectorJob, ConnectorOAuthState, NlmPack, NlmSourceSet,
+    Note, NoteAttachment, NoteImportBatch, NoteLink, NoteNotebook, NoteNotebookMember,
+    NoteRelation, NoteRevision, NoteTag,
     Birthday, CloseOne, Countdown, DailyReportLog, DailyScore, Feedback, Habit, HabitLog,
     HabitPauseInterval, HabitScheduleVersion, IdempotencyKey, JobRun,
     Debt, DebtPayment, JournalEntry, LifeGoal, MoneyAccount, MoneyBudget, MoneySubscription, MoneyTransfer, ResetLog, Snooze, MoneyEntry, PrayerDay, PrayerLog, Project,
@@ -2271,7 +2274,9 @@ def add_task(s: Session, ws: int, title: str, *, deadline: date | None = None,
              description: str = "", due_time: dtime | None = None,
              remind_before: int | None = None,
              recurrence: str | None = None,
-             timer_minutes: int | None = None) -> Task:
+             timer_minutes: int | None = None, commit: bool = True) -> Task:
+    """`commit=False` leaves the task flushed inside the caller's
+    transaction (a note → task conversion writes its link in the same one)."""
     title = title.strip()[:300]
     if not title:
         raise ValueError("empty task title")
@@ -2300,7 +2305,10 @@ def add_task(s: Session, ws: int, title: str, *, deadline: date | None = None,
     s.add(task)
     if task.recurrence:
         _ROLLED.pop(ws, None)  # a new series may already owe today's copy
-    s.commit()
+    if commit:
+        s.commit()
+    else:
+        s.flush()
     return task
 
 
@@ -5879,6 +5887,15 @@ def _export_debts(s: Session, ws: int) -> list[dict]:
 EXPORT_SCHEMA_VERSION = 2
 
 
+def notes_export(s: Session, ws: int) -> dict:
+    import notes
+    import notes_connector
+    out = notes.export_rows(s, ws)
+    state = notes_connector.status(s, ws)
+    out["notebooklm"] = {"account": state["account"], "sets": state["sets"]}
+    return out
+
+
 def export_workspace(s: Session, ws: int, user: User) -> dict:
     """Everything this workspace contains, as plain JSON-ready data."""
     from coins import export as coins_export
@@ -6022,6 +6039,9 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
                         "at": r.created_at.isoformat() if r.created_at else None}
                        for r in s.scalars(select(AgentChatMessage).where(
                            AgentChatMessage.workspace_id == ws).order_by(AgentChatMessage.id)).all()],
+        # Notes with their notebooks and versions; attachment bytes and the
+        # Drive token are not in a JSON export (the notes ZIP carries files).
+        "notes": notes_export(s, ws),
         "daily_scores": [
             {"day": r.day.isoformat(), "score": r.total_score, "grade": r.grade,
              "closed": bool(r.closed)}
@@ -6034,7 +6054,12 @@ def export_workspace(s: Session, ws: int, user: User) -> dict:
 #: Every table that holds workspace-scoped data. Deleting an account walks this
 #: list, so adding a model without adding it here is the one way a deletion
 #: could leave someone's rows behind — which is why the list is explicit.
-WORKSPACE_TABLES = [AgentAudit, AgentDraft, AgentPreference,
+WORKSPACE_TABLES = [
+                    # Notes and the Drive connector, children first.
+                    ConnectorJob, NlmPack, NlmSourceSet, ConnectorOAuthState, ConnectorAccount,
+                    NoteImportBatch, NoteAttachment, NoteRevision, NoteRelation, NoteLink, NoteTag,
+                    NoteNotebookMember, Note, NoteNotebook,
+                    AgentAudit, AgentDraft, AgentPreference,
                     TimerRun, HabitLog, HabitScheduleVersion, HabitPauseInterval,
                     Habit, PrayerLog, PrayerDay, ResetLog, Task,
                     Project, WeeklyFocus, WeeklyReview, JournalEntry, CloseOne, Birthday,
@@ -6054,6 +6079,8 @@ def wipe_workspace(s: Session, telegram_id: int) -> bool:
     ws = s.scalar(select(Workspace.id).where(Workspace.user_id == telegram_id))
     if ws is None:
         return False
+    import notes_connector
+    drive_tokens = notes_connector.revocable_tokens(s, ws)
     for model in WORKSPACE_TABLES:
         stmt = sql_delete(model).where(model.workspace_id == ws)
         if model in (Project, Countdown):
@@ -6064,6 +6091,8 @@ def wipe_workspace(s: Session, telegram_id: int) -> bool:
         s.execute(sql_delete(model).where(model.user_id == telegram_id))
 
     s.commit()
+    # Google is told after the rows are gone, outside the transaction.
+    notes_connector.revoke_in_background(drive_tokens)
     seed_default_habits(s, ws)
     s.commit()
     return True
@@ -6101,6 +6130,8 @@ def delete_account(s: Session, telegram_id: int) -> bool:
     s.flush()
 
     ws = s.scalar(select(Workspace.id).where(Workspace.user_id == telegram_id))
+    import notes_connector
+    drive_tokens = notes_connector.revocable_tokens(s, ws) if ws is not None else []
     if ws is not None:
         for model in WORKSPACE_TABLES:
             s.execute(sql_delete(model).where(model.workspace_id == ws))
@@ -6134,6 +6165,7 @@ def delete_account(s: Session, telegram_id: int) -> bool:
 
     s.delete(user)
     s.commit()
+    notes_connector.revoke_in_background(drive_tokens)
     return True
 
 
