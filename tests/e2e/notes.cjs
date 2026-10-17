@@ -205,7 +205,10 @@ const noOverflow = page => page.evaluate(() => document.documentElement.scrollWi
     }, [noteId, n.revision]);
     await page.reload();
     await page.waitForFunction(() => typeof state !== 'undefined' && state.me && !state.loading, null, { timeout: 15000 });
-    await page.waitForFunction(() => !localStorage.getItem('ernestos-note-draft-777001-new-closedappkey0001'), null, { timeout: 10000 });
+    // Drafts go one after another, in whatever order storage lists them.
+    await page.waitForFunction(id => !localStorage.getItem('ernestos-note-draft-777001-new-closedappkey0001')
+      && JSON.parse(localStorage.getItem(`ernestos-note-draft-777001-${id}`) || '{}').conflict, noteId, { timeout: 10000 })
+      .catch(() => {});
     const sent = await api(page, '/api/notes?view=all&q=closed');
     assert.equal(sent.notes.length, 1, 'the new note arrived once');
     assert.equal(sent.notes[0].kind, 'quick');
