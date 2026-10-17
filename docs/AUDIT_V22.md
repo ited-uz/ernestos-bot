@@ -103,6 +103,10 @@ Shu bosqichda topilib tuzatilganlar:
 
 360px telefonda to'la akkauntning 19 ta ekrani suratga olindi: gorizontal siljish, ekrandan chiqqan element, `undefined/NaN` va server xatosi — 0.
 
+Hujumchi rolining to'la akkaunti (14 vazifa nomida `"><img src=x onerror=…>`) bilan 360px'da har bir ekrandagi har bir tugma bosildi:
+XSS bajarilishi — 0, kiritilgan HTML — 0, gorizontal siljish — 0, server 5xx — 0. Yagona xato javob `POST /api/plans/invoice` → 503
+bo'ldi, chunki lokal muhitda Telegram bot yo'q (productionda to'lov havolasi yaratiladi).
+
 ## Ishga tushgandan keyin bitta tekshiruv
 
 F1 tuzatishi Railway proksisi `X-Forwarded-For`ni qanday yozishiga bog'liq (bu muhitdan tekshirib bo'lmadi).
