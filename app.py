@@ -10115,9 +10115,7 @@ def api_quick_add(body: QuickAddIn,
     if body.preview:
         return {"ok": True, "preview": True, **out}
     with SessionLocal() as s:
-        # "Har kuni …" starts today when no day was named, so it shows up.
-        task = svc.add_task(s, ws, parsed["title"],
-                            deadline=parsed["deadline"] or (svc.today_local(tz) if out["recurrence"] else None),
+        task = svc.add_task(s, ws, parsed["title"], deadline=parsed["deadline"],
                             due_time=parsed["due_time"], recurrence=out["recurrence"])
     return {"ok": True, "id": task.id, **out}
 

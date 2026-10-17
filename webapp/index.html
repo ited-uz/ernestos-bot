@@ -275,6 +275,9 @@ h3{font-size:18px;font-weight:640;letter-spacing:-.3px;line-height:1.3;
 .row{display:flex;align-items:center;gap:var(--s2)}
 .grow{flex:1;min-width:0}
 .ellipsis{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* A name beside a button (the wake-up row) wraps to two lines instead of
+   losing its end on a 360px screen. */
+.clamp2{overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
 .wrap{overflow-wrap:anywhere}
 .strike{text-decoration:line-through;color:var(--text-2)}
 .i{flex:none;vertical-align:-3px}
@@ -5751,7 +5754,7 @@ function habitRow(x, cat, wake){
   return `<div class="item ${TIERS[cat]} ${x.due ? "" : "off"}">
       ${edge}${box}
       <div class="grow" ${open}>
-        <div class="ellipsis">${esc(x.name)}</div>
+        <div class="${wakeBtn ? "clamp2" : "ellipsis"}">${esc(x.name)}</div>
         ${meta.length ? `<div class="meta">${meta.join(" · ")}</div>` : ""}
       </div>
       ${wakeBtn || `<button class="iconbtn sm plain" ${open}

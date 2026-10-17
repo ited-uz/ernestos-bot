@@ -11220,8 +11220,30 @@ def parse_quick_capture(text: str, today: date, now: dtime | None = None) -> dic
     if m:
         due = dtime(int(m.group(1)), int(m.group(2)))
         raw = (raw[:m.start()] + raw[m.end():]).strip()
+        # "kechqurun 20:00", "ertalab 7:00": the part of the day only repeats
+        # the clock, so it leaves the title; "kechqurun 8:00" means 20:00.
+        part = re.search(rf"\b(?:{_MORNING}|{_EVENING})\b", raw, re.IGNORECASE)
+        if part:
+            if re.fullmatch(_EVENING, part.group(0).lower()) and due.hour < 12:
+                due = dtime(due.hour + 12, due.minute)
+            raw = " ".join((raw[:part.start()] + raw[part.end():]).split())
     else:
         due, raw = _spoken_time(raw)
+
+    # "5-sanada", "15 sanasi", "5-числа": the next time that day of the month comes.
+    m = re.search(r"\b(\d{1,2})\s*-?\s*(?:sana(?:da|si|ga)?|числа)\b", raw, re.IGNORECASE)
+    if deadline is None and m and 1 <= int(m.group(1)) <= 31:
+        want, first = int(m.group(1)), today.replace(day=1)
+        for months_ahead in (0, 1, 2):
+            month_start = first
+            for _ in range(months_ahead):
+                month_start = (month_start + timedelta(days=32)).replace(day=1)
+            last = _month_bounds(month_start)[1].day
+            candidate = month_start.replace(day=min(want, last))
+            if candidate >= today:
+                deadline = candidate
+                break
+        raw = " ".join((raw[:m.start()] + raw[m.end():]).split())
 
     words = raw.split(" ")
     kept, previous = [], ""
@@ -11254,6 +11276,8 @@ def parse_quick_capture(text: str, today: date, now: dtime | None = None) -> dic
     time_only = due is not None and deadline is None
     if time_only:
         deadline = today  # "soat 10 da hisobot": a time with no day means today
+    if recurrence and deadline is None:
+        deadline = today  # "har oy ijara": a repeat starts today unless a day was named
     return {"title": title or " ".join((text or "").split()),
             "deadline": deadline, "due_time": due, "recurrence": recurrence,
             # "10:00 hisobot" typed at 20:00 may mean tomorrow: today is only a

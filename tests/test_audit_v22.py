@@ -219,3 +219,19 @@ def test_quick_add_saves_a_repeating_task_starting_today(fresh):
 
 def test_blank_feedback_is_refused_not_a_server_error(fresh):
     assert fresh.post("/api/feedback", json={"message": "   "}).status_code == 422
+
+
+# --- Voice/quick lines found while filling ten accounts ----------------------------------
+
+def test_day_of_month_and_part_of_day_are_read_not_kept_in_the_title():
+    from datetime import date, time
+    today, noon = date(2026, 10, 17), time(12, 0)
+    got = svc.parse_quick_capture("har oy 5-sanada ijara to'lash", today, noon)
+    assert (got["title"], got["recurrence"], got["deadline"]) == ("ijara to'lash", "monthly", date(2026, 11, 5))
+    assert svc.parse_quick_capture("har oy 20-sanada maosh", today, noon)["deadline"] == date(2026, 10, 20)
+    assert svc.parse_quick_capture("5-числа оплата", today, noon)["deadline"] == date(2026, 11, 5)
+    evening = svc.parse_quick_capture("bugun kechqurun 20:00 kitob o'qish", today, noon)
+    assert (evening["title"], evening["due_time"]) == ("kitob o'qish", time(20, 0))
+    assert svc.parse_quick_capture("kechqurun 8:00 sport", today, noon)["due_time"] == time(20, 0)
+    # A repeat with no day named starts today, and says so.
+    assert svc.parse_quick_capture("har hafta hisobot", today, noon)["deadline"] == today

@@ -69,7 +69,7 @@ Bu testlar eski kodda yiqiladi, yangisida o'tadi.
 
 | To'plam | Natija |
 |---|---|
-| Python (pytest) | 1166 / 1166 ✅ (shundan 15 tasi shu audit uchun yangi) |
+| Python (pytest) | 1167 / 1167 ✅ (shundan 16 tasi shu audit uchun yangi) |
 | Lint (pyflakes) | toza ✅ |
 | Frontend tekshiruvlari (3 to'plam) | ✅ |
 | Brauzer E2E, real server | 11 / 11 ✅ |
@@ -78,6 +78,30 @@ Bu testlar eski kodda yiqiladi, yangisida o'tadi.
 | XSS crawler (24 ekran, barcha oynalar) | 0 ta topilma ✅ |
 | Fuzzing (3 × 1212 so'rov) | 0 ta 500 ✅ |
 | IDOR (73 urinish) | 0 ta oqish ✅ |
+
+## 10 rol × to'la ma'lumot (har biriga 10–15 tadan)
+
+Har bir rolga real API orqali o'zbekcha mazmun bilan kiritildi: 14 vazifa (bugun, kechikkan, kelgusi, sanasiz, 2 loyiha, 2 takrorlanuvchi),
+12 odat (har kuni / ish kunlari / tanlangan kunlar, miqdorli odat), 4 asosiy maqsad + 10 bosqich, 3 hafta maqsadi, 3 hisob,
+15 kirim-chiqim, 3 obuna, 3 byudjet, o'tkazma, 11 qarz (qisman to'lov, yopilgan), 12 yaqin odam, 5 sana, 5 tug'ilgan kun,
+4 namoz, kundalik. Guruh rahbariga 4 a'zo va 12 jamoa vazifasi + 5 jamoa odati.
+
+Keyin ilova ko'rsatadigan har bir raqam kiritilgan ma'lumotdan qayta hisoblandi va solishtirildi:
+ochiq vazifalar soni, odatlar, maqsad foizi (bosqichlar o'rtachasi), oylik kirim/chiqim, kategoriya bo'yicha xarajat,
+hamyon jami = hisoblar + taqsimlanmagan = kirim − chiqim + boshlang'ich summalar, qarzlar ikki tomonga, umumiy foiz = qismlarning vaznli o'rtachasi,
+statistika va xulosa bilan bir xilligi, eksportda hamma narsa borligi, 27 ta ekran so'rovi 200 qaytarishi va 600 ms dan tezligi.
+
+**Natija: 10 rolda 0 ta nomuvofiqlik.** Free rolda limitlar aniq ishladi (1 loyiha, 3 odat, 2 maqsad, 1 hisob, 3 qarz, yaqinlar yo'q).
+
+Shu bosqichda topilib tuzatilganlar:
+
+| ID | Daraja | Muammo | Tuzatish |
+|---|---|---|---|
+| F16 | P3 | "har oy **5-sanada** ijara" — "5-sanada" nomda qolar, sana qo'yilmasdi | "N-sanada / N-sanasi / N-числа" → oyning eng yaqin N-kuni |
+| F17 | P3 | "bugun **kechqurun** 20:00 kitob" — "kechqurun" nomda qolardi; "kechqurun 8:00" ertalab deb o'qilardi | Kun qismi so'zi nomdan olinadi, "kechqurun 8:00" → 20:00 |
+| F18 | P3 | 360px ekranda "Erta turish" → "Erta tur…" ("Turdim" tugmasi yonida) | Nom ikki qatorgacha o'raladi |
+
+360px telefonda to'la akkauntning 19 ta ekrani suratga olindi: gorizontal siljish, ekrandan chiqqan element, `undefined/NaN` va server xatosi — 0.
 
 ## Ishga tushgandan keyin bitta tekshiruv
 
