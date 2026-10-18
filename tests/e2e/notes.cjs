@@ -361,6 +361,26 @@ const noOverflow = page => page.evaluate(() => document.documentElement.scrollWi
     assert.equal(forged, 404);
   });
 
+  await step('A long title wraps instead of being cut; Enter goes on to the text', async () => {
+    await page.setViewportSize({ width: 360, height: 780 });
+    await page.evaluate(() => { state.homeVeil = false; A['nt-new'](); });
+    await page.waitForSelector('#nt-title');
+    await page.fill('#nt-title', 'Idea — an AI sales agent for small shops in Uzbekistan that answers in Telegram');
+    const wrapped = await page.evaluate(() => {
+      const el = document.getElementById('nt-title');
+      return { tall: el.offsetHeight > 60, fits: el.scrollHeight <= el.clientHeight + 2,
+               wide: document.documentElement.scrollWidth > innerWidth + 1 };
+    });
+    assert.ok(wrapped.tall && wrapped.fits, `title shows whole: ${JSON.stringify(wrapped)}`);
+    assert.ok(!wrapped.wide, 'no sideways scroll');
+    await page.focus('#nt-title');
+    await page.keyboard.press('Enter');
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'nt-body');
+    assert.ok(!(await page.inputValue('#nt-title')).includes('\n'), 'no line break in the title');
+    await waitBadge(page, 's-saved');
+    await page.evaluate(() => A['nt-back']());
+  });
+
   await step('Nothing threw in the page', async () => {
     const errs = page.errors.filter(e => !/ERR_INTERNET_DISCONNECTED|Failed to fetch/.test(e));
     assert.deepEqual(errs, []);

@@ -1993,7 +1993,7 @@ h1.greet{font-size:17px;font-weight:650;letter-spacing:-.2px;line-height:1.25}
 @keyframes ntpulse{50%{opacity:.35}}
 @media (prefers-reduced-motion:reduce){ .nt-save i{animation:none!important} .nt-card,.nt-book{transition:none} }
 .nt-title{font-size:26px;font-weight:720;letter-spacing:-.5px;border:0;background:none;box-shadow:none;
-  padding:6px 0;min-height:48px;line-height:1.25}
+  padding:6px 0;min-height:48px;line-height:1.25;display:block;resize:none;overflow:hidden}
 .nt-title:focus{box-shadow:none;border:0}
 .nt-chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}
 .nt-chips .chip{min-height:34px;padding:4px 11px;font-size:13.5px}
@@ -2019,11 +2019,12 @@ h1.greet{font-size:17px;font-weight:650;letter-spacing:-.2px;line-height:1.25}
 .nt-conflict .btn{width:auto}
 .nt-theirs{margin-top:6px;padding:8px 10px;border-radius:10px;background:var(--surface-2)}
 .nt-theirs pre{white-space:pre-wrap;font:inherit;font-size:13.5px;margin:6px 0 0;max-height:220px;overflow:auto}
-.nt-panels{display:grid;gap:var(--s2);margin-top:var(--s3)}
-.nt-panel{background:var(--surface);border:var(--border-w) solid var(--border);border-radius:14px;padding:10px 12px}
+.nt-panels{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--s2);margin-top:var(--s3)}
+.nt-panel{min-width:0;background:var(--surface);border:var(--border-w) solid var(--border);border-radius:14px;padding:10px 12px}
 .nt-panel-h{display:flex;align-items:center;gap:6px;font-weight:650;font-size:14px;margin-bottom:6px}
 .nt-panel-h .act{margin-left:auto;color:var(--primary);font-size:13.5px;display:inline-flex;align-items:center;gap:3px;cursor:pointer;min-height:32px}
 .nt-rel{display:flex;align-items:center;gap:8px;min-height:38px;font-size:14px;cursor:default}
+.nt-rel > .tiny{flex:none}
 .nt-rel[data-act]{cursor:pointer}
 .nt-linked:not(:empty){margin-top:14px}
 .nt-linked-h{font-size:13.5px;font-weight:650;color:var(--text-2);display:flex;align-items:center;gap:6px;margin-bottom:6px}
@@ -15707,8 +15708,8 @@ SCREENS.note = () => {
       <button class="iconbtn" data-act="nt-menu" aria-label="${t("nt_more")}">${icon("dots", 22)}</button></div>
     ${state.noteConflict ? ntConflictBanner() : ""}
     <div class="nt-ed-grid"><div class="nt-ed-main">
-      <input id="nt-title" class="nt-title" placeholder="${t("nt_title_ph")}" value="${esc(e.title)}"
-        data-nt-input="title" maxlength="300" autocomplete="off" aria-label="${t("nt_title_ph")}">
+      <textarea id="nt-title" class="nt-title" rows="1" placeholder="${t("nt_title_ph")}" data-nt-input="title"
+        maxlength="300" autocomplete="off" enterkeyhint="next" aria-label="${t("nt_title_ph")}">${esc(e.title)}</textarea>
       ${ntChips(n)}
       ${state.notePreview ? `<div class="md nt-preview">${mdRender(e.body)}</div>`
         : `${ntToolbar()}<textarea id="nt-body" class="nt-body" data-nt-input="body" placeholder="${t("nt_body_ph")}"
@@ -15729,6 +15730,8 @@ function ntAfterRender(typing){
   if(state.screen !== "note") return;
   const ta = document.getElementById("nt-body");
   if(ta) ntGrow(ta);
+  const title = document.getElementById("nt-title");
+  if(title) ntGrowTitle(title);
   document.querySelectorAll?.("img[data-att]").forEach(ntLoadImage);
   const el = typing && document.getElementById(typing.id);
   if(el){
@@ -15740,6 +15743,11 @@ function ntAfterRender(typing){
 function ntGrow(ta){
   ta.style.height = "auto";
   ta.style.height = Math.max(ta.scrollHeight, 260) + "px";
+}
+/* The title is one line of text that wraps: as tall as it needs to be. */
+function ntGrowTitle(ta){
+  ta.style.height = "auto";
+  ta.style.height = ta.scrollHeight + "px";
 }
 async function ntLoadImage(img){
   const uid = img.dataset.att;
@@ -15997,7 +16005,19 @@ document.addEventListener("input", e => {
   const field = e.target?.dataset?.ntInput;
   if(!field) return;
   if(field === "body"){ ntGrow(e.target); NT.sel = [e.target.selectionStart, e.target.selectionEnd]; }
+  if(field === "title"){
+    // A pasted line break stays out of a title.
+    if(/[\r\n]/.test(e.target.value)) e.target.value = e.target.value.replace(/\s*[\r\n]+\s*/g, " ");
+    ntGrowTitle(e.target);
+  }
   ntInput(field, e.target.value);
+});
+// Enter in the title goes on to the text, as "next" on the phone keyboard says.
+document.addEventListener("keydown", e => {
+  if(e.target?.id !== "nt-title" || e.key !== "Enter" || e.isComposing) return;
+  e.preventDefault();
+  const body = document.getElementById("nt-body");
+  if(body){ body.focus(); body.setSelectionRange?.(0, 0); }
 });
 for(const ev of ["select", "keyup", "click", "focusout"])
   document.addEventListener(ev, e => {

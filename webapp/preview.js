@@ -578,8 +578,21 @@
     pinned:!!n.pinned, archived:!!n.archived, trashed:!!n.trashed, daily_date:n.daily_date || null,
     ai_excluded:!!n.ai_excluded, words:nWords(n.body), revision:n.revision, tags:n.tags || [],
     notebook_ids:n.notebook_ids || [], created_at:n.created_at, updated_at:n.updated_at});
-  const nFull = n => ({...nSum(n), body:n.body, template:n.template || "blank", source_url:"",
-    relations:n.relations || [], links:[], backlinks:[], attachments:[]});
+  /* Links by id ("note:UID") or by title ("[[Title]]"), and the notes that
+     point back — worked out from the text, as the server stores them. */
+  const nPoints = (n, to) => String(n.body || "").includes(`note:${to.uid}`)
+    || (to.title && String(n.body || "").includes(`[[${to.title}]]`));
+  const nRef = n => ({id:n.id, uid:n.uid, title:n.title, kind:n.kind});
+  const nLinks = n => NS().notes.filter(x => x !== n && !x.trashed && nPoints(n, x)).map(nRef);
+  const nBacklinks = n => NS().notes.filter(x => x !== n && !x.trashed && nPoints(x, n)).map(nRef);
+  const nTarget = (kind, id) => kind === "task" ? DB.tasks.find(x => x.id === id)
+    : kind === "goal" ? goalRows.find(x => x.id === id) : null;
+  const nRelations = n => (n.relations || []).map(r => {
+    const row = nTarget(r.kind, r.target_id);
+    return row ? {...r, title:row.title, status:row.status || null} : null;
+  }).filter(Boolean);
+  const nFull = n => ({...nSum(n), body:n.body, template:n.template || "blank", source_url:n.source_url || "",
+    relations:nRelations(n), links:nLinks(n), backlinks:nBacklinks(n), attachments:[]});
   const nBooks = () => NS().books.map(b => ({...b, count:NS().notes.filter(n =>
     !n.trashed && !n.archived && (n.notebook_ids || []).includes(b.id)).length}));
   const N_TPL = {
@@ -643,6 +656,65 @@
     NS().notes.push(n);
     return n;
   }
+  /* Sample notes for the demo: what the ten test accounts wrote, gathered
+     into one person's notebook (never in the offline copy, which starts empty). */
+  function nSeed(){
+    const at = (off, h) => { const d = new Date(now); d.setDate(d.getDate() + off); d.setHours(h, 0, 0, 0); return d.toISOString(); };
+    const book = (name, color, icon) => { const b = {id:NS().seq++, name, color, icon, description:"", position:0, archived:false};
+      NS().books.push(b); return b.id; };
+    const eos = book("ErnestOS", "violet", "🚀"), uni = book("University", "teal", "🎓"),
+          bank = book("Idea Bank", "amber", "💡"), trade = book("Trading", "sky", "📈"), crm = book("Mijozlar", "rose", "🤝");
+    const add = (off, h, f) => { const n = nCreate(f); n.local_date = day(off); n.created_at = n.updated_at = at(off, h);
+      Object.assign(n, f.extra || {}); delete n.extra; return n; };
+    const ideas = [
+      ["G‘oya — O‘zbek KOBlari uchun AI savdo agenti", "## G‘oya\n1–10 xodimli do‘konlar uchun Telegram’da javob beradigan savdo agenti.\n\n## Kim to‘laydi\nDo‘kon egasi, oyiga $29.\n\n## Birinchi sinov\n- [x] 5 ta do‘kon bilan suhbat\n- [ ] Shu hafta 10 ta qo‘ng‘iroq\n- [ ] Landing sahifa"],
+      ["G‘oya — Dropshipping mahsulot qidiruv boti", "## G‘oya\nTrenddagi mahsulotlarni topib, marjani hisoblaydi.\n\n| Mahsulot | Narx | Marja |\n|---|---|---|\n| LED lampa | $4 | 62% |\n| Termos | $6 | 48% |"],
+      ["G‘oya — Bozor sotuvchilari uchun Telegram CRM", "## Muammo\nBuyurtmalar chatlarda yo‘qoladi.\n\n## Yechim\nHar xabardan buyurtma kartasi."],
+      ["Idea — Halal investment tracker", "## Who pays\nYoung professionals who want halal returns.\n\n## Risks\n- Regulation\n- Data on sukuk prices"],
+    ].map(([title, body], i) => add(-1, 10 + i, {title, body, kind:"idea", template:"idea", notebook_ids:[bank], tags:["idea"], status:"reviewed"}));
+    const sales = ideas[0];
+    const calls = task(++nextId, "Shu hafta 10 ta qo‘ng‘iroq", {deadline:day(2), project:null});
+    DB.tasks.push(calls);
+    sales.relations = [{id:NS().seq++, kind:"task", target_id:calls.id, rel:"created_task"},
+                       {id:NS().seq++, kind:"goal", target_id:16, rel:"related"}];
+    add(-1, 15, {title:"G‘oyalar xaritasi", notebook_ids:[bank, eos], status:"reviewed",
+      body:"Hamma g‘oyalar bitta joyda — bossangiz ochiladi:\n\n" + ideas.map(x => `- [${x.title}](note:${x.uid})`).join("\n")});
+    const ctx = add(0, 8, {title:"Loyiha konteksti — ErnestOS Qaydlar v1", template:"project", notebook_ids:[eos], pinned:true,
+      tags:["ernestos"], status:"reviewed", body:"## Maqsad\nQaydlar — vazifa, maqsad va pul bilan bitta joyda.\n\n## Holat\n- [x] Muharrir va avtosaqlash\n- [x] Obsidian/Notion import\n- [x] 10 foydalanuvchi bilan audit\n- [ ] NotebookLM: jonli Google tekshiruvi\n\n## Qarorlar\n- [[Qaror — Pro tarif $9/oy]]"});
+    ctx.relations = [{id:NS().seq++, kind:"goal", target_id:12, rel:"related"}];
+    add(-2, 18, {title:"Qaror — Pro tarif $9/oy", kind:"thought", template:"decision", notebook_ids:[eos], tags:["qaror"], status:"reviewed",
+      body:"## Qaror\nPro — $9/oy, Max — $19/oy.\n\n## Variantlar\n1. $5 — arzon, lekin qiymat past ko‘rinadi\n2. $9 — ChatGPT Plus’dan arzon\n\n## Nega\n> Narx qiymatni ko‘rsatadi."});
+    const q4 = add(0, 9, {title:"To‘rtinchi chorak rejasi — qoralama", notebook_ids:[eos], status:"inbox",
+      body:"## Asosiy 3 ta natija\n1. 1 000 pullik mijoz\n2. Marketing AI mutaxassisi — beta\n3. Android ilova Play Store’da\n\n## Kimga yuborish\n- Jamoa chatiga, juma kuni"});
+    q4.relations = [{id:NS().seq++, kind:"task", target_id:101, rel:"related"}];
+    const lec = add(-3, 9, {title:"Ma’ruza — Marketing asoslari 1", kind:"study", template:"study", notebook_ids:[uni], tags:["marketing", "uni"],
+      status:"reviewed", body:"## Asosiy g‘oyalar\n- 4P: mahsulot, narx, joy, targ‘ibot\n- Segment → maqsad → pozitsiya\n\n## Savollar\n- Pozitsiyani qanday sinash mumkin?\n\n## Xulosa\nMijoz mahsulot emas, natija sotib oladi."});
+    add(-3, 20, {title:"Lug‘at — Business English", kind:"study", notebook_ids:[uni], tags:["lug‘at"], status:"reviewed",
+      body:"| So‘z | Ma’no |\n|---|---|\n| revenue | tushum |\n| margin | marja |\n| churn | mijoz ketishi |\n| lead | potensial mijoz |"});
+    add(0, 11, {title:"Talab va taklif — xulosa", notebook_ids:[uni], status:"inbox",
+      body:`Batafsil: [ma’ruza](note:${lec.uid}). Narx oshsa — talab tushadi, taklif oshadi.`});
+    add(-2, 21, {title:"Savdo qoidalari", notebook_ids:[trade], pinned:true, tags:["qoida"], status:"reviewed",
+      body:"1. Riskni 1% dan oshirmaslik\n2. Stop-loss har doim\n3. FOMO’da kirmaslik\n4. Kunlik zarar 3% — savdo to‘xtaydi"});
+    add(-1, 22, {title:"TradingView — BTC tahlil", kind:"resource", notebook_ids:[trade], tags:["btc"], status:"reviewed",
+      body:"Haftalik trend yuqoriga, 4H’da qarshilik 72 000.", extra:{source_url:"https://www.tradingview.com/symbols/BTCUSDT/"}});
+    add(-1, 23, {title:"Shaxsiy kundalik — xatolar", notebook_ids:[trade], status:"reviewed",
+      body:"Hissiyotga berilib risk 5% qildim. Hech kimga ko‘rsatmaslik.", extra:{ai_excluded:true}});
+    add(0, 12, {title:"ООО «Ташкент Строй»", notebook_ids:[crm], tags:["клиент", "b2b"], status:"inbox",
+      body:"## Кто\nЗакупщик Ирина.\n\n## Дальнейшие шаги\n- [ ] Отправить КП до пятницы\n- [ ] Встреча в 15:00"});
+    add(-2, 12, {title:"Akmal — distribyutor", template:"person", notebook_ids:[crm], tags:["mijoz"], status:"reviewed",
+      body:"## Kim\nToshkentda ulgurji savdo.\n\n## Keyingi qadam\n- [ ] Narxlar ro‘yxatini yuborish"});
+    add(0, 13, {title:"", kind:"quick", status:"inbox", body:"Ertaga soat 10 da Irinaga qo‘ng‘iroq qilish"});
+    for(const off of [-3, -2, -1, 0]){
+      add(off, 6, {title:`Kundalik — ${day(off)}`, template:"daily", status:"reviewed", extra:{daily_date:day(off)},
+        body:off ? `## Bugungi 3 ta asosiy ish\n- [x] Sport\n- [x] 2 soat chuqur ish\n- [${off === -1 ? " " : "x"}] Kitob 20 bet` :
+          "## Bugungi 3 ta asosiy ish\n- [x] Bomdod va sport\n- [ ] 10 ta qo‘ng‘iroq\n- [ ] Q4 rejani jamoaga yuborish\n\n## Kayfiyat\n🙂 Yaxshi"});
+    }
+    add(-3, 14, {title:"Raqobatchi: «Mega Opt»", notebook_ids:[crm], tags:["bozor"], status:"reviewed",
+      body:"Narxlari 5% past, yetkazib berish sekin.", extra:{archived:true}});
+    add(-3, 15, {title:"Eski reja — kerak emas", status:"reviewed", body:"Bu qayd savatda: tiklash yoki butunlay o‘chirish mumkin.",
+      extra:{trashed:true}});
+  }
+  if(!EMPTY && !NS().notes.length) nSeed();
   function notesGet(path, q){
     let m;
     if(path === "/api/notes/home") return nHome();
@@ -655,9 +727,14 @@
       return {configured:false, missing:["server"], scope:"", account:null, sets:[], edition:"consumer"};
     if(path === "/api/notes/link-targets"){
       const text = (q.get("q") || "").toLowerCase();
-      return {notes:NS().notes.filter(n => !n.trashed && n.title.toLowerCase().includes(text)).slice(0, 8)
-        .map(n => ({id:n.id, uid:n.uid, title:n.title, kind:n.kind})), tasks:[], projects:[], goals:[]};
+      const hit = x => String(x.title || "").toLowerCase().includes(text);
+      return {notes:NS().notes.filter(n => !n.trashed && hit(n)).slice(0, 8).map(nRef),
+        tasks:DB.tasks.filter(hit).slice(0, 8).map(x => ({id:x.id, title:x.title, status:x.status})), projects:[],
+        goals:goalRows.filter(x => !x.archived && hit(x)).slice(0, 8).map(x => ({id:x.id, title:x.title, status:x.status}))};
     }
+    if((m = path.match(/^\/api\/notes\/for\/(task|project|goal)\/(\d+)$/)))
+      return {notes:NS().notes.filter(n => !n.trashed && (n.relations || []).some(r =>
+        r.kind === m[1] && r.target_id === Number(m[2]))).map(nRef)};
     if((m = path.match(/^\/api\/notes\/(\d+)\/revisions$/))) return {revisions:[]};
     if((m = path.match(/^\/api\/notes\/(\d+)$/))){ const n = nFind(m[1]); return n ? nFull(n) : {__status:404, detail:"not_found"}; }
     return {__status:503, detail:"connector_not_configured"};
@@ -692,12 +769,25 @@
       Object.assign(book, Object.fromEntries(Object.entries(b).filter(([k]) => ["name", "color", "icon"].includes(k))));
       return book;
     }
+    if((m = path.match(/^\/api\/notes\/(\d+)\/relations\/(\d+)$/)) && method === "DELETE"){
+      const n = nFind(m[1]);
+      if(!n) return {__status:404, detail:"not_found"};
+      n.relations = (n.relations || []).filter(r => r.id !== Number(m[2]));
+      return {relations:nRelations(n)};
+    }
     if((m = path.match(/^\/api\/notes\/(\d+)(\/[a-z-]+)?$/))){
       const n = nFind(m[1]);
       if(!n) return {__status:404, detail:"not_found"};
       const act = m[2] || "";
       if(act === "/trash"){ n.trashed = true; return nFull(n); }
       if(act === "/restore"){ n.trashed = false; return nFull(n); }
+      if(act === "/relations" && method === "POST"){
+        const kind = b.kind, id = Number(b.target_id);
+        if(!nTarget(kind, id)) return {__status:404, detail:"not_found"};
+        if(!(n.relations || []).some(r => r.kind === kind && r.target_id === id))
+          n.relations = [...(n.relations || []), {id:NS().seq++, kind, target_id:id, rel:"related"}];
+        return {relations:nRelations(n)};
+      }
       if(act === "/task-preview") return {title:(b.text || n.title || "…").replace(/^[-*]\s+(\[[ xX]\]\s+)?/, "").slice(0, 300),
         description:`From note: ${n.title}`, deadline:null, project_id:null, already:[], projects:[]};
       if(act === "/to-task"){
