@@ -10417,6 +10417,13 @@ def test_money_words_are_read_the_way_people_write_them():
     assert (pay["kind"], pay["category"]) == ("income", "salary")
     chosen = svc.parse_money_text("Tushlik 45 ming", "income")
     assert (chosen["kind"], chosen["category"]) == ("income", "other_in")
+    # The noun on its own is the salary; the adjective stays spending.
+    for text in ("oylik 12000000", "12 mln oylik", "Oyligim 8 mln", "oylikni oldim 6 mln", "Oylik: 7 mln"):
+        got = svc.parse_money_text(text)
+        assert (got["kind"], got["category"]) == ("income", "salary"), text
+    for text in ("oylik internet 150 ming", "Oylik ijara 3 mln", "oylik obuna 50 ming"):
+        assert svc.parse_money_text(text)["kind"] == "expense", text
+    assert svc.parse_money_text("oylik 2 mln", "expense")["kind"] == "expense"
 
 
 def test_the_mini_app_quick_line_takes_the_button_that_was_pressed(fresh):

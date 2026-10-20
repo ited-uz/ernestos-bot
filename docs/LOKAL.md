@@ -15,8 +15,12 @@ ilova brauzerda ochiladi (kompyuterda ham, bir xil Wi-Fi'dagi telefonda ham).
    - ish stoliga **«ErnestOS»** yorlig‘ini qo‘yadi;
    - serverni ishga tushiradi va brauzerni ochadi.
 3. **macOS:** `ornatish-mac.command` → o‘ng tugma → **Open** (birinchi marta
-   Gatekeeper so‘raydi). `~/Documents/PROJECTS/ernestOS web` ga o‘rnatadi.
-   Python 3.11+ kerak (<https://www.python.org/downloads/macos/>).
+   Gatekeeper so‘raydi). Mac ochishga ruxsat bermasa: **Terminal**ni oching,
+   `bash ` deb yozing (oxirida bo‘sh joy), faylni Terminal oynasiga sudrab
+   tashlang → **Enter**. `~/Documents/PROJECTS/ernestOS web` ga o‘rnatadi.
+   Python 3.11+ yo‘q bo‘lsa (Mac’da odatda 3.9 turadi), o‘zi o‘rnatadi:
+   Homebrew bo‘lsa `brew` bilan, bo‘lmasa python.org o‘rnatuvchisi ochiladi
+   (Continue → Install → Close), keyin o‘rnatish o‘zi davom etadi.
 
 Yangi versiyani o‘rnatish ham xuddi shunday: yangi ZIP → o‘rnatuvchi.
 Ma’lumotlar (`data/`), sozlamalar (`.env.local`) va `.venv` **ustidan
@@ -97,6 +101,7 @@ tokenini bermang — bitta token bir vaqtda ikki joyda ishlay olmaydi.
 
 | Belgi | Yechim |
 |---|---|
+| `localhost refused to connect` (ERR_CONNECTION_REFUSED) | Server shu kompyuterda ishlamayapti: o‘rnatuvchini (yoki yorliqni) ishga tushiring, qora oynada `✅ ErnestOS ishlayapti` chiqishini kuting, oynani yopmang. Manzil — oynada yozilgani (odatda `http://localhost:8000/app/`) |
 | `Python 3.11 yoki yangisi kerak` | Python’ni yangilang, oynani qayta oching |
 | `'python' is not recognized` (Windows) | Python’ni «Add to PATH» bilan qayta o‘rnating |
 | Port band | O‘zi keyingi bo‘sh portni oladi (8001, 8002…) — oynadagi manzilni oching |

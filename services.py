@@ -3578,12 +3578,16 @@ _MONEY_WORDS = [
 ]
 #: "oylik" is left out on purpose: "oylik ijara" is monthly rent. "Oylik
 #: keldi" is still income through "keldi", and still files under salary.
+#: Standing on its own, the noun is the salary: "oylik 12 mln", "12 mln
+#: oylik", "oyligim", "oylikni oldim" (_SALARY_NOUN, below).
 _INCOME_WORDS = (r"keldi|tushdi|maosh|daromad|kirim|bonus|sotdim|foyda|"
                  r"зарплат|доход|пришл|получил|продал|прибыл|"
                  r"salary|income|earned|received|sold|profit")
 _EXPENSE_WORDS = (r"sarfladim|sarflad|to'ladim|toladim|to'lov|ketdi|xarajat|"
                   r"sotib oldim|ishlatdim|berdim|"
                   r"потратил|заплатил|купил|расход|spent|paid|bought")
+_SALARY_NOUN = re.compile(r"\boylig\w*|\boylikn\w*|"
+                          r"\boylik(?=\s*(?:$|\d|[.,!;:)]|oldim\b|berishdi\b))")
 _AMOUNT_RE = re.compile(
     r"(\d+(?:[  ]\d{3})*(?:[.,]\d+)?)\s*"
     r"(mlrd|milliard|млрд|billion|bn|million|millon|mln|млн|миллион\w*|"
@@ -3662,7 +3666,7 @@ def detect_money_category(text: str, kind: str = "expense") -> str:
     if kind == "income":
         if re.search(r"sotdim|savdo|sotuv|продал|продаж|sold|sales", lowered):
             return "sales"
-        if re.search(r"maosh|oylik|зарплат|salary", lowered):
+        if re.search(r"maosh|oylik|oylig|зарплат|salary", lowered):
             return "salary"
         return "other_in"
     for category, pattern in _MONEY_WORDS:
@@ -3688,6 +3692,9 @@ def parse_money_text(text: str, kind: str | None = None) -> dict | None:
     elif re.search(_EXPENSE_WORDS, lowered):
         kind = "expense"
     elif re.search(_INCOME_WORDS, lowered):
+        kind = "income"
+    elif _SALARY_NOUN.search(lowered) and not any(re.search(pattern, lowered)
+                                                   for _cat, pattern in _MONEY_WORDS):
         kind = "income"
     else:
         kind = "expense"

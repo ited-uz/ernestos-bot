@@ -27,8 +27,9 @@ START = """ErnestOS web — o'z kompyuteringizda (domen va hostingsiz)
 1. Shu ZIP'ni oching: o'ng tugma -> "Barchasini chiqarish" (Extract All).
 2. Windows: "ornatish-windows.bat" faylini ikki marta bosing.
    Mac: "ornatish-mac.command" -> o'ng tugma -> Open (birinchi marta).
+        Ochilmasa: Terminal'da "bash " yozib, faylni oynaga sudrang -> Enter.
 3. Dastur Documents\\PROJECTS\\ernestOS web papkasiga o'rnatiladi.
-   Python 3.11+ yo'q bo'lsa, Windows'da o'zi o'rnatiladi.
+   Python 3.11+ yo'q bo'lsa, o'zi o'rnatiladi.
    Birinchi marta 2-5 daqiqa (kutubxonalar), keyin bir necha soniya.
 4. Brauzer o'zi ochiladi: http://localhost:8000/app/
    Email bilan kiring. Kod shu yerda: http://localhost:8000/app/dev/mailbox
@@ -37,6 +38,8 @@ Keyingi safar: ish stolidagi "ErnestOS" yorlig'i (Windows)
 yoki papkadagi start-local.sh (Mac/Linux).
 
 Oynani yopmang - server shu oynada ishlaydi. To'xtatish: Ctrl+C.
+"localhost refused to connect" - server yoqilmagan: qora oyna ochiq
+va unda "ErnestOS ishlayapti" yozuvi bo'lishi kerak.
 Ma'lumotlaringiz: ernestOS web\\data\\ernestos.db (zaxira uchun shu faylni nusxalang).
 Batafsil: docs\\LOKAL.md
 """
