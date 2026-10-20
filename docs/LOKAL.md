@@ -6,7 +6,8 @@ ilova brauzerda ochiladi (kompyuterda ham, bir xil Wi-Fi'dagi telefonda ham).
 ## 1. O‘rnatish — `Documents\PROJECTS\ernestOS web`
 
 1. **`ernestOS-web.zip`** ni oching (o‘ng tugma → «Barchasini chiqarish»).
-   ZIP’ni o‘zingiz yig‘ish: `python scripts/package_local.py`.
+   ZIP’ni o‘zingiz yig‘ish: `python scripts/package_local.py`
+   (faqat Mac uchun, Windows fayllarisiz: `--mac` → `ernestOS-web-mac.zip`).
 2. **Windows:** `ornatish-windows.bat` ni ikki marta bosing. U:
    - dasturni **`Documents\PROJECTS\ernestOS web`** ga ko‘chiradi
      (OneDrive’dagi Documents ham hisobga olinadi);
@@ -31,7 +32,8 @@ yozilmaydi**.
 | Tizim | Nima qilinadi |
 |---|---|
 | **Windows** | Ish stolidagi **ErnestOS** yorlig‘i (yoki papkadagi `start-local.bat`) |
-| **macOS / Linux** | Papkada `./start-local.sh` (yoki `python3 run_local.py`) |
+| **macOS** | Ish stolidagi **ErnestOS** (`ErnestOS.command`) — ikki marta bosing |
+| **Linux** | Papkada `./start-local.sh` (yoki `python3 run_local.py`) |
 
 Birinchi marta 2–5 daqiqa ketadi (kutubxonalar o‘rnatiladi). Keyin har safar
 bir necha soniyada ochiladi. Brauzer o‘zi ochiladi:

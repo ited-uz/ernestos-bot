@@ -15,4 +15,4 @@ tests/e2e/out/
 # run_local.py: the local database and mailbox
 data/
 # scripts/package_local.py output
-ernestOS-web.zip
+ernestOS-web*.zip

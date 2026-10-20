@@ -58,4 +58,13 @@ if [ -z "$PY" ]; then
   exit 1
 fi
 echo "  • $($PY --version)"
+# The next time: a double-click on the desktop. Written here, on this Mac,
+# so it carries no download quarantine and opens without a Gatekeeper prompt.
+if [ "$(uname)" = "Darwin" ] && [ -d "$HOME/Desktop" ] && [ ! -e "$HOME/Desktop/ErnestOS.command" ]; then
+  if { printf '#!/bin/bash\n# ErnestOS — shu Mac’da. Ikki marta bosing; oynani yopmang.\n'
+       printf 'exec /bin/bash %q\n' "$DEST/ornatish-mac.command"; } > "$HOME/Desktop/ErnestOS.command" 2>/dev/null \
+     && chmod +x "$HOME/Desktop/ErnestOS.command"; then
+    echo "  • Ish stolida 'ErnestOS' — keyingi safar shuni ikki marta bosing"
+  fi
+fi
 exec "$PY" run_local.py "$@"

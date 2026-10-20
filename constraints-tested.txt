@@ -8,7 +8,10 @@ APScheduler==3.11.3
 certifi==2026.7.22
 cffi==2.1.1
 click==8.5.0
-cryptography==50.0.2
+cryptography==50.0.2; sys_platform != "darwin" or platform_machine != "x86_64"
+# An Intel Mac: 49 and later ship Apple Silicon wheels only, and a laptop has
+# no Rust toolchain to build one. 48.0.1 is the last with an Intel wheel.
+cryptography==48.0.1; sys_platform == "darwin" and platform_machine == "x86_64"
 fastapi==0.142.2
 h11==0.16.0
 httpcore==1.0.9
