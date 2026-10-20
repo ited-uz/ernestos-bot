@@ -3,19 +3,31 @@
 Domen ham, hosting ham kerak emas. Server sizning kompyuteringizda ishlaydi,
 ilova brauzerda ochiladi (kompyuterda ham, bir xil Wi-Fi'dagi telefonda ham).
 
-## 1. Bir martalik tayyorlov
+## 1. O‘rnatish — `Documents\PROJECTS\ernestOS web`
 
-1. **Python 3.11 yoki yangisi** — <https://www.python.org/downloads/>.
-   Windows'da o‘rnatishda **«Add python.exe to PATH»** belgisini qo‘ying.
-2. Loyihani yuklab oling (GitHub → **Code → Download ZIP**, keyin oching)
-   yoki `git clone`.
+1. **`ernestOS-web.zip`** ni oching (o‘ng tugma → «Barchasini chiqarish»).
+   ZIP’ni o‘zingiz yig‘ish: `python scripts/package_local.py`.
+2. **Windows:** `ornatish-windows.bat` ni ikki marta bosing. U:
+   - dasturni **`Documents\PROJECTS\ernestOS web`** ga ko‘chiradi
+     (OneDrive’dagi Documents ham hisobga olinadi);
+   - Python 3.11+ ni topadi, yo‘q bo‘lsa `winget` bilan o‘rnatadi
+     (winget bo‘lmasa python.org ochiladi — «Add python.exe to PATH»);
+   - ish stoliga **«ErnestOS»** yorlig‘ini qo‘yadi;
+   - serverni ishga tushiradi va brauzerni ochadi.
+3. **macOS:** `ornatish-mac.command` → o‘ng tugma → **Open** (birinchi marta
+   Gatekeeper so‘raydi). `~/Documents/PROJECTS/ernestOS web` ga o‘rnatadi.
+   Python 3.11+ kerak (<https://www.python.org/downloads/macos/>).
 
-## 2. Ishga tushirish
+Yangi versiyani o‘rnatish ham xuddi shunday: yangi ZIP → o‘rnatuvchi.
+Ma’lumotlar (`data/`), sozlamalar (`.env.local`) va `.venv` **ustidan
+yozilmaydi**.
+
+## 2. Keyingi safar
 
 | Tizim | Nima qilinadi |
 |---|---|
-| **Windows** | Papkadagi `start-local.bat` faylini ikki marta bosing |
-| **macOS / Linux** | Terminalda: `./start-local.sh` (yoki `python3 run_local.py`) |
+| **Windows** | Ish stolidagi **ErnestOS** yorlig‘i (yoki papkadagi `start-local.bat`) |
+| **macOS / Linux** | Papkada `./start-local.sh` (yoki `python3 run_local.py`) |
 
 Birinchi marta 2–5 daqiqa ketadi (kutubxonalar o‘rnatiladi). Keyin har safar
 bir necha soniyada ochiladi. Brauzer o‘zi ochiladi:
