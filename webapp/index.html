@@ -14,6 +14,15 @@
    opens the app without the parameter and never reaches this branch. */
 if(/[?&]preview(=|&|$)/.test(location.search))
   document.write('<script src="preview.js?v=12.1"><\/script>');
+/* The Mini App's address opened in a plain browser — no Telegram around it,
+   so nothing signed: the web app (/app/) is the way in there. Telegram
+   always hands its launch data over (in the address, or kept for a reload),
+   whether or not its script could be fetched. */
+else if(location.pathname === "/" && !window.Telegram?.WebApp?.initData
+        && !/tgWebApp/.test(location.hash + location.search)
+        && !(function(){ try{ return sessionStorage.getItem("__telegram__initParams"); }catch(_){ return null; } })()
+        && !window.ERNEST_PREVIEW_QS && !window.ERNEST_LOCAL_STORE)
+  location.replace("/app/" + location.search);
 </script>
 <style>
 /* ==================================================================
@@ -957,6 +966,7 @@ nav button:focus-visible{outline:2px solid var(--primary);outline-offset:-4px;
 /* The on-screen keyboard: while a field on the page has focus, the bar and
    the button step aside instead of riding up over what is being typed. */
 body:has(#app input:focus, #app textarea:focus) nav{visibility:hidden}
+
 
 /* Every screen's "add" lives in its own header, beside its title. A floating
    button covered the last row of whatever was underneath it — the thing
@@ -2092,6 +2102,47 @@ h1.greet{font-size:17px;font-weight:650;letter-spacing:-.2px;line-height:1.25}
 /* Quick capture: four kinds, one line each. */
 .seg.qk > *{font-size:14px;padding:6px 4px;gap:4px;display:flex;align-items:center;justify-content:center}
 #quick-note{min-height:120px}
+
+/* ==================================================================
+   A laptop, or a tablet on its side: the tabs become a side bar, the
+   screen gets room, and sheets open as dialogs in the middle. Same app,
+   same order of things — only the frame changes.
+   ================================================================== */
+.nav-brand{display:none}
+@media (min-width:1000px){
+  :root{--side-w:240px}
+  body{padding-left:var(--side-w);padding-bottom:var(--s5)}
+  body:has(nav:empty){padding-left:0}
+  nav{top:0;bottom:0;left:0;right:auto;width:var(--side-w);display:flex;flex-direction:column;
+      align-items:stretch;gap:2px;padding:20px 12px;border-top:0;
+      border-right:var(--border-w) solid var(--border);overflow-y:auto}
+  nav .nav-brand{display:flex;align-items:center;gap:10px;padding:4px 10px 22px;
+      font-size:18px;font-weight:720;letter-spacing:-.3px;color:var(--text)}
+  nav .nav-brand img{width:30px;height:30px;border-radius:8px;flex:none}
+  nav button{display:flex;align-items:center;justify-content:flex-start;gap:10px;
+      min-height:44px;padding:6px 10px;border-radius:12px;font-size:15px;font-weight:600;
+      color:var(--text-2);text-align:left;width:100%}
+  nav button > span:last-child{white-space:nowrap}
+  nav button .ic{width:26px;height:26px;flex:none}
+  nav button:hover{background:var(--surface-2);color:var(--text)}
+  nav button.on{background:color-mix(in srgb, var(--primary) 12%, var(--surface));color:var(--primary)}
+  nav button.on .ic{background:none}
+  nav button.apart{margin-top:12px}
+  nav button.apart::before{left:10px;right:10px;top:-7px;bottom:auto;border-left:0;
+      border-top:var(--border-w) solid var(--border)}
+  /* Typing on a laptop has no on-screen keyboard to make room for. */
+  body:has(#app input:focus, #app textarea:focus) nav{visibility:visible}
+  #app{max-width:1000px;padding:calc(var(--s5) + var(--safe-t, 0px)) 40px var(--s3)}
+  body.nt-wide #app{max-width:1220px}
+  #fab{right:max(24px, calc((100vw - var(--side-w) - 1000px) / 2 + 8px));bottom:28px}
+  .sheet{align-items:center;justify-content:center;padding:32px 24px}
+  .sheet-inner{max-width:620px;border-radius:20px;max-height:min(88vh, 940px);margin:0 auto;
+      padding:var(--s3) var(--s4) var(--s4);animation:dialog-in 180ms cubic-bezier(.2,.8,.2,1)}
+  .sheet .grabber{display:none}
+  .toast{bottom:32px;left:calc(50% + var(--side-w) / 2)}
+}
+@keyframes dialog-in{from{transform:scale(.98);opacity:.4} to{transform:none;opacity:1}}
+@media (min-width:1000px) and (prefers-reduced-motion:reduce){ .sheet-inner{animation:none} }
 </style>
 </head>
 <body>
@@ -2125,6 +2176,10 @@ const API_BASE = (window.ERNEST_CONFIG?.api || "").replace(/\/+$/, "");
 /* The Android/iOS app (native.js), as opposed to Telegram's Mini App. Strict:
    only native.js sets this flag to the literal `true`. */
 const IS_APP = tg?.isErnestApp === true;
+/* The same app in a plain browser (webapp/web.js): an app in every way,
+   but a laptop has no phone settings and saves files as downloads. */
+const IS_WEB = IS_APP && tg?.isErnestWeb === true;
+const VOICE_DENIED = IS_WEB ? "voice_denied_web" : IS_APP ? "voice_denied_app" : "voice_denied";
 tg?.ready();
 tg?.expand();
 tg?.disableVerticalSwipes?.();
@@ -2622,7 +2677,7 @@ const DICT = {
   your_copy:"Nusxasi", what_we_keep:"Nima saqlanadi", irreversible:"Qaytarib bo'lmaydi",
   download_backup:"JSON faylni yuklab olish",
   backup_hint:"Hamma ma'lumot bitta faylda — qurilmangizga. Ilovaga qaytarib yuklash hozircha yo'q.", backup_saved:"Fayl saqlandi",
-  export_hint:"Botga fayl sifatida yuboriladi", export_hint_app:"Telefoningizga fayl bo'lib saqlanadi",
+  export_hint:"Botga fayl sifatida yuboriladi", export_hint_app:"Telefoningizga fayl bo'lib saqlanadi", export_hint_web:"Kompyuter yoki telefoningizga fayl bo'lib yuklanadi", voice_denied_web:"Mikrofonga ruxsat yo'q. Manzil qatoridagi qulf belgisini bosing → Mikrofon → Ruxsat berish.", push_title_web:"Brauzer bildirishnomalari", push_web:"Brauzerda bildirishnoma hozircha yo'q. Eslatmalar ilova ichidagi Xabarlarda va Telegram botda.",
   privacy_policy:"Maxfiylik siyosati", policy_hint:"Nima saqlanadi va qayerda",
   sessions:"Kirishlar", sessions_hint:"Hisob qayerdan ochilgan",
   sessions_body:"ErnestOS Telegram hisobingiz orqali ishlaydi — alohida parol yo'q. Seansni yopish uchun Telegram sozlamalaridagi «Qurilmalar» bo'limidan foydalaning.",
@@ -3200,7 +3255,7 @@ const DICT = {
   your_copy:"Your copy", what_we_keep:"What is kept", irreversible:"Cannot be undone",
   download_backup:"Download as a JSON file",
   backup_hint:"All your data in one file, on your device. Loading it back is not available yet.", backup_saved:"File saved",
-  export_hint:"Sent to the bot as a file", export_hint_app:"Saved on your phone as a file",
+  export_hint:"Sent to the bot as a file", export_hint_app:"Saved on your phone as a file", export_hint_web:"Downloaded to your computer or phone as a file", voice_denied_web:"No microphone access. Click the lock icon in the address bar → Microphone → Allow.", push_title_web:"Browser notifications", push_web:"No browser notifications yet. Reminders are in the in-app Inbox and the Telegram bot.",
   privacy_policy:"Privacy policy", policy_hint:"What is stored, and where",
   sessions:"Sessions", sessions_hint:"Where this account is open",
   sessions_body:"ErnestOS signs you in through your Telegram account — there is no separate password. To end a session, use Devices in your Telegram settings.",
@@ -3777,7 +3832,7 @@ const DICT = {
   your_copy:"Ваша копия", what_we_keep:"Что хранится", irreversible:"Необратимо",
   download_backup:"Скачать файл JSON",
   backup_hint:"Все данные в одном файле на вашем устройстве. Загрузить обратно пока нельзя.", backup_saved:"Файл сохранён",
-  export_hint:"Придёт в бот файлом", export_hint_app:"Сохранится на телефоне файлом",
+  export_hint:"Придёт в бот файлом", export_hint_app:"Сохранится на телефоне файлом", export_hint_web:"Скачается файлом на компьютер или телефон", voice_denied_web:"Нет доступа к микрофону. Нажмите на значок замка в адресной строке → Микрофон → Разрешить.", push_title_web:"Уведомления в браузере", push_web:"Уведомлений в браузере пока нет. Напоминания — во «Входящих» в приложении и в Telegram-боте.",
   privacy_policy:"Политика приватности", policy_hint:"Что хранится и где",
   sessions:"Входы", sessions_hint:"Где открыт этот аккаунт",
   sessions_body:"ErnestOS входит через ваш аккаунт Telegram — отдельного пароля нет. Чтобы завершить сеанс, откройте «Устройства» в настройках Telegram.",
@@ -4876,9 +4931,9 @@ async function chatVoice(){
   const c = state.chat || (state.chat = {});
   if(c.busy || c.recording) return;
   haptic("medium");
-  if(!voiceSupported()) return toast(t(IS_APP ? "voice_denied_app" : "voice_denied"));
+  if(!voiceSupported()) return toast(t(VOICE_DENIED));
   try{ chatRec.stream = await navigator.mediaDevices.getUserMedia({audio:true}); }
-  catch(_){ return toast(t(IS_APP ? "voice_denied_app" : "voice_denied")); }
+  catch(_){ return toast(t(VOICE_DENIED)); }
   const mime = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4", "audio/webm"]
     .find(m => MediaRecorder.isTypeSupported?.(m)) || "";
   try{ chatRec.rec = new MediaRecorder(chatRec.stream, mime ? {mimeType: mime} : undefined); }
@@ -10091,7 +10146,7 @@ function notifySheet(){
   const ps = state.pushStatus;
   const pushRow = !IS_APP ? "" : `<div class="card tight" style="margin:var(--s2) 0">
       <div class="row" style="gap:8px;align-items:center">
-        <div class="grow"><b>${t("push_title")}</b>
+        <div class="grow"><b>${t(IS_WEB ? "push_title_web" : "push_title")}</b>
           <div class="t2 small">${ps ? t("push_" + ps) : "…"}</div></div>
         ${ps === "ask" ? `<button class="btn sm" data-act="push-allow">${t("push_allow")}</button>` : ""}
       </div>
@@ -10809,7 +10864,7 @@ function privacyDataSheet(){
     </div>
 
     <label>${t("your_copy")}</label>
-    ${row("export", "download", "tone-1", t("export_data"), t(IS_APP ? "export_hint_app" : "export_hint"))}
+    ${row("export", "download", "tone-1", t("export_data"), t(IS_WEB ? "export_hint_web" : IS_APP ? "export_hint_app" : "export_hint"))}
     ${IS_APP ? "" : row("backup", "shield", "tone-2", t("download_backup"), t("backup_hint"))}
 
     <label>${t("what_we_keep")}</label>
@@ -10924,6 +10979,9 @@ const NAV = [
   {id:"money",   icon:"wallet", key:"nav_money"},
   {id:"profile", icon:"user",   key:"nav_profile"},
 ];
+//: The name above the tabs when they stand as a side bar (a laptop).
+const NAV_BRAND = `<div class="nav-brand" aria-hidden="true"><img alt="" width="30" height="30"
+  src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAHjUExURQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwMDD09PUlJSUhISEpKSjQ0NAEBAQ8PD5SUlPT09Pj4+Pn5+fLy8mtraxISEpubm/z8/P////7+/o6OjggICBUVFaGhoaWlpRAQEAMDA4GBgYODg4SEhHFxcRkZGcbGxu3t7S8vLw0NDcfHx+zs7C4uLuvr6y0tLQABAQMgEgQvGgMuGgMvGgQiEwABAK+vrwEEAgaTUgTWdwPTdQPSdATSdQPTdAbNcwhaNLa2th4eHgQnFgdbMgW5ZgHifAHgewPgeweASAIIBcjIyLu7ux8fHwVmOAPifAHjfAHjfQLjfQeTUwIPCQ4ODoKCgiQkJAMXDQZgNQaeVgPYdwWlWwSbVgScVwaBSQMaDwICAgsLCwU0HgTYdwLifATbeAduPgIJBQADAgECAQINBwdpOwaUUwLceQPceQdzQAEHBAMdEATHbQHlfQLbeAd3QgQKBgIBAQAGAwZyPwahWQPXdgDbdiKWX42UkKuqqqqqqq2trWlpaQELBgOxYQHnfgHbdyKXYLK5tv79/tjY2ASvXwHdeCOZYrS8uObm5iCaYa62svr5+erq6mBgYAMpFxskIEhHR0dHRzU1NQQEBO81g9gAAAAMdFJOUwABL5Td+gRe3PEw20BXm4YAAAABYktHRB5yCiArAAAAB3RJTUUH6goUChAQtCLNzgAAAW1JREFUOMtjYGBgZGJmYeXBAKwszEyMDEDAxs7BgwNwsLMBFbBz8uAEnOwMDFzcPHgANxcDMw9ewMzAgV8BBwOS+3n5+AWgQFBIGOoXBoS8iKiYOBBIgLCkFEwUoUBaRlZOHgLkZBUUMRQoKQPl5SBAXkWVB12Bmqi8vISKugYIaGpp82Ao4NWRk9PVw+INmAJ9Azk5QyMCCoxNeEzNzC1AwNLKGosCG1UeWzt7B0dHJ2cXVywmuLnzeHh6efsAga+fP4aCgMAgHp7gEB/v0LCw8IhIDDdERcfwxMbFeyckJiUlp6RiOjItnYcnIzMrOyc3z9Y2H4sveHgKCouKS0rLcHmTh6e8orKquqY2DQLU0BXU1Tc0NjW3tLZBQHuHMJqCzq7unt6+fmhsyU0QQjehc+KkyVP6YdE9VQDDDZ2J06bPEIcAiZmzkBwJTXJ5s+fMFZgHAQLzFyCyD+FESzDZE8w4BLMe4cxLIPsDAACEbS4vwxiFAAAAAElFTkSuQmCC">ErnestOS</div>`;
 //: Which tab stays lit for each screen. A project opens from Tasks.
 const NAV_OF = {note:"notes", habits:"tracker", tasks:"tracker", goals:"tracker", project:"tracker",
                 team:"tracker", steps:"profile", stats:"profile", people:"profile", more:"profile"};
@@ -11234,7 +11292,7 @@ function render(){
   const active = NAV_OF[state.screen] || state.screen;
   /* An empty bar is hidden by CSS (`nav:empty`), so the tab bar appears with
      the first screen's content rather than over a blank page. */
-  document.getElementById("nav").innerHTML = chromeOff ? "" : NAV.map(n => `
+  document.getElementById("nav").innerHTML = chromeOff ? "" : NAV_BRAND + NAV.map(n => `
     <button data-act="nav" data-screen="${n.id}"
             class="${active === n.id ? "on" : ""} ${n.apart ? "apart" : ""}"
             aria-current="${active === n.id ? "page" : "false"}">
@@ -11263,7 +11321,9 @@ function render(){
 function syncShell(){
   const nav = document.getElementById("nav");
   const root = document.documentElement;
-  const navH = nav.offsetHeight || 60;
+  // Beside the screen (a laptop's side bar) the bar takes no room below it.
+  const side = window.matchMedia?.("(min-width:1000px)").matches && nav.innerHTML !== "";
+  const navH = side ? 0 : (nav.offsetHeight || 60);
   root.style.setProperty("--nav-h", navH + "px");
   // Room under the last row for the + and microphone buttons.
   const fab = document.getElementById("fab");
@@ -12372,7 +12432,7 @@ const A = {
     if(!state.me?.agent?.consent) return openSheet(voiceConsentSheet(), "voice");
     if(!voiceSupported()) return A["agent-open"]();
     try{ voice.stream = await navigator.mediaDevices.getUserMedia({audio:true}); }
-    catch(_){ toast(t(IS_APP ? "voice_denied_app" : "voice_denied")); return A["agent-open"](); }
+    catch(_){ toast(t(VOICE_DENIED)); return A["agent-open"](); }
     const mime = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4", "audio/webm"]
       .find(m => MediaRecorder.isTypeSupported?.(m)) || "";
     try{ voice.rec = new MediaRecorder(voice.stream, mime ? {mimeType: mime} : undefined); }
@@ -15009,6 +15069,12 @@ document.addEventListener("keydown", e => {
   if(!el || CHANGE_TAGS.has(el.tagName) || el.tagName === "BUTTON") return;
   e.preventDefault();
   A[el.dataset.act]?.(el);
+});
+// Escape closes what is open on top — a sheet, the note editor's dialogs.
+document.addEventListener("keydown", e => {
+  if(e.key !== "Escape" || e.isComposing || !sheetOpen()) return;
+  e.preventDefault();
+  closeSheet();
 });
 // In the chat, Enter sends on a keyboard; on a phone it is a new line.
 document.addEventListener("keydown", e => {

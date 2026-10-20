@@ -31,7 +31,10 @@ import shutil
 
 from dotenv import load_dotenv
 
-load_dotenv()
+# run_local.py hands its own settings (.env.local) in the environment; a
+# stray .env with a server's values must not fill in what it left out.
+if os.environ.get("ERNEST_NO_DOTENV") != "1":
+    load_dotenv()
 
 #: development | test | production. Read here and imported everywhere else,
 #: with one exception: `db.py` reads it directly, because it must decide
@@ -190,6 +193,15 @@ def check() -> None:
     contributor with no bot token should still be able to run the API and the
     suite, which is exactly what `ENVIRONMENT` is for.
     """
+    if ENVIRONMENT == "local":
+        # A local run shows sign-in codes on a page of its own (web_app.py):
+        # never on a server other people can reach.
+        public = os.environ.get("PUBLIC_URL", "").strip().lower()
+        hosted = any(os.environ.get(k) for k in ("RAILWAY_ENVIRONMENT", "RAILWAY_PROJECT_ID", "RENDER", "FLY_APP_NAME",
+                                                 "DYNO", "K_SERVICE"))
+        if hosted or (public and not re.match(r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?/?$", public)):
+            raise RuntimeError("ENVIRONMENT=local is for running on this computer only; "
+                               "set ENVIRONMENT=production on a server.")
     if not IS_PRODUCTION:
         return
     missing = [name for name, value in (("BOT_TOKEN", BOT_TOKEN),) if not value]

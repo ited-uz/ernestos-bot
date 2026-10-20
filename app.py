@@ -57,6 +57,7 @@ import promo
 import plans
 import agent_api
 import notes_api
+import web_app
 import notes_connector
 import notes_portable
 import notes as notes_svc
@@ -5896,6 +5897,26 @@ async def _send_team_summaries(bot, telegram_id: int, lang: str,
     return sent
 
 
+class OfflineBot:
+    """The bot, when the server runs without one (no BOT_TOKEN, a local run).
+
+    Every call is refused as Telegram refuses a chat it may not write to, so
+    the jobs take the path they already take for that: the message goes to
+    the account's app inbox (AccountFanOut, the timer notice), nothing is
+    retried in a loop, and nobody is marked as having blocked anything."""
+
+    async def _refuse(self, *args, **kwargs):
+        raise Forbidden("no Telegram bot on this server")
+
+    def __getattr__(self, name):
+        return self._refuse
+
+
+async def _no_channel_stats(bot) -> None:
+    """Platform statistics are a channel post; without a bot there is none."""
+    return None
+
+
 class AccountFanOut:
     """A bot whose `send_message` also reaches every Telegram signed in to
     the account it is addressed to.
@@ -7261,6 +7282,18 @@ async def lifespan(_: FastAPI):
             send_reports=send_reports,
             send_reminders=send_reminders,
             send_platform_stats=send_platform_stats_tick,
+            tick_timers=tick_timers,
+            plan_notices=send_plan_notices)
+    elif ENVIRONMENT != "test":
+        # No Telegram bot (a local run, say): the jobs still run, and what
+        # they would have said in Telegram goes to the app inbox of everyone
+        # who uses the web or phone app — reminders, reports, timers.
+        log.warning("BOT_TOKEN missing — no Telegram bot; reminders and reports go to the app inbox")
+        scheduler = scheduling.start(
+            OfflineBot(),
+            send_reports=send_reports,
+            send_reminders=send_reminders,
+            send_platform_stats=_no_channel_stats,
             tick_timers=tick_timers,
             plan_notices=send_plan_notices)
     else:
@@ -11294,17 +11327,24 @@ async def api_plans_invoice(body: InvoiceIn, init=Header(default=None, alias="X-
 class AppLoginIn(BaseModel):
     code: str = Field(max_length=32)
     device: str = Field(default="", max_length=80)
+    #: The web app (web_app.py): the session goes into an HttpOnly cookie
+    #: instead of the answer, where page scripts could read it.
+    web: bool = False
 
 
 @app.get("/api/app/config")
-def api_app_config():
+def api_app_config(request: Request):
     """What the phone app needs before anybody is signed in. Public."""
     return {"bot_username": BOT_USERNAME, "version": version.VERSION,
-            "email": mailer.configured(), **social_auth.public_config()}
+            # Whether a Telegram bot exists at all (a local run has none).
+            "telegram": bool(BOT_TOKEN),
+            "email": mailer.configured(), **social_auth.public_config(),
+            # A local run only: where the sign-in codes can be read.
+            **({"dev_mailbox": "/app/dev/mailbox"} if web_app.dev_mailbox_on(request) else {})}
 
 
 @app.post("/api/app/login")
-def api_app_login(body: AppLoginIn):
+def api_app_login(body: AppLoginIn, request: Request, response: Response):
     """Trade the bot's one-time code for a session. Wrong, used and expired
     codes all get the same answer, and the `auth` rate class keeps guessing
     slow."""
@@ -11312,6 +11352,9 @@ def api_app_login(body: AppLoginIn):
         token = app_auth.redeem_code(s, body.code, body.device)
     if token is None:
         raise HTTPException(status_code=401, detail="bad_code")
+    if body.web:
+        web_app.set_session(response, request, token)
+        return {"ok": True}
     return {"token": app_auth.TOKEN_PREFIX + token}
 
 
@@ -11327,6 +11370,7 @@ class EmailVerifyIn(BaseModel):
     code: str = Field(max_length=12)
     device: str = Field(default="", max_length=80)
     language: str = Field(default="uz", max_length=2)
+    web: bool = False
 
 
 async def _mail_code(email: str, purpose: str, language: str,
@@ -11427,7 +11471,7 @@ async def api_email_start(body: EmailStartIn):
 
 
 @app.post("/api/auth/email/verify")
-def api_email_verify(body: EmailVerifyIn):
+def api_email_verify(body: EmailVerifyIn, request: Request, response: Response):
     """Trade the mailed code for a phone session: the address's account, or
     a new one (`new: true`, setup then runs in the app)."""
     try:
@@ -11442,6 +11486,9 @@ def api_email_verify(body: EmailVerifyIn):
         if new:
             account = email_auth.create_account(s, email, language=body.language)
         token = app_auth.issue_session(s, account, body.device)
+    if body.web:
+        web_app.set_session(response, request, token)
+        return {"ok": True, "new": new}
     return {"token": app_auth.TOKEN_PREFIX + token, "new": new}
 
 
@@ -11546,28 +11593,46 @@ def _oauth_page(lang: str, ok: bool):
 
 
 @app.get("/api/auth/oauth/{provider}/start")
-def api_oauth_start(provider: str, state: str = "", lang: str = "uz"):
-    """Open the provider's page for a sign-in the app started with `state`."""
+def api_oauth_start(request: Request, provider: str, state: str = "", lang: str = "uz", web: int = 0):
+    """Open the provider's page for a sign-in the app started with `state`.
+
+    From the web app (`web=1`) the server makes the secret itself and keeps
+    it in this browser's cookie: only the browser that started the sign-in
+    can finish it, so a link someone sends cannot sign them into your
+    account, nor you into theirs."""
     if provider not in social_auth.PROVIDERS or not social_auth.browser_ready(provider):
-        return _oauth_page(lang, False)
+        return web_app.oauth_done(request, None) if web else _oauth_page(lang, False)
+    binder = None
+    if web:
+        state, binder = web_app.oauth_start(request)
     if not social_auth.valid_state(state):
         return _oauth_page(lang, False)
     with SessionLocal() as s:
-        url = social_auth.start(s, provider, state, lang)
-    return RedirectResponse(url, status_code=302, headers={"Cache-Control": "no-store"})
+        url = social_auth.start(s, provider, state, lang, web=binder is not None)
+    response = RedirectResponse(url, status_code=302, headers={"Cache-Control": "no-store"})
+    if binder:
+        web_app.bind_oauth(response, request, binder)
+    return response
 
 
-def _oauth_finish(provider: str, state: str, id_token: str | None, error: str | None):
+def _oauth_finish(request: Request, provider: str, state: str, id_token: str | None, error: str | None):
     """Check the token against the attempt's nonce, sign in, and leave the
-    session for the app to collect."""
+    session for the app to collect — or, when this browser started it from
+    the web app, hand the session to this browser and nobody else."""
+    this_browser = web_app.oauth_binder(request, state) is not None
     with SessionLocal() as s:
         row = social_auth.pending(s, state) if social_auth.valid_state(state) else None
         if row is None or row.provider != provider:
-            return _oauth_page("uz", False)
-        lang = row.language
+            return web_app.oauth_done(request, None) if this_browser else _oauth_page("uz", False)
+        lang, web = row.language, bool(row.web)
+        if web and not this_browser:
+            # A web sign-in finished in another browser than the one that
+            # started it — a link someone was sent. It ends here.
+            social_auth.finish(s, row, error="other_browser")
+            return web_app.oauth_done(request, None)
         if error or not id_token:
             social_auth.finish(s, row, error="cancelled" if error else "no_token")
-            return _oauth_page(lang, False)
+            return web_app.oauth_done(request, None) if web else _oauth_page(lang, False)
         audiences = (social_auth.google_audiences() if provider == "google"
                      else social_auth.apple_audiences())
         try:
@@ -11575,16 +11640,20 @@ def _oauth_finish(provider: str, state: str, id_token: str | None, error: str | 
         except oidc.TokenError as e:
             log.info("%s token refused: %s", provider, e)
             social_auth.finish(s, row, error="bad_token")
-            return _oauth_page(lang, False)
+            return web_app.oauth_done(request, None) if web else _oauth_page(lang, False)
         account, new = social_auth.sign_in(s, provider, claims, language=lang)
-        token = app_auth.TOKEN_PREFIX + app_auth.issue_session(s, account, provider + " · browser")
+        raw = app_auth.issue_session(s, account, provider + (" · web" if web else " · browser"))
         row = social_auth.pending(s, state)
-        social_auth.finish(s, row, token=token, new=new)
+        if web:
+            # Nothing is left to collect: the session is this browser's cookie.
+            social_auth.finish(s, row, error="web")
+            return web_app.oauth_done(request, raw)
+        social_auth.finish(s, row, token=app_auth.TOKEN_PREFIX + raw, new=new)
     return _oauth_page(lang, True)
 
 
 @app.get("/api/auth/oauth/google/callback")
-def api_oauth_google_callback(state: str = "", code: str = "", error: str = ""):
+def api_oauth_google_callback(request: Request, state: str = "", code: str = "", error: str = ""):
     id_token = None
     if code and not error:
         try:
@@ -11592,7 +11661,7 @@ def api_oauth_google_callback(state: str = "", code: str = "", error: str = ""):
         except Exception as e:
             log.info("google code exchange failed: %s", type(e).__name__)
             error = "exchange"
-    return _oauth_finish("google", state, id_token, error or None)
+    return _oauth_finish(request, "google", state, id_token, error or None)
 
 
 @app.post("/api/auth/oauth/apple/callback")
@@ -11600,7 +11669,7 @@ async def api_oauth_apple_callback(request: Request):
     """Apple posts the result here (form_post): the ID token and our state."""
     from urllib.parse import parse_qs
     form = {k: v[0] for k, v in parse_qs((await request.body()).decode("utf-8", "replace")).items()}
-    return _oauth_finish("apple", form.get("state", ""), form.get("id_token"), form.get("error"))
+    return _oauth_finish(request, "apple", form.get("state", ""), form.get("id_token"), form.get("error"))
 
 
 class OAuthPollIn(BaseModel):
@@ -11853,6 +11922,11 @@ async def security_headers(request: Request, call_next):
 # data. Compressed it is about a fifth of that. Small answers are left as
 # they are: compressing them costs more than it saves.
 app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
+
+# The web app (laptop and phone browsers) — added last, so its session
+# middleware is the outermost layer: everything inside sees the header the
+# phone app sends.
+web_app.install(app)
 
 app.add_middleware(
     CORSMiddleware,

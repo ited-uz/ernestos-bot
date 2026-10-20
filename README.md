@@ -6,6 +6,9 @@
 - **Tariflar: Free / Pro / Max** — `plans.py`, qoidalar `docs/AMALDAGI_QOIDALAR.md`da.
   Yangi akkaunt 3 kun Pro, kanal +7 kun, to‘lov Telegram Stars. Botda `/tarif`.
 - **Telefon ilovasi** (Android, Capacitor) — `docs/MOBILE.md`.
+- **Web ilova** (kompyuter va telefon brauzeri, o‘rnatsa bo‘ladi) — `<server>/app/`, `docs/WEB.md`.
+- **O‘z kompyuteringizda** (domen/hostingsiz): Windows — `start-local.bat`, macOS/Linux —
+  `./start-local.sh` (yoki `python run_local.py`) → <http://localhost:8000/app/>. `docs/LOKAL.md`.
 - **100 bandlik tahlil** — nima qilindi, nima rad etildi: `docs/AUDIT_100_TRIAGE.md`.
 
 ## Avval shu bo‘limni o‘qing

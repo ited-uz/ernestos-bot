@@ -122,8 +122,12 @@
     return nativeFetch(input, init).then(function (res) {
       if (res.status === 401 && token && url && url.indexOf(API + "/api/") === 0
           && url.indexOf("/api/app/") === -1) {
-        store.clear();
-        location.replace("login.html");
+        // Only the server's own "unauthorized" means the session ended: a
+        // wrong code (attaching an email, say) is a 401 too, and must not
+        // sign anybody out.
+        res.clone().json().then(function (b) {
+          if (b && b.detail === "unauthorized") { store.clear(); location.replace("login.html"); }
+        }).catch(function () {});
       }
       return res;
     });

@@ -12,3 +12,5 @@ venv/
 .ruff_cache/
 ZIP_MANIFEST.json
 tests/e2e/out/
+# run_local.py: the local database and mailbox
+data/

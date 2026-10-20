@@ -1369,6 +1369,9 @@ class OAuthPending(Base):
     token: Mapped[str | None] = mapped_column(String(120), nullable=True)
     new_account: Mapped[bool] = mapped_column(Boolean, default=False)
     error: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    #: Started by the web app: only the browser holding its cookie may
+    #: finish it, and the session is never left here to be collected.
+    web: Mapped[bool | None] = mapped_column(Boolean, default=False, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

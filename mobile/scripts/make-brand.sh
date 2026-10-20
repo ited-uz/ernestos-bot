@@ -52,4 +52,18 @@ done
 place 512 60 black "$TMP/tile.png"
 convert "$TMP/tile.png" -resize 192x192 src/logo.png
 convert "$TMP/full.png" -resize 640x src/logo-full.png
+
+# The web app (/app/): install icons — a rounded black tile, a full-bleed
+# maskable one with the mark inside the safe circle, and Apple's touch icon.
+WEB=../webapp/icons
+mkdir -p "$WEB"
+place 2048 58 black "$TMP/w.png"
+convert "$TMP/w.png" \( -size 2048x2048 xc:none -fill white -draw "roundrectangle 0,0 2047,2047 450,450" \) \
+  -compose CopyOpacity -composite "$TMP/w-round.png"
+for s in 512 192 32; do
+  name=icon-$s.png; [ $s = 32 ] && name=favicon-32.png
+  convert "$TMP/w-round.png" -resize ${s}x${s} -strip -depth 8 "$WEB/$name"
+done
+place 1024 40 black "$TMP/w-mask.png"; convert "$TMP/w-mask.png" -resize 512x512 -strip -depth 8 "$WEB/maskable-512.png"
+place 1024 56 black "$TMP/w-apple.png"; convert "$TMP/w-apple.png" -resize 180x180 -strip -depth 8 "$WEB/apple-touch-icon.png"
 echo "brand assets written"

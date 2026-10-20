@@ -76,6 +76,7 @@ details.tg summary{cursor:pointer;color:var(--text-2);font-size:14px;font-weight
 details.tg summary::-webkit-details-marker{display:none}
 details.tg[open] summary{margin-bottom:8px}
 .note{font-size:13px;color:var(--text-3);text-align:center;margin:12px 0 0}
+.note a{color:var(--primary);font-weight:600}
 .or{display:flex;align-items:center;gap:12px;color:var(--text-3);font-size:13px;margin:18px 0 12px}
 .or::before,.or::after{content:"";flex:1;height:1px;background:var(--border-2)}
 .sbtn{width:100%;min-height:50px;border-radius:12px;font:inherit;font-size:16px;font-weight:600;cursor:pointer;
@@ -100,6 +101,15 @@ details.tg[open] summary{margin-bottom:8px}
 .usp span{color:var(--text-2);font-size:14px;line-height:1.4}
 .legal{font-size:13px;color:var(--text-2);text-align:center;margin:22px 0 0;line-height:1.5}
 .legal a{color:var(--primary);font-weight:600}
+/* A laptop or a tablet on its side: the way in on the left, why on the right. */
+@media (min-width: 960px){
+  body{padding-top:72px;justify-content:center}
+  main{max-width:1000px;display:grid;grid-template-columns:minmax(0,420px) minmax(0,1fr);column-gap:64px;align-items:start}
+  main > *{grid-column:1}
+  main > .usp{grid-column:2;grid-row:1 / span 8;margin:0;align-self:center}
+  .usp h2{text-align:left;font-size:22px;margin-bottom:16px}
+  .usp li{padding:14px 16px}
+}
 </style>
 </head>
 <body>
@@ -128,6 +138,9 @@ details.tg[open] summary{margin-bottom:8px}
              maxlength="6" placeholder="••••••" aria-label="code" />
       <p class="msg" id="otp-msg" role="alert"></p>
       <button class="btn" id="verify" type="submit"></button>
+      <!-- A local run (run_local.py) has no mail service: the code is shown
+           in this computer's mailbox page instead. -->
+      <p class="note" id="dev-mail" hidden><a id="dev-mail-link" href="/app/dev/mailbox" target="_blank" rel="noopener"></a></p>
       <div class="links">
         <button class="link" id="resend" type="button"></button>
         <button class="link" id="change" type="button"></button>
@@ -196,7 +209,8 @@ details.tg[open] summary{margin-bottom:8px}
               ["🧭","Butun hayot — bitta ilovada","Vazifa, odat, namoz, moliya, qarz, maqsad va yaqinlar. 5–6 ta ilova o'rniga bittasi, bitta «Bugun» va bitta statistika."],
               ["🕌","Musulmon kun tartibiga mos","5 vaqt namoz (jamoat bilan, vaqtida, qazo) kunlik natijangizga kiradi; «Islom va xayriya» maqsadlari alohida yo'nalish."],
               ["🎯","«Hozir» — bitta ish, ro'yxat emas","Ochganingizda ro'yxat emas, aynan hozir qilinadigan bitta ish turadi. Pro/Max'da uni AI tanlaydi va sababini bir gapda aytadi."],
-              ["👥","Telegram'da ham, telefonda ham, jamoa bilan","Bot va Mini App, Android ilova — bitta akkaunt. Oila yoki jamoaga topshiriq bering, kim nima qilganini ko'ring."]],
+              ["👥","Telegram'da ham, telefonda ham, jamoa bilan","Bot va Mini App, Android ilova, kompyuterda brauzer — bitta akkaunt. Oila yoki jamoaga topshiriq bering, kim nima qilganini ko'ring."]],
+        dev_mail:"📬 Lokal rejim: kodni shu kompyuterdagi pochta qutisida ko'ring",
         legal:"Davom etsangiz, {privacy} bilan rozilik bildirasiz. {delete}",
         privacy:"Maxfiylik siyosati", delete_acc:"Akkauntni o'chirish",
         or:"yoki", google:"Google orqali kirish", apple:"Apple orqali kirish",
@@ -231,7 +245,8 @@ details.tg[open] summary{margin-bottom:8px}
               ["🧭","Вся жизнь — в одном приложении","Задачи, привычки, намаз, финансы, долги, цели и близкие. Одно вместо 5–6 приложений, один «Сегодня» и одна статистика."],
               ["🕌","Под распорядок мусульманина","5 намазов (с джамаатом, вовремя, када) входят в итог дня; цели «Ислам и благотворительность» — отдельное направление."],
               ["🎯","«Сейчас» — одно дело, а не список","При открытии — не список, а одно дело, которое нужно сделать сейчас. В Pro/Max его выбирает AI и объясняет причину одной фразой."],
-              ["👥","В Telegram и на телефоне, вместе с командой","Бот и Mini App, Android-приложение — один аккаунт. Давайте задачи семье или команде и видите, кто что сделал."]],
+              ["👥","В Telegram и на телефоне, вместе с командой","Бот и Mini App, Android-приложение, браузер на компьютере — один аккаунт. Давайте задачи семье или команде и видите, кто что сделал."]],
+        dev_mail:"📬 Локальный режим: код — в почтовом ящике этого компьютера",
         legal:"Продолжая, вы принимаете {privacy}. {delete}",
         privacy:"Политику конфиденциальности", delete_acc:"Удаление аккаунта",
         or:"или", google:"Войти через Google", apple:"Войти через Apple",
@@ -266,7 +281,8 @@ details.tg[open] summary{margin-bottom:8px}
               ["🧭","Your whole life in one app","Tasks, habits, prayer, money, debts, goals and close people. One app instead of five or six, one Today and one set of stats."],
               ["🕌","Built around a Muslim day","The five daily prayers (in congregation, on time, qada) count in your day's result; Islam & charity is a goal area of its own."],
               ["🎯","“Now” — one thing, not a list","You open the app to the one thing to do right now, not a list. On Pro/Max the AI picks it and says why in one sentence."],
-              ["👥","In Telegram and on your phone, with your team","Bot and Mini App, Android app — one account. Assign tasks to family or a team and see who did what."]],
+              ["👥","In Telegram and on your phone, with your team","Bot and Mini App, Android app, a browser on your computer — one account. Assign tasks to family or a team and see who did what."]],
+        dev_mail:"📬 Local run: read the code in this computer's mailbox",
         legal:"By continuing you accept the {privacy}. {delete}",
         privacy:"Privacy policy", delete_acc:"Delete account",
         or:"or", google:"Sign in with Google", apple:"Sign in with Apple",
@@ -333,6 +349,7 @@ details.tg[open] summary{margin-bottom:8px}
       return '<a href="' + base + path + '?lang=' + lang + '" data-ext="1">' + text + '</a>'; };
     $("legal").innerHTML = T.legal.replace("{privacy}", link("/privacy", T.privacy))
                                   .replace("{delete}", link("/account/delete", T.delete_acc));
+    $("dev-mail-link").textContent = T.dev_mail;
     $("t-google").textContent = T.google;
     $("t-apple").textContent = T.apple;
     $("t-waiting").textContent = T.waiting;
@@ -363,9 +380,18 @@ details.tg[open] summary{margin-bottom:8px}
       // No mail service on the server: say so, and open the Telegram way.
       if(c.email === false){ $("email-msg").textContent = T.no_mail; $("tg-box").open = true; }
       showSocial(c);
+      if(c.dev_mailbox){ $("dev-mail-link").href = c.dev_mailbox; $("dev-mail").hidden = false; }
+      // No Telegram bot on this server (a local run) and email works: the
+      // bot's code is no way in here, so it is not offered.
+      if(c.telegram === false && c.email !== false) $("tg-box").hidden = true;
+      // Back from Google/Apple without a session (cancelled, or refused).
+      if(/[?&]oauth=failed/.test(location.search)) $("social-msg").textContent = T.social_fail;
     })
     .catch(function(){});
 
+  /* In a browser (web.js) the session goes into an HttpOnly cookie, never
+     into this page's hands; on the phone it comes back as a token. */
+  var WEB = !!(window.ErnestApp && window.ErnestApp.web);
   function device(){
     return ((window.Telegram && Telegram.WebApp.platform) || "app") + " · " +
            (navigator.userAgent.match(/\(([^;)]+;[^;)]+)/) || ["", ""])[1].slice(0, 60);
@@ -427,7 +453,7 @@ details.tg[open] summary{margin-bottom:8px}
     if(checking) return;
     checking = true;
     var btn = $("verify"); btn.disabled = true; btn.textContent = T.wait;
-    post("/api/auth/email/verify", {email: mail.email, code: code, device: device(), language: lang})
+    post("/api/auth/email/verify", {email: mail.email, code: code, device: device(), language: lang, web: WEB})
       .then(function(r){
         if(r.ok) return r.json().then(function(b){ window.ErnestApp.signIn(b.token); });
         if(r.status === 429){
@@ -475,6 +501,10 @@ details.tg[open] summary{margin-bottom:8px}
     return Array.prototype.map.call(bytes, function(b){ return ("0" + b.toString(16)).slice(-2); }).join("");
   }
   function viaBrowser(provider){
+    if(WEB){
+      location.href = "/api/auth/oauth/" + provider + "/start?web=1&lang=" + lang;
+      return;
+    }
     var c = window.crypto;
     if(!c || !c.getRandomValues || !c.subtle){ socialFail(); return; }
     var v = new Uint8Array(32); c.getRandomValues(v);
@@ -584,7 +614,7 @@ details.tg[open] summary{margin-bottom:8px}
     if(code.length !== 8){ $("msg").textContent = T.short; return; }
     var btn = $("submit");
     busy = true; btn.disabled = true; btn.textContent = T.wait;
-    post("/api/app/login", {code: code, device: device()})
+    post("/api/app/login", {code: code, device: device(), web: WEB})
       .then(function(r){
         if(r.ok) return r.json().then(function(b){ window.ErnestApp.signIn(b.token); });
         if(r.status === 429){

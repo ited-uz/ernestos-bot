@@ -146,12 +146,12 @@ def state_for(verifier: str) -> str:
     return hashlib.sha256(verifier.encode()).hexdigest()
 
 
-def start(s: Session, provider: str, state: str, language: str = "uz") -> str:
+def start(s: Session, provider: str, state: str, language: str = "uz", web: bool = False) -> str:
     """Remember the attempt and return the provider's page to open."""
     s.execute(sql_delete(OAuthPending).where(OAuthPending.created_at < utcnow() - PENDING_TTL))
     nonce = secrets.token_urlsafe(24)
     s.merge(OAuthPending(state_hash=_digest(state), provider=provider, nonce=nonce,
-                         language=language if language in ("uz", "en", "ru") else "uz"))
+                         language=language if language in ("uz", "en", "ru") else "uz", web=web))
     s.commit()
     if provider == "google":
         return "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode({

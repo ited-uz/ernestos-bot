@@ -25,7 +25,7 @@ jobs:
       # Unused imports and undefined names only. Nothing stylistic, so this
       # gate fails on real mistakes and never on taste.
       - name: Lint
-        run: python -m pyflakes app.py services.py db.py migrations.py dependencies.py ratelimit.py agent_actions.py agent_core.py agent_provider.py agent_bot.py agent_text.py agent_api.py task_pages.py config.py security.py version.py plans.py coins.py agent_chat.py notes.py notes_api.py notes_connector.py notes_crypto.py notes_portable.py notes_templates.py scripts/notebooklm_live_check.py
+        run: python -m pyflakes app.py services.py db.py migrations.py dependencies.py ratelimit.py agent_actions.py agent_core.py agent_provider.py agent_bot.py agent_text.py agent_api.py task_pages.py config.py security.py version.py plans.py coins.py agent_chat.py notes.py notes_api.py notes_connector.py notes_crypto.py notes_portable.py notes_templates.py web_app.py scripts/notebooklm_live_check.py
 
       # The suite runs against SQLite: ENVIRONMENT=test keeps it off Telegram
       # and out of the rate limiter, and tests/test_smoke.py points
@@ -109,6 +109,12 @@ jobs:
         env:
           PYTHON: python
         run: NODE_PATH="$(npm root -g)" scripts/e2e_app.sh
+      # The web app (/app/) on a laptop and a phone: sign-in from a plain
+      # browser, every screen at both sizes, back, download, offline, sign-out.
+      - name: Web app checks
+        env:
+          PYTHON: python
+        run: NODE_PATH="$(npm root -g)" scripts/e2e_web.sh
       # The offline copy: setup, a day of entries, reload, the next day — no server.
       - name: Offline copy checks
         run: E2E_OUT=tests/e2e/out NODE_PATH="$(npm root -g)" node tests/e2e/offline_copy.cjs
