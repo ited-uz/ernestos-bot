@@ -13,7 +13,8 @@ Bir joyda qilingan o‘zgarish hamma joyda ko‘rinadi.
 | Ekran | Ko‘rinish |
 |---|---|
 | Telefon (360–999 px) | Pastki panel, oynalar pastdan chiqadi |
-| Kompyuter, planshet yonboshlab (≥1000 px) | Chapda yon panel, keng ekran, oynalar o‘rtada dialog bo‘lib ochiladi, **Esc** yopadi |
+| Kompyuter, planshet yonboshlab (≥1000 px) | Kulrang fon ustida oq kartalar; chapda yon panel: yuqorida **«+ Yangi»** (shu ekranda nima qo‘shilsa — vazifa, qayd, pul yozuvi, maqsad), pastda **Xabarlar** va profil kartasi. **Bugun** — ikki ustun: «Hozir» va keyingi ishlar chapda, bugungi progress va odatlar (shu yerda belgilanadi) o‘ngda; xiralik yo‘q. Ro‘yxatlar o‘qishga qulay kenglikda, tugmalar matni kengligida. Oynalar o‘rtada dialog bo‘lib ochiladi, **Esc** yopadi |
+| Kirish sahifasi (≥960 px) | Ikki yarim: chapda qorong‘i brend panel va 5 ta afzallik, o‘ngda faqat kirish formasi |
 | Qaydlar (≥1000 px) | Yon ro‘yxat + muharrir yonida bog‘lanishlar paneli |
 
 Yorug‘ va qorong‘i rejim tizimga ergashadi (yoki Sozlamalar → Ko‘rinish).

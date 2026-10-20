@@ -101,19 +101,55 @@ details.tg[open] summary{margin-bottom:8px}
 .usp span{color:var(--text-2);font-size:14px;line-height:1.4}
 .legal{font-size:13px;color:var(--text-2);text-align:center;margin:22px 0 0;line-height:1.5}
 .legal a{color:var(--primary);font-weight:600}
-/* A laptop or a tablet on its side: the way in on the left, why on the right. */
+.usp-brand{display:none}
+/* A laptop or a tablet on its side: two halves. Why ErnestOS on a dark brand
+   panel on the left, the way in on the right — the form alone in its half. */
 @media (min-width: 960px){
-  body{padding-top:72px;justify-content:center}
-  main{max-width:1000px;display:grid;grid-template-columns:minmax(0,420px) minmax(0,1fr);column-gap:64px;align-items:start}
-  main > *{grid-column:1}
-  main > .usp{grid-column:2;grid-row:1 / span 8;margin:0;align-self:center}
-  .usp h2{text-align:left;font-size:22px;margin-bottom:16px}
-  .usp li{padding:14px 16px}
+  body{padding:0;display:block;min-height:100vh;background:var(--surface)}
+  main{max-width:none;min-height:100vh;display:grid;grid-template-columns:minmax(460px, 46%) minmax(0,1fr);
+       grid-template-rows:1fr auto}
+  main > .auth{grid-column:2;grid-row:1;align-self:center;justify-self:center;width:100%;max-width:404px;padding:48px 0 24px}
+  main > .legal{grid-column:2;grid-row:2;justify-self:center;max-width:404px;margin:0;padding:0 0 32px}
+  main > .usp{grid-column:1;grid-row:1 / span 2;margin:0;padding:56px clamp(40px, 5vw, 80px);
+       display:flex;flex-direction:column;justify-content:center;color:#E9EEF2;
+       background:
+         radial-gradient(900px 520px at -10% -10%, rgba(1,223,122,.20), transparent 60%),
+         radial-gradient(800px 600px at 110% 110%, rgba(53,105,214,.32), transparent 60%),
+         linear-gradient(160deg, #0A0D12, #0D1117 55%, #0B1410)}
+  .usp-brand{display:flex;align-items:center;gap:12px;font-size:20px;font-weight:720;letter-spacing:-.3px;color:#fff;margin:0 0 40px}
+  .usp-brand img{width:40px;height:40px;border-radius:11px;box-shadow:0 8px 24px -8px rgba(1,223,122,.55)}
+  .usp h2{text-align:left;font-size:34px;line-height:1.15;letter-spacing:-.8px;font-weight:760;color:#fff;margin:0 0 28px;max-width:520px}
+  .usp ul{gap:12px;max-width:560px}
+  .usp li{padding:14px 16px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09);border-radius:16px;
+       -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+  .usp .ic{background:rgba(255,255,255,.08)}
+  .usp b{color:#fff}
+  .usp span{color:rgba(233,238,242,.70)}
+  /* The form half: the name, one card, nothing loud. */
+  .auth .logo{display:none}
+  .auth h1{text-align:left;font-size:30px;letter-spacing:-.6px}
+  .auth .lead{text-align:left;margin-bottom:22px}
+  .auth .langs{justify-content:flex-start}
+  .auth .card{box-shadow:none;padding:22px}
+  .auth details.tg summary{text-align:left}
+}
+@media (min-width: 960px) and (prefers-color-scheme: dark){
+  body{background:var(--bg)}
+}
+/* A 13-inch screen: the panel's five points fit without a scroll. */
+@media (min-width: 960px) and (max-height: 900px){
+  main > .usp{padding-block:28px}
+  .usp-brand{margin-bottom:22px}
+  .usp h2{font-size:28px;margin-bottom:16px}
+  .usp ul{gap:8px}
+  .usp li{padding:10px 14px}
+  .usp span{font-size:13.5px}
 }
 </style>
 </head>
 <body>
 <main>
+  <div class="auth">
   <img class="logo" src="logo.png" alt="ErnestOS" width="72" height="72" />
   <h1 id="t-title">ErnestOS</h1>
   <p class="lead" id="t-lead"></p>
@@ -188,9 +224,12 @@ details.tg[open] summary{margin-bottom:8px}
       <p class="hint" id="t-hint"></p>
     </div>
   </details>
+  </div>
 
-  <!-- Why ErnestOS: the five things it does that other planners do not. -->
+  <!-- Why ErnestOS: the five things it does that other planners do not.
+       On a laptop it is the left half of the page, under the name. -->
   <section class="usp" aria-labelledby="t-usp">
+    <div class="usp-brand" aria-hidden="true"><img src="logo.png" alt="" width="40" height="40" /><span>ErnestOS</span></div>
     <h2 id="t-usp"></h2>
     <ul id="usp-list"></ul>
   </section>

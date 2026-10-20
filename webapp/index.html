@@ -2143,6 +2143,124 @@ h1.greet{font-size:17px;font-weight:650;letter-spacing:-.2px;line-height:1.25}
 }
 @keyframes dialog-in{from{transform:scale(.98);opacity:.4} to{transform:none;opacity:1}}
 @media (min-width:1000px) and (prefers-reduced-motion:reduce){ .sheet-inner{animation:none} }
+
+/* ==================================================================
+   The desk (v2) — ErnestOS web on a laptop is a desk, not a stretched
+   phone: white cards on a soft grey ground, a side bar that carries
+   "+ New" and the person, a page that keeps a reading width, buttons as
+   wide as their words, and Home laid out as one view of the day.
+   ================================================================== */
+.nav-new,.nav-foot{display:none}
+@media (min-width:1000px){
+  :root{--side-w:252px; --page-w:1180px; --list-w:940px}
+  /* Light: the ground steps back, the cards come forward. */
+  :root[data-theme][data-mode="light"]{--desk:color-mix(in srgb, var(--surface-2) 74%, var(--bg)); --surface:var(--bg)}
+  :root[data-theme][data-mode="dark"]{--desk:var(--bg)}
+  body{background:var(--desk);padding-left:var(--side-w)}
+  #app::before{display:none}
+  #app{max-width:var(--page-w);padding:34px 44px 64px}
+  body.nt-wide #app{max-width:1240px}
+  .nt-bar{background:var(--desk)}
+  *{scrollbar-width:thin;scrollbar-color:var(--border-2) transparent}
+
+  /* ---- the side bar ---- */
+  #nav{width:var(--side-w);padding:18px 14px 14px;gap:2px;background:var(--desk);
+       -webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none}
+  html[data-mode="dark"] #nav{background:color-mix(in srgb, var(--bg) 78%, black)}
+  #nav .nav-brand{padding:2px 8px 18px;font-size:17px}
+  #nav button{min-height:40px;padding:6px 10px;border-radius:10px;font-size:14.5px;font-weight:600}
+  #nav button .ic{width:22px;height:22px}
+  #nav button .ic svg{width:19px;height:19px}
+  #nav button.on{background:var(--surface);color:var(--text);
+       box-shadow:0 0 0 var(--border-w) var(--border), var(--shadow-1)}
+  #nav button.on .ic{color:var(--primary)}
+  #nav > button[data-screen="profile"]{display:none}
+
+  #nav .nav-new{display:flex;gap:8px;margin:0 0 16px}
+  #nav .nav-new button{position:static;transform:none;margin:0;flex:none;cursor:pointer;
+       height:40px;min-height:40px;border-radius:10px;justify-content:center;font-weight:650}
+  #nav .nav-new .nav-add{flex:1 1 auto;min-width:0;width:auto;gap:7px;padding:0 14px;font-size:14px;
+       background:var(--primary-fill);color:var(--on-primary);border:0;
+       box-shadow:0 1px 2px rgba(var(--shadow-rgb), calc(.18 * var(--shadow-k))), inset 0 1px 0 rgba(255,255,255,.14)}
+  #nav .nav-add:hover{filter:brightness(1.07);background:var(--primary-fill);color:var(--on-primary)}
+  #nav .nav-add svg{width:17px;height:17px;flex:none}
+  #nav .nav-add::after{content:attr(aria-label);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #nav .nav-mic{width:40px;padding:0;background:var(--surface);color:var(--primary);
+       border:var(--border-w) solid var(--border)}
+  #nav .nav-mic svg{width:18px;height:18px}
+  #fab{display:none}
+
+  #nav .nav-foot{display:grid;gap:2px;margin-top:auto;padding-top:12px;border-top:var(--border-w) solid var(--border)}
+  #nav .nav-foot button > span:last-child{white-space:normal}
+  #nav .nav-me{min-height:52px;gap:10px;padding:7px 8px}
+  #nav .nav-me > svg{flex:none;color:var(--text-3)}
+  .nav-av{width:34px;height:34px;border-radius:50%;flex:none;overflow:hidden;display:grid;place-items:center;
+       background:var(--primary-fill);color:var(--on-primary);font-weight:700;font-size:14px}
+  .nav-av img{width:100%;height:100%;object-fit:cover}
+  .nav-who{display:grid;flex:1;min-width:0;line-height:1.25;text-align:left}
+  .nav-who b{font-size:14px;font-weight:650;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .nav-who small{font-size:12px;font-weight:600;color:var(--text-3)}
+  .nav-count{margin-left:auto;min-width:20px;height:20px;padding:0 6px;border-radius:10px;display:grid;place-items:center;
+       background:var(--danger);color:var(--on-primary);font-size:11.5px;font-weight:700}
+
+  /* ---- type and controls ---- */
+  #app h1{font-size:28px;font-weight:720;letter-spacing:-.6px}
+  #app h1.greet{font-size:26px;letter-spacing:-.5px}
+  #app h2{font-size:15px;font-weight:680;letter-spacing:-.1px}
+  /* A button is as wide as what it says; inside grids and sheets it fills its cell. */
+  #app .btn{width:auto;padding-inline:20px;min-height:42px;font-size:15px}
+  #app .btn.sm{min-height:36px;padding-inline:14px;font-size:14px}
+  .seg > *{cursor:pointer}
+  .trow,.item.pressable,.nt-card,.goal-line{transition:background var(--dur-2, 160ms)}
+  .trow:hover,.item.pressable:hover,.goal-line:hover{background:color-mix(in srgb, var(--surface-2) 70%, var(--surface))}
+  input,textarea,select{font-size:15px}
+  .sheet-inner{box-shadow:0 30px 80px -20px rgba(var(--shadow-rgb), calc(.35 * var(--shadow-k))),
+       0 0 0 var(--border-w) var(--border)}
+
+  /* Lists keep a reading width; Home, Money and Notes use the page. */
+  body:is([data-screen="habits"],[data-screen="tasks"],[data-screen="goals"],[data-screen="team"],[data-screen="project"],
+       [data-screen="steps"],[data-screen="stats"],[data-screen="people"],[data-screen="more"]) #app{max-width:calc(var(--list-w) + 88px)}
+
+  /* ---- Home: the day at a glance ---- */
+  .screen-home > .head{margin-bottom:4px}
+  .screen-home > .head .bellbtn,.screen-home > .head .avatar{display:none}
+  .desk{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:22px;align-items:start;margin-top:16px}
+  .desk-main,.desk-side{display:flex;flex-direction:column;gap:16px;min-width:0}
+  .desk-main > *,.desk-side > *{margin-top:0 !important;margin-bottom:0 !important}
+  .desk-side{position:sticky;top:24px}
+  .desk .hero{padding:24px 26px}
+  .desk .now-acts .btn{flex:0 0 auto;min-width:200px}
+  .desk-tasks > h2{margin:4px 0 10px}
+  .desk-tasks .more-link{margin-top:10px}
+  .desk .counts{padding:18px}
+  .desk-habits{padding:14px 16px 10px}
+  .desk-card-h{display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:6px}
+  .desk-card-h b{font-size:14.5px;font-weight:680}
+  .desk-card-h .num{margin-left:auto;color:var(--text-3);font-size:13px;font-weight:650}
+  .desk-card-h svg{color:var(--text-3)}
+  .desk-habit{display:flex;align-items:center;gap:10px;min-height:40px;font-size:14.5px;
+       border-top:var(--border-w) solid var(--border)}
+  .desk-habit:first-of-type{border-top:0}
+  .desk-habit .grow{cursor:pointer}
+  .desk-habit.on .grow{color:var(--text-3);text-decoration:line-through;text-decoration-color:var(--border-2)}
+  .desk-habit .check{width:24px;height:24px;flex:none}
+  .screen-home > .privacy-strip{margin-top:28px}
+
+  /* ---- Money: one line to write it down ---- */
+  .screen-money{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:10px}
+  .screen-money > *{grid-column:1/-1}
+  .screen-money > .head{grid-column:1}
+  .screen-money > .mnav{grid-column:2;align-self:center;min-width:300px;margin:0}
+  .screen-money > .mquick{grid-column:1;margin:14px 0 0}
+  .screen-money > .mkind{grid-column:2;display:flex;gap:8px;margin:14px 0 0;align-self:start}
+  .screen-money > .mkind .btn{min-width:132px;min-height:50px}
+  .mhero{padding:24px 26px}
+  /* A chart's words grow with its width; past a phone's width it gets room, not size. */
+  #app svg.chart{max-width:680px;max-height:300px;margin-inline:auto;display:block}
+}
+@media (min-width:1400px){
+  .desk{grid-template-columns:minmax(0,1fr) 380px;gap:26px}
+}
 </style>
 </head>
 <body>
@@ -4263,10 +4381,14 @@ function openSheet(html, view){
   sheet.classList.add("show");
   syncBackButton();
 }
+/* When the last sheet closed: a tap after it is a new intent, not the second
+   half of a double tap — "+", Escape, "+" opens the sheet again. */
+let sheetClosedAt = 0;
 function closeSheet(){
   // Leaving the voice sheet by any road (Back, the backdrop, another screen)
   // means "never mind": the microphone stops and nothing is sent (K01).
   if(state.sheetView === "voice") voiceAbandon();
+  sheetClosedAt = Date.now();
   state.sheetView = null;
   const sheet = document.getElementById("sheet");
   clearTimeout(sheetCloseTimer);
@@ -4471,6 +4593,10 @@ function lineChart(series, keys){
    Screens
    ================================================================== */
 const SCREENS = {};
+/* A laptop-wide window: the side bar is showing, and Home and the bar take
+   their desk layout. Crossing the width redraws the screen. */
+function DESK(){ return Boolean(window.matchMedia?.("(min-width:1000px)").matches); }
+try{ window.matchMedia("(min-width:1000px)").addEventListener("change", () => { if(typeof state !== "undefined" && state.me) render(); }); }catch(_){}
 
 /* Home, top to bottom: who and when, then ONE action, then the work that
    action came out of, and only then the numbers. Everything on this screen is
@@ -4503,21 +4629,60 @@ SCREENS.home = () => {
      the next three things, each one line; the rest is one tap away. */
   /* Opening the app shows the one thing to do now, with the person's own
      line under it; the rest of the day waits, softly blurred, until a tap. */
-  const veil = state.homeVeil && d.now && d.now.kind !== "clear";
-  return headBlock(d)
-       + timerBanner(d.active_timer)
-       + nowBlock(d)
-       + quoteBlock(d)
-       + `<div class="home-rest ${veil ? "veiled" : ""}" ${veil ? "inert aria-hidden=\"true\"" : ""}>`
-       + countsRow(d)
-       + loadBlock(d)
-       + homeGoal(d)
-       + tasksBlock(d)
-       + presetsOffer(d)
+  const desk = DESK();
+  const veil = state.homeVeil && d.now && d.now.kind !== "clear" && !desk;
+  const head = headBlock(d);
+  const now = timerBanner(d.active_timer) + nowBlock(d);
+  const counts = countsRow(d);
+  const tasks = tasksBlock(d);
+  /* A laptop has the room to show the day at once: the one thing and the
+     work it came out of on the left, today's numbers and habits beside it.
+     Nothing is veiled there — a blurred half-screen on a desk reads as a
+     broken page. */
+  const body = desk
+    ? `<div class="desk"><div class="desk-main">${now}<section class="desk-tasks">${tasks}</section>${presetsOffer(d)}</div>`
+      + `<aside class="desk-side">${counts}${deskHabits()}${loadBlock(d)}${homeGoal(d)}${quoteBlock(d)}</aside></div>`
+    : now + quoteBlock(d)
+      + `<div class="home-rest ${veil ? "veiled" : ""}" ${veil ? "inert aria-hidden=\"true\"" : ""}>`
+      + counts + loadBlock(d) + homeGoal(d) + tasks + presetsOffer(d);
+  return head
+       + body
        + privacyNote()
-       + `</div>`
+       + (desk ? "" : `</div>`)
        + (veil ? `<button class="unveil" data-act="home-unveil">${icon("chevron", 16)} ${t("home_unveil")}</button>` : "");
 };
+/* A laptop's Home also lists today's habits, ticked in place: the same ones
+   the progress card counts (prayer has its own count there). A habit with a
+   timer or a count opens its own sheet, and the journal opens the journal,
+   as they do on the Habits screen. */
+function deskHabits(){
+  const list = state.deskHabits;
+  if(!list || !list.length) return "";
+  const done = list.filter(x => x.done).length;
+  return `<div class="card desk-habits">
+    <div class="desk-card-h" data-act="nav" data-screen="habits" role="button" tabindex="0">
+      <b>${t("habits")}</b><span class="num">${done}/${list.length}</span>${icon("chevron", 15)}</div>
+    ${list.slice(0, 7).map(x => `<div class="desk-habit ${x.done ? "on" : ""}">
+      ${x.system_key
+        ? `<div class="check ${x.done ? "on" : ""}" data-act="go-tab" data-tab="${esc(x.system_key)}" role="button" tabindex="0"
+             aria-label="${esc(x.name)}">${icon(x.done ? "check" : "edit", 14)}</div>`
+        : x.timer_minutes || x.target_qty
+        ? `<div class="check timed ${x.done ? "on" : ""}" data-act="habit-open" data-id="${x.id}" role="button" tabindex="0"
+             aria-label="${esc(x.name)}">${icon(x.done ? "check" : x.timer_minutes ? "clock" : "plus", 14)}</div>`
+        : checkBox(x.done, `data-act="habit-toggle-home" data-id="${x.id}"`, x.name)}
+      <span class="grow ellipsis" ${x.system_key ? `data-act="go-tab" data-tab="${esc(x.system_key)}"`
+        : `data-act="habit-open" data-id="${x.id}"`}>${esc(x.name)}</span></div>`).join("")}
+    ${list.length > 7 ? `<div class="more-link" data-act="nav" data-screen="habits" role="button" tabindex="0">+${list.length - 7}</div>` : ""}
+  </div>`;
+}
+async function loadDeskHabits(){
+  try{
+    const h = await api("/api/habits");
+    // Prayer has a count of its own on the progress card; everything else it counts is here.
+    state.deskHabits = (h.habits || []).filter(x => x.due && !x.paused && x.system_key !== "prayer");
+    if(state.screen === "home" && DESK()) render();
+  }catch(_){ /* the card is extra; Home stands without it */ }
+}
 /* The person's own line, set in Settings — under the Now card, as a quiet
    card of its own. Tap to change it. */
 function quoteBlock(d){
@@ -11090,6 +11255,32 @@ function fabAdd(){
           : sc === "tasks" ? "add_task" : "quick_add")}" title="${t(sc === "money" ? "money_add"
           : sc === "habits" ? "add_habit" : sc === "tasks" ? "add_task" : "quick_add")}">${icon("plus", 30)}</button>`;
 }
+/* A laptop's side bar starts with "+ New": the same thing the floating +
+   adds on this screen (a note on Notes, a goal on Goals), or a quick add
+   where the + has nothing of its own. The phone's tab bar hides it. */
+function navNew(){
+  const add = fabAdd() || `<button class="fab-add" data-act="quick-add" aria-label="${t("quick_add")}"
+    title="${t("quick_add")}">${icon("plus", 30)}</button>`;
+  // Its own class: on a phone ".fab-add" is the floating one, never this hidden copy.
+  return `<div class="nav-new">${add.replace('class="fab-add"', 'class="nav-add"')}${fabMic().replace('class="fab-mic"', 'class="nav-mic"')}</div>`;
+}
+/* …and ends with who is signed in: the person and their plan (Profile),
+   and the inbox. */
+function navFoot(active){
+  const me = state.me || {};
+  const name = me.first_name || "";
+  const plan = me.plan?.enabled ? PLAN_NAME[me.plan.tier] || "" : "";
+  const unread = state.inboxUnread || 0;
+  return `<div class="nav-foot">
+    ${IS_APP ? `<button class="nav-bell" data-act="inbox-open" aria-label="${t("inbox")}">
+      <span class="ic">${icon("bell", 19)}</span><span>${t("inbox")}</span>${unread
+        ? `<b class="nav-count">${unread > 99 ? "99+" : unread}</b>` : ""}</button>` : ""}
+    <button class="nav-me ${active === "profile" ? "on" : ""}" data-act="nav" data-screen="profile"
+            aria-current="${active === "profile" ? "page" : "false"}">
+      <span class="nav-av">${avatarHtml(name)}</span>
+      <span class="nav-who"><b>${esc(name)}</b>${plan ? `<small>${plan}</small>` : ""}</span>
+      ${icon("chevron", 15)}</button></div>`;
+}
 /* The blocked screen. A full screen with a way out, not a 403 string:
    join, check, and the session continues from where it was. */
 function blockedScreen(){
@@ -11292,11 +11483,13 @@ function render(){
   const active = NAV_OF[state.screen] || state.screen;
   /* An empty bar is hidden by CSS (`nav:empty`), so the tab bar appears with
      the first screen's content rather than over a blank page. */
-  document.getElementById("nav").innerHTML = chromeOff ? "" : NAV_BRAND + NAV.map(n => `
+  // A phone's tab bar is the five tabs only; the side bar adds + New and the person.
+  const desk = DESK();
+  document.getElementById("nav").innerHTML = chromeOff ? "" : NAV_BRAND + (desk ? navNew() : "") + NAV.map(n => `
     <button data-act="nav" data-screen="${n.id}"
             class="${active === n.id ? "on" : ""} ${n.apart ? "apart" : ""}"
             aria-current="${active === n.id ? "page" : "false"}">
-      <span class="ic">${icon(n.icon, 21)}</span><span>${t(n.key)}</span></button>`).join("");
+      <span class="ic">${icon(n.icon, 21)}</span><span>${t(n.key)}</span></button>`).join("") + (chromeOff || !desk ? "" : navFoot(active));
   /* + types it, the microphone says it. Both one tap, on every main screen. */
   /* Prayer and the journal are filled in place; a + over them only covered
      their last row and the Save/History buttons. */
@@ -11307,6 +11500,8 @@ function render(){
   document.getElementById("fab").innerHTML = chromeOff || noFab ? "" : `${fabMic()}${fabAdd()}`;
 
   document.body.classList?.toggle?.("nt-wide", state.screen === "notes" || state.screen === "note");
+  // The laptop layout keeps lists at a reading width, the header and tabs with them.
+  if(document.body.dataset) document.body.dataset.screen = state.screen || "";
   syncShell();
   syncBackButton();
   markJust();
@@ -11345,6 +11540,7 @@ async function loadScreen(screen){
       setState({home: await api("/api/home")});
       saveLastGood();
       loadNowAi();
+      if(DESK()) loadDeskHabits();
     } else if(screen === "notes"){
       await ntLoadHome();
     } else if(screen === "note"){
@@ -15048,7 +15244,8 @@ document.addEventListener("click", e => {
      second intent — it must not write twice. Checkboxes are exempt: ticking
      and unticking quickly is a real thing to do. */
   const now = Date.now();
-  if(el.tagName === "BUTTON" && now - (lastTap.get(el) || 0) < 700) return;
+  const prevTap = lastTap.get(el) || 0;
+  if(el.tagName === "BUTTON" && now - prevTap < 700 && sheetClosedAt < prevTap) return;
   lastTap.set(el, now);
   pressedBtn = el.tagName === "BUTTON" ? el : null;
   const d = el.dataset;

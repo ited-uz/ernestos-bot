@@ -68,14 +68,14 @@ const SCREENS = ['home', 'habits', 'tasks', 'goals', 'team', 'notes', 'money', '
     assert.equal(await lp.evaluate(() => window.ErnestApp.web), true);
   });
 
-  await step('Sign-in on a laptop: the way in on the left, why ErnestOS on the right', async () => {
+  await step('Sign-in on a laptop: why ErnestOS on the dark panel on the left, the way in on the right', async () => {
     const layout = await lp.evaluate(() => {
       const main = document.querySelector('main'), usp = document.querySelector('.usp');
       return { grid: getComputedStyle(main).display, uspLeft: usp.getBoundingClientRect().left,
                cardLeft: document.getElementById('email-card').getBoundingClientRect().left };
     });
     assert.equal(layout.grid, 'grid');
-    assert.ok(layout.uspLeft > layout.cardLeft + 300, JSON.stringify(layout));
+    assert.ok(layout.cardLeft > layout.uspLeft + 300, JSON.stringify(layout));
     assert.ok(!(await wide(lp)));
     await lp.screenshot({ path: path.join(SHOTS, 'laptop-01-login.png') });
   });
@@ -120,6 +120,12 @@ const SCREENS = ['home', 'habits', 'tasks', 'goals', 'team', 'notes', 'money', '
     assert.ok(box.navW >= 200 && box.navW <= 280 && box.navH >= 800 && box.navLeft === 0, 'side bar: ' + JSON.stringify(box));
     assert.ok(box.appLeft >= box.navW, 'content beside the bar: ' + JSON.stringify(box));
     assert.ok(box.appW >= 720, 'content wider than a phone: ' + JSON.stringify(box));
+    // The side bar carries + and the person; the floating + and the blur are phone things.
+    assert.ok(await lp.isVisible('#nav .nav-add'), 'the + is in the side bar');
+    assert.ok(!(await lp.isVisible('#fab .fab-add')), 'no floating + on a laptop');
+    assert.ok(await lp.isVisible('#nav .nav-me'), 'the person at the foot of the side bar');
+    assert.equal(await lp.locator('.home-rest.veiled').count(), 0, 'nothing veiled on a laptop');
+    assert.ok(await lp.isVisible('.desk .desk-side'), 'Home shows the day in two columns');
   });
 
   await step('Laptop: every screen fits, nothing undefined', async () => {
@@ -154,7 +160,7 @@ const SCREENS = ['home', 'habits', 'tasks', 'goals', 'team', 'notes', 'money', '
   await step('Laptop: a sheet opens as a dialog in the middle; back or Escape closes it', async () => {
     await lp.evaluate(() => goto('home'));
     await lp.waitForTimeout(300);
-    await lp.click('.fab-add');
+    await lp.click('#nav .nav-add');
     await lp.waitForSelector('#sheet.show .sheet-inner');
     const r = await lp.evaluate(() => {
       const b = document.querySelector('#sheet .sheet-inner').getBoundingClientRect();
@@ -166,7 +172,7 @@ const SCREENS = ['home', 'habits', 'tasks', 'goals', 'team', 'notes', 'money', '
     await lp.waitForFunction(() => !document.querySelector('#sheet.show'));
     assert.match(lp.url(), /\/app\/$/, 'back closed the sheet and stayed in the app');
     // Escape does the same on a keyboard.
-    await lp.click('.fab-add');
+    await lp.click('#nav .nav-add');
     await lp.waitForSelector('#sheet.show .sheet-inner');
     await lp.keyboard.press('Escape');
     await lp.waitForFunction(() => !document.querySelector('#sheet.show'));
