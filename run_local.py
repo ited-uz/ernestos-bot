@@ -166,6 +166,12 @@ def wait_ready(url: str, server: subprocess.Popen, seconds: int = 60) -> bool:
 
 
 def main() -> None:
+    # An old Windows console that cannot show a letter must not stop the run.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
     ap = argparse.ArgumentParser(description="ErnestOS on this computer")
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--lan", action="store_true", help="also reachable from a phone on the same Wi-Fi")
@@ -181,7 +187,8 @@ def main() -> None:
         say("• Tayyor. Ishga tushirish: python run_local.py")
         return
 
-    env = {**os.environ, **read_settings(), "PYTHONUNBUFFERED": "1", "ERNEST_NO_DOTENV": "1"}
+    env = {**os.environ, **read_settings(), "PYTHONUNBUFFERED": "1", "ERNEST_NO_DOTENV": "1",
+           "PYTHONIOENCODING": "utf-8:replace"}
     url = f"http://localhost:{port}"
     # Another port than the first run's (that one was busy): sign-in links follow.
     if env.get("PUBLIC_URL", "").startswith("http://localhost"):
